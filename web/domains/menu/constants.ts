@@ -1,0 +1,27 @@
+export const MENU_KEYS = {
+  DASHBOARD: "DASHBOARD",
+  CONFIG_USUARIOS: "CONFIG_USUARIOS",
+  CONFIG_ROLES: "CONFIG_ROLES",
+  CONFIG_GENERAL: "CONFIG_GENERAL",
+  CONFIG_MENU: "CONFIG_MENU",
+} as const;
+
+export const MENU_KEY_ALIASES: Record<string, string[]> = {
+  [MENU_KEYS.DASHBOARD]: ["DASHBOARD_TENANT_DASHBOARD"],
+  [MENU_KEYS.CONFIG_USUARIOS]: ["USUARIOS_TENANT_USUARIOS"],
+  [MENU_KEYS.CONFIG_ROLES]: ["ROLES_TENANT_ROLES"],
+  [MENU_KEYS.CONFIG_GENERAL]: ["CONFIGURACION_TENANT_CONFIGURACION"],
+  [MENU_KEYS.CONFIG_MENU]: ["CONFIGURACION_TENANT_CONFIGURACION_MENU"],
+};
+
+export const getMenuKeyCandidates = (menuKey: string): string[] => {
+  const candidates = new Set<string>([menuKey, ...(MENU_KEY_ALIASES[menuKey] ?? [])]);
+
+  for (const [canonicalKey, aliases] of Object.entries(MENU_KEY_ALIASES)) {
+    if (aliases.includes(menuKey)) {
+      candidates.add(canonicalKey);
+    }
+  }
+
+  return Array.from(candidates);
+};

@@ -1,0 +1,2592 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict bXQYSjyiI8dL82nr7TTbttjE9iuJ4ATOZcjkdn5sBpzFhuvNfq872yRTEnWa5oc
+
+-- Dumped from database version 16.12
+-- Dumped by pg_dump version 16.12
+
+-- Started on 2026-02-21 10:43:48
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 2 (class 3079 OID 19042)
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- TOC entry 5207 (class 0 OID 0)
+-- Dependencies: 2
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- TOC entry 237 (class 1259 OID 19509)
+-- Name: auditoria_eventos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.auditoria_eventos (
+    id bigint NOT NULL,
+    tenant_id uuid NOT NULL,
+    usuario_id uuid,
+    modulo character varying(100) NOT NULL,
+    entidad character varying(100) NOT NULL,
+    entidad_id character varying(50) NOT NULL,
+    accion character varying(50) NOT NULL,
+    datos_antes jsonb,
+    datos_despues jsonb,
+    ip_origen inet,
+    user_agent text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.auditoria_eventos OWNER TO postgres;
+
+--
+-- TOC entry 236 (class 1259 OID 19508)
+-- Name: auditoria_eventos_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.auditoria_eventos_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.auditoria_eventos_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5208 (class 0 OID 0)
+-- Dependencies: 236
+-- Name: auditoria_eventos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.auditoria_eventos_id_seq OWNED BY public.auditoria_eventos.id;
+
+
+--
+-- TOC entry 238 (class 1259 OID 19520)
+-- Name: auth_refresh_tokens; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.auth_refresh_tokens (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    user_agent text,
+    ip_address text,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.auth_refresh_tokens OWNER TO postgres;
+
+--
+-- TOC entry 239 (class 1259 OID 19545)
+-- Name: auth_sessions; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.auth_sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    refresh_token text NOT NULL,
+    user_agent text,
+    ip_address text,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_activity timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.auth_sessions OWNER TO postgres;
+
+--
+-- TOC entry 229 (class 1259 OID 19284)
+-- Name: departamentos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.departamentos (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    pais_id uuid NOT NULL,
+    codigo_dane character(2) NOT NULL,
+    nombre text NOT NULL,
+    activo boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.departamentos OWNER TO postgres;
+
+--
+-- TOC entry 233 (class 1259 OID 19441)
+-- Name: menu_items; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.menu_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    key text NOT NULL,
+    module text NOT NULL,
+    label text NOT NULL,
+    route text NOT NULL,
+    icon text,
+    parent_id uuid,
+    sort_order integer DEFAULT 0 NOT NULL,
+    visible boolean DEFAULT true NOT NULL,
+    below_main_menu boolean DEFAULT false NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.menu_items OWNER TO postgres;
+
+--
+-- TOC entry 230 (class 1259 OID 19303)
+-- Name: municipios; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.municipios (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    departamento_id uuid NOT NULL,
+    codigo_dane character(5) NOT NULL,
+    nombre text NOT NULL,
+    es_capital boolean DEFAULT false NOT NULL,
+    activo boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.municipios OWNER TO postgres;
+
+--
+-- TOC entry 228 (class 1259 OID 19269)
+-- Name: paises; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.paises (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    codigo_iso2 character(2) NOT NULL,
+    codigo_iso3 character(3) NOT NULL,
+    nombre text NOT NULL,
+    moneda text,
+    simbolo_moneda text,
+    activo boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.paises OWNER TO postgres;
+
+--
+-- TOC entry 227 (class 1259 OID 19248)
+-- Name: password_resets; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.password_resets (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.password_resets OWNER TO postgres;
+
+--
+-- TOC entry 226 (class 1259 OID 19228)
+-- Name: permissions; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.permissions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    role_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    module text NOT NULL,
+    route text NOT NULL,
+    label text NOT NULL,
+    visible boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.permissions OWNER TO postgres;
+
+--
+-- TOC entry 225 (class 1259 OID 19203)
+-- Name: persona_tenant_branches; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.persona_tenant_branches (
+    persona_id uuid NOT NULL,
+    tenant_branch_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    es_principal boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.persona_tenant_branches OWNER TO postgres;
+
+--
+-- TOC entry 222 (class 1259 OID 19144)
+-- Name: personas; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.personas (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    nombres text NOT NULL,
+    apellidos text NOT NULL,
+    documento_tipo text NOT NULL,
+    documento_numero text NOT NULL,
+    telefono text,
+    direccion text,
+    email_personal text,
+    cargo_nombre text NOT NULL,
+    cargo_descripcion text,
+    funciones_descripcion text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.personas OWNER TO postgres;
+
+--
+-- TOC entry 234 (class 1259 OID 19469)
+-- Name: role_menu_permissions; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.role_menu_permissions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    role_id uuid NOT NULL,
+    menu_item_id uuid NOT NULL,
+    access_level text NOT NULL,
+    actions jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT role_menu_permissions_access_level_check CHECK ((access_level = ANY (ARRAY['READ'::text, 'WRITE'::text])))
+);
+
+
+ALTER TABLE public.role_menu_permissions OWNER TO postgres;
+
+--
+-- TOC entry 221 (class 1259 OID 19135)
+-- Name: roles; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.roles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    nombre text NOT NULL,
+    descripcion text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.roles OWNER TO postgres;
+
+--
+-- TOC entry 235 (class 1259 OID 19498)
+-- Name: security_audit_logs; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.security_audit_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    actor_user_id uuid,
+    tenant_id uuid,
+    action text NOT NULL,
+    entity text NOT NULL,
+    entity_id uuid,
+    before jsonb,
+    after jsonb,
+    ip text,
+    user_agent text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_audit_logs OWNER TO postgres;
+
+--
+-- TOC entry 220 (class 1259 OID 19111)
+-- Name: tenant_branches; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.tenant_branches (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    codigo text NOT NULL,
+    nombre text NOT NULL,
+    descripcion text,
+    es_principal boolean DEFAULT false NOT NULL,
+    direccion text,
+    ciudad text,
+    departamento text,
+    pais text,
+    telefono text,
+    email text,
+    estado text DEFAULT 'ACTIVE'::text NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    pais_id uuid,
+    departamento_id uuid,
+    municipio_id uuid,
+    CONSTRAINT tenant_branches_estado_check CHECK ((estado = ANY (ARRAY['ACTIVE'::text, 'INACTIVE'::text])))
+);
+
+
+ALTER TABLE public.tenant_branches OWNER TO postgres;
+
+--
+-- TOC entry 218 (class 1259 OID 19079)
+-- Name: tenants; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.tenants (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    slug text NOT NULL,
+    nombre text,
+    config jsonb,
+    activo boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.tenants OWNER TO postgres;
+
+--
+-- TOC entry 219 (class 1259 OID 19091)
+-- Name: tenants_detalles; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.tenants_detalles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    razon_social text NOT NULL,
+    nit text NOT NULL,
+    dv text,
+    tipo_persona text NOT NULL,
+    tipo_sociedad text,
+    fecha_constitucion date,
+    estado text DEFAULT 'Activa'::text NOT NULL,
+    responsabilidades_dian text,
+    regimen text,
+    actividad_economica text,
+    obligado_facturacion_electronica boolean DEFAULT false NOT NULL,
+    resolucion_dian text,
+    fecha_inicio_facturacion date,
+    direccion_principal text,
+    ciudad text,
+    departamento text,
+    pais text DEFAULT 'Colombia'::text NOT NULL,
+    telefono text,
+    email_corporativo text,
+    sitio_web text,
+    representante_nombre text,
+    representante_tipo_documento text,
+    representante_numero_documento text,
+    representante_email text,
+    representante_telefono text,
+    cuenta_contable_defecto text,
+    banco_principal text,
+    numero_cuenta text,
+    tipo_cuenta text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    pais_id uuid NOT NULL,
+    departamento_id uuid NOT NULL,
+    municipio_id uuid NOT NULL
+);
+
+
+ALTER TABLE public.tenants_detalles OWNER TO postgres;
+
+--
+-- TOC entry 224 (class 1259 OID 19182)
+-- Name: user_roles; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.user_roles (
+    user_id uuid NOT NULL,
+    role_id uuid NOT NULL,
+    tenant_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.user_roles OWNER TO postgres;
+
+--
+-- TOC entry 223 (class 1259 OID 19158)
+-- Name: users; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.users (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id uuid NOT NULL,
+    persona_id uuid,
+    email text NOT NULL,
+    password_hash text NOT NULL,
+    estado text DEFAULT 'ACTIVE'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.users OWNER TO postgres;
+
+--
+-- TOC entry 231 (class 1259 OID 19353)
+-- Name: vw_direcciones_completas; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.vw_direcciones_completas AS
+ SELECT pa.id AS pais_id,
+    pa.codigo_iso2 AS pais_codigo,
+    pa.nombre AS pais_nombre,
+    d.id AS departamento_id,
+    d.codigo_dane AS departamento_codigo_dane,
+    d.nombre AS departamento_nombre,
+    m.id AS municipio_id,
+    m.codigo_dane AS municipio_codigo_dane,
+    m.nombre AS municipio_nombre,
+    m.es_capital
+   FROM ((public.paises pa
+     JOIN public.departamentos d ON ((d.pais_id = pa.id)))
+     JOIN public.municipios m ON ((m.departamento_id = d.id)))
+  WHERE ((pa.activo = true) AND (d.activo = true) AND (m.activo = true));
+
+
+ALTER VIEW public.vw_direcciones_completas OWNER TO postgres;
+
+--
+-- TOC entry 232 (class 1259 OID 19358)
+-- Name: vw_tenant_direcciones; Type: VIEW; Schema: public; Owner: postgres
+--
+
+CREATE VIEW public.vw_tenant_direcciones AS
+ SELECT t.id AS tenant_id,
+    t.slug AS tenant_slug,
+    t.nombre AS tenant_nombre,
+    td.razon_social,
+    td.direccion_principal,
+    pa.nombre AS pais,
+    d.nombre AS departamento,
+    m.nombre AS municipio,
+    pa.codigo_iso2 AS pais_codigo,
+    d.codigo_dane AS departamento_dane,
+    m.codigo_dane AS municipio_dane,
+    td.telefono,
+    td.email_corporativo,
+    td.sitio_web
+   FROM ((((public.tenants t
+     JOIN public.tenants_detalles td ON ((td.tenant_id = t.id)))
+     JOIN public.paises pa ON ((pa.id = td.pais_id)))
+     JOIN public.departamentos d ON ((d.id = td.departamento_id)))
+     JOIN public.municipios m ON ((m.id = td.municipio_id)));
+
+
+ALTER VIEW public.vw_tenant_direcciones OWNER TO postgres;
+
+--
+-- TOC entry 4906 (class 2604 OID 19512)
+-- Name: auditoria_eventos id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auditoria_eventos ALTER COLUMN id SET DEFAULT nextval('public.auditoria_eventos_id_seq'::regclass);
+
+
+--
+-- TOC entry 5199 (class 0 OID 19509)
+-- Dependencies: 237
+-- Data for Name: auditoria_eventos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.auditoria_eventos (id, tenant_id, usuario_id, modulo, entidad, entidad_id, accion, datos_antes, datos_despues, ip_origen, user_agent, created_at) FROM stdin;
+1	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000100	menu	menu_items	b87b443c-8ac0-41f8-b271-8fd5e557d826	MENU_ITEM_UPDATED	{"id": "b87b443c-8ac0-41f8-b271-8fd5e557d826", "key": "CONFIG_MENU", "icon": null, "label": "Menu", "route": "/{tenant}/configuracion/menu", "module": "configuracion", "visible": true, "metadata": {}, "parent_id": null, "tenant_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-02-21T13:13:51.498Z", "deleted_at": null, "sort_order": 0, "updated_at": "2026-02-21T13:13:51.498Z", "below_main_menu": false}	{"id": "b87b443c-8ac0-41f8-b271-8fd5e557d826", "key": "CONFIG_MENU", "icon": "Menu", "label": "Menu", "route": "/{tenant}/configuracion/menu", "module": "configuracion", "visible": true, "metadata": {}, "parent_id": "0574daac-79ea-452e-976d-ca26475b2db7", "tenant_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-02-21T13:13:51.498Z", "deleted_at": null, "sort_order": 0, "updated_at": "2026-02-21T13:18:56.452Z", "below_main_menu": false}	::1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	2026-02-21 07:18:56.455783-06
+2	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000100	menu	menu_items	fe7e8715-f6ca-43ad-bc21-5d4d507a1fb9	MENU_ITEM_UPDATED	{"id": "fe7e8715-f6ca-43ad-bc21-5d4d507a1fb9", "key": "ROLES_TENANT_ROLES", "icon": null, "label": "Roles", "route": "/{tenant}/roles", "module": "roles", "visible": true, "metadata": {}, "parent_id": null, "tenant_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-02-21T13:13:01.113Z", "deleted_at": null, "sort_order": 0, "updated_at": "2026-02-21T13:13:01.113Z", "below_main_menu": false}	{"id": "fe7e8715-f6ca-43ad-bc21-5d4d507a1fb9", "key": "ROLES_TENANT_ROLES", "icon": "Users", "label": "Roles", "route": "/{tenant}/roles", "module": "roles", "visible": true, "metadata": {}, "parent_id": "0574daac-79ea-452e-976d-ca26475b2db7", "tenant_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-02-21T13:13:01.113Z", "deleted_at": null, "sort_order": 0, "updated_at": "2026-02-21T13:19:22.081Z", "below_main_menu": false}	::1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	2026-02-21 07:19:22.084442-06
+3	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000100	menu	menu_items	c9388516-4d90-4782-9c59-e5395c0adf08	MENU_ITEM_UPDATED	{"id": "c9388516-4d90-4782-9c59-e5395c0adf08", "key": "USUARIOS_TENANT_USUARIOS", "icon": null, "label": "Usuarios", "route": "/{tenant}/usuarios", "module": "usuarios", "visible": true, "metadata": {}, "parent_id": null, "tenant_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-02-21T13:13:01.113Z", "deleted_at": null, "sort_order": 0, "updated_at": "2026-02-21T13:13:01.113Z", "below_main_menu": false}	{"id": "c9388516-4d90-4782-9c59-e5395c0adf08", "key": "USUARIOS_TENANT_USUARIOS", "icon": "User", "label": "Usuarios", "route": "/{tenant}/usuarios", "module": "usuarios", "visible": true, "metadata": {}, "parent_id": "0574daac-79ea-452e-976d-ca26475b2db7", "tenant_id": "00000000-0000-0000-0000-000000000001", "created_at": "2026-02-21T13:13:01.113Z", "deleted_at": null, "sort_order": 0, "updated_at": "2026-02-21T13:19:35.830Z", "below_main_menu": false}	::1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	2026-02-21 07:19:35.832061-06
+\.
+
+
+--
+-- TOC entry 5200 (class 0 OID 19520)
+-- Dependencies: 238
+-- Data for Name: auth_refresh_tokens; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.auth_refresh_tokens (id, user_id, tenant_id, token_hash, user_agent, ip_address, expires_at, revoked_at, created_at) FROM stdin;
+92428c46-1985-49af-ab3a-7b8aff42697c	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	0055a701f9bc5091a93432219c4126912d9dd57cb30dd37ca908c766c28a7c6e	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:17:05.564-06	2026-02-21 07:19:46.4341-06	2026-02-21 07:17:05.562688-06
+ea0f5ec3-738e-423c-b7ef-a0bdbc18070a	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	9448df39025136551123480ed0550a8b7bcb7d9ec489e95696d2a6768503d036	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:20:10.27-06	2026-02-21 07:22:21.971685-06	2026-02-21 07:20:10.268352-06
+acfab97c-deda-455e-acfa-6f4dcf008172	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	3d8c98e03b60b2946be8469472e7b7e9573fe77571eb6fa043564a26a5d77e3f	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:22:43.31-06	2026-02-21 07:25:52.938969-06	2026-02-21 07:22:43.307674-06
+8ff4dcf3-8dd7-4a92-8e26-1e99327b4076	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	def3c9f08045500653a923915a6ff60508e996300f31c27903dc6c8d308cb222	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:26:16.034-06	2026-02-21 07:26:45.803119-06	2026-02-21 07:26:16.030265-06
+165e0414-5ae0-49f5-88c2-b1babcb78c96	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	70054b0f308a1ff640b26aac8473713b58972b0839038fa9de16bf884e827ac0	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:26:45.808-06	2026-02-21 07:40:45.753853-06	2026-02-21 07:26:45.803119-06
+2a62fdac-e8f7-429c-a905-73ba909dece2	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	6293523e5063ededb9393b6aae169921c7165c1e1b740d7fc1aae0279a2b57d8	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:40:45.771-06	2026-02-21 07:54:45.638124-06	2026-02-21 07:40:45.753853-06
+ad9e2301-786c-457f-99ee-61c90eb11c82	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	41e15cb1b7d46d1ee200a3ae41a00936e7bcdadd8d1dcf5edac0d1a4afbbadd3	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 07:54:45.645-06	2026-02-21 08:34:03.477925-06	2026-02-21 07:54:45.638124-06
+201e7982-1c07-485a-acb2-1386eb8e0efc	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	1b44355f43494ed0afe94b12a7b6bc3126abe8ab0fa2adf1cc74a2bf61e867d0	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 08:34:03.51-06	2026-02-21 08:48:03.090943-06	2026-02-21 08:34:03.477925-06
+05927bff-0eda-4f1c-bc16-64144da745cd	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	9692b386e81c03a56095b2711474891dafdcf63ab4dcb26bc5857f1c01728270	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 08:48:03.115-06	2026-02-21 09:02:03.644512-06	2026-02-21 08:48:03.090943-06
+ba2af277-745c-4663-8318-d2f4a72633c2	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	1782164211100026b5bd4b554b74e404d3a047ba2a61ea0df35de947b0a27a86	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:02:03.661-06	2026-02-21 09:17:04.02695-06	2026-02-21 09:02:03.644512-06
+6f5d6b26-7f1c-46e8-bfc3-ed9f274b9e0f	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	8963d5d3de8a44428a42c36773b9aa0039617c9449c1afd1622ca99911f302aa	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:17:04.034-06	2026-02-21 09:18:16.287868-06	2026-02-21 09:17:04.02695-06
+ae9cec7e-5e91-4aea-8365-d7ff635c18fa	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	dfbfcb55803f0d37a3068e74c279cb4d32c84c30710e373f55a1f0ba7e46e101	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:18:18.561-06	2026-02-21 09:18:25.571856-06	2026-02-21 09:18:18.561821-06
+a5345bbc-5273-4257-b4b7-ad5d829491b0	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	90ef66b839368927bf56f7bd757c918d2683cb155a6028bf6bf90dd44ffe140a	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:21:46.832-06	2026-02-21 09:35:46.061516-06	2026-02-21 09:21:46.830649-06
+40e7fc11-0fd7-417a-8336-6c9208d2e3ed	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	c1cc489fd850c3607ce7080c9d482f53530c5cba7d2e95642e0f2161ccb9e7ce	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:35:46.074-06	2026-02-21 09:49:46.657912-06	2026-02-21 09:35:46.061516-06
+5123ab84-16da-4e35-84c0-b26ab3cd3f5c	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	a1bd140215acba38a6fdbb70fad0becd52571de338ce8e195b3aae86009e6978	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:49:46.673-06	2026-02-21 09:50:08.603148-06	2026-02-21 09:49:46.657912-06
+8bfabc7b-51b7-4df4-a557-fa127f17a8c3	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	043c45d380f16322ea4efdfebca3d3ddda2de64845727d2f1934e9fb1e3df26c	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:53:41.683-06	2026-02-21 09:56:57.504589-06	2026-02-21 09:53:41.680129-06
+b1cec76a-7314-4ba4-a48a-5126337aa9e7	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	4f9addf91781d7a99f676a8db1a9a3080350f51f3dcd043b05162be10191b211	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 09:57:09.056-06	2026-02-21 10:00:23.193922-06	2026-02-21 09:57:09.054191-06
+122e81db-a69f-44d4-a955-a5d860848902	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	ff50a575166cc9c0db3c2332be8694c12d6ffbbcd6d6539f8afe08c25495de90	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 10:00:23.199-06	2026-02-21 10:00:38.968103-06	2026-02-21 10:00:23.193922-06
+1e6874c5-d0a3-4676-9e96-5bc6d2e44e8d	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	088d1a1dc832a98fd125e2655efb1cd2d2e4837e610010e2ccccc10e41525e98	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 10:00:38.978-06	2026-02-21 10:02:21.485798-06	2026-02-21 10:00:38.968103-06
+bb27519e-0ea6-41e2-bd9f-2754da42e872	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	e1603cb1109033d86fe8e6405f6dcbc328a07bcd19737a78cbb271f2b2a75cef	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 10:02:24.446-06	2026-02-21 10:02:46.199212-06	2026-02-21 10:02:24.445634-06
+e692f560-7d37-440d-a180-78960379bef2	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	c3fe463f84be3071e43b793367a4c05d2532b6e0dc7d52da852da631c1eba8f8	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 10:02:46.205-06	2026-02-21 10:02:58.17494-06	2026-02-21 10:02:46.199212-06
+ae70d2ab-24ef-4d44-834e-9704eff9568c	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	6bb8433e7dc3b88f6054d3fcd59890f6a0a10ef51bc1f8b1991a655d9fce67c1	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 10:02:58.182-06	2026-02-21 10:16:58.755059-06	2026-02-21 10:02:58.17494-06
+5c969b67-b31a-4829-ba28-a27ae8a4f998	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	af0b21ee30978a297ec80e6aa0fe2aad23587e8110b539e3585c42aeab53fd24	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	2026-03-23 10:16:58.766-06	\N	2026-02-21 10:16:58.755059-06
+\.
+
+
+--
+-- TOC entry 5201 (class 0 OID 19545)
+-- Dependencies: 239
+-- Data for Name: auth_sessions; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.auth_sessions (id, user_id, tenant_id, refresh_token, user_agent, ip_address, is_active, created_at, last_activity) FROM stdin;
+ea7fc98c-b0bf-4fe1-99cc-cf6b66f73b51	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	0055a701f9bc5091a93432219c4126912d9dd57cb30dd37ca908c766c28a7c6e	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 07:17:05.562688-06	2026-02-21 07:19:46.4341-06
+b397df9e-50ac-42c1-96b3-50816eadc210	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	9448df39025136551123480ed0550a8b7bcb7d9ec489e95696d2a6768503d036	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 07:20:10.268352-06	2026-02-21 07:22:21.971685-06
+b174d3a9-9b7b-404f-a09b-1d0c28f7811d	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	3d8c98e03b60b2946be8469472e7b7e9573fe77571eb6fa043564a26a5d77e3f	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 07:22:43.307674-06	2026-02-21 07:25:52.938969-06
+1203f72c-0895-4abd-aa63-fafca2ec1b7a	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	def3c9f08045500653a923915a6ff60508e996300f31c27903dc6c8d308cb222	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 07:26:16.030265-06	2026-02-21 07:26:45.803119-06
+f322f604-d388-48aa-bf4a-eca59376fb63	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	1782164211100026b5bd4b554b74e404d3a047ba2a61ea0df35de947b0a27a86	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 07:26:45.803119-06	2026-02-21 09:17:04.02695-06
+8c8a926c-ddeb-489c-b3e0-9eaf26e7f0f9	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	8963d5d3de8a44428a42c36773b9aa0039617c9449c1afd1622ca99911f302aa	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 09:17:04.02695-06	2026-02-21 09:18:16.287868-06
+80c4e96b-ad4e-4127-b3dd-cb5cf7d01208	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	dfbfcb55803f0d37a3068e74c279cb4d32c84c30710e373f55a1f0ba7e46e101	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 09:18:18.561821-06	2026-02-21 09:18:25.571856-06
+4bda9772-1dd6-4392-975f-6f137a4088b1	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	a1bd140215acba38a6fdbb70fad0becd52571de338ce8e195b3aae86009e6978	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 09:21:46.830649-06	2026-02-21 09:50:08.603148-06
+0c379d6f-7170-48b4-97b4-689f95df7c92	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	043c45d380f16322ea4efdfebca3d3ddda2de64845727d2f1934e9fb1e3df26c	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 09:53:41.680129-06	2026-02-21 09:56:57.504589-06
+d53ffd1f-03b6-4053-b3c4-e57f81176403	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	4f9addf91781d7a99f676a8db1a9a3080350f51f3dcd043b05162be10191b211	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 09:57:09.054191-06	2026-02-21 10:00:23.193922-06
+4ce66ca7-6f09-40a3-ba61-2d5a259cdd42	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	ff50a575166cc9c0db3c2332be8694c12d6ffbbcd6d6539f8afe08c25495de90	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 10:00:23.193922-06	2026-02-21 10:00:38.968103-06
+d01ce19d-d1aa-46e8-9f27-e14e00873afc	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	088d1a1dc832a98fd125e2655efb1cd2d2e4837e610010e2ccccc10e41525e98	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 10:00:38.968103-06	2026-02-21 10:02:21.485798-06
+d1ce5884-729d-4a6f-b800-fb81c734774e	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	e1603cb1109033d86fe8e6405f6dcbc328a07bcd19737a78cbb271f2b2a75cef	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 10:02:24.445634-06	2026-02-21 10:02:46.199212-06
+3288f807-916f-44a3-8b83-6d491f5a4b08	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	c3fe463f84be3071e43b793367a4c05d2532b6e0dc7d52da852da631c1eba8f8	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	f	2026-02-21 10:02:46.199212-06	2026-02-21 10:02:58.17494-06
+54dc3a03-da13-42a7-abe8-07da1855370e	00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	af0b21ee30978a297ec80e6aa0fe2aad23587e8110b539e3585c42aeab53fd24	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36	::1	t	2026-02-21 10:02:58.17494-06	2026-02-21 10:16:58.755059-06
+\.
+
+
+--
+-- TOC entry 5193 (class 0 OID 19284)
+-- Dependencies: 229
+-- Data for Name: departamentos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.departamentos (id, pais_id, codigo_dane, nombre, activo, created_at) FROM stdin;
+ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	11111111-1111-1111-1111-111111111111	08	Atlántico	t	2026-02-21 07:10:14.326167-06
+5e8c1e59-fb6f-4637-9556-eb57be84a886	11111111-1111-1111-1111-111111111111	05	Antioquia	t	2026-02-21 07:10:14.326167-06
+78fc0e23-9a2f-4751-8647-061d568ed0ba	11111111-1111-1111-1111-111111111111	11	Bogotá D.C.	t	2026-02-21 07:10:14.326167-06
+5fc7d74f-347a-461e-8bc3-4559954f9295	11111111-1111-1111-1111-111111111111	13	Bolívar	t	2026-02-21 07:10:14.326167-06
+b988c41c-a39e-40d4-997e-f636f70a7420	11111111-1111-1111-1111-111111111111	15	Boyacá	t	2026-02-21 07:10:14.326167-06
+d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	11111111-1111-1111-1111-111111111111	17	Caldas	t	2026-02-21 07:10:14.326167-06
+0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	11111111-1111-1111-1111-111111111111	18	Caquetá	t	2026-02-21 07:10:14.326167-06
+06b71a67-a5e8-48ca-b13b-1f75d57cea1e	11111111-1111-1111-1111-111111111111	19	Cauca	t	2026-02-21 07:10:14.326167-06
+4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	11111111-1111-1111-1111-111111111111	20	Cesar	t	2026-02-21 07:10:14.326167-06
+08a085ec-2efb-4bd8-acd6-b88867514d73	11111111-1111-1111-1111-111111111111	23	Córdoba	t	2026-02-21 07:10:14.326167-06
+6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	11111111-1111-1111-1111-111111111111	25	Cundinamarca	t	2026-02-21 07:10:14.326167-06
+1e108dff-c76a-4bd4-aa78-4732dbc41430	11111111-1111-1111-1111-111111111111	27	Chocó	t	2026-02-21 07:10:14.326167-06
+a5157eae-0b08-41af-b471-b1820a62b3c8	11111111-1111-1111-1111-111111111111	41	Huila	t	2026-02-21 07:10:14.326167-06
+1b4bae07-1027-46b6-85a2-a925da668387	11111111-1111-1111-1111-111111111111	44	La Guajira	t	2026-02-21 07:10:14.326167-06
+b3079f14-ae15-48fb-a217-566bdd4971b7	11111111-1111-1111-1111-111111111111	47	Magdalena	t	2026-02-21 07:10:14.326167-06
+0b780dc0-a448-489d-8e95-3ad8d40e7954	11111111-1111-1111-1111-111111111111	50	Meta	t	2026-02-21 07:10:14.326167-06
+4324e807-c33e-48b9-b8fa-de6f03da621e	11111111-1111-1111-1111-111111111111	52	Nariño	t	2026-02-21 07:10:14.326167-06
+e12adb03-f62f-4c28-9979-f4020b4534a9	11111111-1111-1111-1111-111111111111	54	Norte de Santander	t	2026-02-21 07:10:14.326167-06
+8368e4c2-fd63-4519-808a-ed74404433a6	11111111-1111-1111-1111-111111111111	63	Quindío	t	2026-02-21 07:10:14.326167-06
+a1715f83-a9a5-4f73-868c-c5c704ee76af	11111111-1111-1111-1111-111111111111	66	Risaralda	t	2026-02-21 07:10:14.326167-06
+20f27050-56bc-4ce6-861c-2f56ed62ad34	11111111-1111-1111-1111-111111111111	68	Santander	t	2026-02-21 07:10:14.326167-06
+2bbe5ce3-2447-444f-967c-4139ea8aa5a2	11111111-1111-1111-1111-111111111111	70	Sucre	t	2026-02-21 07:10:14.326167-06
+9f839458-af97-4b84-b41d-fd763e1f8544	11111111-1111-1111-1111-111111111111	73	Tolima	t	2026-02-21 07:10:14.326167-06
+39b96d73-e297-4cfd-a7b8-653f5dc8f046	11111111-1111-1111-1111-111111111111	76	Valle del Cauca	t	2026-02-21 07:10:14.326167-06
+a38f8548-ec24-44bc-a670-6aa7d9c43ad2	11111111-1111-1111-1111-111111111111	81	Arauca	t	2026-02-21 07:10:14.326167-06
+c5529306-67cc-4778-a2e7-55a8f323d59d	11111111-1111-1111-1111-111111111111	85	Casanare	t	2026-02-21 07:10:14.326167-06
+f4485c24-979c-44dd-8924-d52fc9f1ffdd	11111111-1111-1111-1111-111111111111	86	Putumayo	t	2026-02-21 07:10:14.326167-06
+b2fedebf-5d8f-4f6e-a14e-2e6b689a54ad	11111111-1111-1111-1111-111111111111	88	Archipiélago de San Andrés, Providencia y Santa Catalina	t	2026-02-21 07:10:14.326167-06
+e46e1324-ff9b-43c4-980b-bfca404f2850	11111111-1111-1111-1111-111111111111	91	Amazonas	t	2026-02-21 07:10:14.326167-06
+90189826-fdc7-47dd-a640-335ae1228f03	11111111-1111-1111-1111-111111111111	94	Guainía	t	2026-02-21 07:10:14.326167-06
+be18cbe9-4731-45b2-9980-50d68f93a301	11111111-1111-1111-1111-111111111111	95	Guaviare	t	2026-02-21 07:10:14.326167-06
+bfb71945-ea81-4148-9687-8e79c3d0d832	11111111-1111-1111-1111-111111111111	97	Vaupés	t	2026-02-21 07:10:14.326167-06
+ae39c337-bf23-4a7c-a292-e683121868ce	11111111-1111-1111-1111-111111111111	99	Vichada	t	2026-02-21 07:10:14.326167-06
+\.
+
+
+--
+-- TOC entry 5195 (class 0 OID 19441)
+-- Dependencies: 233
+-- Data for Name: menu_items; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.menu_items (id, tenant_id, key, module, label, route, icon, parent_id, sort_order, visible, below_main_menu, metadata, created_at, updated_at, deleted_at) FROM stdin;
+4e1c2260-b64b-4aed-99e1-2fe89017cdc2	00000000-0000-0000-0000-000000000001	DASHBOARD_TENANT_DASHBOARD	dashboard	Dashboard	/{tenant}/dashboard	\N	\N	0	t	f	{}	2026-02-21 07:13:01.113965-06	2026-02-21 07:13:01.113965-06	\N
+0574daac-79ea-452e-976d-ca26475b2db7	00000000-0000-0000-0000-000000000001	CONFIGURACION_TENANT_CONFIGURACION	configuracion	Configuracion	/{tenant}/configuracion	\N	\N	0	t	f	{}	2026-02-21 07:13:01.113965-06	2026-02-21 07:13:01.113965-06	\N
+b87b443c-8ac0-41f8-b271-8fd5e557d826	00000000-0000-0000-0000-000000000001	CONFIG_MENU	configuracion	Menu	/{tenant}/configuracion/menu	Menu	0574daac-79ea-452e-976d-ca26475b2db7	0	t	f	{}	2026-02-21 07:13:51.49869-06	2026-02-21 07:18:56.452778-06	\N
+fe7e8715-f6ca-43ad-bc21-5d4d507a1fb9	00000000-0000-0000-0000-000000000001	ROLES_TENANT_ROLES	roles	Roles	/{tenant}/roles	Users	0574daac-79ea-452e-976d-ca26475b2db7	0	t	f	{}	2026-02-21 07:13:01.113965-06	2026-02-21 07:19:22.081859-06	\N
+c9388516-4d90-4782-9c59-e5395c0adf08	00000000-0000-0000-0000-000000000001	USUARIOS_TENANT_USUARIOS	usuarios	Usuarios	/{tenant}/usuarios	User	0574daac-79ea-452e-976d-ca26475b2db7	0	t	f	{}	2026-02-21 07:13:01.113965-06	2026-02-21 07:19:35.830178-06	\N
+\.
+
+
+--
+-- TOC entry 5194 (class 0 OID 19303)
+-- Dependencies: 230
+-- Data for Name: municipios; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.municipios (id, departamento_id, codigo_dane, nombre, es_capital, activo, created_at) FROM stdin;
+ae2b3188-91ba-4ed4-83cd-e19c66b99d4d	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08001	Barranquilla	t	t	2026-02-21 07:10:14.326167-06
+a1a152f0-4906-478a-b2e7-1efab4ead41e	5e8c1e59-fb6f-4637-9556-eb57be84a886	05001	Medellín	t	t	2026-02-21 07:10:14.326167-06
+8293b18b-e2f4-427e-a6cd-61670d39e843	5e8c1e59-fb6f-4637-9556-eb57be84a886	05002	Abejorral	f	t	2026-02-21 07:10:14.326167-06
+7bd4bb6f-781f-4bfd-bed5-766e193964f3	5e8c1e59-fb6f-4637-9556-eb57be84a886	05004	Abriaquí	f	t	2026-02-21 07:10:14.326167-06
+10ffd563-dd28-421f-8293-656d8151eaa9	5e8c1e59-fb6f-4637-9556-eb57be84a886	05021	Alejandría	f	t	2026-02-21 07:10:14.326167-06
+eed91359-a245-4c3c-a7d4-bbd85bd2f08b	5e8c1e59-fb6f-4637-9556-eb57be84a886	05030	Amagá	f	t	2026-02-21 07:10:14.326167-06
+70da910c-2a53-4996-97bc-8339bd015288	5e8c1e59-fb6f-4637-9556-eb57be84a886	05031	Amalfi	f	t	2026-02-21 07:10:14.326167-06
+45c48407-678b-4b8c-8c3d-fed2430c55c2	5e8c1e59-fb6f-4637-9556-eb57be84a886	05034	Andes	f	t	2026-02-21 07:10:14.326167-06
+7ef33442-4854-4121-b25b-d7cdea976742	5e8c1e59-fb6f-4637-9556-eb57be84a886	05036	Angelópolis	f	t	2026-02-21 07:10:14.326167-06
+8406f8ee-b42b-45e8-b777-4d8bfbbf1247	5e8c1e59-fb6f-4637-9556-eb57be84a886	05038	Angostura	f	t	2026-02-21 07:10:14.326167-06
+71d0abf8-f5cc-4d23-90db-139e0e7fcf44	5e8c1e59-fb6f-4637-9556-eb57be84a886	05040	Anorí	f	t	2026-02-21 07:10:14.326167-06
+24dc304d-b2a7-45e1-ac84-130731f3b548	5e8c1e59-fb6f-4637-9556-eb57be84a886	05042	Santa Fe de Antioquia	f	t	2026-02-21 07:10:14.326167-06
+3865fc5a-4a1a-4430-a47b-54f4da1d6763	5e8c1e59-fb6f-4637-9556-eb57be84a886	05044	Anza	f	t	2026-02-21 07:10:14.326167-06
+5d724b92-7930-46e1-ba06-7ee7b6f15633	5e8c1e59-fb6f-4637-9556-eb57be84a886	05045	Apartadó	f	t	2026-02-21 07:10:14.326167-06
+f7737a02-1912-4be5-9124-de7ce0c39b8d	5e8c1e59-fb6f-4637-9556-eb57be84a886	05055	Argelia	f	t	2026-02-21 07:10:14.326167-06
+758c61fe-fee0-40e0-8e36-d6a9e07af758	5e8c1e59-fb6f-4637-9556-eb57be84a886	05051	Arboletes	f	t	2026-02-21 07:10:14.326167-06
+c9448b54-9b82-4a26-a267-01d0a2b43de0	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08296	Galapa	f	t	2026-02-21 07:10:14.326167-06
+30dea438-9816-4075-b1e5-92032b8b8f03	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08141	Candelaria	f	t	2026-02-21 07:10:14.326167-06
+c6d931a8-da5b-4286-9359-28f060ae5cdd	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08137	Campo de la Cruz	f	t	2026-02-21 07:10:14.326167-06
+f27fdbc5-7db8-44f4-84e4-b35307ca2b2e	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08433	Malambo	f	t	2026-02-21 07:10:14.326167-06
+e0e619a0-20c4-4ea5-b86e-c699aabf0fce	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08078	Baranoa	f	t	2026-02-21 07:10:14.326167-06
+9ee1d2e9-cf6d-4a46-ba98-83e917bbd1f3	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08638	Sabanalarga	f	t	2026-02-21 07:10:14.326167-06
+b8b610a4-cfd6-4796-bcf5-2a6d3a948b5e	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08634	Sabanagrande	f	t	2026-02-21 07:10:14.326167-06
+aa745942-5153-442c-bbcc-85ae68a74372	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08606	Repelón	f	t	2026-02-21 07:10:14.326167-06
+08f961bb-3622-4a48-8dbc-8235d7c2b04c	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08573	Puerto Colombia	f	t	2026-02-21 07:10:14.326167-06
+77aeb770-0687-412d-ae2c-472be6f47a88	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08560	Ponedera	f	t	2026-02-21 07:10:14.326167-06
+9b316302-90ab-429f-b783-9c3b3e3a2402	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08558	Polonuevo	f	t	2026-02-21 07:10:14.326167-06
+06599bb6-ae9b-4596-8bf9-e32f8259779c	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08549	Piojó	f	t	2026-02-21 07:10:14.326167-06
+d070a86a-6e32-4e27-82c4-fb3c9c7c5960	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08520	Palmar de Varela	f	t	2026-02-21 07:10:14.326167-06
+8f73079f-5bb4-4978-a335-6e1ad08104e6	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08436	Manatí	f	t	2026-02-21 07:10:14.326167-06
+fc54a331-7cc4-454a-86e6-1ec0407e36be	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08675	Santa Lucía	f	t	2026-02-21 07:10:14.326167-06
+805183fe-a61c-41f6-bcb1-a1b4c7f0e2b9	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08421	Luruaco	f	t	2026-02-21 07:10:14.326167-06
+54039e3f-f3d3-4f2b-9f2a-825b9ec36240	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08372	Juan de Acosta	f	t	2026-02-21 07:10:14.326167-06
+ff907e3b-d71a-4092-8ca4-7cfa32a88f2c	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08849	Usiacurí	f	t	2026-02-21 07:10:14.326167-06
+deb55ef9-106f-40fe-8b0c-2e5bb9d0163d	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08832	Tubará	f	t	2026-02-21 07:10:14.326167-06
+f47ae4fc-054a-490f-aa04-50639b67d379	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08770	Suan	f	t	2026-02-21 07:10:14.326167-06
+ef6e4b77-a25c-45a6-96a1-566a75f104d2	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08758	Soledad	f	t	2026-02-21 07:10:14.326167-06
+ea3fde08-ea34-4696-b637-e8ce10d5a231	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	08685	Santo Tomás	f	t	2026-02-21 07:10:14.326167-06
+45188246-bd51-4d90-86d4-42f4604eca17	78fc0e23-9a2f-4751-8647-061d568ed0ba	11001	Bogotá D.C.	t	t	2026-02-21 07:10:14.326167-06
+240e8d43-9592-47f1-8db8-36992b74bcb0	5fc7d74f-347a-461e-8bc3-4559954f9295	13062	Arroyohondo	f	t	2026-02-21 07:10:14.326167-06
+38d94569-43af-466a-9a59-f4e056f3ce02	5fc7d74f-347a-461e-8bc3-4559954f9295	13074	Barranco de Loba	f	t	2026-02-21 07:10:14.326167-06
+567e2757-3de1-44b5-9a4b-f946ef136059	5fc7d74f-347a-461e-8bc3-4559954f9295	13140	Calamar	f	t	2026-02-21 07:10:14.326167-06
+1385e672-7dcb-4510-a28f-15bf04e75202	5fc7d74f-347a-461e-8bc3-4559954f9295	13160	Cantagallo	f	t	2026-02-21 07:10:14.326167-06
+26c3cbd4-5d5c-45e7-bafa-4df7cb6fdb99	5fc7d74f-347a-461e-8bc3-4559954f9295	13188	Cicuco	f	t	2026-02-21 07:10:14.326167-06
+ac963b6e-4a65-4fb3-a2df-78e7f6efc07c	5fc7d74f-347a-461e-8bc3-4559954f9295	13212	Córdoba	f	t	2026-02-21 07:10:14.326167-06
+51e71ab2-5dd1-4df8-b4c4-87693b0f1b61	5fc7d74f-347a-461e-8bc3-4559954f9295	13222	Clemencia	f	t	2026-02-21 07:10:14.326167-06
+861e1e4b-aa68-48c5-86de-10962f309a33	5fc7d74f-347a-461e-8bc3-4559954f9295	13001	Cartagena de Indias	t	t	2026-02-21 07:10:14.326167-06
+1ad290ba-ec22-444f-975d-5c67f51ea7dd	5fc7d74f-347a-461e-8bc3-4559954f9295	13006	Achí	f	t	2026-02-21 07:10:14.326167-06
+d923a8b9-f8d7-4895-bda9-0e3022d85314	5fc7d74f-347a-461e-8bc3-4559954f9295	13030	Altos del Rosario	f	t	2026-02-21 07:10:14.326167-06
+985c1d12-ed24-4e69-8012-a0559c939476	5fc7d74f-347a-461e-8bc3-4559954f9295	13052	Arjona	f	t	2026-02-21 07:10:14.326167-06
+138d8f0a-3be2-4855-a504-68a7c5df3a45	5fc7d74f-347a-461e-8bc3-4559954f9295	13042	Arenal	f	t	2026-02-21 07:10:14.326167-06
+248e47f9-7e79-4aea-bd93-52af630dc59a	b988c41c-a39e-40d4-997e-f636f70a7420	15522	Panqueba	f	t	2026-02-21 07:10:14.326167-06
+33db903f-f0ba-4d15-9123-e388bd36bf1b	b988c41c-a39e-40d4-997e-f636f70a7420	15001	Tunja	t	t	2026-02-21 07:10:14.326167-06
+0dc26f73-372a-4040-b9a0-4c9e6a12c20e	b988c41c-a39e-40d4-997e-f636f70a7420	15022	Almeida	f	t	2026-02-21 07:10:14.326167-06
+5fc9ec65-1ba7-467f-9c9c-f316a5ed2d49	b988c41c-a39e-40d4-997e-f636f70a7420	15047	Aquitania	f	t	2026-02-21 07:10:14.326167-06
+63af3c1c-6674-486f-bad5-bc950d0d157a	b988c41c-a39e-40d4-997e-f636f70a7420	15051	Arcabuco	f	t	2026-02-21 07:10:14.326167-06
+975d3444-a688-46a0-b9fb-e1aaa92c8fc8	b988c41c-a39e-40d4-997e-f636f70a7420	15087	Belén	f	t	2026-02-21 07:10:14.326167-06
+d5d1333a-bbd7-45a6-930d-5aa8e324201d	b988c41c-a39e-40d4-997e-f636f70a7420	15090	Berbeo	f	t	2026-02-21 07:10:14.326167-06
+a8145c76-692b-4ca4-9f9b-2dbd0e4053a8	b988c41c-a39e-40d4-997e-f636f70a7420	15092	Betéitiva	f	t	2026-02-21 07:10:14.326167-06
+87bb56bb-cbcd-494a-8f49-724e05f1d41d	b988c41c-a39e-40d4-997e-f636f70a7420	15097	Boavita	f	t	2026-02-21 07:10:14.326167-06
+c677c41d-0f84-4642-bcc8-8a60e0dd753c	b988c41c-a39e-40d4-997e-f636f70a7420	15104	Boyacá	f	t	2026-02-21 07:10:14.326167-06
+cbcc8f62-c018-49c9-8c72-337cc3539d36	b988c41c-a39e-40d4-997e-f636f70a7420	15106	Briceño	f	t	2026-02-21 07:10:14.326167-06
+c9ab00ec-f24b-4dbb-9f5a-e8655fbf25bf	b988c41c-a39e-40d4-997e-f636f70a7420	15109	Buena Vista	f	t	2026-02-21 07:10:14.326167-06
+cc5af8be-f227-4b79-981f-cf0c42c72ca7	b988c41c-a39e-40d4-997e-f636f70a7420	15114	Busbanzá	f	t	2026-02-21 07:10:14.326167-06
+19bb0c43-bfa7-40a3-9768-10d8f6d8885b	b988c41c-a39e-40d4-997e-f636f70a7420	15131	Caldas	f	t	2026-02-21 07:10:14.326167-06
+e8103afe-a7fb-4448-b1cc-c2db0072a548	b988c41c-a39e-40d4-997e-f636f70a7420	15135	Campohermoso	f	t	2026-02-21 07:10:14.326167-06
+0743213d-d9a3-4aa7-9de7-8c60f44480f7	b988c41c-a39e-40d4-997e-f636f70a7420	15162	Cerinza	f	t	2026-02-21 07:10:14.326167-06
+78597ca3-da6e-40f6-b06f-33b81edc211c	b988c41c-a39e-40d4-997e-f636f70a7420	15172	Chinavita	f	t	2026-02-21 07:10:14.326167-06
+2ebff7a3-2a8a-415e-8431-6b2d853e3d4e	b988c41c-a39e-40d4-997e-f636f70a7420	15176	Chiquinquirá	f	t	2026-02-21 07:10:14.326167-06
+89c453b8-3928-42ed-9d09-f4e846158204	b988c41c-a39e-40d4-997e-f636f70a7420	15180	Chiscas	f	t	2026-02-21 07:10:14.326167-06
+35ce2cbf-f218-481c-83a8-447a35ffaf24	b988c41c-a39e-40d4-997e-f636f70a7420	15183	Chita	f	t	2026-02-21 07:10:14.326167-06
+ae9e76c7-c3bf-4c27-bb39-6c6f81ddb64e	b988c41c-a39e-40d4-997e-f636f70a7420	15185	Chitaraque	f	t	2026-02-21 07:10:14.326167-06
+b6599566-c3e4-4b8b-a4b3-5c4912ca5ed5	b988c41c-a39e-40d4-997e-f636f70a7420	15187	Chivatá	f	t	2026-02-21 07:10:14.326167-06
+8e4462c0-c42e-4700-8916-d8f762ce70d1	b988c41c-a39e-40d4-997e-f636f70a7420	15189	Ciénega	f	t	2026-02-21 07:10:14.326167-06
+53f03b42-1248-4457-8d2c-bc65bc3c498b	b988c41c-a39e-40d4-997e-f636f70a7420	15204	Cómbita	f	t	2026-02-21 07:10:14.326167-06
+12e9586e-a40b-4d44-bfb8-c4bcd053763c	b988c41c-a39e-40d4-997e-f636f70a7420	15212	Coper	f	t	2026-02-21 07:10:14.326167-06
+d152358a-44ee-429d-bbe7-d0fd56b27664	b988c41c-a39e-40d4-997e-f636f70a7420	15215	Corrales	f	t	2026-02-21 07:10:14.326167-06
+fecb9001-f2a4-4a17-8301-2ea41c744dfa	b988c41c-a39e-40d4-997e-f636f70a7420	15218	Covarachía	f	t	2026-02-21 07:10:14.326167-06
+c18d5bc1-0184-4b3b-9ddf-a8acae1e6d64	b988c41c-a39e-40d4-997e-f636f70a7420	15223	Cubará	f	t	2026-02-21 07:10:14.326167-06
+ed455c79-169a-435f-a4d7-afbf9f807a5a	b988c41c-a39e-40d4-997e-f636f70a7420	15224	Cucaita	f	t	2026-02-21 07:10:14.326167-06
+b0e0fbe7-02b8-4007-9fe3-ad227d0f918f	b988c41c-a39e-40d4-997e-f636f70a7420	15226	Cuítiva	f	t	2026-02-21 07:10:14.326167-06
+e0c097e5-edc8-4338-a129-50ea8816e797	b988c41c-a39e-40d4-997e-f636f70a7420	15232	Chíquiza	f	t	2026-02-21 07:10:14.326167-06
+7d35b90a-2811-40e9-a4da-7529c390b8f1	b988c41c-a39e-40d4-997e-f636f70a7420	15236	Chivor	f	t	2026-02-21 07:10:14.326167-06
+e91b6e08-8dbd-46f7-a92a-feefc83dea5f	b988c41c-a39e-40d4-997e-f636f70a7420	15238	Duitama	f	t	2026-02-21 07:10:14.326167-06
+3b8dbead-e82f-4b76-b399-5ac424b5ee59	b988c41c-a39e-40d4-997e-f636f70a7420	15244	El Cocuy	f	t	2026-02-21 07:10:14.326167-06
+f6c46aed-2e43-46d5-8498-59a8946501aa	b988c41c-a39e-40d4-997e-f636f70a7420	15248	El Espino	f	t	2026-02-21 07:10:14.326167-06
+63cfa36e-6a01-4a6f-9f91-7b4b20b0e104	b988c41c-a39e-40d4-997e-f636f70a7420	15272	Firavitoba	f	t	2026-02-21 07:10:14.326167-06
+9987ec1e-82a9-4cdb-a5d2-98786ece9a8b	b988c41c-a39e-40d4-997e-f636f70a7420	15276	Floresta	f	t	2026-02-21 07:10:14.326167-06
+062a6fc4-6c24-402b-b00b-d54ab830e49a	b988c41c-a39e-40d4-997e-f636f70a7420	15293	Gachantivá	f	t	2026-02-21 07:10:14.326167-06
+42f4fab1-d406-4230-892c-020ad7ef7111	b988c41c-a39e-40d4-997e-f636f70a7420	15296	Gameza	f	t	2026-02-21 07:10:14.326167-06
+c3385e68-7b68-4d23-a1c0-e90f75507b1f	b988c41c-a39e-40d4-997e-f636f70a7420	15299	Garagoa	f	t	2026-02-21 07:10:14.326167-06
+ec27d1c1-8ef1-4e28-9fc7-b7c7d4ff5ebe	b988c41c-a39e-40d4-997e-f636f70a7420	15317	Guacamayas	f	t	2026-02-21 07:10:14.326167-06
+b1dc2676-477d-4671-ab4c-5d72ae8cbc13	b988c41c-a39e-40d4-997e-f636f70a7420	15322	Guateque	f	t	2026-02-21 07:10:14.326167-06
+ca6a07fa-0201-4301-ac72-ea8e2114867e	b988c41c-a39e-40d4-997e-f636f70a7420	15325	Guayatá	f	t	2026-02-21 07:10:14.326167-06
+fc8ee3cd-b983-45c0-9a86-97145c8dcc63	b988c41c-a39e-40d4-997e-f636f70a7420	15332	Güicán de la Sierra	f	t	2026-02-21 07:10:14.326167-06
+6d6441d5-7533-42db-94bd-6ca58b27a82c	b988c41c-a39e-40d4-997e-f636f70a7420	15362	Iza	f	t	2026-02-21 07:10:14.326167-06
+565df8fc-3751-40b6-a7d2-866317f16b0a	b988c41c-a39e-40d4-997e-f636f70a7420	15367	Jenesano	f	t	2026-02-21 07:10:14.326167-06
+41517429-9b8f-4bd9-a293-335c1ca3f242	b988c41c-a39e-40d4-997e-f636f70a7420	15368	Jericó	f	t	2026-02-21 07:10:14.326167-06
+8bb1d229-1c77-47e7-9aac-9714c69d4c2d	b988c41c-a39e-40d4-997e-f636f70a7420	15377	Labranzagrande	f	t	2026-02-21 07:10:14.326167-06
+eab29d43-cac0-4a5f-97f2-7208cc193a14	b988c41c-a39e-40d4-997e-f636f70a7420	15380	La Capilla	f	t	2026-02-21 07:10:14.326167-06
+01b656f7-6f6a-4fab-bbcc-323aa827b895	b988c41c-a39e-40d4-997e-f636f70a7420	15401	La Victoria	f	t	2026-02-21 07:10:14.326167-06
+be3dcc33-09dd-4a9b-be01-0b623e531efa	b988c41c-a39e-40d4-997e-f636f70a7420	15403	La Uvita	f	t	2026-02-21 07:10:14.326167-06
+afe47364-2be3-4ddc-ba42-ce06580f5688	b988c41c-a39e-40d4-997e-f636f70a7420	15407	Villa de Leyva	f	t	2026-02-21 07:10:14.326167-06
+5045deb4-fc03-4313-94cc-7d8a151ae563	b988c41c-a39e-40d4-997e-f636f70a7420	15425	Macanal	f	t	2026-02-21 07:10:14.326167-06
+f97687e5-d901-4df2-a77b-2200a2e8761e	b988c41c-a39e-40d4-997e-f636f70a7420	15442	Maripí	f	t	2026-02-21 07:10:14.326167-06
+a2b65558-2059-4879-ac6c-92f5330941e8	b988c41c-a39e-40d4-997e-f636f70a7420	15455	Miraflores	f	t	2026-02-21 07:10:14.326167-06
+5355e1c9-5dcb-4348-b40a-5bdb9c3a9555	b988c41c-a39e-40d4-997e-f636f70a7420	15464	Mongua	f	t	2026-02-21 07:10:14.326167-06
+ee46e2ca-00ca-4544-9353-b4318e648de1	b988c41c-a39e-40d4-997e-f636f70a7420	15466	Monguí	f	t	2026-02-21 07:10:14.326167-06
+bce38811-7c43-4648-9c77-be5a742d4800	b988c41c-a39e-40d4-997e-f636f70a7420	15469	Moniquirá	f	t	2026-02-21 07:10:14.326167-06
+962c46b9-e873-4c1d-9318-62bb6dd4b934	b988c41c-a39e-40d4-997e-f636f70a7420	15476	Motavita	f	t	2026-02-21 07:10:14.326167-06
+c5b87751-e709-4664-8841-0b92171aaaae	b988c41c-a39e-40d4-997e-f636f70a7420	15480	Muzo	f	t	2026-02-21 07:10:14.326167-06
+c623b28b-dc89-49de-9208-7327e8afccc6	b988c41c-a39e-40d4-997e-f636f70a7420	15491	Nobsa	f	t	2026-02-21 07:10:14.326167-06
+6d4aad22-176a-49ad-8dd2-6b0c2492d30e	b988c41c-a39e-40d4-997e-f636f70a7420	15494	Nuevo Colón	f	t	2026-02-21 07:10:14.326167-06
+2f0ca05c-db0f-4fdb-8b92-dbf64af0f866	b988c41c-a39e-40d4-997e-f636f70a7420	15500	Oicatá	f	t	2026-02-21 07:10:14.326167-06
+fbfa3b21-764c-4403-82d7-6df72447692f	b988c41c-a39e-40d4-997e-f636f70a7420	15507	Otanche	f	t	2026-02-21 07:10:14.326167-06
+23653e6b-fe7b-410a-9d2b-d4928f1e190e	b988c41c-a39e-40d4-997e-f636f70a7420	15511	Pachavita	f	t	2026-02-21 07:10:14.326167-06
+5b3ca332-b613-472f-9699-84acd2925a90	b988c41c-a39e-40d4-997e-f636f70a7420	15514	Páez	f	t	2026-02-21 07:10:14.326167-06
+d100968c-7c3d-4935-9ec2-ae79c423bba2	b988c41c-a39e-40d4-997e-f636f70a7420	15516	Paipa	f	t	2026-02-21 07:10:14.326167-06
+422d7a96-57f2-4c8f-a310-33b178222d06	b988c41c-a39e-40d4-997e-f636f70a7420	15518	Pajarito	f	t	2026-02-21 07:10:14.326167-06
+27a956c2-7225-4fea-ae32-17fdbaac4f13	b988c41c-a39e-40d4-997e-f636f70a7420	15531	Pauna	f	t	2026-02-21 07:10:14.326167-06
+f0a2064d-6396-47ba-b005-83cb8abdf836	b988c41c-a39e-40d4-997e-f636f70a7420	15533	Paya	f	t	2026-02-21 07:10:14.326167-06
+4eaa3ca6-2c4e-4329-9846-7a2da2346baa	b988c41c-a39e-40d4-997e-f636f70a7420	15537	Paz de Río	f	t	2026-02-21 07:10:14.326167-06
+f09d96f8-864d-4216-8ac6-1a8894d44e2b	b988c41c-a39e-40d4-997e-f636f70a7420	15542	Pesca	f	t	2026-02-21 07:10:14.326167-06
+a07706d5-0faf-4c92-9fd6-cb18ffc1c597	b988c41c-a39e-40d4-997e-f636f70a7420	15550	Pisba	f	t	2026-02-21 07:10:14.326167-06
+afedd9c7-59a1-4a79-a766-b17845c187c4	b988c41c-a39e-40d4-997e-f636f70a7420	15572	Puerto Boyacá	f	t	2026-02-21 07:10:14.326167-06
+225cd161-52c4-482a-a80d-09e46f2848a1	b988c41c-a39e-40d4-997e-f636f70a7420	15580	Quípama	f	t	2026-02-21 07:10:14.326167-06
+3f8b32e0-e952-407c-9b0c-cd50f07d86cf	b988c41c-a39e-40d4-997e-f636f70a7420	15599	Ramiriquí	f	t	2026-02-21 07:10:14.326167-06
+56d115fb-5176-455a-999d-1fbfe7b3af41	b988c41c-a39e-40d4-997e-f636f70a7420	15600	Ráquira	f	t	2026-02-21 07:10:14.326167-06
+c64b8aaa-54f5-4d19-b93b-5425fb254701	b988c41c-a39e-40d4-997e-f636f70a7420	15621	Rondón	f	t	2026-02-21 07:10:14.326167-06
+6d855b1b-9596-4f89-9040-ed4429550fbc	b988c41c-a39e-40d4-997e-f636f70a7420	15632	Saboyá	f	t	2026-02-21 07:10:14.326167-06
+a378421a-de1c-4739-bf15-0a390890f948	b988c41c-a39e-40d4-997e-f636f70a7420	15638	Sáchica	f	t	2026-02-21 07:10:14.326167-06
+1005654e-4901-49f7-83d5-515b63c04dd2	b988c41c-a39e-40d4-997e-f636f70a7420	15646	Samacá	f	t	2026-02-21 07:10:14.326167-06
+61d07862-8558-4c5d-aad9-47a936f81e35	b988c41c-a39e-40d4-997e-f636f70a7420	15660	San Eduardo	f	t	2026-02-21 07:10:14.326167-06
+e687d772-4755-46fc-a992-cb062bd8ef23	b988c41c-a39e-40d4-997e-f636f70a7420	15664	San José de Pare	f	t	2026-02-21 07:10:14.326167-06
+635f6cff-f72a-4709-9a62-b9ec82c0a2c3	b988c41c-a39e-40d4-997e-f636f70a7420	15667	San Luis de Gaceno	f	t	2026-02-21 07:10:14.326167-06
+87fef9fc-6346-4df7-b30b-c6f9ffacb7bd	b988c41c-a39e-40d4-997e-f636f70a7420	15673	San Mateo	f	t	2026-02-21 07:10:14.326167-06
+796861ad-7440-450c-b125-4b8ed70abe41	b988c41c-a39e-40d4-997e-f636f70a7420	15676	San Miguel de Sema	f	t	2026-02-21 07:10:14.326167-06
+28ab374a-23a6-4f72-996d-bb153d601919	b988c41c-a39e-40d4-997e-f636f70a7420	15681	San Pablo de Borbur	f	t	2026-02-21 07:10:14.326167-06
+d8b1c70a-842f-45ec-b13d-fd92971b67a5	b988c41c-a39e-40d4-997e-f636f70a7420	15686	Santana	f	t	2026-02-21 07:10:14.326167-06
+5e2424f9-ab30-43ea-940f-f6217edbbe4e	b988c41c-a39e-40d4-997e-f636f70a7420	15690	Santa María	f	t	2026-02-21 07:10:14.326167-06
+1f2ed2c0-2965-4df6-a0eb-29458aa330ed	b988c41c-a39e-40d4-997e-f636f70a7420	15693	Santa Rosa de Viterbo	f	t	2026-02-21 07:10:14.326167-06
+9cdc7dbb-eac8-49f2-8461-81b6c09eb46e	b988c41c-a39e-40d4-997e-f636f70a7420	15696	Santa Sofía	f	t	2026-02-21 07:10:14.326167-06
+3a76c9c0-77e2-43da-9108-555098cac595	b988c41c-a39e-40d4-997e-f636f70a7420	15720	Sativanorte	f	t	2026-02-21 07:10:14.326167-06
+8a59284a-7067-4e61-bd00-684d72e1aec2	b988c41c-a39e-40d4-997e-f636f70a7420	15723	Sativasur	f	t	2026-02-21 07:10:14.326167-06
+90d52753-0aa5-43e4-b9c5-0ea169254b57	b988c41c-a39e-40d4-997e-f636f70a7420	15740	Siachoque	f	t	2026-02-21 07:10:14.326167-06
+80e29075-76ec-4804-bb3c-30c11efe8f55	b988c41c-a39e-40d4-997e-f636f70a7420	15753	Soatá	f	t	2026-02-21 07:10:14.326167-06
+aaaa6046-c805-4a88-aee8-9c2184d6efb8	b988c41c-a39e-40d4-997e-f636f70a7420	15755	Socotá	f	t	2026-02-21 07:10:14.326167-06
+6b42bc53-0aee-4901-8323-c7022497ca0c	b988c41c-a39e-40d4-997e-f636f70a7420	15757	Socha	f	t	2026-02-21 07:10:14.326167-06
+03d7fd2a-a08c-440a-a957-dc0896f744ea	b988c41c-a39e-40d4-997e-f636f70a7420	15759	Sogamoso	f	t	2026-02-21 07:10:14.326167-06
+e010fb14-0025-40af-977c-0c005e85b583	b988c41c-a39e-40d4-997e-f636f70a7420	15761	Somondoco	f	t	2026-02-21 07:10:14.326167-06
+2ae2b8ab-f2bb-45c6-ba84-1f2ae5722d30	b988c41c-a39e-40d4-997e-f636f70a7420	15762	Sora	f	t	2026-02-21 07:10:14.326167-06
+2a5d4774-8744-4f32-8b82-fe005f3cf7e8	b988c41c-a39e-40d4-997e-f636f70a7420	15763	Sotaquirá	f	t	2026-02-21 07:10:14.326167-06
+d90b403f-981f-4e26-bd37-dbd1535d6d0d	b988c41c-a39e-40d4-997e-f636f70a7420	15764	Soracá	f	t	2026-02-21 07:10:14.326167-06
+5a43f060-b79d-4f81-b5b9-c6b67644c6f2	b988c41c-a39e-40d4-997e-f636f70a7420	15774	Susacón	f	t	2026-02-21 07:10:14.326167-06
+75e6e4e2-53a3-4d85-819e-68f87c045a7a	b988c41c-a39e-40d4-997e-f636f70a7420	15776	Sutamarchán	f	t	2026-02-21 07:10:14.326167-06
+6e4b5287-2e35-4590-8282-218811cd9fb7	b988c41c-a39e-40d4-997e-f636f70a7420	15778	Sutatenza	f	t	2026-02-21 07:10:14.326167-06
+decbcf6d-ae9e-4168-b54e-2800f981bd44	b988c41c-a39e-40d4-997e-f636f70a7420	15790	Tasco	f	t	2026-02-21 07:10:14.326167-06
+506148bd-eae4-456f-9ab6-0e67c22e30a1	b988c41c-a39e-40d4-997e-f636f70a7420	15798	Tenza	f	t	2026-02-21 07:10:14.326167-06
+90d03267-89be-4b18-a9ed-bac095a5a8ff	b988c41c-a39e-40d4-997e-f636f70a7420	15804	Tibaná	f	t	2026-02-21 07:10:14.326167-06
+93edc408-2fc5-493b-a9cd-5a4277d3cbd0	b988c41c-a39e-40d4-997e-f636f70a7420	15806	Tibasosa	f	t	2026-02-21 07:10:14.326167-06
+f276d9e2-7e5a-4456-9afe-a6f4a9b5da81	b988c41c-a39e-40d4-997e-f636f70a7420	15808	Tinjacá	f	t	2026-02-21 07:10:14.326167-06
+7bb5ab77-5339-41ac-92fb-d1da128c1f74	b988c41c-a39e-40d4-997e-f636f70a7420	15810	Tipacoque	f	t	2026-02-21 07:10:14.326167-06
+59391a9f-89ad-403a-b652-6c85f0496cd4	b988c41c-a39e-40d4-997e-f636f70a7420	15814	Toca	f	t	2026-02-21 07:10:14.326167-06
+1330bd8b-2f0f-4dba-aec0-ba42c3cadb9a	b988c41c-a39e-40d4-997e-f636f70a7420	15816	Togüí	f	t	2026-02-21 07:10:14.326167-06
+a093bb3e-0ad0-4b24-a44f-0eaf71b44f1d	b988c41c-a39e-40d4-997e-f636f70a7420	15820	Tópaga	f	t	2026-02-21 07:10:14.326167-06
+0474f10f-cb0a-49ed-b896-8c2018af5528	b988c41c-a39e-40d4-997e-f636f70a7420	15822	Tota	f	t	2026-02-21 07:10:14.326167-06
+6d2e0fdc-1f64-49b8-bc1f-8fd96e3adb6c	b988c41c-a39e-40d4-997e-f636f70a7420	15832	Tununguá	f	t	2026-02-21 07:10:14.326167-06
+72ca8329-ad14-4bc0-adef-a06c8ab4de66	b988c41c-a39e-40d4-997e-f636f70a7420	15835	Turmequé	f	t	2026-02-21 07:10:14.326167-06
+9bc839a6-77c3-4a0d-acf3-3d75a421c90b	b988c41c-a39e-40d4-997e-f636f70a7420	15837	Tuta	f	t	2026-02-21 07:10:14.326167-06
+d9998b82-ef85-459a-a261-2b8584dd9cd6	b988c41c-a39e-40d4-997e-f636f70a7420	15839	Tutazá	f	t	2026-02-21 07:10:14.326167-06
+5ccad5dc-d0ff-4791-b0bc-68b3b8f7a7a4	b988c41c-a39e-40d4-997e-f636f70a7420	15842	Umbita	f	t	2026-02-21 07:10:14.326167-06
+99823acd-3d17-4778-8efe-4dadadcb5fce	b988c41c-a39e-40d4-997e-f636f70a7420	15861	Ventaquemada	f	t	2026-02-21 07:10:14.326167-06
+7d2033df-a7c7-4d96-b7c5-6759fc811aec	b988c41c-a39e-40d4-997e-f636f70a7420	15879	Viracachá	f	t	2026-02-21 07:10:14.326167-06
+37a608f8-1843-4da1-8a98-90abf7c93a78	b988c41c-a39e-40d4-997e-f636f70a7420	15897	Zetaquira	f	t	2026-02-21 07:10:14.326167-06
+2656857a-044a-444c-8941-20e95544d72a	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17050	Aranzazu	f	t	2026-02-21 07:10:14.326167-06
+e6a6cff4-84ef-4547-95b2-166af05eca14	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17042	Anserma	f	t	2026-02-21 07:10:14.326167-06
+891b301d-a1d7-463e-b5eb-64bf154a779e	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17013	Aguadas	f	t	2026-02-21 07:10:14.326167-06
+2983c9a9-afa0-4882-b7c6-62ed5be4d5bc	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17001	Manizales	t	t	2026-02-21 07:10:14.326167-06
+14ebf7f1-8ddd-48e5-ad1b-38f5ab1895b9	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17665	San José	f	t	2026-02-21 07:10:14.326167-06
+5e36ff31-bfa4-40f6-9f20-d7c8d909f6e3	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17662	Samaná	f	t	2026-02-21 07:10:14.326167-06
+5fd439e6-f3ca-410a-bd9e-14ddf1cbd30b	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17653	Salamina	f	t	2026-02-21 07:10:14.326167-06
+6a4e3872-3dc7-474b-a959-603cb6aa8ce3	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17873	Villamaría	f	t	2026-02-21 07:10:14.326167-06
+fd5db4ea-b15b-4b07-8fc0-018718df0188	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17877	Viterbo	f	t	2026-02-21 07:10:14.326167-06
+5edccc65-2bee-4c26-b851-9678c1d44036	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17486	Neira	f	t	2026-02-21 07:10:14.326167-06
+d0443b6b-6204-406d-b348-2268b09d4b71	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17777	Supía	f	t	2026-02-21 07:10:14.326167-06
+9bdfe131-c752-4774-9a3a-f7f24be6a0df	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17495	Norcasia	f	t	2026-02-21 07:10:14.326167-06
+74d8021e-5463-49fe-96c6-5bb6cf756069	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17513	Pácora	f	t	2026-02-21 07:10:14.326167-06
+3ce8459c-0a85-4cf7-8b67-91cffacb64fe	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17524	Palestina	f	t	2026-02-21 07:10:14.326167-06
+9f359f2c-b431-4176-83a2-1e6dad7950f1	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17541	Pensilvania	f	t	2026-02-21 07:10:14.326167-06
+cbd1cfc4-d97c-4c29-a620-1e345623a23b	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17614	Riosucio	f	t	2026-02-21 07:10:14.326167-06
+293e35a6-4eab-484e-b544-118f73a7193f	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17616	Risaralda	f	t	2026-02-21 07:10:14.326167-06
+99e7d281-9689-46a1-816e-2a1f4aed759a	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17174	Chinchiná	f	t	2026-02-21 07:10:14.326167-06
+4500abe8-33c8-4810-8d23-d33019885e98	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17272	Filadelfia	f	t	2026-02-21 07:10:14.326167-06
+752a727c-4291-46e6-9df6-737d20408dae	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17380	La Dorada	f	t	2026-02-21 07:10:14.326167-06
+c947d5e7-7c01-4b9e-bfd0-cd246cde01ea	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17388	La Merced	f	t	2026-02-21 07:10:14.326167-06
+951ab096-a30c-4589-99f4-cb662c299a23	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17433	Manzanares	f	t	2026-02-21 07:10:14.326167-06
+e72aca6f-2ff8-4b14-a753-dbc480c97189	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17442	Marmato	f	t	2026-02-21 07:10:14.326167-06
+d5e9722d-8671-439c-8840-166615fe2d41	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17444	Marquetalia	f	t	2026-02-21 07:10:14.326167-06
+0de10b42-21b7-475e-b1cf-3a66fa33d70e	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17867	Victoria	f	t	2026-02-21 07:10:14.326167-06
+d0d0b8c9-5419-44ce-80d8-5b10d52442c2	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17446	Marulanda	f	t	2026-02-21 07:10:14.326167-06
+97375c58-e13a-4076-80e7-b59d95cf1887	d87953d3-bd9c-47f6-ae7f-7fd12942e9cd	17088	Belalcázar	f	t	2026-02-21 07:10:14.326167-06
+4d9b550f-c1c8-4144-a7e4-bbd5b66d71cb	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18256	El Paujil	f	t	2026-02-21 07:10:14.326167-06
+3c072c03-c19d-4b4d-a9b9-2666d2c674af	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18460	Milán	f	t	2026-02-21 07:10:14.326167-06
+45344e55-59e1-4848-b0b0-9ccc024cec30	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18479	Morelia	f	t	2026-02-21 07:10:14.326167-06
+91946b3d-0ded-458c-962b-c3a18f28971a	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18592	Puerto Rico	f	t	2026-02-21 07:10:14.326167-06
+34db5835-7d52-495a-bf40-69b8ae6bb731	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18610	San José del Fragua	f	t	2026-02-21 07:10:14.326167-06
+bb901992-1d8a-42f9-b09a-045845ca2e29	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18753	San Vicente del Caguán	f	t	2026-02-21 07:10:14.326167-06
+e3dc0a3e-da3b-4972-a7ce-9eb76ba65ae1	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18756	Solano	f	t	2026-02-21 07:10:14.326167-06
+4f20819e-965d-484f-b646-1b7369f6eb23	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18785	Solita	f	t	2026-02-21 07:10:14.326167-06
+549f7096-751c-4f32-aa2f-541619bf0f61	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18860	Valparaíso	f	t	2026-02-21 07:10:14.326167-06
+45949c84-e70e-41eb-a41c-95344b17a60d	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18001	Florencia	t	t	2026-02-21 07:10:14.326167-06
+f20e4819-af5d-4e1f-8cf9-a3e8663e0c73	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18029	Albania	f	t	2026-02-21 07:10:14.326167-06
+d5da0fab-bec8-4e00-9f22-e65d72089ea5	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18094	Belén de los Andaquíes	f	t	2026-02-21 07:10:14.326167-06
+83600bf4-b3e5-42ae-b608-661e365b556e	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18150	Cartagena del Chairá	f	t	2026-02-21 07:10:14.326167-06
+8c4596a6-ca1d-4e73-8632-51ca4cea5ccd	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18205	Curillo	f	t	2026-02-21 07:10:14.326167-06
+d518ee3e-eb23-4bac-83d8-c56dba351d90	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18247	El Doncello	f	t	2026-02-21 07:10:14.326167-06
+b8bb806e-46cc-49ce-a975-13f2c80dcffc	0812ebb9-9fa8-4e67-8ed0-c4745ea8b670	18410	La Montañita	f	t	2026-02-21 07:10:14.326167-06
+150459f6-edd9-4b0f-b2ed-57b1fd9fc7eb	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19743	Silvia	f	t	2026-02-21 07:10:14.326167-06
+982a8bd1-1b10-46e0-b24a-57bfaca3c3ef	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19760	Sotará	f	t	2026-02-21 07:10:14.326167-06
+b25f4cc6-109d-421e-b722-342c2858dd0c	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19780	Suárez	f	t	2026-02-21 07:10:14.326167-06
+49efb849-0e79-465c-90aa-13ef31ffa4ac	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19785	Sucre	f	t	2026-02-21 07:10:14.326167-06
+704dcb0f-a674-42b4-a43c-5b1c664442c7	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19807	Timbío	f	t	2026-02-21 07:10:14.326167-06
+87256d94-fb2b-4368-964f-841ff167c2e4	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19809	Timbiquí	f	t	2026-02-21 07:10:14.326167-06
+70a53016-4c63-4d1b-b5dc-b1b52eb3cd62	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19821	Toribío	f	t	2026-02-21 07:10:14.326167-06
+7ddb9f3d-b072-44db-9d49-bec3a5730503	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19824	Totoró	f	t	2026-02-21 07:10:14.326167-06
+7e34d5d8-275c-4832-8a66-1f24b0eb3488	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19845	Villa Rica	f	t	2026-02-21 07:10:14.326167-06
+7ab9063e-1129-4362-8ede-1b6ddc19d843	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19701	Santa Rosa	f	t	2026-02-21 07:10:14.326167-06
+60d98a68-6f3f-4acb-8004-a51ab42b43c5	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19698	Santander de Quilichao	f	t	2026-02-21 07:10:14.326167-06
+fd5bbce1-f605-4269-b4e9-a94b7c9ce637	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19693	San Sebastián	f	t	2026-02-21 07:10:14.326167-06
+7d84cae2-b43c-489e-8f60-7026bfa20b8c	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19622	Rosas	f	t	2026-02-21 07:10:14.326167-06
+9a4b118f-834b-415f-852e-ef7a3e0060fe	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19585	Puracé	f	t	2026-02-21 07:10:14.326167-06
+024302c1-b058-4ec6-84fe-7787c33ada46	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19573	Puerto Tejada	f	t	2026-02-21 07:10:14.326167-06
+d6b545bb-0217-499f-916e-f9066a710451	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19548	Piendamó	f	t	2026-02-21 07:10:14.326167-06
+60c0249f-0175-45ce-b3f2-f15b182f3f59	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19533	Piamonte	f	t	2026-02-21 07:10:14.326167-06
+3de23f0e-f211-4e43-9901-a1ade8446e57	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19532	Patía	f	t	2026-02-21 07:10:14.326167-06
+a7acbf3a-a3e4-4dce-8188-a1d56cf4f35b	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19517	Páez	f	t	2026-02-21 07:10:14.326167-06
+9617d2e7-bbb4-4287-8c24-faebd980f485	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19513	Padilla	f	t	2026-02-21 07:10:14.326167-06
+f9be69c9-6a75-4029-99c1-c044f2d08cd0	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19473	Morales	f	t	2026-02-21 07:10:14.326167-06
+74de9ee7-1c93-47a9-aa1a-e3340dd63194	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19455	Miranda	f	t	2026-02-21 07:10:14.326167-06
+6c1de6dc-0ec7-4a55-a4be-de5b971f94c2	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19450	Mercaderes	f	t	2026-02-21 07:10:14.326167-06
+532da09a-1244-4590-a23a-9b0c8031e1e0	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19418	López de Micay	f	t	2026-02-21 07:10:14.326167-06
+a395b272-0c86-400a-94a0-4cfad29e7d83	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19397	La Vega	f	t	2026-02-21 07:10:14.326167-06
+b6d207a2-e4ef-4fdf-929a-63d949d4de69	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19392	La Sierra	f	t	2026-02-21 07:10:14.326167-06
+0a2dc466-67ee-43e6-a492-02a5efefe892	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19364	Jambaló	f	t	2026-02-21 07:10:14.326167-06
+33e82dbf-fd15-4eaa-b7f5-c55a611deedf	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19355	Inzá	f	t	2026-02-21 07:10:14.326167-06
+1e25ce28-1c6d-445d-aeda-6ab7a8ae84da	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19318	Guapi	f	t	2026-02-21 07:10:14.326167-06
+f5891114-b0e6-40fa-9dc4-7443ad2b04d3	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19290	Florencia	f	t	2026-02-21 07:10:14.326167-06
+0bd89486-defa-4613-8d84-3685a3faf2c7	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19256	El Tambo	f	t	2026-02-21 07:10:14.326167-06
+834c8b70-290b-4f1a-bf11-00493ab2b8b2	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19212	Corinto	f	t	2026-02-21 07:10:14.326167-06
+8fdf74aa-5af4-45c0-a121-d352c0edd0fd	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19142	Caloto	f	t	2026-02-21 07:10:14.326167-06
+c29477d6-5724-46e9-8dbc-f70da8d8bf1a	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19137	Caldono	f	t	2026-02-21 07:10:14.326167-06
+e7babc93-a7f2-436b-ae66-d14a0ede120e	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19130	Cajibío	f	t	2026-02-21 07:10:14.326167-06
+8f02fcc2-3ae5-4ed5-b8d1-685112f9b7b9	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19110	Buenos Aires	f	t	2026-02-21 07:10:14.326167-06
+85ee6a11-1279-4f30-a332-733ea33bfc8b	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19100	Bolívar	f	t	2026-02-21 07:10:14.326167-06
+d07bb3c8-cc95-46f1-8881-06247169c4fd	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19075	Balboa	f	t	2026-02-21 07:10:14.326167-06
+9b6cb311-6308-4aa9-828c-d1f49ade0313	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19050	Argelia	f	t	2026-02-21 07:10:14.326167-06
+ed8d65ba-fc7a-48ef-8bb4-3fbff7425e37	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19022	Almaguer	f	t	2026-02-21 07:10:14.326167-06
+113ecaa0-96bb-45dd-ab4c-0e98914a4e79	06b71a67-a5e8-48ca-b13b-1f75d57cea1e	19001	Popayán	t	t	2026-02-21 07:10:14.326167-06
+e9f9e75f-ea16-49eb-93d6-be67a47bcf84	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20614	Río de Oro	f	t	2026-02-21 07:10:14.326167-06
+15cfdd15-3210-40e3-a114-bb4c08c7e243	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20570	Pueblo Bello	f	t	2026-02-21 07:10:14.326167-06
+dbf6b27e-2999-4071-9f7a-80c654616343	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20550	Pelaya	f	t	2026-02-21 07:10:14.326167-06
+da575827-264a-4a1b-b577-f7fdcd415f5f	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20517	Pailitas	f	t	2026-02-21 07:10:14.326167-06
+25147819-2a95-42d5-a745-ea02015e736a	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20443	Manaure Balcón del Cesar	f	t	2026-02-21 07:10:14.326167-06
+f035bc10-0abf-499d-894e-90cb4146b0aa	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20400	La Jagua de Ibirico	f	t	2026-02-21 07:10:14.326167-06
+8c83086e-c616-462e-a34c-3d6f1a0b2e6e	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20383	La Gloria	f	t	2026-02-21 07:10:14.326167-06
+235c1e07-0070-405c-adae-6b5d10d03224	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20310	González	f	t	2026-02-21 07:10:14.326167-06
+b6a41135-1a93-468a-a278-22cbfbd65cbd	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20295	Gamarra	f	t	2026-02-21 07:10:14.326167-06
+a3ae7f30-a57c-4ce6-ab6e-cf535c6fefc9	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20250	El Paso	f	t	2026-02-21 07:10:14.326167-06
+ba79201f-8b51-47ed-857b-a0338f28e154	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20238	El Copey	f	t	2026-02-21 07:10:14.326167-06
+dab94df1-6653-4398-b9c7-55e84c004595	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20228	Curumaní	f	t	2026-02-21 07:10:14.326167-06
+5ab76223-3f7b-4e53-8839-0afd747de9be	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20178	Chiriguaná	f	t	2026-02-21 07:10:14.326167-06
+0674fe28-2236-40e7-9a27-34d70c3e915d	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20175	Chimichagua	f	t	2026-02-21 07:10:14.326167-06
+81729bb1-4704-4241-bddd-61002303a40b	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20001	Valledupar	t	t	2026-02-21 07:10:14.326167-06
+9974397d-05c3-447d-873f-b607f73e4d75	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20011	Aguachica	f	t	2026-02-21 07:10:14.326167-06
+e68a2bcb-4816-4c08-9594-4c689320c6e3	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20787	Tamalameque	f	t	2026-02-21 07:10:14.326167-06
+ad91de60-7255-4cd6-b07d-92dbdc220fb6	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20770	San Martín	f	t	2026-02-21 07:10:14.326167-06
+b43f8fef-5012-4d56-99ac-10c4b9e892a9	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20013	Agustín Codazzi	f	t	2026-02-21 07:10:14.326167-06
+d3e29e28-a16f-4e74-869a-42aa7b0fefe1	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20750	San Diego	f	t	2026-02-21 07:10:14.326167-06
+648db254-3f89-482e-b3f3-4c34db623968	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20710	San Alberto	f	t	2026-02-21 07:10:14.326167-06
+e02b34d7-e6e2-4a99-8dfe-fa5fe0ebe431	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20621	La Paz	f	t	2026-02-21 07:10:14.326167-06
+0568d845-d5c9-4cc5-934d-53e325907319	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20060	Bosconia	f	t	2026-02-21 07:10:14.326167-06
+e56f1a0c-5aab-40f7-97f1-94aed3647c97	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20045	Becerril	f	t	2026-02-21 07:10:14.326167-06
+ef45ca48-4481-4405-b54f-524a94c67656	4901d1ad-ba3d-4e1f-8bf9-549b4be75cd7	20032	Astrea	f	t	2026-02-21 07:10:14.326167-06
+ed2082c1-37a8-49d1-ae15-84b6febe7773	08a085ec-2efb-4bd8-acd6-b88867514d73	23678	San Carlos	f	t	2026-02-21 07:10:14.326167-06
+62d370f2-c585-4f37-ace7-a0a343886b02	08a085ec-2efb-4bd8-acd6-b88867514d73	23682	San José de Uré	f	t	2026-02-21 07:10:14.326167-06
+ce846a53-c419-48ca-88cf-b845b48e4aba	08a085ec-2efb-4bd8-acd6-b88867514d73	23807	Tierralta	f	t	2026-02-21 07:10:14.326167-06
+05763851-1e49-439a-844a-85501f7ec19f	08a085ec-2efb-4bd8-acd6-b88867514d73	23815	Tuchín	f	t	2026-02-21 07:10:14.326167-06
+5b56095a-bd32-4842-9522-5f573a858bc9	08a085ec-2efb-4bd8-acd6-b88867514d73	23855	Valencia	f	t	2026-02-21 07:10:14.326167-06
+69da7ca3-9130-4a7f-9c0f-effa4c661cbc	08a085ec-2efb-4bd8-acd6-b88867514d73	23686	San Pelayo	f	t	2026-02-21 07:10:14.326167-06
+ea39ac4a-f649-4d5e-817b-1001bcf4e1d0	08a085ec-2efb-4bd8-acd6-b88867514d73	23001	Montería	t	t	2026-02-21 07:10:14.326167-06
+70ab7516-3646-4b0c-8f48-5e1f5b2df5e8	08a085ec-2efb-4bd8-acd6-b88867514d73	23068	Ayapel	f	t	2026-02-21 07:10:14.326167-06
+f24ab99a-facc-426d-a0dd-8218ff6f38c5	08a085ec-2efb-4bd8-acd6-b88867514d73	23079	Buenavista	f	t	2026-02-21 07:10:14.326167-06
+b0924001-b158-42da-b6d5-b5191a8fd998	08a085ec-2efb-4bd8-acd6-b88867514d73	23090	Canalete	f	t	2026-02-21 07:10:14.326167-06
+dc022a83-4e0d-4a62-939a-998675b7474c	08a085ec-2efb-4bd8-acd6-b88867514d73	23162	Cereté	f	t	2026-02-21 07:10:14.326167-06
+b9e9a52b-5a9d-4af8-a521-0228fb20c850	08a085ec-2efb-4bd8-acd6-b88867514d73	23168	Chimá	f	t	2026-02-21 07:10:14.326167-06
+43253314-8104-4a30-8efb-bbd350cb5e20	08a085ec-2efb-4bd8-acd6-b88867514d73	23182	Chinú	f	t	2026-02-21 07:10:14.326167-06
+444cc55b-094c-47f7-9219-a7effdc097a1	08a085ec-2efb-4bd8-acd6-b88867514d73	23189	Ciénaga de Oro	f	t	2026-02-21 07:10:14.326167-06
+219c6767-2aa4-47bc-998d-85f26498ab0e	08a085ec-2efb-4bd8-acd6-b88867514d73	23300	Cotorra	f	t	2026-02-21 07:10:14.326167-06
+885e7ea0-cbbe-46fe-8e5d-4659250137e8	08a085ec-2efb-4bd8-acd6-b88867514d73	23350	La Apartada	f	t	2026-02-21 07:10:14.326167-06
+a3f5f25b-5e2f-4cfb-bda9-c6307b7e9b14	08a085ec-2efb-4bd8-acd6-b88867514d73	23417	Lorica	f	t	2026-02-21 07:10:14.326167-06
+32fa424a-f22c-49c2-b201-67995784a3cf	08a085ec-2efb-4bd8-acd6-b88867514d73	23419	Los Córdobas	f	t	2026-02-21 07:10:14.326167-06
+f28a85ab-3ad2-47d5-bfa4-d20f99026bbc	08a085ec-2efb-4bd8-acd6-b88867514d73	23464	Momil	f	t	2026-02-21 07:10:14.326167-06
+c4330a4a-d875-401e-95b6-38e094d0206b	08a085ec-2efb-4bd8-acd6-b88867514d73	23466	Montelíbano	f	t	2026-02-21 07:10:14.326167-06
+e25986e5-17e1-4973-ae70-fae14c32c90f	08a085ec-2efb-4bd8-acd6-b88867514d73	23500	Moñitos	f	t	2026-02-21 07:10:14.326167-06
+86fa4d7a-9d5c-4d81-b6fc-30d6ead55a72	08a085ec-2efb-4bd8-acd6-b88867514d73	23555	Planeta Rica	f	t	2026-02-21 07:10:14.326167-06
+29fb1d43-5e74-4045-a5b5-7e60bb99e34a	08a085ec-2efb-4bd8-acd6-b88867514d73	23570	Pueblo Nuevo	f	t	2026-02-21 07:10:14.326167-06
+96376d21-34b3-4f6d-898c-eab945cb7544	08a085ec-2efb-4bd8-acd6-b88867514d73	23574	Puerto Escondido	f	t	2026-02-21 07:10:14.326167-06
+57c46118-b77a-4776-b0ed-9eadcfa7418f	08a085ec-2efb-4bd8-acd6-b88867514d73	23580	Puerto Libertador	f	t	2026-02-21 07:10:14.326167-06
+70d10ed0-54fc-46eb-ba38-12862d4f8aa4	08a085ec-2efb-4bd8-acd6-b88867514d73	23586	Purísima	f	t	2026-02-21 07:10:14.326167-06
+1e83af92-f616-4bce-8e59-f1d591fef422	08a085ec-2efb-4bd8-acd6-b88867514d73	23660	Sahagún	f	t	2026-02-21 07:10:14.326167-06
+19d613d4-0025-4474-b0ac-e2d6a926fa8d	08a085ec-2efb-4bd8-acd6-b88867514d73	23670	San Andrés de Sotavento	f	t	2026-02-21 07:10:14.326167-06
+0a1e56dc-bb5e-45eb-95d7-3ad6961eede1	08a085ec-2efb-4bd8-acd6-b88867514d73	23672	San Antero	f	t	2026-02-21 07:10:14.326167-06
+a0aaf2ea-8b66-4285-bbb0-3eb70cacd1d5	08a085ec-2efb-4bd8-acd6-b88867514d73	23675	San Bernardo del Viento	f	t	2026-02-21 07:10:14.326167-06
+3d634350-fb43-4128-93e6-097dc0b34661	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25899	Zipaquirá	f	t	2026-02-21 07:10:14.326167-06
+7d2d2e62-bf9e-4285-a0f9-828daba4a24f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25001	Agua de Dios	f	t	2026-02-21 07:10:14.326167-06
+08418b9f-f30e-426b-a3ff-daf26edb55ed	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25019	Albán	f	t	2026-02-21 07:10:14.326167-06
+5ad82fd2-182d-4018-8db3-51c7cf10f4ea	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25035	Anapoima	f	t	2026-02-21 07:10:14.326167-06
+efeb6cad-d198-479d-9edf-f3d889e119e4	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25040	Anolaima	f	t	2026-02-21 07:10:14.326167-06
+f768e883-1d9a-4252-bcfa-0d82dfafb6c0	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25053	Arbeláez	f	t	2026-02-21 07:10:14.326167-06
+c716bddc-3c2a-4aa0-9898-9a4b1af840b9	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25086	Beltrán	f	t	2026-02-21 07:10:14.326167-06
+12a0fc7c-b0c1-4982-8c72-8a413a4cf59e	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25095	Bituima	f	t	2026-02-21 07:10:14.326167-06
+6213d1a0-d5e3-4c5b-b55c-a087e5c62493	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25099	Bojacá	f	t	2026-02-21 07:10:14.326167-06
+160002db-8fd0-4390-920a-a4bd7032ec8d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25120	Cabrera	f	t	2026-02-21 07:10:14.326167-06
+ae03eea8-d7ed-4e91-ad2b-cf2a35679c4e	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25123	Cachipay	f	t	2026-02-21 07:10:14.326167-06
+1a27c2b7-1946-404b-8628-2c8c8b82a56d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25126	Cajicá	f	t	2026-02-21 07:10:14.326167-06
+624592e8-cbfa-42ec-9c8b-03922bbe0642	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25148	Caparrapí	f	t	2026-02-21 07:10:14.326167-06
+e5696b7b-08ab-4cff-805d-361ac03f48b2	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25151	Caqueza	f	t	2026-02-21 07:10:14.326167-06
+de654a26-bca0-42e4-9854-4cdfa30ee16c	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25154	Carmen de Carupa	f	t	2026-02-21 07:10:14.326167-06
+9f219b60-92ab-476f-ac44-678610a86522	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25168	Chaguaní	f	t	2026-02-21 07:10:14.326167-06
+945536dd-fc68-4961-a21d-ba13297b2bfb	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25175	Chía	f	t	2026-02-21 07:10:14.326167-06
+fc235b59-e1ab-42f5-aa39-8315bcc59561	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25178	Chipaque	f	t	2026-02-21 07:10:14.326167-06
+549e65bb-5a83-4120-8638-88de8ca9fa5c	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25181	Choachí	f	t	2026-02-21 07:10:14.326167-06
+3c27c956-f786-4208-879a-6702eec9b99a	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25183	Chocontá	f	t	2026-02-21 07:10:14.326167-06
+6aa715c8-abb4-45f5-9eb9-e565400175cb	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25200	Cogua	f	t	2026-02-21 07:10:14.326167-06
+e0244830-ac3a-4cf7-a845-27e4867ed431	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25214	Cota	f	t	2026-02-21 07:10:14.326167-06
+f7aab109-6fb8-42bc-8442-b7ca948d55c1	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25224	Cucunubá	f	t	2026-02-21 07:10:14.326167-06
+a8673145-78f5-4a05-bda1-c082f60a4ee9	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25245	El Colegio	f	t	2026-02-21 07:10:14.326167-06
+bf658969-989a-4f75-bd54-ec57ef05ce4e	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25258	El Peñón	f	t	2026-02-21 07:10:14.326167-06
+66a55e01-fc9e-470c-8da9-860c43a05ba3	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25260	El Rosal	f	t	2026-02-21 07:10:14.326167-06
+5ea683c3-a106-41ab-8691-db573757e366	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25269	Facatativá	f	t	2026-02-21 07:10:14.326167-06
+98f78c07-1498-4740-84c0-6afd7a90bc6c	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25279	Fómeque	f	t	2026-02-21 07:10:14.326167-06
+f13d224b-fd0e-4043-9006-987db2795ae8	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25281	Fosca	f	t	2026-02-21 07:10:14.326167-06
+935b7eec-2d44-46b4-ac0b-2b815ab742db	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25286	Funza	f	t	2026-02-21 07:10:14.326167-06
+b538e33f-1375-4c8a-86da-b4c7aaf5e004	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25288	Fúquene	f	t	2026-02-21 07:10:14.326167-06
+2750a76f-e1f8-497d-9c2a-8712c2f25675	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25290	Fusagasugá	f	t	2026-02-21 07:10:14.326167-06
+3b75a449-0779-4dd6-8185-3a57668b894f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25293	Gachalá	f	t	2026-02-21 07:10:14.326167-06
+422d3e57-1017-402e-a62e-02f333c61823	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25295	Gachancipá	f	t	2026-02-21 07:10:14.326167-06
+7b6141ee-b3d8-4b44-8e26-ae4b8b4ce02f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25297	Gachetá	f	t	2026-02-21 07:10:14.326167-06
+bf88a2a8-79d1-453f-b8c1-f241a1ab8218	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25299	Gama	f	t	2026-02-21 07:10:14.326167-06
+0aae225b-2837-45e4-bb57-4f49d781dc0f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25307	Girardot	f	t	2026-02-21 07:10:14.326167-06
+d08102a3-77ee-46bf-a04b-b67ac4a0e7fe	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25312	Granada	f	t	2026-02-21 07:10:14.326167-06
+fb337b15-6dba-4812-8c7b-2572bc79a478	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25317	Guachetá	f	t	2026-02-21 07:10:14.326167-06
+b4d20c05-3695-4ef1-978e-91f672a0020e	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25320	Guaduas	f	t	2026-02-21 07:10:14.326167-06
+594d75e7-2f04-4699-8982-15915360aeaa	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25322	Guasca	f	t	2026-02-21 07:10:14.326167-06
+09857a32-a803-4525-8921-86b637499591	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25324	Guataquí	f	t	2026-02-21 07:10:14.326167-06
+e5ae71d8-f773-4572-8d27-138e9ab6c141	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25326	Guatavita	f	t	2026-02-21 07:10:14.326167-06
+5b0edd97-7a83-4007-96a1-14405272fee0	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25328	Guayabal de Síquima	f	t	2026-02-21 07:10:14.326167-06
+1c452e5a-79a4-45cd-b275-efc8eeaffed7	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25335	Guayabetal	f	t	2026-02-21 07:10:14.326167-06
+e7891cec-9b95-46aa-9a5b-1f877dfd0004	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25339	Gutiérrez	f	t	2026-02-21 07:10:14.326167-06
+436ed206-8bdd-452a-a0f6-5c4409093ec4	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25368	Jerusalén	f	t	2026-02-21 07:10:14.326167-06
+8b175a08-d1f1-4a3e-9747-24593920606b	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25372	Junín	f	t	2026-02-21 07:10:14.326167-06
+1b686a5b-7be5-4b71-b8d3-90e590027678	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25377	La Calera	f	t	2026-02-21 07:10:14.326167-06
+117ae2a7-64f9-4929-acd3-548526914c9b	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25386	La Mesa	f	t	2026-02-21 07:10:14.326167-06
+efdd0faa-4b10-48fa-88ca-d8ccda12e5db	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25394	La Palma	f	t	2026-02-21 07:10:14.326167-06
+d668897d-2686-4129-bd7e-322d4a5b88eb	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25398	La Peña	f	t	2026-02-21 07:10:14.326167-06
+50299e65-d3d0-4175-90b1-0d8365e90ced	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25402	La Vega	f	t	2026-02-21 07:10:14.326167-06
+0bc90393-5e7d-4ecf-83c6-fafe1951fe2c	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25407	Lenguazaque	f	t	2026-02-21 07:10:14.326167-06
+342fa037-b19a-4957-ad0c-8abf8e8f4eae	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25426	Machetá	f	t	2026-02-21 07:10:14.326167-06
+dd6d0d79-5b31-4fac-bf5c-6d466254d657	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25430	Madrid	f	t	2026-02-21 07:10:14.326167-06
+1f7ae7d7-b979-4ff1-b9ea-404192edc83d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25436	Manta	f	t	2026-02-21 07:10:14.326167-06
+5c9d02c7-3c4e-48bd-80e9-073d8c5d998c	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25438	Medina	f	t	2026-02-21 07:10:14.326167-06
+68cfe8f4-d519-4847-962e-48772af5d477	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25473	Mosquera	f	t	2026-02-21 07:10:14.326167-06
+b0273894-bad2-44ce-8bdd-220afd3f12df	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25483	Nariño	f	t	2026-02-21 07:10:14.326167-06
+82ed0e84-f976-401f-abf6-40222b5fceea	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25486	Nemocón	f	t	2026-02-21 07:10:14.326167-06
+2ebcf601-d647-4a75-8e54-6c0365a85fe0	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25488	Nilo	f	t	2026-02-21 07:10:14.326167-06
+1b8f2167-2b7a-4a59-8c05-a62fe2b10520	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25489	Nimaima	f	t	2026-02-21 07:10:14.326167-06
+bb822a65-1d21-420e-bf86-776e2d91d3ce	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25491	Nocaima	f	t	2026-02-21 07:10:14.326167-06
+37907949-58d9-44ca-aa7c-293d4309be88	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25506	Venecia	f	t	2026-02-21 07:10:14.326167-06
+ce7bb6c4-57e6-44b8-89f3-b0ceb62b0c71	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25513	Pacho	f	t	2026-02-21 07:10:14.326167-06
+ddb0325d-c0ec-49be-9a89-e0db65269741	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25518	Paime	f	t	2026-02-21 07:10:14.326167-06
+82663b76-41b5-45cd-82e3-f194e7193c57	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25524	Pandi	f	t	2026-02-21 07:10:14.326167-06
+5e0aac39-3a34-4b84-b71a-134ff5c98495	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25530	Paratebueno	f	t	2026-02-21 07:10:14.326167-06
+1398a3e0-0f01-4c22-9717-aaac19f0f83d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25535	Pasca	f	t	2026-02-21 07:10:14.326167-06
+114b461e-f34f-4de1-a274-fae763912bf7	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25572	Puerto Salgar	f	t	2026-02-21 07:10:14.326167-06
+dda92ee8-2475-4d76-9f03-0b1ddaf89357	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25580	Pulí	f	t	2026-02-21 07:10:14.326167-06
+1878f457-bc3b-432c-aa71-896a63cedfbf	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25592	Quebradanegra	f	t	2026-02-21 07:10:14.326167-06
+8759f7f7-f3a6-4281-8943-25701035cd21	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25594	Quetame	f	t	2026-02-21 07:10:14.326167-06
+b4e97369-2718-4f45-83e2-0e6d101fba39	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25596	Quipile	f	t	2026-02-21 07:10:14.326167-06
+0c5e3f25-efca-4afc-8c25-60f2a2726fd2	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25599	Apulo	f	t	2026-02-21 07:10:14.326167-06
+e4a7270b-0206-464c-b0e8-28d48ea4fac4	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25612	Ricaurte	f	t	2026-02-21 07:10:14.326167-06
+be77ddc9-3cd7-4609-b4f5-a8179c2b17a5	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25645	San Antonio del Tequendama	f	t	2026-02-21 07:10:14.326167-06
+6c7d69ec-93ed-4844-9dc9-a6dd6c312f3e	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25649	San Bernardo	f	t	2026-02-21 07:10:14.326167-06
+db011c16-666f-44e5-b466-ccf5bd6100cb	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25653	San Cayetano	f	t	2026-02-21 07:10:14.326167-06
+869ce5b9-62bf-470f-9716-1202cda9aa94	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25658	San Francisco	f	t	2026-02-21 07:10:14.326167-06
+dc650c33-a3c6-4cd9-bdcd-8e933907196b	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25662	San Juan de Río Seco	f	t	2026-02-21 07:10:14.326167-06
+1bbb7c79-573b-435d-b006-fb738f634cbd	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25718	Sasaima	f	t	2026-02-21 07:10:14.326167-06
+80fa712b-2e8e-4a22-80e3-8f3becdea7a0	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25736	Sesquilé	f	t	2026-02-21 07:10:14.326167-06
+37a9785c-73dd-41a4-a784-a6a5ec2b2634	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25740	Sibaté	f	t	2026-02-21 07:10:14.326167-06
+aab25378-f47f-45ad-a821-538b761b94c5	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25743	Silvania	f	t	2026-02-21 07:10:14.326167-06
+c75013ab-e8e7-4da7-932d-6dfb5825690f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25745	Simijaca	f	t	2026-02-21 07:10:14.326167-06
+e8aacf6a-17cb-4e4f-b837-2615dee13df3	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25754	Soacha	f	t	2026-02-21 07:10:14.326167-06
+1496b3ab-9c3b-4184-b8ef-256acf0027f7	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25758	Sopó	f	t	2026-02-21 07:10:14.326167-06
+6e9621a7-fa69-4cfa-b4f6-1fa385ee7269	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25769	Subachoque	f	t	2026-02-21 07:10:14.326167-06
+e9309e3d-4ff5-4ce2-a47c-c04c13310b39	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25772	Suesca	f	t	2026-02-21 07:10:14.326167-06
+2717e8fc-10cc-42b0-9deb-80be7d38d5df	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25777	Supatá	f	t	2026-02-21 07:10:14.326167-06
+60f17af7-76bb-457d-a0d0-edb9d8377750	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25779	Susa	f	t	2026-02-21 07:10:14.326167-06
+1fb4d6bb-beaf-4188-b3a3-f766756a6d3d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25781	Sutatausa	f	t	2026-02-21 07:10:14.326167-06
+4f3e5fd1-d6f3-4c1f-a38e-b14253cd322f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25785	Tabio	f	t	2026-02-21 07:10:14.326167-06
+215ada38-16ba-4ea7-acd9-87a883d8ac90	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25793	Tausa	f	t	2026-02-21 07:10:14.326167-06
+8da9516b-f41b-451a-be9f-a2ce1f5e8088	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25797	Tena	f	t	2026-02-21 07:10:14.326167-06
+2b7fa5ce-5c99-4b89-bb31-1143cacbce58	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25799	Tenjo	f	t	2026-02-21 07:10:14.326167-06
+cde8679e-1c7b-45d5-9aef-c0b990b9062f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25805	Tibacuy	f	t	2026-02-21 07:10:14.326167-06
+ff6abedd-fa71-48d1-8800-30a952106605	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25807	Tibirita	f	t	2026-02-21 07:10:14.326167-06
+3a1e1755-f211-4697-8f8a-66bd5f957c1d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25815	Tocaima	f	t	2026-02-21 07:10:14.326167-06
+33668d76-1d76-479f-9852-c5b6697bf031	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25817	Tocancipá	f	t	2026-02-21 07:10:14.326167-06
+55e06f5b-d015-4f68-b77b-6f1308f4dd36	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25823	Topaipí	f	t	2026-02-21 07:10:14.326167-06
+25d10b8b-8475-46a2-850d-e6372594400f	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25839	Ubalá	f	t	2026-02-21 07:10:14.326167-06
+76d3f6bf-a691-4077-a86a-ef8cdda12e67	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25841	Ubaque	f	t	2026-02-21 07:10:14.326167-06
+fe638f66-f376-468a-a9f6-260eb80c9af3	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25843	Villa de San Diego de Ubaté	f	t	2026-02-21 07:10:14.326167-06
+c3feb713-8ac0-4db5-861c-b379694e11f3	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25845	Une	f	t	2026-02-21 07:10:14.326167-06
+19971219-ce4e-4671-ae95-65da7bd44e09	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25851	Útica	f	t	2026-02-21 07:10:14.326167-06
+cf9a1b22-860d-4151-a0ae-df4240c13f78	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25862	Vergara	f	t	2026-02-21 07:10:14.326167-06
+c7393ece-9aec-4d2a-afd8-79ef2504580d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25867	Vianí	f	t	2026-02-21 07:10:14.326167-06
+3f86c709-bfbe-4511-8d76-a436b89ae20e	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25871	Villagómez	f	t	2026-02-21 07:10:14.326167-06
+2f952bd0-ac98-4eb7-a05d-fd44a77b1032	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25873	Villapinzón	f	t	2026-02-21 07:10:14.326167-06
+c419551d-9476-4059-aa3d-a5e9838a872d	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25875	Villeta	f	t	2026-02-21 07:10:14.326167-06
+9dc8ced4-1564-4ac5-a2b2-dc24544d6a1c	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25878	Viotá	f	t	2026-02-21 07:10:14.326167-06
+3d1d2f68-8d97-4488-8063-8f75b5011fb6	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25885	Yacopí	f	t	2026-02-21 07:10:14.326167-06
+6fd0bc6c-1ffb-4ec3-9f70-f6096e1d955a	6c0ade63-945c-4ed5-9de0-87ff7d3e88d2	25898	Zipacón	f	t	2026-02-21 07:10:14.326167-06
+7216553f-d3fa-462b-a9e7-3431e3b51c8a	1e108dff-c76a-4bd4-aa78-4732dbc41430	27361	Istmina	f	t	2026-02-21 07:10:14.326167-06
+ec9a41e6-ad47-47ec-9e75-81701d7c5c71	1e108dff-c76a-4bd4-aa78-4732dbc41430	27001	Quibdó	t	t	2026-02-21 07:10:14.326167-06
+0eacdd25-ef31-4ae2-844b-92562d475997	1e108dff-c76a-4bd4-aa78-4732dbc41430	27006	Acandí	f	t	2026-02-21 07:10:14.326167-06
+adcc1250-eaab-48a2-8e6d-11adb994697e	1e108dff-c76a-4bd4-aa78-4732dbc41430	27025	Alto Baudó	f	t	2026-02-21 07:10:14.326167-06
+462e6010-abd5-4257-b6fa-2ddd32ef6075	1e108dff-c76a-4bd4-aa78-4732dbc41430	27050	Atrato	f	t	2026-02-21 07:10:14.326167-06
+1642d0aa-2c72-4bde-a4c3-436ec2d43fc7	1e108dff-c76a-4bd4-aa78-4732dbc41430	27073	Bagadó	f	t	2026-02-21 07:10:14.326167-06
+efb101c6-d4d3-4156-83c4-6b6b0f920b75	1e108dff-c76a-4bd4-aa78-4732dbc41430	27075	Bahía Solano	f	t	2026-02-21 07:10:14.326167-06
+f37e54b7-b74f-455c-a559-31d5f9c748ce	1e108dff-c76a-4bd4-aa78-4732dbc41430	27077	Bajo Baudó	f	t	2026-02-21 07:10:14.326167-06
+b8957fe3-651b-48c2-b8fa-49bff90459ee	1e108dff-c76a-4bd4-aa78-4732dbc41430	27099	Bojayá	f	t	2026-02-21 07:10:14.326167-06
+7b740c49-f192-43f9-b0e7-fad8d9d0b141	1e108dff-c76a-4bd4-aa78-4732dbc41430	27135	Cantón de San Pablo	f	t	2026-02-21 07:10:14.326167-06
+486e648c-7a36-4387-8f36-f6bf9173aa38	1e108dff-c76a-4bd4-aa78-4732dbc41430	27150	Carmen del Darién	f	t	2026-02-21 07:10:14.326167-06
+4aa34d58-085d-4342-bd1c-c7411ae2bd73	1e108dff-c76a-4bd4-aa78-4732dbc41430	27160	Cértegui	f	t	2026-02-21 07:10:14.326167-06
+4471f2cb-450f-42cc-85af-92201b3fd577	1e108dff-c76a-4bd4-aa78-4732dbc41430	27205	Condoto	f	t	2026-02-21 07:10:14.326167-06
+ca7dcad3-9a67-4e86-bdc8-624d0d7a0dea	1e108dff-c76a-4bd4-aa78-4732dbc41430	27245	El Carmen de Atrato	f	t	2026-02-21 07:10:14.326167-06
+065aceee-9e0a-40af-985f-171de41785e8	1e108dff-c76a-4bd4-aa78-4732dbc41430	27250	El Litoral del San Juan	f	t	2026-02-21 07:10:14.326167-06
+52830d50-3e5d-4789-8dc6-8350b72dfbf0	1e108dff-c76a-4bd4-aa78-4732dbc41430	27372	Juradó	f	t	2026-02-21 07:10:14.326167-06
+3116ad56-c647-41e3-a511-77f3a932f5a1	1e108dff-c76a-4bd4-aa78-4732dbc41430	27413	Lloró	f	t	2026-02-21 07:10:14.326167-06
+4f788bdc-8f2c-46c7-9b84-bb52d90a69f5	1e108dff-c76a-4bd4-aa78-4732dbc41430	27425	Medio Atrato	f	t	2026-02-21 07:10:14.326167-06
+c3d13b73-7560-46f4-98db-d6f8992c69f4	1e108dff-c76a-4bd4-aa78-4732dbc41430	27430	Medio Baudó	f	t	2026-02-21 07:10:14.326167-06
+f9248f2c-8848-4869-a631-9c00e178300d	1e108dff-c76a-4bd4-aa78-4732dbc41430	27450	Medio San Juan	f	t	2026-02-21 07:10:14.326167-06
+b0a9d565-c608-4c30-9b6c-cd8278ebfb42	1e108dff-c76a-4bd4-aa78-4732dbc41430	27491	Nóvita	f	t	2026-02-21 07:10:14.326167-06
+00fc3eac-4a9c-4cb5-9c75-adff229d2e7f	1e108dff-c76a-4bd4-aa78-4732dbc41430	27495	Nuquí	f	t	2026-02-21 07:10:14.326167-06
+d2557de9-1291-4cbb-880c-d30d4121e727	1e108dff-c76a-4bd4-aa78-4732dbc41430	27580	Río Iró	f	t	2026-02-21 07:10:14.326167-06
+7b36cdae-68af-4f2e-8201-e6e57171c4ef	1e108dff-c76a-4bd4-aa78-4732dbc41430	27600	Río Quito	f	t	2026-02-21 07:10:14.326167-06
+649f2bcc-2bba-4426-bb62-2b7c440e1f5c	1e108dff-c76a-4bd4-aa78-4732dbc41430	27615	Riosucio	f	t	2026-02-21 07:10:14.326167-06
+280d6fbb-4863-434e-901a-c6714778e7bf	1e108dff-c76a-4bd4-aa78-4732dbc41430	27660	San José del Palmar	f	t	2026-02-21 07:10:14.326167-06
+57d5267a-c11d-4721-aabc-1f45edf63f5d	1e108dff-c76a-4bd4-aa78-4732dbc41430	27745	Sipí	f	t	2026-02-21 07:10:14.326167-06
+11438c18-952a-4e64-8de1-886c75614443	1e108dff-c76a-4bd4-aa78-4732dbc41430	27787	Tadó	f	t	2026-02-21 07:10:14.326167-06
+383734c9-7e76-4bad-b995-f7990a9c430d	1e108dff-c76a-4bd4-aa78-4732dbc41430	27800	Unguía	f	t	2026-02-21 07:10:14.326167-06
+41483dff-b611-4f4f-9a2b-9869d125a9fd	1e108dff-c76a-4bd4-aa78-4732dbc41430	27810	Unión Panamericana	f	t	2026-02-21 07:10:14.326167-06
+72c59075-686a-4609-b9cd-9656bf81377b	a5157eae-0b08-41af-b471-b1820a62b3c8	41001	Neiva	t	t	2026-02-21 07:10:14.326167-06
+c03d7d0d-1a2c-4191-bbf7-0520e9387a2f	a5157eae-0b08-41af-b471-b1820a62b3c8	41006	Acevedo	f	t	2026-02-21 07:10:14.326167-06
+48df8452-21ad-4dd5-bae3-6be72b129e72	a5157eae-0b08-41af-b471-b1820a62b3c8	41013	Agrado	f	t	2026-02-21 07:10:14.326167-06
+6529bfac-7821-4348-a443-9ccb9597aa97	a5157eae-0b08-41af-b471-b1820a62b3c8	41016	Aipe	f	t	2026-02-21 07:10:14.326167-06
+f98634e3-4e84-4422-98c1-322cc6b99131	a5157eae-0b08-41af-b471-b1820a62b3c8	41020	Algeciras	f	t	2026-02-21 07:10:14.326167-06
+6f67ebe7-87f7-4251-ae65-d7704fbe21a2	a5157eae-0b08-41af-b471-b1820a62b3c8	41026	Altamira	f	t	2026-02-21 07:10:14.326167-06
+4c09eb4e-cf08-4700-80e6-28b5091bdc26	a5157eae-0b08-41af-b471-b1820a62b3c8	41078	Baraya	f	t	2026-02-21 07:10:14.326167-06
+009f4b8d-3790-4510-aeda-d07929ac107b	a5157eae-0b08-41af-b471-b1820a62b3c8	41132	Campoalegre	f	t	2026-02-21 07:10:14.326167-06
+f1a18698-40c5-4bea-afe7-9e911cec6a11	a5157eae-0b08-41af-b471-b1820a62b3c8	41206	Colombia	f	t	2026-02-21 07:10:14.326167-06
+b15d9bba-ec25-48b7-a262-27f5baba8e6f	a5157eae-0b08-41af-b471-b1820a62b3c8	41244	Elías	f	t	2026-02-21 07:10:14.326167-06
+65d35bf7-ae76-413c-8336-707c67f073a8	a5157eae-0b08-41af-b471-b1820a62b3c8	41298	Garzón	f	t	2026-02-21 07:10:14.326167-06
+add3e374-b65d-4f21-a3bc-c0e26bb07f5e	a5157eae-0b08-41af-b471-b1820a62b3c8	41306	Gigante	f	t	2026-02-21 07:10:14.326167-06
+c2edcda8-13f7-46ea-a79a-e27069d2b662	a5157eae-0b08-41af-b471-b1820a62b3c8	41319	Guadalupe	f	t	2026-02-21 07:10:14.326167-06
+fbc6aa1e-71aa-41d0-8df0-c737880f6bdc	a5157eae-0b08-41af-b471-b1820a62b3c8	41349	Hobo	f	t	2026-02-21 07:10:14.326167-06
+c13e9977-319d-469e-8698-2979c00d0f9a	a5157eae-0b08-41af-b471-b1820a62b3c8	41357	Íquira	f	t	2026-02-21 07:10:14.326167-06
+0991f6e2-4cc7-4e32-b0a9-bcfd0257f799	a5157eae-0b08-41af-b471-b1820a62b3c8	41359	Isnos	f	t	2026-02-21 07:10:14.326167-06
+2ad25ea5-179d-4805-8de5-4a8359c83f61	a5157eae-0b08-41af-b471-b1820a62b3c8	41378	La Argentina	f	t	2026-02-21 07:10:14.326167-06
+e0e7e89c-bb5a-4f78-8b62-c1af6162e990	a5157eae-0b08-41af-b471-b1820a62b3c8	41396	La Plata	f	t	2026-02-21 07:10:14.326167-06
+5f521324-4d6c-4a63-bff6-d86eb75c3558	a5157eae-0b08-41af-b471-b1820a62b3c8	41483	Nátaga	f	t	2026-02-21 07:10:14.326167-06
+c1d9145d-cf84-4c71-ad6c-1101a57802a2	a5157eae-0b08-41af-b471-b1820a62b3c8	41503	Oporapa	f	t	2026-02-21 07:10:14.326167-06
+1066bd23-83dd-41df-ba4c-ca54925c2ad4	a5157eae-0b08-41af-b471-b1820a62b3c8	41518	Paicol	f	t	2026-02-21 07:10:14.326167-06
+c424770e-0a78-4da7-b16b-3473dc1c7d50	a5157eae-0b08-41af-b471-b1820a62b3c8	41524	Palermo	f	t	2026-02-21 07:10:14.326167-06
+b4029475-9d48-4530-91a7-584465d73f22	a5157eae-0b08-41af-b471-b1820a62b3c8	41530	Palestina	f	t	2026-02-21 07:10:14.326167-06
+636ebfcd-994d-40ce-8f43-58134c55853a	a5157eae-0b08-41af-b471-b1820a62b3c8	41548	Pital	f	t	2026-02-21 07:10:14.326167-06
+3c62a571-a8e7-4f43-b498-3257622599e8	a5157eae-0b08-41af-b471-b1820a62b3c8	41551	Pitalito	f	t	2026-02-21 07:10:14.326167-06
+4b4eccd3-9d19-49bf-b875-355ab18e0e27	a5157eae-0b08-41af-b471-b1820a62b3c8	41615	Rivera	f	t	2026-02-21 07:10:14.326167-06
+f0dd3d6f-308f-43be-b439-0dc075d082ce	a5157eae-0b08-41af-b471-b1820a62b3c8	41660	Saladoblanco	f	t	2026-02-21 07:10:14.326167-06
+2257d2ed-9fe2-47c7-9476-9c6c6ecc4db5	a5157eae-0b08-41af-b471-b1820a62b3c8	41668	San Agustín	f	t	2026-02-21 07:10:14.326167-06
+d167f551-ce75-459a-8b55-001629546b9f	a5157eae-0b08-41af-b471-b1820a62b3c8	41676	Santa María	f	t	2026-02-21 07:10:14.326167-06
+9c7b463f-4f28-417d-840c-e73392a24685	a5157eae-0b08-41af-b471-b1820a62b3c8	41770	Suaza	f	t	2026-02-21 07:10:14.326167-06
+464f1507-c500-4df7-92fb-572b8b81efb4	a5157eae-0b08-41af-b471-b1820a62b3c8	41791	Tarqui	f	t	2026-02-21 07:10:14.326167-06
+9c7b43a2-571d-433c-842c-4da213bb7148	a5157eae-0b08-41af-b471-b1820a62b3c8	41797	Tesalia	f	t	2026-02-21 07:10:14.326167-06
+d9cd1ffc-14f3-4d1e-8e46-a5763abc6b77	a5157eae-0b08-41af-b471-b1820a62b3c8	41799	Tello	f	t	2026-02-21 07:10:14.326167-06
+d26c93d2-e11f-4c9b-b0ca-47518e63115f	a5157eae-0b08-41af-b471-b1820a62b3c8	41801	Teruel	f	t	2026-02-21 07:10:14.326167-06
+ac267105-c684-48b5-976d-c5f3f4d5711b	a5157eae-0b08-41af-b471-b1820a62b3c8	41807	Timaná	f	t	2026-02-21 07:10:14.326167-06
+41fc81b1-13b0-4312-81ec-8c3d52f0b57f	a5157eae-0b08-41af-b471-b1820a62b3c8	41872	Villavieja	f	t	2026-02-21 07:10:14.326167-06
+17813b64-74fd-46db-aa4a-9bf04f790763	a5157eae-0b08-41af-b471-b1820a62b3c8	41885	Yaguará	f	t	2026-02-21 07:10:14.326167-06
+70363f5f-5fc7-4a3b-9f60-f3d401c2f6df	1b4bae07-1027-46b6-85a2-a925da668387	44001	Riohacha	t	t	2026-02-21 07:10:14.326167-06
+0183f76d-54aa-42b2-bb1b-26280e9cff4b	1b4bae07-1027-46b6-85a2-a925da668387	44035	Albania	f	t	2026-02-21 07:10:14.326167-06
+07aa7dab-1406-49ed-b0eb-6b323185e22b	1b4bae07-1027-46b6-85a2-a925da668387	44078	Barrancas	f	t	2026-02-21 07:10:14.326167-06
+1e7d78d9-8424-4d4a-a893-8a69b4d2623a	1b4bae07-1027-46b6-85a2-a925da668387	44090	Dibulla	f	t	2026-02-21 07:10:14.326167-06
+20b9fc7c-c04e-424d-881b-512d9449b69c	1b4bae07-1027-46b6-85a2-a925da668387	44098	Distracción	f	t	2026-02-21 07:10:14.326167-06
+b50603bc-de98-4fca-8d27-1172c70ce2e6	1b4bae07-1027-46b6-85a2-a925da668387	44110	El Molino	f	t	2026-02-21 07:10:14.326167-06
+65b4aaeb-8401-4444-b811-7408ab163f0e	1b4bae07-1027-46b6-85a2-a925da668387	44279	Fonseca	f	t	2026-02-21 07:10:14.326167-06
+571f51cd-4456-4a15-ad75-2c45b9057cb5	1b4bae07-1027-46b6-85a2-a925da668387	44378	Hatonuevo	f	t	2026-02-21 07:10:14.326167-06
+6d20fd43-8efe-45c2-8a0d-72d5216f90ab	1b4bae07-1027-46b6-85a2-a925da668387	44420	La Jagua del Pilar	f	t	2026-02-21 07:10:14.326167-06
+8d81495a-54e8-4172-ac31-8ade7b665ce7	1b4bae07-1027-46b6-85a2-a925da668387	44430	Maicao	f	t	2026-02-21 07:10:14.326167-06
+ee345be3-b39b-4792-bd29-d70194d668f1	1b4bae07-1027-46b6-85a2-a925da668387	44560	Manaure	f	t	2026-02-21 07:10:14.326167-06
+31fdfc3f-6c6e-421b-9836-42524bdab57b	1b4bae07-1027-46b6-85a2-a925da668387	44650	San Juan del Cesar	f	t	2026-02-21 07:10:14.326167-06
+cfdc6fbf-89dc-4c8d-b543-fe8cb8e349fb	1b4bae07-1027-46b6-85a2-a925da668387	44847	Uribia	f	t	2026-02-21 07:10:14.326167-06
+b76b3b68-a899-4410-8b40-8f653e393ce6	1b4bae07-1027-46b6-85a2-a925da668387	44855	Urumita	f	t	2026-02-21 07:10:14.326167-06
+33c71a3d-3836-4f94-b3f9-8165628da28d	1b4bae07-1027-46b6-85a2-a925da668387	44874	Villanueva	f	t	2026-02-21 07:10:14.326167-06
+8bd14441-2b01-46e5-90cf-1a6529ff1246	b3079f14-ae15-48fb-a217-566bdd4971b7	47001	Santa Marta	t	t	2026-02-21 07:10:14.326167-06
+5e572b53-433e-4a66-8f66-0f9ddc39efe0	b3079f14-ae15-48fb-a217-566bdd4971b7	47030	Algarrobo	f	t	2026-02-21 07:10:14.326167-06
+7c871e55-b693-42ac-af9a-f98c1e06aef8	b3079f14-ae15-48fb-a217-566bdd4971b7	47053	Aracataca	f	t	2026-02-21 07:10:14.326167-06
+82923aaa-6cc4-4732-b400-cf6a1ed3d847	b3079f14-ae15-48fb-a217-566bdd4971b7	47058	Ariguaní	f	t	2026-02-21 07:10:14.326167-06
+5d4d1c72-6254-4a34-a72a-172c687a7838	b3079f14-ae15-48fb-a217-566bdd4971b7	47161	Cerro de San Antonio	f	t	2026-02-21 07:10:14.326167-06
+5b86aa63-f489-478f-9266-4426d2cf592b	b3079f14-ae15-48fb-a217-566bdd4971b7	47170	Chivolo	f	t	2026-02-21 07:10:14.326167-06
+fc0c0671-092a-4ecf-b6e8-70f7f0253c7b	b3079f14-ae15-48fb-a217-566bdd4971b7	47189	Ciénaga	f	t	2026-02-21 07:10:14.326167-06
+1f8118b0-7068-4b80-ba3c-f9a8a15cc53f	b3079f14-ae15-48fb-a217-566bdd4971b7	47205	Concordia	f	t	2026-02-21 07:10:14.326167-06
+e7a517e4-1ebb-4bd5-832a-b9e19edae022	b3079f14-ae15-48fb-a217-566bdd4971b7	47245	El Banco	f	t	2026-02-21 07:10:14.326167-06
+3e58d80c-ad49-4f2b-b86a-465dae8ef1c7	b3079f14-ae15-48fb-a217-566bdd4971b7	47258	El Piñón	f	t	2026-02-21 07:10:14.326167-06
+290ba1e3-83b5-40b7-9e46-f843bf1586f9	b3079f14-ae15-48fb-a217-566bdd4971b7	47268	El Retén	f	t	2026-02-21 07:10:14.326167-06
+441cb110-8c75-43d1-8958-16135db95e8e	b3079f14-ae15-48fb-a217-566bdd4971b7	47288	Fundación	f	t	2026-02-21 07:10:14.326167-06
+672067e2-0acf-45a7-bc64-ea94cb3b44ab	b3079f14-ae15-48fb-a217-566bdd4971b7	47318	Guamal	f	t	2026-02-21 07:10:14.326167-06
+7e55fd15-0263-4c97-b12a-7789a2a90f02	b3079f14-ae15-48fb-a217-566bdd4971b7	47460	Nueva Granada	f	t	2026-02-21 07:10:14.326167-06
+b10d56c6-c4b8-4a83-af41-125a69c3f887	b3079f14-ae15-48fb-a217-566bdd4971b7	47541	Pedraza	f	t	2026-02-21 07:10:14.326167-06
+988f87e0-1c09-4e6d-b5d0-45459b676c06	b3079f14-ae15-48fb-a217-566bdd4971b7	47545	Pijiño del Carmen	f	t	2026-02-21 07:10:14.326167-06
+6f9a5979-074b-47dd-b326-fa02a6160f89	b3079f14-ae15-48fb-a217-566bdd4971b7	47551	Pivijay	f	t	2026-02-21 07:10:14.326167-06
+efc190de-e9f4-459d-ad5c-49219fc9fe1b	b3079f14-ae15-48fb-a217-566bdd4971b7	47555	Plato	f	t	2026-02-21 07:10:14.326167-06
+725bc34c-360c-4610-9ec1-6be6732b7a1f	b3079f14-ae15-48fb-a217-566bdd4971b7	47570	Puebloviejo	f	t	2026-02-21 07:10:14.326167-06
+a2870578-4f4a-498a-9ad1-0c2923c27ce2	b3079f14-ae15-48fb-a217-566bdd4971b7	47605	Remolino	f	t	2026-02-21 07:10:14.326167-06
+020cdcd7-1e17-4678-9b05-092124ccc553	b3079f14-ae15-48fb-a217-566bdd4971b7	47660	Sabanas de San Ángel	f	t	2026-02-21 07:10:14.326167-06
+837a1abc-9192-40e8-a25b-f8bb0010c504	b3079f14-ae15-48fb-a217-566bdd4971b7	47675	Salamina	f	t	2026-02-21 07:10:14.326167-06
+10640cf2-5e97-4b66-8266-0ab8f189140f	b3079f14-ae15-48fb-a217-566bdd4971b7	47692	San Sebastián de Buenavista	f	t	2026-02-21 07:10:14.326167-06
+b41c78bf-4cfb-4300-b6da-2ce929769b68	b3079f14-ae15-48fb-a217-566bdd4971b7	47703	San Zenón	f	t	2026-02-21 07:10:14.326167-06
+332f963a-587f-45b6-9050-d8acb6000c1d	b3079f14-ae15-48fb-a217-566bdd4971b7	47707	Santa Ana	f	t	2026-02-21 07:10:14.326167-06
+2b71b8ec-e77b-4476-9cc7-bccff7b89717	b3079f14-ae15-48fb-a217-566bdd4971b7	47720	Santa Bárbara de Pinto	f	t	2026-02-21 07:10:14.326167-06
+a5e1e644-5f55-43a1-b64e-831dec1b27e2	b3079f14-ae15-48fb-a217-566bdd4971b7	47745	Sitionuevo	f	t	2026-02-21 07:10:14.326167-06
+2405a1d8-fe27-4490-912d-6c2ab3d5b811	b3079f14-ae15-48fb-a217-566bdd4971b7	47798	Tenerife	f	t	2026-02-21 07:10:14.326167-06
+8b24dab0-278b-4704-995b-4129a350ca49	b3079f14-ae15-48fb-a217-566bdd4971b7	47960	Zapayán	f	t	2026-02-21 07:10:14.326167-06
+1ab651f7-6c82-4abd-8ac3-c154f8059d33	b3079f14-ae15-48fb-a217-566bdd4971b7	47980	Zona Bananera	f	t	2026-02-21 07:10:14.326167-06
+9012d740-5a2c-44e3-8988-713666d1ec7a	0b780dc0-a448-489d-8e95-3ad8d40e7954	50001	Villavicencio	t	t	2026-02-21 07:10:14.326167-06
+4f8f832c-0171-4125-bd3e-237d44748cb4	0b780dc0-a448-489d-8e95-3ad8d40e7954	50006	Acacías	f	t	2026-02-21 07:10:14.326167-06
+043bf3df-26ee-4b74-b3cf-50d80da6abb7	0b780dc0-a448-489d-8e95-3ad8d40e7954	50110	Barranca de Upía	f	t	2026-02-21 07:10:14.326167-06
+ff821d3a-5cfb-43e6-8b1a-5e85636dd6f9	0b780dc0-a448-489d-8e95-3ad8d40e7954	50124	Cabuyaro	f	t	2026-02-21 07:10:14.326167-06
+f701ff5e-46df-4203-89ca-59b714c72bda	0b780dc0-a448-489d-8e95-3ad8d40e7954	50150	Castilla la Nueva	f	t	2026-02-21 07:10:14.326167-06
+fd96068a-37d5-47ee-bff4-cbf244789c26	0b780dc0-a448-489d-8e95-3ad8d40e7954	50223	Cubarral	f	t	2026-02-21 07:10:14.326167-06
+7ddf2737-5959-4cbb-88d0-29b52ddf5ac4	0b780dc0-a448-489d-8e95-3ad8d40e7954	50226	Cumaral	f	t	2026-02-21 07:10:14.326167-06
+bc07bb0d-5cd1-4688-99a5-308102686760	0b780dc0-a448-489d-8e95-3ad8d40e7954	50245	El Calvario	f	t	2026-02-21 07:10:14.326167-06
+293d3146-e501-4a70-a844-b62e60412ebb	0b780dc0-a448-489d-8e95-3ad8d40e7954	50251	El Castillo	f	t	2026-02-21 07:10:14.326167-06
+938ec470-1022-4a90-a3f7-c3c5cab1e202	0b780dc0-a448-489d-8e95-3ad8d40e7954	50270	El Dorado	f	t	2026-02-21 07:10:14.326167-06
+1cfc13eb-a694-4b39-93a5-a4090e40f1d8	0b780dc0-a448-489d-8e95-3ad8d40e7954	50287	Fuente de Oro	f	t	2026-02-21 07:10:14.326167-06
+76f71b4a-70fa-43b1-b035-34878e0e8bbf	0b780dc0-a448-489d-8e95-3ad8d40e7954	50313	Granada	f	t	2026-02-21 07:10:14.326167-06
+92b46d2d-6d36-4a69-bb56-eaf8ada8a2e2	0b780dc0-a448-489d-8e95-3ad8d40e7954	50318	Guamal	f	t	2026-02-21 07:10:14.326167-06
+6f681401-df32-4810-8d6e-6bb6717ac4c8	0b780dc0-a448-489d-8e95-3ad8d40e7954	50325	Mapiripán	f	t	2026-02-21 07:10:14.326167-06
+226e4137-e7fe-4f55-9472-5d4f5470b8b7	0b780dc0-a448-489d-8e95-3ad8d40e7954	50330	Mesetas	f	t	2026-02-21 07:10:14.326167-06
+f8594946-a2cd-4b5c-b194-8c1c1a7566f3	0b780dc0-a448-489d-8e95-3ad8d40e7954	50350	La Macarena	f	t	2026-02-21 07:10:14.326167-06
+008be738-7762-475d-a4f7-b6d3a029ad9e	0b780dc0-a448-489d-8e95-3ad8d40e7954	50370	La Uribe	f	t	2026-02-21 07:10:14.326167-06
+0bd63be1-c4a1-499b-9466-624f4c8a6462	0b780dc0-a448-489d-8e95-3ad8d40e7954	50400	Lejanías	f	t	2026-02-21 07:10:14.326167-06
+dcc83a4a-a15f-4b7a-9207-1bce2dbb6346	0b780dc0-a448-489d-8e95-3ad8d40e7954	50450	Puerto Concordia	f	t	2026-02-21 07:10:14.326167-06
+720bec4f-f048-4f1f-8eca-155c421a977a	0b780dc0-a448-489d-8e95-3ad8d40e7954	50568	Puerto Gaitán	f	t	2026-02-21 07:10:14.326167-06
+ac5bcd18-6a3e-48a1-b31b-4c2ae6108801	0b780dc0-a448-489d-8e95-3ad8d40e7954	50573	Puerto López	f	t	2026-02-21 07:10:14.326167-06
+a3121513-e66f-4f0a-9942-ed1692370659	0b780dc0-a448-489d-8e95-3ad8d40e7954	50577	Puerto Lleras	f	t	2026-02-21 07:10:14.326167-06
+8959b972-7fd2-4b83-8501-24daaa48379c	0b780dc0-a448-489d-8e95-3ad8d40e7954	50590	Puerto Rico	f	t	2026-02-21 07:10:14.326167-06
+eee0e2c5-2c57-4e25-ad4a-8aa187780d79	0b780dc0-a448-489d-8e95-3ad8d40e7954	50606	Restrepo	f	t	2026-02-21 07:10:14.326167-06
+e5b443e7-6b18-48e8-aac1-c2623f12bf3c	0b780dc0-a448-489d-8e95-3ad8d40e7954	50680	San Carlos de Guaroa	f	t	2026-02-21 07:10:14.326167-06
+0ee7059c-e63f-44dc-ab06-315e255df267	0b780dc0-a448-489d-8e95-3ad8d40e7954	50683	San Juan de Arama	f	t	2026-02-21 07:10:14.326167-06
+af07c66c-ce18-413d-b5c2-9679b9b808df	0b780dc0-a448-489d-8e95-3ad8d40e7954	50686	San Juanito	f	t	2026-02-21 07:10:14.326167-06
+0eda30c7-72ae-4b33-b7c3-4e317afa6902	0b780dc0-a448-489d-8e95-3ad8d40e7954	50689	San Martín	f	t	2026-02-21 07:10:14.326167-06
+f782ef8c-5ca6-45a6-a25c-77bc36d407fc	0b780dc0-a448-489d-8e95-3ad8d40e7954	50711	Vista Hermosa	f	t	2026-02-21 07:10:14.326167-06
+d0f4f50b-2a85-40b7-9dfe-a781d8fefbb1	4324e807-c33e-48b9-b8fa-de6f03da621e	52001	Pasto	t	t	2026-02-21 07:10:14.326167-06
+5f7fdf02-4113-4a68-a091-34eb17369484	4324e807-c33e-48b9-b8fa-de6f03da621e	52019	Albán	f	t	2026-02-21 07:10:14.326167-06
+968234c8-a07e-45a9-bb28-399538b1050d	4324e807-c33e-48b9-b8fa-de6f03da621e	52022	Aldana	f	t	2026-02-21 07:10:14.326167-06
+c070820b-c613-42be-a462-b4605f6ce5d6	4324e807-c33e-48b9-b8fa-de6f03da621e	52036	Ancuyá	f	t	2026-02-21 07:10:14.326167-06
+f37cec3f-eb22-427d-b051-094332a9a879	4324e807-c33e-48b9-b8fa-de6f03da621e	52051	Arboleda	f	t	2026-02-21 07:10:14.326167-06
+5fa643aa-1d96-48fe-a0c7-766cf750873d	4324e807-c33e-48b9-b8fa-de6f03da621e	52079	Barbacoas	f	t	2026-02-21 07:10:14.326167-06
+c4f21ac3-27b1-4549-bed4-13f37cb8ded1	4324e807-c33e-48b9-b8fa-de6f03da621e	52083	Belén	f	t	2026-02-21 07:10:14.326167-06
+34d539da-e7c8-4c50-9a6c-fe420e6652e7	4324e807-c33e-48b9-b8fa-de6f03da621e	52110	Buesaco	f	t	2026-02-21 07:10:14.326167-06
+6c9872da-c185-4113-adc8-6ea5115ef91f	4324e807-c33e-48b9-b8fa-de6f03da621e	52203	Colón	f	t	2026-02-21 07:10:14.326167-06
+c9671917-38f4-498b-97c4-2db0a1831472	4324e807-c33e-48b9-b8fa-de6f03da621e	52207	Consacá	f	t	2026-02-21 07:10:14.326167-06
+1fb71390-c4bf-4389-b6a2-fc2798021704	4324e807-c33e-48b9-b8fa-de6f03da621e	52210	Contadero	f	t	2026-02-21 07:10:14.326167-06
+4821732a-f367-488c-baf4-fb19a8db9498	4324e807-c33e-48b9-b8fa-de6f03da621e	52215	Córdoba	f	t	2026-02-21 07:10:14.326167-06
+2971b9b3-b3c9-4fb1-b037-61ec38d0e8c3	4324e807-c33e-48b9-b8fa-de6f03da621e	52224	Cuaspud	f	t	2026-02-21 07:10:14.326167-06
+89e36507-978c-4254-985d-073b81c7091c	4324e807-c33e-48b9-b8fa-de6f03da621e	52227	Cumbal	f	t	2026-02-21 07:10:14.326167-06
+0cc6d772-a43d-42ee-a915-21e8f901d54b	4324e807-c33e-48b9-b8fa-de6f03da621e	52233	Cumbitara	f	t	2026-02-21 07:10:14.326167-06
+a8a5da16-1b85-4cbf-8e95-f27e6acf6ed1	4324e807-c33e-48b9-b8fa-de6f03da621e	52240	Chachagüí	f	t	2026-02-21 07:10:14.326167-06
+3b770b4f-1191-4158-8162-1cff22acfc6e	4324e807-c33e-48b9-b8fa-de6f03da621e	52250	El Charco	f	t	2026-02-21 07:10:14.326167-06
+0663f3ac-b2d4-4b8b-9a84-4d69b116f30b	4324e807-c33e-48b9-b8fa-de6f03da621e	52254	El Peñol	f	t	2026-02-21 07:10:14.326167-06
+3802782e-1a12-4c75-a4ad-7dc62d28235c	4324e807-c33e-48b9-b8fa-de6f03da621e	52256	El Rosario	f	t	2026-02-21 07:10:14.326167-06
+b4a1c24c-4cb1-4f6a-98a0-f62912ec23d0	4324e807-c33e-48b9-b8fa-de6f03da621e	52258	El Tablón de Gómez	f	t	2026-02-21 07:10:14.326167-06
+7ba74703-80c1-4a05-9af4-ed0803982516	4324e807-c33e-48b9-b8fa-de6f03da621e	52260	El Tambo	f	t	2026-02-21 07:10:14.326167-06
+594c18b5-814c-47d2-8a82-45c54b4c41cf	4324e807-c33e-48b9-b8fa-de6f03da621e	52287	Funes	f	t	2026-02-21 07:10:14.326167-06
+c0d63e96-153c-4452-b34e-b42b9bdcfeda	4324e807-c33e-48b9-b8fa-de6f03da621e	52317	Guachucal	f	t	2026-02-21 07:10:14.326167-06
+396f9bc0-6c48-404b-bb4e-cb990ca9c217	4324e807-c33e-48b9-b8fa-de6f03da621e	52320	Guaitarilla	f	t	2026-02-21 07:10:14.326167-06
+fdb80d2c-781c-446a-8249-198fe52f0d61	4324e807-c33e-48b9-b8fa-de6f03da621e	52323	Gualmatán	f	t	2026-02-21 07:10:14.326167-06
+8c62bd11-71db-42bd-befd-51c0ba813825	4324e807-c33e-48b9-b8fa-de6f03da621e	52352	Iles	f	t	2026-02-21 07:10:14.326167-06
+9217c7c9-1f43-4e36-a274-1eb312e66c22	4324e807-c33e-48b9-b8fa-de6f03da621e	52354	Imués	f	t	2026-02-21 07:10:14.326167-06
+786dd80e-f407-4819-9a8d-a116c98b3492	4324e807-c33e-48b9-b8fa-de6f03da621e	52356	Ipiales	f	t	2026-02-21 07:10:14.326167-06
+3b660aff-bfe0-4ef0-97f9-3fe1a3930198	4324e807-c33e-48b9-b8fa-de6f03da621e	52378	La Cruz	f	t	2026-02-21 07:10:14.326167-06
+930b7a9b-6df4-4da3-ab37-f288a5e17be9	4324e807-c33e-48b9-b8fa-de6f03da621e	52381	La Florida	f	t	2026-02-21 07:10:14.326167-06
+e7d570a6-25b2-48a5-8df0-b469baac09c7	4324e807-c33e-48b9-b8fa-de6f03da621e	52385	La Llanada	f	t	2026-02-21 07:10:14.326167-06
+8471516a-81d5-4885-8c61-d934d097f17a	4324e807-c33e-48b9-b8fa-de6f03da621e	52390	La Tola	f	t	2026-02-21 07:10:14.326167-06
+e5c09b6c-b497-4a21-8ef7-8af2deb5eb7d	4324e807-c33e-48b9-b8fa-de6f03da621e	52399	La Unión	f	t	2026-02-21 07:10:14.326167-06
+016622d8-eca5-4a82-9ad5-14b6bcc635be	4324e807-c33e-48b9-b8fa-de6f03da621e	52405	Leiva	f	t	2026-02-21 07:10:14.326167-06
+315187cd-25c9-43af-87b4-c50495a3b173	4324e807-c33e-48b9-b8fa-de6f03da621e	52411	Linares	f	t	2026-02-21 07:10:14.326167-06
+98071e66-9b48-4ab8-a50a-6dce56a99f55	4324e807-c33e-48b9-b8fa-de6f03da621e	52418	Los Andes	f	t	2026-02-21 07:10:14.326167-06
+2ef51db6-9047-482e-ac86-44c0bdb38ea3	4324e807-c33e-48b9-b8fa-de6f03da621e	52427	Magüí	f	t	2026-02-21 07:10:14.326167-06
+901a83bf-b682-4389-8539-af4b195c214e	4324e807-c33e-48b9-b8fa-de6f03da621e	52435	Mallama	f	t	2026-02-21 07:10:14.326167-06
+3e0aa291-4e9e-4124-a7f6-42f66bd2586b	4324e807-c33e-48b9-b8fa-de6f03da621e	52473	Mosquera	f	t	2026-02-21 07:10:14.326167-06
+1bcfd939-b220-455e-a65c-43f91c12f3fe	4324e807-c33e-48b9-b8fa-de6f03da621e	52480	Nariño	f	t	2026-02-21 07:10:14.326167-06
+17fddd6d-0e5c-41ef-8855-ee4f28cbd264	4324e807-c33e-48b9-b8fa-de6f03da621e	52490	Olaya Herrera	f	t	2026-02-21 07:10:14.326167-06
+549f55ab-ca34-4723-9b3e-e4dabfe11633	4324e807-c33e-48b9-b8fa-de6f03da621e	52506	Ospina	f	t	2026-02-21 07:10:14.326167-06
+e699e423-ba5a-463a-9ed9-51b7af530060	4324e807-c33e-48b9-b8fa-de6f03da621e	52520	Francisco Pizarro	f	t	2026-02-21 07:10:14.326167-06
+ad30cc55-e804-46ca-87c7-cd3bdeca0c8b	4324e807-c33e-48b9-b8fa-de6f03da621e	52540	Policarpa	f	t	2026-02-21 07:10:14.326167-06
+2c97f633-4f8a-4bb0-8921-9134c99bb8fd	4324e807-c33e-48b9-b8fa-de6f03da621e	52560	Potosí	f	t	2026-02-21 07:10:14.326167-06
+88121504-3e6b-4f0d-9d06-ecbeb4c8667f	4324e807-c33e-48b9-b8fa-de6f03da621e	52565	Providencia	f	t	2026-02-21 07:10:14.326167-06
+ca19ded3-0219-4ad6-8af7-3fc12b749af4	4324e807-c33e-48b9-b8fa-de6f03da621e	52573	Puerres	f	t	2026-02-21 07:10:14.326167-06
+c0e20faa-991b-492f-aaa4-0a34bd340cc5	4324e807-c33e-48b9-b8fa-de6f03da621e	52585	Pupiales	f	t	2026-02-21 07:10:14.326167-06
+aa14b8d2-4d40-40bb-8eeb-21d911d31a39	4324e807-c33e-48b9-b8fa-de6f03da621e	52612	Ricaurte	f	t	2026-02-21 07:10:14.326167-06
+d3d60ec4-665d-4f87-bed3-1380c1c4c344	4324e807-c33e-48b9-b8fa-de6f03da621e	52621	Roberto Payán	f	t	2026-02-21 07:10:14.326167-06
+bfe9386c-c61a-4183-ad7d-f2301f4e1bcb	4324e807-c33e-48b9-b8fa-de6f03da621e	52678	Samaniego	f	t	2026-02-21 07:10:14.326167-06
+73599832-d5bd-4508-be32-6f3b857c4390	4324e807-c33e-48b9-b8fa-de6f03da621e	52683	Sandoná	f	t	2026-02-21 07:10:14.326167-06
+8b6274af-a1b9-44b5-a1f5-54d7638eba2f	4324e807-c33e-48b9-b8fa-de6f03da621e	52685	San Bernardo	f	t	2026-02-21 07:10:14.326167-06
+85716d7b-0421-443e-b434-ae7853630405	4324e807-c33e-48b9-b8fa-de6f03da621e	52687	San Lorenzo	f	t	2026-02-21 07:10:14.326167-06
+7879131b-8fe7-4f76-a534-c0fff7318391	4324e807-c33e-48b9-b8fa-de6f03da621e	52693	San Pablo	f	t	2026-02-21 07:10:14.326167-06
+e0526fca-d8ac-4550-8bd3-702a42e513fc	4324e807-c33e-48b9-b8fa-de6f03da621e	52694	San Pedro de Cartago	f	t	2026-02-21 07:10:14.326167-06
+7c022bea-95b6-4c34-868e-ff7f290853d4	4324e807-c33e-48b9-b8fa-de6f03da621e	52696	Santa Bárbara	f	t	2026-02-21 07:10:14.326167-06
+e6ab68b9-855b-4735-b4d5-a8675ad7b7b2	4324e807-c33e-48b9-b8fa-de6f03da621e	52699	Santacruz	f	t	2026-02-21 07:10:14.326167-06
+46bcf32a-c28f-4623-ba00-cda0d901beec	4324e807-c33e-48b9-b8fa-de6f03da621e	52720	Sapuyes	f	t	2026-02-21 07:10:14.326167-06
+a26af5f2-26de-4590-a6d8-a6b4d9291f9c	4324e807-c33e-48b9-b8fa-de6f03da621e	52786	Taminango	f	t	2026-02-21 07:10:14.326167-06
+a33a3eca-ccd6-488d-9666-0f1d49b994a9	4324e807-c33e-48b9-b8fa-de6f03da621e	52788	Tangua	f	t	2026-02-21 07:10:14.326167-06
+fb8cad02-2a13-42a0-9d2f-cf21af13ef2f	4324e807-c33e-48b9-b8fa-de6f03da621e	52835	Tumaco	f	t	2026-02-21 07:10:14.326167-06
+4a32acbf-21dd-499d-8399-285d8d0f2736	4324e807-c33e-48b9-b8fa-de6f03da621e	52838	Túquerres	f	t	2026-02-21 07:10:14.326167-06
+a1caa114-0f71-42fd-8b2f-913d36ca12c6	4324e807-c33e-48b9-b8fa-de6f03da621e	52885	Yacuanquer	f	t	2026-02-21 07:10:14.326167-06
+bfd4b91c-145b-4577-9385-450ab09e5e9a	e12adb03-f62f-4c28-9979-f4020b4534a9	54001	Cúcuta	t	t	2026-02-21 07:10:14.326167-06
+fcff5405-2e14-4f97-85de-26afbb2b3051	e12adb03-f62f-4c28-9979-f4020b4534a9	54003	Abrego	f	t	2026-02-21 07:10:14.326167-06
+fbee4582-2c92-43a7-ba56-c6b4baa262a9	e12adb03-f62f-4c28-9979-f4020b4534a9	54051	Arboledas	f	t	2026-02-21 07:10:14.326167-06
+563bd538-7ccd-4112-b7ff-db6300160cb3	e12adb03-f62f-4c28-9979-f4020b4534a9	54099	Bochalema	f	t	2026-02-21 07:10:14.326167-06
+31666784-8e3b-415d-9d35-c6d1c366ff28	e12adb03-f62f-4c28-9979-f4020b4534a9	54109	Bucarasica	f	t	2026-02-21 07:10:14.326167-06
+7a61601c-697b-4973-add3-b950ae8079db	e12adb03-f62f-4c28-9979-f4020b4534a9	54125	Cácota	f	t	2026-02-21 07:10:14.326167-06
+10023a84-f692-4af0-846b-77de4c00a006	e12adb03-f62f-4c28-9979-f4020b4534a9	54128	Cachirá	f	t	2026-02-21 07:10:14.326167-06
+877919da-1917-4c37-894b-ca834e4a62b1	e12adb03-f62f-4c28-9979-f4020b4534a9	54172	Chinácota	f	t	2026-02-21 07:10:14.326167-06
+217f39cd-6856-4b2c-bad2-21fd177010f6	e12adb03-f62f-4c28-9979-f4020b4534a9	54174	Chitagá	f	t	2026-02-21 07:10:14.326167-06
+ad513e0b-164c-4bf4-b27a-49c051b13ec7	e12adb03-f62f-4c28-9979-f4020b4534a9	54206	Convención	f	t	2026-02-21 07:10:14.326167-06
+6e2bb3da-0dbd-4cd8-a852-c50ebe458241	e12adb03-f62f-4c28-9979-f4020b4534a9	54223	Cucutilla	f	t	2026-02-21 07:10:14.326167-06
+9d4104c5-b18b-4ac2-b4b3-f933f8f6be3d	e12adb03-f62f-4c28-9979-f4020b4534a9	54239	Durania	f	t	2026-02-21 07:10:14.326167-06
+76557655-c1ec-46b0-acee-59b440c18946	e12adb03-f62f-4c28-9979-f4020b4534a9	54245	El Carmen	f	t	2026-02-21 07:10:14.326167-06
+6a14c718-480d-4fa8-a42a-aee03acffa01	e12adb03-f62f-4c28-9979-f4020b4534a9	54250	El Tarra	f	t	2026-02-21 07:10:14.326167-06
+f1b05a78-1ef7-4c76-a05a-a1783c0bbf2b	e12adb03-f62f-4c28-9979-f4020b4534a9	54261	El Zulia	f	t	2026-02-21 07:10:14.326167-06
+fb90f43f-c1d6-47b8-ba27-b5e514c9b705	e12adb03-f62f-4c28-9979-f4020b4534a9	54313	Gramalote	f	t	2026-02-21 07:10:14.326167-06
+cde3f684-1508-4e3e-9717-1ebd1190d54e	e12adb03-f62f-4c28-9979-f4020b4534a9	54344	Hacarí	f	t	2026-02-21 07:10:14.326167-06
+70f0e992-9c3e-4aa1-81c3-67e833e1cc59	e12adb03-f62f-4c28-9979-f4020b4534a9	54347	Herrán	f	t	2026-02-21 07:10:14.326167-06
+0546b780-1d78-45a6-a09d-c269e7e6b360	e12adb03-f62f-4c28-9979-f4020b4534a9	54377	Labateca	f	t	2026-02-21 07:10:14.326167-06
+8be6edc9-4d7e-457c-8a29-2699900459f6	e12adb03-f62f-4c28-9979-f4020b4534a9	54385	La Esperanza	f	t	2026-02-21 07:10:14.326167-06
+22144645-4427-4c36-95b7-d7845f508c3b	e12adb03-f62f-4c28-9979-f4020b4534a9	54398	La Playa	f	t	2026-02-21 07:10:14.326167-06
+097ae40b-0834-4661-9100-4994f04f22ca	e12adb03-f62f-4c28-9979-f4020b4534a9	54405	Los Patios	f	t	2026-02-21 07:10:14.326167-06
+160c1c7b-9c96-456f-8036-4ad6eb2a3bfb	e12adb03-f62f-4c28-9979-f4020b4534a9	54418	Lourdes	f	t	2026-02-21 07:10:14.326167-06
+acef5657-17e2-4142-ad6d-118880f0c631	e12adb03-f62f-4c28-9979-f4020b4534a9	54480	Mutiscua	f	t	2026-02-21 07:10:14.326167-06
+b60b0cc1-815b-4764-8a77-bdd80346b508	e12adb03-f62f-4c28-9979-f4020b4534a9	54498	Ocaña	f	t	2026-02-21 07:10:14.326167-06
+c8c3c805-1af7-439d-92f2-af7e1e649dd9	e12adb03-f62f-4c28-9979-f4020b4534a9	54518	Pamplona	f	t	2026-02-21 07:10:14.326167-06
+2f6a0d36-cfa7-4634-8093-90e5d911b7f8	e12adb03-f62f-4c28-9979-f4020b4534a9	54520	Pamplonita	f	t	2026-02-21 07:10:14.326167-06
+06ac6f92-4923-4659-81e7-4541e4ba7270	e12adb03-f62f-4c28-9979-f4020b4534a9	54553	Puerto Santander	f	t	2026-02-21 07:10:14.326167-06
+90d95099-2c72-49f7-8700-c5dd59c2e21f	e12adb03-f62f-4c28-9979-f4020b4534a9	54599	Ragonvalia	f	t	2026-02-21 07:10:14.326167-06
+01978a12-4eb4-4a9b-9a8d-0530a12b48c4	e12adb03-f62f-4c28-9979-f4020b4534a9	54660	Salazar	f	t	2026-02-21 07:10:14.326167-06
+822300f8-5343-42f7-baac-3a1b1f0a518f	e12adb03-f62f-4c28-9979-f4020b4534a9	54670	San Calixto	f	t	2026-02-21 07:10:14.326167-06
+27b52279-4785-42d8-a14d-640cfd98d9db	e12adb03-f62f-4c28-9979-f4020b4534a9	54673	San Cayetano	f	t	2026-02-21 07:10:14.326167-06
+d8c2eb62-7df6-4765-ba5c-e76495abee95	e12adb03-f62f-4c28-9979-f4020b4534a9	54680	Santiago	f	t	2026-02-21 07:10:14.326167-06
+e37712ed-fd6f-43f4-9b4e-5bbbf83295db	e12adb03-f62f-4c28-9979-f4020b4534a9	54720	Sardinata	f	t	2026-02-21 07:10:14.326167-06
+9b70fec2-1250-4d26-be66-87d5c505d2cd	e12adb03-f62f-4c28-9979-f4020b4534a9	54743	Silos	f	t	2026-02-21 07:10:14.326167-06
+0e6f5b41-e63e-4b68-9ea2-51d042ee1eeb	e12adb03-f62f-4c28-9979-f4020b4534a9	54800	Teorama	f	t	2026-02-21 07:10:14.326167-06
+9337d510-1d51-42b0-995a-4774928f62dc	e12adb03-f62f-4c28-9979-f4020b4534a9	54810	Tibú	f	t	2026-02-21 07:10:14.326167-06
+7c4a959b-9747-418f-aa3b-7bbef269c751	e12adb03-f62f-4c28-9979-f4020b4534a9	54820	Toledo	f	t	2026-02-21 07:10:14.326167-06
+6f2b8297-6ac4-4cc5-bf11-220c1298f7f3	e12adb03-f62f-4c28-9979-f4020b4534a9	54871	Villa Caro	f	t	2026-02-21 07:10:14.326167-06
+1167e70e-4f3d-49f1-82e8-f83f03c9c475	e12adb03-f62f-4c28-9979-f4020b4534a9	54874	Villa del Rosario	f	t	2026-02-21 07:10:14.326167-06
+79ed1c51-c79c-4933-af7c-bd0e7dc594b2	8368e4c2-fd63-4519-808a-ed74404433a6	63001	Armenia	t	t	2026-02-21 07:10:14.326167-06
+40966582-635e-4d10-a12a-23b3e7a54714	8368e4c2-fd63-4519-808a-ed74404433a6	63111	Buenavista	f	t	2026-02-21 07:10:14.326167-06
+462e8aad-9984-4f9f-924d-ae41874cca49	8368e4c2-fd63-4519-808a-ed74404433a6	63130	Calarcá	f	t	2026-02-21 07:10:14.326167-06
+432ff7e0-e6bb-4d68-bba7-61eeb6d66194	8368e4c2-fd63-4519-808a-ed74404433a6	63190	Circasia	f	t	2026-02-21 07:10:14.326167-06
+f6849ea2-5503-4959-be2c-7715b12728a1	8368e4c2-fd63-4519-808a-ed74404433a6	63212	Córdoba	f	t	2026-02-21 07:10:14.326167-06
+433f1e5d-8b8b-4ba9-ad48-4b3dbe72fd1e	8368e4c2-fd63-4519-808a-ed74404433a6	63272	Filandia	f	t	2026-02-21 07:10:14.326167-06
+5178ff15-fca5-4928-b9f1-57b1fcc9641d	8368e4c2-fd63-4519-808a-ed74404433a6	63302	Génova	f	t	2026-02-21 07:10:14.326167-06
+534ce20b-51de-470f-bd97-eef7f91c5e4c	8368e4c2-fd63-4519-808a-ed74404433a6	63401	La Tebaida	f	t	2026-02-21 07:10:14.326167-06
+c5e78cb5-2436-4767-966e-83e71088bb58	8368e4c2-fd63-4519-808a-ed74404433a6	63470	Montenegro	f	t	2026-02-21 07:10:14.326167-06
+3b39c090-9b31-48b8-90fb-9b90c20405c4	8368e4c2-fd63-4519-808a-ed74404433a6	63548	Pijao	f	t	2026-02-21 07:10:14.326167-06
+b1c6801c-1493-4ce2-bccb-b2298164e58c	8368e4c2-fd63-4519-808a-ed74404433a6	63594	Quimbaya	f	t	2026-02-21 07:10:14.326167-06
+82354da8-e260-46e2-80a2-c88614009f71	8368e4c2-fd63-4519-808a-ed74404433a6	63690	Salento	f	t	2026-02-21 07:10:14.326167-06
+cc69dcdd-c21a-4b2c-a65c-74f562f1183e	a1715f83-a9a5-4f73-868c-c5c704ee76af	66001	Pereira	t	t	2026-02-21 07:10:14.326167-06
+a1fa0f7a-8b0d-4668-8020-d5a509724109	a1715f83-a9a5-4f73-868c-c5c704ee76af	66045	Apía	f	t	2026-02-21 07:10:14.326167-06
+a7514be8-e2bf-48fc-9cca-8694fd24e66e	a1715f83-a9a5-4f73-868c-c5c704ee76af	66075	Balboa	f	t	2026-02-21 07:10:14.326167-06
+df3894ff-48ea-4c72-bed8-019a612d8c2f	a1715f83-a9a5-4f73-868c-c5c704ee76af	66088	Belén de Umbría	f	t	2026-02-21 07:10:14.326167-06
+eb75bf59-b6d4-4b92-aac8-881894862c74	a1715f83-a9a5-4f73-868c-c5c704ee76af	66170	Dosquebradas	f	t	2026-02-21 07:10:14.326167-06
+cdc42115-97af-47b5-ae23-40ed30f64ff7	a1715f83-a9a5-4f73-868c-c5c704ee76af	66318	Guática	f	t	2026-02-21 07:10:14.326167-06
+e0848224-3b1a-4706-8e3c-5297601617e5	a1715f83-a9a5-4f73-868c-c5c704ee76af	66383	La Celia	f	t	2026-02-21 07:10:14.326167-06
+34bd3e3a-e68c-4c61-b5bf-a7b255940f58	a1715f83-a9a5-4f73-868c-c5c704ee76af	66400	La Virginia	f	t	2026-02-21 07:10:14.326167-06
+53dd87df-1ed5-40be-9165-e376ad954bc2	a1715f83-a9a5-4f73-868c-c5c704ee76af	66440	Marsella	f	t	2026-02-21 07:10:14.326167-06
+28e9b220-0d25-4378-8ee8-3ee1f02373f7	a1715f83-a9a5-4f73-868c-c5c704ee76af	66456	Mistrató	f	t	2026-02-21 07:10:14.326167-06
+acdf3cf7-a9ba-45cd-ba76-9837614d2fff	a1715f83-a9a5-4f73-868c-c5c704ee76af	66572	Pueblo Rico	f	t	2026-02-21 07:10:14.326167-06
+d7b6204a-764d-46c4-ab1a-7b54492308f2	a1715f83-a9a5-4f73-868c-c5c704ee76af	66594	Quinchía	f	t	2026-02-21 07:10:14.326167-06
+60f1b743-7a05-47bc-b5cb-1ee0a866781d	a1715f83-a9a5-4f73-868c-c5c704ee76af	66682	Santa Rosa de Cabal	f	t	2026-02-21 07:10:14.326167-06
+6e67e390-12df-480a-ac8f-89acc97654c5	a1715f83-a9a5-4f73-868c-c5c704ee76af	66687	Santuario	f	t	2026-02-21 07:10:14.326167-06
+2dec1336-fe61-4a2d-92aa-9d739ecb9802	20f27050-56bc-4ce6-861c-2f56ed62ad34	68001	Bucaramanga	t	t	2026-02-21 07:10:14.326167-06
+07fcd9f4-6a2c-4435-a6e1-5b0fde4250a2	20f27050-56bc-4ce6-861c-2f56ed62ad34	68013	Aguada	f	t	2026-02-21 07:10:14.326167-06
+4107f88f-4495-405f-bb76-1ede016e77b1	20f27050-56bc-4ce6-861c-2f56ed62ad34	68020	Albania	f	t	2026-02-21 07:10:14.326167-06
+bc3ac3b1-39df-46aa-8eba-7c20b38e6bd3	20f27050-56bc-4ce6-861c-2f56ed62ad34	68051	Aratoca	f	t	2026-02-21 07:10:14.326167-06
+126db130-d046-44ce-b48a-67216485d2e6	20f27050-56bc-4ce6-861c-2f56ed62ad34	68077	Barbosa	f	t	2026-02-21 07:10:14.326167-06
+6361d098-87e9-49d9-8f0c-8803e6a57889	20f27050-56bc-4ce6-861c-2f56ed62ad34	68079	Barichara	f	t	2026-02-21 07:10:14.326167-06
+c7ec01e9-bfdc-4559-9071-746919465792	20f27050-56bc-4ce6-861c-2f56ed62ad34	68081	Barrancabermeja	f	t	2026-02-21 07:10:14.326167-06
+02aaa12e-fd4f-4e27-8b30-53fc5f224555	20f27050-56bc-4ce6-861c-2f56ed62ad34	68092	Betulia	f	t	2026-02-21 07:10:14.326167-06
+b5d213db-7457-4aaa-9c8d-4ba6e67ca875	20f27050-56bc-4ce6-861c-2f56ed62ad34	68101	Bolívar	f	t	2026-02-21 07:10:14.326167-06
+b966eb01-7159-4597-9aba-9089722bc4ed	20f27050-56bc-4ce6-861c-2f56ed62ad34	68121	Cabrera	f	t	2026-02-21 07:10:14.326167-06
+847cbded-cdec-4e3c-8c9f-a17a65de7153	20f27050-56bc-4ce6-861c-2f56ed62ad34	68132	California	f	t	2026-02-21 07:10:14.326167-06
+b74af106-6b50-4926-b86b-21c4488cc26b	20f27050-56bc-4ce6-861c-2f56ed62ad34	68147	Capitanejo	f	t	2026-02-21 07:10:14.326167-06
+d00884af-8923-4998-886e-72d622afe3ca	20f27050-56bc-4ce6-861c-2f56ed62ad34	68152	Carcasí	f	t	2026-02-21 07:10:14.326167-06
+e917b488-62a0-421e-9eae-3f78df7482c9	20f27050-56bc-4ce6-861c-2f56ed62ad34	68160	Cepitá	f	t	2026-02-21 07:10:14.326167-06
+0630a4c2-c638-4b08-bb28-e271f3242256	20f27050-56bc-4ce6-861c-2f56ed62ad34	68162	Cerrito	f	t	2026-02-21 07:10:14.326167-06
+9fa97624-91da-4543-861e-026ef89df219	20f27050-56bc-4ce6-861c-2f56ed62ad34	68167	Charalá	f	t	2026-02-21 07:10:14.326167-06
+a1020fd9-999b-4590-9712-8c514a1de12a	20f27050-56bc-4ce6-861c-2f56ed62ad34	68169	Charta	f	t	2026-02-21 07:10:14.326167-06
+5f780336-4d7a-4c16-a298-912567209022	20f27050-56bc-4ce6-861c-2f56ed62ad34	68176	Chima	f	t	2026-02-21 07:10:14.326167-06
+f8f2e26f-8ffd-43a1-9564-94d26d27b5c4	20f27050-56bc-4ce6-861c-2f56ed62ad34	68179	Chipatá	f	t	2026-02-21 07:10:14.326167-06
+1298f3a7-51aa-4d08-97d4-0c74c40e9cfe	20f27050-56bc-4ce6-861c-2f56ed62ad34	68190	Cimitarra	f	t	2026-02-21 07:10:14.326167-06
+e216da81-7e28-46b9-b532-2b3739980277	20f27050-56bc-4ce6-861c-2f56ed62ad34	68207	Concepción	f	t	2026-02-21 07:10:14.326167-06
+c814548b-d6fb-4105-936b-78aaf44721df	20f27050-56bc-4ce6-861c-2f56ed62ad34	68209	Confines	f	t	2026-02-21 07:10:14.326167-06
+eba7a060-291e-42ff-addd-6e28c6a07101	20f27050-56bc-4ce6-861c-2f56ed62ad34	68211	Contratación	f	t	2026-02-21 07:10:14.326167-06
+034969a5-539b-4fbd-827e-b3b91e180e2b	20f27050-56bc-4ce6-861c-2f56ed62ad34	68217	Coromoro	f	t	2026-02-21 07:10:14.326167-06
+2a5692c1-feda-46d3-a7c0-1f0d152bad59	20f27050-56bc-4ce6-861c-2f56ed62ad34	68229	Curití	f	t	2026-02-21 07:10:14.326167-06
+93d0f314-389c-4940-abef-ad34504fc7d1	20f27050-56bc-4ce6-861c-2f56ed62ad34	68235	El Carmen de Chucurí	f	t	2026-02-21 07:10:14.326167-06
+33933ce4-fd74-43e4-920e-e2a8df3ef7da	20f27050-56bc-4ce6-861c-2f56ed62ad34	68245	El Guacamayo	f	t	2026-02-21 07:10:14.326167-06
+ef685f6d-c2e6-434e-a7fd-e691f2e18797	20f27050-56bc-4ce6-861c-2f56ed62ad34	68250	El Peñón	f	t	2026-02-21 07:10:14.326167-06
+cf6cdf39-7c6c-4f9b-b374-1e3f339ad364	20f27050-56bc-4ce6-861c-2f56ed62ad34	68255	El Playón	f	t	2026-02-21 07:10:14.326167-06
+f9364997-fc93-4a66-8ad9-87ec5dc0db34	20f27050-56bc-4ce6-861c-2f56ed62ad34	68264	Encino	f	t	2026-02-21 07:10:14.326167-06
+5b60a71b-9991-40fd-98e7-e83607ce856c	20f27050-56bc-4ce6-861c-2f56ed62ad34	68266	Enciso	f	t	2026-02-21 07:10:14.326167-06
+a285f7c4-252c-4d03-a959-5da41e9d9e85	20f27050-56bc-4ce6-861c-2f56ed62ad34	68271	Florián	f	t	2026-02-21 07:10:14.326167-06
+835abdac-365a-45c5-84df-5f2e1afdbbed	20f27050-56bc-4ce6-861c-2f56ed62ad34	68276	Floridablanca	f	t	2026-02-21 07:10:14.326167-06
+a2d9b10d-d29f-4004-8061-504f54d23f01	20f27050-56bc-4ce6-861c-2f56ed62ad34	68296	Galán	f	t	2026-02-21 07:10:14.326167-06
+da15b0b3-ae23-4305-930f-a2081f92af73	20f27050-56bc-4ce6-861c-2f56ed62ad34	68298	Gámbita	f	t	2026-02-21 07:10:14.326167-06
+1fd71702-fea6-49bd-b223-1e741d14f0d5	20f27050-56bc-4ce6-861c-2f56ed62ad34	68307	Girón	f	t	2026-02-21 07:10:14.326167-06
+a1217857-614d-412b-b0aa-5a156986168c	20f27050-56bc-4ce6-861c-2f56ed62ad34	68318	Guaca	f	t	2026-02-21 07:10:14.326167-06
+66dd2b89-b91c-4765-a322-7f99b697328b	20f27050-56bc-4ce6-861c-2f56ed62ad34	68320	Guadalupe	f	t	2026-02-21 07:10:14.326167-06
+a1c64a69-7611-4b6f-b6b3-4d203d0af065	20f27050-56bc-4ce6-861c-2f56ed62ad34	68322	Guapotá	f	t	2026-02-21 07:10:14.326167-06
+c510e1be-35d7-4b59-9140-d58da6c3895e	20f27050-56bc-4ce6-861c-2f56ed62ad34	68324	Guavatá	f	t	2026-02-21 07:10:14.326167-06
+e7f683b3-747d-41e8-a557-c58d1fdc2153	20f27050-56bc-4ce6-861c-2f56ed62ad34	68327	Güepsa	f	t	2026-02-21 07:10:14.326167-06
+dd89c488-66e4-4a28-a001-d6ad0f596589	20f27050-56bc-4ce6-861c-2f56ed62ad34	68344	Hato	f	t	2026-02-21 07:10:14.326167-06
+51e51cce-93b8-45c3-8e6e-c3751e252361	20f27050-56bc-4ce6-861c-2f56ed62ad34	68368	Jesús María	f	t	2026-02-21 07:10:14.326167-06
+4cf7b6ce-2c49-4ab8-91a7-b13e0ddfd540	20f27050-56bc-4ce6-861c-2f56ed62ad34	68370	Jordán	f	t	2026-02-21 07:10:14.326167-06
+f99163f9-003c-4730-8f99-4b0385cad2ac	20f27050-56bc-4ce6-861c-2f56ed62ad34	68377	La Belleza	f	t	2026-02-21 07:10:14.326167-06
+b43e6650-3293-49e9-85f9-f2b513e18b92	20f27050-56bc-4ce6-861c-2f56ed62ad34	68385	Landázuri	f	t	2026-02-21 07:10:14.326167-06
+1aa8f1fb-de73-4653-9a2e-9492c8dc1524	20f27050-56bc-4ce6-861c-2f56ed62ad34	68397	La Paz	f	t	2026-02-21 07:10:14.326167-06
+624c2b6e-ef51-40f8-8c06-474ab40a7afd	20f27050-56bc-4ce6-861c-2f56ed62ad34	68406	Lebrija	f	t	2026-02-21 07:10:14.326167-06
+367d3354-0cc5-429b-a979-4fea69ade834	20f27050-56bc-4ce6-861c-2f56ed62ad34	68418	Los Santos	f	t	2026-02-21 07:10:14.326167-06
+be8af3a3-d667-4ad2-a13b-146a04761d87	20f27050-56bc-4ce6-861c-2f56ed62ad34	68425	Macaravita	f	t	2026-02-21 07:10:14.326167-06
+35805e64-a7fa-4094-9082-84db6a2c254f	20f27050-56bc-4ce6-861c-2f56ed62ad34	68432	Málaga	f	t	2026-02-21 07:10:14.326167-06
+0ebd89ee-69cd-47ea-895c-9a7c01ed80fd	20f27050-56bc-4ce6-861c-2f56ed62ad34	68444	Matanza	f	t	2026-02-21 07:10:14.326167-06
+f90def8a-86b0-4cbd-9d43-4bb8b0aefabe	20f27050-56bc-4ce6-861c-2f56ed62ad34	68464	Mogotes	f	t	2026-02-21 07:10:14.326167-06
+27ff6263-4311-4966-938c-8f473996bac9	20f27050-56bc-4ce6-861c-2f56ed62ad34	68468	Molagavita	f	t	2026-02-21 07:10:14.326167-06
+f5e89938-97c6-4df6-953b-beb675c52034	20f27050-56bc-4ce6-861c-2f56ed62ad34	68498	Ocamonte	f	t	2026-02-21 07:10:14.326167-06
+f83ec75b-4b8f-48b6-b3f9-c3f8f9c45a05	20f27050-56bc-4ce6-861c-2f56ed62ad34	68500	Oiba	f	t	2026-02-21 07:10:14.326167-06
+85fc7cbb-aaa0-4be8-bf48-91cbf523d282	20f27050-56bc-4ce6-861c-2f56ed62ad34	68502	Onzaga	f	t	2026-02-21 07:10:14.326167-06
+877a5bd0-a762-44d0-9350-605f7f06d55b	20f27050-56bc-4ce6-861c-2f56ed62ad34	68522	Palmar	f	t	2026-02-21 07:10:14.326167-06
+470ed2bd-8d5c-42dc-bfb0-4cae79adfe27	20f27050-56bc-4ce6-861c-2f56ed62ad34	68524	Palmas del Socorro	f	t	2026-02-21 07:10:14.326167-06
+c9af46d2-8478-466d-a281-816d7ca3eb0f	20f27050-56bc-4ce6-861c-2f56ed62ad34	68533	Páramo	f	t	2026-02-21 07:10:14.326167-06
+9866c712-47cb-4231-898f-00bba2d299a0	20f27050-56bc-4ce6-861c-2f56ed62ad34	68547	Piedecuesta	f	t	2026-02-21 07:10:14.326167-06
+37cf440a-a4b9-4a2c-90d3-fe1bcc55a4ba	20f27050-56bc-4ce6-861c-2f56ed62ad34	68549	Pinchote	f	t	2026-02-21 07:10:14.326167-06
+cf667794-f3f9-42ad-9981-e4181c7a24ba	20f27050-56bc-4ce6-861c-2f56ed62ad34	68572	Puente Nacional	f	t	2026-02-21 07:10:14.326167-06
+9ef7e430-d2d3-4188-945f-8788f970b41f	20f27050-56bc-4ce6-861c-2f56ed62ad34	68573	Puerto Parra	f	t	2026-02-21 07:10:14.326167-06
+a3c3aa39-64a5-430c-bb90-406c2df93a9b	20f27050-56bc-4ce6-861c-2f56ed62ad34	68575	Puerto Wilches	f	t	2026-02-21 07:10:14.326167-06
+097ca55e-89fe-40f9-9042-2dca3e216423	20f27050-56bc-4ce6-861c-2f56ed62ad34	68615	Rionegro	f	t	2026-02-21 07:10:14.326167-06
+34492387-2ed9-4058-97d4-63c103a86492	20f27050-56bc-4ce6-861c-2f56ed62ad34	68655	Sabana de Torres	f	t	2026-02-21 07:10:14.326167-06
+f967ae47-dade-4c34-85e1-0337b5816ac4	20f27050-56bc-4ce6-861c-2f56ed62ad34	68669	San Andrés	f	t	2026-02-21 07:10:14.326167-06
+40ca198f-dfdb-424c-b8ea-fe3283f0a783	20f27050-56bc-4ce6-861c-2f56ed62ad34	68673	San Benito	f	t	2026-02-21 07:10:14.326167-06
+b3090d1f-77ac-4d95-9f61-1830a94fc260	20f27050-56bc-4ce6-861c-2f56ed62ad34	68679	San Gil	f	t	2026-02-21 07:10:14.326167-06
+3b299185-9e5b-4cc6-aa42-fb76cf9ee2ba	20f27050-56bc-4ce6-861c-2f56ed62ad34	68682	San Joaquín	f	t	2026-02-21 07:10:14.326167-06
+b9184cba-2317-488e-ab21-0a554214ee11	20f27050-56bc-4ce6-861c-2f56ed62ad34	68684	San José de Miranda	f	t	2026-02-21 07:10:14.326167-06
+95dfe680-44f1-464d-99b4-b8edcb6e91b3	20f27050-56bc-4ce6-861c-2f56ed62ad34	68686	San Miguel	f	t	2026-02-21 07:10:14.326167-06
+29c70972-bc66-4ca6-b747-51d67ddc7ae0	20f27050-56bc-4ce6-861c-2f56ed62ad34	68689	San Vicente de Chucurí	f	t	2026-02-21 07:10:14.326167-06
+d4867734-16ca-4b06-afc4-cb609ff52207	20f27050-56bc-4ce6-861c-2f56ed62ad34	68705	Santa Bárbara	f	t	2026-02-21 07:10:14.326167-06
+e67a231e-8c13-451d-901a-b4cfa9060d20	20f27050-56bc-4ce6-861c-2f56ed62ad34	68720	Santa Helena del Opón	f	t	2026-02-21 07:10:14.326167-06
+eba82562-b329-4698-bff0-a3c085012e8c	20f27050-56bc-4ce6-861c-2f56ed62ad34	68745	Simacota	f	t	2026-02-21 07:10:14.326167-06
+ac28e7cf-bffa-45d3-a77d-64ad710143a4	20f27050-56bc-4ce6-861c-2f56ed62ad34	68755	Socorro	f	t	2026-02-21 07:10:14.326167-06
+0df792f7-057d-4aa7-ade9-61eae60085db	20f27050-56bc-4ce6-861c-2f56ed62ad34	68770	Suaita	f	t	2026-02-21 07:10:14.326167-06
+b1fbc8d0-79d8-4fd3-97f7-b93f3d8c7df8	20f27050-56bc-4ce6-861c-2f56ed62ad34	68773	Sucre	f	t	2026-02-21 07:10:14.326167-06
+ec901cea-6780-4500-b46b-c31d64ebefe9	20f27050-56bc-4ce6-861c-2f56ed62ad34	68780	Suratá	f	t	2026-02-21 07:10:14.326167-06
+cbafa1a2-4a32-43c4-99a5-a2c15979c2dc	20f27050-56bc-4ce6-861c-2f56ed62ad34	68820	Tona	f	t	2026-02-21 07:10:14.326167-06
+84178b93-3da6-4b5c-badc-58e9d0eb59f3	20f27050-56bc-4ce6-861c-2f56ed62ad34	68855	Valle de San José	f	t	2026-02-21 07:10:14.326167-06
+05cbf479-ea32-44d9-899d-ca2d31aeafd5	20f27050-56bc-4ce6-861c-2f56ed62ad34	68861	Vélez	f	t	2026-02-21 07:10:14.326167-06
+c7e70b60-bb6b-4910-bbff-ed3c61b3714f	20f27050-56bc-4ce6-861c-2f56ed62ad34	68867	Vetas	f	t	2026-02-21 07:10:14.326167-06
+cbbdf557-6f36-4fe8-8aa9-8d4bf33e8789	20f27050-56bc-4ce6-861c-2f56ed62ad34	68872	Villanueva	f	t	2026-02-21 07:10:14.326167-06
+cba7b240-55ee-4b7f-9ddf-c0e8e885b52e	20f27050-56bc-4ce6-861c-2f56ed62ad34	68895	Zapatoca	f	t	2026-02-21 07:10:14.326167-06
+2bcc2139-f8a3-4950-8691-8fca290a3452	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70001	Sincelejo	t	t	2026-02-21 07:10:14.326167-06
+be219ee5-948e-4c74-b589-7bb06e5905fb	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70110	Buenavista	f	t	2026-02-21 07:10:14.326167-06
+f4e59c60-e5f8-4e8c-8576-87aeb9647e3a	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70124	Caimito	f	t	2026-02-21 07:10:14.326167-06
+1eb79e3f-959e-49d1-af8a-a20c33494535	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70204	Colosó	f	t	2026-02-21 07:10:14.326167-06
+53692a0c-3a29-4ea5-9fa4-19ffd8c92d76	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70215	Corozal	f	t	2026-02-21 07:10:14.326167-06
+5eb49f23-c1a7-488b-9a09-461b66209d16	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70221	Coveñas	f	t	2026-02-21 07:10:14.326167-06
+8c08c708-7f82-4ad2-b9d4-60e652eed7cb	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70230	Chalán	f	t	2026-02-21 07:10:14.326167-06
+d42c1ef3-8454-44df-8acb-ecce8fd0fa6b	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70233	El Roble	f	t	2026-02-21 07:10:14.326167-06
+4cf24b23-9d5e-4c6c-92a8-e5fdaa9bfb7c	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70235	Galeras	f	t	2026-02-21 07:10:14.326167-06
+f665ed85-10b3-44b8-aab5-92391946855f	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70265	Guaranda	f	t	2026-02-21 07:10:14.326167-06
+180db2f4-bb8b-45e4-a77e-08def373fe5c	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70400	La Unión	f	t	2026-02-21 07:10:14.326167-06
+bfbad92a-9de8-4299-b3e5-3148f57b8d63	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70418	Los Palmitos	f	t	2026-02-21 07:10:14.326167-06
+0634285f-3d67-4a5e-beda-3d6b9ae83de7	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70429	Majagual	f	t	2026-02-21 07:10:14.326167-06
+6094c950-819e-41b6-a8e5-730296b62d23	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70473	Morroa	f	t	2026-02-21 07:10:14.326167-06
+7c6f543d-bd8e-4430-91cc-be1b0b0dd87e	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70508	Ovejas	f	t	2026-02-21 07:10:14.326167-06
+716d74e7-ba0c-47b9-820a-1a3dfb057233	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70523	Palmito	f	t	2026-02-21 07:10:14.326167-06
+5a7f443d-93e3-47a4-b6fe-3b23e63adbe1	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70670	Sampués	f	t	2026-02-21 07:10:14.326167-06
+889fa7e0-c63d-4c6a-a00d-ef68cc89147a	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70678	San Benito Abad	f	t	2026-02-21 07:10:14.326167-06
+09a10a8e-9656-4b5b-be33-cf3e57d78f1b	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70702	San Juan de Betulia	f	t	2026-02-21 07:10:14.326167-06
+c8c03610-d218-454c-b2e8-6072c9b172fd	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70708	San Marcos	f	t	2026-02-21 07:10:14.326167-06
+0ff5d72e-bafd-4adb-bf61-7bbd9ce3949f	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70713	San Onofre	f	t	2026-02-21 07:10:14.326167-06
+16f21290-8266-4e6c-b37a-e9915fcbee74	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70717	San Pedro	f	t	2026-02-21 07:10:14.326167-06
+ceaf3758-9750-4ffc-8682-d11cad17e8d9	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70742	Sincé	f	t	2026-02-21 07:10:14.326167-06
+ed4bc1ea-5ea2-4e80-8761-9ec953849ff1	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70771	Sucre	f	t	2026-02-21 07:10:14.326167-06
+b1dfb8d6-a9d0-4dc4-a18d-4510d1056d46	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70820	Tolú	f	t	2026-02-21 07:10:14.326167-06
+194d5fe3-11e4-4fb1-80d4-44e244a21e74	2bbe5ce3-2447-444f-967c-4139ea8aa5a2	70823	Tolú Viejo	f	t	2026-02-21 07:10:14.326167-06
+db64d825-e5ff-4377-b1c3-86937bf681da	9f839458-af97-4b84-b41d-fd763e1f8544	73001	Ibagué	t	t	2026-02-21 07:10:14.326167-06
+1bf4d2ed-1588-475c-9611-cd0add8f3bf5	9f839458-af97-4b84-b41d-fd763e1f8544	73024	Alpujarra	f	t	2026-02-21 07:10:14.326167-06
+33ca8fa7-2066-4be1-b12a-dba3fa473214	9f839458-af97-4b84-b41d-fd763e1f8544	73026	Alvarado	f	t	2026-02-21 07:10:14.326167-06
+075757a5-91f7-40c3-b512-9e376938b639	9f839458-af97-4b84-b41d-fd763e1f8544	73030	Ambalema	f	t	2026-02-21 07:10:14.326167-06
+3847a575-5275-4e78-8989-da81f0abe28a	9f839458-af97-4b84-b41d-fd763e1f8544	73043	Anzoátegui	f	t	2026-02-21 07:10:14.326167-06
+7aebc105-09f1-4f20-af54-3c14a436168e	9f839458-af97-4b84-b41d-fd763e1f8544	73055	Armero	f	t	2026-02-21 07:10:14.326167-06
+b714e7f1-f802-49ea-bbf6-84383ef1dbc4	9f839458-af97-4b84-b41d-fd763e1f8544	73067	Ataco	f	t	2026-02-21 07:10:14.326167-06
+bc5445d9-1ef9-43c4-a6e8-a7f34e1e42ea	9f839458-af97-4b84-b41d-fd763e1f8544	73124	Cajamarca	f	t	2026-02-21 07:10:14.326167-06
+09f812fe-8409-4b4f-bb70-e5dd8a95456f	9f839458-af97-4b84-b41d-fd763e1f8544	73148	Carmen de Apicalá	f	t	2026-02-21 07:10:14.326167-06
+5754a603-c810-491b-938f-94b68dc189f4	9f839458-af97-4b84-b41d-fd763e1f8544	73152	Casabianca	f	t	2026-02-21 07:10:14.326167-06
+4955b0ba-5ba1-4dce-ad23-06590c9c50cb	9f839458-af97-4b84-b41d-fd763e1f8544	73168	Chaparral	f	t	2026-02-21 07:10:14.326167-06
+4135ddf5-7be6-4095-b75c-af7afed5d027	9f839458-af97-4b84-b41d-fd763e1f8544	73200	Coello	f	t	2026-02-21 07:10:14.326167-06
+1cc925be-bd10-4ccd-8547-96f96b3dba86	9f839458-af97-4b84-b41d-fd763e1f8544	73217	Coyaima	f	t	2026-02-21 07:10:14.326167-06
+74ab9c71-cdc8-4578-b8a7-9feecf9e17dc	9f839458-af97-4b84-b41d-fd763e1f8544	73226	Cunday	f	t	2026-02-21 07:10:14.326167-06
+66defed9-7643-4481-a237-72f306dcd1e0	9f839458-af97-4b84-b41d-fd763e1f8544	73236	Dolores	f	t	2026-02-21 07:10:14.326167-06
+e640de30-ae12-4877-baae-4bfaab740573	9f839458-af97-4b84-b41d-fd763e1f8544	73268	Espinal	f	t	2026-02-21 07:10:14.326167-06
+ab9f7070-8910-4863-8f2b-31f093ca4a1e	9f839458-af97-4b84-b41d-fd763e1f8544	73270	Falan	f	t	2026-02-21 07:10:14.326167-06
+042e2be7-c69b-4b8d-8bb5-c96db024bb79	9f839458-af97-4b84-b41d-fd763e1f8544	73275	Flandes	f	t	2026-02-21 07:10:14.326167-06
+8f084a33-c3d6-4129-9c45-d6980e48f653	9f839458-af97-4b84-b41d-fd763e1f8544	73283	Fresno	f	t	2026-02-21 07:10:14.326167-06
+7a1e028f-62a0-401b-9c25-39034b98c3f3	9f839458-af97-4b84-b41d-fd763e1f8544	73319	Guamo	f	t	2026-02-21 07:10:14.326167-06
+03531f9b-f77a-4ab4-bd0a-04aa5f857c43	9f839458-af97-4b84-b41d-fd763e1f8544	73347	Herveo	f	t	2026-02-21 07:10:14.326167-06
+c913a27c-caf8-4d11-8448-b295c4d49742	9f839458-af97-4b84-b41d-fd763e1f8544	73349	Honda	f	t	2026-02-21 07:10:14.326167-06
+ee40c578-9ef1-41a5-9d2f-3465ae3b06cf	9f839458-af97-4b84-b41d-fd763e1f8544	73352	Icononzo	f	t	2026-02-21 07:10:14.326167-06
+d16de5de-88c2-4aae-bc19-9039b98c6961	9f839458-af97-4b84-b41d-fd763e1f8544	73408	Lérida	f	t	2026-02-21 07:10:14.326167-06
+f6bd0865-a059-4681-b000-a82e4e6047dc	9f839458-af97-4b84-b41d-fd763e1f8544	73411	Líbano	f	t	2026-02-21 07:10:14.326167-06
+410c281a-5780-4c5b-9d77-6f709eb978e4	9f839458-af97-4b84-b41d-fd763e1f8544	73443	Mariquita	f	t	2026-02-21 07:10:14.326167-06
+7919448f-d312-4d19-8d74-ed6fc8b345ce	9f839458-af97-4b84-b41d-fd763e1f8544	73449	Melgar	f	t	2026-02-21 07:10:14.326167-06
+9d96ac3c-3e1a-4137-9979-c6ad3a6c50c3	9f839458-af97-4b84-b41d-fd763e1f8544	73461	Murillo	f	t	2026-02-21 07:10:14.326167-06
+b9dceb33-7a81-44a7-a26c-837a4598de79	9f839458-af97-4b84-b41d-fd763e1f8544	73483	Natagaima	f	t	2026-02-21 07:10:14.326167-06
+3d3d74c1-0497-4fbb-a70c-31de3463f3c9	9f839458-af97-4b84-b41d-fd763e1f8544	73504	Ortega	f	t	2026-02-21 07:10:14.326167-06
+78472d7f-4301-4b6b-b8ef-bca19c2a4fac	9f839458-af97-4b84-b41d-fd763e1f8544	73520	Palocabildo	f	t	2026-02-21 07:10:14.326167-06
+260d31c1-870a-4961-b66c-2cfddd8094a0	9f839458-af97-4b84-b41d-fd763e1f8544	73547	Piedras	f	t	2026-02-21 07:10:14.326167-06
+bb757bf7-9af6-42ba-92df-f956afd90eec	9f839458-af97-4b84-b41d-fd763e1f8544	73555	Planadas	f	t	2026-02-21 07:10:14.326167-06
+82b45658-d080-4e90-963c-e863ef1943a6	9f839458-af97-4b84-b41d-fd763e1f8544	73563	Prado	f	t	2026-02-21 07:10:14.326167-06
+87058097-9192-489a-9430-fe731e000996	9f839458-af97-4b84-b41d-fd763e1f8544	73585	Purificación	f	t	2026-02-21 07:10:14.326167-06
+b2e5805c-bf35-46d8-8d5a-c497eb130d03	9f839458-af97-4b84-b41d-fd763e1f8544	73616	Rio Blanco	f	t	2026-02-21 07:10:14.326167-06
+63f409f0-9f49-46b4-99ed-546440fe1d85	9f839458-af97-4b84-b41d-fd763e1f8544	73622	Roncesvalles	f	t	2026-02-21 07:10:14.326167-06
+691f339f-fd40-47cd-96e5-304593c7b40d	9f839458-af97-4b84-b41d-fd763e1f8544	73624	Rovira	f	t	2026-02-21 07:10:14.326167-06
+9ff76634-ede7-42b1-891f-9f9c0bfd2186	9f839458-af97-4b84-b41d-fd763e1f8544	73671	Saldaña	f	t	2026-02-21 07:10:14.326167-06
+e6921aaf-4346-45c7-8c76-fa028930ba53	9f839458-af97-4b84-b41d-fd763e1f8544	73675	San Antonio	f	t	2026-02-21 07:10:14.326167-06
+3933afc8-df17-4829-a13e-61f36f25e946	9f839458-af97-4b84-b41d-fd763e1f8544	73678	San Luis	f	t	2026-02-21 07:10:14.326167-06
+a7515dfe-1db0-4bd2-a363-c70cc0e09fea	9f839458-af97-4b84-b41d-fd763e1f8544	73686	Santa Isabel	f	t	2026-02-21 07:10:14.326167-06
+4ea6c17b-4436-40e1-8f05-500cc25b8615	9f839458-af97-4b84-b41d-fd763e1f8544	73770	Suárez	f	t	2026-02-21 07:10:14.326167-06
+65ba14a2-3031-4c02-a071-b6c44f6af875	9f839458-af97-4b84-b41d-fd763e1f8544	73854	Valle de San Juan	f	t	2026-02-21 07:10:14.326167-06
+04800baf-780f-4fa6-be6c-4bfb49c05ee7	9f839458-af97-4b84-b41d-fd763e1f8544	73861	Venadillo	f	t	2026-02-21 07:10:14.326167-06
+f772eec2-7a76-449d-b681-16d782cab3f3	9f839458-af97-4b84-b41d-fd763e1f8544	73870	Villahermosa	f	t	2026-02-21 07:10:14.326167-06
+a6680400-14bc-470a-a05f-f605ddc1fa74	9f839458-af97-4b84-b41d-fd763e1f8544	73873	Villarrica	f	t	2026-02-21 07:10:14.326167-06
+148d13ee-9932-4865-9271-623b28f89227	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76001	Cali	t	t	2026-02-21 07:10:14.326167-06
+f34f5bc3-8cdd-430d-bb19-4b5f4d178405	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76020	Alcalá	f	t	2026-02-21 07:10:14.326167-06
+fa66bf2e-5e5a-49e2-a637-63465a0b06db	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76036	Andalucía	f	t	2026-02-21 07:10:14.326167-06
+a690bec1-fe22-426f-9ff6-389e7128b072	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76041	Ansermanuevo	f	t	2026-02-21 07:10:14.326167-06
+093cfa01-4a08-469a-a0e3-d6f646913f91	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76054	Argelia	f	t	2026-02-21 07:10:14.326167-06
+6050dbde-9cb2-42f7-a378-42d6668a389b	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76100	Bolívar	f	t	2026-02-21 07:10:14.326167-06
+61a33c44-07f0-45dd-8fb7-ca0516ff26d7	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76109	Buenaventura	f	t	2026-02-21 07:10:14.326167-06
+456fbac7-7e82-4d80-9d40-b46b15c3e684	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76111	Bugalagrande	f	t	2026-02-21 07:10:14.326167-06
+3487d59e-2d03-4bda-ae8c-c9f650a5bcc8	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76113	Caicedonia	f	t	2026-02-21 07:10:14.326167-06
+db0cc214-8926-445c-b16b-c85368a772fa	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76122	Calima	f	t	2026-02-21 07:10:14.326167-06
+7d922d06-6aa8-4fe0-b9f9-b82b89093c1c	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76126	Candelaria	f	t	2026-02-21 07:10:14.326167-06
+3ba2e93f-7e81-489c-9376-b82a7bdfe420	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76130	Cartago	f	t	2026-02-21 07:10:14.326167-06
+bf6172f0-2554-4af1-95ab-a54c953af815	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76147	Dagua	f	t	2026-02-21 07:10:14.326167-06
+6bc505fb-1ab1-4ba5-93b2-016f7ece6326	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76233	El Cerrito	f	t	2026-02-21 07:10:14.326167-06
+efc5200c-150f-42c5-bd45-f44d4ec951a7	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76243	El Águila	f	t	2026-02-21 07:10:14.326167-06
+eb2b8593-9a6f-42c7-a8cb-6d3d3d8b0e7b	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76246	El Cairo	f	t	2026-02-21 07:10:14.326167-06
+b639a9b6-afc2-49af-8164-216eb8ead72c	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76248	El Dovio	f	t	2026-02-21 07:10:14.326167-06
+6a6001b8-648b-4db0-983c-2b0b8b90a6fd	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76250	Florida	f	t	2026-02-21 07:10:14.326167-06
+515d8ace-9574-404d-bed4-4eb20b70e0cd	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76275	Ginebra	f	t	2026-02-21 07:10:14.326167-06
+19158429-7fde-4479-afaa-fb882246871f	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76306	Guacarí	f	t	2026-02-21 07:10:14.326167-06
+3b62e144-eada-4c32-ab05-22e3d50dbf0c	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76318	Jamundí	f	t	2026-02-21 07:10:14.326167-06
+47025496-f044-492f-839b-d2f2af076be1	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76364	La Cumbre	f	t	2026-02-21 07:10:14.326167-06
+381d2506-f606-460e-9cf5-76db449d5299	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76377	La Unión	f	t	2026-02-21 07:10:14.326167-06
+b552d2f5-a4c1-4bbb-87b2-0f0c10572446	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76400	La Victoria	f	t	2026-02-21 07:10:14.326167-06
+0352560b-f026-426e-9f9f-16fb7fb9e435	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76403	Obando	f	t	2026-02-21 07:10:14.326167-06
+c612f8f1-aea5-44b9-95fb-40db35163bec	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76497	Palmira	f	t	2026-02-21 07:10:14.326167-06
+26326562-6768-4bca-8ba8-177b814397e9	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76520	Pradera	f	t	2026-02-21 07:10:14.326167-06
+e9e571b6-a4d9-4f53-b6f3-21943d987141	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76563	Restrepo	f	t	2026-02-21 07:10:14.326167-06
+0a198e92-7c38-4eb7-a9fe-7a41fe7e7b51	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76606	Riofrío	f	t	2026-02-21 07:10:14.326167-06
+322a5318-d5a0-47a3-ab82-92852f3adc74	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76616	Roldanillo	f	t	2026-02-21 07:10:14.326167-06
+6631c207-6ccb-4894-9033-76e5cb803866	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76622	San Pedro	f	t	2026-02-21 07:10:14.326167-06
+878d9df3-82f2-44f6-956b-da4b3b383a40	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76670	Sevilla	f	t	2026-02-21 07:10:14.326167-06
+484e13b2-ddb7-4f6e-8757-2dc522ef5ecb	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76736	Toro	f	t	2026-02-21 07:10:14.326167-06
+80eb3000-40f3-406e-8d35-ca8884a58992	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76823	Trujillo	f	t	2026-02-21 07:10:14.326167-06
+e036393b-02a3-4298-8a28-62cfd0fef63b	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76828	Tuluá	f	t	2026-02-21 07:10:14.326167-06
+b798cb21-0608-41a9-b311-d25a429519fa	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76834	Ulloa	f	t	2026-02-21 07:10:14.326167-06
+2047ab1c-ac28-42e4-8aef-3c2d5b645c0f	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76845	Versalles	f	t	2026-02-21 07:10:14.326167-06
+11d9c301-1210-464b-9e08-6b2160481cd4	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76863	Vijes	f	t	2026-02-21 07:10:14.326167-06
+8f359704-45e2-4576-9c11-aae0e7caada7	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76869	Yotoco	f	t	2026-02-21 07:10:14.326167-06
+5db58dfb-2d82-4037-9038-4ad12036a718	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76890	Yumbo	f	t	2026-02-21 07:10:14.326167-06
+2563ce11-b7a4-4bcd-a1ba-d3e76b71b99d	39b96d73-e297-4cfd-a7b8-653f5dc8f046	76892	Zarzal	f	t	2026-02-21 07:10:14.326167-06
+1488089a-6877-4884-8048-8440667d1352	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81001	Arauca	t	t	2026-02-21 07:10:14.326167-06
+7ce16b6c-70b3-4303-9abd-d21a753413ad	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81065	Arauquita	f	t	2026-02-21 07:10:14.326167-06
+0267577d-3ded-4882-b76a-2c63ef5e4ba7	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81220	Cravo Norte	f	t	2026-02-21 07:10:14.326167-06
+7e94405e-594a-44de-b61a-0481006939e5	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81300	Fortul	f	t	2026-02-21 07:10:14.326167-06
+b46fdd30-f3e8-4c89-ad19-9c63b792449b	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81591	Puerto Rondón	f	t	2026-02-21 07:10:14.326167-06
+b66b52da-db64-40ee-8885-c559346507c2	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81736	Saravena	f	t	2026-02-21 07:10:14.326167-06
+19694284-1a89-4511-b684-6a356d3cb56f	a38f8548-ec24-44bc-a670-6aa7d9c43ad2	81794	Tame	f	t	2026-02-21 07:10:14.326167-06
+3cc3247c-93f5-404f-8ae3-178a153e4e54	c5529306-67cc-4778-a2e7-55a8f323d59d	85001	Yopal	t	t	2026-02-21 07:10:14.326167-06
+8b92afae-ee17-425a-8440-792c37fd9e22	c5529306-67cc-4778-a2e7-55a8f323d59d	85010	Aguazul	f	t	2026-02-21 07:10:14.326167-06
+d98b1e9d-a502-4245-b91a-410b9b28c19d	c5529306-67cc-4778-a2e7-55a8f323d59d	85015	Chámeza	f	t	2026-02-21 07:10:14.326167-06
+bf75d861-fc20-4d42-9a9b-976bb37d25bf	c5529306-67cc-4778-a2e7-55a8f323d59d	85125	Hato Corozal	f	t	2026-02-21 07:10:14.326167-06
+21065001-4e5d-4b65-a268-acd7fb9a5d0c	c5529306-67cc-4778-a2e7-55a8f323d59d	85136	La Salina	f	t	2026-02-21 07:10:14.326167-06
+e9e17803-19b1-4087-9974-033a9222102c	c5529306-67cc-4778-a2e7-55a8f323d59d	85139	Maní	f	t	2026-02-21 07:10:14.326167-06
+f2840625-2000-4e41-b6c3-a0cfda9c9ed4	c5529306-67cc-4778-a2e7-55a8f323d59d	85162	Monterrey	f	t	2026-02-21 07:10:14.326167-06
+1d188999-cbb6-42b5-871e-bf6ba8a723f9	c5529306-67cc-4778-a2e7-55a8f323d59d	85225	Nunchía	f	t	2026-02-21 07:10:14.326167-06
+7501f6e3-b7bd-4fef-a1ec-a783ddb32208	c5529306-67cc-4778-a2e7-55a8f323d59d	85230	Orocué	f	t	2026-02-21 07:10:14.326167-06
+86027927-b2a6-4105-a231-b151c2142664	c5529306-67cc-4778-a2e7-55a8f323d59d	85250	Paz de Ariporo	f	t	2026-02-21 07:10:14.326167-06
+6e471dcc-720a-45b8-b601-945cada76459	c5529306-67cc-4778-a2e7-55a8f323d59d	85263	Pore	f	t	2026-02-21 07:10:14.326167-06
+94a1c9ba-4e7f-4d24-b766-87afd6e7bb6a	c5529306-67cc-4778-a2e7-55a8f323d59d	85279	Recetor	f	t	2026-02-21 07:10:14.326167-06
+47bedb9c-805d-41f3-a8a2-895c6a049b75	c5529306-67cc-4778-a2e7-55a8f323d59d	85300	Sabanalarga	f	t	2026-02-21 07:10:14.326167-06
+595edb8c-9ad4-4ec3-a898-e6f359fe474f	c5529306-67cc-4778-a2e7-55a8f323d59d	85315	Sácama	f	t	2026-02-21 07:10:14.326167-06
+8d3bff61-1e67-4ec5-a8e9-080af2d45b68	c5529306-67cc-4778-a2e7-55a8f323d59d	85325	San Luis de Palenque	f	t	2026-02-21 07:10:14.326167-06
+3001bbe6-8e78-4730-b147-d14997a40d08	c5529306-67cc-4778-a2e7-55a8f323d59d	85400	Támara	f	t	2026-02-21 07:10:14.326167-06
+f12dfd84-8770-4b48-86de-088c84e68d4b	c5529306-67cc-4778-a2e7-55a8f323d59d	85410	Tauramena	f	t	2026-02-21 07:10:14.326167-06
+e16cd4e0-f2d8-4d9d-8041-461ea2b8163c	c5529306-67cc-4778-a2e7-55a8f323d59d	85430	Trinidad	f	t	2026-02-21 07:10:14.326167-06
+bc3c4df0-1a31-453c-bb6d-875a686d34b5	c5529306-67cc-4778-a2e7-55a8f323d59d	85440	Villanueva	f	t	2026-02-21 07:10:14.326167-06
+38a09514-043e-4c5e-94aa-c319c489e671	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86001	Mocoa	t	t	2026-02-21 07:10:14.326167-06
+76a403b2-e5e3-4459-9503-2e8e94c9c006	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86019	Colón	f	t	2026-02-21 07:10:14.326167-06
+6edd53d0-c4de-4c45-8482-25ef2b12e7e4	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86032	Orito	f	t	2026-02-21 07:10:14.326167-06
+d992f4f2-7083-49ee-a467-d65bada2864d	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86069	Puerto Caicedo	f	t	2026-02-21 07:10:14.326167-06
+e8c6de50-026b-4f1a-894c-3630ef6038b1	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86079	Puerto Guzmán	f	t	2026-02-21 07:10:14.326167-06
+560ab3e8-0993-4736-9202-c5ba8361f71a	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86081	Puerto Leguízamo	f	t	2026-02-21 07:10:14.326167-06
+234cb9ad-dc15-4ee9-8eda-b681d7c9d357	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86102	San Francisco	f	t	2026-02-21 07:10:14.326167-06
+17e1aafe-0d6e-44ab-af34-85f392622020	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86162	San Miguel	f	t	2026-02-21 07:10:14.326167-06
+f67fd0bb-48f2-4ccb-932b-4b99ffd2606c	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86219	Santiago	f	t	2026-02-21 07:10:14.326167-06
+a94f2a54-3f2a-47ce-b7ba-f5cb1087c58f	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86320	Valle del Guamuez	f	t	2026-02-21 07:10:14.326167-06
+f9c5021f-5d22-435f-8e39-8c47b21ca120	f4485c24-979c-44dd-8924-d52fc9f1ffdd	86568	Villagarzón	f	t	2026-02-21 07:10:14.326167-06
+240ffe5b-65c5-44ec-b5f9-6c06215f276e	b2fedebf-5d8f-4f6e-a14e-2e6b689a54ad	88001	San Andrés	t	t	2026-02-21 07:10:14.326167-06
+deed0cb1-6883-4385-a912-5ef0622d51f3	b2fedebf-5d8f-4f6e-a14e-2e6b689a54ad	88564	Providencia	f	t	2026-02-21 07:10:14.326167-06
+a0559b2e-66a3-43bf-b9df-491ade24e2df	e46e1324-ff9b-43c4-980b-bfca404f2850	91001	Leticia	t	t	2026-02-21 07:10:14.326167-06
+47cf5638-8f99-4412-9089-f90226e3ed2e	e46e1324-ff9b-43c4-980b-bfca404f2850	91263	El Encanto	f	t	2026-02-21 07:10:14.326167-06
+baf20466-9cfb-4a54-a416-83cbb5a7f7a2	e46e1324-ff9b-43c4-980b-bfca404f2850	91405	La Chorrera	f	t	2026-02-21 07:10:14.326167-06
+d320a5a9-5c8e-44b6-8ac9-6f3208147b3b	e46e1324-ff9b-43c4-980b-bfca404f2850	91407	La Pedrera	f	t	2026-02-21 07:10:14.326167-06
+9e72a696-a619-4832-bc65-b3a97765c67f	e46e1324-ff9b-43c4-980b-bfca404f2850	91430	La Victoria	f	t	2026-02-21 07:10:14.326167-06
+b10e4999-c5dd-4aa9-9771-17b010bbc11b	e46e1324-ff9b-43c4-980b-bfca404f2850	91460	Mirití-Paraná	f	t	2026-02-21 07:10:14.326167-06
+ab8cc337-ad00-43af-b65c-c4c3a72604cc	e46e1324-ff9b-43c4-980b-bfca404f2850	91530	Puerto Alegría	f	t	2026-02-21 07:10:14.326167-06
+0d5e5dfe-40fd-45c9-a854-3fcd49ce975c	e46e1324-ff9b-43c4-980b-bfca404f2850	91536	Puerto Arica	f	t	2026-02-21 07:10:14.326167-06
+b62f8330-1191-4d78-8bb8-07867ef21031	e46e1324-ff9b-43c4-980b-bfca404f2850	91540	Puerto Nariño	f	t	2026-02-21 07:10:14.326167-06
+03762d35-a72a-43cf-997a-5a5a290e46cb	e46e1324-ff9b-43c4-980b-bfca404f2850	91669	Puerto Santander	f	t	2026-02-21 07:10:14.326167-06
+ed0dce1f-8d23-4fd2-a063-45e8aab1c11e	e46e1324-ff9b-43c4-980b-bfca404f2850	91798	Tarapacá	f	t	2026-02-21 07:10:14.326167-06
+73e6d07d-c38e-4949-b4c6-ca5a6ad79fa6	90189826-fdc7-47dd-a640-335ae1228f03	94001	Inírida	t	t	2026-02-21 07:10:14.326167-06
+a6613e60-8d63-4329-bfdf-f62635c1d3df	be18cbe9-4731-45b2-9980-50d68f93a301	95001	San José del Guaviare	t	t	2026-02-21 07:10:14.326167-06
+3aaa9944-836f-42dc-a9c1-5ab56a3e60f8	be18cbe9-4731-45b2-9980-50d68f93a301	95015	Calamar	f	t	2026-02-21 07:10:14.326167-06
+d9a4e91b-7e43-45bf-bfc8-add9c55a0e61	be18cbe9-4731-45b2-9980-50d68f93a301	95025	El Retorno	f	t	2026-02-21 07:10:14.326167-06
+ee9a7db8-f959-4fc2-970f-82ae88eef969	be18cbe9-4731-45b2-9980-50d68f93a301	95200	Miraflores	f	t	2026-02-21 07:10:14.326167-06
+7eb763ab-8e32-4fe4-be4c-4be0293ccda0	bfb71945-ea81-4148-9687-8e79c3d0d832	97001	Mitú	t	t	2026-02-21 07:10:14.326167-06
+d617a916-0280-4bfb-90c0-7170a597ae11	bfb71945-ea81-4148-9687-8e79c3d0d832	97161	Carurú	f	t	2026-02-21 07:10:14.326167-06
+12b694d9-f395-472c-a3ae-93d4ac642df2	bfb71945-ea81-4148-9687-8e79c3d0d832	97511	Pacoa	f	t	2026-02-21 07:10:14.326167-06
+f928ad4b-deb3-43cc-aee6-f788ff405363	bfb71945-ea81-4148-9687-8e79c3d0d832	97666	Taraira	f	t	2026-02-21 07:10:14.326167-06
+23b2d001-6713-4da2-a21d-6276aba381d1	bfb71945-ea81-4148-9687-8e79c3d0d832	97777	Papunaua	f	t	2026-02-21 07:10:14.326167-06
+3e0c53c1-9a2c-4796-b029-c64d3ee33c85	bfb71945-ea81-4148-9687-8e79c3d0d832	97889	Yavaraté	f	t	2026-02-21 07:10:14.326167-06
+02137d2e-dae3-4057-b68f-17bb06af1689	ae39c337-bf23-4a7c-a292-e683121868ce	99001	Puerto Carreño	t	t	2026-02-21 07:10:14.326167-06
+cc2ecebd-9ee9-4f15-8f0c-97e77a3cc3d5	ae39c337-bf23-4a7c-a292-e683121868ce	99524	La Primavera	f	t	2026-02-21 07:10:14.326167-06
+89eeb70d-8384-476b-ab71-9148707cbe9a	ae39c337-bf23-4a7c-a292-e683121868ce	99624	Santa Rosalía	f	t	2026-02-21 07:10:14.326167-06
+bbfb040c-b17d-499d-b9fd-555c1e09bc8f	ae39c337-bf23-4a7c-a292-e683121868ce	99773	Cumaribo	f	t	2026-02-21 07:10:14.326167-06
+\.
+
+
+--
+-- TOC entry 5192 (class 0 OID 19269)
+-- Dependencies: 228
+-- Data for Name: paises; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.paises (id, codigo_iso2, codigo_iso3, nombre, moneda, simbolo_moneda, activo, created_at) FROM stdin;
+11111111-1111-1111-1111-111111111111	CO	COL	Colombia	COP	$	t	2026-02-21 07:10:14.326167-06
+\.
+
+
+--
+-- TOC entry 5191 (class 0 OID 19248)
+-- Dependencies: 227
+-- Data for Name: password_resets; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.password_resets (id, user_id, tenant_id, token_hash, expires_at, used_at, created_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5190 (class 0 OID 19228)
+-- Dependencies: 226
+-- Data for Name: permissions; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.permissions (id, role_id, tenant_id, module, route, label, visible, created_at) FROM stdin;
+c26697d5-5f52-407f-9a53-5c6b4a0ce400	00000000-0000-0000-0000-000000000010	00000000-0000-0000-0000-000000000001	usuarios	/{tenant}/usuarios	Usuarios	t	2026-02-21 07:10:14.326167-06
+d21e26dd-b011-4463-b40f-4f05d58196d6	00000000-0000-0000-0000-000000000010	00000000-0000-0000-0000-000000000001	configuracion	/{tenant}/configuracion	Configuracion	t	2026-02-21 07:10:14.326167-06
+de341569-0765-4097-9d6d-9e5b8bb3f987	00000000-0000-0000-0000-000000000010	00000000-0000-0000-0000-000000000001	roles	/{tenant}/roles	Roles	t	2026-02-21 07:10:14.326167-06
+b8119717-8047-4f87-81c5-a696c826e250	00000000-0000-0000-0000-000000000010	00000000-0000-0000-0000-000000000001	dashboard	/{tenant}/dashboard	Dashboard	t	2026-02-21 07:11:41.394337-06
+\.
+
+
+--
+-- TOC entry 5189 (class 0 OID 19203)
+-- Dependencies: 225
+-- Data for Name: persona_tenant_branches; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.persona_tenant_branches (persona_id, tenant_branch_id, tenant_id, es_principal, created_at) FROM stdin;
+3b864a75-d7ac-4318-a1f4-829f09bf20d7	ab41d3da-6686-4de3-9191-875a5a7da5a5	00000000-0000-0000-0000-000000000001	t	2026-02-21 07:22:11.166659-06
+\.
+
+
+--
+-- TOC entry 5186 (class 0 OID 19144)
+-- Dependencies: 222
+-- Data for Name: personas; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.personas (id, tenant_id, nombres, apellidos, documento_tipo, documento_numero, telefono, direccion, email_personal, cargo_nombre, cargo_descripcion, funciones_descripcion, created_at) FROM stdin;
+3b864a75-d7ac-4318-a1f4-829f09bf20d7	00000000-0000-0000-0000-000000000001	IVAN JESUS	CASTRO RUIZ	CC	72009461	3003162985	CALLE 18B # 17F-24	icastror@hotmail.com	SUPER ADMINISTRADOR	SUPER ADMINISTRADOR	SUPER ADMINISTRADOR	2026-02-21 07:22:11.166659-06
+\.
+
+
+--
+-- TOC entry 5196 (class 0 OID 19469)
+-- Dependencies: 234
+-- Data for Name: role_menu_permissions; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.role_menu_permissions (id, tenant_id, role_id, menu_item_id, access_level, actions, created_at) FROM stdin;
+dfb3f58d-35bb-49c0-ad4d-de83e78de89f	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000010	c9388516-4d90-4782-9c59-e5395c0adf08	READ	{}	2026-02-21 07:13:07.916386-06
+ef058ee3-21db-4be9-ac11-c639acb96a2c	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000010	0574daac-79ea-452e-976d-ca26475b2db7	READ	{}	2026-02-21 07:13:07.916386-06
+9e598254-a9ba-4bec-9e7e-02d159dbcab0	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000010	fe7e8715-f6ca-43ad-bc21-5d4d507a1fb9	READ	{}	2026-02-21 07:13:07.916386-06
+60d53a64-de32-499b-8329-43f51fe4bdc2	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000010	4e1c2260-b64b-4aed-99e1-2fe89017cdc2	READ	{}	2026-02-21 07:13:07.916386-06
+c59e3fa3-f686-4e8c-93ee-5c5adfb25609	00000000-0000-0000-0000-000000000001	00000000-0000-0000-0000-000000000010	b87b443c-8ac0-41f8-b271-8fd5e557d826	WRITE	{}	2026-02-21 07:13:59.217301-06
+\.
+
+
+--
+-- TOC entry 5185 (class 0 OID 19135)
+-- Dependencies: 221
+-- Data for Name: roles; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.roles (id, nombre, descripcion, created_at) FROM stdin;
+00000000-0000-0000-0000-000000000010	SUPER_ADMIN	Super administrador del sistema	2026-02-21 07:10:14.326167-06
+\.
+
+
+--
+-- TOC entry 5197 (class 0 OID 19498)
+-- Dependencies: 235
+-- Data for Name: security_audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.security_audit_logs (id, actor_user_id, tenant_id, action, entity, entity_id, before, after, ip, user_agent, created_at) FROM stdin;
+\.
+
+
+--
+-- TOC entry 5184 (class 0 OID 19111)
+-- Dependencies: 220
+-- Data for Name: tenant_branches; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.tenant_branches (id, tenant_id, codigo, nombre, descripcion, es_principal, direccion, ciudad, departamento, pais, telefono, email, estado, metadata, created_at, updated_at, pais_id, departamento_id, municipio_id) FROM stdin;
+ab41d3da-6686-4de3-9191-875a5a7da5a5	00000000-0000-0000-0000-000000000001	PRINCIPAL	Sucursal Principal	Sucursal principal del tenant	t	Cra 45 # 72 - 10, Local 3	Barranquilla	Atlántico	Colombia	+57 300 123 4567	info@softmetalglass.com	ACTIVE	{}	2026-02-21 07:10:14.326167-06	2026-02-21 07:10:14.326167-06	\N	\N	\N
+\.
+
+
+--
+-- TOC entry 5182 (class 0 OID 19079)
+-- Dependencies: 218
+-- Data for Name: tenants; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.tenants (id, slug, nombre, config, activo, created_at) FROM stdin;
+00000000-0000-0000-0000-000000000001	default	Tenant Principal	{}	t	2026-02-21 07:10:14.326167-06
+\.
+
+
+--
+-- TOC entry 5183 (class 0 OID 19091)
+-- Dependencies: 219
+-- Data for Name: tenants_detalles; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.tenants_detalles (id, tenant_id, razon_social, nit, dv, tipo_persona, tipo_sociedad, fecha_constitucion, estado, responsabilidades_dian, regimen, actividad_economica, obligado_facturacion_electronica, resolucion_dian, fecha_inicio_facturacion, direccion_principal, ciudad, departamento, pais, telefono, email_corporativo, sitio_web, representante_nombre, representante_tipo_documento, representante_numero_documento, representante_email, representante_telefono, cuenta_contable_defecto, banco_principal, numero_cuenta, tipo_cuenta, created_at, updated_at, pais_id, departamento_id, municipio_id) FROM stdin;
+52df26d7-5fb3-4b12-93bd-1cdd6bba7235	00000000-0000-0000-0000-000000000001	Tenantcore Platform S.A.S	901234567	1	JURIDICA	SAS	2024-01-15	Activa	Responsable de IVA; Agente retenedor	Régimen ordinario	Comercio al por mayor y al por menor de vidrios, aluminio, hierro y accesorios	t	Resolución DIAN No. 18764012345678	2024-02-01	Cra 45 # 72 - 10, Local 3	Barranquilla	Atlántico	Colombia	+57 300 123 4567	info@softmetalglass.com	https://softmetalglass.com	Ivan Castro Ruiz	CC	1043436352	representante@softmetalglass.com	+57 301 555 8899	110505	Bancolombia	12345678901	AHORROS	2026-02-21 07:10:14.326167-06	2026-02-21 07:10:14.326167-06	11111111-1111-1111-1111-111111111111	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	ae2b3188-91ba-4ed4-83cd-e19c66b99d4d
+\.
+
+
+--
+-- TOC entry 5188 (class 0 OID 19182)
+-- Dependencies: 224
+-- Data for Name: user_roles; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.user_roles (user_id, role_id, tenant_id, created_at) FROM stdin;
+00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000010	00000000-0000-0000-0000-000000000001	2026-02-21 07:22:11.166659-06
+\.
+
+
+--
+-- TOC entry 5187 (class 0 OID 19158)
+-- Dependencies: 223
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.users (id, tenant_id, persona_id, email, password_hash, estado, created_at) FROM stdin;
+00000000-0000-0000-0000-000000000100	00000000-0000-0000-0000-000000000001	3b864a75-d7ac-4318-a1f4-829f09bf20d7	icastror@hotmail.com	$2a$06$xpCm32jSjdV2fw.gch9SrOxH8cka8Npj9ZYdGCY7Q6K2z3ZsUXwra	ACTIVE	2026-02-21 07:10:14.326167-06
+\.
+
+
+--
+-- TOC entry 5209 (class 0 OID 0)
+-- Dependencies: 236
+-- Name: auditoria_eventos_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.auditoria_eventos_id_seq', 3, true);
+
+
+--
+-- TOC entry 4989 (class 2606 OID 19517)
+-- Name: auditoria_eventos auditoria_eventos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auditoria_eventos
+    ADD CONSTRAINT auditoria_eventos_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4992 (class 2606 OID 19528)
+-- Name: auth_refresh_tokens auth_refresh_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_refresh_tokens
+    ADD CONSTRAINT auth_refresh_tokens_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4994 (class 2606 OID 19530)
+-- Name: auth_refresh_tokens auth_refresh_tokens_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_refresh_tokens
+    ADD CONSTRAINT auth_refresh_tokens_token_hash_key UNIQUE (token_hash);
+
+
+--
+-- TOC entry 5000 (class 2606 OID 19555)
+-- Name: auth_sessions auth_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_sessions
+    ADD CONSTRAINT auth_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4962 (class 2606 OID 19295)
+-- Name: departamentos departamentos_pais_id_codigo_dane_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.departamentos
+    ADD CONSTRAINT departamentos_pais_id_codigo_dane_key UNIQUE (pais_id, codigo_dane);
+
+
+--
+-- TOC entry 4964 (class 2606 OID 19293)
+-- Name: departamentos departamentos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.departamentos
+    ADD CONSTRAINT departamentos_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4975 (class 2606 OID 19454)
+-- Name: menu_items menu_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.menu_items
+    ADD CONSTRAINT menu_items_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4970 (class 2606 OID 19315)
+-- Name: municipios municipios_departamento_id_codigo_dane_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.municipios
+    ADD CONSTRAINT municipios_departamento_id_codigo_dane_key UNIQUE (departamento_id, codigo_dane);
+
+
+--
+-- TOC entry 4972 (class 2606 OID 19313)
+-- Name: municipios municipios_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.municipios
+    ADD CONSTRAINT municipios_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4956 (class 2606 OID 19280)
+-- Name: paises paises_codigo_iso2_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.paises
+    ADD CONSTRAINT paises_codigo_iso2_key UNIQUE (codigo_iso2);
+
+
+--
+-- TOC entry 4958 (class 2606 OID 19282)
+-- Name: paises paises_codigo_iso3_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.paises
+    ADD CONSTRAINT paises_codigo_iso3_key UNIQUE (codigo_iso3);
+
+
+--
+-- TOC entry 4960 (class 2606 OID 19278)
+-- Name: paises paises_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.paises
+    ADD CONSTRAINT paises_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4951 (class 2606 OID 19256)
+-- Name: password_resets password_resets_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.password_resets
+    ADD CONSTRAINT password_resets_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4953 (class 2606 OID 19258)
+-- Name: password_resets password_resets_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.password_resets
+    ADD CONSTRAINT password_resets_token_hash_key UNIQUE (token_hash);
+
+
+--
+-- TOC entry 4949 (class 2606 OID 19237)
+-- Name: permissions permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.permissions
+    ADD CONSTRAINT permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4947 (class 2606 OID 19209)
+-- Name: persona_tenant_branches persona_tenant_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.persona_tenant_branches
+    ADD CONSTRAINT persona_tenant_branches_pkey PRIMARY KEY (persona_id, tenant_branch_id);
+
+
+--
+-- TOC entry 4936 (class 2606 OID 19152)
+-- Name: personas personas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.personas
+    ADD CONSTRAINT personas_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4981 (class 2606 OID 19479)
+-- Name: role_menu_permissions role_menu_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.role_menu_permissions
+    ADD CONSTRAINT role_menu_permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4932 (class 2606 OID 19143)
+-- Name: roles roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.roles
+    ADD CONSTRAINT roles_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4985 (class 2606 OID 19506)
+-- Name: security_audit_logs security_audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.security_audit_logs
+    ADD CONSTRAINT security_audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4927 (class 2606 OID 19124)
+-- Name: tenant_branches tenant_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenant_branches
+    ADD CONSTRAINT tenant_branches_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4929 (class 2606 OID 19126)
+-- Name: tenant_branches tenant_branches_tenant_id_codigo_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenant_branches
+    ADD CONSTRAINT tenant_branches_tenant_id_codigo_key UNIQUE (tenant_id, codigo);
+
+
+--
+-- TOC entry 4921 (class 2606 OID 19103)
+-- Name: tenants_detalles tenants_detalles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants_detalles
+    ADD CONSTRAINT tenants_detalles_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4923 (class 2606 OID 19105)
+-- Name: tenants_detalles tenants_detalles_tenant_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants_detalles
+    ADD CONSTRAINT tenants_detalles_tenant_id_key UNIQUE (tenant_id);
+
+
+--
+-- TOC entry 4917 (class 2606 OID 19088)
+-- Name: tenants tenants_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4919 (class 2606 OID 19090)
+-- Name: tenants tenants_slug_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_slug_key UNIQUE (slug);
+
+
+--
+-- TOC entry 4944 (class 2606 OID 19187)
+-- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_pkey PRIMARY KEY (user_id, role_id, tenant_id);
+
+
+--
+-- TOC entry 4938 (class 2606 OID 19169)
+-- Name: users users_persona_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_persona_id_key UNIQUE (persona_id);
+
+
+--
+-- TOC entry 4940 (class 2606 OID 19167)
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4942 (class 2606 OID 19171)
+-- Name: users users_tenant_id_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_tenant_id_email_key UNIQUE (tenant_id, email);
+
+
+--
+-- TOC entry 4987 (class 1259 OID 19519)
+-- Name: auditoria_eventos_modulo_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX auditoria_eventos_modulo_idx ON public.auditoria_eventos USING btree (modulo, entidad, created_at DESC);
+
+
+--
+-- TOC entry 4990 (class 1259 OID 19518)
+-- Name: auditoria_eventos_tenant_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX auditoria_eventos_tenant_idx ON public.auditoria_eventos USING btree (tenant_id, created_at DESC);
+
+
+--
+-- TOC entry 5001 (class 1259 OID 19566)
+-- Name: auth_sessions_user_active; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX auth_sessions_user_active ON public.auth_sessions USING btree (user_id, tenant_id) WHERE (is_active = true);
+
+
+--
+-- TOC entry 4995 (class 1259 OID 19543)
+-- Name: idx_auth_refresh_tokens_expires; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_refresh_tokens_expires ON public.auth_refresh_tokens USING btree (expires_at);
+
+
+--
+-- TOC entry 4996 (class 1259 OID 19544)
+-- Name: idx_auth_refresh_tokens_revoked; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_refresh_tokens_revoked ON public.auth_refresh_tokens USING btree (revoked_at);
+
+
+--
+-- TOC entry 4997 (class 1259 OID 19542)
+-- Name: idx_auth_refresh_tokens_tenant; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_refresh_tokens_tenant ON public.auth_refresh_tokens USING btree (tenant_id);
+
+
+--
+-- TOC entry 4998 (class 1259 OID 19541)
+-- Name: idx_auth_refresh_tokens_user; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_refresh_tokens_user ON public.auth_refresh_tokens USING btree (user_id);
+
+
+--
+-- TOC entry 5002 (class 1259 OID 19567)
+-- Name: idx_auth_sessions_refresh_token; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_sessions_refresh_token ON public.auth_sessions USING btree (refresh_token);
+
+
+--
+-- TOC entry 5003 (class 1259 OID 19569)
+-- Name: idx_auth_sessions_tenant; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_sessions_tenant ON public.auth_sessions USING btree (tenant_id);
+
+
+--
+-- TOC entry 5004 (class 1259 OID 19568)
+-- Name: idx_auth_sessions_user; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_auth_sessions_user ON public.auth_sessions USING btree (user_id);
+
+
+--
+-- TOC entry 4965 (class 1259 OID 19302)
+-- Name: idx_departamentos_nombre; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX idx_departamentos_nombre ON public.departamentos USING btree (pais_id, lower(nombre));
+
+
+--
+-- TOC entry 4966 (class 1259 OID 19301)
+-- Name: idx_departamentos_pais; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_departamentos_pais ON public.departamentos USING btree (pais_id);
+
+
+--
+-- TOC entry 4967 (class 1259 OID 19321)
+-- Name: idx_municipios_departamento; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_municipios_departamento ON public.municipios USING btree (departamento_id);
+
+
+--
+-- TOC entry 4968 (class 1259 OID 19322)
+-- Name: idx_municipios_nombre; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX idx_municipios_nombre ON public.municipios USING btree (departamento_id, lower(nombre));
+
+
+--
+-- TOC entry 4954 (class 1259 OID 19283)
+-- Name: idx_paises_nombre; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX idx_paises_nombre ON public.paises USING btree (lower(nombre));
+
+
+--
+-- TOC entry 4945 (class 1259 OID 19227)
+-- Name: idx_persona_branches_tenant; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_persona_branches_tenant ON public.persona_tenant_branches USING btree (tenant_id);
+
+
+--
+-- TOC entry 4933 (class 1259 OID 19225)
+-- Name: idx_personas_tenant_documento; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_personas_tenant_documento ON public.personas USING btree (tenant_id, documento_numero);
+
+
+--
+-- TOC entry 4934 (class 1259 OID 19226)
+-- Name: idx_personas_tenant_email; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_personas_tenant_email ON public.personas USING btree (tenant_id, email_personal);
+
+
+--
+-- TOC entry 4924 (class 1259 OID 19133)
+-- Name: idx_tenant_branches_estado; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tenant_branches_estado ON public.tenant_branches USING btree (estado);
+
+
+--
+-- TOC entry 4925 (class 1259 OID 19132)
+-- Name: idx_tenant_branches_tenant; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tenant_branches_tenant ON public.tenant_branches USING btree (tenant_id);
+
+
+--
+-- TOC entry 4973 (class 1259 OID 19467)
+-- Name: menu_items_parent_sort_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX menu_items_parent_sort_idx ON public.menu_items USING btree (parent_id, sort_order);
+
+
+--
+-- TOC entry 4976 (class 1259 OID 19468)
+-- Name: menu_items_tenant_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX menu_items_tenant_idx ON public.menu_items USING btree (tenant_id);
+
+
+--
+-- TOC entry 4977 (class 1259 OID 19465)
+-- Name: menu_items_tenant_key_unique; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX menu_items_tenant_key_unique ON public.menu_items USING btree (tenant_id, key) WHERE (deleted_at IS NULL);
+
+
+--
+-- TOC entry 4978 (class 1259 OID 19466)
+-- Name: menu_items_tenant_route_unique; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX menu_items_tenant_route_unique ON public.menu_items USING btree (tenant_id, route) WHERE (deleted_at IS NULL);
+
+
+--
+-- TOC entry 4979 (class 1259 OID 19497)
+-- Name: role_menu_permissions_menu_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX role_menu_permissions_menu_idx ON public.role_menu_permissions USING btree (tenant_id, menu_item_id);
+
+
+--
+-- TOC entry 4982 (class 1259 OID 19496)
+-- Name: role_menu_permissions_role_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX role_menu_permissions_role_idx ON public.role_menu_permissions USING btree (tenant_id, role_id);
+
+
+--
+-- TOC entry 4983 (class 1259 OID 19495)
+-- Name: role_menu_permissions_unique; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX role_menu_permissions_unique ON public.role_menu_permissions USING btree (tenant_id, role_id, menu_item_id);
+
+
+--
+-- TOC entry 4986 (class 1259 OID 19507)
+-- Name: security_audit_logs_tenant_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX security_audit_logs_tenant_idx ON public.security_audit_logs USING btree (tenant_id, created_at DESC);
+
+
+--
+-- TOC entry 4930 (class 1259 OID 19134)
+-- Name: uq_tenant_branches_principal; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX uq_tenant_branches_principal ON public.tenant_branches USING btree (tenant_id) WHERE (es_principal = true);
+
+
+--
+-- TOC entry 5033 (class 2606 OID 19536)
+-- Name: auth_refresh_tokens auth_refresh_tokens_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_refresh_tokens
+    ADD CONSTRAINT auth_refresh_tokens_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5034 (class 2606 OID 19531)
+-- Name: auth_refresh_tokens auth_refresh_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_refresh_tokens
+    ADD CONSTRAINT auth_refresh_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5035 (class 2606 OID 19561)
+-- Name: auth_sessions auth_sessions_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_sessions
+    ADD CONSTRAINT auth_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5036 (class 2606 OID 19556)
+-- Name: auth_sessions auth_sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.auth_sessions
+    ADD CONSTRAINT auth_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5026 (class 2606 OID 19296)
+-- Name: departamentos departamentos_pais_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.departamentos
+    ADD CONSTRAINT departamentos_pais_id_fkey FOREIGN KEY (pais_id) REFERENCES public.paises(id) ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5005 (class 2606 OID 19328)
+-- Name: tenants_detalles fk_tenant_departamento; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants_detalles
+    ADD CONSTRAINT fk_tenant_departamento FOREIGN KEY (departamento_id) REFERENCES public.departamentos(id);
+
+
+--
+-- TOC entry 5006 (class 2606 OID 19333)
+-- Name: tenants_detalles fk_tenant_municipio; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants_detalles
+    ADD CONSTRAINT fk_tenant_municipio FOREIGN KEY (municipio_id) REFERENCES public.municipios(id);
+
+
+--
+-- TOC entry 5007 (class 2606 OID 19323)
+-- Name: tenants_detalles fk_tenant_pais; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants_detalles
+    ADD CONSTRAINT fk_tenant_pais FOREIGN KEY (pais_id) REFERENCES public.paises(id);
+
+
+--
+-- TOC entry 5028 (class 2606 OID 19460)
+-- Name: menu_items menu_items_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.menu_items
+    ADD CONSTRAINT menu_items_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.menu_items(id) ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5029 (class 2606 OID 19455)
+-- Name: menu_items menu_items_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.menu_items
+    ADD CONSTRAINT menu_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5027 (class 2606 OID 19316)
+-- Name: municipios municipios_departamento_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.municipios
+    ADD CONSTRAINT municipios_departamento_id_fkey FOREIGN KEY (departamento_id) REFERENCES public.departamentos(id) ON DELETE RESTRICT;
+
+
+--
+-- TOC entry 5024 (class 2606 OID 19264)
+-- Name: password_resets password_resets_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.password_resets
+    ADD CONSTRAINT password_resets_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5025 (class 2606 OID 19259)
+-- Name: password_resets password_resets_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.password_resets
+    ADD CONSTRAINT password_resets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5022 (class 2606 OID 19238)
+-- Name: permissions permissions_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.permissions
+    ADD CONSTRAINT permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5023 (class 2606 OID 19243)
+-- Name: permissions permissions_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.permissions
+    ADD CONSTRAINT permissions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5019 (class 2606 OID 19210)
+-- Name: persona_tenant_branches persona_tenant_branches_persona_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.persona_tenant_branches
+    ADD CONSTRAINT persona_tenant_branches_persona_id_fkey FOREIGN KEY (persona_id) REFERENCES public.personas(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5020 (class 2606 OID 19215)
+-- Name: persona_tenant_branches persona_tenant_branches_tenant_branch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.persona_tenant_branches
+    ADD CONSTRAINT persona_tenant_branches_tenant_branch_id_fkey FOREIGN KEY (tenant_branch_id) REFERENCES public.tenant_branches(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5021 (class 2606 OID 19220)
+-- Name: persona_tenant_branches persona_tenant_branches_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.persona_tenant_branches
+    ADD CONSTRAINT persona_tenant_branches_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5013 (class 2606 OID 19153)
+-- Name: personas personas_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.personas
+    ADD CONSTRAINT personas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5030 (class 2606 OID 19490)
+-- Name: role_menu_permissions role_menu_permissions_menu_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.role_menu_permissions
+    ADD CONSTRAINT role_menu_permissions_menu_item_id_fkey FOREIGN KEY (menu_item_id) REFERENCES public.menu_items(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5031 (class 2606 OID 19485)
+-- Name: role_menu_permissions role_menu_permissions_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.role_menu_permissions
+    ADD CONSTRAINT role_menu_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5032 (class 2606 OID 19480)
+-- Name: role_menu_permissions role_menu_permissions_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.role_menu_permissions
+    ADD CONSTRAINT role_menu_permissions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5009 (class 2606 OID 19343)
+-- Name: tenant_branches tenant_branches_departamento_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenant_branches
+    ADD CONSTRAINT tenant_branches_departamento_id_fkey FOREIGN KEY (departamento_id) REFERENCES public.departamentos(id);
+
+
+--
+-- TOC entry 5010 (class 2606 OID 19348)
+-- Name: tenant_branches tenant_branches_municipio_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenant_branches
+    ADD CONSTRAINT tenant_branches_municipio_id_fkey FOREIGN KEY (municipio_id) REFERENCES public.municipios(id);
+
+
+--
+-- TOC entry 5011 (class 2606 OID 19338)
+-- Name: tenant_branches tenant_branches_pais_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenant_branches
+    ADD CONSTRAINT tenant_branches_pais_id_fkey FOREIGN KEY (pais_id) REFERENCES public.paises(id);
+
+
+--
+-- TOC entry 5012 (class 2606 OID 19127)
+-- Name: tenant_branches tenant_branches_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenant_branches
+    ADD CONSTRAINT tenant_branches_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5008 (class 2606 OID 19106)
+-- Name: tenants_detalles tenants_detalles_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tenants_detalles
+    ADD CONSTRAINT tenants_detalles_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5016 (class 2606 OID 19193)
+-- Name: user_roles user_roles_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5017 (class 2606 OID 19198)
+-- Name: user_roles user_roles_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5018 (class 2606 OID 19188)
+-- Name: user_roles user_roles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5014 (class 2606 OID 19177)
+-- Name: users users_persona_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_persona_id_fkey FOREIGN KEY (persona_id) REFERENCES public.personas(id) ON DELETE SET NULL;
+
+
+--
+-- TOC entry 5015 (class 2606 OID 19172)
+-- Name: users users_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- Completed on 2026-02-21 10:43:48
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict bXQYSjyiI8dL82nr7TTbttjE9iuJ4ATOZcjkdn5sBpzFhuvNfq872yRTEnWa5oc
+
