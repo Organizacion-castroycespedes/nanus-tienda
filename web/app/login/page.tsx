@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Loader2, Zap } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "../../components/design-system/Button";
 import { Modal } from "../../components/design-system/Modal";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
@@ -168,17 +168,29 @@ const LoginPageContent = () => {
   return (
     <div className="flex min-h-screen bg-slate-50">
       {/* Left panel — branding (hidden on mobile) */}
-      <div className="hidden flex-col justify-between bg-slate-900 p-10 lg:flex lg:w-5/12 xl:w-1/2">
+      <div
+        className="relative hidden flex-col justify-between p-10 lg:flex lg:w-5/12 xl:w-1/2"
+        style={{
+          backgroundImage: "url(/login-bg.jpg)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        {/* Dark overlay */}
+        <div className="absolute inset-0 bg-slate-900/80" />
+
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600">
-            <Zap className="h-4 w-4 text-white" />
-          </div>
-          <span className="text-base font-bold text-white">Manus</span>
+        <Link href="/" className="relative z-10">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
+            alt="Manus POS"
+            className="h-12 w-auto object-contain"
+          />
         </Link>
 
         {/* Central copy */}
-        <div>
+        <div className="relative z-10">
           <blockquote className="text-xl font-medium leading-relaxed text-white">
             &ldquo;Manus nos cambio la vida. Antes tardabamos horas en cuadrar caja.
             Ahora lo hacemos en minutos.&rdquo;
@@ -195,7 +207,7 @@ const LoginPageContent = () => {
         </div>
 
         {/* Bottom stats */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="relative z-10 grid grid-cols-3 gap-4">
           {[
             { value: "500+", label: "Negocios" },
             { value: "1.2M+", label: "Ventas" },
@@ -213,11 +225,13 @@ const LoginPageContent = () => {
       <main className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <Link href="/" className="mb-8 flex items-center gap-2 lg:hidden">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-              <Zap className="h-3.5 w-3.5 text-white" />
-            </div>
-            <span className="text-sm font-bold text-slate-900">Manus</span>
+          <Link href="/" className="mb-8 inline-flex lg:hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
+              alt="Manus POS"
+              className="h-10 w-auto object-contain"
+            />
           </Link>
 
           {showSessionConflict ? (
