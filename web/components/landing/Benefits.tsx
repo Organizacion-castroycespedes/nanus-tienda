@@ -27,40 +27,75 @@ const Benefits = () => (
   <section className="bg-white px-6 py-20 md:py-28">
     <div className="mx-auto max-w-6xl">
       <div className="grid items-center gap-12 lg:grid-cols-2">
-        {/* Left visual */}
+        {/* Left visual - Premium dashboard */}
         <div className="relative order-2 lg:order-1">
-          <div className="absolute -inset-6 rounded-3xl bg-slate-50" />
-          <div className="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
-            <p className="mb-4 text-sm font-semibold text-slate-500">
-              Resumen del dia
-            </p>
-            <div className="space-y-3">
-              {[
-                { label: "Ventas realizadas", value: "34", color: "bg-blue-500" },
-                { label: "Ingresos totales", value: "$4,280", color: "bg-emerald-500" },
-                { label: "Productos vendidos", value: "127", color: "bg-amber-500" },
-                { label: "Clientes atendidos", value: "28", color: "bg-violet-500" },
-              ].map(({ label, value, color }) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`h-2 w-2 rounded-full ${color}`} />
-                    <span className="text-sm text-slate-700">{label}</span>
-                  </div>
-                  <span className="text-sm font-bold text-slate-900">{value}</span>
+          <div className="absolute -inset-6 rounded-3xl bg-gradient-to-br from-blue-50 to-slate-50 opacity-60" />
+          <div className="relative">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+              {/* Header */}
+              <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3">
+                <p className="text-xs font-semibold text-slate-600">Resumen ejecutivo - Hoy</p>
+              </div>
+
+              {/* Content */}
+              <div className="p-4 space-y-3">
+                {/* Key metrics */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Ventas", value: "$2,480", icon: "📊", trend: "+18%" },
+                    { label: "Neto", value: "$1,240", icon: "💵", trend: "+12%" },
+                  ].map(({ label, value, icon, trend }) => (
+                    <div
+                      key={label}
+                      className="rounded-lg border border-slate-100 bg-gradient-to-br from-blue-50 to-white p-3"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-xs text-slate-600">{label}</p>
+                          <p className="mt-1 text-lg font-bold text-slate-900">{value}</p>
+                        </div>
+                        <div className="text-2xl">{icon}</div>
+                      </div>
+                      <p className="mt-2 text-xs font-semibold text-emerald-600">{trend} vs ayer</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-xl bg-blue-600 px-4 py-3 text-center">
-              <p className="text-xs font-semibold text-blue-100">
-                Negocio funcionando correctamente
-              </p>
-              <p className="mt-0.5 text-xl font-bold text-white">Todo bajo control</p>
+
+                {/* Activity list */}
+                <div className="rounded-lg border border-slate-100 bg-white p-3">
+                  <p className="mb-2 text-xs font-semibold text-slate-700">Últimas transacciones</p>
+                  <div className="space-y-2">
+                    {[
+                      { type: "Venta", amount: "$45.50", icon: "🛒" },
+                      { type: "Pago", amount: "$120.00", icon: "✓" },
+                      { type: "Compra", amount: "$250.00", icon: "📦" },
+                    ].map(({ type, amount, icon }) => (
+                      <div key={type} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span>{icon}</span>
+                          <span className="text-slate-700">{type}</span>
+                        </div>
+                        <span className="font-semibold text-slate-900">{amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status badge */}
+                <div className="rounded-lg bg-gradient-to-r from-emerald-50 to-green-50 p-3">
+                  <p className="text-xs text-emerald-800">
+                    <span className="inline-flex items-center gap-1 font-semibold">
+                      <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                      Negocio en línea
+                    </span>
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-emerald-900">Todo bajo control</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+
         {/* Right: benefits list */}
         <div className="order-1 lg:order-2">
           <span className="mb-3 inline-block text-sm font-semibold uppercase tracking-widest text-blue-600">
