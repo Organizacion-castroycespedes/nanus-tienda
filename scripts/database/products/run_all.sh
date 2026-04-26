@@ -47,8 +47,14 @@ sql_files=(
   "2026_04_25_inventory_products.sql"
   "2026_04_26_inventory_units_taxes_is_active.sql"
   "2026_04_26_inventory_suppliers.sql"
+  "2026_04_26_inventory_customers.sql"
+  "2026_04_26_inventory_customers_location.sql"
+  "2026_04_26_inventory_orders.sql"
+  "2026_04_26_inventory_order_items.sql"
   "2026_04_25_inventory_purchases.sql"
+  "2026_04_26_inventory_purchases_type_balance.sql"
   "2026_04_25_inventory_purchase_items.sql"
+  "2026_04_26_inventory_purchase_items_partial_reception.sql"
   "2026_04_25_inventory_stock_movements.sql"
   "2026_04_25_seed_menu_modules.sql"
   "2026_04_25_seed_menu_inventory_children.sql"
@@ -56,6 +62,7 @@ sql_files=(
   "2026_04_25_seed_inventory_units.sql"
   "2026_04_25_seed_inventory_taxes.sql"
   "2026_04_25_seed_inventory_products.sql"
+  "2026_04_26_seed_inventory_suppliers.sql"
 )
 
 for sql_file in "${sql_files[@]}"; do

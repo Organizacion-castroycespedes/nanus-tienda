@@ -70,7 +70,9 @@ CROSS JOIN (
   VALUES
     ('INVENTORY_PRODUCTS', 'Productos', '/{tenant}/inventory/products', 'box', 101),
     ('INVENTORY_UNITS', 'Unidades', '/{tenant}/inventory/units', 'ruler', 102),
-    ('INVENTORY_TAXES', 'Impuestos', '/{tenant}/inventory/taxes', 'calculator', 103)
+    ('INVENTORY_TAXES', 'Impuestos', '/{tenant}/inventory/taxes', 'calculator', 103),
+    ('INVENTORY_PURCHASES', 'Compras', '/{tenant}/inventory/purchases', 'shopping-bag', 104),
+    ('INVENTORY_SUPPLIERS', 'Proveedores', '/{tenant}/inventory/suppliers', 'truck', 105)
 ) AS seed(key, label, route, icon, sort_order)
 WHERE NOT EXISTS (
   SELECT 1
@@ -105,7 +107,9 @@ inventory_children AS (
     VALUES
       ('INVENTORY_PRODUCTS', 101),
       ('INVENTORY_UNITS', 102),
-      ('INVENTORY_TAXES', 103)
+      ('INVENTORY_TAXES', 103),
+      ('INVENTORY_PURCHASES', 104),
+      ('INVENTORY_SUPPLIERS', 105)
   ) AS seed(key, sort_order)
     ON seed.key = child.key
 )
@@ -131,7 +135,14 @@ SELECT
 FROM menu_items mi
 INNER JOIN roles r
   ON r.nombre = 'SUPER_ADMIN'
-WHERE mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+WHERE mi.key IN (
+  'INVENTORY',
+  'INVENTORY_PRODUCTS',
+  'INVENTORY_UNITS',
+  'INVENTORY_TAXES',
+  'INVENTORY_PURCHASES',
+  'INVENTORY_SUPPLIERS'
+)
   AND mi.deleted_at IS NULL
   AND NOT EXISTS (
     SELECT 1
@@ -151,7 +162,14 @@ SELECT
 FROM menu_items mi
 INNER JOIN roles r
   ON r.nombre = 'ADMIN'
-WHERE mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+WHERE mi.key IN (
+  'INVENTORY',
+  'INVENTORY_PRODUCTS',
+  'INVENTORY_UNITS',
+  'INVENTORY_TAXES',
+  'INVENTORY_PURCHASES',
+  'INVENTORY_SUPPLIERS'
+)
   AND mi.deleted_at IS NULL
   AND NOT EXISTS (
     SELECT 1

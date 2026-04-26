@@ -9,10 +9,24 @@ WITH role_targets AS (
     r.nombre AS role_name,
     CASE
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN 'WRITE'
       WHEN r.nombre = 'USER'
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN 'READ'
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'POS'
@@ -33,10 +47,24 @@ WITH role_targets AS (
     END AS access_level,
     CASE
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
       WHEN r.nombre = 'USER'
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN '{"read": true}'::jsonb
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'POS'
@@ -63,6 +91,8 @@ WITH role_targets AS (
     'INVENTORY_PRODUCTS',
     'INVENTORY_UNITS',
     'INVENTORY_TAXES',
+    'INVENTORY_PURCHASES',
+    'INVENTORY_SUPPLIERS',
     'POS',
     'FINANCE',
     'CRM_CUSTOMERS'
@@ -106,10 +136,24 @@ WITH role_targets AS (
     r.nombre AS role_name,
     CASE
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN 'WRITE'
       WHEN r.nombre = 'USER'
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN 'READ'
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'POS'
@@ -130,10 +174,24 @@ WITH role_targets AS (
     END AS access_level,
     CASE
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
       WHEN r.nombre = 'USER'
-        AND mi.key IN ('INVENTORY', 'INVENTORY_PRODUCTS', 'INVENTORY_UNITS', 'INVENTORY_TAXES')
+        AND mi.key IN (
+          'INVENTORY',
+          'INVENTORY_PRODUCTS',
+          'INVENTORY_UNITS',
+          'INVENTORY_TAXES',
+          'INVENTORY_PURCHASES',
+          'INVENTORY_SUPPLIERS'
+        )
         THEN '{"read": true}'::jsonb
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'POS'
@@ -160,6 +218,8 @@ WITH role_targets AS (
     'INVENTORY_PRODUCTS',
     'INVENTORY_UNITS',
     'INVENTORY_TAXES',
+    'INVENTORY_PURCHASES',
+    'INVENTORY_SUPPLIERS',
     'POS',
     'FINANCE',
     'CRM_CUSTOMERS'

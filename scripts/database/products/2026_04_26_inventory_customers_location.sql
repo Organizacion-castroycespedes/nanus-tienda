@@ -1,0 +1,11 @@
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS departamento_id UUID NULL REFERENCES departamentos(id);
+
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS municipio_id UUID NULL REFERENCES municipios(id);
+
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS ciudad VARCHAR(150) NULL;
+
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS departamento VARCHAR(150) NULL;

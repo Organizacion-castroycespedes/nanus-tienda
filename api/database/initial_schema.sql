@@ -217,7 +217,7 @@ SELECT
   '00000000-0000-0000-0000-000000000100',
   '00000000-0000-0000-0000-000000000001',
   'icastror@hotmail.com',
-  crypt('Admin123!', gen_salt('bf')),
+  crypt('12345678', gen_salt('bf')),
   'ACTIVE'
 WHERE NOT EXISTS (
   SELECT 1
