@@ -3,8 +3,9 @@ import Providers from "./providers";
 import "../styles/globals.css";
 
 export const metadata = {
-  title: "Manus Tienda Platform",
-  description: "MVP multi-tenant",
+  title: "Manus — Gestiona tu negocio desde un solo lugar",
+  description:
+    "Manus es una plataforma SaaS multi-tenant para pequenos negocios. POS, inventario, clientes, compras y finanzas en un solo lugar.",
 };
 
 const RootLayout = ({ children }: { children: ReactNode }) => {
