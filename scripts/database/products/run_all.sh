@@ -63,6 +63,7 @@ sql_files=(
   "2026_04_25_seed_inventory_taxes.sql"
   "2026_04_25_seed_inventory_products.sql"
   "2026_04_26_seed_inventory_suppliers.sql"
+  "2026_04_26_seed_inventory_customers.sql"
 )
 
 for sql_file in "${sql_files[@]}"; do

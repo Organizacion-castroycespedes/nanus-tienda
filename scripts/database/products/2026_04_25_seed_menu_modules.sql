@@ -59,6 +59,22 @@ CROSS JOIN (
       '/{tenant}/crm/customers',
       'users',
       130
+    ),
+    (
+      'CUSTOMERS',
+      'customers',
+      'Clientes',
+      '/{tenant}/customers',
+      'users',
+      140
+    ),
+    (
+      'ORDERS',
+      'orders',
+      'Pedidos',
+      '/{tenant}/orders',
+      'shopping-cart',
+      150
     )
 ) AS seed(key, module, label, route, icon, sort_order)
 WHERE NOT EXISTS (
@@ -84,7 +100,7 @@ INNER JOIN roles r
   ON r.nombre = 'SUPER_ADMIN'
 INNER JOIN menu_items mi
   ON mi.tenant_id = t.id
-  AND mi.key IN ('INVENTORY_PRODUCTS', 'POS', 'FINANCE', 'CRM_CUSTOMERS')
+  AND mi.key IN ('INVENTORY_PRODUCTS', 'POS', 'FINANCE', 'CRM_CUSTOMERS', 'CUSTOMERS', 'ORDERS')
   AND mi.deleted_at IS NULL
 WHERE NOT EXISTS (
   SELECT 1
@@ -106,7 +122,7 @@ INNER JOIN roles r
   ON r.nombre = 'ADMIN'
 INNER JOIN menu_items mi
   ON mi.tenant_id = t.id
-  AND mi.key IN ('INVENTORY_PRODUCTS', 'POS', 'FINANCE', 'CRM_CUSTOMERS')
+  AND mi.key IN ('INVENTORY_PRODUCTS', 'POS', 'FINANCE', 'CRM_CUSTOMERS', 'CUSTOMERS', 'ORDERS')
   AND mi.deleted_at IS NULL
 WHERE NOT EXISTS (
   SELECT 1
