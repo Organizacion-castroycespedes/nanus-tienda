@@ -1,5 +1,6 @@
 import Navbar from "../components/landing/Navbar";
 import Hero from "../components/landing/Hero";
+import Problems from "../components/landing/Problems";
 import Features from "../components/landing/Features";
 import Benefits from "../components/landing/Benefits";
 import HowItWorks from "../components/landing/HowItWorks";
@@ -13,6 +14,7 @@ const HomePage = () => {
       <Navbar />
       <main>
         <Hero />
+        <Problems />
         <section id="features">
           <Features />
         </section>

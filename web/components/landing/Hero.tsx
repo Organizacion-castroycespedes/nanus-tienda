@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BarChart2, ShoppingCart, Users } from "lucide-react";
+import { ArrowRight, BarChart2, Play, ShoppingCart, Users } from "lucide-react";
 
 const DashboardMockup = () => (
   <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -17,11 +17,11 @@ const DashboardMockup = () => (
         <div className="mb-4 px-2">
           <div className="h-2 w-16 rounded bg-white/30" />
         </div>
-        {["Dashboard", "Ventas", "Inventario", "Clientes", "Compras"].map(
+        {["Dashboard", "POS", "Inventario", "Clientes", "Compras"].map(
           (item) => (
             <div
               key={item}
-              className="mb-1 flex items-center gap-2 rounded-md px-2 py-1.5"
+              className="mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-white/10"
             >
               <div className="h-2 w-2 rounded-sm bg-white/20" />
               <div className="h-1.5 rounded bg-white/30" style={{ width: `${item.length * 5}px` }} />
@@ -31,35 +31,43 @@ const DashboardMockup = () => (
       </div>
       {/* Main area */}
       <div className="flex-1 p-4">
-        <div className="mb-4 grid grid-cols-3 gap-3">
+        {/* POS Section */}
+        <div className="mb-4 rounded-xl border border-slate-100 bg-gradient-to-br from-blue-50 to-blue-25 p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="h-2 w-24 rounded bg-slate-200" />
+            <div className="text-xs font-semibold text-blue-700">POS</div>
+          </div>
+          <div className="flex items-end gap-1.5" style={{ height: 48 }}>
+            {[40, 60, 55, 75, 65, 85, 95, 80].map((h, i) => (
+              <div
+                key={i}
+                className="flex-1 rounded-sm bg-blue-500"
+                style={{ height: `${h}%`, opacity: 0.5 + (i / 8) * 0.5 }}
+              />
+            ))}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">Ventas por hora</div>
+        </div>
+
+        {/* Key metrics grid */}
+        <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Ventas hoy", value: "$2,480", icon: ShoppingCart, color: "text-blue-600", bg: "bg-blue-50" },
-            { label: "Clientes", value: "148", icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Stock bajo", value: "12", icon: "⚠️", color: "text-amber-600", bg: "bg-amber-50" },
             { label: "Ingresos", value: "$18,320", icon: BarChart2, color: "text-violet-600", bg: "bg-violet-50" },
           ].map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
-              <div className={`mb-2 inline-flex rounded-lg p-1.5 ${bg}`}>
-                <Icon className={`h-3.5 w-3.5 ${color}`} />
+            <div key={label} className="rounded-xl border border-slate-100 bg-white p-2.5 shadow-sm">
+              <div className={`mb-1.5 inline-flex rounded-lg p-1 ${bg}`}>
+                {typeof Icon === "string" ? (
+                  <span className="text-sm">{Icon}</span>
+                ) : (
+                  <Icon className={`h-3 w-3 ${color}`} />
+                )}
               </div>
               <p className="text-xs font-semibold text-slate-800">{value}</p>
               <p className="mt-0.5 text-[10px] text-slate-500">{label}</p>
             </div>
           ))}
-        </div>
-        {/* Mini chart bars */}
-        <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
-          <div className="mb-2 h-1.5 w-20 rounded bg-slate-200" />
-          <div className="flex items-end gap-1" style={{ height: 48 }}>
-            {[30, 50, 40, 70, 55, 80, 65, 90, 75, 85, 60, 95].map(
-              (h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-sm bg-blue-500"
-                  style={{ height: `${h}%`, opacity: 0.7 + (i / 12) * 0.3 }}
-                />
-              )
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -85,12 +93,11 @@ const Hero = () => (
             Plataforma SaaS para negocios
           </span>
           <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-slate-900 md:text-5xl lg:text-6xl">
-            Gestiona tu negocio{" "}
-            <span className="text-blue-600">desde un solo lugar</span>
+            Controla tus ventas, inventario y dinero{" "}
+            <span className="text-blue-600">sin complicaciones</span>
           </h1>
           <p className="mt-6 text-pretty text-lg leading-relaxed text-slate-600">
-            Manus reune POS, inventario, clientes, compras y finanzas en una
-            plataforma simple. Sin complicaciones, sin hojas de calculo.
+            Manus es el sistema que usan minimarkets, tiendas y pequeños negocios para ver exactamente cuánto venden, qué falta en inventario y cuánto dinero tienen. Un solo lugar para POS, inventario, compras, clientes y finanzas.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
@@ -100,12 +107,15 @@ const Hero = () => (
               Empezar gratis
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link
-              href="/login"
+            <button
+              onClick={() => {
+                alert("Demo en desarrollo - Pronto disponible");
+              }}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
             >
-              Iniciar sesion
-            </Link>
+              <Play className="h-4 w-4" />
+              Ver demo
+            </button>
           </div>
           <p className="mt-4 text-xs text-slate-500">
             Sin tarjeta de credito. Configura tu negocio en minutos.
