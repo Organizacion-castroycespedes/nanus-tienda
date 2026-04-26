@@ -83,22 +83,21 @@ const HowItWorks = () => (
           Sin instalaciones, sin configuraciones complicadas. Listo en minutos.
         </p>
       </div>
-        <div className="relative grid gap-8 md:grid-cols-3">
-          {/* Connector line */}
-          <div className="absolute left-0 right-0 top-8 hidden h-px bg-white/10 md:block" />
-          {steps.map(({ number, icon: Icon, title, description }) => (
-            <div key={number} className="relative flex flex-col items-center text-center">
-              <div className="relative mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                <Icon className="h-6 w-6 text-blue-400" />
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
-                  {number.slice(-1)}
-                </span>
-              </div>
-              <h3 className="mb-2 text-base font-semibold text-white">{title}</h3>
-              <p className="text-sm leading-relaxed text-slate-400">{description}</p>
+      <div className="relative grid gap-8 md:grid-cols-3">
+        {/* Connector line */}
+        <div className="absolute left-0 right-0 top-8 hidden h-px bg-white/10 md:block" />
+        {steps.map(({ number, icon: Icon, title, description }) => (
+          <div key={number} className="relative flex flex-col items-center text-center">
+            <div className="relative mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+              <Icon className="h-6 w-6 text-blue-400" />
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                {number.slice(-1)}
+              </span>
             </div>
-          ))}
-        </div>
+            <h3 className="mb-2 text-base font-semibold text-white">{title}</h3>
+            <p className="text-sm leading-relaxed text-slate-400">{description}</p>
+          </div>
+        ))}
       </div>
     </div>
   </section>
