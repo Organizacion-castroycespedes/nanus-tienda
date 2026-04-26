@@ -40,7 +40,6 @@ const CTA = () => (
         Sin tarjeta de credito. Sin compromisos.
       </p>
     </div>
-    </div>
   </section>
 );
 
