@@ -28,15 +28,15 @@ import { UnitRepository } from "./repositories/unit.repository";
 @Module({
   imports: [DatabaseModule],
   controllers: [
-    CustomerController,
     InventoryController,
-    OrderController,
     ProductController,
     SupplierController,
     UnitController,
     TaxController,
     StockAdjustmentController,
     PurchaseController,
+    CustomerController,
+    OrderController,
   ],
   providers: [
     CustomerService,

@@ -1,0 +1,394 @@
+"use client";
+
+import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Button } from "../../../components/design-system/Button";
+import { Input } from "../../../components/design-system/Input";
+import { Select } from "../../../components/design-system/Select";
+import type { ProductResponse } from "../../../domains/products/dtos";
+import { getCustomers, type CustomerResponse } from "../services/customer.service";
+import { createOrder } from "../services/order.service";
+import { getProducts } from "../services/product.service";
+
+type OrderFormItem = {
+  productId: string;
+  quantity: string;
+  price: string;
+};
+
+type OrderFormValues = {
+  customerId: string;
+  type: "CASH" | "CREDIT";
+  items: OrderFormItem[];
+};
+
+type OrderFormErrors = {
+  customerId?: string;
+  items?: string;
+  submit?: string;
+};
+
+type OrderFormProps = {
+  onCancel: () => void;
+  onSuccess: () => void;
+};
+
+const createEmptyItem = (): OrderFormItem => ({
+  productId: "",
+  quantity: "",
+  price: "",
+});
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 2,
+  }).format(value);
+
+export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
+  const [values, setValues] = useState<OrderFormValues>({
+    customerId: "",
+    type: "CASH",
+    items: [createEmptyItem()],
+  });
+  const [errors, setErrors] = useState<OrderFormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [customers, setCustomers] = useState<CustomerResponse[]>([]);
+  const [products, setProducts] = useState<ProductResponse[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadCatalogs = async () => {
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        const [customersResult, productsResult] = await Promise.all([
+          getCustomers(),
+          getProducts(),
+        ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        setCustomers(customersResult.filter((customer) => customer.isActive));
+        setProducts(productsResult.filter((product) => product.isActive));
+      } catch {
+        if (mounted) {
+          setCatalogError("No se pudieron cargar clientes o productos.");
+        }
+      } finally {
+        if (mounted) {
+          setCatalogLoading(false);
+        }
+      }
+    };
+
+    void loadCatalogs();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const itemSubtotals = useMemo(
+    () =>
+      values.items.map((item) => {
+        const quantity = Number(item.quantity);
+        const price = Number(item.price);
+
+        if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
+          return 0;
+        }
+
+        return quantity * price;
+      }),
+    [values.items]
+  );
+
+  const total = useMemo(
+    () => itemSubtotals.reduce((sum, subtotal) => sum + subtotal, 0),
+    [itemSubtotals]
+  );
+
+  const validate = () => {
+    const nextErrors: OrderFormErrors = {};
+
+    if (!values.customerId) {
+      nextErrors.customerId = "Debes seleccionar un cliente.";
+    }
+
+    const hasInvalidItems = values.items.some((item) => {
+      const quantity = Number(item.quantity);
+      const price = Number(item.price);
+      return (
+        !item.productId ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0 ||
+        !Number.isFinite(price) ||
+        price < 0
+      );
+    });
+
+    if (values.items.length === 0 || hasInvalidItems) {
+      nextErrors.items =
+        "Todos los items deben tener producto, cantidad mayor a 0 y precio valido.";
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleItemChange = (
+    index: number,
+    field: keyof OrderFormItem,
+    value: string
+  ) => {
+    setValues((prev) => ({
+      ...prev,
+      items: prev.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      ),
+    }));
+    setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!validate()) {
+      return;
+    }
+
+    setErrors({});
+    setIsSubmitting(true);
+
+    try {
+      await createOrder({
+        customerId: values.customerId,
+        type: values.type,
+        total,
+        items: values.items.map((item, index) => ({
+          productId: item.productId,
+          quantity: Number(item.quantity),
+          price: Number(item.price),
+          subtotal: itemSubtotals[index] ?? 0,
+        })),
+      });
+
+      onSuccess();
+    } catch {
+      setErrors({
+        submit: "No se pudo guardar el pedido.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
+          <h2 className="text-xl font-semibold text-slate-900">Crear pedido</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Registra el cliente, el tipo de pedido y los items. Esta accion no afecta
+            inventario.
+          </p>
+        </div>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancelar
+        </Button>
+      </div>
+
+      <form className="grid gap-5" onSubmit={handleSubmit}>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1">
+            <Select
+              label="Cliente"
+              required
+              value={values.customerId}
+              disabled={catalogLoading || customers.length === 0}
+              onChange={(event) => {
+                setValues((prev) => ({ ...prev, customerId: event.target.value }));
+                setErrors((prev) => ({ ...prev, customerId: undefined, submit: undefined }));
+              }}
+            >
+              <option value="">
+                {catalogLoading ? "Cargando..." : "Selecciona un cliente"}
+              </option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
+                </option>
+              ))}
+            </Select>
+            {errors.customerId ? (
+              <p className="text-xs text-rose-600">{errors.customerId}</p>
+            ) : null}
+          </div>
+
+          <Select
+            label="Tipo"
+            value={values.type}
+            onChange={(event) =>
+              setValues((prev) => ({
+                ...prev,
+                type: event.target.value as "CASH" | "CREDIT",
+              }))
+            }
+          >
+            <option value="CASH">CASH</option>
+            <option value="CREDIT">CREDIT</option>
+          </Select>
+        </div>
+
+        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Items</h3>
+              <p className="text-sm text-slate-600">
+                Agrega productos, cantidades y precios para calcular el total.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setValues((prev) => ({
+                  ...prev,
+                  items: [...prev.items, createEmptyItem()],
+                }))
+              }
+            >
+              <Plus className="h-4 w-4" />
+              Agregar item
+            </Button>
+          </div>
+
+          <div className="grid gap-4">
+            {values.items.map((item, index) => (
+              <div
+                key={`${index}-${item.productId}`}
+                className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_1fr_auto]"
+              >
+                <Select
+                  label="Producto"
+                  value={item.productId}
+                  disabled={catalogLoading || products.length === 0}
+                  onChange={(event) =>
+                    handleItemChange(index, "productId", event.target.value)
+                  }
+                >
+                  <option value="">
+                    {catalogLoading ? "Cargando..." : "Selecciona un producto"}
+                  </option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </Select>
+
+                <Input
+                  label="Cantidad pedida"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={item.quantity}
+                  onChange={(event) =>
+                    handleItemChange(index, "quantity", event.target.value)
+                  }
+                />
+
+                <Input
+                  label="Entregado"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value="0"
+                  disabled
+                  readOnly
+                />
+
+                <Input
+                  label="Precio"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={item.price}
+                  onChange={(event) => handleItemChange(index, "price", event.target.value)}
+                />
+
+                <div className="flex items-end gap-2">
+                  <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Subtotal
+                    </p>
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {formatCurrency(itemSubtotals[index] ?? 0)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      setValues((prev) => ({
+                        ...prev,
+                        items:
+                          prev.items.length > 1
+                            ? prev.items.filter((_, itemIndex) => itemIndex !== index)
+                            : prev.items,
+                      }))
+                    }
+                    disabled={values.items.length === 1}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {errors.items ? <p className="mt-3 text-xs text-rose-600">{errors.items}</p> : null}
+        </section>
+
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-emerald-700">Resumen</p>
+              <p className="text-sm text-emerald-900/80">
+                El total general se calcula con la suma de subtotales por item.
+              </p>
+            </div>
+            <p className="text-xl font-semibold text-emerald-950">{formatCurrency(total)}</p>
+          </div>
+        </section>
+
+        {catalogError ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            {catalogError}
+          </div>
+        ) : null}
+
+        {errors.submit ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {errors.submit}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-3">
+          <Button type="submit" isLoading={isSubmitting}>
+            Guardar pedido
+          </Button>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </section>
+  );
+};

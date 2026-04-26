@@ -38,6 +38,12 @@ WITH role_targets AS (
         AND mi.key = 'FINANCE'
         THEN 'WRITE'
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN 'WRITE'
+      WHEN r.nombre = 'USER'
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN 'READ'
+      WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'CRM_CUSTOMERS'
         THEN 'WRITE'
       WHEN r.nombre = 'USER'
@@ -76,6 +82,12 @@ WITH role_targets AS (
         AND mi.key = 'FINANCE'
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
+      WHEN r.nombre = 'USER'
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN '{"read": true}'::jsonb
+      WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'CRM_CUSTOMERS'
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
       WHEN r.nombre = 'USER'
@@ -93,6 +105,8 @@ WITH role_targets AS (
     'INVENTORY_TAXES',
     'INVENTORY_PURCHASES',
     'INVENTORY_SUPPLIERS',
+    'CUSTOMERS',
+    'ORDERS',
     'POS',
     'FINANCE',
     'CRM_CUSTOMERS'
@@ -165,6 +179,12 @@ WITH role_targets AS (
         AND mi.key = 'FINANCE'
         THEN 'WRITE'
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN 'WRITE'
+      WHEN r.nombre = 'USER'
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN 'READ'
+      WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'CRM_CUSTOMERS'
         THEN 'WRITE'
       WHEN r.nombre = 'USER'
@@ -203,6 +223,12 @@ WITH role_targets AS (
         AND mi.key = 'FINANCE'
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
       WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
+      WHEN r.nombre = 'USER'
+        AND mi.key IN ('CUSTOMERS', 'ORDERS')
+        THEN '{"read": true}'::jsonb
+      WHEN r.nombre IN ('SUPER_ADMIN', 'ADMIN')
         AND mi.key = 'CRM_CUSTOMERS'
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
       WHEN r.nombre = 'USER'
@@ -220,6 +246,8 @@ WITH role_targets AS (
     'INVENTORY_TAXES',
     'INVENTORY_PURCHASES',
     'INVENTORY_SUPPLIERS',
+    'CUSTOMERS',
+    'ORDERS',
     'POS',
     'FINANCE',
     'CRM_CUSTOMERS'
