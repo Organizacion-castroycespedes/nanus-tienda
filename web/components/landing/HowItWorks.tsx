@@ -28,13 +28,27 @@ const HowItWorks = () => (
   <section 
     className="relative overflow-hidden bg-slate-900 px-6 py-20 md:py-28"
     style={{
-      backgroundImage: 'url(/howworks-bg.jpg)',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundAttachment: 'fixed',
+      backgroundImage: `
+        linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.04) 50%, rgba(30, 27, 75, 0.06) 100%),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 50px,
+          rgba(59, 130, 246, 0.03) 50px,
+          rgba(59, 130, 246, 0.03) 51px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 50px,
+          rgba(99, 102, 241, 0.03) 50px,
+          rgba(99, 102, 241, 0.03) 51px
+        )
+      `,
+      backgroundColor: '#0f172a',
     }}
   >
-    {/* Dark overlay for text readability */}
+    {/* Subtle animated overlay gradient */}
     <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-blue-950/85" />
 
     <div className="relative z-10 mx-auto max-w-6xl">

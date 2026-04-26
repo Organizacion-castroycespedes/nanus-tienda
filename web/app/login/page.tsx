@@ -171,13 +171,23 @@ const LoginPageContent = () => {
       <div
         className="relative hidden flex-col justify-between p-10 lg:flex lg:w-5/12 xl:w-1/2"
         style={{
-          backgroundImage: "url(/login-bg.jpg)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          backgroundImage: `
+            linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.06) 50%, rgba(30, 27, 75, 0.08) 100%),
+            repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 80px,
+              rgba(59, 130, 246, 0.04) 80px,
+              rgba(59, 130, 246, 0.04) 160px
+            ),
+            radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.08) 0%, transparent 50%)
+          `,
+          backgroundColor: '#0f172a',
         }}
       >
         {/* Dark overlay */}
-        <div className="absolute inset-0 bg-slate-900/80" />
+        <div className="absolute inset-0 bg-slate-900/70" />
 
         {/* Logo */}
         <Link href="/" className="relative z-10">
