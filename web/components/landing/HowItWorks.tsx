@@ -25,17 +25,17 @@ const steps = [
 ];
 
 const HowItWorks = () => (
-  <section className="relative overflow-hidden bg-slate-900 px-6 py-20 md:py-28">
-    {/* Background image */}
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img
-      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
-      alt=""
-      aria-hidden="true"
-      className="absolute inset-0 h-full w-full object-cover object-center opacity-[0.04]"
-    />
-    {/* Gradient overlay for readability */}
-    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-900/95 to-blue-950/80" />
+  <section 
+    className="relative overflow-hidden bg-slate-900 px-6 py-20 md:py-28"
+    style={{
+      backgroundImage: 'url(/howworks-bg.jpg)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundAttachment: 'fixed',
+    }}
+  >
+    {/* Dark overlay for text readability */}
+    <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-blue-950/85" />
 
     <div className="relative z-10 mx-auto max-w-6xl">
       <div className="mx-auto mb-14 max-w-2xl text-center">
