@@ -12,26 +12,45 @@ const features = [
     title: "Punto de Venta (POS)",
     description:
       "Registra ventas rapido, aplica descuentos, gestiona metodos de pago y genera comprobantes al instante.",
-    color: "text-blue-600",
-    bg: "bg-blue-50",
     border: "border-blue-100",
     visual: (
-      <div className="space-y-2">
-        <div className="rounded-lg bg-white p-2">
-          <p className="mb-1 text-xs font-semibold text-slate-700">Carrito de compras</p>
-          <div className="space-y-1">
-            {["Arroz 1kg - $3.50", "Aceite 1L - $8.00", "Pan - $1.50"].map((item) => (
-              <div key={item} className="flex justify-between text-xs text-slate-600">
-                <span>{item}</span>
-                <span className="font-semibold">$</span>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">Nueva Venta #1847</span>
+            <span className="text-xs text-slate-400">14:32</span>
+          </div>
+        </div>
+        <div className="p-2.5">
+          <div className="space-y-1.5">
+            {[
+              { sku: "001254", name: "Arroz Costeño 1kg", qty: 2, price: "S/ 7.80" },
+              { sku: "003421", name: "Aceite Primor 1L", qty: 1, price: "S/ 12.50" },
+              { sku: "001089", name: "Leche Gloria 400g", qty: 3, price: "S/ 11.70" },
+            ].map(({ sku, name, qty, price }) => (
+              <div key={sku} className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+                <div>
+                  <p className="text-xs font-medium text-slate-700">{name}</p>
+                  <p className="text-xs text-slate-400">SKU: {sku} x {qty}</p>
+                </div>
+                <span className="text-xs font-semibold text-slate-900">{price}</span>
               </div>
             ))}
           </div>
           <div className="mt-2 border-t border-slate-100 pt-2">
-            <div className="flex justify-between text-xs font-bold text-slate-900">
-              <span>Total</span>
-              <span>$13.00</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-500">Subtotal (6 items)</span>
+              <span className="text-xs font-medium text-slate-700">S/ 32.00</span>
             </div>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-900">TOTAL</span>
+              <span className="text-sm font-bold text-blue-600">S/ 32.00</span>
+            </div>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-1">
+            {["Efectivo", "Yape", "Tarjeta"].map((m) => (
+              <button key={m} className={`rounded px-2 py-1 text-xs font-medium ${m === "Efectivo" ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{m}</button>
+            ))}
           </div>
         </div>
       </div>
@@ -41,31 +60,43 @@ const features = [
     title: "Control de Inventario",
     description:
       "Stock actualizado en tiempo real con cada venta y recepcion de mercancia. Alertas de stock minimo.",
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
     border: "border-emerald-100",
     visual: (
-      <div className="space-y-1">
-        {[
-          { name: "Arroz", stock: 25, min: 20, status: "ok" },
-          { name: "Aceite", stock: 8, min: 15, status: "low" },
-          { name: "Pan", stock: 45, min: 20, status: "ok" },
-        ].map(({ name, stock, min, status }) => (
-          <div key={name} className="rounded-lg bg-white p-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-slate-700">{name}</span>
-              <span className={`text-xs font-semibold ${status === "low" ? "text-amber-600" : "text-emerald-600"}`}>
-                {stock} un
-              </span>
-            </div>
-            <div className="mt-0.5 h-1 w-full rounded-full bg-slate-100">
-              <div
-                className={`h-full rounded-full transition-all ${status === "low" ? "bg-amber-500" : "bg-emerald-500"}`}
-                style={{ width: `${(stock / (min + 15)) * 100}%` }}
-              />
-            </div>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">Inventario</span>
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">8 alertas</span>
           </div>
-        ))}
+        </div>
+        <div className="p-2">
+          <div className="mb-2 flex gap-1">
+            <input type="text" placeholder="Buscar producto..." className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 placeholder:text-slate-400" readOnly />
+          </div>
+          <div className="space-y-1">
+            {[
+              { name: "Arroz Costeño 1kg", stock: 45, min: 20, status: "ok", code: "ALM-001" },
+              { name: "Aceite Primor 1L", stock: 8, min: 15, status: "low", code: "ALM-002" },
+              { name: "Azúcar Rubia 1kg", stock: 3, min: 10, status: "critical", code: "ALM-003" },
+              { name: "Leche Gloria 400g", stock: 62, min: 25, status: "ok", code: "ALM-004" },
+            ].map(({ name, stock, min, status, code }) => (
+              <div key={code} className="flex items-center justify-between rounded border border-slate-100 bg-white px-2 py-1.5">
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-slate-700">{name}</p>
+                  <p className="text-xs text-slate-400">{code} | Mín: {min}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`text-xs font-bold ${status === "critical" ? "text-rose-600" : status === "low" ? "text-amber-600" : "text-emerald-600"}`}>
+                    {stock} un
+                  </span>
+                  {status !== "ok" && (
+                    <p className="text-xs text-slate-400">{status === "critical" ? "Agotándose" : "Stock bajo"}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     ),
   },
@@ -73,27 +104,46 @@ const features = [
     title: "Compras y Proveedores",
     description:
       "Registra pedidos, recepciona mercancia y lleva el historial completo de tus proveedores.",
-    color: "text-amber-600",
-    bg: "bg-amber-50",
     border: "border-amber-100",
     visual: (
-      <div className="rounded-lg bg-white p-2">
-        <p className="mb-1.5 text-xs font-semibold text-slate-700">Orden #1024</p>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between">
-            <span className="text-slate-600">Proveedor</span>
-            <span className="font-medium">Mayorista XYZ</span>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">Orden de Compra #OC-2024-089</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-slate-600">Estado</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 font-medium text-blue-700">
+        </div>
+        <div className="p-2.5">
+          <div className="mb-2 grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <p className="text-slate-400">Proveedor</p>
+              <p className="font-medium text-slate-700">Distribuidora San Juan SAC</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Fecha entrega</p>
+              <p className="font-medium text-slate-700">28 Abr 2024</p>
+            </div>
+          </div>
+          <div className="space-y-1 rounded border border-slate-100 bg-slate-50 p-2">
+            {[
+              { item: "Arroz Costeño 1kg", qty: "50 un", cost: "S/ 175.00" },
+              { item: "Aceite Primor 1L", qty: "24 un", cost: "S/ 264.00" },
+              { item: "Azúcar Rubia 1kg", qty: "30 un", cost: "S/ 105.00" },
+            ].map(({ item, qty, cost }) => (
+              <div key={item} className="flex items-center justify-between text-xs">
+                <span className="text-slate-600">{item}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-400">{qty}</span>
+                  <span className="font-medium text-slate-700">{cost}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-              Pendiente
+              En tránsito
             </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-600">Total</span>
-            <span className="font-semibold">$450.00</span>
+            <span className="text-sm font-bold text-slate-900">S/ 544.00</span>
           </div>
         </div>
       </div>
@@ -103,25 +153,38 @@ const features = [
     title: "Gestion de Clientes",
     description:
       "CRM basico con historial de compras, datos de contacto y seguimiento de cuentas por cobrar.",
-    color: "text-violet-600",
-    bg: "bg-violet-50",
     border: "border-violet-100",
     visual: (
-      <div className="space-y-1">
-        {[
-          { name: "Juan García", balance: 120, status: "cobrar" },
-          { name: "María López", balance: 0, status: "pagado" },
-          { name: "Pedro Ruiz", balance: 85, status: "cobrar" },
-        ].map(({ name, balance, status }) => (
-          <div key={name} className="rounded-lg bg-white p-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-slate-700">{name}</span>
-              <span className={`font-semibold ${status === "cobrar" ? "text-rose-600" : "text-emerald-600"}`}>
-                ${balance}
-              </span>
-            </div>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+          <span className="text-xs font-semibold text-slate-700">Clientes con saldo pendiente</span>
+        </div>
+        <div className="p-2">
+          <div className="space-y-1.5">
+            {[
+              { name: "Juan García Mendoza", phone: "987 654 321", balance: 245.50, lastPurchase: "Hace 2 días" },
+              { name: "María López Sánchez", phone: "912 345 678", balance: 120.00, lastPurchase: "Hace 5 días" },
+              { name: "Carlos Ruiz Torres", phone: "956 789 012", balance: 85.80, lastPurchase: "Hoy" },
+            ].map(({ name, phone, balance, lastPurchase }) => (
+              <div key={name} className="rounded border border-slate-100 bg-white p-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-slate-700">{name}</p>
+                    <p className="text-xs text-slate-400">{phone}</p>
+                  </div>
+                  <span className="text-xs font-bold text-rose-600">S/ {balance.toFixed(2)}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-xs text-slate-400">Última compra: {lastPurchase}</span>
+                  <button className="rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-600">Cobrar</button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+          <div className="mt-2 rounded bg-rose-50 px-2 py-1.5 text-center">
+            <p className="text-xs text-rose-600">Total por cobrar: <span className="font-bold">S/ 451.30</span></p>
+          </div>
+        </div>
       </div>
     ),
   },
@@ -129,22 +192,51 @@ const features = [
     title: "Finanzas y Cuentas",
     description:
       "Cuentas por cobrar y pagar, pagos parciales, saldos y sobrepagos. Todo bajo control.",
-    color: "text-rose-600",
-    bg: "bg-rose-50",
     border: "border-rose-100",
     visual: (
-      <div className="space-y-1">
-        {[
-          { label: "Ventas", value: "$2,480", color: "emerald" },
-          { label: "Gastos", value: "$680", color: "rose" },
-          { label: "Neto", value: "$1,800", color: "blue" },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="flex items-center gap-2 text-xs">
-            <div className={`h-2 w-2 rounded-full bg-${color}-500`} />
-            <span className="text-slate-600">{label}</span>
-            <span className="ml-auto font-semibold text-slate-900">{value}</span>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">Resumen Financiero - Abril 2024</span>
           </div>
-        ))}
+        </div>
+        <div className="p-2.5">
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-emerald-50 p-2">
+              <p className="text-xs text-emerald-600">Ingresos</p>
+              <p className="text-sm font-bold text-emerald-700">S/ 12,480.50</p>
+              <p className="text-xs text-emerald-500">+18% vs mes anterior</p>
+            </div>
+            <div className="rounded-lg bg-rose-50 p-2">
+              <p className="text-xs text-rose-600">Egresos</p>
+              <p className="text-sm font-bold text-rose-700">S/ 8,240.00</p>
+              <p className="text-xs text-rose-500">Compras + gastos</p>
+            </div>
+          </div>
+          <div className="rounded-lg bg-blue-50 p-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-blue-600">Utilidad Neta</p>
+                <p className="text-lg font-bold text-blue-700">S/ 4,240.50</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-blue-500">Margen</p>
+                <p className="text-sm font-bold text-blue-600">34%</p>
+              </div>
+            </div>
+          </div>
+          <div className="mt-2 space-y-1">
+            {[
+              { label: "Por cobrar (clientes)", value: "S/ 1,420.00", color: "amber" },
+              { label: "Por pagar (proveedores)", value: "S/ 2,180.00", color: "rose" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">{label}</span>
+                <span className={`font-semibold text-${color}-600`}>{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     ),
   },
@@ -152,20 +244,53 @@ const features = [
     title: "Reportes y Visibilidad",
     description:
       "Dashboards con ventas, ingresos y movimientos para tomar decisiones con datos reales.",
-    color: "text-sky-600",
-    bg: "bg-sky-50",
     border: "border-sky-100",
     visual: (
-      <div>
-        <p className="mb-2 text-xs font-semibold text-slate-700">Ventas últimos 7 días</p>
-        <div className="flex items-end gap-1" style={{ height: 48 }}>
-          {[30, 45, 35, 60, 50, 75, 85].map((h, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-sm bg-gradient-to-t from-sky-600 to-sky-400"
-              style={{ height: `${h}%`, opacity: 0.6 + (i / 7) * 0.4 }}
-            />
-          ))}
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700">Análisis de Ventas</span>
+            <select className="rounded border-0 bg-transparent text-xs text-slate-500">
+              <option>Últimos 7 días</option>
+            </select>
+          </div>
+        </div>
+        <div className="p-2.5">
+          <div className="mb-3">
+            <div className="mb-1 flex items-baseline justify-between">
+              <span className="text-xs text-slate-500">Total vendido</span>
+              <span className="text-xs font-medium text-emerald-600">+22.4%</span>
+            </div>
+            <p className="text-lg font-bold text-slate-900">S/ 8,547.80</p>
+          </div>
+          <div className="flex items-end justify-between gap-0.5" style={{ height: 50 }}>
+            {[
+              { d: "Lun", h: 45, v: "980" },
+              { d: "Mar", h: 62, v: "1,240" },
+              { d: "Mié", h: 38, v: "820" },
+              { d: "Jue", h: 75, v: "1,480" },
+              { d: "Vie", h: 90, v: "1,820" },
+              { d: "Sáb", h: 100, v: "2,100" },
+              { d: "Dom", h: 25, v: "420" },
+            ].map(({ d, h }) => (
+              <div key={d} className="flex flex-1 flex-col items-center gap-0.5">
+                <div className="w-full rounded-sm bg-gradient-to-t from-sky-600 to-sky-400" style={{ height: `${h}%` }} />
+                <span className="text-xs text-slate-400">{d}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-1 border-t border-slate-100 pt-2">
+            {[
+              { label: "Transacciones", value: "186" },
+              { label: "Ticket prom.", value: "S/ 46" },
+              { label: "Top producto", value: "Arroz" },
+            ].map(({ label, value }) => (
+              <div key={label} className="text-center">
+                <p className="text-xs font-semibold text-slate-700">{value}</p>
+                <p className="text-xs text-slate-400">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     ),
@@ -188,15 +313,13 @@ const Features = () => (
         </p>
       </div>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map(({ title, description, color, bg, border, visual }) => (
+        {features.map(({ title, description, border, visual }) => (
           <article
             key={title}
-            className={`group rounded-2xl border bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md ${border}`}
+            className={`group rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg ${border}`}
           >
-            <div className="mb-4 min-h-32">
-              <div className={`rounded-lg ${bg} p-3 text-slate-800`}>
-                {visual}
-              </div>
+            <div className="mb-4">
+              {visual}
             </div>
             <h3 className="mb-2 text-base font-semibold text-slate-900">
               {title}
