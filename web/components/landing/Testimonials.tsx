@@ -33,8 +33,18 @@ const stats = [
 ];
 
 const Testimonials = () => (
-  <section className="bg-white px-6 py-20 md:py-28">
-    <div className="mx-auto max-w-6xl">
+  <section className="relative overflow-hidden bg-slate-50 px-6 py-20 md:py-28">
+    {/* Background image — very subtle watermark of the logo */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img
+      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
+      alt=""
+      aria-hidden="true"
+      className="absolute right-0 top-1/2 h-auto w-[480px] max-w-none -translate-y-1/2 translate-x-1/3 object-contain opacity-[0.04]"
+    />
+    {/* Soft radial overlay so edges blend cleanly */}
+    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_40%,_rgb(248,250,252)_80%)]" />
+    <div className="relative z-10 mx-auto max-w-6xl">
       {/* Stats */}
       <div className="mb-16 grid grid-cols-2 gap-6 md:grid-cols-4">
         {stats.map(({ value, label }) => (
@@ -81,3 +91,4 @@ const Testimonials = () => (
 );
 
 export default Testimonials;
+

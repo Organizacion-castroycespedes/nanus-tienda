@@ -2,8 +2,18 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 const CTA = () => (
-  <section className="bg-blue-600 px-6 py-20 md:py-28">
-    <div className="mx-auto max-w-3xl text-center">
+  <section className="relative overflow-hidden bg-blue-600 px-6 py-20 md:py-28">
+    {/* Background: Manus logo watermark */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img
+      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
+      alt=""
+      aria-hidden="true"
+      className="absolute inset-0 h-full w-full object-cover object-center opacity-10 mix-blend-overlay"
+    />
+    {/* Gradient overlay so text stays crisp */}
+    <div className="absolute inset-0 bg-gradient-to-tr from-blue-700/70 via-transparent to-blue-500/40" />
+    <div className="relative z-10 mx-auto max-w-3xl text-center">
       <h2 className="text-balance text-3xl font-bold text-white md:text-4xl lg:text-5xl">
         Lleva tu negocio al siguiente nivel
       </h2>
@@ -29,6 +39,7 @@ const CTA = () => (
       <p className="mt-4 text-sm text-blue-200">
         Sin tarjeta de credito. Sin compromisos.
       </p>
+    </div>
     </div>
   </section>
 );

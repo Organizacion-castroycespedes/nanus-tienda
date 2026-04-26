@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Zap } from "lucide-react";
 
 const Footer = () => (
   <footer className="border-t border-slate-200 bg-white px-6 py-12">
@@ -7,11 +6,13 @@ const Footer = () => (
       <div className="grid gap-8 md:grid-cols-4">
         {/* Brand */}
         <div className="md:col-span-2">
-          <Link href="/" className="mb-3 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600">
-              <Zap className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-sm font-bold text-slate-900">Manus</span>
+          <Link href="/" className="mb-4 inline-flex">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
+              alt="Manus POS"
+              className="h-12 w-auto object-contain"
+            />
           </Link>
           <p className="max-w-xs text-sm leading-relaxed text-slate-500">
             Plataforma SaaS multi-tenant para la gestion integral de pequenos

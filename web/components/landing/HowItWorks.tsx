@@ -26,50 +26,16 @@ const steps = [
 
 const HowItWorks = () => (
   <section className="relative overflow-hidden bg-slate-900 px-6 py-20 md:py-28">
-    {/* Background pattern - business/retail elements */}
-    <div className="absolute inset-0 opacity-5">
-      <svg className="h-full w-full" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
-        {/* Grid pattern */}
-        <defs>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(59, 130, 246, 0.3)" strokeWidth="0.5"/>
-          </pattern>
-          <linearGradient id="fadeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style={{stopColor: "rgba(59, 130, 246, 0.1)", stopOpacity: 1}} />
-            <stop offset="100%" style={{stopColor: "rgba(99, 102, 241, 0.05)", stopOpacity: 1}} />
-          </linearGradient>
-        </defs>
-        
-        {/* Background elements */}
-        <rect width="1200" height="800" fill="url(#fadeGradient)" />
-        <rect width="1200" height="800" fill="url(#grid)" />
-        
-        {/* Subtle icons scattered in background */}
-        {/* Shopping cart icons */}
-        <g opacity="0.08">
-          <text x="100" y="150" fontSize="80" fill="rgba(59, 130, 246, 0.3)">🛒</text>
-          <text x="900" y="650" fontSize="80" fill="rgba(99, 102, 241, 0.3)">🛒</text>
-        </g>
-        
-        {/* Building/store icons */}
-        <g opacity="0.08">
-          <text x="800" y="100" fontSize="80" fill="rgba(59, 130, 246, 0.3)">🏪</text>
-          <text x="150" y="700" fontSize="80" fill="rgba(99, 102, 241, 0.3)">🏪</text>
-        </g>
-        
-        {/* Package/box icons */}
-        <g opacity="0.08">
-          <text x="500" y="200" fontSize="80" fill="rgba(59, 130, 246, 0.3)">📦</text>
-          <text x="650" y="700" fontSize="80" fill="rgba(99, 102, 241, 0.3)">📦</text>
-        </g>
-        
-        {/* Chart/graph icons */}
-        <g opacity="0.08">
-          <text x="300" y="500" fontSize="80" fill="rgba(59, 130, 246, 0.3)">📊</text>
-          <text x="1000" y="300" fontSize="80" fill="rgba(99, 102, 241, 0.3)">📊</text>
-        </g>
-      </svg>
-    </div>
+    {/* Background image */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img
+      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/LogoManus.png-AQn35KrUXzECzcI6dhjsq3tPKsUTFa.jpeg"
+      alt=""
+      aria-hidden="true"
+      className="absolute inset-0 h-full w-full object-cover object-center opacity-[0.04]"
+    />
+    {/* Gradient overlay for readability */}
+    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-900/95 to-blue-950/80" />
 
     <div className="relative z-10 mx-auto max-w-6xl">
       <div className="mx-auto mb-14 max-w-2xl text-center">
