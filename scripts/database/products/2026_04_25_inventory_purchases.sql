@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   tenant_id UUID NOT NULL REFERENCES tenants(id),
   supplier_id UUID NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (
-    status IN ('PENDING', 'RECEIVED', 'CANCELLED')
+    status IN ('PENDING', 'PARTIAL', 'RECEIVED', 'CANCELLED')
   ),
   total NUMERIC(12, 2) NOT NULL CHECK (total >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

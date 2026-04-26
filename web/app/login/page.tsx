@@ -168,26 +168,31 @@ const LoginPageContent = () => {
   return (
     <div className="flex min-h-screen bg-slate-50">
       {/* Left panel — branding (hidden on mobile) */}
-      <div
-        className="relative hidden flex-col justify-between p-10 lg:flex lg:w-5/12 xl:w-1/2"
-        style={{
-          backgroundImage: `
-            linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.06) 50%, rgba(30, 27, 75, 0.08) 100%),
-            repeating-linear-gradient(
-              45deg,
-              transparent,
-              transparent 80px,
+        <div
+          className="relative hidden flex-col justify-between p-10 lg:flex lg:w-5/12 xl:w-1/2"
+          style={{
+            backgroundImage: `
+              linear-gradient(0deg, rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.3)),
+              url('/login-bg.jpg'),
+              linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.06) 50%, rgba(30, 27, 75, 0.08) 100%),
+              repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 80px,
               rgba(59, 130, 246, 0.04) 80px,
               rgba(59, 130, 246, 0.04) 160px
             ),
-            radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
-            radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.08) 0%, transparent 50%)
-          `,
-          backgroundColor: '#0f172a',
-        }}
-      >
-        {/* Dark overlay */}
-        <div className="absolute inset-0 bg-slate-900/70" />
+              radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+              radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.08) 0%, transparent 50%)
+            `,
+            backgroundColor: '#0f172a',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            backgroundSize: 'cover',
+          }}
+        >
+          {/* Dark overlay */}
+          <div className="absolute inset-0 bg-slate-900/45" />
 
         {/* Logo */}
         <Link href="/" className="relative z-10">

@@ -1,4 +1,4 @@
-import type { PurchaseEntity } from "./purchase.entity";
+import type { OrderEntity } from "./order.entity";
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -17,58 +17,59 @@ const assertNonNegativeDecimal = (value: number, field: string) => {
   }
 };
 
-export type PurchaseItemProps = {
+export type OrderItemProps = {
   id: string;
-  purchaseId: string;
+  orderId: string;
   productId: string;
   orderedQuantity: number;
-  receivedQuantity?: number;
-  cost: number;
+  deliveredQuantity?: number;
+  price: number;
   subtotal: number;
-  purchase?: PurchaseEntity | null;
+  order?: OrderEntity | null;
 };
 
-export class PurchaseItemEntity {
+export class OrderItemEntity {
   readonly id: string;
-  readonly purchaseId: string;
+  readonly orderId: string;
   readonly productId: string;
   readonly orderedQuantity: number;
-  readonly receivedQuantity: number;
-  readonly cost: number;
+  readonly deliveredQuantity: number;
+  readonly price: number;
   readonly subtotal: number;
-  readonly purchase: PurchaseEntity | null;
+  readonly order: OrderEntity | null;
 
-  constructor(props: PurchaseItemProps) {
+  constructor(props: OrderItemProps) {
     if (!isUuid(props.id)) {
       throw new Error("id must be a valid UUID");
     }
-    if (!isUuid(props.purchaseId)) {
-      throw new Error("purchaseId must be a valid UUID");
+    if (!isUuid(props.orderId)) {
+      throw new Error("orderId must be a valid UUID");
     }
     if (!isUuid(props.productId)) {
       throw new Error("productId must be a valid UUID");
     }
 
     assertPositiveDecimal(props.orderedQuantity, "orderedQuantity");
-    assertNonNegativeDecimal(props.receivedQuantity ?? 0, "receivedQuantity");
-    assertNonNegativeDecimal(props.cost, "cost");
+    assertNonNegativeDecimal(props.deliveredQuantity ?? 0, "deliveredQuantity");
+    assertNonNegativeDecimal(props.price, "price");
     assertNonNegativeDecimal(props.subtotal, "subtotal");
-    if ((props.receivedQuantity ?? 0) > props.orderedQuantity) {
-      throw new Error("receivedQuantity cannot be greater than orderedQuantity");
+
+    if ((props.deliveredQuantity ?? 0) > props.orderedQuantity) {
+      throw new Error("deliveredQuantity cannot be greater than orderedQuantity");
     }
 
     this.id = props.id;
-    this.purchaseId = props.purchaseId;
+    this.orderId = props.orderId;
     this.productId = props.productId;
     this.orderedQuantity = props.orderedQuantity;
-    this.receivedQuantity = props.receivedQuantity ?? 0;
-    this.cost = props.cost;
+    this.deliveredQuantity = props.deliveredQuantity ?? 0;
+    this.price = props.price;
     this.subtotal = props.subtotal;
-    this.purchase = props.purchase ?? null;
+    this.order = props.order ?? null;
   }
 
-  static create(props: PurchaseItemProps) {
-    return new PurchaseItemEntity(props);
+  static create(props: OrderItemProps) {
+    return new OrderItemEntity(props);
   }
 
   get quantity() {
@@ -76,10 +77,10 @@ export class PurchaseItemEntity {
   }
 }
 
-export const PURCHASE_ITEM_RELATIONS = {
-  purchase: {
+export const ORDER_ITEM_RELATIONS = {
+  order: {
     type: "ManyToOne",
-    target: "PurchaseEntity",
-    foreignKey: "purchase_id",
+    target: "OrderEntity",
+    foreignKey: "order_id",
   },
 } as const;
