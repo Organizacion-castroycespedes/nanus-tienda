@@ -44,11 +44,13 @@ import {
 import { fetchMenu, fetchProfile, logout, updatePassword, updateProfile } from "../../domains/auth/api";
 import { fetchPermissions } from "../../domains/menu/api";
 import { persistMenuCache, readMenuCache } from "../../domains/auth/menu-cache";
+import { getRoutePermissionRequirement } from "../../lib/route-permissions";
+import { hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
 import { setBranding } from "../../store/brandingSlice";
 import { setCompanyDetails } from "../../store/companySlice";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import { setUser } from "../../store/authSlice";
+import { setAuthPermissions, setUser } from "../../store/authSlice";
 import { setMenuCache, setMenuItems, setPermissions } from "../../store/menuSlice";
 import type { AuthProfile } from "../../domains/auth/types";
 import type { MenuItem, MenuResponse } from "../../domains/menu/types";
@@ -131,6 +133,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const authToken = useAppSelector((state) => state.auth.accessToken);
   const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
+  const permissionsLoaded = useAppSelector((state) => state.auth.permissionsLoaded);
   const menuItems = useAppSelector((state) => state.menu.menuItems);
   const permissions = useAppSelector((state) => state.menu.permissions);
   const confirm = useConfirm();
@@ -542,8 +545,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           try {
             const permissionResponse = await fetchPermissions();
             dispatch(setPermissions(permissionResponse.items));
+            dispatch(setAuthPermissions(permissionResponse.items));
           } catch {
             dispatch(setPermissions([]));
+            dispatch(setAuthPermissions([]));
           }
         } else {
           const [menu, permissionResponse] = await Promise.all([
@@ -560,11 +565,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           );
           dispatch(setMenuItems(resolvedMenu));
           dispatch(setPermissions(permissionResponse.items));
+          dispatch(setAuthPermissions(permissionResponse.items));
           await persistMenuCache(authToken, tenantSlug, menu.items);
         }
       } catch {
         dispatch(setMenuItems([]));
         dispatch(setPermissions([]));
+        dispatch(setAuthPermissions([]));
       }
     })();
   }, [
@@ -576,6 +583,22 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     permissions.length,
     tenantSlug,
   ]);
+
+  useEffect(() => {
+    if (!pathname || authStatus !== "authenticated" || !permissionsLoaded) {
+      return;
+    }
+
+    const requirement = getRoutePermissionRequirement(pathname);
+    if (!requirement) {
+      return;
+    }
+
+    const allowed = hasPermission(requirement.module, requirement.action);
+    if (!allowed && pathname !== "/unauthorized") {
+      router.replace("/unauthorized");
+    }
+  }, [authStatus, pathname, permissionsLoaded, router]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
@@ -661,6 +684,21 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   if (!ready) {
     return null;
   }
+
+  if (authStatus === "authenticated" && !permissionsLoaded) {
+    return null;
+  }
+
+  const routeRequirement = pathname ? getRoutePermissionRequirement(pathname) : null;
+  if (
+    authStatus === "authenticated" &&
+    permissionsLoaded &&
+    routeRequirement &&
+    !hasPermission(routeRequirement.module, routeRequirement.action)
+  ) {
+    return null;
+  }
+
   return (
     <div
       className="min-h-screen bg-[var(--brand-background)] text-[var(--brand-text)]"

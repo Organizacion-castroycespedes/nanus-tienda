@@ -17,7 +17,7 @@ export class DatabaseService {
     this.pool = new Pool({
       user: process.env.DB_USERNAME || 'postgres', // Default to 'postgres' if not set
       host: process.env.DB_HOST || 'localhost', // Default to localhost if not set
-      database: process.env.DB_DATABASE || 'tenantcore-platform',
+      database: process.env.DB_DATABASE || 'manustienda-platform',
       password,
       port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432, // Default PostgreSQL port
       ssl: process.env.DB_SSL === 'true'

@@ -3,7 +3,7 @@ import Providers from "./providers";
 import "../styles/globals.css";
 
 export const metadata = {
-  title: "Soft Tenantcore Platform",
+  title: "Manus Tienda Platform",
   description: "MVP multi-tenant",
 };
 

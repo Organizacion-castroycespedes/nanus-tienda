@@ -3,8 +3,10 @@ import { clearMenu, setActiveTenant, setMenuCache, setMenuItems, setPermissions 
 import {
   clearAuth,
   setAccessToken,
+  setAuthPermissions,
   setAuthStatus,
   setBootstrapped,
+  setRole,
   setTenantId,
   setUser,
 } from "../../store/authSlice";
@@ -131,9 +133,11 @@ const rehydrateMenuAndPermissions = async (accessToken: string, tenantId: string
     );
     store.dispatch(setMenuItems(resolvedMenu));
     store.dispatch(setPermissions(permissions.items));
+    store.dispatch(setAuthPermissions(permissions.items));
     await persistMenuCache(accessToken, tenantId, menu.items);
   } catch {
     store.dispatch(setPermissions([]));
+    store.dispatch(setAuthPermissions([]));
     store.dispatch(setMenuItems([]));
   }
 };
@@ -144,6 +148,7 @@ export const rehydrateSession = async (accessToken: string, fallbackEmail?: stri
   const tenantId = tokenPayload?.tenant_id ?? "default";
   store.dispatch(setActiveTenant(tenantId));
   store.dispatch(setTenantId(tenantId));
+  store.dispatch(setRole(role || null));
 
   const baseUser = buildUserFromToken(accessToken, fallbackEmail);
   store.dispatch(setUser(baseUser));

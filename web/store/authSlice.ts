@@ -1,5 +1,6 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type { AuthUser } from "../domains/auth/types";
+import type { PermissionSummary } from "../domains/menu/types";
 
 export type AuthStatus =
   | "anonymous"
@@ -11,6 +12,9 @@ export type AuthStatus =
 export type AuthState = {
   accessToken: string | null;
   user: AuthUser | null;
+  role: string | null;
+  permissions: PermissionSummary[];
+  permissionsLoaded: boolean;
   tenantId: string | null;
   authStatus: AuthStatus;
   tokenExpiry: number | null;
@@ -20,6 +24,9 @@ export type AuthState = {
 const initialState: AuthState = {
   accessToken: null,
   user: null,
+  role: null,
+  permissions: [],
+  permissionsLoaded: false,
   tenantId: null,
   authStatus: "anonymous",
   tokenExpiry: null,
@@ -42,7 +49,15 @@ const authSlice = createSlice({
     },
     setUser(state, action: PayloadAction<AuthUser | null>) {
       state.user = action.payload;
+      state.role = action.payload?.role ?? null;
       state.tenantId = action.payload?.tenantId ?? state.tenantId;
+    },
+    setRole(state, action: PayloadAction<string | null>) {
+      state.role = action.payload;
+    },
+    setAuthPermissions(state, action: PayloadAction<PermissionSummary[]>) {
+      state.permissions = action.payload;
+      state.permissionsLoaded = true;
     },
     setTenantId(state, action: PayloadAction<string | null>) {
       state.tenantId = action.payload;
@@ -53,6 +68,9 @@ const authSlice = createSlice({
     clearAuth(state) {
       state.accessToken = null;
       state.user = null;
+      state.role = null;
+      state.permissions = [];
+      state.permissionsLoaded = false;
       state.tenantId = null;
       state.authStatus = "anonymous";
       state.tokenExpiry = null;
@@ -65,6 +83,8 @@ export const {
   setAuthStatus,
   setAccessToken,
   setUser,
+  setRole,
+  setAuthPermissions,
   setTenantId,
   setBootstrapped,
   clearAuth,

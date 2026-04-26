@@ -19,9 +19,9 @@ END$$;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_database WHERE datname = 'tenantcore-platform'
+    SELECT 1 FROM pg_database WHERE datname = 'manustienda-platform'
   ) THEN
-    CREATE DATABASE tenantcore-platform
+    CREATE DATABASE manustienda-platform
       OWNER postgresql
       ENCODING 'UTF8'
       LC_COLLATE 'C'
@@ -33,7 +33,7 @@ END$$;
 -- ================================
 -- 3) PERMISOS (opcional pero recomendado)
 -- ================================
-GRANT ALL PRIVILEGES ON DATABASE tenantcore-platform TO postgresql;
+GRANT ALL PRIVILEGES ON DATABASE manustienda-platform TO postgresql;
 
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -336,7 +336,7 @@ INSERT INTO tenants_detalles (
 )
 VALUES (
   '00000000-0000-0000-0000-000000000001',
-  'Tenantcore Platform S.A.S',
+  'ManusTienda Platform S.A.S',
   '901234567',
   '1',
   'JURIDICA',

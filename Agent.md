@@ -1,4 +1,4 @@
-# Agent.md - TenantCore Platform
+# Agent.md - ManusTienda Platform
 
 ## 1. Resumen del Proyecto
 Proyecto SaaS multi-tenant con backend en NestJS (`apps/api`) y frontend en Next.js (`apps/web`). El core incluye autenticacion JWT, RBAC por roles y permisos de menu, y catalogo de menu por tenant.

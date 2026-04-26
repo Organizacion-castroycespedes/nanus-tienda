@@ -6,7 +6,7 @@ const HomePage = () => {
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
       <section className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-xl">
         <h1 className="text-2xl font-semibold text-slate-900">
-          Soft Tenantcore Platform
+          Manus Tienda Platform
         </h1>
         <p className="mt-2 text-sm text-slate-600">
           Plataforma multi-tenant para gestión integral.
