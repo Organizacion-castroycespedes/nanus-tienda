@@ -159,7 +159,29 @@ export const PosScreen = () => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // New state for cart drawer visibility
+  const [isCartOpen, setIsCartOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
   useAutoClearState(toastMessage, setToastMessage);
+
+  // Detect mobile/tablet viewport
+  useEffect(() => {
+    const checkViewport = () => {
+      const mobile = window.innerWidth < 1280;
+      setIsMobile(mobile);
+      // On mobile, cart is closed by default
+      if (mobile) {
+        setIsCartOpen(false);
+      } else {
+        setIsCartOpen(true);
+      }
+    };
+
+    checkViewport();
+    window.addEventListener("resize", checkViewport);
+    return () => window.removeEventListener("resize", checkViewport);
+  }, []);
 
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
@@ -363,6 +385,9 @@ export const PosScreen = () => {
   }, [summary.total, totalPaid, totalCashEntered]);
 
   const canCharge = canRead && canCreate && cartWithDerivedValues.length > 0;
+
+  // Cart item count for floating button
+  const cartItemCount = cartWithDerivedValues.reduce((sum, item) => sum + item.quantity, 0);
 
   const addToCart = (product: ProductResponse) => {
     setSaleStatus("DRAFT");
@@ -635,8 +660,205 @@ export const PosScreen = () => {
     );
   }
 
+  // Cart Panel Component (internal)
+  const CartPanel = () => (
+    <div className="flex h-full flex-col">
+      {/* Cart Header */}
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+            Carrito
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
+            Venta actual
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="rounded-full border border-slate-200 px-3 py-1 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">
+            {cartWithDerivedValues.length} items
+          </div>
+          {/* Close button - visible on mobile or when cart can be collapsed */}
+          <button
+            type="button"
+            onClick={() => setIsCartOpen(false)}
+            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            aria-label="Cerrar carrito"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Cart Content */}
+      <div className="mt-4 flex flex-1 flex-col overflow-hidden">
+        {cartWithDerivedValues.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            <ShoppingCart className="mb-3 h-8 w-8" />
+            Toca un producto para empezar a construir la venta.
+          </div>
+        ) : (
+          <>
+            {/* Cart Items */}
+            <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+              {cartWithDerivedValues.map((item) => (
+                <article
+                  key={item.productId}
+                  className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-950 dark:text-white">
+                        {item.name}
+                      </h3>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {item.sku}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeCartItem(item.productId)}
+                      className="rounded-full p-2 text-slate-400 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-800"
+                      aria-label={`Eliminar ${item.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                    <div className="inline-flex items-center rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                        className="rounded-l-full px-3 py-2 text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
+                      <input
+                        value={item.quantity}
+                        onChange={(event) =>
+                          updateQuantity(
+                            item.productId,
+                            Number(event.target.value.replace(/[^\d]/g, "") || 0)
+                          )
+                        }
+                        className="w-14 border-x border-slate-200 bg-transparent px-2 py-2 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
+                        inputMode="numeric"
+                        aria-label={`Cantidad de ${item.name}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                        className="rounded-r-full px-3 py-2 text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="text-sm text-slate-600 dark:text-slate-300">
+                      <p>{formatCurrency(item.price)} c/u</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Stock disponible: {item.stock}
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Subtotal
+                      </p>
+                      <p className="mt-1 text-base font-semibold text-slate-950 dark:text-white">
+                        {formatCurrency(item.subtotal)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tax Breakdown */}
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/80">
+                    <button
+                      type="button"
+                      onClick={() => toggleTaxBreakdown(item.productId)}
+                      className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
+                    >
+                      <span>Impuestos del item</span>
+                      <span className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        {formatCurrency(item.taxTotal)}
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-200 ${
+                            expandedTaxItems[item.productId] ? "rotate-180" : ""
+                          }`}
+                        />
+                      </span>
+                    </button>
+
+                    {expandedTaxItems[item.productId] ? (
+                      <div className="mt-3 space-y-2 text-sm">
+                        {item.taxes.length === 0 ? (
+                          <p className="text-slate-500 dark:text-slate-400">
+                            Este producto no tiene impuestos asociados.
+                          </p>
+                        ) : (
+                          item.taxes.map((tax) => (
+                            <div
+                              key={tax.id}
+                              className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-medium">{tax.name}</span>
+                                <span>{formatCurrency(tax.amount)}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {round(tax.rate * 100)}%{" "}
+                                {tax.isIncluded ? "- incluido en el precio" : "- adicional"}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* Summary */}
+            <div className="mt-4 space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>Subtotal</span>
+                <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>Impuestos</span>
+                <span>{formatCurrency(summary.taxesTotal)}</span>
+              </div>
+              {/* Inline tax summary */}
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Incluye impuestos: {formatCurrency(summary.taxesTotal)}
+              </p>
+              <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-lg font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
+                <span>Total final</span>
+                <span>{formatCurrency(summary.total)}</span>
+              </div>
+            </div>
+
+            {/* Charge Button */}
+            <div className="mt-4">
+              <Button
+                className="min-h-14 w-full rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
+                size="lg"
+                onClick={openChargeModal}
+                disabled={!canCharge}
+              >
+                <Wallet className="h-5 w-5" />
+                COBRAR {formatCurrency(summary.total)}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="relative min-h-screen">
       {toastMessage ? (
         <Toast
           message={toastMessage}
@@ -645,7 +867,8 @@ export const PosScreen = () => {
         />
       ) : null}
 
-      <section className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
+      {/* Top Bar */}
+      <section className="mb-5 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900">
@@ -685,7 +908,7 @@ export const PosScreen = () => {
               <button
                 type="button"
                 onClick={() => setCustomerPickerOpen((current) => !current)}
-                className="mt-1 flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-900 dark:text-white"
+                className="mt-1 flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-900 transition hover:text-slate-700 dark:text-white dark:hover:text-slate-300"
               >
                 <span className="truncate">
                   {customerPickerOpen ? "Ocultar selector" : "Seleccionar cliente"}
@@ -693,7 +916,7 @@ export const PosScreen = () => {
                 <span className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
                   {selectedCustomer?.name ?? "Consumidor final"}
                 </span>
-                <ChevronDown className="h-4 w-4 text-slate-500" />
+                <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${customerPickerOpen ? "rotate-180" : ""}`} />
               </button>
             </div>
           </div>
@@ -724,296 +947,177 @@ export const PosScreen = () => {
       </section>
 
       {catalogError ? (
-        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+        <section className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
           {catalogError}
         </section>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-        <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
-          <div className="flex flex-col gap-4">
-            <div className="relative">
-              <Input
-                label="Buscar productos"
-                placeholder="Nombre, SKU o descripcion"
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="pl-10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-              />
-              <Search className="pointer-events-none absolute left-3 top-[38px] h-4 w-4 text-slate-400" />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {(Object.keys(categoryLabels) as CategoryKey[]).map((category) => {
-                const isActive = activeCategory === category;
-                return (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => setActiveCategory(category)}
-                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                      isActive
-                        ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    }`}
-                  >
-                    <span>{categoryLabels[category]}</span>
-                    <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">
-                      {categoryCounts[category]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="mt-5">
-            {catalogLoading ? (
-              <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-                Cargando productos...
+      {/* Main Layout - Split Screen */}
+      <div className="flex gap-5">
+        {/* Products Panel - Always visible */}
+        <div className={`flex-1 transition-all duration-300 ${isCartOpen && !isMobile ? "xl:mr-[380px]" : ""}`}>
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
+            <div className="flex flex-col gap-4">
+              {/* Search Input */}
+              <div className="relative">
+                <Input
+                  label="Buscar productos"
+                  placeholder="Nombre, SKU o descripcion"
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="pl-10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+                <Search className="pointer-events-none absolute left-3 top-[38px] h-4 w-4 text-slate-400" />
               </div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                <Package className="mb-3 h-8 w-8" />
-                No hay productos que coincidan con la busqueda actual.
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-                {filteredProducts.map((product) => {
-                  const stock = Number(product.stock ?? 0);
+
+              {/* Filter Chips */}
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(categoryLabels) as CategoryKey[]).map((category) => {
+                  const isActive = activeCategory === category;
                   return (
                     <button
-                      key={product.id}
+                      key={category}
                       type="button"
-                      onClick={() => addToCart(product)}
-                      disabled={stock <= 0 || !canCreate}
-                      className="group overflow-hidden rounded-[26px] border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900"
+                      onClick={() => setActiveCategory(category)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
+                        isActive
+                          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      }`}
                     >
-                      <div className="relative overflow-hidden border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_52%),linear-gradient(135deg,_#f8fafc,_#e2e8f0)] p-5 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.28),_transparent_50%),linear-gradient(135deg,_#111827,_#1f2937)]">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-lg font-semibold text-slate-900 shadow-sm backdrop-blur dark:bg-slate-950/60 dark:text-white">
-                            {buildImageLabel(product.name)}
-                          </div>
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProductStockTone(
-                              stock
-                            )}`}
-                          >
-                            {stock <= 0
-                              ? "Agotado"
-                              : isLowStock(stock)
-                                ? "Stock bajo"
-                                : `Stock ${stock}`}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-3 p-5">
-                        <div>
-                          <h3 className="text-base font-semibold text-slate-950 dark:text-white">
-                            {product.name}
-                          </h3>
-                          <p className="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {product.sku}
-                          </p>
-                        </div>
-                        <div className="flex items-end justify-between gap-3">
-                          <div>
-                            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              Precio final
-                            </p>
-                            <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-                              {formatCurrency(Number(product.price))}
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                            +1 al carrito
-                          </span>
-                        </div>
-                      </div>
+                      <span>{categoryLabels[category]}</span>
+                      <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">
+                        {categoryCounts[category]}
+                      </span>
                     </button>
                   );
                 })}
               </div>
-            )}
+            </div>
+
+            {/* Products Grid */}
+            <div className="mt-5">
+              {catalogLoading ? (
+                <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+                  Cargando productos...
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  <Package className="mb-3 h-8 w-8" />
+                  No hay productos que coincidan con la busqueda actual.
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                  {filteredProducts.map((product) => {
+                    const stock = Number(product.stock ?? 0);
+                    return (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => addToCart(product)}
+                        disabled={stock <= 0 || !canCreate}
+                        className="group overflow-hidden rounded-[26px] border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:scale-100 dark:border-slate-800 dark:bg-slate-900"
+                      >
+                        <div className="relative overflow-hidden border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_52%),linear-gradient(135deg,_#f8fafc,_#e2e8f0)] p-5 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.28),_transparent_50%),linear-gradient(135deg,_#111827,_#1f2937)]">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-lg font-semibold text-slate-900 shadow-sm backdrop-blur transition-transform duration-200 group-hover:scale-110 dark:bg-slate-950/60 dark:text-white">
+                              {buildImageLabel(product.name)}
+                            </div>
+                            <span
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getProductStockTone(
+                                stock
+                              )}`}
+                            >
+                              {stock <= 0
+                                ? "Agotado"
+                                : isLowStock(stock)
+                                  ? "Stock bajo"
+                                  : `Stock ${stock}`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="space-y-3 p-5">
+                          <div>
+                            <h3 className="text-base font-semibold text-slate-950 dark:text-white">
+                              {product.name}
+                            </h3>
+                            <p className="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              {product.sku}
+                            </p>
+                          </div>
+                          <div className="flex items-end justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Precio final
+                              </p>
+                              <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
+                                {formatCurrency(Number(product.price))}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition-colors group-hover:bg-slate-900 group-hover:text-white dark:bg-slate-800 dark:text-slate-200 dark:group-hover:bg-white dark:group-hover:text-slate-900">
+                              +1 al carrito
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <aside className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-                Carrito
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
-                Venta actual
-              </h2>
-            </div>
-            <div className="rounded-full border border-slate-200 px-3 py-1 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">
-              {cartWithDerivedValues.length} items
-            </div>
-          </div>
-
-          <div className="mt-4 flex min-h-[540px] flex-col">
-            {cartWithDerivedValues.length === 0 ? (
-              <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                <ShoppingCart className="mb-3 h-8 w-8" />
-                Toca un producto para empezar a construir la venta.
-              </div>
-            ) : (
-              <>
-                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-                  {cartWithDerivedValues.map((item) => (
-                    <article
-                      key={item.productId}
-                      className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-slate-950 dark:text-white">
-                            {item.name}
-                          </h3>
-                          <p className="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            {item.sku}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeCartItem(item.productId)}
-                          className="rounded-full p-2 text-slate-400 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-800"
-                          aria-label={`Eliminar ${item.name}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-                        <div className="inline-flex items-center rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                            className="rounded-l-full px-3 py-2 text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <input
-                            value={item.quantity}
-                            onChange={(event) =>
-                              updateQuantity(
-                                item.productId,
-                                Number(event.target.value.replace(/[^\d]/g, "") || 0)
-                              )
-                            }
-                            className="w-14 border-x border-slate-200 bg-transparent px-2 py-2 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                            inputMode="numeric"
-                            aria-label={`Cantidad de ${item.name}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                            className="rounded-r-full px-3 py-2 text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-900"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
-                        </div>
-
-                        <div className="text-sm text-slate-600 dark:text-slate-300">
-                          <p>{formatCurrency(item.price)} c/u</p>
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Stock disponible: {item.stock}
-                          </p>
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            Subtotal
-                          </p>
-                          <p className="mt-1 text-base font-semibold text-slate-950 dark:text-white">
-                            {formatCurrency(item.subtotal)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/80">
-                        <button
-                          type="button"
-                          onClick={() => toggleTaxBreakdown(item.productId)}
-                          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
-                        >
-                          <span>Impuestos del item</span>
-                          <span className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                            {formatCurrency(item.taxTotal)}
-                            <ChevronDown
-                              className={`h-4 w-4 transition ${
-                                expandedTaxItems[item.productId] ? "rotate-180" : ""
-                              }`}
-                            />
-                          </span>
-                        </button>
-
-                        {expandedTaxItems[item.productId] ? (
-                          <div className="mt-3 space-y-2 text-sm">
-                            {item.taxes.length === 0 ? (
-                              <p className="text-slate-500 dark:text-slate-400">
-                                Este producto no tiene impuestos asociados.
-                              </p>
-                            ) : (
-                              item.taxes.map((tax) => (
-                                <div
-                                  key={tax.id}
-                                  className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="font-medium">{tax.name}</span>
-                                    <span>{formatCurrency(tax.amount)}</span>
-                                  </div>
-                                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                    {round(tax.rate * 100)}%{" "}
-                                    {tax.isIncluded ? "- incluido en el precio" : "- adicional"}
-                                  </p>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-
-                <div className="mt-4 space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80">
-                  <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                    <span>Impuestos</span>
-                    <span>{formatCurrency(summary.taxesTotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-lg font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
-                    <span>Total final</span>
-                    <span>{formatCurrency(summary.total)}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <Button
-                    className="min-h-14 w-full rounded-2xl text-base"
-                    size="lg"
-                    onClick={openChargeModal}
-                    disabled={!canCharge}
-                  >
-                    <Wallet className="h-5 w-5" />
-                    COBRAR
-                  </Button>
-                </div>
-              </>
-            )}
+        {/* Cart Panel - Desktop: Fixed sidebar, Mobile: Drawer overlay */}
+        {/* Desktop Cart */}
+        <aside
+          className={`fixed right-0 top-0 z-40 hidden h-full w-[380px] transform border-l border-slate-200 bg-white/95 p-5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-950/95 xl:block ${
+            isCartOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+          style={{ marginTop: "0" }}
+        >
+          <div className="h-full overflow-hidden pt-2">
+            <CartPanel />
           </div>
         </aside>
-      </section>
 
+        {/* Mobile Cart Drawer Overlay */}
+        {isMobile && isCartOpen ? (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300"
+              onClick={() => setIsCartOpen(false)}
+              aria-hidden="true"
+            />
+            {/* Drawer */}
+            <aside className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-hidden rounded-t-[28px] border-t border-slate-200 bg-white/95 p-5 shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-950/95">
+              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700" />
+              <div className="max-h-[calc(85vh-60px)] overflow-y-auto">
+                <CartPanel />
+              </div>
+            </aside>
+          </>
+        ) : null}
+      </div>
+
+      {/* Floating Cart Button - visible when cart is closed and has items */}
+      {!isCartOpen && cartItemCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setIsCartOpen(true)}
+          className="fixed bottom-6 right-6 z-30 flex items-center gap-3 rounded-full bg-slate-900 px-6 py-4 text-white shadow-2xl transition-all duration-200 hover:scale-105 hover:bg-slate-800 active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+        >
+          <ShoppingCart className="h-5 w-5" />
+          <span className="font-semibold">
+            {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
+          </span>
+        </button>
+      ) : null}
+
+      {/* Payment Modal */}
       {paymentModalOpen ? (
         <Modal
           title="Cobrar venta"
