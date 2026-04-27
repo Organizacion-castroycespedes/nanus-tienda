@@ -39,6 +39,7 @@ Desde la raiz `apps`:
 bash scripts/database/migrate.sh scripts/config/db.env
 bash scripts/database/seed.sh scripts/config/db.env
 bash scripts/database/products/run_all.sh scripts/config/db.env
+bash scripts/database/sale/run_sales_migrations.sh scripts/config/db.env
 ```
 
 Backup:

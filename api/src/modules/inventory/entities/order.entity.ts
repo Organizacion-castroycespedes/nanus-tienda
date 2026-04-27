@@ -12,6 +12,8 @@ const assertNonNegativeDecimal = (value: number, field: string) => {
 export const ORDER_STATUSES = [
   "DRAFT",
   "CONFIRMED",
+  "PARTIAL",
+  "COMPLETED",
   "CANCELLED",
 ] as const;
 
