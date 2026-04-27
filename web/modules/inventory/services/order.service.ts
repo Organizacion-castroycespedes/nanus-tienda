@@ -6,7 +6,7 @@ export type OrderResponse = {
   customerId: string;
   customerName?: string | null;
   type: "CASH" | "CREDIT";
-  status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+  status: "DRAFT" | "CONFIRMED" | "PARTIAL" | "COMPLETED" | "CANCELLED";
   total: number;
   createdAt: string;
 };

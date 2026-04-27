@@ -5,6 +5,7 @@ import { InventoryController } from "./controllers/inventory.controller";
 import { OrderController } from "./controllers/order.controller";
 import { ProductController } from "./controllers/product.controller";
 import { PurchaseController } from "./controllers/purchase.controller";
+import { SaleController } from "./controllers/sale.controller";
 import { SupplierController } from "./controllers/supplier.controller";
 import { StockAdjustmentController } from "./controllers/stock-adjustment.controller";
 import { TaxController } from "./controllers/tax.controller";
@@ -14,6 +15,7 @@ import { InventoryService } from "./services/inventory.service";
 import { OrderService } from "./services/order.service";
 import { ProductService } from "./services/product.service";
 import { PurchaseService } from "./services/purchase.service";
+import { SaleService } from "./services/sale.service";
 import { StockMovementService } from "./services/stock-movement.service";
 import { SupplierService } from "./services/supplier.service";
 import { TaxService } from "./services/tax.service";
@@ -37,6 +39,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     PurchaseController,
     CustomerController,
     OrderController,
+    SaleController,
   ],
   providers: [
     CustomerService,
@@ -44,6 +47,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     OrderService,
     ProductService,
     PurchaseService,
+    SaleService,
     StockMovementService,
     SupplierService,
     UnitService,
@@ -61,6 +65,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     OrderService,
     ProductService,
     PurchaseService,
+    SaleService,
     StockMovementService,
     SupplierService,
     UnitService,
