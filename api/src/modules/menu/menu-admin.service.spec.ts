@@ -38,7 +38,7 @@ test("MenuAdminService: replaceRolePermissions uses transaction", async () => {
     release: () => undefined,
   };
 
-  const service = new MenuAdminService(new FakeDatabaseService(client) as never);
+  const service = new MenuAdminService(new FakeDatabaseService(client) as never, null as any);
 
   const result = await service.replaceRolePermissions(
     "role-1",

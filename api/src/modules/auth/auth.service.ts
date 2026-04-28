@@ -451,7 +451,7 @@ export class AuthService {
       [normalizedEmail, payload.tenantSlug]
     );
 
-    const user = users[0];
+    const user = users.rows[0];
     if (!user) {
       return;
     }
@@ -482,7 +482,7 @@ export class AuthService {
       [tokenHash]
     );
 
-    const reset = resets[0];
+    const reset = resets.rows[0];
     if (!reset) {
       throw new Error("Token inválido o expirado");
     }
@@ -553,7 +553,7 @@ export class AuthService {
     refreshToken: string
   ): Promise<RefreshTokenRecord> {
     const tokenHash = this.hashRefreshToken(refreshToken);
-    const result = await client.query<RefreshTokenRecord>(
+      const result = await (client.query as any)(
       `
       SELECT
         art.id,
@@ -620,7 +620,7 @@ export class AuthService {
     userId: string,
     tenantId: string
   ): Promise<string[]> {
-    const roles = await client.query<{ nombre: string }>(
+      const roles = await (client.query as any)(
       `
       SELECT roles.nombre
       FROM roles
@@ -631,8 +631,8 @@ export class AuthService {
       [userId, tenantId]
     );
     return (roles.rows ?? [])
-      .map((row) => row.nombre)
-      .filter((role) => Boolean(role));
+      .map((row: any) => row.nombre)
+          .filter((role: any) => Boolean(role));
   }
 
   private async persistRefreshToken(
@@ -737,7 +737,7 @@ export class AuthService {
     userId: string,
     tenantId: string
   ): Promise<AuthSessionRecord | null> {
-    const result = await client.query<AuthSessionRecord>(
+      const result = await (client.query as any)(
       `
       SELECT id, is_active, refresh_token
       FROM auth_sessions
@@ -763,7 +763,7 @@ export class AuthService {
       refreshToken,
       metadata
     );
-    const result = await client.query<{ id: string }>(
+      const result = await (client.query as any)(
       `
       INSERT INTO auth_sessions
         (user_id, tenant_id, refresh_token, user_agent, ip_address, is_active, last_activity)
@@ -786,7 +786,7 @@ export class AuthService {
     userId: string,
     tenantId: string
   ) {
-    const sessions = await client.query<{ refresh_token: string }>(
+      const sessions = await (client.query as any)(
       `
       UPDATE auth_sessions
       SET is_active = FALSE, last_activity = NOW()
@@ -796,7 +796,7 @@ export class AuthService {
       [userId, tenantId]
     );
     const tokenHashes = (sessions.rows ?? [])
-      .map((row) => row.refresh_token)
+      .map((row: any) => row.refresh_token)
       .filter(Boolean);
     if (tokenHashes.length === 0) {
       return;
@@ -816,7 +816,7 @@ export class AuthService {
     record: RefreshTokenRecord,
     refreshTokenHash: string
   ): Promise<AuthSessionRecord> {
-    const session = await client.query<AuthSessionRecord>(
+      const session = await (client.query as any)(
       `
       SELECT id, is_active, refresh_token
       FROM auth_sessions

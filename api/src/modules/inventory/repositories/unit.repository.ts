@@ -13,7 +13,7 @@ type UnitRow = QueryResultRow & {
 
 type CreateUnitData = UnitProps;
 
-type UpdateUnitData = Partial<Pick<UnitProps, "name" | "abbreviation">>;
+type UpdateUnitData = Partial<Pick<UnitProps, "name" | "abbreviation" | "isActive">>;
 
 @Injectable()
 export class UnitRepository {
