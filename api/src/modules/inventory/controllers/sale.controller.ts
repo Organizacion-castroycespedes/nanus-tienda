@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -16,6 +17,16 @@ import { SaleService } from "../services/sale.service";
 type AuthRequest = Request & {
   user?: {
     tenantId?: string;
+    id?: string;
+    sessionId?: string;
+  };
+  context?: {
+    userId?: string;
+    tenantId?: string;
+    branchId?: string;
+    terminalId?: string;
+    posSessionId?: string;
+    sessionId?: string;
   };
 };
 
@@ -45,23 +56,40 @@ export class SaleController {
   ) {}
 
   private getTenantId(request: AuthRequest) {
-    const tenantId = request.user?.tenantId;
+    const tenantId = request.context?.tenantId ?? request.user?.tenantId;
     if (!tenantId) {
       throw new NotFoundException("tenant not found in request context");
     }
     return tenantId;
   }
 
+  private getSaleContext(request: AuthRequest) {
+    if (request.context) {
+      return request.context;
+    }
+
+    const tenantId = request.user?.tenantId;
+    const userId = request.user?.id;
+    if (!tenantId || !userId) {
+      throw new BadRequestException("sale context not found in request");
+    }
+
+    return {
+      tenantId,
+      userId,
+      sessionId: request.user?.sessionId,
+    };
+  }
+
   @Post()
   create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
     return this.saleService.createSale({
-      tenantId: this.getTenantId(request),
       customerId: body.customerId,
       orderId: body.orderId ?? null,
       type: body.type,
       items: body.items ?? [],
       paymentMethods: body.paymentMethods ?? [],
-    });
+    }, this.getSaleContext(request));
   }
 
   @Get()

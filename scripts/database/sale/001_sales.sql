@@ -1,6 +1,10 @@
 CREATE TABLE IF NOT EXISTS sales (
   id UUID PRIMARY KEY,
   tenant_id UUID NOT NULL,
+  branch_id UUID NOT NULL,
+  terminal_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  pos_session_id UUID NOT NULL,
   customer_id UUID NOT NULL,
   order_id UUID NULL,
   type VARCHAR(20) NOT NULL DEFAULT 'CASH',

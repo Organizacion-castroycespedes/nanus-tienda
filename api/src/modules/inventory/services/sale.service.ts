@@ -3,9 +3,11 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../../common/db/database.service";
-import { SaleEntity, type SaleType } from "../entities/sale.entity";
+import { AuditService } from "../../../common/services/audit.service";
+import { SaleEntity } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
 import {
   SaleItemTaxEntity,
@@ -14,40 +16,11 @@ import {
   SalePaymentMethodEntity,
   type SalePaymentMethodType,
 } from "../entities/sale-payment-method.entity";
-
-type CreateSaleItemInput = {
-  productId: string;
-  quantity: number;
-  price: number;
-  orderItemId?: string | null;
-};
-
-type CreateSalePaymentMethodInput = {
-  paymentMethod: SalePaymentMethodType;
-  amount: number;
-  reference?: string | null;
-};
-
-type CreateSaleInput = {
-  tenantId: string;
-  customerId: string;
-  orderId?: string | null;
-  type: SaleType;
-  items: CreateSaleItemInput[];
-  paymentMethods?: CreateSalePaymentMethodInput[];
-};
-
-type SaleRow = {
-  id: string;
-  tenant_id: string;
-  customer_id: string;
-  order_id: string | null;
-  type: SaleType;
-  status: "DRAFT" | "CONFIRMED" | "CANCELLED";
-  total: string | number;
-  balance: string | number;
-  created_at: string | Date;
-};
+import {
+  SaleRepository,
+  type CreateSaleInput,
+  type SaleRow,
+} from "../repositories/sale.repository";
 
 type SaleListRow = SaleRow & {
   customer_name: string | null;
@@ -93,9 +66,22 @@ type SalePaymentMethodRow = {
   created_at: Date;
 };
 
+type SaleContext = {
+  userId?: string;
+  tenantId?: string;
+  branchId?: string;
+  terminalId?: string;
+  posSessionId?: string;
+  sessionId?: string;
+};
+
 @Injectable()
 export class SaleService {
-  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(SaleRepository) private readonly repository: SaleRepository,
+    @Inject(AuditService) private readonly auditService: AuditService
+  ) {}
 
   private toNumber(value: string | number) {
     return typeof value === "number" ? value : Number(value);
@@ -168,48 +154,97 @@ export class SaleService {
     });
   }
 
-  async createSale(data: CreateSaleInput) {
-    const saleResult = await this.db.query(
-      `
-        SELECT *
-        FROM inventory_create_sale(
-          $1::uuid,
-          $2::uuid,
-          $3::uuid,
-          $4::varchar,
-          $5::jsonb,
-          $6::jsonb
-        )
-      `,
-      [
-        data.tenantId,
-        data.customerId,
-        data.orderId ?? null,
-        data.type,
-        JSON.stringify(
-          (data.items ?? []).map((item) => ({
-            product_id: item.productId,
-            quantity: Number(item.quantity),
-            price: Number(item.price),
-            order_item_id: item.orderItemId ?? null,
-          }))
-        ),
-        JSON.stringify(
-          (data.paymentMethods ?? []).map((paymentMethod) => ({
-            payment_method: paymentMethod.paymentMethod,
-            amount: Number(paymentMethod.amount),
-            reference: paymentMethod.reference ?? null,
-          }))
-        ),
-      ]
-    );
-
-    const saleRow = saleResult.rows[0] as SaleRow | undefined;
-    if (!saleRow) {
-      throw new BadRequestException("sale could not be created");
+  private async normalizeSaleContext(context?: SaleContext) {
+    if (!context?.tenantId || !context.userId) {
+      throw new UnauthorizedException("Incomplete POS context");
     }
 
-    const [itemsResult, itemTaxesResult, paymentMethodsResult] = await Promise.all([
+    if (context.posSessionId && context.branchId && context.terminalId) {
+      return {
+        tenantId: context.tenantId,
+        userId: context.userId,
+        branchId: context.branchId,
+        terminalId: context.terminalId,
+        posSessionId: context.posSessionId,
+      };
+    }
+
+    const currentPosContext = await this.repository.findCurrentPosContext(
+      context.tenantId,
+      context.userId,
+      context.sessionId
+    );
+    if (!currentPosContext) {
+      throw new UnauthorizedException("POS session is required");
+    }
+
+    return {
+      tenantId: context.tenantId,
+      userId: context.userId,
+      branchId: currentPosContext.branch_id,
+      terminalId: currentPosContext.terminal_id,
+      posSessionId: currentPosContext.pos_session_id,
+    };
+  }
+
+  private ensureSaleInput(data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">) {
+    if (!data.customerId) {
+      throw new BadRequestException("customerId is required");
+    }
+    if (!data.items?.length) {
+      throw new BadRequestException("sale items are required");
+    }
+    if (!["CASH", "CREDIT"].includes(data.type)) {
+      throw new BadRequestException("type is invalid");
+    }
+  }
+
+  async createSale(
+    data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">,
+    context: SaleContext
+  ) {
+    const saleContext = await this.normalizeSaleContext(context);
+    this.ensureSaleInput(data);
+
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const validPosSession = await this.repository.validateActivePosSession(
+        saleContext,
+        client
+      );
+      if (!validPosSession) {
+        throw new UnauthorizedException("POS session is invalid");
+      }
+      const saleRow = await this.repository.createSale(
+        {
+          ...data,
+          ...saleContext,
+        },
+        client
+      );
+      if (!saleRow) {
+        throw new BadRequestException("sale could not be created");
+      }
+
+      await client.query("COMMIT");
+      this.auditService.logEvent({
+        tenantId: saleContext.tenantId,
+        userId: saleContext.userId,
+        module: "sales",
+        entity: "sales",
+        entityId: saleRow.id,
+        action: "SALE_CREATED",
+      });
+
+      const saleResult = { rows: [saleRow] };
+      const saleRowResult = saleResult.rows[0] as SaleRow | undefined;
+      if (!saleRowResult) {
+        throw new BadRequestException("sale could not be created");
+      }
+
+      const [itemsResult, itemTaxesResult, paymentMethodsResult] = await Promise.all([
       this.db.query(
         `
           SELECT
@@ -274,19 +309,25 @@ export class SaleService {
       ),
     ]);
 
-    return {
-      ...this.mapSale(saleRow),
-      items: (itemsResult.rows as SaleItemRow[]).map((row) => this.mapSaleItem(row)),
-      itemTaxes: (itemTaxesResult.rows as SaleItemTaxRow[]).map((row) =>
-        this.mapSaleItemTax(row)
-      ),
-      paymentMethods: (paymentMethodsResult.rows as SalePaymentMethodRow[]).map((row) =>
-        this.mapSalePaymentMethod(row)
-      ),
-      payment_methods: (paymentMethodsResult.rows as SalePaymentMethodRow[]).map((row) =>
-        this.mapSalePaymentMethod(row)
-      ),
-    };
+      return {
+        ...this.mapSale(saleRowResult),
+        items: (itemsResult.rows as SaleItemRow[]).map((row) => this.mapSaleItem(row)),
+        itemTaxes: (itemTaxesResult.rows as SaleItemTaxRow[]).map((row) =>
+          this.mapSaleItemTax(row)
+        ),
+        paymentMethods: (paymentMethodsResult.rows as SalePaymentMethodRow[]).map((row) =>
+          this.mapSalePaymentMethod(row)
+        ),
+        payment_methods: (paymentMethodsResult.rows as SalePaymentMethodRow[]).map((row) =>
+          this.mapSalePaymentMethod(row)
+        ),
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getSales(tenantId: string) {

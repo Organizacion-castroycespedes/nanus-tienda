@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CommonServicesModule } from "../../common/services/common-services.module";
 import { DatabaseModule } from "../../common/db/database.module";
 import { CustomerController } from "./controllers/customer.controller";
 import { InventoryController } from "./controllers/inventory.controller";
@@ -23,12 +24,13 @@ import { UnitService } from "./services/unit.service";
 import { CustomerRepository } from "./repositories/customer.repository";
 import { InventoryRepository } from "./repositories/inventory.repository";
 import { ProductRepository } from "./repositories/product.repository";
+import { SaleRepository } from "./repositories/sale.repository";
 import { SupplierRepository } from "./repositories/supplier.repository";
 import { TaxRepository } from "./repositories/tax.repository";
 import { UnitRepository } from "./repositories/unit.repository";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, CommonServicesModule],
   controllers: [
     InventoryController,
     ProductController,
@@ -55,6 +57,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     CustomerRepository,
     InventoryRepository,
     ProductRepository,
+    SaleRepository,
     SupplierRepository,
     UnitRepository,
     TaxRepository,
@@ -73,6 +76,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     CustomerRepository,
     InventoryRepository,
     ProductRepository,
+    SaleRepository,
     SupplierRepository,
     UnitRepository,
     TaxRepository,

@@ -1133,7 +1133,7 @@ COPY tmp_tenants_detalles (id, tenant_id, razon_social, nit, dv, tipo_persona, t
 \.
 
 COPY tmp_tenant_branches (id, tenant_id, codigo, nombre, descripcion, es_principal, direccion, ciudad, departamento, pais, telefono, email, estado, metadata, created_at, updated_at, pais_id, departamento_id, municipio_id) FROM stdin;
-ab41d3da-6686-4de3-9191-875a5a7da5a5	00000000-0000-0000-0000-000000000001	PRINCIPAL	Sucursal Principal	Sucursal principal del tenant	t	Cra 45 # 72 - 10, Local 3	Barranquilla	Atlántico	Colombia	+57 300 123 4567	info@softmetalglass.com	ACTIVE	{}	2026-02-21 07:10:14.326167-06	2026-02-21 07:10:14.326167-06	\N	\N	\N
+ab41d3da-6686-4de3-9191-875a5a7da5a5	00000000-0000-0000-0000-000000000001	PRINCIPAL	Sucursal Principal	Sucursal principal del tenant	t	Cra 45 # 72 - 10, Local 3	Barranquilla	Atlántico	Colombia	+57 300 123 4567	info@softmetalglass.com	ACTIVE	{}	2026-02-21 07:10:14.326167-06	2026-02-21 07:10:14.326167-06	11111111-1111-1111-1111-111111111111	ae50ca8b-b1ba-4837-8c19-4ff2522aae5a	ae2b3188-91ba-4ed4-83cd-e19c66b99d4d
 \.
 
 COPY tmp_personas (id, tenant_id, nombres, apellidos, documento_tipo, documento_numero, telefono, direccion, email_personal, cargo_nombre, cargo_descripcion, funciones_descripcion, created_at) FROM stdin;
@@ -1441,5 +1441,63 @@ SET
   cargo_nombre = EXCLUDED.cargo_nombre,
   cargo_descripcion = EXCLUDED.cargo_descripcion,
   funciones_descripcion = EXCLUDED.funciones_descripcion;
+
+INSERT INTO public.persona_tenant_branches (
+  persona_id,
+  tenant_branch_id,
+  tenant_id,
+  es_principal
+)
+SELECT
+  p_real.id,
+  tb_real.id,
+  t_real.id,
+  TRUE
+FROM tmp_personas p
+JOIN tmp_tenants t_dump ON t_dump.id = p.tenant_id
+JOIN public.tenants t_real ON t_real.slug = t_dump.slug
+JOIN public.personas p_real
+  ON p_real.tenant_id = t_real.id
+ AND p_real.documento_numero = p.documento_numero
+JOIN tmp_tenant_branches tb_dump
+  ON tb_dump.tenant_id = t_dump.id
+ AND tb_dump.es_principal = TRUE
+JOIN public.tenant_branches tb_real
+  ON tb_real.tenant_id = t_real.id
+ AND tb_real.codigo = tb_dump.codigo
+ON CONFLICT (persona_id, tenant_branch_id) DO UPDATE
+SET
+  tenant_id = EXCLUDED.tenant_id,
+  es_principal = TRUE;
+
+INSERT INTO public.terminals (
+  tenant_id,
+  branch_id,
+  name,
+  code,
+  device_fingerprint,
+  is_active
+)
+SELECT
+  t_real.id,
+  tb_real.id,
+  'Terminal 1',
+  'TERM-001',
+  NULL,
+  TRUE
+FROM tmp_tenant_branches tb_dump
+JOIN tmp_tenants t_dump ON t_dump.id = tb_dump.tenant_id
+JOIN public.tenants t_real ON t_real.slug = t_dump.slug
+JOIN public.tenant_branches tb_real
+  ON tb_real.tenant_id = t_real.id
+ AND tb_real.codigo = tb_dump.codigo
+WHERE tb_dump.es_principal = TRUE
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.terminals term
+    WHERE term.tenant_id = t_real.id
+      AND term.branch_id = tb_real.id
+      AND term.code = 'TERM-001'
+  );
 
 COMMIT;
