@@ -20,6 +20,7 @@ import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { hasPermission } from "../../../lib/permissions";
@@ -129,9 +130,14 @@ const buildImageLabel = (name: string) => {
 };
 
 export const PosScreen = () => {
+  const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
   const canRead = hasPermission("pos.read");
   const canCreate = hasPermission("pos.create");
+
+  if (!hasSession) {
+    return null;
+  }
 
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);

@@ -127,6 +127,16 @@ export class AuthController {
     return this.usersService.updateSelfPassword(payload, actor);
   }
 
+  @Get("context")
+  @UseGuards(JwtAuthGuard)
+  getContext(@Req() request: Request) {
+    const actor = this.buildActor(request);
+    if (!actor.userId) {
+      throw new UnauthorizedException("Usuario requerido");
+    }
+    return this.authService.getUserContext(actor.userId);
+  }
+
   private buildRefreshMetadata(request: Request) {
     const userAgentHeader = request.headers["user-agent"];
     const forwardedFor = request.headers["x-forwarded-for"];
