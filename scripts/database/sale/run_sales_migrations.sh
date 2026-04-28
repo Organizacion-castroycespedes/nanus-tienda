@@ -28,6 +28,7 @@ sql_files=(
   "002_sale_items.sql"
   "003_sale_item_taxes.sql"
   "004_sale_payment_methods.sql"
+  "010_sales_pos_context.sql"
   "005_relations_indexes.sql"
   "006_create_sale_function.sql"
   "007_update_sales_balance_constraint.sql"

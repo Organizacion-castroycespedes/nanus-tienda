@@ -11,10 +11,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
+import { AuthRepository } from "./auth.repository";
 import type { LoginDto } from "./dto/login.dto";
 import type { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import type { ResetPasswordDto } from "./dto/reset-password.dto";
 import type { RefreshTokenDto } from "./dto/refresh-token.dto";
+import type { AuthContextResponseDto } from "./dto/auth-context-response.dto";
 
 const JWT_EXPIRES_IN_RAW = process.env.JWT_EXPIRES_IN ?? "15m";
 const JWT_EXPIRES_IN: SignOptions["expiresIn"] = /^\d+$/.test(JWT_EXPIRES_IN_RAW)
@@ -91,8 +93,93 @@ export type AuthProfileResponse = {
 @Injectable()
 export class AuthService {
   constructor(
-    @Inject(DatabaseService) private readonly db: DatabaseService
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(AuthRepository) private readonly authRepository: AuthRepository
   ) {}
+
+  async getUserContext(userId: string): Promise<AuthContextResponseDto> {
+    const rows = await this.authRepository.getUserContextRows(userId);
+    const tenants = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        branches: Array<{
+          id: string;
+          name: string;
+          terminals: Array<{
+            id: string;
+            name: string;
+            code: string;
+          }>;
+        }>;
+        branchMap: Map<
+          string,
+          {
+            id: string;
+            name: string;
+            terminals: Array<{
+              id: string;
+              name: string;
+              code: string;
+            }>;
+            terminalIds: Set<string>;
+          }
+        >;
+      }
+    >();
+
+    for (const row of rows) {
+      let tenant = tenants.get(row.tenant_id);
+      if (!tenant) {
+        tenant = {
+          id: row.tenant_id,
+          name: row.tenant_name,
+          branches: [],
+          branchMap: new Map(),
+        };
+        tenants.set(row.tenant_id, tenant);
+      }
+
+      let branch = tenant.branchMap.get(row.branch_id);
+      if (!branch) {
+        branch = {
+          id: row.branch_id,
+          name: row.branch_name,
+          terminals: [],
+          terminalIds: new Set(),
+        };
+        tenant.branchMap.set(row.branch_id, branch);
+        tenant.branches.push(branch);
+      }
+
+      if (
+        row.terminal_id &&
+        row.terminal_name &&
+        row.terminal_code &&
+        !branch.terminalIds.has(row.terminal_id)
+      ) {
+        branch.terminalIds.add(row.terminal_id);
+        branch.terminals.push({
+          id: row.terminal_id,
+          name: row.terminal_name,
+          code: row.terminal_code,
+        });
+      }
+    }
+
+    return {
+      tenants: Array.from(tenants.values()).map((tenant) => ({
+        id: tenant.id,
+        name: tenant.name,
+        branches: tenant.branches.map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          terminals: branch.terminals,
+        })),
+      })),
+    };
+  }
   async login(payload: LoginDto, metadata?: RefreshTokenMetadata): Promise<AuthTokens> {
     try {
       const normalizedEmail = payload.email.trim().toLowerCase();

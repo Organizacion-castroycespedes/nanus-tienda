@@ -150,6 +150,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     }
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }, [sidebarCompanyName]);
+  const isPosContextRoute = useMemo(
+    () => Boolean(pathname && /^\/[^/]+\/pos\/select-context\/?$/i.test(pathname)),
+    [pathname]
+  );
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -685,7 +689,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     return null;
   }
 
-  if (authStatus === "authenticated" && !permissionsLoaded) {
+  if (authStatus === "authenticated" && !permissionsLoaded && !isPosContextRoute) {
     return null;
   }
 

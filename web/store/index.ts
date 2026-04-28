@@ -3,6 +3,7 @@ import brandingReducer from "./brandingSlice";
 import companyReducer from "./companySlice";
 import authReducer from "./authSlice";
 import menuReducer from "./menuSlice";
+import posReducer from "./pos";
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     company: companyReducer,
     auth: authReducer,
     menu: menuReducer,
+    pos: posReducer,
   },
 });
 

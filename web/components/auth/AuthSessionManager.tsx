@@ -31,7 +31,7 @@ const AuthSessionManager = () => {
     }
     if (pathname === "/login") {
       const targetTenant = tenantId ?? "default";
-      router.replace(`/${targetTenant}/dashboard`);
+      router.replace(`/${targetTenant}/pos/select-context`);
     }
   }, [authStatus, pathname, router, tenantId]);
 

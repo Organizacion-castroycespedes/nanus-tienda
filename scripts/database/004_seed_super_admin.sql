@@ -7,6 +7,16 @@ ON CONFLICT (slug) DO NOTHING;
 WITH tenant_target AS (
   SELECT id FROM public.tenants WHERE slug = 'default' LIMIT 1
 ),
+principal_branch AS (
+  SELECT
+    tb.id,
+    tb.tenant_id
+  FROM public.tenant_branches tb
+  JOIN tenant_target t ON t.id = tb.tenant_id
+  WHERE tb.es_principal = TRUE
+  ORDER BY tb.created_at ASC
+  LIMIT 1
+),
 persona_upsert AS (
   INSERT INTO public.personas (
     tenant_id,
@@ -77,6 +87,49 @@ SELECT
 FROM user_final u
 JOIN public.roles r ON r.nombre = 'SUPER_ADMIN'
 ON CONFLICT (user_id, role_id, tenant_id) DO NOTHING;
+
+INSERT INTO public.persona_tenant_branches (
+  persona_id,
+  tenant_branch_id,
+  tenant_id,
+  es_principal
+)
+SELECT
+  p.id,
+  b.id,
+  p.tenant_id,
+  TRUE
+FROM persona_final p
+JOIN principal_branch b
+  ON b.tenant_id = p.tenant_id
+ON CONFLICT (persona_id, tenant_branch_id) DO UPDATE
+SET
+  tenant_id = EXCLUDED.tenant_id,
+  es_principal = TRUE;
+
+INSERT INTO public.terminals (
+  tenant_id,
+  branch_id,
+  name,
+  code,
+  device_fingerprint,
+  is_active
+)
+SELECT
+  b.tenant_id,
+  b.id,
+  'Terminal 1',
+  'TERM-001',
+  NULL,
+  TRUE
+FROM principal_branch b
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM public.terminals term
+  WHERE term.tenant_id = b.tenant_id
+    AND term.branch_id = b.id
+    AND term.code = 'TERM-001'
+);
 
 COMMIT;
 

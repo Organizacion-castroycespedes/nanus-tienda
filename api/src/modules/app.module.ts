@@ -8,6 +8,8 @@ import { LocationsModule } from "./locations/locations.module";
 import { RolesModule } from "./roles/roles.module";
 import { MenuModule } from "./menu/menu.module";
 import { InventoryModule } from "./inventory/inventory.module";
+import { TerminalsModule } from "./terminals/terminals.module";
+import { PosUserSessionsModule } from "./pos-user-sessions/pos-user-sessions.module";
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { InventoryModule } from "./inventory/inventory.module";
     RolesModule,
     MenuModule,
     InventoryModule,
+    TerminalsModule,
+    PosUserSessionsModule,
   ],
 })
 export class AppModule {}

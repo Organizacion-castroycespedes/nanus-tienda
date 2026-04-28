@@ -1,5 +1,9 @@
 CREATE OR REPLACE FUNCTION inventory_create_sale(
   p_tenant_id UUID,
+  p_branch_id UUID,
+  p_terminal_id UUID,
+  p_user_id UUID,
+  p_pos_session_id UUID,
   p_customer_id UUID,
   p_order_id UUID,
   p_type VARCHAR(20),
@@ -45,6 +49,22 @@ BEGIN
     RAISE EXCEPTION 'type is invalid';
   END IF;
 
+  IF p_branch_id IS NULL THEN
+    RAISE EXCEPTION 'branch_id is required';
+  END IF;
+
+  IF p_terminal_id IS NULL THEN
+    RAISE EXCEPTION 'terminal_id is required';
+  END IF;
+
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'user_id is required';
+  END IF;
+
+  IF p_pos_session_id IS NULL THEN
+    RAISE EXCEPTION 'pos_session_id is required';
+  END IF;
+
   IF p_items IS NULL
     OR jsonb_typeof(p_items) <> 'array'
     OR jsonb_array_length(p_items) = 0 THEN
@@ -54,6 +74,48 @@ BEGIN
   IF p_payment_methods IS NOT NULL
     AND jsonb_typeof(p_payment_methods) <> 'array' THEN
     RAISE EXCEPTION 'payment methods must be an array';
+  END IF;
+
+  PERFORM 1
+  FROM tenant_branches tb
+  WHERE tb.id = p_branch_id
+    AND tb.tenant_id = p_tenant_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'branch not found for tenant';
+  END IF;
+
+  PERFORM 1
+  FROM terminals t
+  WHERE t.id = p_terminal_id
+    AND t.tenant_id = p_tenant_id
+    AND t.branch_id = p_branch_id
+    AND t.is_active = TRUE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'terminal not found for tenant and branch';
+  END IF;
+
+  PERFORM 1
+  FROM users u
+  WHERE u.id = p_user_id
+    AND u.tenant_id = p_tenant_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'user not found for tenant';
+  END IF;
+
+  PERFORM 1
+  FROM pos_user_sessions pus
+  WHERE pus.id = p_pos_session_id
+    AND pus.tenant_id = p_tenant_id
+    AND pus.branch_id = p_branch_id
+    AND pus.terminal_id = p_terminal_id
+    AND pus.user_id = p_user_id
+    AND pus.is_active = TRUE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'pos session not found for context';
   END IF;
 
   PERFORM 1
@@ -79,6 +141,10 @@ BEGIN
   INSERT INTO sales (
     id,
     tenant_id,
+    branch_id,
+    terminal_id,
+    user_id,
+    pos_session_id,
     customer_id,
     order_id,
     type,
@@ -89,6 +155,10 @@ BEGIN
   ) VALUES (
     v_sale_id,
     p_tenant_id,
+    p_branch_id,
+    p_terminal_id,
+    p_user_id,
+    p_pos_session_id,
     p_customer_id,
     p_order_id,
     p_type,

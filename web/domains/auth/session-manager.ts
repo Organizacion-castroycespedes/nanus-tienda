@@ -16,6 +16,7 @@ import { clearRefreshToken, getStoredRefreshToken, persistRefreshToken } from ".
 import type { AuthProfile, AuthTokens, AuthUser } from "./types";
 import type { MenuResponse, PermissionsResponse } from "../menu/types";
 import { clearMenuCache, persistMenuCache, readMenuCache } from "./menu-cache";
+import { clearContext as clearPosContext, clearPersistedPosState } from "../../store/pos";
 
 const REFRESH_BUFFER_MS = 60 * 1000;
 
@@ -253,8 +254,10 @@ export const startSessionFromLogin = async (
 export const clearSession = (options?: { reason?: string }) => {
   store.dispatch(clearAuth());
   store.dispatch(clearMenu());
+  store.dispatch(clearPosContext());
   clearRefreshToken();
   clearMenuCache();
+  clearPersistedPosState();
   clearTokenRefreshSchedule();
   if (typeof window !== "undefined") {
     if (window.location.pathname !== "/login") {
