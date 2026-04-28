@@ -38,8 +38,8 @@ fi
 
 DB_EXISTS="$(PGPASSWORD="$PGPASSWORD_ADMIN" "${PSQL_ADMIN[@]}" -tAc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME';" | tr -d '[:space:]')"
 if [[ "$DB_EXISTS" != "1" ]]; then
-  PGPASSWORD="$PGPASSWORD_ADMIN" "${PSQL_ADMIN[@]}" -c "CREATE DATABASE \"$DB_NAME\";"
-  echo "[migrate] Database created."
+  PGPASSWORD="$PGPASSWORD_ADMIN" "${PSQL_ADMIN[@]}" -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  echo "[migrate] Database created with owner $DB_USER."
 fi
 
 "${PSQL_APP[@]}" -c "CREATE SCHEMA IF NOT EXISTS public;"
