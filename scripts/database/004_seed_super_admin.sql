@@ -99,9 +99,14 @@ SELECT
   b.id,
   p.tenant_id,
   TRUE
-FROM persona_final p
-JOIN principal_branch b
+FROM public.personas p
+JOIN public.tenants t
+  ON t.id = p.tenant_id
+  AND t.slug = 'default'
+JOIN public.tenant_branches b
   ON b.tenant_id = p.tenant_id
+  AND b.es_principal = TRUE
+WHERE lower(p.email_personal) = lower(:'super_admin_email')
 ON CONFLICT (persona_id, tenant_branch_id) DO UPDATE
 SET
   tenant_id = EXCLUDED.tenant_id,
@@ -122,14 +127,18 @@ SELECT
   'TERM-001',
   NULL,
   TRUE
-FROM principal_branch b
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM public.terminals term
-  WHERE term.tenant_id = b.tenant_id
-    AND term.branch_id = b.id
-    AND term.code = 'TERM-001'
-);
+FROM public.tenant_branches b
+JOIN public.tenants t
+  ON t.id = b.tenant_id
+  AND t.slug = 'default'
+WHERE b.es_principal = TRUE
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.terminals term
+    WHERE term.tenant_id = b.tenant_id
+      AND term.branch_id = b.id
+      AND term.code = 'TERM-001'
+  );
 
 COMMIT;
 
