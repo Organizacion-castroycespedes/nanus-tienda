@@ -2,10 +2,28 @@
   "name": "@soft-metal-glass/api",
   "version": "0.1.0",
   "private": true,
+  "bin": "dist/main.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start:dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "build:bin": "npm run build && pkg . --compress Brotli"
+  },
+  "pkg": {
+    "assets": [
+      "dist/**/*",
+      ".env*"
+    ],
+    "targets": [
+      "node18-linux-x64",
+      "node18-win-x64"
+    ],
+    "outputPath": "dist-bin",
+    "scripts": ["dist/**/*.js"],
+    "compress": "Brotli"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.2",
@@ -23,6 +41,7 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.11.19",
     "@types/pg": "^8.11.6",
+    "pkg": "^5.11.4",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   }
