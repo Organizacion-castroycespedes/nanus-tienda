@@ -14,7 +14,7 @@ type TaxRow = QueryResultRow & {
 
 type CreateTaxData = TaxProps;
 
-type UpdateTaxData = Partial<Pick<TaxProps, "name" | "rate" | "isIncluded">>;
+type UpdateTaxData = Partial<Pick<TaxProps, "name" | "rate" | "isIncluded" | "isActive">>;
 
 @Injectable()
 export class TaxRepository {

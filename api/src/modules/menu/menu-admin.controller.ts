@@ -37,7 +37,7 @@ export class MenuAdminController {
     @Inject(MenuAdminService) private readonly menuAdminService: MenuAdminService
   ) {}
 
-  private buildActor(request: Request) {
+  private buildActor(request: any) {
     const roles = Array.isArray(request.user?.roles) ? request.user.roles : [];
     return {
       roles,
@@ -49,12 +49,12 @@ export class MenuAdminController {
   }
 
   @Post("menu-items")
-  createMenuItem(@Body() payload: CreateMenuItemDto, @Req() request: Request) {
+  createMenuItem(@Body() payload: CreateMenuItemDto, @Req() request: any) {
     return this.menuAdminService.createMenuItem(payload, this.buildActor(request));
   }
 
   @Get("menu-items")
-  listMenuItems(@Query("tenantId") tenantId: string, @Req() request: Request) {
+  listMenuItems(@Query("tenantId") tenantId: string, @Req() request: any) {
     if (!tenantId) {
       throw new UnauthorizedException("Tenant requerido");
     }
@@ -62,7 +62,7 @@ export class MenuAdminController {
   }
 
   @Get("menu-items/:id")
-  getMenuItem(@Param("id") id: string, @Req() request: Request) {
+  getMenuItem(@Param("id") id: string, @Req() request: any) {
     return this.menuAdminService.getMenuItem(id, this.buildActor(request));
   }
 
@@ -70,7 +70,7 @@ export class MenuAdminController {
   updateMenuItem(
     @Param("id") id: string,
     @Body() payload: UpdateMenuItemDto,
-    @Req() request: Request
+    @Req() request: any
   ) {
     return this.menuAdminService.updateMenuItem(id, payload, this.buildActor(request));
   }
@@ -79,7 +79,7 @@ export class MenuAdminController {
   updateMenuItemStatus(
     @Param("id") id: string,
     @Body() payload: UpdateMenuItemStatusDto,
-    @Req() request: Request
+    @Req() request: any
   ) {
     return this.menuAdminService.updateMenuItemStatus(
       id,

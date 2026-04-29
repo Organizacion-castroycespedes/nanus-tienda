@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { query } from "../db/pool";
 
-export const tenantMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+export const tenantMiddleware = async (req: any, res: Response, next: NextFunction) => {
   const tenantSlug = req.headers["x-tenant"] || req.params.tenant;
   if (!tenantSlug) {
     res.status(400).json({ message: "Tenant requerido" });
