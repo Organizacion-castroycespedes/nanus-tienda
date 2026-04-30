@@ -44,7 +44,8 @@ export class PermissionsGuard implements CanActivate {
     if (
       user.roles?.includes("SUPER_USER") &&
       (requiredPermission.menuKey === MENU_KEYS.CONFIG_GENERAL ||
-        requiredPermission.menuKey === MENU_KEYS.CONFIG_USUARIOS)
+        requiredPermission.menuKey === MENU_KEYS.CONFIG_USUARIOS ||
+        requiredPermission.menuKey === MENU_KEYS.CONFIG_ROLES)
     ) {
       return true;
     }

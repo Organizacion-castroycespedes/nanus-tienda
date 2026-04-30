@@ -70,17 +70,17 @@ export class RolesService {
       );
       const role = created.rows[0];
 
-      // if (tenantIds.length > 0) {
-      //   await client.query(
-      //     `
-      //     INSERT INTO user_roles (user_id, role_id, tenant_id)
-      //     SELECT $1, $2, tenant_id
-      //     FROM unnest($3::uuid[]) AS tenant_id
-      //     ON CONFLICT DO NOTHING
-      //     `,
-      //     [userId, role.id, tenantIds]
-      //   );
-      // }
+      if (tenantIds.length > 0) {
+        await client.query(
+          `
+          INSERT INTO user_roles (user_id, role_id, tenant_id)
+          SELECT $1, $2, tenant_id
+          FROM unnest($3::uuid[]) AS tenant_id
+          ON CONFLICT DO NOTHING
+          `,
+          [userId, role.id, tenantIds]
+        );
+      }
 
       await client.query("COMMIT");
       return {
@@ -143,16 +143,15 @@ export class RolesService {
             `,
             [userId, roleId, tenantIds]
           );
-          // 
-          // await client.query(
-          //   `
-          //   INSERT INTO user_roles (user_id, role_id, tenant_id)
-          //   SELECT $1, $2, tenant_id
-          //   FROM unnest($3::uuid[]) AS tenant_id
-          //   ON CONFLICT DO NOTHING
-          //   `,
-          //   [userId, roleId, tenantIds]
-          // );
+          await client.query(
+            `
+            INSERT INTO user_roles (user_id, role_id, tenant_id)
+            SELECT $1, $2, tenant_id
+            FROM unnest($3::uuid[]) AS tenant_id
+            ON CONFLICT DO NOTHING
+            `,
+            [userId, roleId, tenantIds]
+          );
         }
       }
 

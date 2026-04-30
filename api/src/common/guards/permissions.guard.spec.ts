@@ -148,3 +148,22 @@ test("PermissionsGuard: resolves legacy key alias from service", async () => {
   const allowed = await guard.canActivate(buildContext({ id: "user", tenantId: "tenant" }));
   assert.equal(allowed, true);
 });
+
+test("PermissionsGuard: allows SUPER_USER to read CONFIG_ROLES", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "READ" }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for SUPER_USER role shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] } as any)
+  );
+  assert.equal(allowed, true);
+});
