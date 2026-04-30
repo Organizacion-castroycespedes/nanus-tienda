@@ -6,6 +6,10 @@ import {
   clearContext as clearPosContext,
   clearPersistedPosState,
 } from "../store/pos";
+import {
+  clearPersistedPosCartState,
+  clearPosCartState,
+} from "../store/posCart";
 import { ApiError } from "./request";
 
 const parseJson = async <T>(response: Response): Promise<T> => {
@@ -51,8 +55,11 @@ const isInvalidPosSessionError = (message: string) => {
 };
 
 const handleInvalidPosSession = () => {
+  const currentCartContextKey = store.getState().posCart.contextKey;
   store.dispatch(clearPosContext());
+  store.dispatch(clearPosCartState());
   clearPersistedPosState();
+  clearPersistedPosCartState(currentCartContextKey);
 
   if (typeof window === "undefined") {
     return;

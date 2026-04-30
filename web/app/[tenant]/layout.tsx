@@ -139,6 +139,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const permissionsLoaded = useAppSelector((state) => state.auth.permissionsLoaded);
   const menuItems = useAppSelector((state) => state.menu.menuItems);
   const permissions = useAppSelector((state) => state.menu.permissions);
+  const posCartItemCount = useAppSelector((state) =>
+    state.posCart.items.reduce((sum, item) => sum + item.quantity, 0)
+  );
+  const hasPendingPosSale = posCartItemCount > 0;
   const confirm = useConfirm();
   const sidebarCompanyName = company?.razonSocial || authUser?.tenantName || "Empresa";
   const tenantSlug = authUser?.tenantId ?? "default";
@@ -877,6 +881,19 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               >
                 <MessageCircle className="h-5 w-5" />
               </button>
+              {hasPendingPosSale ? (
+                <Link
+                  href={`/${tenantSlug}/pos`}
+                  className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                  aria-label={`Volver al POS con ${posCartItemCount} items pendientes`}
+                  title={`Venta POS pendiente: ${posCartItemCount} items`}
+                >
+                  <ShoppingCart className="h-5 w-5" />
+                  <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                    {posCartItemCount}
+                  </span>
+                </Link>
+              ) : null}
               <div className="relative">
                 <button
                   type="button"

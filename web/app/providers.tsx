@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Provider } from "react-redux";
 import { store } from "../store";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
@@ -11,6 +11,13 @@ import {
   persistPosState,
   rehydratePosContextFromStorage,
 } from "../store/pos";
+import {
+  clearPersistedPosCartState,
+  hydratePosCart,
+  loadPersistedPosCartState,
+  persistPosCartState,
+  setPosCartContext,
+} from "../store/posCart";
 import { setInventoryScope } from "../store/inventoryScopeSlice";
 
 const BrandingApplier = ({ children }: { children: ReactNode }) => {
@@ -48,6 +55,55 @@ const PosStateManager = () => {
   return null;
 };
 
+const PosCartStateManager = () => {
+  const dispatch = useAppDispatch();
+  const pos = useAppSelector((state) => state.pos);
+  const userId = useAppSelector((state) => state.auth.user?.id ?? null);
+  const posCart = useAppSelector((state) => state.posCart);
+  const hydratedContextKeyRef = useRef<string | null>(null);
+  const previousContextKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    dispatch(
+      setPosCartContext({
+        tenantId: pos.tenantId,
+        branchId: pos.branchId,
+        terminalId: pos.terminalId,
+        userId,
+        posSessionId: pos.posSessionId,
+      })
+    );
+  }, [dispatch, pos.branchId, pos.posSessionId, pos.tenantId, pos.terminalId, userId]);
+
+  useEffect(() => {
+    const previousContextKey = previousContextKeyRef.current;
+    if (previousContextKey && previousContextKey !== posCart.contextKey) {
+      clearPersistedPosCartState(previousContextKey);
+    }
+
+    previousContextKeyRef.current = posCart.contextKey;
+    hydratedContextKeyRef.current = null;
+
+    if (!posCart.contextKey) {
+      return;
+    }
+
+    const snapshot = loadPersistedPosCartState(posCart.contextKey);
+    dispatch(hydratePosCart({ contextKey: posCart.contextKey, snapshot }));
+    hydratedContextKeyRef.current = posCart.contextKey;
+  }, [dispatch, posCart.contextKey]);
+
+  useEffect(() => {
+    if (!posCart.contextKey || hydratedContextKeyRef.current !== posCart.contextKey) {
+      return;
+    }
+
+    persistPosCartState(posCart);
+  }, [posCart]);
+
+  return null;
+};
+
 const InventoryScopeManager = () => {
   const dispatch = useAppDispatch();
   const auth = useAppSelector((state) => state.auth);
@@ -72,6 +128,7 @@ const Providers = ({ children }: { children: ReactNode }) => {
         <ConfirmProvider>
           <AuthSessionManager />
           <PosStateManager />
+          <PosCartStateManager />
           <InventoryScopeManager />
           {children}
         </ConfirmProvider>

@@ -20,6 +20,7 @@ import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { usePosCartStore } from "../hooks/usePosCartStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
@@ -31,31 +32,16 @@ import {
   getPosTaxes,
   type PosSalePayload,
 } from "../services/pos.service";
+import {
+  buildDefaultPayments,
+  buildPaymentId,
+  type PaymentMethodType,
+} from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import type { TaxResponse } from "../../inventory/services/tax.service";
 
 type CategoryKey = "all" | "available" | "low" | "out";
-
-type PaymentMethodType = "CASH" | "CARD" | "TRANSFER";
-
-type PaymentDraft = {
-  id: string;
-  paymentMethod: PaymentMethodType;
-  amount: string;
-  reference: string;
-};
-
-type PosCartItem = {
-  productId: string;
-  name: string;
-  sku: string;
-  quantity: number;
-  price: number;
-  stock: number;
-  taxId: string | null;
-  priceWithoutTax: number;
-};
 
 type PosItemTax = {
   id: string;
@@ -115,9 +101,6 @@ const getProductStockTone = (stock: number) => {
   return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100";
 };
 
-const buildPaymentId = () =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
 const buildImageLabel = (name: string) => {
   const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
@@ -132,6 +115,16 @@ const buildImageLabel = (name: string) => {
 export const PosScreen = () => {
   const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
+  const {
+    items: cart,
+    payments,
+    saleStatus,
+    selectedCustomerId,
+    setCartItems,
+    setPayments,
+    setSaleStatus,
+    setSelectedCustomerId,
+  } = usePosCartStore();
   const canRead = hasPermission("pos.read");
   const canCreate = hasPermission("pos.create");
 
@@ -142,26 +135,15 @@ export const PosScreen = () => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [taxes, setTaxes] = useState<TaxResponse[]>([]);
-  const [cart, setCart] = useState<PosCartItem[]>([]);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [payments, setPayments] = useState<PaymentDraft[]>([
-    {
-      id: buildPaymentId(),
-      paymentMethod: "CASH",
-      amount: "",
-      reference: "",
-    },
-  ]);
   const [processingSale, setProcessingSale] = useState(false);
-  const [saleStatus, setSaleStatus] = useState<"DRAFT" | "CONFIRMED">("DRAFT");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -246,13 +228,6 @@ export const PosScreen = () => {
         setTaxes(activeTaxes);
         setCatalogWarnings(warnings);
 
-        const defaultCustomer =
-          activeCustomers.find((customer) =>
-            normalizeText(customer.name).includes("consumidor final")
-          ) ?? activeCustomers[0] ?? null;
-
-        setSelectedCustomerId(defaultCustomer?.id ?? null);
-
         if (activeProducts.length === 0) {
           setCatalogError(
             warnings.length > 0
@@ -279,6 +254,21 @@ export const PosScreen = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const defaultCustomer =
+      customers.find((customer) => normalizeText(customer.name).includes("consumidor final")) ??
+      customers[0] ??
+      null;
+
+    const hasValidSelectedCustomer = customers.some(
+      (customer) => customer.id === selectedCustomerId
+    );
+
+    if (!hasValidSelectedCustomer) {
+      setSelectedCustomerId(defaultCustomer?.id ?? null);
+    }
+  }, [customers, selectedCustomerId, setSelectedCustomerId]);
 
   const taxById = useMemo(
     () =>
@@ -432,50 +422,49 @@ export const PosScreen = () => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
 
-    setCart((current) => {
-      const existing = current.find((item) => item.productId === product.id);
-      const stock = Number(product.stock ?? 0);
+    const existing = cart.find((item) => item.productId === product.id);
+    const stock = Number(product.stock ?? 0);
 
-      if (stock <= 0) {
-        showToast("El producto no tiene stock disponible.", "warning");
-        return current;
+    if (stock <= 0) {
+      showToast("El producto no tiene stock disponible.", "warning");
+      return;
+    }
+
+    if (existing) {
+      if (existing.quantity >= stock) {
+        showToast("No puedes superar el stock disponible.", "warning");
+        return;
       }
 
-      if (existing) {
-        if (existing.quantity >= stock) {
-          showToast("No puedes superar el stock disponible.", "warning");
-          return current;
-        }
+      setCartItems(
+        cart.map((item) =>
+          item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        )
+      );
+      return;
+    }
 
-        return current.map((item) =>
-          item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      }
-
-      return [
-        ...current,
-        {
-          productId: product.id,
-          name: product.name,
-          sku: product.sku,
-          quantity: 1,
-          price: Number(product.price),
-          stock,
-          taxId: product.taxId ?? null,
-          priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
-        },
-      ];
-    });
+    setCartItems([
+      ...cart,
+      {
+        productId: product.id,
+        name: product.name,
+        sku: product.sku,
+        quantity: 1,
+        price: Number(product.price),
+        stock,
+        taxId: product.taxId ?? null,
+        priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+      },
+    ]);
   };
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
 
-    setCart((current) =>
-      current.flatMap((item) => {
+    setCartItems(
+      cart.flatMap((item) => {
         if (item.productId !== productId) {
           return [item];
         }
@@ -493,7 +482,7 @@ export const PosScreen = () => {
   const removeCartItem = (productId: string) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
-    setCart((current) => current.filter((item) => item.productId !== productId));
+    setCartItems(cart.filter((item) => item.productId !== productId));
   };
 
   const toggleTaxBreakdown = (productId: string) => {
@@ -504,19 +493,14 @@ export const PosScreen = () => {
   };
 
   const resetPayments = () => {
-    setPayments([
-      {
-        id: buildPaymentId(),
-        paymentMethod: "CASH",
-        amount: "",
-        reference: "",
-      },
-    ]);
+    setPayments(buildDefaultPayments());
   };
 
   const openChargeModal = () => {
     setSubmitError(null);
-    resetPayments();
+    if (payments.length === 0) {
+      resetPayments();
+    }
     setPaymentModalOpen(true);
   };
 
@@ -534,16 +518,16 @@ export const PosScreen = () => {
     value: string
   ) => {
     setSubmitError(null);
-    setPayments((current) =>
-      current.map((payment) =>
+    setPayments(
+      payments.map((payment) =>
         payment.id === id ? { ...payment, [field]: value } : payment
       )
     );
   };
 
   const addPaymentRow = () => {
-    setPayments((current) => [
-      ...current,
+    setPayments([
+      ...payments,
       {
         id: buildPaymentId(),
         paymentMethod: "CARD",
@@ -554,8 +538,8 @@ export const PosScreen = () => {
   };
 
   const removePaymentRow = (id: string) => {
-    setPayments((current) =>
-      current.length === 1 ? current : current.filter((payment) => payment.id !== id)
+    setPayments(
+      payments.length === 1 ? payments : payments.filter((payment) => payment.id !== id)
     );
   };
 
@@ -668,7 +652,8 @@ export const PosScreen = () => {
       });
 
       setSaleStatus("CONFIRMED");
-      setCart([]);
+      // Successful checkout clears the persisted sale for this POS context.
+      setCartItems([]);
       setExpandedTaxItems({});
       setPaymentModalOpen(false);
       resetPayments();
