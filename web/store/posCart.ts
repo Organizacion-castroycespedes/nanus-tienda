@@ -1,0 +1,266 @@
+import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+
+export type PaymentMethodType = "CASH" | "CARD" | "TRANSFER";
+
+export type PaymentDraft = {
+  id: string;
+  paymentMethod: PaymentMethodType;
+  amount: string;
+  reference: string;
+};
+
+export type PosCartItem = {
+  productId: string;
+  name: string;
+  sku: string;
+  quantity: number;
+  price: number;
+  stock: number;
+  taxId: string | null;
+  priceWithoutTax: number;
+};
+
+export type PosCartContext = {
+  tenantId: string | null;
+  branchId: string | null;
+  terminalId: string | null;
+  userId: string | null;
+  posSessionId: string | null;
+};
+
+export type PosCartState = PosCartContext & {
+  contextKey: string | null;
+  items: PosCartItem[];
+  selectedCustomerId: string | null;
+  payments: PaymentDraft[];
+  saleStatus: "DRAFT" | "CONFIRMED";
+};
+
+export const POS_CART_STORAGE_PREFIX = "pos-cart:";
+
+export const buildPaymentId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+export const buildDefaultPayments = (): PaymentDraft[] => [
+  {
+    id: buildPaymentId(),
+    paymentMethod: "CASH",
+    amount: "",
+    reference: "",
+  },
+];
+
+const buildEmptySaleState = () => ({
+  items: [] as PosCartItem[],
+  selectedCustomerId: null as string | null,
+  payments: buildDefaultPayments(),
+  saleStatus: "DRAFT" as const,
+});
+
+export const buildPosCartStorageKey = (context: PosCartContext) => {
+  if (
+    !context.tenantId ||
+    !context.branchId ||
+    !context.terminalId ||
+    !context.userId ||
+    !context.posSessionId
+  ) {
+    return null;
+  }
+
+  // Isolate each cart by POS runtime context.
+  return `${POS_CART_STORAGE_PREFIX}${context.tenantId}:${context.branchId}:${context.terminalId}:${context.userId}:${context.posSessionId}`;
+};
+
+export const initialPosCartState: PosCartState = {
+  contextKey: null,
+  tenantId: null,
+  branchId: null,
+  terminalId: null,
+  userId: null,
+  posSessionId: null,
+  ...buildEmptySaleState(),
+};
+
+const isPaymentMethod = (value: unknown): value is PaymentMethodType =>
+  value === "CASH" || value === "CARD" || value === "TRANSFER";
+
+const normalizePersistedPosCartState = (value: unknown) => {
+  if (!value || typeof value !== "object") {
+    return buildEmptySaleState();
+  }
+
+  const candidate = value as Partial<PosCartState>;
+  const items = Array.isArray(candidate.items)
+    ? candidate.items.filter(
+        (item): item is PosCartItem =>
+          Boolean(item) &&
+          typeof item.productId === "string" &&
+          typeof item.name === "string" &&
+          typeof item.sku === "string" &&
+          typeof item.quantity === "number" &&
+          typeof item.price === "number" &&
+          typeof item.stock === "number" &&
+          (typeof item.taxId === "string" || item.taxId === null) &&
+          typeof item.priceWithoutTax === "number"
+      )
+    : [];
+  const payments = Array.isArray(candidate.payments)
+    ? candidate.payments.filter(
+        (payment): payment is PaymentDraft =>
+          Boolean(payment) &&
+          typeof payment.id === "string" &&
+          isPaymentMethod(payment.paymentMethod) &&
+          typeof payment.amount === "string" &&
+          typeof payment.reference === "string"
+      )
+    : [];
+
+  return {
+    items,
+    selectedCustomerId:
+      typeof candidate.selectedCustomerId === "string" ? candidate.selectedCustomerId : null,
+    payments: payments.length > 0 ? payments : buildDefaultPayments(),
+    saleStatus: candidate.saleStatus === "CONFIRMED" ? "CONFIRMED" : "DRAFT",
+  };
+};
+
+const posCartSlice = createSlice({
+  name: "posCart",
+  initialState: initialPosCartState,
+  reducers: {
+    setPosCartContext(state, action: PayloadAction<PosCartContext>) {
+      const nextContextKey = buildPosCartStorageKey(action.payload);
+      const contextChanged = state.contextKey !== nextContextKey;
+
+      state.contextKey = nextContextKey;
+      state.tenantId = action.payload.tenantId;
+      state.branchId = action.payload.branchId;
+      state.terminalId = action.payload.terminalId;
+      state.userId = action.payload.userId;
+      state.posSessionId = action.payload.posSessionId;
+
+      if (contextChanged) {
+        Object.assign(state, buildEmptySaleState());
+      }
+    },
+    hydratePosCart(
+      state,
+      action: PayloadAction<{ contextKey: string; snapshot: unknown | null }>
+    ) {
+      if (state.contextKey !== action.payload.contextKey) {
+        return;
+      }
+
+      Object.assign(state, normalizePersistedPosCartState(action.payload.snapshot));
+    },
+    setCartItems(state, action: PayloadAction<PosCartItem[]>) {
+      state.items = action.payload;
+    },
+    setSelectedCustomerId(state, action: PayloadAction<string | null>) {
+      state.selectedCustomerId = action.payload;
+    },
+    setPayments(state, action: PayloadAction<PaymentDraft[]>) {
+      state.payments = action.payload.length > 0 ? action.payload : buildDefaultPayments();
+    },
+    setSaleStatus(state, action: PayloadAction<"DRAFT" | "CONFIRMED">) {
+      state.saleStatus = action.payload;
+    },
+    resetPosCartSale(state) {
+      Object.assign(state, buildEmptySaleState());
+    },
+    clearPosCartState() {
+      return {
+        contextKey: null,
+        tenantId: null,
+        branchId: null,
+        terminalId: null,
+        userId: null,
+        posSessionId: null,
+        ...buildEmptySaleState(),
+      };
+    },
+  },
+});
+
+export const loadPersistedPosCartState = (contextKey: string) => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(contextKey);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch {
+    // Ignore corrupt JSON and restart the cart for this context.
+    try {
+      window.localStorage.removeItem(contextKey);
+    } catch {
+      // Ignore cleanup failures.
+    }
+    return null;
+  }
+};
+
+export const persistPosCartState = (state: PosCartState) => {
+  if (typeof window === "undefined" || !state.contextKey) {
+    return;
+  }
+
+  try {
+    if (state.items.length === 0) {
+      window.localStorage.removeItem(state.contextKey);
+      return;
+    }
+
+    window.localStorage.setItem(
+      state.contextKey,
+      JSON.stringify({
+        items: state.items,
+        selectedCustomerId: state.selectedCustomerId,
+        payments: state.payments,
+        saleStatus: state.saleStatus,
+      })
+    );
+  } catch {
+    // Ignore persistence failures.
+  }
+};
+
+export const clearPersistedPosCartState = (contextKey?: string | null) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (contextKey) {
+      window.localStorage.removeItem(contextKey);
+      return;
+    }
+
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(POS_CART_STORAGE_PREFIX)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Ignore cleanup failures.
+  }
+};
+
+export const {
+  setPosCartContext,
+  hydratePosCart,
+  setCartItems,
+  setSelectedCustomerId,
+  setPayments,
+  setSaleStatus,
+  resetPosCartSale,
+  clearPosCartState,
+} = posCartSlice.actions;
+
+export default posCartSlice.reducer;

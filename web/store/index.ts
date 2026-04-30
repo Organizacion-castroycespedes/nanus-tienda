@@ -5,6 +5,7 @@ import authReducer from "./authSlice";
 import menuReducer from "./menuSlice";
 import inventoryScopeReducer from "./inventoryScopeSlice";
 import posReducer from "./pos";
+import posCartReducer from "./posCart";
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     menu: menuReducer,
     inventoryScope: inventoryScopeReducer,
     pos: posReducer,
+    posCart: posCartReducer,
   },
 });
 
