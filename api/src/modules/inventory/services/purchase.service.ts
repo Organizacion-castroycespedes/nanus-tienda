@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -7,13 +8,24 @@ import {
 import crypto from "node:crypto";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
+import { AuditService } from "../../../common/services/audit.service";
 import { PurchaseItemEntity } from "../entities/purchase-item.entity";
+import type { StockMovementEntity } from "../entities/stock-movement.entity";
 import {
   PurchaseEntity,
   type PurchaseStatus,
   type PurchaseType,
 } from "../entities/purchase.entity";
-import { StockMovementService } from "./stock-movement.service";
+import {
+  StockMovementService,
+  type InventoryContext,
+} from "./stock-movement.service";
+import {
+  normalizeOptionalFilter,
+  resolveBranchScopedFilters,
+  type BranchScopedActor,
+  type BranchScopedFilters,
+} from "../utils/access";
 
 type CreatePurchaseItemInput = {
   id?: string;
@@ -28,10 +40,13 @@ type CreatePurchaseItemInput = {
 type CreatePurchaseInput = {
   tenantId: string;
   supplierId: string;
+  branchId?: string;
   type?: PurchaseType;
   total: number;
   balance?: number;
   items: CreatePurchaseItemInput[];
+  context?: InventoryContext;
+  actor: BranchScopedActor;
 };
 
 type UpdatePurchaseInput = Partial<{
@@ -60,7 +75,18 @@ type PurchaseRow = {
 };
 
 type PurchaseListRow = PurchaseRow & {
+  tenant_name: string;
   supplier_name: string | null;
+  branch_id: string | null;
+  branch_name: string | null;
+  terminal_name: string | null;
+};
+
+type PurchaseDetailRow = PurchaseRow & {
+  supplier_name: string | null;
+  branch_id: string | null;
+  branch_name: string | null;
+  terminal_name: string | null;
 };
 
 type PurchaseItemRow = {
@@ -79,12 +105,24 @@ type ProductRow = {
   id: string;
 };
 
+type BranchRow = {
+  id: string;
+};
+
+type PurchaseAuditContextRow = {
+  branch_id: string | null;
+  branch_name: string | null;
+  terminal_id: string | null;
+  terminal_name: string | null;
+};
+
 @Injectable()
 export class PurchaseService {
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(StockMovementService)
-    private readonly stockMovementService: StockMovementService
+    private readonly stockMovementService: StockMovementService,
+    @Inject(AuditService) private readonly auditService: AuditService
   ) {}
 
   private mapPurchase(row: PurchaseRow) {
@@ -98,6 +136,30 @@ export class PurchaseService {
       balance: Number(row.balance ?? 0),
       createdAt: new Date(row.created_at),
     });
+  }
+
+  private resolvePurchaseScope(
+    actor: BranchScopedActor,
+    filters: BranchScopedFilters
+  ) {
+    const tenantId = normalizeOptionalFilter(filters.tenantId);
+    const branchId = normalizeOptionalFilter(filters.branchId);
+
+    if (actor.roles.includes("SUPER_ADMIN")) {
+      return { tenantId, branchId };
+    }
+
+    if (!actor.tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+    if (tenantId && tenantId !== actor.tenantId) {
+      throw new ForbiddenException("No autorizado para otro tenant");
+    }
+
+    return {
+      tenantId: actor.tenantId,
+      branchId,
+    };
   }
 
   private mapPurchaseItem(row: PurchaseItemRow) {
@@ -204,6 +266,75 @@ export class PurchaseService {
     }
   }
 
+  private async ensureBranchBelongsToTenant(
+    branchId: string,
+    tenantId: string,
+    client: PoolClient
+  ) {
+    const result = await client.query<BranchRow>(
+      `
+        SELECT id
+        FROM tenant_branches
+        WHERE id = $1 AND tenant_id = $2
+        LIMIT 1
+      `,
+      [branchId, tenantId]
+    );
+
+    if (!result.rows[0]) {
+      throw new BadRequestException("branch not found for tenant");
+    }
+  }
+
+  private async getPurchaseAuditContext(
+    purchaseId: string,
+    tenantId: string,
+    client?: PoolClient
+  ) {
+    const sql = `
+        SELECT
+          audit_context.branch_id::text AS branch_id,
+          branch.nombre AS branch_name,
+          audit_context.terminal_id::text AS terminal_id,
+          terminal.name AS terminal_name
+        FROM purchases p
+        LEFT JOIN LATERAL (
+          SELECT
+            NULLIF(ae.datos_despues->>'branchId', '')::uuid AS branch_id,
+            NULLIF(ae.datos_despues->>'terminalId', '')::uuid AS terminal_id
+          FROM auditoria_eventos ae
+          WHERE ae.tenant_id = p.tenant_id
+            AND ae.entidad = 'purchases'
+            AND ae.entidad_id = p.id::text
+            AND ae.accion = 'PURCHASE_CREATED'
+          ORDER BY ae.created_at DESC, ae.id DESC
+          LIMIT 1
+        ) AS audit_context ON TRUE
+        LEFT JOIN tenant_branches branch
+          ON branch.id = audit_context.branch_id
+         AND branch.tenant_id = p.tenant_id
+        LEFT JOIN terminals terminal
+          ON terminal.id = audit_context.terminal_id
+         AND terminal.tenant_id = p.tenant_id
+        WHERE p.id = $1
+          AND p.tenant_id = $2
+        LIMIT 1
+      `;
+    const params = [purchaseId, tenantId];
+    const result = client
+      ? await client.query<PurchaseAuditContextRow>(sql, params)
+      : await this.db.query<PurchaseAuditContextRow>(sql, params);
+
+    return (
+      result.rows[0] ?? {
+        branch_id: null,
+        branch_name: null,
+        terminal_id: null,
+        terminal_name: null,
+      }
+    );
+  }
+
   private async replaceItems(
     purchaseId: string,
     items: PurchaseItemEntity[],
@@ -241,6 +372,14 @@ export class PurchaseService {
 
   async createPurchase(data: CreatePurchaseInput) {
     this.assertItems(data.items);
+    const resolvedScope = this.resolvePurchaseScope(data.actor, {
+      tenantId: data.tenantId,
+      branchId: data.branchId,
+    });
+    const purchaseBranchId = resolvedScope.branchId ?? data.context?.branchId ?? undefined;
+    if (!purchaseBranchId) {
+      throw new BadRequestException("branch is required");
+    }
 
     const purchaseId = crypto.randomUUID();
     const purchaseType = data.type ?? "CASH";
@@ -262,6 +401,7 @@ export class PurchaseService {
     try {
       await client.query("BEGIN");
       await this.ensureProductsBelongToTenant(data.items, purchase.tenantId, client);
+      await this.ensureBranchBelongsToTenant(purchaseBranchId, purchase.tenantId, client);
 
       const purchaseResult = await client.query<PurchaseRow>(
         `
@@ -302,6 +442,26 @@ export class PurchaseService {
       await this.replaceItems(purchase.id, items, client);
 
       await client.query("COMMIT");
+
+      this.auditService.logEvent({
+        tenantId: purchase.tenantId,
+        userId: data.context?.userId ?? null,
+        module: "inventory",
+        entity: "purchases",
+        entityId: purchase.id,
+        action: "PURCHASE_CREATED",
+        after: {
+          supplierId: purchase.supplierId,
+          type: purchase.type,
+          total: purchase.total,
+          balance: purchase.balance,
+          branchId: purchaseBranchId,
+          terminalId:
+            data.context?.branchId === purchaseBranchId ? data.context?.terminalId ?? null : null,
+          posSessionId:
+            data.context?.branchId === purchaseBranchId ? data.context?.posSessionId ?? null : null,
+        },
+      });
 
       return {
         ...this.mapPurchase(purchaseResult.rows[0]),
@@ -429,8 +589,85 @@ export class PurchaseService {
     }
   }
 
-  async getPurchases(tenantId: string) {
+  async getPurchases(filters: BranchScopedFilters, actor: BranchScopedActor) {
+    const resolvedFilters = this.resolvePurchaseScope(actor, filters);
+    const params: unknown[] = [];
+    const where: string[] = [];
+
+    if (resolvedFilters.tenantId) {
+      params.push(resolvedFilters.tenantId);
+      where.push(`p.tenant_id = $${params.length}`);
+    }
+
+    if (resolvedFilters.branchId) {
+      params.push(resolvedFilters.branchId);
+      where.push(`audit_context.branch_id = $${params.length}::uuid`);
+    }
+
     const result = await this.db.query<PurchaseListRow>(
+      `
+        SELECT
+          p.id,
+          p.tenant_id,
+          t.nombre AS tenant_name,
+          p.supplier_id,
+          p.type,
+          p.status,
+          p.total,
+          p.balance,
+          p.created_at,
+          s.name AS supplier_name,
+          audit_context.branch_id::text AS branch_id,
+          branch.nombre AS branch_name,
+          terminal.name AS terminal_name
+        FROM purchases p
+        INNER JOIN tenants t
+          ON t.id = p.tenant_id
+        LEFT JOIN suppliers s
+          ON s.id = p.supplier_id
+         AND s.tenant_id = p.tenant_id
+        LEFT JOIN LATERAL (
+          SELECT
+            NULLIF(ae.datos_despues->>'branchId', '')::uuid AS branch_id,
+            NULLIF(ae.datos_despues->>'terminalId', '')::uuid AS terminal_id
+          FROM auditoria_eventos ae
+          WHERE ae.tenant_id = p.tenant_id
+            AND ae.entidad = 'purchases'
+            AND ae.entidad_id = p.id::text
+            AND ae.accion = 'PURCHASE_CREATED'
+          ORDER BY ae.created_at DESC, ae.id DESC
+          LIMIT 1
+        ) AS audit_context ON TRUE
+        LEFT JOIN tenant_branches branch
+          ON branch.id = audit_context.branch_id
+         AND branch.tenant_id = p.tenant_id
+        LEFT JOIN terminals terminal
+          ON terminal.id = audit_context.terminal_id
+         AND terminal.tenant_id = p.tenant_id
+        WHERE ${where.length > 0 ? where.join("\n          AND ") : "TRUE"}
+        ORDER BY p.created_at DESC
+      `,
+      params
+    );
+
+    return result.rows.map((row) => ({
+      ...this.mapPurchase(row),
+      tenantName: row.tenant_name,
+      supplierName: row.supplier_name,
+      branchId: row.branch_id,
+      branchName: row.branch_name,
+      terminalName: row.terminal_name,
+    }));
+  }
+
+  async getPurchaseById(id: string, tenantId: string, actor: BranchScopedActor) {
+    const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId);
+    this.resolvePurchaseScope(actor, {
+      tenantId,
+      branchId: purchaseAuditContext.branch_id ?? undefined,
+    });
+
+    const purchaseResult = await this.db.query<PurchaseDetailRow>(
       `
         SELECT
           p.id,
@@ -446,32 +683,7 @@ export class PurchaseService {
         LEFT JOIN suppliers s
           ON s.id = p.supplier_id
          AND s.tenant_id = p.tenant_id
-        WHERE p.tenant_id = $1
-        ORDER BY p.created_at DESC
-      `,
-      [tenantId]
-    );
-
-    return result.rows.map((row) => ({
-      ...this.mapPurchase(row),
-      supplierName: row.supplier_name,
-    }));
-  }
-
-  async getPurchaseById(id: string, tenantId: string) {
-    const purchaseResult = await this.db.query<PurchaseRow>(
-      `
-        SELECT
-          id,
-          tenant_id,
-          supplier_id,
-          type,
-          status,
-          total,
-          balance,
-          created_at
-        FROM purchases
-        WHERE id = $1 AND tenant_id = $2
+        WHERE p.id = $1 AND p.tenant_id = $2
         LIMIT 1
       `,
       [id, tenantId]
@@ -503,13 +715,21 @@ export class PurchaseService {
       [id, tenantId]
     );
 
-    return this.mapPurchaseWithItems(purchaseRow, itemsResult.rows);
+    return {
+      ...this.mapPurchaseWithItems(purchaseRow, itemsResult.rows),
+      supplierName: purchaseRow.supplier_name,
+      branchId: purchaseAuditContext.branch_id,
+      branchName: purchaseAuditContext.branch_name,
+      terminalName: purchaseAuditContext.terminal_name,
+    };
   }
 
   async receivePurchase(
     id: string,
     tenantId: string,
-    itemsToReceive: ReceivePurchaseItemInput[]
+    itemsToReceive: ReceivePurchaseItemInput[],
+    context?: InventoryContext,
+    actor?: BranchScopedActor
   ) {
     if (!Array.isArray(itemsToReceive) || itemsToReceive.length === 0) {
       throw new BadRequestException("receive items are required");
@@ -548,6 +768,19 @@ export class PurchaseService {
         throw new BadRequestException("cancelled purchases cannot be received");
       }
 
+      const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId, client);
+      this.resolvePurchaseScope(
+        actor ?? {
+          roles: [],
+          tenantId,
+          branchId: context?.branchId ?? undefined,
+        },
+        {
+          tenantId,
+          branchId: purchaseAuditContext.branch_id ?? undefined,
+        }
+      );
+
       const itemsResult = await client.query<PurchaseItemRow>(
         `
             SELECT
@@ -580,6 +813,7 @@ export class PurchaseService {
       const pendingByItemId = new Map(
         items.map((item) => [item.id, item.orderedQuantity - item.receivedQuantity])
       );
+      const createdMovements: StockMovementEntity[] = [];
 
       for (const receiveItem of itemsToReceive) {
         const productId = receiveItem.productId;
@@ -607,7 +841,7 @@ export class PurchaseService {
           );
         }
 
-        await this.stockMovementService.createMovement(
+        const movement = await this.stockMovementService.createMovement(
           {
             id: crypto.randomUUID(),
             tenantId,
@@ -616,10 +850,26 @@ export class PurchaseService {
             quantity,
             referenceType: "PURCHASE",
             referenceId: id,
+            branchId: purchaseAuditContext.branch_id ?? context?.branchId ?? null,
+            terminalId:
+              purchaseAuditContext.branch_id &&
+              context?.branchId &&
+              purchaseAuditContext.branch_id !== context.branchId
+                ? null
+                : context?.terminalId ?? null,
+            posSessionCode:
+              purchaseAuditContext.branch_id &&
+              context?.branchId &&
+              purchaseAuditContext.branch_id !== context.branchId
+                ? null
+                : context?.posSessionId ?? null,
+            userId: context?.userId ?? null,
+            referenceTable: "purchases",
             createdAt: new Date(),
           },
           client
         );
+        createdMovements.push(movement);
 
         let remainingQuantity = quantity;
         for (const item of productItems) {
@@ -688,6 +938,9 @@ export class PurchaseService {
       );
 
       await client.query("COMMIT");
+      createdMovements.forEach((movement) =>
+        this.stockMovementService.logMovementAuditEvent(movement)
+      );
 
       return {
         ...this.mapPurchase(updatedPurchaseResult.rows[0]),

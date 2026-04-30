@@ -3,6 +3,9 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./modules/app.module";
 import process from "node:process";
+import * as dotenv from "dotenv";
+import * as path from "path";
+
 
 /**
  * =========================
@@ -71,11 +74,9 @@ const isOriginAllowed = (
  */
 
 const bootstrap = async () => {
-  try {
-    process.loadEnvFile();
-  } catch {
-    process.loadEnvFile("apps/api/.env");
-  }
+  dotenv.config({
+    path: path.resolve(process.cwd(), ".env"),
+  });
 
   const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
 

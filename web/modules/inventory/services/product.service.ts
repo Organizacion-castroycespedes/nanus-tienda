@@ -7,6 +7,11 @@ export type GetProductsParams = {
   pageSize?: number;
 };
 
+export type GetInventoryProductsParams = {
+  tenantId?: string;
+  branchId?: string;
+};
+
 export type CreateProductPayload = {
   name: string;
   sku: string;
@@ -43,6 +48,21 @@ export const getProducts = (
   params: GetProductsParams = {},
   headers?: HeadersInit
 ) => apiClient<ProductResponse[]>(buildProductsQuery(params), { headers });
+
+export const getInventoryProducts = (
+  params: GetInventoryProductsParams = {},
+  headers?: HeadersInit
+) => {
+  const query = new URLSearchParams();
+  if (params.tenantId) {
+    query.set("tenantId", params.tenantId);
+  }
+  if (params.branchId) {
+    query.set("branchId", params.branchId);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiClient<ProductResponse[]>(`/inventory/products${suffix}`, { headers });
+};
 
 export const createProduct = (
   payload: CreateProductPayload,

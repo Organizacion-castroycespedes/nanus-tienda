@@ -1,6 +1,7 @@
 export type ProductResponse = {
   id: string;
   tenantId: string;
+  tenantName?: string;
   unitId: string;
   taxId: string | null;
   name: string;
@@ -13,5 +14,8 @@ export type ProductResponse = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  branchId?: string;
+  branchName?: string | null;
+  terminalName?: string | null;
   stock?: number;
 };

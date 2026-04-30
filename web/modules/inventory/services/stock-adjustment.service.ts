@@ -2,6 +2,7 @@ import { apiClient } from "../../../lib/http";
 
 export type CreateStockAdjustmentPayload = {
   productId: string;
+  branchId: string;
   type: "IN" | "OUT";
   quantity: number;
   reason: string;

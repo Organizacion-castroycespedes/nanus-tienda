@@ -18,6 +18,10 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.CONFIG_GENERAL, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/config\/terminals\/?$/i,
+    requirement: { module: MENU_KEYS.CONFIG_GENERAL, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/configuracion\/menu\/?$/i,
     requirement: { module: MENU_KEYS.CONFIG_MENU, action: "read" },
   },
@@ -59,7 +63,7 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/customers\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: "customers", action: "read" },
   },
   {
     pattern: /^\/[^/]+\/orders\/?$/i,

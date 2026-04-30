@@ -4,10 +4,15 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { listBranches } from "../../../domains/branches/api";
+import type { BranchResponse } from "../../../domains/branches/dtos";
 import type { ProductResponse } from "../../../domains/products/dtos";
+import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { createStockAdjustment } from "../services/stock-adjustment.service";
+import { useAppSelector } from "../../../store/hooks";
 
 type StockAdjustmentValues = {
+  branchId: string;
   type: "IN" | "OUT";
   quantity: string;
   reason: string;
@@ -24,6 +29,7 @@ type StockAdjustmentFormProps = {
 };
 
 const initialValues: StockAdjustmentValues = {
+  branchId: "",
   type: "IN",
   quantity: "",
   reason: "",
@@ -34,18 +40,68 @@ export const StockAdjustmentForm = ({
   onCancel,
   onSuccess,
 }: StockAdjustmentFormProps) => {
+  const { currentBranch, currentTenant } = useInventoryScope();
+  const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
   const [values, setValues] = useState<StockAdjustmentValues>(initialValues);
   const [errors, setErrors] = useState<StockAdjustmentErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
 
   useEffect(() => {
-    setValues(initialValues);
+    setValues({
+      ...initialValues,
+      branchId: product.branchId ?? currentBranch ?? "",
+    });
     setErrors({});
-  }, [product.id]);
+  }, [currentBranch, product.branchId, product.id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadBranches = async () => {
+      if (!currentTenant) {
+        return;
+      }
+
+      setLoadingBranches(true);
+      try {
+        const result = await listBranches({ tenantId: currentTenant });
+        if (!mounted) {
+          return;
+        }
+        setBranches(result.filter((branch) => branch.estado === "ACTIVE"));
+      } catch {
+        if (!mounted) {
+          return;
+        }
+        setBranches([]);
+      } finally {
+        if (mounted) {
+          setLoadingBranches(false);
+        }
+      }
+    };
+
+    void loadBranches();
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentTenant]);
+
+  const selectedBranchName =
+    branches.find((branch) => branch.id === values.branchId)?.nombre ??
+    product.branchName ??
+    authBranchName ??
+    "";
 
   const validate = () => {
     const nextErrors: StockAdjustmentErrors = {};
 
+    if (!values.branchId) {
+      nextErrors.branchId = "La sucursal es requerida.";
+    }
     if (!values.type) {
       nextErrors.type = "El tipo es requerido.";
     }
@@ -75,6 +131,7 @@ export const StockAdjustmentForm = ({
     try {
       await createStockAdjustment({
         productId: product.id,
+        branchId: values.branchId,
         type: values.type,
         quantity: Number(values.quantity),
         reason: values.reason.trim(),
@@ -106,6 +163,33 @@ export const StockAdjustmentForm = ({
 
       <form className="grid gap-5" onSubmit={handleSubmit}>
         <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-1 md:col-span-3">
+            <Select
+              label="Sucursal"
+              required
+              value={values.branchId}
+              disabled={loadingBranches || branches.length === 0}
+              onChange={(event) => {
+                const value = event.target.value;
+                setValues((prev) => ({ ...prev, branchId: value }));
+                setErrors((prev) => ({ ...prev, branchId: undefined, submit: undefined }));
+              }}
+            >
+              <option value="">
+                {loadingBranches ? "Cargando sucursales..." : "Selecciona una sucursal"}
+              </option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.nombre}
+                </option>
+              ))}
+            </Select>
+            {selectedBranchName && values.branchId ? (
+              <p className="text-xs text-slate-500">Movimiento para: {selectedBranchName}</p>
+            ) : null}
+            {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
+          </div>
+
           <div className="space-y-1">
             <Select
               label="Tipo"

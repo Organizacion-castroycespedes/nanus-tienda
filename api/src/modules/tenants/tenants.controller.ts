@@ -49,7 +49,7 @@ export class TenantsController {
   }
 
   @Get()
-  @Roles("SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   list() {
     return this.tenantsService.listTenants();
   }

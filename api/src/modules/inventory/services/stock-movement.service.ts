@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
+import { AuditService } from "../../../common/services/audit.service";
 import {
   StockMovementEntity,
   type StockMovementProps,
@@ -14,6 +15,13 @@ type StockMovementRow = {
   quantity: string | number;
   reference_type: "PURCHASE" | "SALE" | "ADJUSTMENT";
   reference_id: string;
+  branch_id: string | null;
+  terminal_id: string | null;
+  pos_session_code: string | null;
+  user_id: string | null;
+  reference_table: string | null;
+  stock_before: string | number | null;
+  stock_after: string | number | null;
   created_at: string | Date;
 };
 
@@ -21,10 +29,19 @@ type StockBalanceRow = {
   stock: string | number | null;
 };
 
+export type InventoryContext = {
+  tenantId: string;
+  branchId?: string | null;
+  terminalId?: string | null;
+  posSessionId?: string | null;
+  userId?: string | null;
+};
+
 @Injectable()
 export class StockMovementService {
   constructor(
-    @Inject(DatabaseService) private readonly db: DatabaseService
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(AuditService) private readonly auditService: AuditService
   ) {}
 
   private async query<T extends QueryResultRow>(
@@ -38,9 +55,70 @@ export class StockMovementService {
     return this.db.query<T>(text, params);
   }
 
-  async createMovement(data: StockMovementProps, client?: PoolClient) {
-    const movement = StockMovementEntity.create(data);
+  private defaultReferenceTable(referenceType: StockMovementProps["referenceType"]) {
+    switch (referenceType) {
+      case "PURCHASE":
+        return "purchases";
+      case "SALE":
+        return "sales";
+      case "ADJUSTMENT":
+        return "stock_adjustments";
+      default:
+        return "stock_movements";
+    }
+  }
 
+  private toNumber(value: string | number | null | undefined) {
+    if (value == null) {
+      return 0;
+    }
+    return typeof value === "number" ? value : Number(value);
+  }
+
+  private async getCurrentStock(
+    productId: string,
+    tenantId: string,
+    client?: PoolClient
+  ) {
+    const result = await this.query<StockBalanceRow>(
+      `
+      SELECT
+        COALESCE(SUM(quantity) FILTER (WHERE type = 'IN'), 0)
+        - COALESCE(SUM(quantity) FILTER (WHERE type = 'OUT'), 0) AS stock
+      FROM stock_movements
+      WHERE product_id = $1 AND tenant_id = $2
+      `,
+      [productId, tenantId],
+      client
+    );
+
+    return this.toNumber(result.rows[0]?.stock);
+  }
+
+  logMovementAuditEvent(movement: StockMovementEntity) {
+    this.auditService.logEvent({
+      tenantId: movement.tenantId,
+      userId: movement.userId,
+      module: "inventory",
+      entity: "stock_movements",
+      entityId: movement.id,
+      action: movement.type === "IN" ? "STOCK_IN" : "STOCK_OUT",
+      after: {
+        productId: movement.productId,
+        quantity: movement.quantity,
+        referenceType: movement.referenceType,
+        referenceId: movement.referenceId,
+        referenceTable: movement.referenceTable,
+        branchId: movement.branchId,
+        terminalId: movement.terminalId,
+        posSessionCode: movement.posSessionCode,
+        stockBefore: movement.stockBefore,
+        stockAfter: movement.stockAfter,
+      },
+    });
+  }
+
+  async createMovement(data: StockMovementProps, client?: PoolClient) {
     const product = await this.query<{ id: string }>(
       `
       SELECT id
@@ -48,13 +126,27 @@ export class StockMovementService {
       WHERE id = $1 AND tenant_id = $2
       LIMIT 1
       `,
-      [movement.productId, movement.tenantId],
+      [data.productId, data.tenantId],
       client
     );
 
     if (!product.rows[0]) {
       throw new BadRequestException("product not found for tenant");
     }
+
+    const stockBefore =
+      data.stockBefore ?? (await this.getCurrentStock(data.productId, data.tenantId, client));
+    const delta = data.type === "IN" ? data.quantity : -data.quantity;
+    const stockAfter = data.stockAfter ?? stockBefore + delta;
+
+    const movement = StockMovementEntity.create({
+      ...data,
+      posSessionCode: data.posSessionCode ?? null,
+      referenceTable:
+        data.referenceTable ?? this.defaultReferenceTable(data.referenceType),
+      stockBefore,
+      stockAfter,
+    });
 
     const result = await this.query<StockMovementRow>(
       `
@@ -66,9 +158,16 @@ export class StockMovementService {
         quantity,
         reference_type,
         reference_id,
+        branch_id,
+        terminal_id,
+        pos_session_code,
+        user_id,
+        reference_table,
+        stock_before,
+        stock_after,
         created_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
       )
       RETURNING
         id,
@@ -78,6 +177,13 @@ export class StockMovementService {
         quantity,
         reference_type,
         reference_id,
+        branch_id,
+        terminal_id,
+        pos_session_code,
+        user_id,
+        reference_table,
+        stock_before,
+        stock_after,
         created_at
       `,
       [
@@ -88,13 +194,20 @@ export class StockMovementService {
         movement.quantity,
         movement.referenceType,
         movement.referenceId,
+        movement.branchId,
+        movement.terminalId,
+        movement.posSessionCode,
+        movement.userId,
+        movement.referenceTable,
+        movement.stockBefore,
+        movement.stockAfter,
         movement.createdAt,
       ],
       client
     );
 
     const row = result.rows[0];
-    return StockMovementEntity.create({
+    const createdMovement = StockMovementEntity.create({
       id: row.id,
       tenantId: row.tenant_id,
       productId: row.product_id,
@@ -102,26 +215,28 @@ export class StockMovementService {
       quantity: Number(row.quantity),
       referenceType: row.reference_type,
       referenceId: row.reference_id,
+      branchId: row.branch_id,
+      terminalId: row.terminal_id,
+      posSessionCode: row.pos_session_code,
+      userId: row.user_id,
+      referenceTable: row.reference_table,
+      stockBefore: this.toNumber(row.stock_before),
+      stockAfter: this.toNumber(row.stock_after),
       createdAt: new Date(row.created_at),
     });
+
+    if (!client) {
+      this.logMovementAuditEvent(createdMovement);
+    }
+
+    return createdMovement;
   }
 
   async getStockByProduct(productId: string, tenantId: string) {
-    const result = await this.db.query<StockBalanceRow>(
-      `
-      SELECT
-        COALESCE(SUM(quantity) FILTER (WHERE type = 'IN'), 0)
-        - COALESCE(SUM(quantity) FILTER (WHERE type = 'OUT'), 0) AS stock
-      FROM stock_movements
-      WHERE product_id = $1 AND tenant_id = $2
-      `,
-      [productId, tenantId]
-    );
-
     return {
       productId,
       tenantId,
-      stock: Number(result.rows[0]?.stock ?? 0),
+      stock: await this.getCurrentStock(productId, tenantId),
     };
   }
 }

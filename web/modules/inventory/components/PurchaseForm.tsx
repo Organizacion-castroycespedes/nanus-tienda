@@ -5,10 +5,14 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { listBranches } from "../../../domains/branches/api";
+import type { BranchResponse } from "../../../domains/branches/dtos";
 import type { ProductResponse } from "../../../domains/products/dtos";
+import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
 import { createPurchase } from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
+import { useAppSelector } from "../../../store/hooks";
 
 type PurchaseFormItem = {
   productId: string;
@@ -18,12 +22,14 @@ type PurchaseFormItem = {
 
 type PurchaseFormValues = {
   supplierId: string;
+  branchId: string;
   type: "CASH" | "CREDIT";
   items: PurchaseFormItem[];
 };
 
 type PurchaseFormErrors = {
   supplierId?: string;
+  branchId?: string;
   items?: string;
   submit?: string;
 };
@@ -47,8 +53,11 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
+  const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
+  const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
   const [values, setValues] = useState<PurchaseFormValues>({
     supplierId: "",
+    branchId: currentBranch ?? "",
     type: "CASH",
     items: [createEmptyItem()],
   });
@@ -56,8 +65,18 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
   const [products, setProducts] = useState<ProductResponse[]>([]);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentBranch) {
+      return;
+    }
+    setValues((prev) =>
+      prev.branchId === currentBranch ? prev : { ...prev, branchId: currentBranch }
+    );
+  }, [currentBranch]);
 
   useEffect(() => {
     let mounted = true;
@@ -66,9 +85,14 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
       setCatalogLoading(true);
       setCatalogError(null);
       try {
-        const [suppliersResult, productsResult] = await Promise.all([
+        const branchPromise =
+          isSuperRole && currentTenant
+            ? listBranches({ tenantId: currentTenant })
+            : Promise.resolve<BranchResponse[]>([]);
+        const [suppliersResult, productsResult, branchesResult] = await Promise.all([
           getSuppliers(),
           getProducts(),
+          branchPromise,
         ]);
 
         if (!mounted) {
@@ -77,9 +101,10 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
 
         setSuppliers(suppliersResult.filter((supplier) => supplier.isActive));
         setProducts(productsResult.filter((product) => product.isActive));
+        setBranches(branchesResult.filter((branch) => branch.estado === "ACTIVE"));
       } catch {
         if (mounted) {
-          setCatalogError("No se pudieron cargar proveedores o productos.");
+          setCatalogError("No se pudieron cargar proveedores, productos o sucursales.");
         }
       } finally {
         if (mounted) {
@@ -93,7 +118,14 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [currentTenant, isSuperRole]);
+
+  const selectedBranchName = useMemo(() => {
+    if (isSuperRole) {
+      return branches.find((branch) => branch.id === values.branchId)?.nombre ?? "";
+    }
+    return authBranchName ?? values.branchId;
+  }, [authBranchName, branches, isSuperRole, values.branchId]);
 
   const itemSubtotals = useMemo(
     () =>
@@ -120,6 +152,10 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
 
     if (!values.supplierId) {
       nextErrors.supplierId = "Debes seleccionar un proveedor.";
+    }
+
+    if (!values.branchId) {
+      nextErrors.branchId = "Debes seleccionar una sucursal.";
     }
 
     const hasInvalidItems = values.items.some((item) => {
@@ -170,6 +206,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
     try {
       await createPurchase({
         supplierId: values.supplierId,
+        branchId: values.branchId,
         type: values.type,
         total,
         items: values.items.map((item, index) => ({
@@ -233,6 +270,35 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
             ) : null}
           </div>
 
+          {isSuperRole ? (
+            <div className="space-y-1">
+              <Select
+                label="Sucursal"
+                required
+                value={values.branchId}
+                disabled={catalogLoading || branches.length === 0}
+                onChange={(event) => {
+                  setValues((prev) => ({ ...prev, branchId: event.target.value }));
+                  setErrors((prev) => ({ ...prev, branchId: undefined, submit: undefined }));
+                }}
+              >
+                <option value="">
+                  {catalogLoading ? "Cargando..." : "Selecciona una sucursal"}
+                </option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.nombre}
+                  </option>
+                ))}
+              </Select>
+              {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
+            </div>
+          ) : (
+            <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
+          )}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-1">
           <Select
             label="Tipo"
             value={values.type}

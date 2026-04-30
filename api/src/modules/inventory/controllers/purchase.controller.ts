@@ -1,15 +1,16 @@
 import {
   Body,
   Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  Put,
-  Req,
-  UseGuards,
-} from "@nestjs/common";
+    Get,
+    Inject,
+    NotFoundException,
+    Param,
+    Post,
+    Put,
+    Query,
+    Req,
+    UseGuards,
+  } from "@nestjs/common";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PurchaseService } from "../services/purchase.service";
@@ -17,11 +18,21 @@ import { PurchaseService } from "../services/purchase.service";
 type AuthRequest = Request & {
   user?: {
     tenantId?: string;
+    id?: string;
+    roles?: string[];
+  };
+  context?: {
+    tenantId?: string;
+    branchId?: string;
+    terminalId?: string;
+    posSessionId?: string;
+    userId?: string;
   };
 };
 
 type CreatePurchaseBody = {
   supplierId: string;
+  branchId?: string;
   type?: "CASH" | "CREDIT";
   total: number;
   balance?: number;
@@ -54,11 +65,29 @@ export class PurchaseController {
   ) {}
 
   private getTenantId(request: AuthRequest) {
-    const tenantId = request.user?.tenantId;
+    const tenantId = request.context?.tenantId ?? request.user?.tenantId;
     if (!tenantId) {
       throw new NotFoundException("tenant not found in request context");
     }
     return tenantId;
+  }
+
+  private getInventoryContext(request: AuthRequest) {
+    return {
+      tenantId: this.getTenantId(request),
+      branchId: request.context?.branchId ?? null,
+      terminalId: request.context?.terminalId ?? null,
+      posSessionId: request.context?.posSessionId ?? null,
+      userId: request.context?.userId ?? request.user?.id ?? null,
+    };
+  }
+
+  private buildActor(request: AuthRequest) {
+    return {
+      roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
+      tenantId: this.getTenantId(request),
+      branchId: request.context?.branchId,
+    };
   }
 
   @Post()
@@ -66,10 +95,13 @@ export class PurchaseController {
     return this.purchaseService.createPurchase({
       tenantId: this.getTenantId(request),
       supplierId: body.supplierId,
+      branchId: body.branchId,
       type: body.type,
       total: Number(body.total),
       balance: body.balance !== undefined ? Number(body.balance) : undefined,
       items: body.items ?? [],
+      context: this.getInventoryContext(request),
+      actor: this.buildActor(request),
     });
   }
 
@@ -90,13 +122,27 @@ export class PurchaseController {
   }
 
   @Get()
-  list(@Req() request: AuthRequest) {
-    return this.purchaseService.getPurchases(this.getTenantId(request));
+  list(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.purchaseService.getPurchases(
+      {
+        tenantId,
+        branchId,
+      },
+      this.buildActor(request)
+    );
   }
 
   @Get(":id")
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
-    return this.purchaseService.getPurchaseById(id, this.getTenantId(request));
+    return this.purchaseService.getPurchaseById(
+      id,
+      this.getTenantId(request),
+      this.buildActor(request)
+    );
   }
 
   @Post(":id/receive")
@@ -111,7 +157,9 @@ export class PurchaseController {
       (body.items ?? []).map((item) => ({
         productId: item.product_id,
         quantity: Number(item.quantity),
-      }))
+      })),
+      this.getInventoryContext(request),
+      this.buildActor(request)
     );
   }
 }

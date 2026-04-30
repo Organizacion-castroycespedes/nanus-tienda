@@ -33,7 +33,7 @@ type AuthRequest = Request & {
 
 @Controller("branches")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("SUPER_ADMIN", "ADMIN")
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
 export class BranchesController {
   constructor(
     @Inject(BranchesService) private readonly branchesService: BranchesService
@@ -53,6 +53,7 @@ export class BranchesController {
   }
 
   @Get()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   list(
     @Query("tenantId") tenantId: string | undefined,
     @Req() request: AuthRequest

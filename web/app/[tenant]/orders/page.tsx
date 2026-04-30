@@ -1,28 +1,47 @@
 "use client";
 
-import { CheckCircle2, Plus, RefreshCw, Search, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  PackageCheck,
+  Pencil,
+  Plus,
+  Receipt,
+  RefreshCw,
+  Search,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { hasPermission } from "../../../lib/permissions";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
+import { OrderDeliverForm } from "../../../modules/inventory/components/OrderDeliverForm";
 import { OrderForm } from "../../../modules/inventory/components/OrderForm";
+import { OrderInvoiceForm } from "../../../modules/inventory/components/OrderInvoiceForm";
 import {
   cancelOrder,
   confirmOrder,
+  getOrderById,
   getOrders,
+  type OrderDetailResponse,
   type OrderResponse,
 } from "../../../modules/inventory/services/order.service";
+import { useAppSelector } from "../../../store/hooks";
 
 type OrderFilters = {
   query: string;
+  tenantId: string;
+  branchId: string;
 };
 
 const defaultFilters: OrderFilters = {
   query: "",
+  tenantId: "",
+  branchId: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
@@ -43,6 +62,7 @@ const formatDate = (value: string) =>
 
 const OrdersPage = () => {
   const confirm = useConfirm();
+  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? null);
   const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(defaultFilters);
@@ -53,10 +73,17 @@ const OrdersPage = () => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [formMode, setFormMode] = useState<
+    "create" | "edit" | "deliver" | "invoice" | null
+  >(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderDetailResponse | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [loadingOrder, setLoadingOrder] = useState(false);
+  const { currentTenant } = useInventoryScope();
 
   const canCreate = hasPermission("inventory.create");
   const canUpdate = hasPermission("inventory.update");
+  const isGlobalRole = role === "SUPER_ADMIN";
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -65,20 +92,67 @@ const OrdersPage = () => {
     setToastVariant(variant);
   }, []);
 
-  const loadOrders = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage(null);
-    try {
-      const result = await getOrders();
-      setOrders(result);
-      setHasSearched(true);
-    } catch {
-      setErrorMessage("No se pudieron cargar los pedidos.");
-      setHasSearched(true);
-    } finally {
-      setLoading(false);
-    }
+  const closeForms = useCallback(() => {
+    setFormMode(null);
+    setSelectedOrder(null);
+    setSelectedOrderId(null);
+    setLoadingOrder(false);
   }, []);
+
+  const loadOrders = useCallback(
+    async (filters?: OrderFilters) => {
+      const activeFilters = filters ?? appliedFilters;
+      setLoading(true);
+      setErrorMessage(null);
+      try {
+        const result = await getOrders(
+          isGlobalRole
+            ? {
+                tenantId: activeFilters.tenantId || undefined,
+                branchId: activeFilters.branchId || undefined,
+              }
+            : {
+                tenantId: currentTenant ?? undefined,
+              }
+        );
+        setOrders(result);
+        setHasSearched(true);
+      } catch {
+        setErrorMessage("No se pudieron cargar los pedidos.");
+        setHasSearched(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [appliedFilters, currentTenant, isGlobalRole]
+  );
+
+  const tenantOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    orders.forEach((order) => {
+      if (order.tenantId && order.tenantName && !seen.has(order.tenantId)) {
+        seen.set(order.tenantId, order.tenantName);
+      }
+    });
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [orders]);
+
+  const branchOptions = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string }>();
+    orders
+      .filter((order) =>
+        draftFilters.tenantId ? order.tenantId === draftFilters.tenantId : true
+      )
+      .forEach((order) => {
+        if (order.branchId && order.branchName) {
+          const key = `${order.tenantId}:${order.branchId}`;
+          if (!seen.has(key)) {
+            seen.set(key, { id: order.branchId, name: order.branchName });
+          }
+        }
+      });
+    return Array.from(seen.values());
+  }, [draftFilters.tenantId, orders]);
 
   const filteredOrders = useMemo(() => {
     const query = appliedFilters.query.trim().toLowerCase();
@@ -90,10 +164,14 @@ const OrdersPage = () => {
       const customerName = (order.customerName ?? "").toLowerCase();
       const type = order.type.toLowerCase();
       const status = order.status.toLowerCase();
+      const branchName = (order.branchName ?? "").toLowerCase();
+      const terminalName = (order.terminalName ?? "").toLowerCase();
       return (
         customerName.includes(query) ||
         type.includes(query) ||
-        status.includes(query)
+        status.includes(query) ||
+        branchName.includes(query) ||
+        terminalName.includes(query)
       );
     });
   }, [appliedFilters.query, orders]);
@@ -108,7 +186,7 @@ const OrdersPage = () => {
   const applyFilters = () => {
     setAppliedFilters(draftFilters);
     setPage(0);
-    void loadOrders();
+    void loadOrders(draftFilters);
   };
 
   const resetFilters = () => {
@@ -117,28 +195,58 @@ const OrdersPage = () => {
     setPage(0);
   };
 
-  const handleCreateSuccess = async () => {
-    setShowCreateForm(false);
-    showToast("Pedido creado correctamente.", "success");
+  const refreshAfterMutation = async (message: string) => {
+    closeForms();
+    showToast(message, "success");
     if (hasSearched) {
       await loadOrders();
     }
+  };
+
+  const openCreateForm = () => {
+    setSelectedOrder(null);
+    setSelectedOrderId(null);
+    setFormMode("create");
+  };
+
+  const handleEdit = async (orderId: string) => {
+    setLoadingOrder(true);
+    setErrorMessage(null);
+    try {
+      const order = await getOrderById(orderId);
+      setSelectedOrder(order);
+      setSelectedOrderId(orderId);
+      setFormMode("edit");
+    } catch {
+      showToast("No se pudo cargar el pedido para editar.", "error");
+    } finally {
+      setLoadingOrder(false);
+    }
+  };
+
+  const handleOpenDeliver = (orderId: string) => {
+    setSelectedOrder(null);
+    setSelectedOrderId(orderId);
+    setFormMode("deliver");
+  };
+
+  const handleOpenInvoice = (orderId: string) => {
+    setSelectedOrder(null);
+    setSelectedOrderId(orderId);
+    setFormMode("invoice");
   };
 
   const handleConfirm = async (order: OrderResponse) => {
     try {
       await confirm({
         title: "Confirmar pedido",
-        description: `Se confirmara el pedido de ${order.customerName || order.customerId}.`,
+        description: `Se confirmará el pedido de ${order.customerName || order.customerId} para permitir su entrega.`,
         confirmText: "Confirmar pedido",
         variant: "warning",
       });
 
       await confirmOrder(order.id);
-      showToast("Pedido confirmado correctamente.", "success");
-      if (hasSearched) {
-        await loadOrders();
-      }
+      await refreshAfterMutation("Pedido confirmado correctamente.");
     } catch (error) {
       if (isConfirmCancelledError(error)) {
         return;
@@ -151,16 +259,13 @@ const OrdersPage = () => {
     try {
       await confirm({
         title: "Cancelar pedido",
-        description: `Se cancelara el pedido de ${order.customerName || order.customerId}.`,
+        description: `Se cancelará el pedido de ${order.customerName || order.customerId}.`,
         confirmText: "Cancelar pedido",
         variant: "danger",
       });
 
       await cancelOrder(order.id);
-      showToast("Pedido cancelado correctamente.", "success");
-      if (hasSearched) {
-        await loadOrders();
-      }
+      await refreshAfterMutation("Pedido cancelado correctamente.");
     } catch (error) {
       if (isConfirmCancelledError(error)) {
         return;
@@ -168,6 +273,17 @@ const OrdersPage = () => {
       showToast("No se pudo cancelar el pedido.", "error");
     }
   };
+
+  const canDeliverOrder = (status: OrderResponse["status"]) =>
+    status === "CONFIRMED" || status === "PARTIAL";
+
+  const canEditOrder = (status: OrderResponse["status"]) => status === "DRAFT";
+
+  const canCancelOrder = (status: OrderResponse["status"]) => status === "DRAFT";
+
+  const canInvoiceOrder = (order: OrderResponse) =>
+    (order.status === "PARTIAL" || order.status === "COMPLETED") &&
+    order.billingStatus !== "INVOICED";
 
   return (
     <div className="space-y-6">
@@ -177,7 +293,7 @@ const OrdersPage = () => {
             <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
             <h1 className="text-2xl font-semibold text-slate-900">Pedidos</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Consulta pedidos registrados por cliente, tipo y estado.
+              Consulta pedidos registrados por cliente, sucursal, tipo y estado.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -186,7 +302,7 @@ const OrdersPage = () => {
               Actualizar
             </Button>
             {canCreate ? (
-              <Button onClick={() => setShowCreateForm(true)}>
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear pedido
               </Button>
@@ -195,23 +311,98 @@ const OrdersPage = () => {
         </div>
       </section>
 
-      {showCreateForm ? (
+      {formMode === "create" ? (
         <OrderForm
-          onCancel={() => setShowCreateForm(false)}
-          onSuccess={() => void handleCreateSuccess()}
+          mode="create"
+          onCancel={closeForms}
+          onSuccess={() => void refreshAfterMutation("Pedido creado correctamente.")}
+        />
+      ) : null}
+
+      {formMode === "edit" ? (
+        loadingOrder ? (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+            Cargando pedido...
+          </section>
+        ) : selectedOrder ? (
+          <OrderForm
+            mode="edit"
+            order={selectedOrder}
+            onCancel={closeForms}
+            onSuccess={() => void refreshAfterMutation("Pedido actualizado correctamente.")}
+          />
+        ) : null
+      ) : null}
+
+      {formMode === "deliver" && selectedOrderId ? (
+        <OrderDeliverForm
+          orderId={selectedOrderId}
+          onCancel={closeForms}
+          onSuccess={() => void refreshAfterMutation("Entrega registrada correctamente.")}
+        />
+      ) : null}
+
+      {formMode === "invoice" && selectedOrderId ? (
+        <OrderInvoiceForm
+          orderId={selectedOrderId}
+          onCancel={closeForms}
+          onSuccess={() => void refreshAfterMutation("Venta creada correctamente desde la orden.")}
         />
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
+        <div
+          className={
+            isGlobalRole
+              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto_auto]"
+              : "grid gap-4 md:grid-cols-[1fr_auto_auto]"
+          }
+        >
           <Input
             label="Buscar"
-            placeholder="Cliente, tipo o estado"
+            placeholder="Cliente, sucursal, terminal, tipo o estado"
             value={draftFilters.query}
             onChange={(event) =>
               setDraftFilters((prev) => ({ ...prev, query: event.target.value }))
             }
           />
+          {isGlobalRole ? (
+            <Select
+              label="Tenant"
+              value={draftFilters.tenantId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  tenantId: event.target.value,
+                  branchId:
+                    prev.tenantId && prev.tenantId !== event.target.value ? "" : prev.branchId,
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {tenantOptions.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
+          {isGlobalRole ? (
+            <Select
+              label="Sucursal"
+              value={draftFilters.branchId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, branchId: event.target.value }))
+              }
+            >
+              <option value="">Todas</option>
+              {branchOptions.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <div className="flex items-end gap-2">
             <Button variant="outline" onClick={applyFilters}>
               <Search className="h-4 w-4" />
@@ -252,6 +443,8 @@ const OrdersPage = () => {
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">Cliente</th>
+                <th className="px-4 py-3 font-medium">Sucursal</th>
+                <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Total</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
@@ -262,19 +455,19 @@ const OrdersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     Cargando pedidos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar pedidos.
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     No hay pedidos para mostrar.
                   </td>
                 </tr>
@@ -284,6 +477,8 @@ const OrdersPage = () => {
                     <td className="px-4 py-3 text-slate-900">
                       {order.customerName || order.customerId}
                     </td>
+                    <td className="px-4 py-3 text-slate-700">{order.branchName ?? "-"}</td>
+                    <td className="px-4 py-3 text-slate-700">{order.terminalName ?? "-"}</td>
                     <td className="px-4 py-3 text-slate-700">
                       {formatCurrency(Number(order.total))}
                     </td>
@@ -293,30 +488,73 @@ const OrdersPage = () => {
                       {formatDate(order.createdAt)}
                     </td>
                     <td className="px-4 py-3">
+                      {(() => {
+                        const hasRowActions =
+                          canUpdate &&
+                          (canEditOrder(order.status) ||
+                            canDeliverOrder(order.status) ||
+                            canInvoiceOrder(order) ||
+                            canCancelOrder(order.status));
+
+                        return (
                       <div className="flex flex-wrap gap-2">
+                        {canUpdate && canEditOrder(order.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleEdit(order.id)}
+                            disabled={loadingOrder}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Editar
+                          </Button>
+                        ) : null}
                         {canUpdate && order.status === "DRAFT" ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void handleConfirm(order)}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Confirmar
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void handleCancel(order)}
-                            >
-                              <XCircle className="h-4 w-4" />
-                              Cancelar
-                            </Button>
-                          </>
-                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDeliver(order.id)}
+                          >
+                            <PackageCheck className="h-4 w-4" />
+                            Entregar
+                          </Button>
+                        ) : null}
+                        {canUpdate && canDeliverOrder(order.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleConfirm(order)}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            Confirmar
+                          </Button>
+                        ) : null}
+                        {canUpdate && canInvoiceOrder(order) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenInvoice(order.id)}
+                          >
+                            <Receipt className="h-4 w-4" />
+                            Facturar
+                          </Button>
+                        ) : null}
+                        {canUpdate && canCancelOrder(order.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleCancel(order)}
+                          >
+                            <XCircle className="h-4 w-4" />
+                            Cancelar
+                          </Button>
+                        ) : null}
+                        {!hasRowActions ? (
                           <span className="text-xs text-slate-400">Sin acciones</span>
-                        )}
+                        ) : null}
                       </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))

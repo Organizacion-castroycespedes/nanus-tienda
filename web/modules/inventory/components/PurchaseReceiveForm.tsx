@@ -213,12 +213,24 @@ export const PurchaseReceiveForm = ({
                 </p>
               </div>
               <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">
+                  {purchase.branchName || purchase.branchId || "-"}
+                </p>
+              </div>
+              <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">{purchase.status}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Tipo</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">{purchase.type}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Terminal</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">
+                  {purchase.terminalName || "-"}
+                </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
