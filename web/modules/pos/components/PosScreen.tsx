@@ -150,6 +150,7 @@ export const PosScreen = () => {
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentDraft[]>([
     {
@@ -200,9 +201,10 @@ export const PosScreen = () => {
     const loadCatalog = async () => {
       setCatalogLoading(true);
       setCatalogError(null);
+      setCatalogWarnings([]);
 
       try {
-        const [productsResult, customersResult, taxesResult] = await Promise.all([
+        const [productsResult, customersResult, taxesResult] = await Promise.allSettled([
           getPosProducts(),
           getPosCustomers(),
           getPosTaxes(),
@@ -212,13 +214,37 @@ export const PosScreen = () => {
           return;
         }
 
-        const activeProducts = productsResult.filter((product) => product.isActive);
-        const activeCustomers = customersResult.filter((customer) => customer.isActive);
-        const activeTaxes = taxesResult.filter((tax) => tax.isActive);
+        const warnings: string[] = [];
+        const activeProducts =
+          productsResult.status === "fulfilled"
+            ? productsResult.value.filter((product) => product.isActive)
+            : [];
+        const activeCustomers =
+          customersResult.status === "fulfilled"
+            ? customersResult.value.filter((customer) => customer.isActive)
+            : [];
+        const activeTaxes =
+          taxesResult.status === "fulfilled"
+            ? taxesResult.value.filter((tax) => tax.isActive)
+            : [];
+
+        if (productsResult.status === "rejected") {
+          console.error("POS products catalog failed", productsResult.reason);
+          warnings.push("No se pudieron cargar los productos del POS.");
+        }
+        if (customersResult.status === "rejected") {
+          console.error("POS customers catalog failed", customersResult.reason);
+          warnings.push("No se pudieron cargar los clientes del POS.");
+        }
+        if (taxesResult.status === "rejected") {
+          console.error("POS taxes catalog failed", taxesResult.reason);
+          warnings.push("No se pudieron cargar los impuestos del POS.");
+        }
 
         setProducts(activeProducts);
         setCustomers(activeCustomers);
         setTaxes(activeTaxes);
+        setCatalogWarnings(warnings);
 
         const defaultCustomer =
           activeCustomers.find((customer) =>
@@ -226,13 +252,20 @@ export const PosScreen = () => {
           ) ?? activeCustomers[0] ?? null;
 
         setSelectedCustomerId(defaultCustomer?.id ?? null);
+
+        if (activeProducts.length === 0) {
+          setCatalogError(
+            warnings.length > 0
+              ? warnings.join(" ")
+              : "No hay productos disponibles para operar el POS."
+          );
+        }
       } catch {
         if (!active) {
           return;
         }
-        setCatalogError(
-          "No se pudo cargar el catalogo de POS. Verifica productos, clientes e impuestos."
-        );
+        console.error("POS catalog loading failed");
+        setCatalogError("No se pudo cargar el catalogo de POS.");
       } finally {
         if (active) {
           setCatalogLoading(false);
@@ -955,6 +988,11 @@ export const PosScreen = () => {
       {catalogError ? (
         <section className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
           {catalogError}
+        </section>
+      ) : null}
+      {catalogWarnings.length > 0 && !catalogError ? (
+        <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          {catalogWarnings.join(" ")}
         </section>
       ) : null}
 

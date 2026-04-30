@@ -56,8 +56,12 @@ type ProductForSaleRow = {
 
 type OrderItemRow = {
   id: string;
+  product_id: string;
   ordered_quantity: string | number;
   delivered_quantity: string | number;
+  billed_quantity: string | number;
+  price: string | number;
+  subtotal: string | number;
 };
 
 type PosSessionValidationRow = {
@@ -215,8 +219,12 @@ export class SaleRepository {
     const result = await this.query<OrderItemRow>(
       `SELECT
         oi.id,
+        oi.product_id,
         oi.ordered_quantity,
-        oi.delivered_quantity
+        oi.delivered_quantity,
+        COALESCE(oi.billed_quantity, 0) AS billed_quantity,
+        oi.price,
+        oi.subtotal
       FROM order_items oi
       INNER JOIN orders o
         ON o.id = oi.order_id
@@ -254,19 +262,46 @@ export class SaleRepository {
     client: PoolClient
   ): Promise<SaleRow | null> {
     const result = await this.query<SaleRow>(
-      `SELECT *
-      FROM inventory_create_sale(
-        $1::uuid,
-        $2::uuid,
-        $3::uuid,
-        $4::uuid,
-        $5::uuid,
-        $6::uuid,
-        $7::uuid,
-        $8::varchar,
-        $9::jsonb,
-        $10::jsonb
-      )`,
+      `INSERT INTO sales (
+        id,
+        tenant_id,
+        branch_id,
+        terminal_id,
+        user_id,
+        pos_session_id,
+        customer_id,
+        order_id,
+        type,
+        status,
+        total,
+        balance,
+        created_at
+      )
+      VALUES (
+        gen_random_uuid(),
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        'DRAFT',
+        0,
+        0,
+        NOW()
+      )
+      RETURNING
+        id,
+        tenant_id,
+        customer_id,
+        order_id,
+        type,
+        status,
+        total,
+        balance,
+        created_at`,
       [
         data.tenantId,
         data.branchId,
@@ -276,21 +311,6 @@ export class SaleRepository {
         data.customerId,
         data.orderId ?? null,
         data.type,
-        JSON.stringify(
-          (data.items ?? []).map((item) => ({
-            product_id: item.productId,
-            quantity: Number(item.quantity),
-            price: Number(item.price),
-            order_item_id: item.orderItemId ?? null,
-          }))
-        ),
-        JSON.stringify(
-          (data.paymentMethods ?? []).map((paymentMethod) => ({
-            payment_method: paymentMethod.paymentMethod,
-            amount: Number(paymentMethod.amount),
-            reference: paymentMethod.reference ?? null,
-          }))
-        ),
       ],
       client
     );
@@ -444,6 +464,20 @@ export class SaleRepository {
     await this.query(
       `UPDATE order_items
       SET delivered_quantity = delivered_quantity + $2
+      WHERE id = $1`,
+      [orderItemId, quantity],
+      client
+    );
+  }
+
+  async updateOrderItemBilledQuantity(
+    orderItemId: string,
+    quantity: number,
+    client: PoolClient
+  ) {
+    await this.query(
+      `UPDATE order_items
+      SET billed_quantity = COALESCE(billed_quantity, 0) + $2
       WHERE id = $1`,
       [orderItemId, quantity],
       client

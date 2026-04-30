@@ -1,10 +1,12 @@
 "use client";
 
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   MapPin,
+  Monitor,
   Paintbrush,
   Plus,
   Save,
@@ -220,6 +222,7 @@ const ConfiguracionPage = () => {
 
   const currentTenantId = authUser?.tenantId ?? "";
   const isSuperAdmin = authUser?.role === "SUPER_ADMIN";
+  const isSuperUser = authUser?.role === "SUPER_USER";
   const isAdmin = authUser?.role === "ADMIN";
   const isCurrentTenant =
     Boolean(selectedTenantId) && selectedTenantId === currentTenantId;
@@ -402,10 +405,7 @@ const ConfiguracionPage = () => {
     }
     setBranchesLoading(true);
     try {
-      const response = await listBranches(
-        { tenantId: isSuperAdmin ? tenantId : undefined },
-        buildBranchHeaders()
-      );
+      const response = await listBranches({ tenantId }, buildBranchHeaders());
       setBranches(response.map(toBranch));
     } catch {
       setStatusError("No fue posible cargar las sucursales.");
@@ -1623,7 +1623,7 @@ const ConfiguracionPage = () => {
       if (branchModalMode === "create") {
         await createBranch(
           {
-            tenantId: isSuperAdmin ? tenantId : undefined,
+            tenantId,
             codigo: branchForm.codigo.trim(),
             nombre: branchForm.nombre.trim(),
             descripcion: branchForm.descripcion.trim() || undefined,
@@ -1969,14 +1969,14 @@ const ConfiguracionPage = () => {
     });
   }, [branchSearch, branches]);
 
-  if (!isSuperAdmin && !isAdmin) {
+  if (!isSuperAdmin && !isSuperUser && !isAdmin) {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">
           Acceso restringido
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Solo los usuarios con rol SUPER_ADMIN o ADMIN pueden acceder a la
+          Solo los usuarios con rol SUPER_ADMIN, SUPER_USER o ADMIN pueden acceder a la
           configuración.
         </p>
       </section>
@@ -1998,6 +1998,26 @@ const ConfiguracionPage = () => {
             : "Administra la informacion legal, branding y sucursales del tenant al que perteneces."}
         </p>
       </header>
+
+      {(authUser?.role === "SUPER_ADMIN" || authUser?.role === "SUPER_USER") ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Terminales POS</h3>
+              <p className="text-sm text-slate-600">
+                Crea y administra terminales por sucursal desde un modulo dedicado.
+              </p>
+            </div>
+            <Link
+              href={`/${selectedTenantId || currentTenantId || "default"}/config/terminals`}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md"
+            >
+              <Monitor className="h-4 w-4" />
+              Abrir terminales
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       {isSuperAdmin ? (
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

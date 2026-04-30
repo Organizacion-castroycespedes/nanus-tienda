@@ -8,23 +8,23 @@ import {
   useConfirm,
 } from "../../../hooks/use-confirm";
 import {
-  getPurchaseById,
-  receivePurchase,
-  type PurchaseDetailResponse,
-} from "../services/purchase.service";
+  deliverOrder,
+  getOrderById,
+  type OrderDetailResponse,
+} from "../services/order.service";
 
-type ReceiveItemValue = {
+type DeliverItemValue = {
   productId: string;
   quantity: string;
 };
 
-type ReceiveFormErrors = {
+type DeliverFormErrors = {
   items?: string;
   submit?: string;
 };
 
-type PurchaseReceiveFormProps = {
-  purchaseId: string;
+type OrderDeliverFormProps = {
+  orderId: string;
   onCancel: () => void;
   onSuccess: () => void;
 };
@@ -36,32 +36,32 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-export const PurchaseReceiveForm = ({
-  purchaseId,
+export const OrderDeliverForm = ({
+  orderId,
   onCancel,
   onSuccess,
-}: PurchaseReceiveFormProps) => {
+}: OrderDeliverFormProps) => {
   const confirm = useConfirm();
-  const [purchase, setPurchase] = useState<PurchaseDetailResponse | null>(null);
-  const [values, setValues] = useState<ReceiveItemValue[]>([]);
+  const [order, setOrder] = useState<OrderDetailResponse | null>(null);
+  const [values, setValues] = useState<DeliverItemValue[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [errors, setErrors] = useState<ReceiveFormErrors>({});
+  const [errors, setErrors] = useState<DeliverFormErrors>({});
 
   useEffect(() => {
     let mounted = true;
 
-    const loadPurchase = async () => {
+    const loadOrder = async () => {
       setLoading(true);
       setLoadError(null);
       try {
-        const result = await getPurchaseById(purchaseId);
+        const result = await getOrderById(orderId);
         if (!mounted) {
           return;
         }
 
-        setPurchase(result);
+        setOrder(result);
         setValues(
           result.items.map((item) => ({
             productId: item.productId,
@@ -70,7 +70,7 @@ export const PurchaseReceiveForm = ({
         );
       } catch {
         if (mounted) {
-          setLoadError("No se pudo cargar el detalle de la compra.");
+          setLoadError("No se pudo cargar el detalle del pedido.");
         }
       } finally {
         if (mounted) {
@@ -79,30 +79,30 @@ export const PurchaseReceiveForm = ({
       }
     };
 
-    void loadPurchase();
+    void loadOrder();
 
     return () => {
       mounted = false;
     };
-  }, [purchaseId]);
+  }, [orderId]);
 
   const rows = useMemo(() => {
-    if (!purchase) {
+    if (!order) {
       return [];
     }
 
-    return purchase.items.map((item, index) => {
-      const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
+    return order.items.map((item, index) => {
+      const pending = Math.max(item.orderedQuantity - item.deliveredQuantity, 0);
       return {
         item,
         index,
         pending,
       };
     });
-  }, [purchase]);
+  }, [order]);
 
   const validate = () => {
-    const nextErrors: ReceiveFormErrors = {};
+    const nextErrors: DeliverFormErrors = {};
 
     const hasAnyQuantity = values.some((value) => {
       const quantity = Number(value.quantity);
@@ -118,10 +118,10 @@ export const PurchaseReceiveForm = ({
     });
 
     if (!hasAnyQuantity) {
-      nextErrors.items = "Debes ingresar al menos una cantidad a recibir.";
+      nextErrors.items = "Debes ingresar al menos una cantidad a entregar.";
     } else if (hasInvalidQuantity) {
       nextErrors.items =
-        "Las cantidades a recibir deben ser mayores a 0 y no pueden exceder el pendiente.";
+        "Las cantidades a entregar deben ser mayores a 0 y no pueden exceder el pendiente.";
     }
 
     setErrors(nextErrors);
@@ -156,15 +156,15 @@ export const PurchaseReceiveForm = ({
       };
 
       await confirm({
-        title: "Confirmar recepción",
+        title: "Confirmar entrega",
         description:
-          "Se registrará la recepción parcial de esta compra y se actualizará el inventario.",
-        confirmText: "Confirmar recepción",
+          "Se registrará la entrega parcial del pedido y se descontará inventario.",
+        confirmText: "Confirmar entrega",
         cancelText: "Volver",
         variant: "warning",
       });
 
-      await receivePurchase(purchaseId, payload);
+      await deliverOrder(orderId, payload);
       onSuccess();
     } catch (error) {
       if (isConfirmCancelledError(error)) {
@@ -172,7 +172,7 @@ export const PurchaseReceiveForm = ({
       }
 
       setErrors({
-        submit: "No se pudo registrar la recepción.",
+        submit: "No se pudo registrar la entrega.",
       });
     } finally {
       setIsSubmitting(false);
@@ -183,10 +183,10 @@ export const PurchaseReceiveForm = ({
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
-          <h2 className="text-xl font-semibold text-slate-900">Recibir compra</h2>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
+          <h2 className="text-xl font-semibold text-slate-900">Entregar pedido</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Registra cantidades recibidas por item sin cerrar automaticamente la compra.
+            Registra cantidades entregadas por item sin cerrar automaticamente el pedido.
           </p>
         </div>
         <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
@@ -196,46 +196,46 @@ export const PurchaseReceiveForm = ({
 
       {loading ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-          Cargando detalle de la compra...
+          Cargando detalle del pedido...
         </div>
       ) : loadError ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {loadError}
         </div>
-      ) : purchase ? (
+      ) : order ? (
         <form className="grid gap-5" onSubmit={handleSubmit}>
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <div className="grid gap-3 md:grid-cols-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Proveedor</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">
-                  {purchase.supplierName || purchase.supplierId}
+                  {order.customerName || order.customerId}
                 </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">
-                  {purchase.branchName || purchase.branchId || "-"}
+                  {order.branchName || order.branchId || "-"}
                 </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{purchase.status}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{order.status}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Tipo</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{purchase.type}</p>
+                <p className="mt-1 text-sm font-medium text-slate-900">{order.type}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Terminal</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">
-                  {purchase.terminalName || "-"}
+                  {order.terminalName || "-"}
                 </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
                 <p className="mt-1 text-sm font-medium text-slate-900">
-                  {formatCurrency(Number(purchase.total))}
+                  {formatCurrency(Number(order.total))}
                 </p>
               </div>
             </div>
@@ -248,9 +248,9 @@ export const PurchaseReceiveForm = ({
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
                     <th className="px-4 py-3 font-medium">Cantidad pedida</th>
-                    <th className="px-4 py-3 font-medium">Cantidad recibida</th>
+                    <th className="px-4 py-3 font-medium">Cantidad entregada</th>
                     <th className="px-4 py-3 font-medium">Pendiente</th>
-                    <th className="px-4 py-3 font-medium">Recibir ahora</th>
+                    <th className="px-4 py-3 font-medium">Entregar ahora</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -260,7 +260,7 @@ export const PurchaseReceiveForm = ({
                         {item.productName || item.productId}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{item.orderedQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700">{item.receivedQuantity}</td>
+                      <td className="px-4 py-3 text-slate-700">{item.deliveredQuantity}</td>
                       <td className="px-4 py-3 text-slate-700">{pending}</td>
                       <td className="px-4 py-3">
                         <Input
@@ -311,7 +311,7 @@ export const PurchaseReceiveForm = ({
 
           <div className="flex flex-wrap gap-3">
             <Button type="submit" isLoading={isSubmitting}>
-              Guardar recepción
+              Guardar entrega
             </Button>
             <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
               Cancelar

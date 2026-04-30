@@ -3,13 +3,22 @@ import { apiClient } from "../../../lib/http";
 export type PurchaseResponse = {
   id: string;
   tenantId: string;
+  tenantName?: string;
   supplierId: string;
   supplierName?: string | null;
+  branchId?: string | null;
+  branchName?: string | null;
+  terminalName?: string | null;
   type: "CASH" | "CREDIT";
   status: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CANCELLED";
   total: number;
   balance: number;
   createdAt: string;
+};
+
+export type GetPurchasesParams = {
+  tenantId?: string;
+  branchId?: string;
 };
 
 export type PurchaseItemResponse = {
@@ -29,6 +38,7 @@ export type PurchaseDetailResponse = PurchaseResponse & {
 
 export type CreatePurchasePayload = {
   supplierId: string;
+  branchId: string;
   type: "CASH" | "CREDIT";
   items: Array<{
     productId: string;
@@ -46,8 +56,20 @@ export type ReceivePurchasePayload = {
   }>;
 };
 
-export const getPurchases = (headers?: HeadersInit) =>
-  apiClient<PurchaseResponse[]>("/purchases", { headers });
+export const getPurchases = (
+  params: GetPurchasesParams = {},
+  headers?: HeadersInit
+) => {
+  const query = new URLSearchParams();
+  if (params.tenantId) {
+    query.set("tenantId", params.tenantId);
+  }
+  if (params.branchId) {
+    query.set("branchId", params.branchId);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiClient<PurchaseResponse[]>(`/purchases${suffix}`, { headers });
+};
 
 export const createPurchase = (
   payload: CreatePurchasePayload,

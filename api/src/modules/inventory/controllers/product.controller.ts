@@ -7,12 +7,14 @@ import {
   NotFoundException,
   Param,
   Post,
+  UseGuards,
   Put,
   Req,
-  UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../../../common/guards/roles.guard";
 import { ProductService } from "../services/product.service";
 
 type AuthRequest = Request & {
@@ -43,7 +45,7 @@ type UpdateProductBody = Partial<
 >;
 
 @Controller("products")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ProductController {
   constructor(
     @Inject(ProductService)
@@ -59,6 +61,7 @@ export class ProductController {
   }
 
   @Post()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   create(@Body() body: CreateProductBody, @Req() request: AuthRequest) {
     const tenantId = this.getTenantId(request);
     return this.productService.createProduct({
@@ -68,16 +71,19 @@ export class ProductController {
   }
 
   @Get()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   list(@Req() request: AuthRequest) {
     return this.productService.listProducts(this.getTenantId(request));
   }
 
   @Get(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.getProductById(id, this.getTenantId(request));
   }
 
   @Put(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   update(
     @Param("id") id: string,
     @Body() body: UpdateProductBody,
@@ -91,6 +97,7 @@ export class ProductController {
   }
 
   @Delete(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.softDeleteProduct(id, this.getTenantId(request));
   }

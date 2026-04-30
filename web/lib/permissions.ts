@@ -16,6 +16,11 @@ const getAuthPermissions = () => store.getState().auth.permissions;
 const isPrivilegedRole = (role: string) =>
   role === "SUPER_ADMIN" || role === "ADMIN";
 
+const isScopedSuperUserPermission = (role: string, moduleName: string) =>
+  role === "SUPER_USER" &&
+  (moduleName === normalizeValue("CONFIG_GENERAL") ||
+    moduleName === normalizeValue("CONFIG_USUARIOS"));
+
 const resolvePermissionInput = (
   permission: PermissionIdentifier,
   maybeAction?: string
@@ -82,16 +87,15 @@ export const hasPermission = (
   action?: string
 ) => {
   const role = getAuthRole();
-  if (isPrivilegedRole(role)) {
-    return true;
-  }
-
   const { module, action: resolvedAction } = resolvePermissionInput(
     permission,
     action
   );
   if (!module || !resolvedAction) {
     return false;
+  }
+  if (isPrivilegedRole(role) || isScopedSuperUserPermission(role, module)) {
+    return true;
   }
 
   return getAuthPermissions().some((item) =>
@@ -104,12 +108,24 @@ export const isPermissionsReady = () => store.getState().auth.permissionsLoaded;
 export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
   const state = store.getState();
   const permissions = state.auth.permissions;
+  const role = getAuthRole();
 
-  if (isPrivilegedRole(getAuthRole())) {
+  if (isPrivilegedRole(role)) {
     return true;
   }
 
   const candidates = getMenuKeyCandidates(menuKey);
+  const normalizedCandidates = candidates.map((candidate) => normalizeValue(candidate));
+
+  if (
+    role === "SUPER_USER" &&
+    (normalizedCandidates.includes(normalizeValue("CONFIG_GENERAL")) ||
+      normalizedCandidates.includes(normalizeValue("CONFIGURACION_TENANT_CONFIGURACION")) ||
+      normalizedCandidates.includes(normalizeValue("CONFIG_USUARIOS")) ||
+      normalizedCandidates.includes(normalizeValue("USUARIOS_TENANT_USUARIOS")))
+  ) {
+    return true;
+  }
 
   return candidates.some((candidate) => {
     const permission = permissions.find((item) => item.key === candidate);

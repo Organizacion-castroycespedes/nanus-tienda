@@ -9,6 +9,19 @@ const assertPositiveDecimal = (value: number, field: string) => {
   }
 };
 
+const isOptionalUuid = (value: string | null | undefined) =>
+  value == null || value === "" || isUuid(value);
+
+const assertOptionalLength = (
+  value: string | null | undefined,
+  field: string,
+  maxLength: number
+) => {
+  if (value != null && value.trim().length > maxLength) {
+    throw new Error(`${field} must be at most ${maxLength} characters`);
+  }
+};
+
 export const STOCK_MOVEMENT_TYPES = ["IN", "OUT"] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
 
@@ -27,6 +40,13 @@ export type StockMovementProps = {
   quantity: number;
   referenceType: StockReferenceType;
   referenceId: string;
+  branchId?: string | null;
+  terminalId?: string | null;
+  posSessionCode?: string | null;
+  userId?: string | null;
+  referenceTable?: string | null;
+  stockBefore?: number | null;
+  stockAfter?: number | null;
   createdAt: Date;
 };
 
@@ -38,6 +58,13 @@ export class StockMovementEntity {
   readonly quantity: number;
   readonly referenceType: StockReferenceType;
   readonly referenceId: string;
+  readonly branchId: string | null;
+  readonly terminalId: string | null;
+  readonly posSessionCode: string | null;
+  readonly userId: string | null;
+  readonly referenceTable: string | null;
+  readonly stockBefore: number | null;
+  readonly stockAfter: number | null;
   readonly createdAt: Date;
 
   constructor(props: StockMovementProps) {
@@ -53,6 +80,15 @@ export class StockMovementEntity {
     if (!isUuid(props.referenceId)) {
       throw new Error("referenceId must be a valid UUID");
     }
+    if (!isOptionalUuid(props.branchId)) {
+      throw new Error("branchId must be a valid UUID");
+    }
+    if (!isOptionalUuid(props.terminalId)) {
+      throw new Error("terminalId must be a valid UUID");
+    }
+    if (!isOptionalUuid(props.userId)) {
+      throw new Error("userId must be a valid UUID");
+    }
     if (!STOCK_MOVEMENT_TYPES.includes(props.type)) {
       throw new Error("type must be IN or OUT");
     }
@@ -61,6 +97,8 @@ export class StockMovementEntity {
     }
 
     assertPositiveDecimal(props.quantity, "quantity");
+    assertOptionalLength(props.posSessionCode, "posSessionCode", 50);
+    assertOptionalLength(props.referenceTable, "referenceTable", 50);
 
     this.id = props.id;
     this.tenantId = props.tenantId;
@@ -69,6 +107,13 @@ export class StockMovementEntity {
     this.quantity = props.quantity;
     this.referenceType = props.referenceType;
     this.referenceId = props.referenceId;
+    this.branchId = props.branchId?.trim() || null;
+    this.terminalId = props.terminalId?.trim() || null;
+    this.posSessionCode = props.posSessionCode?.trim() || null;
+    this.userId = props.userId?.trim() || null;
+    this.referenceTable = props.referenceTable?.trim() || null;
+    this.stockBefore = props.stockBefore ?? null;
+    this.stockAfter = props.stockAfter ?? null;
     this.createdAt = props.createdAt;
   }
 

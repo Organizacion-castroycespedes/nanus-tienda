@@ -41,9 +41,9 @@ const CustomersPage = () => {
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResponse | null>(null);
 
-  const canCreate = hasPermission("inventory.create");
-  const canEdit = hasPermission("inventory.update");
-  const canDelete = hasPermission("inventory.delete");
+  const canCreate = hasPermission("customers.create");
+  const canEdit = hasPermission("customers.update");
+  const canDelete = hasPermission("customers.delete");
 
   useAutoClearState(toastMessage, setToastMessage);
 

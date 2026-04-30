@@ -23,6 +23,7 @@ export type OrderItemProps = {
   productId: string;
   orderedQuantity: number;
   deliveredQuantity?: number;
+  billedQuantity?: number;
   price: number;
   subtotal: number;
   order?: OrderEntity | null;
@@ -34,6 +35,7 @@ export class OrderItemEntity {
   readonly productId: string;
   readonly orderedQuantity: number;
   readonly deliveredQuantity: number;
+  readonly billedQuantity: number;
   readonly price: number;
   readonly subtotal: number;
   readonly order: OrderEntity | null;
@@ -51,11 +53,15 @@ export class OrderItemEntity {
 
     assertPositiveDecimal(props.orderedQuantity, "orderedQuantity");
     assertNonNegativeDecimal(props.deliveredQuantity ?? 0, "deliveredQuantity");
+    assertNonNegativeDecimal(props.billedQuantity ?? 0, "billedQuantity");
     assertNonNegativeDecimal(props.price, "price");
     assertNonNegativeDecimal(props.subtotal, "subtotal");
 
     if ((props.deliveredQuantity ?? 0) > props.orderedQuantity) {
       throw new Error("deliveredQuantity cannot be greater than orderedQuantity");
+    }
+    if ((props.billedQuantity ?? 0) > (props.deliveredQuantity ?? 0)) {
+      throw new Error("billedQuantity cannot be greater than deliveredQuantity");
     }
 
     this.id = props.id;
@@ -63,6 +69,7 @@ export class OrderItemEntity {
     this.productId = props.productId;
     this.orderedQuantity = props.orderedQuantity;
     this.deliveredQuantity = props.deliveredQuantity ?? 0;
+    this.billedQuantity = props.billedQuantity ?? 0;
     this.price = props.price;
     this.subtotal = props.subtotal;
     this.order = props.order ?? null;
