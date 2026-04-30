@@ -5,22 +5,26 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import crypto from "node:crypto";
 import { DatabaseService } from "../../../common/db/database.service";
 import { AuditService } from "../../../common/services/audit.service";
-import { SaleEntity } from "../entities/sale.entity";
+import { SaleEntity, type SaleType } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
 import {
   SaleItemTaxEntity,
 } from "../entities/sale-item-tax.entity";
+import type { StockMovementEntity } from "../entities/stock-movement.entity";
 import {
   SalePaymentMethodEntity,
   type SalePaymentMethodType,
 } from "../entities/sale-payment-method.entity";
 import {
   SaleRepository,
+  type CreateSalePaymentMethodInput,
   type CreateSaleInput,
   type SaleRow,
 } from "../repositories/sale.repository";
+import { StockMovementService } from "./stock-movement.service";
 
 type SaleListRow = SaleRow & {
   customer_name: string | null;
@@ -66,6 +70,20 @@ type SalePaymentMethodRow = {
   created_at: Date;
 };
 
+type InvoiceableOrderRow = {
+  id: string;
+  customer_id: string;
+  type: SaleType;
+};
+
+type InvoiceableOrderItemRow = {
+  id: string;
+  product_id: string;
+  delivered_quantity: string | number;
+  billed_quantity: string | number;
+  price: string | number;
+};
+
 type SaleContext = {
   userId?: string;
   tenantId?: string;
@@ -80,11 +98,17 @@ export class SaleService {
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(SaleRepository) private readonly repository: SaleRepository,
-    @Inject(AuditService) private readonly auditService: AuditService
+    @Inject(AuditService) private readonly auditService: AuditService,
+    @Inject(StockMovementService)
+    private readonly stockMovementService: StockMovementService
   ) {}
 
   private toNumber(value: string | number) {
     return typeof value === "number" ? value : Number(value);
+  }
+
+  private roundCurrency(value: number) {
+    return Math.round(value * 100) / 100;
   }
 
   private mapSale(row: SaleRow) {
@@ -199,6 +223,45 @@ export class SaleService {
     }
   }
 
+  private validatePaymentMethods(
+    type: SaleType,
+    total: number,
+    paymentMethods: CreateSaleInput["paymentMethods"] | undefined
+  ) {
+    let paymentTotal = 0;
+
+    for (const paymentMethod of paymentMethods ?? []) {
+      if (!["CASH", "CARD", "TRANSFER", "OTHER"].includes(paymentMethod.paymentMethod)) {
+        throw new BadRequestException("paymentMethod is invalid");
+      }
+      const amount = this.roundCurrency(Number(paymentMethod.amount));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new BadRequestException("amount must be a positive number");
+      }
+      paymentTotal = this.roundCurrency(paymentTotal + amount);
+    }
+
+    let balance = 0;
+    if (type === "CASH") {
+      if ((paymentMethods?.length ?? 0) === 0) {
+        throw new BadRequestException("payment methods are required for cash sales");
+      }
+      if (paymentTotal !== total) {
+        throw new BadRequestException(
+          "payment methods total must equal sale total for cash sales"
+        );
+      }
+    } else {
+      balance = this.roundCurrency(total - paymentTotal);
+    }
+
+    if (balance < 0) {
+      throw new BadRequestException("balance cannot be negative");
+    }
+
+    return { paymentTotal, balance };
+  }
+
   async createSale(
     data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">,
     context: SaleContext
@@ -217,6 +280,26 @@ export class SaleService {
       if (!validPosSession) {
         throw new UnauthorizedException("POS session is invalid");
       }
+
+      const validCustomer = await this.repository.validateCustomer(
+        saleContext.tenantId,
+        data.customerId,
+        client
+      );
+      if (!validCustomer) {
+        throw new BadRequestException("customer not found for tenant");
+      }
+      if (data.orderId) {
+        const validOrder = await this.repository.validateOrder(
+          saleContext.tenantId,
+          data.orderId,
+          client
+        );
+        if (!validOrder) {
+          throw new BadRequestException("order not found for tenant");
+        }
+      }
+
       const saleRow = await this.repository.createSale(
         {
           ...data,
@@ -228,7 +311,184 @@ export class SaleService {
         throw new BadRequestException("sale could not be created");
       }
 
+      let total = 0;
+      let paymentTotal = 0;
+      const createdMovements: StockMovementEntity[] = [];
+
+      for (const item of data.items) {
+        const quantity = this.roundCurrency(Number(item.quantity));
+        const price = this.roundCurrency(Number(item.price));
+
+        if (!item.productId) {
+          throw new BadRequestException("productId is required");
+        }
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          throw new BadRequestException("quantity must be a positive number");
+        }
+        if (!Number.isFinite(price) || price < 0) {
+          throw new BadRequestException("price must be a non-negative number");
+        }
+
+        const product = await this.repository.getProductForSale(
+          saleContext.tenantId,
+          item.productId,
+          client
+        );
+        if (!product) {
+          throw new BadRequestException("product not found for tenant");
+        }
+
+        if (item.orderItemId) {
+          if (!data.orderId) {
+            throw new BadRequestException(
+              "orderId is required when orderItemId is provided"
+            );
+          }
+
+          const orderItem = await this.repository.getOrderItemForUpdate(
+            saleContext.tenantId,
+            data.orderId,
+            item.orderItemId,
+            client
+          );
+          if (!orderItem) {
+            throw new BadRequestException("order item not found for order and tenant");
+          }
+
+          const remainingOrderQuantity =
+            this.toNumber(orderItem.ordered_quantity) -
+            this.toNumber(orderItem.delivered_quantity);
+          if (quantity > remainingOrderQuantity) {
+            throw new BadRequestException(
+              `sale quantity exceeds pending quantity for order item ${item.orderItemId}`
+            );
+          }
+        } else if (data.orderId) {
+          throw new BadRequestException(
+            "orderItemId is required for sale items linked to an order"
+          );
+        }
+
+        const availableStock = await this.repository.getAvailableStock(
+          saleContext.tenantId,
+          item.productId,
+          client
+        );
+        if (availableStock < quantity) {
+          throw new BadRequestException(
+            `insufficient stock for product ${item.productId}`
+          );
+        }
+
+        const taxRate = this.toNumber(product.tax_rate ?? 0);
+        const priceWithoutTax =
+          taxRate > 0 ? this.roundCurrency(price / (1 + taxRate)) : price;
+        const taxTotal =
+          taxRate > 0
+            ? this.roundCurrency((price - priceWithoutTax) * quantity)
+            : 0;
+        const subtotal = this.roundCurrency(price * quantity);
+        total = this.roundCurrency(total + subtotal);
+
+        const saleItemId = await this.repository.insertSaleItem(
+          saleRow.id,
+          saleContext.tenantId,
+          {
+            productId: item.productId,
+            orderItemId: item.orderItemId ?? null,
+            quantity,
+            price,
+            priceWithoutTax,
+            taxTotal,
+            subtotal,
+          },
+          client
+        );
+
+        if (product.tax_id && product.tax_name) {
+          await this.repository.insertSaleItemTax(
+            saleContext.tenantId,
+            saleItemId,
+            {
+              taxId: product.tax_id,
+              taxName: product.tax_name,
+              taxRate,
+              taxAmount: taxTotal,
+              isIncluded: product.tax_is_included ?? false,
+            },
+            client
+          );
+        }
+
+        const movement = await this.stockMovementService.createMovement(
+          {
+            id: crypto.randomUUID(),
+            tenantId: saleContext.tenantId,
+            productId: item.productId,
+            type: "OUT",
+            quantity,
+            referenceType: "SALE",
+            referenceId: saleRow.id,
+            branchId: saleContext.branchId,
+            terminalId: saleContext.terminalId,
+            posSessionCode: saleContext.posSessionId,
+            userId: saleContext.userId,
+            referenceTable: "sales",
+            createdAt: new Date(),
+          },
+          client
+        );
+        createdMovements.push(movement);
+
+        if (item.orderItemId) {
+          await this.repository.updateOrderItemDeliveredQuantity(
+            item.orderItemId,
+            quantity,
+            client
+          );
+          await this.repository.updateOrderItemBilledQuantity(
+            item.orderItemId,
+            quantity,
+            client
+          );
+        }
+      }
+
+      const { balance } = this.validatePaymentMethods(data.type, total, data.paymentMethods);
+      for (const paymentMethod of data.paymentMethods ?? []) {
+        const amount = this.roundCurrency(Number(paymentMethod.amount));
+        paymentTotal = this.roundCurrency(paymentTotal + amount);
+        await this.repository.insertSalePaymentMethod(
+          saleRow.id,
+          saleContext.tenantId,
+          {
+            ...paymentMethod,
+            amount,
+          },
+          client
+        );
+      }
+
+      await this.repository.updateSaleTotals(
+        saleRow.id,
+        saleContext.tenantId,
+        total,
+        balance,
+        client
+      );
+
+      if (data.orderId) {
+        await this.repository.refreshOrderStatus(
+          data.orderId,
+          saleContext.tenantId,
+          client
+        );
+      }
+
       await client.query("COMMIT");
+      createdMovements.forEach((movement) =>
+        this.stockMovementService.logMovementAuditEvent(movement)
+      );
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -238,7 +498,15 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      const saleResult = { rows: [saleRow] };
+      const saleResult = {
+        rows: [
+          {
+            ...saleRow,
+            total,
+            balance,
+          },
+        ],
+      };
       const saleRowResult = saleResult.rows[0] as SaleRow | undefined;
       if (!saleRowResult) {
         throw new BadRequestException("sale could not be created");
@@ -322,6 +590,199 @@ export class SaleService {
           this.mapSalePaymentMethod(row)
         ),
       };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async createSaleFromOrderDelivery(
+    data: {
+      orderId: string;
+      type: SaleType;
+      paymentMethods?: CreateSalePaymentMethodInput[];
+    },
+    context: SaleContext
+  ) {
+    const saleContext = await this.normalizeSaleContext(context);
+
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const validPosSession = await this.repository.validateActivePosSession(
+        saleContext,
+        client
+      );
+      if (!validPosSession) {
+        throw new UnauthorizedException("POS session is invalid");
+      }
+
+      const orderResult = await client.query<InvoiceableOrderRow>(
+        `
+          SELECT id, customer_id, type
+          FROM orders
+          WHERE id = $1
+            AND tenant_id = $2
+            AND status IN ('PARTIAL', 'COMPLETED')
+          LIMIT 1
+        `,
+        [data.orderId, saleContext.tenantId]
+      );
+      const order = orderResult.rows[0];
+      if (!order) {
+        throw new BadRequestException("order not found or not ready for invoicing");
+      }
+
+      const validCustomer = await this.repository.validateCustomer(
+        saleContext.tenantId,
+        order.customer_id,
+        client
+      );
+      if (!validCustomer) {
+        throw new BadRequestException("customer not found for tenant");
+      }
+
+      const itemsResult = await client.query<InvoiceableOrderItemRow>(
+        `
+          SELECT
+            oi.id,
+            oi.product_id,
+            oi.delivered_quantity,
+            COALESCE(oi.billed_quantity, 0) AS billed_quantity,
+            oi.price
+          FROM order_items oi
+          WHERE oi.order_id = $1
+            AND oi.delivered_quantity > COALESCE(oi.billed_quantity, 0)
+          ORDER BY oi.id
+          FOR UPDATE
+        `,
+        [data.orderId]
+      );
+      if (itemsResult.rows.length === 0) {
+        throw new BadRequestException("order has no delivered items pending invoicing");
+      }
+
+      const saleRow = await this.repository.createSale(
+        {
+          tenantId: saleContext.tenantId,
+          branchId: saleContext.branchId,
+          terminalId: saleContext.terminalId,
+          userId: saleContext.userId,
+          posSessionId: saleContext.posSessionId,
+          customerId: order.customer_id,
+          orderId: data.orderId,
+          type: data.type,
+          items: [],
+          paymentMethods: data.paymentMethods ?? [],
+        },
+        client
+      );
+      if (!saleRow) {
+        throw new BadRequestException("sale could not be created");
+      }
+
+      let total = 0;
+      for (const item of itemsResult.rows) {
+        const quantity = this.roundCurrency(
+          this.toNumber(item.delivered_quantity) - this.toNumber(item.billed_quantity)
+        );
+        if (quantity <= 0) {
+          continue;
+        }
+
+        const price = this.roundCurrency(this.toNumber(item.price));
+        const product = await this.repository.getProductForSale(
+          saleContext.tenantId,
+          item.product_id,
+          client
+        );
+        if (!product) {
+          throw new BadRequestException("product not found for tenant");
+        }
+
+        const taxRate = this.toNumber(product.tax_rate ?? 0);
+        const priceWithoutTax =
+          taxRate > 0 ? this.roundCurrency(price / (1 + taxRate)) : price;
+        const taxTotal =
+          taxRate > 0
+            ? this.roundCurrency((price - priceWithoutTax) * quantity)
+            : 0;
+        const subtotal = this.roundCurrency(price * quantity);
+        total = this.roundCurrency(total + subtotal);
+
+        const saleItemId = await this.repository.insertSaleItem(
+          saleRow.id,
+          saleContext.tenantId,
+          {
+            productId: item.product_id,
+            orderItemId: item.id,
+            quantity,
+            price,
+            priceWithoutTax,
+            taxTotal,
+            subtotal,
+          },
+          client
+        );
+
+        if (product.tax_id && product.tax_name) {
+          await this.repository.insertSaleItemTax(
+            saleContext.tenantId,
+            saleItemId,
+            {
+              taxId: product.tax_id,
+              taxName: product.tax_name,
+              taxRate,
+              taxAmount: taxTotal,
+              isIncluded: product.tax_is_included ?? false,
+            },
+            client
+          );
+        }
+
+        await this.repository.updateOrderItemBilledQuantity(item.id, quantity, client);
+      }
+
+      const { balance } = this.validatePaymentMethods(data.type, total, data.paymentMethods);
+      for (const paymentMethod of data.paymentMethods ?? []) {
+        const amount = this.roundCurrency(Number(paymentMethod.amount));
+        await this.repository.insertSalePaymentMethod(
+          saleRow.id,
+          saleContext.tenantId,
+          {
+            ...paymentMethod,
+            amount,
+          },
+          client
+        );
+      }
+
+      await this.repository.updateSaleTotals(
+        saleRow.id,
+        saleContext.tenantId,
+        total,
+        balance,
+        client
+      );
+
+      await client.query("COMMIT");
+      this.auditService.logEvent({
+        tenantId: saleContext.tenantId,
+        userId: saleContext.userId,
+        module: "sales",
+        entity: "sales",
+        entityId: saleRow.id,
+        action: "SALE_CREATED",
+      });
+
+      return this.mapSale({
+        ...saleRow,
+        total,
+        balance,
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

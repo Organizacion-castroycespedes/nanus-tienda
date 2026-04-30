@@ -56,15 +56,21 @@ echo "[seed] Running menu seed..."
 echo "[seed] Running roles and permissions seed..."
 "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/003_seed_roles.sql"
 
-echo "[seed] Running role-menu permissions seed..."
-"${PSQL_APP[@]}" -f "${SCRIPT_DIR}/007_seed_role_menu_permissions.sql"
-
-echo "[seed] Running super admin seed..."
+echo "[seed] Running super admin and demo users seed..."
 "${PSQL_APP[@]}" \
   -v super_admin_email="$SEED_SUPER_ADMIN_EMAIL" \
   -v super_admin_password="$SEED_SUPER_ADMIN_PASSWORD" \
   -v super_admin_first_name="$SEED_SUPER_ADMIN_FIRST_NAME" \
   -v super_admin_last_name="$SEED_SUPER_ADMIN_LAST_NAME" \
   -f "${SCRIPT_DIR}/004_seed_super_admin.sql"
+
+echo "[seed] Running demo operational users and menus seed..."
+"${PSQL_APP[@]}" -f "${SCRIPT_DIR}/009_seed_demo_operational_users.sql"
+
+echo "[seed] Running demo user-role assignments seed..."
+"${PSQL_APP[@]}" -f "${SCRIPT_DIR}/010_seed_demo_user_roles.sql"
+
+echo "[seed] Running role-menu permissions seed..."
+"${PSQL_APP[@]}" -f "${SCRIPT_DIR}/007_seed_role_menu_permissions.sql"
 
 echo "[seed] Completed successfully."

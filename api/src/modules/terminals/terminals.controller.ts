@@ -35,7 +35,7 @@ type UpdateTerminalStatusDto = {
 
 @Controller("terminals")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("SUPER_ADMIN", "ADMIN")
+@Roles("SUPER_ADMIN", "SUPER_USER")
 export class TerminalsController {
   constructor(
     @Inject(TerminalsService)
@@ -65,11 +65,15 @@ export class TerminalsController {
   @Get()
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "READ" })
   list(
+    @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.terminalsService.listTerminals(
-      branchId,
+      {
+        tenantId,
+        branchId,
+      },
       this.buildActor(request)
     );
   }

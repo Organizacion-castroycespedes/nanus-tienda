@@ -5,9 +5,17 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { listBranches } from "../../../domains/branches/api";
+import type { BranchResponse } from "../../../domains/branches/dtos";
 import type { ProductResponse } from "../../../domains/products/dtos";
+import { useInventoryScope } from "../../../hooks/useInventoryScope";
+import { useAppSelector } from "../../../store/hooks";
 import { getCustomers, type CustomerResponse } from "../services/customer.service";
-import { createOrder } from "../services/order.service";
+import {
+  createOrder,
+  updateOrder,
+  type OrderDetailResponse,
+} from "../services/order.service";
 import { getProducts } from "../services/product.service";
 
 type OrderFormItem = {
@@ -18,17 +26,21 @@ type OrderFormItem = {
 
 type OrderFormValues = {
   customerId: string;
+  branchId: string;
   type: "CASH" | "CREDIT";
   items: OrderFormItem[];
 };
 
 type OrderFormErrors = {
   customerId?: string;
+  branchId?: string;
   items?: string;
   submit?: string;
 };
 
 type OrderFormProps = {
+  mode?: "create" | "edit";
+  order?: OrderDetailResponse | null;
   onCancel: () => void;
   onSuccess: () => void;
 };
@@ -46,18 +58,55 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
-  const [values, setValues] = useState<OrderFormValues>({
-    customerId: "",
-    type: "CASH",
-    items: [createEmptyItem()],
-  });
+const mapOrderToValues = (
+  order: OrderDetailResponse | null | undefined,
+  fallbackBranchId: string
+): OrderFormValues => ({
+  customerId: order?.customerId ?? "",
+  branchId: order?.branchId ?? fallbackBranchId,
+  type: order?.type ?? "CASH",
+  items:
+    order?.items.map((item) => ({
+      productId: item.productId,
+      quantity: String(item.orderedQuantity),
+      price: String(item.price),
+    })) ?? [createEmptyItem()],
+});
+
+export const OrderForm = ({
+  mode = "create",
+  order,
+  onCancel,
+  onSuccess,
+}: OrderFormProps) => {
+  const { currentBranch, currentTenant } = useInventoryScope();
+  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? null);
+  const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
+  const [values, setValues] = useState<OrderFormValues>(() =>
+    mapOrderToValues(order, currentBranch ?? "")
+  );
   const [errors, setErrors] = useState<OrderFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [products, setProducts] = useState<ProductResponse[]>([]);
+  const [branches, setBranches] = useState<BranchResponse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const canSelectBranch =
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
+
+  useEffect(() => {
+    setValues(mapOrderToValues(order, currentBranch ?? ""));
+  }, [currentBranch, order]);
+
+  useEffect(() => {
+    if (mode === "edit" || !currentBranch) {
+      return;
+    }
+    setValues((prev) =>
+      prev.branchId === currentBranch ? prev : { ...prev, branchId: currentBranch }
+    );
+  }, [currentBranch, mode]);
 
   useEffect(() => {
     let mounted = true;
@@ -66,9 +115,14 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
       setCatalogLoading(true);
       setCatalogError(null);
       try {
-        const [customersResult, productsResult] = await Promise.all([
+        const branchPromise =
+          canSelectBranch && currentTenant
+            ? listBranches({ tenantId: currentTenant })
+            : Promise.resolve<BranchResponse[]>([]);
+        const [customersResult, productsResult, branchesResult] = await Promise.all([
           getCustomers(),
           getProducts(),
+          branchPromise,
         ]);
 
         if (!mounted) {
@@ -77,9 +131,10 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
 
         setCustomers(customersResult.filter((customer) => customer.isActive));
         setProducts(productsResult.filter((product) => product.isActive));
+        setBranches(branchesResult.filter((branch) => branch.estado === "ACTIVE"));
       } catch {
         if (mounted) {
-          setCatalogError("No se pudieron cargar clientes o productos.");
+          setCatalogError("No se pudieron cargar clientes, productos o sucursales.");
         }
       } finally {
         if (mounted) {
@@ -93,7 +148,14 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [canSelectBranch, currentTenant]);
+
+  const selectedBranchName = useMemo(() => {
+    if (canSelectBranch) {
+      return branches.find((branch) => branch.id === values.branchId)?.nombre ?? "";
+    }
+    return authBranchName ?? values.branchId;
+  }, [authBranchName, branches, canSelectBranch, values.branchId]);
 
   const itemSubtotals = useMemo(
     () =>
@@ -120,6 +182,10 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
 
     if (!values.customerId) {
       nextErrors.customerId = "Debes seleccionar un cliente.";
+    }
+
+    if (!values.branchId) {
+      nextErrors.branchId = "Debes seleccionar una sucursal.";
     }
 
     const hasInvalidItems = values.items.some((item) => {
@@ -168,8 +234,9 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
     setIsSubmitting(true);
 
     try {
-      await createOrder({
+      const payload = {
         customerId: values.customerId,
+        branchId: values.branchId,
         type: values.type,
         total,
         items: values.items.map((item, index) => ({
@@ -178,30 +245,39 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
           price: Number(item.price),
           subtotal: itemSubtotals[index] ?? 0,
         })),
-      });
+      };
+
+      if (mode === "edit" && order) {
+        await updateOrder(order.id, payload);
+      } else {
+        await createOrder(payload);
+      }
 
       onSuccess();
     } catch {
       setErrors({
-        submit: "No se pudo guardar el pedido.",
+        submit:
+          mode === "edit" ? "No se pudo actualizar el pedido." : "No se pudo guardar el pedido.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const title = mode === "edit" ? "Editar pedido" : "Crear pedido";
+  const submitLabel = mode === "edit" ? "Guardar cambios" : "Guardar pedido";
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
-          <h2 className="text-xl font-semibold text-slate-900">Crear pedido</h2>
+          <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Registra el cliente, el tipo de pedido y los items. Esta accion no afecta
-            inventario.
+            Registra el cliente, la sucursal, el tipo de pedido y los items.
           </p>
         </div>
-        <Button variant="ghost" onClick={onCancel}>
+        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
           Cancelar
         </Button>
       </div>
@@ -228,11 +304,38 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
                 </option>
               ))}
             </Select>
-            {errors.customerId ? (
-              <p className="text-xs text-rose-600">{errors.customerId}</p>
-            ) : null}
+            {errors.customerId ? <p className="text-xs text-rose-600">{errors.customerId}</p> : null}
           </div>
 
+          {canSelectBranch ? (
+            <div className="space-y-1">
+              <Select
+                label="Sucursal"
+                required
+                value={values.branchId}
+                disabled={catalogLoading || branches.length === 0}
+                onChange={(event) => {
+                  setValues((prev) => ({ ...prev, branchId: event.target.value }));
+                  setErrors((prev) => ({ ...prev, branchId: undefined, submit: undefined }));
+                }}
+              >
+                <option value="">
+                  {catalogLoading ? "Cargando..." : "Selecciona una sucursal"}
+                </option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.nombre}
+                  </option>
+                ))}
+              </Select>
+              {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
+            </div>
+          ) : (
+            <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
+          )}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-1">
           <Select
             label="Tipo"
             value={values.type}
@@ -310,7 +413,7 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
                   type="number"
                   min="0"
                   step="0.01"
-                  value="0"
+                  value={mode === "edit" && order ? String(order.items[index]?.deliveredQuantity ?? 0) : "0"}
                   disabled
                   readOnly
                 />
@@ -382,7 +485,7 @@ export const OrderForm = ({ onCancel, onSuccess }: OrderFormProps) => {
 
         <div className="flex flex-wrap gap-3">
           <Button type="submit" isLoading={isSubmitting}>
-            Guardar pedido
+            {submitLabel}
           </Button>
           <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
             Cancelar

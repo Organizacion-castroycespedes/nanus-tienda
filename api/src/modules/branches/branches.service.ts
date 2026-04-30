@@ -22,12 +22,15 @@ export class BranchesService {
     @Inject(AuditService) private readonly auditService: AuditService
   ) {}
 
-  private isSuperAdmin(actor: ActorContext) {
-    return actor.roles.includes("SUPER_ADMIN");
+  private canViewAllTenants(actor: ActorContext) {
+    return (
+      actor.roles.includes("SUPER_ADMIN") ||
+      actor.roles.includes("SUPER_USER")
+    );
   }
 
   private resolveTenantId(actor: ActorContext, tenantId?: string) {
-    if (this.isSuperAdmin(actor)) {
+    if (this.canViewAllTenants(actor)) {
       if (!tenantId && actor.tenantId) {
         return actor.tenantId;
       }
@@ -43,14 +46,14 @@ export class BranchesService {
   }
 
   async listBranches(tenantId: string | undefined, actor: ActorContext) {
-    if (this.isSuperAdmin(actor)) {
+    if (this.canViewAllTenants(actor)) {
       return this.repository.list(tenantId);
     }
     return this.repository.list(this.resolveTenantId(actor));
   }
 
   async getBranch(branchId: string, actor: ActorContext) {
-    const tenantId = this.isSuperAdmin(actor)
+    const tenantId = this.canViewAllTenants(actor)
       ? undefined
       : this.resolveTenantId(actor);
     const branch = await this.repository.findById(branchId, tenantId);
@@ -103,7 +106,7 @@ export class BranchesService {
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
-      const tenantId = this.isSuperAdmin(actor)
+      const tenantId = this.canViewAllTenants(actor)
         ? undefined
         : this.resolveTenantId(actor);
       const current = await this.repository.findById(branchId, tenantId);
@@ -162,7 +165,7 @@ export class BranchesService {
     payload: UpdateBranchStatusDto,
     actor: ActorContext
   ) {
-    const tenantId = this.isSuperAdmin(actor)
+    const tenantId = this.canViewAllTenants(actor)
       ? undefined
       : this.resolveTenantId(actor);
     const current = await this.repository.findById(branchId, tenantId);

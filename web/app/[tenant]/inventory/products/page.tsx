@@ -10,18 +10,24 @@ import { ConfirmationMessage } from "../../../../components/design-system/confir
 import { Input } from "../../../../components/design-system/Input";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
+import { useInventoryScope } from "../../../../hooks/useInventoryScope";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { hasPermission } from "../../../../lib/permissions";
+import { useAppSelector } from "../../../../store/hooks";
 import { ProductForm } from "../../../../modules/inventory/components/ProductForm";
 import { StockAdjustmentForm } from "../../../../modules/inventory/components/StockAdjustmentForm";
 import { deleteProduct } from "../../../../modules/inventory/services/product.service";
 
 type ProductFilters = {
   query: string;
+  tenantId: string;
+  branchId: string;
 };
 
 const defaultFilters: ProductFilters = {
   query: "",
+  tenantId: "",
+  branchId: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
@@ -73,10 +79,15 @@ const ProductsPage = () => {
   const [stockAdjustmentProduct, setStockAdjustmentProduct] = useState<ProductResponse | null>(null);
   const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductResponse | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const canCreate = hasPermission("inventory.create");
-  const canEdit = hasPermission("inventory.update");
-  const canDelete = hasPermission("inventory.delete");
+  const { currentTenant, isSuperRole } = useInventoryScope();
+  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
+  const canViewAllTenants = role === "SUPER_ADMIN";
+  const canManageProducts =
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
+  const canCreate = canManageProducts && hasPermission("inventory.create");
+  const canEdit = canManageProducts && hasPermission("inventory.update");
+  const canDelete = canManageProducts && hasPermission("inventory.delete");
+  const canAdjustStock = isSuperRole;
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -87,20 +98,64 @@ const ProductsPage = () => {
     setToastVariant(variant);
   }, []);
 
-  const loadProducts = useCallback(async () => {
+  const resolveProductFilters = useCallback(
+    (filters?: ProductFilters) => {
+      if (canViewAllTenants) {
+        return {
+          tenantId: filters?.tenantId || undefined,
+          branchId: filters?.branchId || undefined,
+        };
+      }
+
+      return {
+        tenantId: currentTenant || undefined,
+      };
+    },
+    [canViewAllTenants, currentTenant]
+  );
+
+  const loadProducts = useCallback(async (filters?: ProductFilters) => {
+    const activeFilters = filters ?? appliedFilters;
     setLoading(true);
-    setErrorMessage(null);
-    try {
-      const result = await listProducts();
-      setProducts(result);
-      setHasSearched(true);
-    } catch {
+      setErrorMessage(null);
+      try {
+        const result = await listProducts(resolveProductFilters(activeFilters));
+        setProducts(result);
+        setHasSearched(true);
+      } catch {
       setErrorMessage("No se pudieron cargar los productos.");
       setHasSearched(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [appliedFilters, resolveProductFilters]);
+
+  const tenantOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    products.forEach((product) => {
+      if (product.tenantId && product.tenantName && !seen.has(product.tenantId)) {
+        seen.set(product.tenantId, product.tenantName);
+      }
+    });
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [products]);
+
+  const branchOptions = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string }>();
+    products
+      .filter((product) =>
+        draftFilters.tenantId ? product.tenantId === draftFilters.tenantId : true
+      )
+      .forEach((product) => {
+        if (product.branchId && product.branchName) {
+          const key = `${product.tenantId}:${product.branchId}`;
+          if (!seen.has(key)) {
+            seen.set(key, { id: product.branchId, name: product.branchName });
+          }
+        }
+      });
+    return Array.from(seen.values());
+  }, [draftFilters.tenantId, products]);
 
   const filteredProducts = useMemo(() => {
     const query = appliedFilters.query.trim().toLowerCase();
@@ -111,7 +166,14 @@ const ProductsPage = () => {
     return products.filter((product) => {
       const name = product.name.toLowerCase();
       const sku = product.sku.toLowerCase();
-      return name.includes(query) || sku.includes(query);
+      const branchName = (product.branchName ?? "").toLowerCase();
+      const terminalName = (product.terminalName ?? "").toLowerCase();
+      return (
+        name.includes(query) ||
+        sku.includes(query) ||
+        branchName.includes(query) ||
+        terminalName.includes(query)
+      );
     });
   }, [appliedFilters.query, products]);
 
@@ -125,7 +187,7 @@ const ProductsPage = () => {
   const applyFilters = () => {
     setAppliedFilters(draftFilters);
     setPage(0);
-    void loadProducts();
+    void loadProducts(draftFilters);
   };
 
   const resetFilters = () => {
@@ -275,10 +337,16 @@ const ProductsPage = () => {
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
+        <div
+          className={
+            isSuperRole
+              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto_auto]"
+              : "grid gap-4 md:grid-cols-[1fr_auto_auto]"
+          }
+        >
           <Input
             label="Buscar"
-            placeholder="Nombre o SKU"
+            placeholder="Nombre, SKU, sucursal o terminal"
             value={draftFilters.query}
             onChange={(event) =>
               setDraftFilters((prev) => ({
@@ -287,6 +355,43 @@ const ProductsPage = () => {
               }))
             }
           />
+          {canViewAllTenants ? (
+            <Select
+              label="Tenant"
+              value={draftFilters.tenantId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  tenantId: event.target.value,
+                  branchId:
+                    prev.tenantId && prev.tenantId !== event.target.value ? "" : prev.branchId,
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {tenantOptions.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
+          {canViewAllTenants ? (
+            <Select
+              label="Sucursal"
+              value={draftFilters.branchId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, branchId: event.target.value }))
+              }
+            >
+              <option value="">Todas</option>
+              {branchOptions.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
           <div className="flex items-end gap-2">
             <Button variant="outline" onClick={applyFilters}>
               <Search className="h-4 w-4" />
@@ -328,6 +433,8 @@ const ProductsPage = () => {
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">SKU</th>
+                <th className="px-4 py-3 font-medium">Sucursal</th>
+                <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Precio</th>
                 <th className="px-4 py-3 font-medium">Stock</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
@@ -336,19 +443,19 @@ const ProductsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Cargando productos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar productos.
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     No hay productos para mostrar.
                   </td>
                 </tr>
@@ -357,6 +464,8 @@ const ProductsPage = () => {
                   <tr key={product.id}>
                     <td className="px-4 py-3 text-slate-900">{product.name}</td>
                     <td className="px-4 py-3 text-slate-700">{product.sku}</td>
+                    <td className="px-4 py-3 text-slate-700">{product.branchName ?? "-"}</td>
+                    <td className="px-4 py-3 text-slate-700">{product.terminalName ?? "-"}</td>
                     <td className="px-4 py-3 text-slate-700">{formatCurrency(product.price)}</td>
                     <td className="px-4 py-3">
                       {(() => {
@@ -377,13 +486,15 @@ const ProductsPage = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setStockAdjustmentProduct(product)}
-                        >
-                          Ajustar stock
-                        </Button>
+                        {canAdjustStock ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setStockAdjustmentProduct(product)}
+                          >
+                            Ajustar stock
+                          </Button>
+                        ) : null}
                         {canEdit ? (
                           <Button variant="ghost" size="sm" onClick={() => handleEditClick(product)}>
                             <Pencil className="h-4 w-4" />

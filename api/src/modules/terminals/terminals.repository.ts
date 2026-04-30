@@ -6,11 +6,19 @@ export type TerminalRecord = {
   id: string;
   tenant_id: string;
   branch_id: string;
+  tenant_name: string | null;
+  branch_name: string | null;
   name: string;
   code: string;
   device_fingerprint: string | null;
   is_active: boolean;
   created_at: string;
+};
+
+type BranchRecord = {
+  id: string;
+  tenant_id: string;
+  nombre: string;
 };
 
 type CreateTerminalInput = {
@@ -62,6 +70,51 @@ export class TerminalsRepository {
     return (result.rows?.length ?? 0) > 0;
   }
 
+  async findBranchById(
+    branchId: string,
+    client?: PoolClient
+  ): Promise<BranchRecord | null> {
+    const result = await this.query<BranchRecord>(
+      `SELECT id, tenant_id, nombre
+      FROM tenant_branches
+      WHERE id = $1
+      LIMIT 1`,
+      [branchId],
+      client
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async existsCodeInBranch(
+    tenantId: string,
+    branchId: string,
+    code: string,
+    excludeId?: string,
+    client?: PoolClient
+  ): Promise<boolean> {
+    const params: unknown[] = [tenantId, branchId, code.trim().toLowerCase()];
+    let whereClause = `
+      tenant_id = $1
+      AND branch_id = $2
+      AND LOWER(code) = $3
+    `;
+
+    if (excludeId) {
+      params.push(excludeId);
+      whereClause += ` AND id <> $${params.length}`;
+    }
+
+    const result = await this.query<QueryResultRow>(
+      `SELECT 1
+      FROM terminals
+      WHERE ${whereClause}
+      LIMIT 1`,
+      params,
+      client
+    );
+    return (result.rows?.length ?? 0) > 0;
+  }
+
   async findById(
     terminalId: string,
     tenantId?: string,
@@ -70,16 +123,24 @@ export class TerminalsRepository {
     if (tenantId) {
       const result = await this.query<TerminalRecord>(
         `SELECT
-          id,
-          tenant_id,
-          branch_id,
-          name,
-          code,
-          device_fingerprint,
-          is_active,
-          created_at
+          terminal.id,
+          terminal.tenant_id,
+          tenant.nombre AS tenant_name,
+          terminal.branch_id,
+          branch.nombre AS branch_name,
+          terminal.name,
+          terminal.code,
+          terminal.device_fingerprint,
+          terminal.is_active,
+          terminal.created_at
         FROM terminals
-        WHERE id = $1 AND tenant_id = $2`,
+        AS terminal
+        LEFT JOIN tenants AS tenant
+          ON tenant.id = terminal.tenant_id
+        LEFT JOIN tenant_branches AS branch
+          ON branch.id = terminal.branch_id
+         AND branch.tenant_id = terminal.tenant_id
+        WHERE terminal.id = $1 AND terminal.tenant_id = $2`,
         [terminalId, tenantId],
         client
       );
@@ -88,16 +149,23 @@ export class TerminalsRepository {
 
     const result = await this.query<TerminalRecord>(
       `SELECT
-        id,
-        tenant_id,
-        branch_id,
-        name,
-        code,
-        device_fingerprint,
-        is_active,
-        created_at
-      FROM terminals
-      WHERE id = $1`,
+        terminal.id,
+        terminal.tenant_id,
+        tenant.nombre AS tenant_name,
+        terminal.branch_id,
+        branch.nombre AS branch_name,
+        terminal.name,
+        terminal.code,
+        terminal.device_fingerprint,
+        terminal.is_active,
+        terminal.created_at
+      FROM terminals AS terminal
+      LEFT JOIN tenants AS tenant
+        ON tenant.id = terminal.tenant_id
+      LEFT JOIN tenant_branches AS branch
+        ON branch.id = terminal.branch_id
+       AND branch.tenant_id = terminal.tenant_id
+      WHERE terminal.id = $1`,
       [terminalId],
       client
     );
@@ -118,15 +186,7 @@ export class TerminalsRepository {
         is_active
       )
       VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING
-        id,
-        tenant_id,
-        branch_id,
-        name,
-        code,
-        device_fingerprint,
-        is_active,
-        created_at`,
+      RETURNING id`,
       [
         data.tenantId,
         data.branchId,
@@ -137,7 +197,11 @@ export class TerminalsRepository {
       ],
       client
     );
-    return result.rows[0] ?? null;
+    const created = result.rows[0];
+    if (!created) {
+      return null;
+    }
+    return this.findById(created.id, undefined, client);
   }
 
   async findByBranch(
@@ -145,26 +209,33 @@ export class TerminalsRepository {
     branchId?: string
   ): Promise<TerminalRecord[]> {
     const params: unknown[] = [tenantId];
-    let whereClause = "WHERE tenant_id = $1";
+    let whereClause = "WHERE terminal.tenant_id = $1";
 
     if (branchId) {
       params.push(branchId);
-      whereClause += ` AND branch_id = $${params.length}`;
+      whereClause += ` AND terminal.branch_id = $${params.length}`;
     }
 
     const result = await this.query<TerminalRecord>(
       `SELECT
-        id,
-        tenant_id,
-        branch_id,
-        name,
-        code,
-        device_fingerprint,
-        is_active,
-        created_at
-      FROM terminals
+        terminal.id,
+        terminal.tenant_id,
+        tenant.nombre AS tenant_name,
+        terminal.branch_id,
+        branch.nombre AS branch_name,
+        terminal.name,
+        terminal.code,
+        terminal.device_fingerprint,
+        terminal.is_active,
+        terminal.created_at
+      FROM terminals AS terminal
+      LEFT JOIN tenants AS tenant
+        ON tenant.id = terminal.tenant_id
+      LEFT JOIN tenant_branches AS branch
+        ON branch.id = terminal.branch_id
+       AND branch.tenant_id = terminal.tenant_id
       ${whereClause}
-      ORDER BY created_at DESC`,
+      ORDER BY terminal.created_at DESC`,
       params
     );
     return result.rows ?? [];
@@ -203,19 +274,15 @@ export class TerminalsRepository {
       `UPDATE terminals
       SET ${updates.join(", ")}
       WHERE id = $1
-      RETURNING
-        id,
-        tenant_id,
-        branch_id,
-        name,
-        code,
-        device_fingerprint,
-        is_active,
-        created_at`,
+      RETURNING id`,
       params,
       client
     );
-    return result.rows[0] ?? null;
+    const updated = result.rows[0];
+    if (!updated) {
+      return null;
+    }
+    return this.findById(updated.id, undefined, client);
   }
 
   async updateStatus(
@@ -227,18 +294,14 @@ export class TerminalsRepository {
       `UPDATE terminals
       SET is_active = $2
       WHERE id = $1
-      RETURNING
-        id,
-        tenant_id,
-        branch_id,
-        name,
-        code,
-        device_fingerprint,
-        is_active,
-        created_at`,
+      RETURNING id`,
       [id, isActive],
       client
     );
-    return result.rows[0] ?? null;
+    const updated = result.rows[0];
+    if (!updated) {
+      return null;
+    }
+    return this.findById(updated.id, undefined, client);
   }
 }

@@ -26,6 +26,7 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  Monitor,
   Package,
   Ruler,
   Settings,
@@ -44,6 +45,7 @@ import {
 import { fetchMenu, fetchProfile, logout, updatePassword, updateProfile } from "../../domains/auth/api";
 import { fetchPermissions } from "../../domains/menu/api";
 import { persistMenuCache, readMenuCache } from "../../domains/auth/menu-cache";
+import { MENU_KEYS } from "../../domains/menu/constants";
 import { getRoutePermissionRequirement } from "../../lib/route-permissions";
 import { hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
@@ -95,6 +97,7 @@ const iconByName: Record<string, LucideIcon> = {
   loader2: Loader2,
   bell: Bell,
   messagecircle: MessageCircle,
+  monitor: Monitor,
   logout: LogOut,
   x: X,
 };
@@ -345,8 +348,63 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     return targetLabel.includes("dashboard") || targetRoute.includes("/dashboard");
   }, []);
 
+  const menuItemsWithTerminalShortcut = useMemo(() => {
+    const isSuperRole =
+      authUser?.role === "SUPER_ADMIN" || authUser?.role === "SUPER_USER";
+    if (!isSuperRole || !hasPermission(MENU_KEYS.CONFIG_GENERAL, "read")) {
+      return menuItems;
+    }
+
+    const shortcutRoute = `/${tenantSlug}/config/terminals`;
+    const configRoute = `/${tenantSlug}/configuracion`;
+
+    const routeExists = (items: MenuItem[]): boolean =>
+      items.some(
+        (item) =>
+          item.route === shortcutRoute || routeExists(item.children ?? [])
+      );
+
+    if (routeExists(menuItems)) {
+      return menuItems;
+    }
+
+    const appendShortcut = (items: MenuItem[]): MenuItem[] =>
+      items.map((item) => {
+        const nextChildren = appendShortcut(item.children ?? []);
+        if (item.route !== configRoute) {
+          return nextChildren === item.children
+            ? item
+            : { ...item, children: nextChildren };
+        }
+
+        return {
+          ...item,
+          children: [
+            ...nextChildren,
+            {
+              id: "local-config-terminals",
+              key: "CONFIG_GENERAL_TERMINALS",
+              module: item.module,
+              label: "Terminales",
+              route: shortcutRoute,
+              icon: "Monitor",
+              parentId: item.id,
+              sortOrder: Number(item.sortOrder ?? 0) + 100,
+              visible: true,
+              belowMainMenu: item.belowMainMenu,
+              metadata: {},
+              accessLevel: "READ",
+              children: [],
+            },
+          ],
+        };
+      });
+
+    return appendShortcut(menuItems);
+  }, [authUser?.role, menuItems, tenantSlug]);
+
   const { menuSections, mainMenuSections } = useMemo(() => {
-    const rootItems = menuItems.filter(
+    const rootItems = menuItemsWithTerminalShortcut.filter(
       (item) => item.visible && !isDashboardItem(item.label, item.route)
     );
     const groupByModule = (items: MenuItem[]) =>
@@ -364,7 +422,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       menuSections: groupByModule(primaryItems),
       mainMenuSections: groupByModule(mainMenuItems),
     };
-  }, [menuItems, isDashboardItem]);
+  }, [isDashboardItem, menuItemsWithTerminalShortcut]);
 
   const getMenuIcon = (label: string, module: string, iconName?: string | null) => {
     if (iconName?.trim()) {
@@ -599,10 +657,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     }
 
     const allowed = hasPermission(requirement.module, requirement.action);
-    if (!allowed && pathname !== "/unauthorized") {
-      router.replace("/unauthorized");
+    const unauthorizedPath = `/${tenantSlug}/unauthorized`;
+    if (!allowed && pathname !== unauthorizedPath) {
+      router.replace(unauthorizedPath);
     }
-  }, [authStatus, pathname, permissionsLoaded, router]);
+  }, [authStatus, pathname, permissionsLoaded, router, tenantSlug]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {

@@ -8,6 +8,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { PERMISSION_KEY, type RequiredPermission } from "../decorators/require-permission.decorator";
 import { AccessControlService } from "../services/access-control.service";
+import { MENU_KEYS } from "../constants/menu-keys";
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -38,6 +39,13 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException("Permisos insuficientes");
     }
     if (user.roles?.includes("SUPER_ADMIN")) {
+      return true;
+    }
+    if (
+      user.roles?.includes("SUPER_USER") &&
+      (requiredPermission.menuKey === MENU_KEYS.CONFIG_GENERAL ||
+        requiredPermission.menuKey === MENU_KEYS.CONFIG_USUARIOS)
+    ) {
       return true;
     }
 

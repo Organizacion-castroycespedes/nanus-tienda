@@ -25,7 +25,7 @@ import type { ListUsersQueryDto } from "./dto/list-users-query.dto";
 
 @Controller("users")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("SUPER_ADMIN", "ADMIN")
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
 export class UsersController {
   constructor(
     @Inject(UsersService) private readonly usersService: UsersService
