@@ -17,6 +17,7 @@ import type { AuthProfile, AuthTokens, AuthUser } from "./types";
 import type { MenuResponse, PermissionsResponse } from "../menu/types";
 import { clearMenuCache, persistMenuCache, readMenuCache } from "./menu-cache";
 import { clearContext as clearPosContext, clearPersistedPosState } from "../../store/pos";
+import { clearPersistedPosCartState, clearPosCartState } from "../../store/posCart";
 
 const REFRESH_BUFFER_MS = 60 * 1000;
 
@@ -255,9 +256,11 @@ export const clearSession = (options?: { reason?: string }) => {
   store.dispatch(clearAuth());
   store.dispatch(clearMenu());
   store.dispatch(clearPosContext());
+  store.dispatch(clearPosCartState());
   clearRefreshToken();
   clearMenuCache();
   clearPersistedPosState();
+  clearPersistedPosCartState();
   clearTokenRefreshSchedule();
   if (typeof window !== "undefined") {
     if (window.location.pathname !== "/login") {
