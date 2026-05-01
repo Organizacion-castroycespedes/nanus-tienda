@@ -5,6 +5,11 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import {
+  getCurrentCashSession,
+  listPaymentMethods,
+} from "../../finance/services/finance.service";
+import type { CashSession, PaymentMethod } from "../../finance/types";
+import {
   isConfirmCancelledError,
   useConfirm,
 } from "../../../hooks/use-confirm";
@@ -35,10 +40,10 @@ export const OrderInvoiceForm = ({
   const confirm = useConfirm();
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
   const [type, setType] = useState<"CASH" | "CREDIT">("CASH");
-  const [paymentMethod, setPaymentMethod] = useState<"CASH" | "CARD" | "TRANSFER" | "OTHER">(
-    "CASH"
-  );
-  const [reference, setReference] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [cashSession, setCashSession] = useState<CashSession | null>(null);
+  const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -51,14 +56,21 @@ export const OrderInvoiceForm = ({
       setLoading(true);
       setLoadError(null);
       try {
-        const result = await getOrderById(orderId);
+        const [result, methods, currentSession] = await Promise.all([
+          getOrderById(orderId),
+          listPaymentMethods({ active: true }),
+          getCurrentCashSession(),
+        ]);
         if (!mounted) {
           return;
         }
         setOrder(result);
+        setPaymentMethods(methods.filter((method) => method.active));
+        setCashSession(currentSession);
+        setPaymentMethodId((current) => current || methods[0]?.id || "");
       } catch {
         if (mounted) {
-          setLoadError("No se pudo cargar el detalle del pedido.");
+          setLoadError("No se pudo cargar el detalle del pedido o los metodos de pago.");
         }
       } finally {
         if (mounted) {
@@ -96,11 +108,29 @@ export const OrderInvoiceForm = ({
     [rows]
   );
 
+  const selectedMethod =
+    paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (rows.length === 0) {
       setSubmitError("No hay productos entregados pendientes por facturar.");
+      return;
+    }
+
+    if (type === "CASH" && !selectedMethod) {
+      setSubmitError("Selecciona un metodo de pago valido.");
+      return;
+    }
+
+    if (type === "CASH" && selectedMethod?.requiresReference && referenceNumber.trim() === "") {
+      setSubmitError("La referencia es obligatoria para este metodo de pago.");
+      return;
+    }
+
+    if (type === "CASH" && selectedMethod?.tipo === "CASH" && !cashSession?.id) {
+      setSubmitError("Necesitas una caja abierta para facturar en efectivo.");
       return;
     }
 
@@ -119,13 +149,15 @@ export const OrderInvoiceForm = ({
 
       await invoiceOrder(orderId, {
         type,
-        paymentMethods:
+        payments:
           type === "CASH"
             ? [
                 {
-                  paymentMethod,
+                  paymentMethodId,
                   amount: total,
-                  reference: reference.trim() || null,
+                  cashSessionId:
+                    selectedMethod?.tipo === "CASH" ? cashSession?.id ?? undefined : undefined,
+                  referenceNumber: referenceNumber.trim() || undefined,
                 },
               ]
             : [],
@@ -243,17 +275,15 @@ export const OrderInvoiceForm = ({
             {type === "CASH" ? (
               <Select
                 label="Metodo de pago"
-                value={paymentMethod}
-                onChange={(event) =>
-                  setPaymentMethod(
-                    event.target.value as "CASH" | "CARD" | "TRANSFER" | "OTHER"
-                  )
-                }
+                value={paymentMethodId}
+                onChange={(event) => setPaymentMethodId(event.target.value)}
               >
-                <option value="CASH">CASH</option>
-                <option value="CARD">CARD</option>
-                <option value="TRANSFER">TRANSFER</option>
-                <option value="OTHER">OTHER</option>
+                <option value="">Selecciona un metodo</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.nombre}
+                  </option>
+                ))}
               </Select>
             ) : (
               <Input label="Saldo a credito" value={formatCurrency(total)} disabled readOnly />
@@ -263,9 +293,11 @@ export const OrderInvoiceForm = ({
               <>
                 <Input label="Monto" value={formatCurrency(total)} disabled readOnly />
                 <Input
-                  label="Referencia"
-                  value={reference}
-                  onChange={(event) => setReference(event.target.value)}
+                  label={
+                    selectedMethod?.requiresReference ? "Referencia obligatoria" : "Referencia"
+                  }
+                  value={referenceNumber}
+                  onChange={(event) => setReferenceNumber(event.target.value)}
                   placeholder="Opcional"
                 />
               </>

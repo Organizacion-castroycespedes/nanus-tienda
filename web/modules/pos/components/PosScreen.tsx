@@ -26,6 +26,14 @@ import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { hasPermission } from "../../../lib/permissions";
 import {
+  getCurrentCashSession,
+  listPaymentMethods,
+} from "../../finance/services/finance.service";
+import type {
+  CashSession,
+  PaymentMethod as FinancePaymentMethod,
+} from "../../finance/types";
+import {
   createSale,
   getPosCustomers,
   getPosProducts,
@@ -35,7 +43,6 @@ import {
 import {
   buildDefaultPayments,
   buildPaymentId,
-  type PaymentMethodType,
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
@@ -57,15 +64,6 @@ const categoryLabels: Record<CategoryKey, string> = {
   low: "Stock bajo",
   out: "Sin stock",
 };
-
-const paymentMethodOptions: Array<{
-  value: PaymentMethodType;
-  label: string;
-}> = [
-  { value: "CASH", label: "Efectivo" },
-  { value: "CARD", label: "Tarjeta" },
-  { value: "TRANSFER", label: "Transferencia" },
-];
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -142,6 +140,8 @@ export const PosScreen = () => {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
+  const [paymentMethodsCatalog, setPaymentMethodsCatalog] = useState<FinancePaymentMethod[]>([]);
+  const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [processingSale, setProcessingSale] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -270,6 +270,49 @@ export const PosScreen = () => {
     }
   }, [customers, selectedCustomerId, setSelectedCustomerId]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadFinanceCatalog = async () => {
+      try {
+        const [methods, session] = await Promise.all([
+          listPaymentMethods({ active: true }),
+          getCurrentCashSession(),
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        const availableMethods = methods.filter((method) => method.active);
+        setPaymentMethodsCatalog(availableMethods);
+        setCurrentCashSession(session);
+        setPayments(
+          payments.map((payment, index) =>
+            index === 0 && !payment.paymentMethodId
+              ? { ...payment, paymentMethodId: availableMethods[0]?.id ?? "" }
+              : payment
+          )
+        );
+      } catch {
+        if (!active) {
+          return;
+        }
+        setCatalogWarnings((current) =>
+          current.includes("No se pudieron cargar los metodos de pago del POS.")
+            ? current
+            : [...current, "No se pudieron cargar los metodos de pago del POS."]
+        );
+      }
+    };
+
+    void loadFinanceCatalog();
+
+    return () => {
+      active = false;
+    };
+  }, [payments, setPayments]);
+
   const taxById = useMemo(
     () =>
       taxes.reduce<Record<string, TaxResponse>>((acc, tax) => {
@@ -282,6 +325,24 @@ export const PosScreen = () => {
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
     [customers, selectedCustomerId]
+  );
+
+  const paymentMethodById = useMemo(
+    () =>
+      paymentMethodsCatalog.reduce<Record<string, FinancePaymentMethod>>((acc, method) => {
+        acc[method.id] = method;
+        return acc;
+      }, {}),
+    [paymentMethodsCatalog]
+  );
+
+  const paymentMethodOptions = useMemo(
+    () =>
+      paymentMethodsCatalog.map((method) => ({
+        value: method.id,
+        label: method.nombre,
+      })),
+    [paymentMethodsCatalog]
   );
 
   const categoryCounts = useMemo(() => {
@@ -370,8 +431,9 @@ export const PosScreen = () => {
       payments.map((payment) => ({
         ...payment,
         numericAmount: parseAmount(payment.amount),
+        method: paymentMethodById[payment.paymentMethodId] ?? null,
       })),
-    [payments]
+    [paymentMethodById, payments]
   );
 
   const totalPaid = useMemo(
@@ -383,7 +445,7 @@ export const PosScreen = () => {
     () =>
       round(
         parsedPayments
-          .filter((payment) => payment.paymentMethod === "CASH")
+          .filter((payment) => payment.method?.tipo === "CASH")
           .reduce((sum, payment) => sum + payment.numericAmount, 0)
       ),
     [parsedPayments]
@@ -393,7 +455,7 @@ export const PosScreen = () => {
     () =>
       round(
         parsedPayments
-          .filter((payment) => payment.paymentMethod !== "CASH")
+          .filter((payment) => payment.method?.tipo !== "CASH")
           .reduce((sum, payment) => sum + payment.numericAmount, 0)
       ),
     [parsedPayments]
@@ -514,7 +576,7 @@ export const PosScreen = () => {
 
   const updatePayment = (
     id: string,
-    field: "paymentMethod" | "amount" | "reference",
+    field: "paymentMethodId" | "amount" | "reference",
     value: string
   ) => {
     setSubmitError(null);
@@ -530,7 +592,7 @@ export const PosScreen = () => {
       ...payments,
       {
         id: buildPaymentId(),
-        paymentMethod: "CARD",
+        paymentMethodId: paymentMethodsCatalog[0]?.id ?? "",
         amount: "",
         reference: "",
       },
@@ -548,9 +610,11 @@ export const PosScreen = () => {
 
     if (paymentDerivedState.overpayment <= 0) {
       return basePayments.map((payment) => ({
-        paymentMethod: payment.paymentMethod,
+        paymentMethodId: payment.paymentMethodId,
         amount: payment.numericAmount,
-        reference: payment.reference.trim() || null,
+        cashSessionId: payment.method?.tipo === "CASH" ? currentCashSession?.id ?? null : null,
+        referenceNumber: payment.reference.trim() || null,
+        notes: null,
       }));
     }
 
@@ -558,11 +622,13 @@ export const PosScreen = () => {
 
     return basePayments
       .map((payment) => {
-        if (payment.paymentMethod !== "CASH" || remainingChange <= 0) {
+        if (payment.method?.tipo !== "CASH" || remainingChange <= 0) {
           return {
-            paymentMethod: payment.paymentMethod,
+            paymentMethodId: payment.paymentMethodId,
             amount: payment.numericAmount,
-            reference: payment.reference.trim() || null,
+            cashSessionId: currentCashSession?.id ?? null,
+            referenceNumber: payment.reference.trim() || null,
+            notes: null,
           };
         }
 
@@ -572,9 +638,11 @@ export const PosScreen = () => {
         remainingChange = round(Math.max(remainingChange - payment.numericAmount, 0));
 
         return {
-          paymentMethod: payment.paymentMethod,
+          paymentMethodId: payment.paymentMethodId,
           amount: adjustedAmount,
-          reference: payment.reference.trim() || null,
+          cashSessionId: currentCashSession?.id ?? null,
+          referenceNumber: payment.reference.trim() || null,
+          notes: null,
         };
       })
       .filter((payment) => payment.amount > 0);
@@ -611,6 +679,30 @@ export const PosScreen = () => {
       return "Los metodos de pago deben tener montos mayores a cero.";
     }
 
+    const hasMissingPaymentMethod = parsedPayments.some(
+      (payment) => payment.amount.trim() !== "" && !payment.method
+    );
+    if (hasMissingPaymentMethod) {
+      return "Selecciona un metodo de pago valido en cada linea.";
+    }
+
+    const hasMissingReference = parsedPayments.some(
+      (payment) =>
+        payment.numericAmount > 0 &&
+        payment.method?.requiresReference &&
+        payment.reference.trim().length === 0
+    );
+    if (hasMissingReference) {
+      return "Los metodos que exigen referencia deben incluirla.";
+    }
+
+    const hasCashWithoutSession = parsedPayments.some(
+      (payment) => payment.numericAmount > 0 && payment.method?.tipo === "CASH" && !currentCashSession
+    );
+    if (hasCashWithoutSession) {
+      return "Abre una caja antes de registrar efectivo en el POS.";
+    }
+
     if (paymentDerivedState.pending === 0 && totalPaid === 0) {
       return "Registra al menos un metodo de pago para una venta al contado.";
     }
@@ -644,10 +736,12 @@ export const PosScreen = () => {
           quantity: item.quantity,
           price: item.price,
         })),
-        paymentMethods: effectivePayments.map((payment) => ({
-          paymentMethod: payment.paymentMethod,
+        payments: effectivePayments.map((payment) => ({
+          paymentMethodId: payment.paymentMethodId,
           amount: payment.amount,
-          reference: payment.reference,
+          cashSessionId: payment.cashSessionId ?? undefined,
+          referenceNumber: payment.referenceNumber,
+          notes: payment.notes,
         })),
       });
 
@@ -1198,15 +1292,16 @@ export const PosScreen = () => {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Select
                       label="Metodo"
-                      value={payment.paymentMethod}
+                      value={payment.paymentMethodId}
                       onChange={(event) =>
                         updatePayment(
                           payment.id,
-                          "paymentMethod",
+                          "paymentMethodId",
                           event.target.value
                         )
                       }
                     >
+                      <option value="">Selecciona un metodo</option>
                       {paymentMethodOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -1225,7 +1320,11 @@ export const PosScreen = () => {
                     />
 
                     <Input
-                      label="Referencia"
+                      label={
+                        paymentMethodById[payment.paymentMethodId]?.requiresReference
+                          ? "Referencia obligatoria"
+                          : "Referencia"
+                      }
                       value={payment.reference}
                       onChange={(event) =>
                         updatePayment(payment.id, "reference", event.target.value)
@@ -1264,6 +1363,15 @@ export const PosScreen = () => {
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
                 Si el total pagado no cubre la venta completa, se registrara como venta a credito.
               </p>
+              {currentCashSession ? (
+                <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  Caja activa: {currentCashSession.cashRegisterNombre ?? "Caja actual"}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  No hay caja abierta para este usuario. El efectivo quedara bloqueado.
+                </p>
+              )}
             </div>
 
             {submitError ? (

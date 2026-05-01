@@ -10,6 +10,7 @@ import { MenuModule } from "./menu/menu.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { TerminalsModule } from "./terminals/terminals.module";
 import { PosUserSessionsModule } from "./pos-user-sessions/pos-user-sessions.module";
+import { FinanceModule } from "./finance/finance.module";
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PosUserSessionsModule } from "./pos-user-sessions/pos-user-sessions.mod
     InventoryModule,
     TerminalsModule,
     PosUserSessionsModule,
+    FinanceModule,
   ],
 })
 export class AppModule {}

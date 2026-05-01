@@ -19,6 +19,7 @@ type AuthRequest = Request & {
     tenantId?: string;
     id?: string;
     sessionId?: string;
+    roles?: string[];
   };
   context?: {
     userId?: string;
@@ -27,6 +28,7 @@ type AuthRequest = Request & {
     terminalId?: string;
     posSessionId?: string;
     sessionId?: string;
+    roles?: string[];
   };
 };
 
@@ -40,10 +42,12 @@ type CreateSaleBody = {
     price: number;
     orderItemId?: string | null;
   }>;
-  paymentMethods?: Array<{
-    paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+  payments?: Array<{
+    paymentMethodId: string;
     amount: number;
-    reference?: string | null;
+    cashSessionId?: string | null;
+    referenceNumber?: string | null;
+    notes?: string | null;
   }>;
 };
 
@@ -78,6 +82,7 @@ export class SaleController {
       tenantId,
       userId,
       sessionId: request.user?.sessionId,
+      roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
     };
   }
 
@@ -88,7 +93,7 @@ export class SaleController {
       orderId: body.orderId ?? null,
       type: body.type,
       items: body.items ?? [],
-      paymentMethods: body.paymentMethods ?? [],
+      payments: body.payments ?? [],
     }, this.getSaleContext(request));
   }
 

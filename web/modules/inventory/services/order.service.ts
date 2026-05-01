@@ -13,6 +13,9 @@ export type OrderResponse = {
   type: "CASH" | "CREDIT";
   status: "DRAFT" | "CONFIRMED" | "PARTIAL" | "COMPLETED" | "CANCELLED";
   total: number;
+  paymentStatus: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
+  totalPaid: number;
+  balanceDue: number;
   createdAt: string;
 };
 
@@ -61,10 +64,12 @@ export type DeliverOrderPayload = {
 
 export type InvoiceOrderPayload = {
   type: "CASH" | "CREDIT";
-  paymentMethods?: Array<{
-    paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+  payments?: Array<{
+    paymentMethodId: string;
     amount: number;
-    reference?: string | null;
+    cashSessionId?: string | null;
+    referenceNumber?: string | null;
+    notes?: string | null;
   }>;
 };
 

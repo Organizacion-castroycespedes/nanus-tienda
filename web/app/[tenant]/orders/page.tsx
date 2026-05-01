@@ -22,6 +22,7 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { OrderDeliverForm } from "../../../modules/inventory/components/OrderDeliverForm";
 import { OrderForm } from "../../../modules/inventory/components/OrderForm";
 import { OrderInvoiceForm } from "../../../modules/inventory/components/OrderInvoiceForm";
+import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
 import {
   cancelOrder,
   confirmOrder,
@@ -74,10 +75,11 @@ const OrdersPage = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [formMode, setFormMode] = useState<
-    "create" | "edit" | "deliver" | "invoice" | null
+    "create" | "edit" | "deliver" | "invoice" | "payment" | null
   >(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderDetailResponse | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
@@ -96,6 +98,7 @@ const OrdersPage = () => {
     setFormMode(null);
     setSelectedOrder(null);
     setSelectedOrderId(null);
+    setSelectedPaymentOrder(null);
     setLoadingOrder(false);
   }, []);
 
@@ -236,6 +239,13 @@ const OrdersPage = () => {
     setFormMode("invoice");
   };
 
+  const handleOpenPayment = (order: OrderResponse) => {
+    setSelectedOrder(null);
+    setSelectedOrderId(order.id);
+    setSelectedPaymentOrder(order);
+    setFormMode("payment");
+  };
+
   const handleConfirm = async (order: OrderResponse) => {
     try {
       await confirm({
@@ -350,6 +360,23 @@ const OrdersPage = () => {
         />
       ) : null}
 
+      {formMode === "payment" && selectedPaymentOrder ? (
+        <DocumentPaymentForm
+          title="Registrar abono al pedido"
+          description="Aplica anticipos o abonos parciales sobre el pedido usando el motor de pagos unificado."
+          branchId={selectedPaymentOrder.branchId ?? ""}
+          referenceType="SALES_ORDER"
+          referenceId={selectedPaymentOrder.id}
+          direction="IN"
+          total={selectedPaymentOrder.total}
+          totalPaid={selectedPaymentOrder.totalPaid}
+          balanceDue={selectedPaymentOrder.balanceDue}
+          paymentStatus={selectedPaymentOrder.paymentStatus}
+          onCancel={closeForms}
+          onSuccess={() => void refreshAfterMutation("Abono registrado correctamente.")}
+        />
+      ) : null}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div
           className={
@@ -446,8 +473,11 @@ const OrdersPage = () => {
                 <th className="px-4 py-3 font-medium">Sucursal</th>
                 <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Total</th>
+                <th className="px-4 py-3 font-medium">Pagado</th>
+                <th className="px-4 py-3 font-medium">Saldo</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
+                <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
               </tr>
@@ -455,19 +485,19 @@ const OrdersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
                     Cargando pedidos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar pedidos.
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
                     No hay pedidos para mostrar.
                   </td>
                 </tr>
@@ -482,8 +512,15 @@ const OrdersPage = () => {
                     <td className="px-4 py-3 text-slate-700">
                       {formatCurrency(Number(order.total))}
                     </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatCurrency(Number(order.totalPaid))}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatCurrency(Number(order.balanceDue))}
+                    </td>
                     <td className="px-4 py-3 text-slate-700">{order.type}</td>
                     <td className="px-4 py-3 text-slate-700">{order.status}</td>
+                    <td className="px-4 py-3 text-slate-700">{order.paymentStatus}</td>
                     <td className="px-4 py-3 text-slate-700">
                       {formatDate(order.createdAt)}
                     </td>
@@ -493,6 +530,7 @@ const OrdersPage = () => {
                           canUpdate &&
                           (canEditOrder(order.status) ||
                             canDeliverOrder(order.status) ||
+                            (order.status !== "CANCELLED" && order.balanceDue > 0) ||
                             canInvoiceOrder(order) ||
                             canCancelOrder(order.status));
 
@@ -537,6 +575,16 @@ const OrdersPage = () => {
                           >
                             <Receipt className="h-4 w-4" />
                             Facturar
+                          </Button>
+                        ) : null}
+                        {canUpdate && order.status !== "CANCELLED" && order.balanceDue > 0 ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenPayment(order)}
+                          >
+                            <Receipt className="h-4 w-4" />
+                            Abonar
                           </Button>
                         ) : null}
                         {canUpdate && canCancelOrder(order.status) ? (

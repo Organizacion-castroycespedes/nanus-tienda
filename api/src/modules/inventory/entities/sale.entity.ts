@@ -15,6 +15,14 @@ export type SaleType = (typeof SALE_TYPES)[number];
 export const SALE_STATUSES = ["DRAFT", "CONFIRMED", "CANCELLED"] as const;
 export type SaleStatus = (typeof SALE_STATUSES)[number];
 
+export const SALE_PAYMENT_STATUSES = [
+  "PENDING",
+  "PARTIAL",
+  "PAID",
+  "OVERPAID",
+] as const;
+export type SalePaymentStatus = (typeof SALE_PAYMENT_STATUSES)[number];
+
 export type SaleProps = {
   id: string;
   tenantId: string;
@@ -24,6 +32,9 @@ export type SaleProps = {
   status?: SaleStatus;
   total: number;
   balance?: number;
+  paymentStatus?: SalePaymentStatus;
+  totalPaid?: number;
+  balanceDue?: number;
   createdAt: Date;
 };
 
@@ -36,6 +47,9 @@ export class SaleEntity {
   readonly status: SaleStatus;
   readonly total: number;
   readonly balance: number;
+  readonly paymentStatus: SalePaymentStatus;
+  readonly totalPaid: number;
+  readonly balanceDue: number;
   readonly createdAt: Date;
 
   constructor(props: SaleProps) {
@@ -57,22 +71,22 @@ export class SaleEntity {
     if (props.status !== undefined && !SALE_STATUSES.includes(props.status)) {
       throw new Error("status is invalid");
     }
+    if (
+      props.paymentStatus !== undefined &&
+      !SALE_PAYMENT_STATUSES.includes(props.paymentStatus)
+    ) {
+      throw new Error("paymentStatus is invalid");
+    }
 
     assertNonNegativeDecimal(props.total, "total");
     assertNonNegativeDecimal(props.balance ?? 0, "balance");
+    assertNonNegativeDecimal(props.totalPaid ?? 0, "totalPaid");
+    assertNonNegativeDecimal(props.balanceDue ?? props.balance ?? 0, "balanceDue");
 
     const resolvedType = props.type ?? "CASH";
-    const resolvedBalance = resolvedType === "CREDIT"
-      ? props.balance ?? props.total
-      : 0;
-
-    if (resolvedType === "CASH" && resolvedBalance !== 0) {
-      throw new Error("balance must be 0 for cash sales");
-    }
-
-    if (resolvedType === "CREDIT" && resolvedBalance > props.total) {
-      throw new Error("balance cannot be greater than total for credit sales");
-    }
+    const resolvedBalanceDue = props.balanceDue ?? props.balance ?? props.total;
+    const resolvedTotalPaid = props.totalPaid ?? Math.max(props.total - resolvedBalanceDue, 0);
+    const resolvedBalance = props.balance ?? resolvedBalanceDue;
 
     this.id = props.id;
     this.tenantId = props.tenantId;
@@ -82,6 +96,17 @@ export class SaleEntity {
     this.status = props.status ?? "DRAFT";
     this.total = props.total;
     this.balance = resolvedBalance;
+    this.totalPaid = resolvedTotalPaid;
+    this.balanceDue = resolvedBalanceDue;
+    this.paymentStatus =
+      props.paymentStatus ??
+      (resolvedTotalPaid <= 0
+        ? "PENDING"
+        : resolvedTotalPaid < props.total
+          ? "PARTIAL"
+          : resolvedTotalPaid === props.total
+            ? "PAID"
+            : "OVERPAID");
     this.createdAt = props.createdAt;
   }
 
