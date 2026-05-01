@@ -7,6 +7,8 @@ import {
 } from "@nestjs/common";
 import crypto from "node:crypto";
 import { DatabaseService } from "../../../common/db/database.service";
+import { CreatePaymentDto } from "../../finance/payments/dto/create-payment.dto";
+import { PaymentsService } from "../../finance/payments/payments.service";
 import { AuditService } from "../../../common/services/audit.service";
 import { SaleEntity, type SaleType } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
@@ -16,11 +18,10 @@ import {
 import type { StockMovementEntity } from "../entities/stock-movement.entity";
 import {
   SalePaymentMethodEntity,
-  type SalePaymentMethodType,
 } from "../entities/sale-payment-method.entity";
 import {
   SaleRepository,
-  type CreateSalePaymentMethodInput,
+  type CreateSalePaymentInput,
   type CreateSaleInput,
   type SaleRow,
 } from "../repositories/sale.repository";
@@ -64,7 +65,7 @@ type SalePaymentMethodRow = {
   id: string;
   tenant_id: string;
   sale_id: string;
-  payment_method: SalePaymentMethodType;
+  payment_method: string;
   amount: string | number;
   reference: string | null;
   created_at: Date;
@@ -91,6 +92,7 @@ type SaleContext = {
   terminalId?: string;
   posSessionId?: string;
   sessionId?: string;
+  roles?: string[];
 };
 
 @Injectable()
@@ -100,7 +102,9 @@ export class SaleService {
     @Inject(SaleRepository) private readonly repository: SaleRepository,
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(StockMovementService)
-    private readonly stockMovementService: StockMovementService
+    private readonly stockMovementService: StockMovementService,
+    @Inject(PaymentsService)
+    private readonly paymentsService: PaymentsService
   ) {}
 
   private toNumber(value: string | number) {
@@ -121,6 +125,9 @@ export class SaleService {
       status: row.status,
       total: this.toNumber(row.total),
       balance: this.toNumber(row.balance),
+      paymentStatus: row.payment_status,
+      totalPaid: this.toNumber(row.total_paid),
+      balanceDue: this.toNumber(row.balance_due),
       createdAt: new Date(row.created_at),
     });
   }
@@ -167,11 +174,18 @@ export class SaleService {
   }
 
   private mapSalePaymentMethod(row: SalePaymentMethodRow) {
+    const paymentMethod = (
+      row.payment_method === "BANK"
+        ? "TRANSFER"
+        : row.payment_method === "DIGITAL" || row.payment_method === "CREDIT"
+          ? "OTHER"
+          : row.payment_method
+    ) as "CASH" | "CARD" | "TRANSFER" | "OTHER";
     return SalePaymentMethodEntity.create({
       id: row.id,
       tenantId: row.tenant_id,
       saleId: row.sale_id,
-      paymentMethod: row.payment_method,
+      paymentMethod,
       amount: this.toNumber(row.amount),
       reference: row.reference,
       createdAt: new Date(row.created_at),
@@ -223,43 +237,38 @@ export class SaleService {
     }
   }
 
-  private validatePaymentMethods(
-    type: SaleType,
-    total: number,
-    paymentMethods: CreateSaleInput["paymentMethods"] | undefined
-  ) {
-    let paymentTotal = 0;
-
-    for (const paymentMethod of paymentMethods ?? []) {
-      if (!["CASH", "CARD", "TRANSFER", "OTHER"].includes(paymentMethod.paymentMethod)) {
-        throw new BadRequestException("paymentMethod is invalid");
+  private normalizePayments(payments: CreateSalePaymentInput[] | undefined) {
+    return (payments ?? []).map((payment) => {
+      if (!payment.paymentMethodId) {
+        throw new BadRequestException("paymentMethodId is required");
       }
-      const amount = this.roundCurrency(Number(paymentMethod.amount));
+
+      const amount = this.roundCurrency(Number(payment.amount));
       if (!Number.isFinite(amount) || amount <= 0) {
-        throw new BadRequestException("amount must be a positive number");
+        throw new BadRequestException("payment amount must be a positive number");
       }
-      paymentTotal = this.roundCurrency(paymentTotal + amount);
+
+      return {
+        paymentMethodId: payment.paymentMethodId,
+        amount,
+        cashSessionId: payment.cashSessionId ?? null,
+        referenceNumber: payment.referenceNumber ?? null,
+        notes: payment.notes ?? null,
+      };
+    });
+  }
+
+  private buildFinanceActor(context: SaleContext) {
+    if (!context.userId || !context.tenantId) {
+      throw new UnauthorizedException("Incomplete POS context");
     }
 
-    let balance = 0;
-    if (type === "CASH") {
-      if ((paymentMethods?.length ?? 0) === 0) {
-        throw new BadRequestException("payment methods are required for cash sales");
-      }
-      if (paymentTotal !== total) {
-        throw new BadRequestException(
-          "payment methods total must equal sale total for cash sales"
-        );
-      }
-    } else {
-      balance = this.roundCurrency(total - paymentTotal);
-    }
-
-    if (balance < 0) {
-      throw new BadRequestException("balance cannot be negative");
-    }
-
-    return { paymentTotal, balance };
+    return {
+      userId: context.userId,
+      tenantId: context.tenantId,
+      roles: Array.isArray(context.roles) ? context.roles : [],
+      sessionId: context.sessionId,
+    };
   }
 
   async createSale(
@@ -312,7 +321,6 @@ export class SaleService {
       }
 
       let total = 0;
-      let paymentTotal = 0;
       const createdMovements: StockMovementEntity[] = [];
 
       for (const item of data.items) {
@@ -454,28 +462,34 @@ export class SaleService {
         }
       }
 
-      const { balance } = this.validatePaymentMethods(data.type, total, data.paymentMethods);
-      for (const paymentMethod of data.paymentMethods ?? []) {
-        const amount = this.roundCurrency(Number(paymentMethod.amount));
-        paymentTotal = this.roundCurrency(paymentTotal + amount);
-        await this.repository.insertSalePaymentMethod(
-          saleRow.id,
-          saleContext.tenantId,
-          {
-            ...paymentMethod,
-            amount,
-          },
-          client
-        );
-      }
-
-      await this.repository.updateSaleTotals(
+      const payments = this.normalizePayments(data.payments);
+      await this.repository.initializeSaleFinancials(
         saleRow.id,
         saleContext.tenantId,
         total,
-        balance,
         client
       );
+
+      for (const payment of payments) {
+        const payload = Object.assign(new CreatePaymentDto(), {
+          branchId: saleContext.branchId,
+          paymentMethodId: payment.paymentMethodId,
+          cashSessionId: payment.cashSessionId,
+          referenceType: "SALE",
+          referenceId: saleRow.id,
+          direction: "IN",
+          status: "COMPLETED",
+          amount: payment.amount,
+          referenceNumber: payment.referenceNumber,
+          notes: payment.notes,
+        });
+
+        await this.paymentsService.createInTransaction(
+          payload,
+          this.buildFinanceActor(saleContext),
+          client
+        );
+      }
 
       if (data.orderId) {
         await this.repository.refreshOrderStatus(
@@ -498,98 +512,7 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      const saleResult = {
-        rows: [
-          {
-            ...saleRow,
-            total,
-            balance,
-          },
-        ],
-      };
-      const saleRowResult = saleResult.rows[0] as SaleRow | undefined;
-      if (!saleRowResult) {
-        throw new BadRequestException("sale could not be created");
-      }
-
-      const [itemsResult, itemTaxesResult, paymentMethodsResult] = await Promise.all([
-      this.db.query(
-        `
-          SELECT
-            id,
-            tenant_id,
-            sale_id,
-            product_id,
-            order_item_id,
-            quantity,
-            price,
-            price_without_tax,
-            tax_total,
-            subtotal,
-            created_at
-          FROM sale_items
-          WHERE sale_id = $1
-            AND tenant_id = $2
-          ORDER BY created_at ASC, id ASC
-        `,
-        [saleRow.id, saleRow.tenant_id]
-      ),
-      this.db.query(
-        `
-          SELECT
-            id,
-            tenant_id,
-            sale_item_id,
-            tax_id,
-            tax_name,
-            tax_rate,
-            tax_amount,
-            is_included,
-            created_at
-          FROM sale_item_taxes
-          WHERE sale_item_id IN (
-            SELECT id
-            FROM sale_items
-            WHERE sale_id = $1
-              AND tenant_id = $2
-          )
-            AND tenant_id = $2
-          ORDER BY created_at ASC, id ASC
-        `,
-        [saleRow.id, saleRow.tenant_id]
-      ),
-      this.db.query(
-        `
-          SELECT
-            id,
-            tenant_id,
-            sale_id,
-            payment_method,
-            amount,
-            reference,
-            created_at
-          FROM sale_payment_methods
-          WHERE sale_id = $1
-            AND tenant_id = $2
-          ORDER BY created_at ASC, id ASC
-        `,
-        [saleRow.id, saleRow.tenant_id]
-      ),
-    ]);
-
-      return {
-        ...this.mapSale(saleRowResult),
-        items: (itemsResult.rows as SaleItemRow[]).map((row) => this.mapSaleItem(row)),
-        itemTaxes: (itemTaxesResult.rows as SaleItemTaxRow[]).map((row) =>
-          this.mapSaleItemTax(row)
-        ),
-        paymentMethods: (paymentMethodsResult.rows as SalePaymentMethodRow[]).map((row) =>
-          this.mapSalePaymentMethod(row)
-        ),
-        payment_methods: (paymentMethodsResult.rows as SalePaymentMethodRow[]).map((row) =>
-          this.mapSalePaymentMethod(row)
-        ),
-      };
+      return this.getSaleById(saleRow.id, saleContext.tenantId);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -602,7 +525,7 @@ export class SaleService {
     data: {
       orderId: string;
       type: SaleType;
-      paymentMethods?: CreateSalePaymentMethodInput[];
+      payments?: CreateSalePaymentInput[];
     },
     context: SaleContext
   ) {
@@ -676,7 +599,7 @@ export class SaleService {
           orderId: data.orderId,
           type: data.type,
           items: [],
-          paymentMethods: data.paymentMethods ?? [],
+          payments: data.payments ?? [],
         },
         client
       );
@@ -746,27 +669,34 @@ export class SaleService {
         await this.repository.updateOrderItemBilledQuantity(item.id, quantity, client);
       }
 
-      const { balance } = this.validatePaymentMethods(data.type, total, data.paymentMethods);
-      for (const paymentMethod of data.paymentMethods ?? []) {
-        const amount = this.roundCurrency(Number(paymentMethod.amount));
-        await this.repository.insertSalePaymentMethod(
-          saleRow.id,
-          saleContext.tenantId,
-          {
-            ...paymentMethod,
-            amount,
-          },
-          client
-        );
-      }
-
-      await this.repository.updateSaleTotals(
+      const payments = this.normalizePayments(data.payments);
+      await this.repository.initializeSaleFinancials(
         saleRow.id,
         saleContext.tenantId,
         total,
-        balance,
         client
       );
+
+      for (const payment of payments) {
+        const payload = Object.assign(new CreatePaymentDto(), {
+          branchId: saleContext.branchId,
+          paymentMethodId: payment.paymentMethodId,
+          cashSessionId: payment.cashSessionId,
+          referenceType: "SALE",
+          referenceId: saleRow.id,
+          direction: "IN",
+          status: "COMPLETED",
+          amount: payment.amount,
+          referenceNumber: payment.referenceNumber,
+          notes: payment.notes,
+        });
+
+        await this.paymentsService.createInTransaction(
+          payload,
+          this.buildFinanceActor(saleContext),
+          client
+        );
+      }
 
       await client.query("COMMIT");
       this.auditService.logEvent({
@@ -778,11 +708,7 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.mapSale({
-        ...saleRow,
-        total,
-        balance,
-      });
+      return this.getSaleById(saleRow.id, saleContext.tenantId);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -803,6 +729,9 @@ export class SaleService {
           s.status,
           s.total,
           s.balance,
+          s.payment_status,
+          s.total_paid,
+          s.balance_due,
           s.created_at,
           c.name AS customer_name
         FROM sales s
@@ -830,6 +759,9 @@ export class SaleService {
           s.status,
           s.total,
           s.balance,
+          s.payment_status,
+          s.total_paid,
+          s.balance_due,
           s.created_at,
           c.name AS customer_name
         FROM sales s
@@ -900,14 +832,23 @@ export class SaleService {
             id,
             tenant_id,
             sale_id,
-            payment_method,
-            amount,
-            reference,
+            CASE
+              WHEN method.tipo = 'BANK' THEN 'TRANSFER'
+              WHEN method.tipo IN ('DIGITAL', 'CREDIT') THEN 'OTHER'
+              ELSE method.tipo
+            END AS payment_method,
+            payment.amount,
+            COALESCE(payment.reference_number, payment.notes) AS reference,
             created_at
-          FROM sale_payment_methods
-          WHERE sale_id = $1
-            AND tenant_id = $2
-          ORDER BY created_at ASC, id ASC
+          FROM payments AS payment
+          INNER JOIN payment_methods AS method
+            ON method.id = payment.payment_method_id
+           AND method.tenant_id = payment.tenant_id
+          WHERE payment.reference_type = 'SALE'
+            AND payment.reference_id = $1
+            AND payment.tenant_id = $2
+            AND payment.status IN ('PENDING', 'COMPLETED')
+          ORDER BY payment.created_at ASC, payment.id ASC
         `,
         [id, tenantId]
       ),

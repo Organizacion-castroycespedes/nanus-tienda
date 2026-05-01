@@ -59,6 +59,9 @@ type OrderRow = {
   type: OrderType;
   status: OrderStatus;
   total: string | number;
+  payment_status: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
+  total_paid: string | number;
+  balance_due: string | number;
   created_at: string | Date;
 };
 
@@ -120,6 +123,9 @@ export class OrderService {
       type: row.type,
       status: row.status,
       total: Number(row.total),
+      paymentStatus: row.payment_status,
+      totalPaid: Number(row.total_paid),
+      balanceDue: Number(row.balance_due),
       createdAt: new Date(row.created_at),
     });
   }
@@ -390,6 +396,9 @@ export class OrderService {
       type: data.type ?? "CASH",
       status: "DRAFT",
       total: data.total,
+      totalPaid: 0,
+      balanceDue: data.total,
+      paymentStatus: "PENDING",
       createdAt: new Date(),
     });
 
@@ -411,9 +420,12 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
           )
           RETURNING
             id,
@@ -422,6 +434,9 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
         `,
         [
@@ -431,6 +446,9 @@ export class OrderService {
           order.type,
           order.status,
           order.total,
+          order.paymentStatus,
+          order.totalPaid,
+          order.balanceDue,
           order.createdAt,
         ]
       );
@@ -491,6 +509,9 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           FROM orders
           WHERE id = $1 AND tenant_id = $2
@@ -522,6 +543,16 @@ export class OrderService {
 
       const nextType = data.type ?? current.type;
       const nextTotal = data.total !== undefined ? data.total : Number(current.total);
+      const nextTotalPaid = Number(current.total_paid ?? 0);
+      const nextBalanceDue = Math.max(nextTotal - nextTotalPaid, 0);
+      const nextPaymentStatus =
+        nextTotalPaid <= 0
+          ? "PENDING"
+          : nextTotalPaid < nextTotal
+            ? "PARTIAL"
+            : nextTotalPaid === nextTotal
+              ? "PAID"
+              : "OVERPAID";
 
       const updateResult = await client.query<OrderRow>(
         `
@@ -530,7 +561,10 @@ export class OrderService {
             customer_id = COALESCE($3, customer_id),
             type = COALESCE($4, type),
             status = COALESCE($5, status),
-            total = COALESCE($6, total)
+            total = COALESCE($6, total),
+            total_paid = $7,
+            balance_due = $8,
+            payment_status = $9
           WHERE id = $1 AND tenant_id = $2
           RETURNING
             id,
@@ -539,9 +573,22 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
         `,
-        [id, tenantId, data.customerId ?? null, nextType, data.status ?? null, nextTotal]
+        [
+          id,
+          tenantId,
+          data.customerId ?? null,
+          nextType,
+          data.status ?? null,
+          nextTotal,
+          nextTotalPaid,
+          nextBalanceDue,
+          nextPaymentStatus,
+        ]
       );
 
       let items: OrderItemEntity[] = [];
@@ -625,6 +672,9 @@ export class OrderService {
           o.type,
           o.status,
           o.total,
+          o.payment_status,
+          o.total_paid,
+          o.balance_due,
           o.created_at,
           c.name AS customer_name,
           audit_context.branch_id::text AS branch_id,
@@ -701,6 +751,9 @@ export class OrderService {
           type,
           status,
           total,
+          payment_status,
+          total_paid,
+          balance_due,
           created_at
         FROM orders
         WHERE id = $1 AND tenant_id = $2
@@ -771,6 +824,9 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           FROM orders
           WHERE id = $1 AND tenant_id = $2
@@ -965,6 +1021,9 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
         `,
         [id, tenantId, nextStatus]
@@ -1021,6 +1080,9 @@ export class OrderService {
           type,
           status,
           total,
+          payment_status,
+          total_paid,
+          balance_due,
           created_at
       `,
       [id, tenantId]
@@ -1045,10 +1107,12 @@ export class OrderService {
     tenantId: string,
     data: {
       type: "CASH" | "CREDIT";
-      paymentMethods?: Array<{
-        paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      payments?: Array<{
+        paymentMethodId: string;
         amount: number;
-        reference?: string | null;
+        cashSessionId?: string | null;
+        referenceNumber?: string | null;
+        notes?: string | null;
       }>;
     },
     context?: InventoryContext,
@@ -1080,7 +1144,7 @@ export class OrderService {
       {
         orderId: id,
         type: data.type,
-        paymentMethods: data.paymentMethods ?? [],
+        payments: data.payments ?? [],
       },
       {
         tenantId,
@@ -1111,6 +1175,9 @@ export class OrderService {
           type,
           status,
           total,
+          payment_status,
+          total_paid,
+          balance_due,
           created_at
       `,
       [id, tenantId]
@@ -1126,6 +1193,9 @@ export class OrderService {
             type,
             status,
             total,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           FROM orders
           WHERE id = $1 AND tenant_id = $2

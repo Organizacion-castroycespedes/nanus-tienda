@@ -1,10 +1,8 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
-export type PaymentMethodType = "CASH" | "CARD" | "TRANSFER";
-
 export type PaymentDraft = {
   id: string;
-  paymentMethod: PaymentMethodType;
+  paymentMethodId: string;
   amount: string;
   reference: string;
 };
@@ -44,7 +42,7 @@ export const buildPaymentId = () =>
 export const buildDefaultPayments = (): PaymentDraft[] => [
   {
     id: buildPaymentId(),
-    paymentMethod: "CASH",
+    paymentMethodId: "",
     amount: "",
     reference: "",
   },
@@ -82,9 +80,6 @@ export const initialPosCartState: PosCartState = {
   ...buildEmptySaleState(),
 };
 
-const isPaymentMethod = (value: unknown): value is PaymentMethodType =>
-  value === "CASH" || value === "CARD" || value === "TRANSFER";
-
 const normalizePersistedPosCartState = (value: unknown) => {
   if (!value || typeof value !== "object") {
     return buildEmptySaleState();
@@ -110,7 +105,7 @@ const normalizePersistedPosCartState = (value: unknown) => {
         (payment): payment is PaymentDraft =>
           Boolean(payment) &&
           typeof payment.id === "string" &&
-          isPaymentMethod(payment.paymentMethod) &&
+          typeof payment.paymentMethodId === "string" &&
           typeof payment.amount === "string" &&
           typeof payment.reference === "string"
       )

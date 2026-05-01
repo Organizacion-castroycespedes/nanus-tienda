@@ -2,7 +2,6 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import type { SaleType } from "../entities/sale.entity";
-import type { SalePaymentMethodType } from "../entities/sale-payment-method.entity";
 
 export type SaleRow = {
   id: string;
@@ -13,6 +12,9 @@ export type SaleRow = {
   status: "DRAFT" | "CONFIRMED" | "CANCELLED";
   total: string | number;
   balance: string | number;
+  payment_status: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
+  total_paid: string | number;
+  balance_due: string | number;
   created_at: string | Date;
 };
 
@@ -31,10 +33,12 @@ export type CreateSaleItemInput = {
   orderItemId?: string | null;
 };
 
-export type CreateSalePaymentMethodInput = {
-  paymentMethod: SalePaymentMethodType;
+export type CreateSalePaymentInput = {
+  paymentMethodId: string;
   amount: number;
-  reference?: string | null;
+  cashSessionId?: string | null;
+  referenceNumber?: string | null;
+  notes?: string | null;
 };
 
 export type CreateSaleInput = SaleCreateContext & {
@@ -42,7 +46,7 @@ export type CreateSaleInput = SaleCreateContext & {
   orderId?: string | null;
   type: SaleType;
   items: CreateSaleItemInput[];
-  paymentMethods?: CreateSalePaymentMethodInput[];
+  payments?: CreateSalePaymentInput[];
 };
 
 type ProductForSaleRow = {
@@ -275,6 +279,9 @@ export class SaleRepository {
         status,
         total,
         balance,
+        payment_status,
+        total_paid,
+        balance_due,
         created_at
       )
       VALUES (
@@ -301,6 +308,9 @@ export class SaleRepository {
         status,
         total,
         balance,
+        payment_status,
+        total_paid,
+        balance_due,
         created_at`,
       [
         data.tenantId,
@@ -484,56 +494,22 @@ export class SaleRepository {
     );
   }
 
-  async insertSalePaymentMethod(
-    saleId: string,
-    tenantId: string,
-    paymentMethod: CreateSalePaymentMethodInput,
-    client: PoolClient
-  ) {
-    await this.query(
-      `INSERT INTO sale_payment_methods (
-        id,
-        tenant_id,
-        sale_id,
-        payment_method,
-        amount,
-        reference,
-        created_at
-      )
-      VALUES (
-        gen_random_uuid(),
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        NOW()
-      )`,
-      [
-        tenantId,
-        saleId,
-        paymentMethod.paymentMethod,
-        paymentMethod.amount,
-        paymentMethod.reference ?? null,
-      ],
-      client
-    );
-  }
-
-  async updateSaleTotals(
+  async initializeSaleFinancials(
     saleId: string,
     tenantId: string,
     total: number,
-    balance: number,
     client: PoolClient
   ) {
     await this.query(
       `UPDATE sales
       SET total = $3,
-          balance = $4
+          balance = $3,
+          total_paid = 0,
+          balance_due = $3,
+          payment_status = 'PENDING'
       WHERE id = $1
         AND tenant_id = $2`,
-      [saleId, tenantId, total, balance],
+      [saleId, tenantId, total],
       client
     );
   }

@@ -13,6 +13,9 @@ export type PurchaseResponse = {
   status: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CANCELLED";
   total: number;
   balance: number;
+  paymentStatus: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
+  totalPaid: number;
+  balanceDue: number;
   createdAt: string;
 };
 
