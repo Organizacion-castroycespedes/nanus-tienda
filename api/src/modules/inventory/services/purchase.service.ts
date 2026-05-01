@@ -71,6 +71,9 @@ type PurchaseRow = {
   status: PurchaseStatus;
   total: string | number;
   balance: string | number;
+  payment_status: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
+  total_paid: string | number;
+  balance_due: string | number;
   created_at: string | Date;
 };
 
@@ -134,6 +137,9 @@ export class PurchaseService {
       status: row.status,
       total: Number(row.total),
       balance: Number(row.balance ?? 0),
+      paymentStatus: row.payment_status,
+      totalPaid: Number(row.total_paid ?? 0),
+      balanceDue: Number(row.balance_due ?? row.balance ?? 0),
       createdAt: new Date(row.created_at),
     });
   }
@@ -212,14 +218,11 @@ export class PurchaseService {
     );
   }
 
-  private resolveBalance(type: PurchaseType, total: number) {
+  private resolveBalance(total: number) {
     if (!Number.isFinite(total) || total < 0) {
       throw new BadRequestException("total must be a non-negative number");
     }
-
-    // For now balance is fully derived from the purchase type.
-    // Future payment flows can decrease this value over time.
-    return type === "CREDIT" ? total : 0;
+    return total;
   }
 
   private resolveStatusFromItems(
@@ -383,7 +386,7 @@ export class PurchaseService {
 
     const purchaseId = crypto.randomUUID();
     const purchaseType = data.type ?? "CASH";
-    const purchaseBalance = this.resolveBalance(purchaseType, data.total);
+    const purchaseBalance = this.resolveBalance(data.total);
     const purchase = PurchaseEntity.create({
       id: purchaseId,
       tenantId: data.tenantId,
@@ -392,6 +395,9 @@ export class PurchaseService {
       status: "DRAFT",
       total: data.total,
       balance: purchaseBalance,
+      totalPaid: 0,
+      balanceDue: purchaseBalance,
+      paymentStatus: "PENDING",
       createdAt: new Date(),
     });
 
@@ -413,9 +419,12 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
           )
           RETURNING
             id,
@@ -425,6 +434,9 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
         `,
         [
@@ -435,6 +447,9 @@ export class PurchaseService {
           purchase.status,
           purchase.total,
           purchase.balance,
+          purchase.paymentStatus,
+          purchase.totalPaid,
+          purchase.balanceDue,
           purchase.createdAt,
         ]
       );
@@ -490,6 +505,9 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           FROM purchases
           WHERE id = $1 AND tenant_id = $2
@@ -517,7 +535,16 @@ export class PurchaseService {
       const nextType = data.type ?? current.type;
       const nextTotal =
         data.total !== undefined ? data.total : Number(current.total);
-      const nextBalance = this.resolveBalance(nextType, nextTotal);
+      const nextTotalPaid = Number(current.total_paid ?? 0);
+      const nextBalance = Math.max(nextTotal - nextTotalPaid, 0);
+      const nextPaymentStatus =
+        nextTotalPaid <= 0
+          ? "PENDING"
+          : nextTotalPaid < nextTotal
+            ? "PARTIAL"
+            : nextTotalPaid === nextTotal
+              ? "PAID"
+              : "OVERPAID";
       const nextStatus = data.status ?? current.status;
 
       const updateResult = await client.query<PurchaseRow>(
@@ -528,7 +555,10 @@ export class PurchaseService {
             type = COALESCE($4, type),
             status = COALESCE($5, status),
             total = COALESCE($6, total),
-            balance = COALESCE($7, balance)
+            balance = COALESCE($7, balance),
+            total_paid = $8,
+            balance_due = $9,
+            payment_status = $10
           WHERE id = $1 AND tenant_id = $2
           RETURNING
             id,
@@ -538,6 +568,9 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
         `,
         [
@@ -548,6 +581,9 @@ export class PurchaseService {
           nextStatus,
           nextTotal,
           nextBalance,
+          nextTotalPaid,
+          nextBalance,
+          nextPaymentStatus,
         ]
       );
 
@@ -615,6 +651,9 @@ export class PurchaseService {
           p.status,
           p.total,
           p.balance,
+          p.payment_status,
+          p.total_paid,
+          p.balance_due,
           p.created_at,
           s.name AS supplier_name,
           audit_context.branch_id::text AS branch_id,
@@ -677,6 +716,9 @@ export class PurchaseService {
           p.status,
           p.total,
           p.balance,
+          p.payment_status,
+          p.total_paid,
+          p.balance_due,
           p.created_at,
           s.name AS supplier_name
         FROM purchases p
@@ -749,6 +791,9 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           FROM purchases
           WHERE id = $1 AND tenant_id = $2
@@ -932,6 +977,9 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
         `,
         [id, tenantId, nextStatus]
@@ -970,6 +1018,9 @@ export class PurchaseService {
           status,
           total,
           balance,
+          payment_status,
+          total_paid,
+          balance_due,
           created_at
       `,
       [id, tenantId]
@@ -986,6 +1037,9 @@ export class PurchaseService {
             status,
             total,
             balance,
+            payment_status,
+            total_paid,
+            balance_due,
             created_at
           FROM purchases
           WHERE id = $1 AND tenant_id = $2

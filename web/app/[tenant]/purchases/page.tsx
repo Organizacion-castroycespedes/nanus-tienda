@@ -10,6 +10,7 @@ import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../store/hooks";
+import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
 import { PurchaseReceiveForm } from "../../../modules/inventory/components/PurchaseReceiveForm";
 import {
@@ -58,6 +59,7 @@ const PurchasesPage = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [receivingPurchaseId, setReceivingPurchaseId] = useState<string | null>(null);
+  const [payingPurchase, setPayingPurchase] = useState<PurchaseResponse | null>(null);
   const { currentTenant, isSuperRole } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
@@ -231,6 +233,29 @@ const PurchasesPage = () => {
         />
       ) : null}
 
+      {payingPurchase ? (
+        <DocumentPaymentForm
+          title="Registrar pago al proveedor"
+          description="Aplica egresos o abonos parciales sobre la compra seleccionada."
+          branchId={payingPurchase.branchId ?? ""}
+          referenceType="PURCHASE"
+          referenceId={payingPurchase.id}
+          direction="OUT"
+          total={payingPurchase.total}
+          totalPaid={payingPurchase.totalPaid}
+          balanceDue={payingPurchase.balanceDue}
+          paymentStatus={payingPurchase.paymentStatus}
+          onCancel={() => setPayingPurchase(null)}
+          onSuccess={async () => {
+            setPayingPurchase(null);
+            showToast("Pago registrado correctamente.", "success");
+            if (hasSearched) {
+              await loadPurchases();
+            }
+          }}
+        />
+      ) : null}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div
           className={
@@ -327,8 +352,11 @@ const PurchasesPage = () => {
                 <th className="px-4 py-3 font-medium">Sucursal</th>
                 <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Total</th>
+                <th className="px-4 py-3 font-medium">Pagado</th>
+                <th className="px-4 py-3 font-medium">Saldo</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
+                <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
               </tr>
@@ -336,19 +364,19 @@ const PurchasesPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
                     Cargando compras...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar compras.
                   </td>
                 </tr>
               ) : paginatedPurchases.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
                     No hay compras para mostrar.
                   </td>
                 </tr>
@@ -363,23 +391,54 @@ const PurchasesPage = () => {
                     <td className="px-4 py-3 text-slate-700">
                       {formatCurrency(Number(purchase.total))}
                     </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatCurrency(Number(purchase.totalPaid))}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {formatCurrency(Number(purchase.balanceDue))}
+                    </td>
                     <td className="px-4 py-3 text-slate-700">{purchase.type}</td>
                     <td className="px-4 py-3 text-slate-700">{purchase.status}</td>
+                    <td className="px-4 py-3 text-slate-700">{purchase.paymentStatus}</td>
                     <td className="px-4 py-3 text-slate-700">
                       {formatDate(purchase.createdAt)}
                     </td>
                     <td className="px-4 py-3">
-                      {canReceive && purchase.status !== "CANCELLED" && purchase.status !== "RECEIVED" ? (
-                        <Button
-                          variant="ghost"
-                          onClick={() => setReceivingPurchaseId(purchase.id)}
-                        >
-                          <PackageCheck className="h-4 w-4" />
-                          Recibir
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-slate-400">Sin acciones</span>
-                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {canReceive &&
+                        purchase.status !== "CANCELLED" &&
+                        purchase.status !== "RECEIVED" ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setReceivingPurchaseId(purchase.id)}
+                          >
+                            <PackageCheck className="h-4 w-4" />
+                            Recibir
+                          </Button>
+                        ) : null}
+                        {canReceive &&
+                        purchase.status !== "CANCELLED" &&
+                        purchase.balanceDue > 0 &&
+                        purchase.branchId ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => setPayingPurchase(purchase)}
+                          >
+                            Pagar
+                          </Button>
+                        ) : null}
+                        {!(
+                          (canReceive &&
+                            purchase.status !== "CANCELLED" &&
+                            purchase.status !== "RECEIVED") ||
+                          (canReceive &&
+                            purchase.status !== "CANCELLED" &&
+                            purchase.balanceDue > 0 &&
+                            purchase.branchId)
+                        ) ? (
+                          <span className="text-xs text-slate-400">Sin acciones</span>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))

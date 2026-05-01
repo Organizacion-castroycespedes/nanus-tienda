@@ -19,6 +19,15 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+export const ORDER_PAYMENT_STATUSES = [
+  "PENDING",
+  "PARTIAL",
+  "PAID",
+  "OVERPAID",
+] as const;
+
+export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number];
+
 export const ORDER_TYPES = ["CASH", "CREDIT"] as const;
 
 export type OrderType = (typeof ORDER_TYPES)[number];
@@ -30,6 +39,9 @@ export type OrderProps = {
   type?: OrderType;
   status?: OrderStatus;
   total: number;
+  paymentStatus?: OrderPaymentStatus;
+  totalPaid?: number;
+  balanceDue?: number;
   createdAt: Date;
 };
 
@@ -40,6 +52,9 @@ export class OrderEntity {
   readonly type: OrderType;
   readonly status: OrderStatus;
   readonly total: number;
+  readonly paymentStatus: OrderPaymentStatus;
+  readonly totalPaid: number;
+  readonly balanceDue: number;
   readonly createdAt: Date;
 
   constructor(props: OrderProps) {
@@ -58,8 +73,19 @@ export class OrderEntity {
     if (props.status !== undefined && !ORDER_STATUSES.includes(props.status)) {
       throw new Error("status is invalid");
     }
+    if (
+      props.paymentStatus !== undefined &&
+      !ORDER_PAYMENT_STATUSES.includes(props.paymentStatus)
+    ) {
+      throw new Error("paymentStatus is invalid");
+    }
 
     assertNonNegativeDecimal(props.total, "total");
+    assertNonNegativeDecimal(props.totalPaid ?? 0, "totalPaid");
+    assertNonNegativeDecimal(props.balanceDue ?? props.total, "balanceDue");
+
+    const resolvedBalanceDue = props.balanceDue ?? props.total;
+    const resolvedTotalPaid = props.totalPaid ?? Math.max(props.total - resolvedBalanceDue, 0);
 
     this.id = props.id;
     this.tenantId = props.tenantId;
@@ -67,6 +93,17 @@ export class OrderEntity {
     this.type = props.type ?? "CASH";
     this.status = props.status ?? "DRAFT";
     this.total = props.total;
+    this.totalPaid = resolvedTotalPaid;
+    this.balanceDue = resolvedBalanceDue;
+    this.paymentStatus =
+      props.paymentStatus ??
+      (resolvedTotalPaid <= 0
+        ? "PENDING"
+        : resolvedTotalPaid < props.total
+          ? "PARTIAL"
+          : resolvedTotalPaid === props.total
+            ? "PAID"
+            : "OVERPAID");
     this.createdAt = props.createdAt;
   }
 

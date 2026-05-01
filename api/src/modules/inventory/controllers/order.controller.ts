@@ -61,10 +61,12 @@ type DeliverOrderBody = {
 
 type InvoiceOrderBody = {
   type: "CASH" | "CREDIT";
-  paymentMethods?: Array<{
-    paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+  payments?: Array<{
+    paymentMethodId: string;
     amount: number;
-    reference?: string | null;
+    cashSessionId?: string | null;
+    referenceNumber?: string | null;
+    notes?: string | null;
   }>;
 };
 
@@ -201,7 +203,7 @@ export class OrderController {
       this.getTenantId(request),
       {
         type: body.type,
-        paymentMethods: body.paymentMethods ?? [],
+        payments: body.payments ?? [],
       },
       this.getInventoryContext(request),
       this.buildActor(request)
