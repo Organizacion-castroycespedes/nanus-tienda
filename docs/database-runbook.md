@@ -138,6 +138,10 @@ bash migrate_prd.sh ../config/db.env
 
 ### Qué hace `migrate_prd.sh`
 
+- se conecta a `postgres` con `DB_ADMIN_USER` y `DB_ADMIN_PASSWORD`
+- crea el rol `DB_USER` si no existe
+- crea la base `DB_NAME` si no existe
+- otorga privilegios sobre la base al usuario de aplicación
 - valida `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - asegura `public.migrations_history`
 - aplica en orden:
@@ -149,6 +153,7 @@ bash migrate_prd.sh ../config/db.env
 
 ### Qué sí incluye
 
+- creación de base y usuario de aplicación para primer despliegue desde cero
 - schema completo necesario
 - tablas
 - índices

@@ -27,9 +27,51 @@ done
 export PGPASSWORD="$DB_PASSWORD"
 export PGCLIENTENCODING="${PGCLIENTENCODING:-UTF8}"
 PSQL_APP=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q)
+DB_ADMIN_USER="${DB_ADMIN_USER:-$DB_USER}"
+DB_ADMIN_PASSWORD="${DB_ADMIN_PASSWORD:-$DB_PASSWORD}"
+PSQL_ADMIN=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -X -q)
+
+ensure_database_exists() {
+  echo "[prd] Ensuring database role and database exist..."
+
+  if ! PGPASSWORD="$DB_ADMIN_PASSWORD" "${PSQL_ADMIN[@]}" -tAc "SELECT 1;" >/dev/null 2>&1; then
+    echo "[prd] Could not connect with admin user '$DB_ADMIN_USER' to database 'postgres'." >&2
+    echo "[prd] Check DB_ADMIN_USER/DB_ADMIN_PASSWORD and PostgreSQL availability." >&2
+    exit 1
+  fi
+
+  local role_exists
+  role_exists="$(
+    PGPASSWORD="$DB_ADMIN_PASSWORD" "${PSQL_ADMIN[@]}" -tAc \
+      "SELECT 1 FROM pg_roles WHERE rolname = '$DB_USER';" | tr -d '[:space:]'
+  )"
+
+  if [[ "$role_exists" != "1" ]]; then
+    echo "[prd] Creating application role: $DB_USER"
+    PGPASSWORD="$DB_ADMIN_PASSWORD" "${PSQL_ADMIN[@]}" -c \
+      "CREATE ROLE \"$DB_USER\" LOGIN PASSWORD '$DB_PASSWORD';"
+  fi
+
+  local db_exists
+  db_exists="$(
+    PGPASSWORD="$DB_ADMIN_PASSWORD" "${PSQL_ADMIN[@]}" -tAc \
+      "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME';" | tr -d '[:space:]'
+  )"
+
+  if [[ "$db_exists" != "1" ]]; then
+    echo "[prd] Creating database: $DB_NAME"
+    PGPASSWORD="$DB_ADMIN_PASSWORD" "${PSQL_ADMIN[@]}" -c \
+      "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";"
+  fi
+
+  PGPASSWORD="$DB_ADMIN_PASSWORD" "${PSQL_ADMIN[@]}" -c \
+    "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";" >/dev/null
+}
+
+ensure_database_exists
 
 if ! "${PSQL_APP[@]}" -tAc "SELECT 1;" >/dev/null 2>&1; then
-  echo "[prd] Could not connect to database ${DB_NAME}." >&2
+  echo "[prd] Could not connect to database ${DB_NAME} with application user ${DB_USER}." >&2
   exit 1
 fi
 
