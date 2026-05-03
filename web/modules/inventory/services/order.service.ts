@@ -33,6 +33,19 @@ export type OrderItemResponse = {
 
 export type OrderDetailResponse = OrderResponse & {
   items: OrderItemResponse[];
+  payments?: Array<{
+    id: string;
+    paymentMethodId: string;
+    paymentMethodNombre?: string | null;
+    paymentMethodTipo?: string | null;
+    cashSessionId?: string | null;
+    amount: number;
+    referenceNumber?: string | null;
+    notes?: string | null;
+    invoicedAmount: number;
+    availableAmount: number;
+    createdAt: string;
+  }>;
 };
 
 export type GetOrdersParams = {

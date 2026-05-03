@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Modal } from "../../../../components/design-system/Modal";
 import { Select } from "../../../../components/design-system/Select";
@@ -55,8 +55,12 @@ const CashMovementsPage = () => {
     createItem,
   } = useCashMovements();
   const {
+    currentSession,
     history: openSessions,
+    sessionSummary,
+    loadCurrentSession,
     loadHistory,
+    loadSessionSummary,
   } = useCashSessions();
   const {
     branchOptions,
@@ -70,26 +74,48 @@ const CashMovementsPage = () => {
 
   useAutoClearState(toastMessage, setToastMessage);
 
+  const refreshPageData = useCallback(async () => {
+    const session = await loadCurrentSession();
+    await Promise.all([
+      loadMovements({ limit: 100, cashSessionId: session?.id ?? undefined }),
+      loadHistory({ status: "OPEN", limit: 50 }),
+      loadBranches(authUser?.tenantId ?? undefined),
+      loadCashRegisters(),
+      session?.id ? loadSessionSummary(session.id) : Promise.resolve(null),
+    ]);
+  }, [
+    authUser?.tenantId,
+    loadBranches,
+    loadCashRegisters,
+    loadCurrentSession,
+    loadHistory,
+    loadMovements,
+    loadSessionSummary,
+  ]);
+
   useEffect(() => {
     if (!canViewFinance) {
       return;
     }
 
-    void loadMovements({ limit: 100 });
-    void loadHistory({ status: "OPEN", limit: 50 });
-    void loadBranches(authUser?.tenantId ?? undefined);
-    void loadCashRegisters();
+    void refreshPageData();
   }, [
     authUser?.tenantId,
     canViewFinance,
     loadBranches,
     loadCashRegisters,
+    loadCurrentSession,
     loadHistory,
     loadMovements,
+    loadSessionSummary,
+    refreshPageData,
   ]);
 
   const filteredMovements = useMemo(() => {
     return movements.filter((movement) => {
+      if (currentSession?.id && movement.cashSessionId !== currentSession.id) {
+        return false;
+      }
       if (branchFilter && movement.branchId !== branchFilter) {
         return false;
       }
@@ -112,6 +138,17 @@ const CashMovementsPage = () => {
   const totalOut = filteredMovements
     .filter((item) => item.direction === "OUT")
     .reduce((sum, item) => sum + item.amount, 0);
+  const purchasePaymentsOut =
+    sessionSummary?.totals.purchasePayments ??
+    filteredMovements
+      .filter(
+        (item) =>
+          item.movementType === "PAYMENT" &&
+          item.direction === "OUT" &&
+          item.referenceType === "PURCHASE"
+      )
+      .reduce((sum, item) => sum + item.amount, 0);
+  const quickBalance = sessionSummary?.totals.netAmount ?? totalIn - totalOut;
 
   const handleCreateMovement = async () => {
     if (!form.cashSessionId || !form.amount) {
@@ -127,6 +164,10 @@ const CashMovementsPage = () => {
         referenceType: form.referenceType?.trim() || undefined,
         referenceId: form.referenceId?.trim() || undefined,
       });
+      await Promise.all([
+        loadMovements({ limit: 100, cashSessionId: currentSession?.id ?? undefined }),
+        currentSession?.id ? loadSessionSummary(currentSession.id) : Promise.resolve(null),
+      ]);
       setToastMessage("Movimiento registrado correctamente.");
       setToastVariant("success");
       setModalOpen(false);
@@ -151,7 +192,7 @@ const CashMovementsPage = () => {
         description="Consulta entradas y salidas con una lectura tipo timeline, filtros rapidos y metricas para balance inmediato."
         actions={
           <>
-            <Button variant="ghost" onClick={() => void loadMovements({ limit: 100 })} isLoading={loading}>
+            <Button variant="ghost" onClick={() => void refreshPageData()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar
             </Button>
@@ -179,9 +220,14 @@ const CashMovementsPage = () => {
           accent="rose"
         />
         <FinanceMetricCard
+          label="Pagos compras"
+          value={formatCurrency(purchasePaymentsOut)}
+          accent="amber"
+        />
+        <FinanceMetricCard
           label="Balance rapido"
-          value={formatCurrency(totalIn - totalOut)}
-          accent={totalIn - totalOut >= 0 ? "blue" : "rose"}
+          value={formatCurrency(quickBalance)}
+          accent={quickBalance >= 0 ? "blue" : "rose"}
         />
         <FinanceMetricCard
           label="Movimientos"
@@ -189,6 +235,17 @@ const CashMovementsPage = () => {
           accent="slate"
         />
       </section>
+
+      {currentSession ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900 shadow-sm">
+          <p className="font-semibold">
+            Sesion activa: {currentSession.cashRegisterNombre ?? "Caja"}.
+          </p>
+          <p className="mt-1 text-emerald-800">
+            Esta vista se concentra en la caja abierta actual para reflejar pagos y salidas de la sesion en curso.
+          </p>
+        </section>
+      ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -236,6 +293,7 @@ const CashMovementsPage = () => {
             <option value="ADJUSTMENT">Ajuste</option>
             <option value="EXPENSE">Gasto</option>
             <option value="WITHDRAWAL">Retiro</option>
+            <option value="PAYMENT">Pago</option>
           </Select>
         </div>
       </section>

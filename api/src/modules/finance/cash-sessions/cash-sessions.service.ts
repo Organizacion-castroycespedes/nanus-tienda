@@ -13,6 +13,7 @@ import { FinanceAccessRepository } from "../common/repositories/finance-access.r
 import { CashMovementsRepository } from "../cash-movements/cash-movements.repository";
 import { CashRegistersRepository } from "../cash-registers/cash-registers.repository";
 import { CashSessionResponseDto } from "./dto/cash-session-response.dto";
+import type { CashSessionSummaryResponseDto } from "./dto/cash-session-summary-response.dto";
 import { CloseCashSessionDto } from "./dto/close-cash-session.dto";
 import { CurrentCashSessionQueryDto } from "./dto/current-cash-session-query.dto";
 import { ListCashSessionHistoryDto } from "./dto/list-cash-session-history.dto";
@@ -174,6 +175,14 @@ export class CashSessionsService {
       throw new BadRequestException("La caja ya tiene una sesion abierta");
     }
 
+    const currentUserSession = await this.repository.findCurrentByUser(
+      actor.userId,
+      tenantId
+    );
+    if (currentUserSession) {
+      throw new BadRequestException("El usuario ya tiene una sesion de caja abierta");
+    }
+
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
@@ -250,9 +259,12 @@ export class CashSessionsService {
       throw new ForbiddenException("Solo puedes cerrar tu propia caja");
     }
 
-    const expectedAmount = await this.cashMovementsRepository.calculateSessionExpectedAmount(
-      cashSessionId
-    );
+    const summary = await this.repository.getSummary(cashSessionId, tenantId);
+    if (!summary) {
+      throw new NotFoundException("No se pudo resumir la sesion de caja");
+    }
+
+    const expectedAmount = Number(summary.totals.expectedAmount ?? 0);
     const differenceAmount = Number(
       (payload.closingAmount - expectedAmount).toFixed(2)
     );
@@ -273,6 +285,18 @@ export class CashSessionsService {
       if (!updated) {
         throw new NotFoundException("Sesion de caja no encontrada");
       }
+
+      await this.repository.createCashCount(client, {
+        tenantId,
+        branchId: current.branch_id,
+        cashSessionId,
+        countedByUserId: actor.userId,
+        countedAt: closedAt,
+        countedCashAmount: payload.closingAmount,
+        expectedAmount,
+        differenceAmount,
+        notes: payload.description?.trim() || null,
+      });
 
       await this.cashMovementsRepository.create(client, {
         tenantId,
@@ -376,5 +400,38 @@ export class CashSessionsService {
     });
 
     return records.map((record) => this.mapResponse(record));
+  }
+
+  async getSummary(
+    cashSessionId: string,
+    actor: FinanceActor
+  ): Promise<CashSessionSummaryResponseDto> {
+    if (!this.canOpenCash(actor)) {
+      throw new ForbiddenException("No autorizado");
+    }
+
+    const current = await this.repository.findById(cashSessionId);
+    if (!current) {
+      throw new NotFoundException("Sesion de caja no encontrada");
+    }
+
+    const tenantId = this.resolveTenantId(actor, current.tenant_id);
+    if (tenantId !== current.tenant_id) {
+      throw new ForbiddenException("No autorizado");
+    }
+
+    await this.assertActiveUser(actor, tenantId);
+    await this.assertBranchScope(actor, tenantId, current.branch_id);
+
+    if (!this.canAdminCash(actor) && current.opened_by_user_id !== actor.userId) {
+      throw new ForbiddenException("Solo puedes consultar tu propia caja");
+    }
+
+    const summary = await this.repository.getSummary(cashSessionId, tenantId);
+    if (!summary) {
+      throw new NotFoundException("No se pudo resumir la sesion de caja");
+    }
+
+    return summary;
   }
 }

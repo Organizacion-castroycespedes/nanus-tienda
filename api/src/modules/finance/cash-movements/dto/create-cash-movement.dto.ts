@@ -47,6 +47,10 @@ export class CreateCashMovementDto {
   referenceType?: string;
 
   @IsOptional()
-  @IsUUID()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.trim() : value
+  )
+  @IsString()
+  @MaxLength(120)
   referenceId?: string;
 }

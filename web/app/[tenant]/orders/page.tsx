@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CheckCircle2,
   PackageCheck,
   Pencil,
   Plus,
@@ -25,7 +24,6 @@ import { OrderInvoiceForm } from "../../../modules/inventory/components/OrderInv
 import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
 import {
   cancelOrder,
-  confirmOrder,
   getOrderById,
   getOrders,
   type OrderDetailResponse,
@@ -83,8 +81,10 @@ const OrdersPage = () => {
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
-  const canCreate = hasPermission("inventory.create");
-  const canUpdate = hasPermission("inventory.update");
+  const isAdminLikeRole =
+    role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
+  const canUpdate = hasPermission("inventory.update") || isAdminLikeRole;
   const isGlobalRole = role === "SUPER_ADMIN";
 
   useAutoClearState(toastMessage, setToastMessage);
@@ -246,25 +246,6 @@ const OrdersPage = () => {
     setFormMode("payment");
   };
 
-  const handleConfirm = async (order: OrderResponse) => {
-    try {
-      await confirm({
-        title: "Confirmar pedido",
-        description: `Se confirmará el pedido de ${order.customerName || order.customerId} para permitir su entrega.`,
-        confirmText: "Confirmar pedido",
-        variant: "warning",
-      });
-
-      await confirmOrder(order.id);
-      await refreshAfterMutation("Pedido confirmado correctamente.");
-    } catch (error) {
-      if (isConfirmCancelledError(error)) {
-        return;
-      }
-      showToast("No se pudo confirmar el pedido.", "error");
-    }
-  };
-
   const handleCancel = async (order: OrderResponse) => {
     try {
       await confirm({
@@ -285,7 +266,7 @@ const OrdersPage = () => {
   };
 
   const canDeliverOrder = (status: OrderResponse["status"]) =>
-    status === "CONFIRMED" || status === "PARTIAL";
+    status === "DRAFT" || status === "CONFIRMED" || status === "PARTIAL";
 
   const canEditOrder = (status: OrderResponse["status"]) => status === "DRAFT";
 
@@ -547,7 +528,7 @@ const OrdersPage = () => {
                             Editar
                           </Button>
                         ) : null}
-                        {canUpdate && order.status === "DRAFT" ? (
+                        {canUpdate && canDeliverOrder(order.status) ? (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -555,16 +536,6 @@ const OrdersPage = () => {
                           >
                             <PackageCheck className="h-4 w-4" />
                             Entregar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canDeliverOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleConfirm(order)}
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                            Confirmar
                           </Button>
                         ) : null}
                         {canUpdate && canInvoiceOrder(order) ? (
@@ -638,3 +609,4 @@ const OrdersPage = () => {
 };
 
 export default OrdersPage;
+

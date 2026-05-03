@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS cash_movements (
   movement_type VARCHAR(20) NOT NULL,
   direction VARCHAR(10) NOT NULL,
   reference_type VARCHAR(50),
-  reference_id UUID,
+  reference_id VARCHAR(120),
   amount NUMERIC(14, 2) NOT NULL,
   description TEXT,
   created_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,

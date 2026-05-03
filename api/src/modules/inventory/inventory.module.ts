@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
+import { AccessControlModule } from "../../common/access-control.module";
 import { CommonServicesModule } from "../../common/services/common-services.module";
 import { DatabaseModule } from "../../common/db/database.module";
 import { FinanceModule } from "../finance/finance.module";
+import { FinanceAccessRepository } from "../finance/common/repositories/finance-access.repository";
 import { CustomerController } from "./controllers/customer.controller";
 import { InventoryController } from "./controllers/inventory.controller";
 import { OrderController } from "./controllers/order.controller";
@@ -31,7 +33,7 @@ import { TaxRepository } from "./repositories/tax.repository";
 import { UnitRepository } from "./repositories/unit.repository";
 
 @Module({
-  imports: [DatabaseModule, CommonServicesModule, FinanceModule],
+  imports: [DatabaseModule, AccessControlModule, CommonServicesModule, FinanceModule],
   controllers: [
     InventoryController,
     ProductController,
@@ -62,6 +64,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     SupplierRepository,
     UnitRepository,
     TaxRepository,
+    FinanceAccessRepository,
   ],
   exports: [
     CustomerService,

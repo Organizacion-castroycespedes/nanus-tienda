@@ -53,12 +53,15 @@ const CashSessionsPage = () => {
   const {
     currentSession,
     history,
+    sessionSummary,
     loadingCurrent,
     loadingHistory,
+    loadingSummary,
     saving,
     errorMessage,
     loadCurrentSession,
     loadHistory,
+    loadSessionSummary,
     openSession,
     closeSession,
   } = useCashSessions();
@@ -92,6 +95,14 @@ const CashSessionsPage = () => {
     loadHistory,
   ]);
 
+  useEffect(() => {
+    if (!currentSession?.id) {
+      return;
+    }
+
+    void loadSessionSummary(currentSession.id);
+  }, [currentSession?.id, loadSessionSummary]);
+
   const filteredHistory = useMemo(() => {
     return history.filter((item) => {
       if (registerFilter && item.cashRegisterId !== registerFilter) {
@@ -105,7 +116,9 @@ const CashSessionsPage = () => {
   }, [history, registerFilter, statusFilter]);
 
   const expectedCurrent = currentSession
-    ? currentSession.expectedAmount ?? currentSession.openingAmount
+    ? sessionSummary?.totals.expectedAmount ??
+      currentSession.expectedAmount ??
+      currentSession.openingAmount
     : 0;
 
   const handleOpenSession = async () => {
@@ -254,7 +267,11 @@ const CashSessionsPage = () => {
                 />
                 <FinanceMetricCard
                   label="Esperado"
-                  value={formatCurrency(expectedCurrent)}
+                  value={
+                    loadingSummary && !sessionSummary
+                      ? "Calculando..."
+                      : formatCurrency(expectedCurrent)
+                  }
                   accent="amber"
                 />
                 <FinanceMetricCard
@@ -272,6 +289,42 @@ const CashSessionsPage = () => {
                   accent="slate"
                 />
               </div>
+
+              {sessionSummary ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <FinanceMetricCard
+                    label="Ingresos"
+                    value={formatCurrency(
+                      sessionSummary.totals.paymentsIn + sessionSummary.totals.adjustmentsIn
+                    )}
+                    accent="emerald"
+                  />
+                  <FinanceMetricCard
+                    label="Egresos"
+                    value={formatCurrency(
+                      sessionSummary.totals.paymentsOut +
+                        sessionSummary.totals.expenses +
+                        sessionSummary.totals.withdrawals +
+                        sessionSummary.totals.adjustmentsOut
+                    )}
+                    accent="rose"
+                  />
+                  <FinanceMetricCard
+                    label="Ventas cobradas"
+                    value={formatCurrency(sessionSummary.totals.salesPayments)}
+                    accent="blue"
+                  />
+                  <FinanceMetricCard
+                    label="Ultimo arqueo"
+                    value={
+                      sessionSummary.lastCount
+                        ? formatCurrency(sessionSummary.lastCount.countedCashAmount)
+                        : "Sin arqueo"
+                    }
+                    accent="slate"
+                  />
+                </div>
+              ) : null}
             </div>
           )}
         </article>
@@ -382,6 +435,7 @@ const CashSessionsPage = () => {
           <CloseCashSessionForm
             value={closeForm}
             expectedAmount={expectedCurrent}
+            summary={sessionSummary}
             onChange={setCloseForm}
             onCancel={() => setCloseModal(false)}
             onSubmit={() => void handleCloseSession()}
