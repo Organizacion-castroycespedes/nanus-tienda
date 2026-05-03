@@ -120,11 +120,13 @@ record_migration() {
       details = EXCLUDED.details;"
 }
 
-apply_sql_file() {
+apply_sql_file_with_args() {
   local relative_path="$1"
+  shift
   local file_path="${SCRIPT_DIR}/${relative_path}"
   local version="$relative_path"
   local checksum
+  local psql_args=("$@")
 
   if [[ ! -f "$file_path" ]]; then
     echo "[prd] Missing SQL file: ${relative_path}" >&2
@@ -139,7 +141,7 @@ apply_sql_file() {
   checksum="$(checksum_for_file "$file_path")"
   echo "[prd] Applying ${version}..."
 
-  if "${PSQL_APP[@]}" --single-transaction -f "$file_path"; then
+  if "${PSQL_APP[@]}" "${psql_args[@]}" --single-transaction -f "$file_path"; then
     record_migration "$version" "$checksum" "true" "applied by migrate_prd.sh"
   else
     record_migration "$version" "$checksum" "false" "failed in migrate_prd.sh"
@@ -148,12 +150,17 @@ apply_sql_file() {
   fi
 }
 
+apply_sql_file() {
+  apply_sql_file_with_args "$1"
+}
+
 schema_files=(
   "001_initial_schema.sql"
   "002_extensions.sql"
   "003_seed_roles.sql"
   "008_pos_terminals_and_sessions.sql"
   "005_seed_general_data.sql"
+  "004_seed_super_admin.sql"
   "006_seed_menu_items.sql"
   "007_seed_role_menu_permissions.sql"
   "009_seed_demo_operational_users.sql"
@@ -200,7 +207,30 @@ minimal_seed_files=(
 
 echo "Running schema..."
 for sql_file in "${schema_files[@]}"; do
-  apply_sql_file "$sql_file"
+  if [[ "$sql_file" == "004_seed_super_admin.sql" ]]; then
+    super_admin_vars=(
+      "SEED_SUPER_ADMIN_EMAIL"
+      "SEED_SUPER_ADMIN_PASSWORD"
+      "SEED_SUPER_ADMIN_FIRST_NAME"
+      "SEED_SUPER_ADMIN_LAST_NAME"
+    )
+
+    for var_name in "${super_admin_vars[@]}"; do
+      if [[ -z "${!var_name:-}" ]]; then
+        echo "[prd] Missing required SUPER_ADMIN seed variable: ${var_name}" >&2
+        exit 1
+      fi
+    done
+
+    apply_sql_file_with_args \
+      "$sql_file" \
+      -v "super_admin_email=${SEED_SUPER_ADMIN_EMAIL}" \
+      -v "super_admin_password=${SEED_SUPER_ADMIN_PASSWORD}" \
+      -v "super_admin_first_name=${SEED_SUPER_ADMIN_FIRST_NAME}" \
+      -v "super_admin_last_name=${SEED_SUPER_ADMIN_LAST_NAME}"
+  else
+    apply_sql_file "$sql_file"
+  fi
 done
 
 echo "Running functions..."

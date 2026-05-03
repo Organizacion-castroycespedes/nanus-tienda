@@ -26,6 +26,10 @@ Algunos scripts históricos también pueden usar:
 - `DB_ADMIN_USER`
 - `DB_ADMIN_PASSWORD`
 - `ENVIRONMENT`
+- `SEED_SUPER_ADMIN_EMAIL`
+- `SEED_SUPER_ADMIN_PASSWORD`
+- `SEED_SUPER_ADMIN_FIRST_NAME`
+- `SEED_SUPER_ADMIN_LAST_NAME`
 
 Archivo sugerido:
 
@@ -160,6 +164,7 @@ bash migrate_prd.sh ../config/db.env
 - constraints
 - funciones/procedimientos SQL existentes
 - usuarios demo operativos y sus roles base
+- seed idempotente del usuario `SUPER_ADMIN`
 - seed mínimo de `CONSUMIDOR FINAL`
 
 ### Qué no incluye
@@ -167,6 +172,28 @@ bash migrate_prd.sh ../config/db.env
 - productos demo
 - proveedores demo
 - clientes demo masivos
+
+### Variables requeridas para `SUPER_ADMIN`
+
+El bootstrap PRD ejecuta también:
+
+- `scripts/database/004_seed_super_admin.sql`
+
+Por eso el archivo `scripts/config/db.env` debe incluir:
+
+```env
+SEED_SUPER_ADMIN_EMAIL=admin@manustienda.local
+SEED_SUPER_ADMIN_PASSWORD=cambia-esta-clave
+SEED_SUPER_ADMIN_FIRST_NAME=Super
+SEED_SUPER_ADMIN_LAST_NAME=Admin
+```
+
+El seed es idempotente:
+
+- crea o reutiliza la persona
+- crea o reutiliza el usuario
+- asegura el rol `SUPER_ADMIN`
+- reasigna la contraseña configurada
 
 ## 7. Seed mínimo de consumidor final
 
