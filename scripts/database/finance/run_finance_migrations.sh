@@ -26,7 +26,10 @@ PSQL_APP=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERR
 sql_files=(
   "migrations/20260430_1753_finance_base_infrastructure.sql"
   "migrations/20260430_1947_finance_payments_engine.sql"
+  "migrations/20260502_1015_finance_cash_closing_controls.sql"
   "patches/20260430_1956_finance_payment_integration.sql"
+  "patches/20260502_1135_finance_menu_access.sql"
+  "patches/20260502_1840_finance_cash_movements_reference_text.sql"
 )
 
 for sql_file in "${sql_files[@]}"; do

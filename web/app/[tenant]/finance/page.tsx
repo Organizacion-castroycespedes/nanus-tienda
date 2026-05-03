@@ -86,6 +86,14 @@ const FinanceHomePage = () => {
         eyebrow="Finance"
         title="Centro financiero"
         description="Una vista operativa para controlar catalogos, cajas, sesiones y movimientos en tiempo real sin tocar aun el flujo del POS."
+        actions={
+          <Link
+            href={`/${tenantSlug}/finance/cash-sessions`}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition duration-150 ease-out hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md"
+          >
+            {currentSession ? "Cerrar caja / arqueo" : "Abrir caja"}
+          </Link>
+        }
       />
 
       <FinanceSectionNav tenantSlug={tenantSlug} />

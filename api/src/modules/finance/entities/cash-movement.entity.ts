@@ -1,7 +1,6 @@
 import {
   assertOptionalLength,
   assertPositiveDecimal,
-  isOptionalUuid,
   isUuid,
   normalizeOptionalText,
 } from "./entity-utils";
@@ -70,15 +69,12 @@ export class CashMovementEntity {
     if (!CASH_MOVEMENT_DIRECTIONS.includes(props.direction)) {
       throw new Error("direction is invalid");
     }
-    if (!isOptionalUuid(props.referenceId)) {
-      throw new Error("referenceId must be a valid UUID");
-    }
-
     assertPositiveDecimal(props.amount, "amount");
     assertOptionalLength(props.referenceType, "referenceType", 50);
+    assertOptionalLength(props.referenceId, "referenceId", 120);
 
     const referenceType = normalizeOptionalText(props.referenceType);
-    const referenceId = props.referenceId?.trim() || null;
+    const referenceId = normalizeOptionalText(props.referenceId);
     if ((referenceType == null) !== (referenceId == null)) {
       throw new Error("referenceType and referenceId must be provided together");
     }

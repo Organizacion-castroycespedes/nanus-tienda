@@ -5,6 +5,7 @@ import type {
   CashRegister,
   CashRegisterFilters,
   CashSession,
+  CashSessionSummary,
   CashSessionHistoryFilters,
   CloseCashSessionPayload,
   CreateCashMovementPayload,
@@ -120,6 +121,9 @@ export const listCashSessionHistory = (
       offset: filters.offset ? String(filters.offset) : undefined,
     })}`
   );
+
+export const getCashSessionSummary = (cashSessionId: string) =>
+  apiClient<CashSessionSummary>(`/finance/cash-sessions/${cashSessionId}/summary`);
 
 export const listCashMovements = (filters: CashMovementFilters = {}) =>
   apiClient<CashMovement[]>(

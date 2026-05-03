@@ -297,6 +297,9 @@ export class SaleRepository {
         'DRAFT',
         0,
         0,
+        'PENDING',
+        0,
+        0,
         NOW()
       )
       RETURNING
@@ -502,10 +505,16 @@ export class SaleRepository {
   ) {
     await this.query(
       `UPDATE sales
-      SET total = $3,
-          balance = $3,
-          total_paid = 0,
-          balance_due = $3,
+      SET total = $3::numeric,
+          balance = CASE
+            WHEN type = 'CASH' THEN 0::numeric
+            ELSE $3::numeric
+          END,
+          total_paid = 0::numeric,
+          balance_due = CASE
+            WHEN type = 'CASH' THEN 0::numeric
+            ELSE $3::numeric
+          END,
           payment_status = 'PENDING'
       WHERE id = $1
         AND tenant_id = $2`,

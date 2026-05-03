@@ -93,7 +93,7 @@ export const OrderForm = ({
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const canSelectBranch =
-    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN" || role === "USER";
 
   useEffect(() => {
     setValues(mapOrderToValues(order, currentBranch ?? ""));

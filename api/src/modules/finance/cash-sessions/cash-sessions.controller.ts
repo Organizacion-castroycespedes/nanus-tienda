@@ -70,4 +70,12 @@ export class CashSessionsController {
   ) {
     return this.cashSessionsService.getHistory(query, this.buildActor(request));
   }
+
+  @Get(":id/summary")
+  getSummary(@Param("id") cashSessionId: string, @Req() request: Request) {
+    return this.cashSessionsService.getSummary(
+      cashSessionId,
+      this.buildActor(request)
+    );
+  }
 }

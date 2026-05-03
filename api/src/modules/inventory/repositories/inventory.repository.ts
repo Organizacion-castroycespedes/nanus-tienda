@@ -24,6 +24,78 @@ export type InventoryProductRow = QueryResultRow & {
   terminal_name: string | null;
 };
 
+export type InventoryDashboardScope = {
+  tenantId: string;
+  branchId?: string;
+  terminalId?: string;
+  cashSessionId?: string;
+  startDate: string;
+  endDate: string;
+};
+
+export type InventoryDashboardSnapshot = {
+  summary?: {
+    stockTotal?: number;
+    productsLow?: number;
+    productsOut?: number;
+    pendingPurchases?: number;
+    pendingOrders?: number;
+    salesDay?: number;
+    recentMovements?: number;
+  };
+  header?: {
+    tenant?: { id: string; name: string | null } | null;
+    branch?: { id: string; name: string | null } | null;
+    terminal?: { id: string; name: string | null; code?: string | null } | null;
+    cashSession?: {
+      id: string;
+      status: string;
+      openedAt: string;
+      cashRegisterId: string;
+      cashRegisterName: string | null;
+      branchId: string | null;
+    } | null;
+  };
+  charts?: {
+    movementSeries?: Array<{ date: string; entries: number; exits: number }>;
+    salesSeries?: Array<{ date: string; total: number }>;
+    purchaseSeries?: Array<{ date: string; total: number }>;
+    topProducts?: Array<{
+      id: string;
+      name: string;
+      sku: string;
+      quantity: number;
+      total: number;
+    }>;
+  };
+  tables?: {
+    recentMovements?: Array<Record<string, unknown>>;
+    recentPurchases?: Array<Record<string, unknown>>;
+    criticalProducts?: Array<Record<string, unknown>>;
+    pendingOrders?: Array<Record<string, unknown>>;
+  };
+};
+
+export type InventoryFilterOption = {
+  id: string;
+  name: string;
+  extra?: string | null;
+};
+
+export type InventoryCashSessionOption = {
+  id: string;
+  name: string;
+  branchId: string;
+  branchName: string;
+  cashRegisterId: string;
+  cashRegisterName: string;
+  terminalId: string | null;
+  terminalName: string | null;
+  openedAt: string;
+  status: string;
+  openedByUserId: string;
+};
+
 @Injectable()
 export class InventoryRepository {
   constructor(
@@ -107,6 +179,167 @@ export class InventoryRepository {
         b.nombre ASC,
         p.name ASC,
         p.sku ASC
+      `,
+      params
+    );
+
+    return result.rows ?? [];
+  }
+
+  async getDashboardSnapshot(scope: InventoryDashboardScope) {
+    const result = await this.db.query<{ payload: InventoryDashboardSnapshot }>(
+      `
+      SELECT inventory_dashboard_snapshot(
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        $4::uuid,
+        $5::date,
+        $6::date
+      ) AS payload
+      `,
+      [
+        scope.tenantId,
+        scope.branchId ?? null,
+        scope.terminalId ?? null,
+        scope.cashSessionId ?? null,
+        scope.startDate,
+        scope.endDate,
+      ]
+    );
+
+    return result.rows[0]?.payload ?? {};
+  }
+
+  async listTenantOptions() {
+    const result = await this.db.query<InventoryFilterOption>(
+      `
+      SELECT
+        t.id,
+        COALESCE(t.nombre, t.slug, t.id::text) AS name
+      FROM tenants AS t
+      WHERE t.activo = TRUE
+      ORDER BY COALESCE(t.nombre, t.slug, t.id::text) ASC
+      `
+    );
+
+    return result.rows ?? [];
+  }
+
+  async listBranchOptions(filters: { tenantId: string; branchIds?: string[] }) {
+    const params: unknown[] = [filters.tenantId];
+    const where: string[] = ["b.tenant_id = $1", "b.estado = 'ACTIVE'"];
+
+    if ((filters.branchIds?.length ?? 0) > 0) {
+      params.push(filters.branchIds);
+      where.push(`b.id = ANY($${params.length}::uuid[])`);
+    }
+
+    const result = await this.db.query<InventoryFilterOption>(
+      `
+      SELECT
+        b.id,
+        b.nombre AS name,
+        b.codigo AS extra
+      FROM tenant_branches AS b
+      WHERE ${where.join(" AND ")}
+      ORDER BY b.nombre ASC
+      `,
+      params
+    );
+
+    return result.rows ?? [];
+  }
+
+  async listTerminalOptions(filters: {
+    tenantId: string;
+    branchIds?: string[];
+    branchId?: string;
+  }) {
+    const params: unknown[] = [filters.tenantId];
+    const where: string[] = ["t.tenant_id = $1", "t.is_active = TRUE"];
+
+    if (filters.branchId) {
+      params.push(filters.branchId);
+      where.push(`t.branch_id = $${params.length}`);
+    } else if ((filters.branchIds?.length ?? 0) > 0) {
+      params.push(filters.branchIds);
+      where.push(`t.branch_id = ANY($${params.length}::uuid[])`);
+    }
+
+    const result = await this.db.query<InventoryFilterOption>(
+      `
+      SELECT
+        t.id,
+        t.name,
+        branch.nombre AS extra
+      FROM terminals AS t
+      LEFT JOIN tenant_branches AS branch
+        ON branch.id = t.branch_id
+       AND branch.tenant_id = t.tenant_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY t.name ASC
+      `,
+      params
+    );
+
+    return result.rows ?? [];
+  }
+
+  async listActiveCashSessionOptions(filters: {
+    tenantId: string;
+    branchIds?: string[];
+    branchId?: string;
+    terminalId?: string;
+    openedByUserId?: string;
+  }) {
+    const params: unknown[] = [filters.tenantId];
+    const where: string[] = ["session.tenant_id = $1", "session.status = 'OPEN'"];
+
+    if (filters.branchId) {
+      params.push(filters.branchId);
+      where.push(`session.branch_id = $${params.length}`);
+    } else if ((filters.branchIds?.length ?? 0) > 0) {
+      params.push(filters.branchIds);
+      where.push(`session.branch_id = ANY($${params.length}::uuid[])`);
+    }
+
+    if (filters.terminalId) {
+      params.push(filters.terminalId);
+      where.push(`register.terminal_id = $${params.length}`);
+    }
+
+    if (filters.openedByUserId) {
+      params.push(filters.openedByUserId);
+      where.push(`session.opened_by_user_id = $${params.length}`);
+    }
+
+    const result = await this.db.query<InventoryCashSessionOption>(
+      `
+      SELECT
+        session.id,
+        COALESCE(register.nombre, register.codigo, session.id::text) AS name,
+        session.branch_id::text AS "branchId",
+        branch.nombre AS "branchName",
+        session.cash_register_id::text AS "cashRegisterId",
+        register.nombre AS "cashRegisterName",
+        register.terminal_id::text AS "terminalId",
+        terminal.name AS "terminalName",
+        session.opened_at::text AS "openedAt",
+        session.status,
+        session.opened_by_user_id::text AS "openedByUserId"
+      FROM cash_sessions AS session
+      INNER JOIN cash_registers AS register
+        ON register.id = session.cash_register_id
+       AND register.tenant_id = session.tenant_id
+      INNER JOIN tenant_branches AS branch
+        ON branch.id = session.branch_id
+       AND branch.tenant_id = session.tenant_id
+      LEFT JOIN terminals AS terminal
+        ON terminal.id = register.terminal_id
+       AND terminal.tenant_id = register.tenant_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY session.opened_at DESC, session.id DESC
       `,
       params
     );

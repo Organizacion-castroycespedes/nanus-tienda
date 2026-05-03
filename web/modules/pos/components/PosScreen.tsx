@@ -284,16 +284,8 @@ export const PosScreen = () => {
           return;
         }
 
-        const availableMethods = methods.filter((method) => method.active);
-        setPaymentMethodsCatalog(availableMethods);
+        setPaymentMethodsCatalog(methods.filter((method) => method.active));
         setCurrentCashSession(session);
-        setPayments(
-          payments.map((payment, index) =>
-            index === 0 && !payment.paymentMethodId
-              ? { ...payment, paymentMethodId: availableMethods[0]?.id ?? "" }
-              : payment
-          )
-        );
       } catch {
         if (!active) {
           return;
@@ -311,7 +303,31 @@ export const PosScreen = () => {
     return () => {
       active = false;
     };
-  }, [payments, setPayments]);
+  }, []);
+
+  useEffect(() => {
+    if (paymentMethodsCatalog.length === 0) {
+      return;
+    }
+
+    const defaultPaymentMethodId = paymentMethodsCatalog[0]?.id ?? "";
+    if (!defaultPaymentMethodId) {
+      return;
+    }
+
+    const needsDefaultMethod = payments.some((payment) => !payment.paymentMethodId);
+    if (!needsDefaultMethod) {
+      return;
+    }
+
+    setPayments(
+      payments.map((payment, index) =>
+        index === 0 && !payment.paymentMethodId
+          ? { ...payment, paymentMethodId: defaultPaymentMethodId }
+          : payment
+      )
+    );
+  }, [paymentMethodsCatalog, payments, setPayments]);
 
   const taxById = useMemo(
     () =>

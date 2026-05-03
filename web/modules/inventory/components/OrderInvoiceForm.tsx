@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus, Wallet, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
@@ -25,12 +26,39 @@ type OrderInvoiceFormProps = {
   onSuccess: () => void;
 };
 
+type PaymentDraft = {
+  id: string;
+  paymentMethodId: string;
+  amount: string;
+  referenceNumber: string;
+  notes: string;
+};
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
     style: "currency",
     currency: "COP",
     maximumFractionDigits: 2,
   }).format(value);
+
+const round = (value: number) => Number(value.toFixed(2));
+
+const buildDraftId = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const createEmptyDraft = (paymentMethodId = ""): PaymentDraft => ({
+  id: buildDraftId(),
+  paymentMethodId,
+  amount: "",
+  referenceNumber: "",
+  notes: "",
+});
+
+const parseAmount = (value: string) => {
+  const sanitized = value.replace(",", ".").replace(/[^0-9.]/g, "");
+  const parsed = Number(sanitized);
+  return Number.isFinite(parsed) ? round(parsed) : 0;
+};
 
 export const OrderInvoiceForm = ({
   orderId,
@@ -42,8 +70,7 @@ export const OrderInvoiceForm = ({
   const [type, setType] = useState<"CASH" | "CREDIT">("CASH");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
-  const [paymentMethodId, setPaymentMethodId] = useState("");
-  const [referenceNumber, setReferenceNumber] = useState("");
+  const [payments, setPayments] = useState<PaymentDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,10 +91,14 @@ export const OrderInvoiceForm = ({
         if (!mounted) {
           return;
         }
+
+        const activeMethods = methods.filter((method) => method.active);
         setOrder(result);
-        setPaymentMethods(methods.filter((method) => method.active));
+        setPaymentMethods(activeMethods);
         setCashSession(currentSession);
-        setPaymentMethodId((current) => current || methods[0]?.id || "");
+        setPayments(
+          activeMethods.length > 0 ? [createEmptyDraft(activeMethods[0]?.id ?? "")] : []
+        );
       } catch {
         if (mounted) {
           setLoadError("No se pudo cargar el detalle del pedido o los metodos de pago.");
@@ -108,29 +139,136 @@ export const OrderInvoiceForm = ({
     [rows]
   );
 
-  const selectedMethod =
-    paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
+  const inheritedPayments = useMemo(() => {
+    const sourcePayments = [...(order?.payments ?? [])];
+    let remaining = round(total);
+
+    return sourcePayments
+      .map((payment) => {
+        const inheritedAmount = round(Math.min(payment.availableAmount, remaining));
+        remaining = round(Math.max(remaining - inheritedAmount, 0));
+
+        return {
+          ...payment,
+          inheritedAmount,
+        };
+      })
+      .filter((payment) => payment.inheritedAmount > 0);
+  }, [order?.payments, total]);
+
+  const inheritedTotal = useMemo(
+    () => round(inheritedPayments.reduce((sum, payment) => sum + payment.inheritedAmount, 0)),
+    [inheritedPayments]
+  );
+
+  const paymentMethodById = useMemo(
+    () =>
+      paymentMethods.reduce<Record<string, PaymentMethod>>((acc, method) => {
+        acc[method.id] = method;
+        return acc;
+      }, {}),
+    [paymentMethods]
+  );
+
+  const parsedPayments = useMemo(
+    () =>
+      payments.map((payment) => ({
+        ...payment,
+        numericAmount: parseAmount(payment.amount),
+        method: paymentMethodById[payment.paymentMethodId] ?? null,
+      })),
+    [paymentMethodById, payments]
+  );
+
+  const enteredTotal = useMemo(
+    () => round(parsedPayments.reduce((sum, payment) => sum + payment.numericAmount, 0)),
+    [parsedPayments]
+  );
+
+  const remainingToCover = useMemo(
+    () => round(Math.max(total - inheritedTotal, 0)),
+    [inheritedTotal, total]
+  );
+
+  const resultingBalance = useMemo(
+    () => round(Math.max(total - inheritedTotal - enteredTotal, 0)),
+    [enteredTotal, inheritedTotal, total]
+  );
+
+  const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
+    setSubmitError(null);
+    setPayments((current) =>
+      current.map((payment) => (payment.id === id ? { ...payment, [field]: value } : payment))
+    );
+  };
+
+  const addPaymentRow = () => {
+    setPayments((current) => [
+      ...current,
+      createEmptyDraft(paymentMethods[0]?.id ?? ""),
+    ]);
+  };
+
+  const removePaymentRow = (id: string) => {
+    setPayments((current) => current.filter((payment) => payment.id !== id));
+  };
+
+  const validate = () => {
+    if (rows.length === 0) {
+      return "No hay productos entregados pendientes por facturar.";
+    }
+
+    if (
+      parsedPayments.some(
+        (payment) => payment.numericAmount > 0 && (!payment.paymentMethodId || !payment.method)
+      )
+    ) {
+      return "Selecciona un metodo de pago valido en cada linea con monto.";
+    }
+
+    if (parsedPayments.some((payment) => payment.numericAmount < 0)) {
+      return "Los montos de pago no pueden ser negativos.";
+    }
+
+    if (
+      parsedPayments.some(
+        (payment) =>
+          payment.numericAmount > 0 &&
+          payment.method?.requiresReference &&
+          payment.referenceNumber.trim() === ""
+      )
+    ) {
+      return "La referencia es obligatoria para los metodos que la requieren.";
+    }
+
+    if (
+      parsedPayments.some(
+        (payment) =>
+          payment.numericAmount > 0 &&
+          payment.method?.tipo === "CASH" &&
+          !cashSession?.id
+      )
+    ) {
+      return "Necesitas una caja abierta para registrar pagos en efectivo.";
+    }
+
+    if (enteredTotal > remainingToCover) {
+      return "Los pagos nuevos no pueden superar el saldo restante tras aplicar los abonos heredados.";
+    }
+
+    if (type === "CASH" && round(enteredTotal) !== round(remainingToCover)) {
+      return "Las ventas CASH deben quedar cubiertas totalmente entre abonos heredados y pagos nuevos.";
+    }
+
+    return null;
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (rows.length === 0) {
-      setSubmitError("No hay productos entregados pendientes por facturar.");
-      return;
-    }
-
-    if (type === "CASH" && !selectedMethod) {
-      setSubmitError("Selecciona un metodo de pago valido.");
-      return;
-    }
-
-    if (type === "CASH" && selectedMethod?.requiresReference && referenceNumber.trim() === "") {
-      setSubmitError("La referencia es obligatoria para este metodo de pago.");
-      return;
-    }
-
-    if (type === "CASH" && selectedMethod?.tipo === "CASH" && !cashSession?.id) {
-      setSubmitError("Necesitas una caja abierta para facturar en efectivo.");
+    const validationError = validate();
+    if (validationError) {
+      setSubmitError(validationError);
       return;
     }
 
@@ -141,7 +279,7 @@ export const OrderInvoiceForm = ({
       await confirm({
         title: "Crear venta",
         description:
-          "Se creará la venta usando solo los productos entregados pendientes por facturar.",
+          "Se crearÃ¡ la venta usando los productos entregados pendientes por facturar y se heredaran los abonos previos de la orden.",
         confirmText: "Crear venta",
         cancelText: "Volver",
         variant: "warning",
@@ -149,18 +287,16 @@ export const OrderInvoiceForm = ({
 
       await invoiceOrder(orderId, {
         type,
-        payments:
-          type === "CASH"
-            ? [
-                {
-                  paymentMethodId,
-                  amount: total,
-                  cashSessionId:
-                    selectedMethod?.tipo === "CASH" ? cashSession?.id ?? undefined : undefined,
-                  referenceNumber: referenceNumber.trim() || undefined,
-                },
-              ]
-            : [],
+        payments: parsedPayments
+          .filter((payment) => payment.numericAmount > 0)
+          .map((payment) => ({
+            paymentMethodId: payment.paymentMethodId,
+            amount: payment.numericAmount,
+            cashSessionId:
+              payment.method?.tipo === "CASH" ? cashSession?.id ?? undefined : undefined,
+            referenceNumber: payment.referenceNumber.trim() || undefined,
+            notes: payment.notes.trim() || undefined,
+          })),
       });
       onSuccess();
     } catch (error) {
@@ -271,37 +407,152 @@ export const OrderInvoiceForm = ({
               <option value="CASH">CASH</option>
               <option value="CREDIT">CREDIT</option>
             </Select>
+            <Input
+              label="Saldo por cubrir con pagos nuevos"
+              value={formatCurrency(remainingToCover)}
+              disabled
+              readOnly
+            />
+          </section>
 
-            {type === "CASH" ? (
-              <Select
-                label="Metodo de pago"
-                value={paymentMethodId}
-                onChange={(event) => setPaymentMethodId(event.target.value)}
-              >
-                <option value="">Selecciona un metodo</option>
-                {paymentMethods.map((method) => (
-                  <option key={method.id} value={method.id}>
-                    {method.nombre}
-                  </option>
-                ))}
-              </Select>
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Wallet className="h-4 w-4" />
+              Abonos heredados de la orden
+            </div>
+            {inheritedPayments.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                Esta orden no tiene abonos pendientes para heredar a la factura.
+              </p>
             ) : (
-              <Input label="Saldo a credito" value={formatCurrency(total)} disabled readOnly />
+              <div className="space-y-3">
+                {inheritedPayments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                  >
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Metodo</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {payment.paymentMethodNombre ?? payment.paymentMethodId}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Abono orden</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {formatCurrency(payment.amount)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">
+                          Disponible para factura
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {formatCurrency(payment.availableAmount)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-emerald-700">
+                          Se aplicara ahora
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-950">
+                          {formatCurrency(payment.inheritedAmount)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
+          </section>
 
-            {type === "CASH" ? (
-              <>
-                <Input label="Monto" value={formatCurrency(total)} disabled readOnly />
-                <Input
-                  label={
-                    selectedMethod?.requiresReference ? "Referencia obligatoria" : "Referencia"
-                  }
-                  value={referenceNumber}
-                  onChange={(event) => setReferenceNumber(event.target.value)}
-                  placeholder="Opcional"
-                />
-              </>
-            ) : null}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Pagos nuevos</h3>
+                <p className="text-sm text-slate-600">
+                  Puedes registrar varios medios de pago adicionales al momento de facturar.
+                </p>
+              </div>
+              <Button type="button" variant="outline" onClick={addPaymentRow}>
+                <Plus className="h-4 w-4" />
+                Agregar pago
+              </Button>
+            </div>
+
+            {payments.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+                No has agregado pagos nuevos para esta factura.
+              </div>
+            ) : (
+              payments.map((payment, index) => {
+                const method = paymentMethodById[payment.paymentMethodId];
+
+                return (
+                  <div
+                    key={payment.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-slate-900">
+                        Pago #{index + 1}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePaymentRow(payment.id)}
+                        className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <Select
+                        label="Metodo de pago"
+                        value={payment.paymentMethodId}
+                        onChange={(event) =>
+                          updatePayment(payment.id, "paymentMethodId", event.target.value)
+                        }
+                      >
+                        <option value="">Selecciona un metodo</option>
+                        {paymentMethods.map((methodOption) => (
+                          <option key={methodOption.id} value={methodOption.id}>
+                            {methodOption.nombre}
+                          </option>
+                        ))}
+                      </Select>
+
+                      <Input
+                        label="Monto"
+                        inputMode="decimal"
+                        value={payment.amount}
+                        onChange={(event) =>
+                          updatePayment(payment.id, "amount", event.target.value)
+                        }
+                        placeholder="0"
+                      />
+
+                      <Input
+                        label={method?.requiresReference ? "Referencia obligatoria" : "Referencia"}
+                        value={payment.referenceNumber}
+                        onChange={(event) =>
+                          updatePayment(payment.id, "referenceNumber", event.target.value)
+                        }
+                        placeholder="Numero o comprobante"
+                      />
+
+                      <Input
+                        label="Notas"
+                        value={payment.notes}
+                        onChange={(event) => updatePayment(payment.id, "notes", event.target.value)}
+                        placeholder="Opcional"
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </section>
 
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
@@ -315,6 +566,32 @@ export const OrderInvoiceForm = ({
                 </p>
               </div>
               <p className="text-xl font-semibold text-emerald-950">{formatCurrency(total)}</p>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-700">
+                  Abonos heredados
+                </p>
+                <p className="mt-1 text-lg font-semibold text-emerald-950">
+                  {formatCurrency(inheritedTotal)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-700">
+                  Pagos nuevos
+                </p>
+                <p className="mt-1 text-lg font-semibold text-emerald-950">
+                  {formatCurrency(enteredTotal)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-700">
+                  Saldo resultante
+                </p>
+                <p className="mt-1 text-lg font-semibold text-emerald-950">
+                  {formatCurrency(resultingBalance)}
+                </p>
+              </div>
             </div>
           </section>
 

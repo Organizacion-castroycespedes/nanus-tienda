@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
+import type { CashSessionSummaryResponseDto } from "./dto/cash-session-summary-response.dto";
 
 export type CashSessionRecord = {
   id: string;
@@ -38,6 +39,18 @@ type CloseCashSessionInput = {
   expectedAmount: number;
   differenceAmount: number;
   status: "CLOSED";
+};
+
+type CreateCashCountInput = {
+  tenantId: string;
+  branchId: string;
+  cashSessionId: string;
+  countedByUserId: string;
+  countedAt: string;
+  countedCashAmount: number;
+  expectedAmount: number;
+  differenceAmount: number;
+  notes?: string | null;
 };
 
 @Injectable()
@@ -215,6 +228,49 @@ export class CashSessionsRepository {
       return null;
     }
     return this.findById(updated.id, undefined, client);
+  }
+
+  async createCashCount(client: PoolClient, data: CreateCashCountInput) {
+    await this.query<QueryResultRow>(
+      `INSERT INTO cash_counts (
+        tenant_id,
+        branch_id,
+        cash_session_id,
+        counted_by_user_id,
+        counted_at,
+        counted_cash_amount,
+        expected_amount,
+        difference_amount,
+        notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        data.tenantId,
+        data.branchId,
+        data.cashSessionId,
+        data.countedByUserId,
+        data.countedAt,
+        data.countedCashAmount,
+        data.expectedAmount,
+        data.differenceAmount,
+        data.notes ?? null,
+      ],
+      client
+    );
+  }
+
+  async getSummary(
+    cashSessionId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<CashSessionSummaryResponseDto | null> {
+    const result = await this.query<{ summary: CashSessionSummaryResponseDto | null }>(
+      `SELECT finance_cash_session_summary($1, $2) AS summary`,
+      [tenantId, cashSessionId],
+      client
+    );
+
+    return result.rows[0]?.summary ?? null;
   }
 
   async listHistory(filters: {
