@@ -56,6 +56,33 @@ export const useFinanceCatalogs = ({
 
   const loadBranches = useCallback(
     async (selectedTenantId?: string) => {
+      if (role === "USER") {
+        const tenantScope = tenantId ?? undefined;
+        const registers = await listCashRegisters({
+          tenantId: tenantScope,
+          activo: true,
+        });
+
+        const mapped = Array.from(
+          new Map(
+            registers
+              .filter((register) => register.branchId)
+              .map((register) => [
+                register.branchId,
+                {
+                  id: register.branchId,
+                  tenantId: register.tenantId,
+                  name: register.branchNombre ?? register.nombre,
+                  status: "ACTIVE",
+                } satisfies FinanceBranchOption,
+              ])
+          ).values()
+        );
+
+        setBranches(mapped);
+        return mapped;
+      }
+
       const effectiveTenantId = isSuperRole ? selectedTenantId : tenantId ?? undefined;
       const items = await listBranches(
         effectiveTenantId ? { tenantId: effectiveTenantId } : {}
@@ -64,7 +91,7 @@ export const useFinanceCatalogs = ({
       setBranches(mapped);
       return mapped;
     },
-    [isSuperRole, tenantId]
+    [isSuperRole, role, tenantId]
   );
 
   const loadCashRegisters = useCallback(
@@ -82,6 +109,11 @@ export const useFinanceCatalogs = ({
 
   const loadTerminals = useCallback(
     async (filters: { tenantId?: string; branchId?: string } = {}) => {
+      if (!isSuperRole) {
+        setTerminals([]);
+        return [];
+      }
+
       const items = await listTerminals({
         tenantId: isSuperRole ? filters.tenantId : tenantId ?? undefined,
         branchId: filters.branchId,

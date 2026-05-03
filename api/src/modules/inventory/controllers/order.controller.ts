@@ -72,7 +72,6 @@ type InvoiceOrderBody = {
 
 @Controller("orders")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
 export class OrderController {
   constructor(
     @Inject(OrderService)
@@ -106,6 +105,7 @@ export class OrderController {
   }
 
   @Post()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   create(@Body() body: CreateOrderBody, @Req() request: AuthRequest) {
     return this.orderService.createOrder({
       tenantId: this.getTenantId(request),
@@ -120,6 +120,7 @@ export class OrderController {
   }
 
   @Get()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   list(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
@@ -135,6 +136,7 @@ export class OrderController {
   }
 
   @Get(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.orderService.getOrderById(
       id,
@@ -144,6 +146,7 @@ export class OrderController {
   }
 
   @Put(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   update(
     @Param("id") id: string,
     @Body() body: UpdateOrderBody,
@@ -165,6 +168,7 @@ export class OrderController {
   }
 
   @Post(":id/deliver")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   deliver(
     @Param("id") id: string,
     @Body() body: DeliverOrderBody,
@@ -183,6 +187,7 @@ export class OrderController {
   }
 
   @Post(":id/confirm")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   confirm(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.orderService.confirmOrder(
       id,
@@ -193,6 +198,7 @@ export class OrderController {
   }
 
   @Post(":id/invoice")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   invoice(
     @Param("id") id: string,
     @Body() body: InvoiceOrderBody,
@@ -211,6 +217,7 @@ export class OrderController {
   }
 
   @Post(":id/cancel")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.orderService.cancelOrder(
       id,

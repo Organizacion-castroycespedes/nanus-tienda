@@ -86,6 +86,21 @@ type OrderItemRow = {
   subtotal: string | number;
 };
 
+type OrderPaymentRow = {
+  id: string;
+  payment_method_id: string;
+  payment_method_nombre: string | null;
+  payment_method_tipo: string | null;
+  cash_session_id: string | null;
+  amount: string | number;
+  reference_number: string | null;
+  notes: string | null;
+  order_allocated_amount: string | number;
+  invoiced_amount: string | number;
+  available_amount: string | number;
+  created_at: string | Date;
+};
+
 type ProductRow = {
   id: string;
 };
@@ -174,6 +189,23 @@ export class OrderService {
     return {
       tenantId: actor.tenantId,
       branchId,
+    };
+  }
+
+  private mapOrderPayment(row: OrderPaymentRow) {
+    return {
+      id: row.id,
+      paymentMethodId: row.payment_method_id,
+      paymentMethodNombre: row.payment_method_nombre,
+      paymentMethodTipo: row.payment_method_tipo,
+      cashSessionId: row.cash_session_id,
+      amount: Number(row.amount),
+      referenceNumber: row.reference_number,
+      notes: row.notes,
+      orderAllocatedAmount: Number(row.order_allocated_amount),
+      invoicedAmount: Number(row.invoiced_amount),
+      availableAmount: Number(row.available_amount),
+      createdAt: new Date(row.created_at).toISOString(),
     };
   }
 
@@ -767,7 +799,8 @@ export class OrderService {
       throw new NotFoundException("order not found");
     }
 
-    const itemsResult = (await this.db.query(
+    const [itemsResult, paymentsResult] = await Promise.all([
+      this.db.query(
       `
         SELECT
           oi.id,
@@ -787,13 +820,58 @@ export class OrderService {
         ORDER BY p.name ASC, oi.id ASC
       `,
       [id, tenantId]
-    )) as { rows: OrderItemRow[] };
+      ),
+      this.db.query(
+        `
+          SELECT
+            payment.id,
+            payment.payment_method_id,
+            method.nombre AS payment_method_nombre,
+            method.tipo AS payment_method_tipo,
+            payment.cash_session_id,
+            payment.amount,
+            payment.reference_number,
+            payment.notes,
+            COALESCE(order_allocated.total_allocated, 0) AS order_allocated_amount,
+            COALESCE(invoiced.total_allocated, 0) AS invoiced_amount,
+            COALESCE(order_allocated.total_allocated, 0) AS available_amount,
+            payment.created_at
+          FROM payments AS payment
+          INNER JOIN payment_methods AS method
+            ON method.id = payment.payment_method_id
+           AND method.tenant_id = payment.tenant_id
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(allocation.allocated_amount), 0) AS total_allocated
+            FROM payment_allocations AS allocation
+            WHERE allocation.payment_id = payment.id
+              AND allocation.reference_type = 'SALES_ORDER'
+              AND allocation.reference_id = $1
+          ) AS order_allocated ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(allocation.allocated_amount), 0) AS total_allocated
+            FROM payment_allocations AS allocation
+            WHERE allocation.payment_id = payment.id
+              AND allocation.reference_type = 'SALE'
+          ) AS invoiced ON TRUE
+          WHERE payment.tenant_id = $2
+            AND payment.reference_type = 'SALES_ORDER'
+            AND payment.reference_id = $1
+            AND payment.status IN ('PENDING', 'COMPLETED')
+            AND COALESCE(order_allocated.total_allocated, 0) > 0
+          ORDER BY payment.created_at ASC, payment.id ASC
+        `,
+        [id, tenantId]
+      ),
+    ]);
 
     return {
       ...this.mapOrderWithItems(orderRow, itemsResult.rows),
       branchId: orderAuditContext.branch_id,
       branchName: orderAuditContext.branch_name,
       terminalName: orderAuditContext.terminal_name,
+      payments: (paymentsResult.rows as OrderPaymentRow[]).map((row) =>
+        this.mapOrderPayment(row)
+      ),
       billingStatus: this.resolveBillingStatus(
         itemsResult.rows.map((row) => this.mapOrderItem(row))
       ),
@@ -838,9 +916,6 @@ export class OrderService {
       const orderRow = orderResult.rows[0];
       if (!orderRow) {
         throw new NotFoundException("order not found");
-      }
-      if (orderRow.status === "DRAFT") {
-        throw new BadRequestException("draft orders must be confirmed before delivery");
       }
       if (orderRow.status === "CANCELLED") {
         throw new BadRequestException("cancelled orders cannot be delivered");

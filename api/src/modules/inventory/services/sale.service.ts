@@ -6,8 +6,14 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import crypto from "node:crypto";
+import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { CreatePaymentDto } from "../../finance/payments/dto/create-payment.dto";
+import {
+  PaymentsRepository,
+  type PaymentAllocationRecord,
+  type PaymentRecord,
+} from "../../finance/payments/payments.repository";
 import { PaymentsService } from "../../finance/payments/payments.service";
 import { AuditService } from "../../../common/services/audit.service";
 import { SaleEntity, type SaleType } from "../entities/sale.entity";
@@ -95,6 +101,11 @@ type SaleContext = {
   roles?: string[];
 };
 
+type InheritableOrderPayment = {
+  payment: PaymentRecord;
+  availableAmount: number;
+};
+
 @Injectable()
 export class SaleService {
   constructor(
@@ -103,6 +114,8 @@ export class SaleService {
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
+    @Inject(PaymentsRepository)
+    private readonly paymentsRepository: PaymentsRepository,
     @Inject(PaymentsService)
     private readonly paymentsService: PaymentsService
   ) {}
@@ -269,6 +282,138 @@ export class SaleService {
       roles: Array.isArray(context.roles) ? context.roles : [],
       sessionId: context.sessionId,
     };
+  }
+
+  private async listInheritableOrderPayments(
+    tenantId: string,
+    orderId: string,
+    client: PoolClient
+  ): Promise<InheritableOrderPayment[]> {
+    const payments = await this.paymentsRepository.list({
+      tenantId,
+      referenceType: "SALES_ORDER",
+      referenceId: orderId,
+      status: undefined,
+      branchId: undefined,
+      branchIds: undefined,
+      paymentMethodId: undefined,
+      cashSessionId: undefined,
+      direction: undefined,
+      createdBy: undefined,
+      limit: 500,
+      offset: 0,
+    });
+
+    const eligiblePayments = payments.filter((payment) =>
+      payment.status === "PENDING" || payment.status === "COMPLETED"
+    );
+
+    const allocations = await this.paymentsRepository.listAllocationsByPaymentIds(
+      eligiblePayments.map((payment) => payment.id),
+      client
+    );
+
+    const orderAllocatedByPayment = allocations.reduce<Record<string, number>>(
+      (acc, allocation: PaymentAllocationRecord) => {
+        if (
+          allocation.reference_type !== "SALES_ORDER" ||
+          allocation.reference_id !== orderId
+        ) {
+          return acc;
+        }
+        acc[allocation.payment_id] =
+          (acc[allocation.payment_id] ?? 0) + this.toNumber(allocation.allocated_amount);
+        return acc;
+      },
+      {}
+    );
+
+    return eligiblePayments
+      .map((payment) => ({
+        payment,
+        availableAmount: this.roundCurrency(
+          Math.max(orderAllocatedByPayment[payment.id] ?? 0, 0)
+        ),
+      }))
+      .filter((item) => item.availableAmount > 0)
+      .sort((left, right) => {
+        const leftTime = new Date(left.payment.created_at).getTime();
+        const rightTime = new Date(right.payment.created_at).getTime();
+        if (leftTime !== rightTime) {
+          return leftTime - rightTime;
+        }
+        return left.payment.id.localeCompare(right.payment.id);
+      });
+  }
+
+  private async applyInheritedOrderPaymentsToSale(
+    tenantId: string,
+    orderId: string,
+    saleId: string,
+    saleTotal: number,
+    client: PoolClient
+  ) {
+    const orderPayments = await this.listInheritableOrderPayments(tenantId, orderId, client);
+    const allocations = await this.paymentsRepository.listAllocationsByPaymentIds(
+      orderPayments.map((item) => item.payment.id),
+      client
+    );
+    const orderAllocations = allocations
+      .filter(
+        (allocation) =>
+          allocation.reference_type === "SALES_ORDER" &&
+          allocation.reference_id === orderId
+      )
+      .sort((left, right) => {
+        const leftTime = new Date(left.created_at).getTime();
+        const rightTime = new Date(right.created_at).getTime();
+        if (leftTime !== rightTime) {
+          return leftTime - rightTime;
+        }
+        return left.id.localeCompare(right.id);
+      });
+
+    let remaining = this.roundCurrency(saleTotal);
+    let inheritedTotal = 0;
+
+    for (const allocation of orderAllocations) {
+      if (remaining <= 0) {
+        break;
+      }
+
+      const allocatedAmount = this.roundCurrency(
+        Math.min(this.toNumber(allocation.allocated_amount), remaining)
+      );
+
+      if (allocatedAmount <= 0) {
+        continue;
+      }
+
+      const originalAmount = this.roundCurrency(this.toNumber(allocation.allocated_amount));
+
+      if (allocatedAmount === originalAmount) {
+        await this.paymentsRepository.updateAllocation(client, allocation.id, {
+          referenceType: "SALE",
+          referenceId: saleId,
+        });
+      } else {
+        await this.paymentsRepository.updateAllocation(client, allocation.id, {
+          allocatedAmount: this.roundCurrency(originalAmount - allocatedAmount),
+        });
+        await this.paymentsRepository.createAllocations(client, allocation.payment_id, [
+          {
+            referenceType: "SALE",
+            referenceId: saleId,
+            allocatedAmount,
+          },
+        ]);
+      }
+
+      inheritedTotal = this.roundCurrency(inheritedTotal + allocatedAmount);
+      remaining = this.roundCurrency(remaining - allocatedAmount);
+    }
+
+    return inheritedTotal;
   }
 
   async createSale(
@@ -677,6 +822,37 @@ export class SaleService {
         client
       );
 
+      const inheritedTotal = await this.applyInheritedOrderPaymentsToSale(
+        saleContext.tenantId,
+        data.orderId,
+        saleRow.id,
+        total,
+        client
+      );
+
+      await this.paymentsRepository.syncSaleFinancialState(
+        client,
+        saleRow.id,
+        saleContext.tenantId
+      );
+
+      const paymentsTotal = this.roundCurrency(
+        payments.reduce((sum, payment) => sum + payment.amount, 0)
+      );
+      const coveredTotal = this.roundCurrency(inheritedTotal + paymentsTotal);
+
+      if (data.type === "CASH" && coveredTotal !== this.roundCurrency(total)) {
+        throw new BadRequestException(
+          "Las ventas CASH generadas desde orden deben quedar totalmente cubiertas entre abonos heredados y pagos nuevos"
+        );
+      }
+
+      if (coveredTotal > this.roundCurrency(total)) {
+        throw new BadRequestException(
+          "Los pagos heredados y nuevos no pueden superar el total a facturar"
+        );
+      }
+
       for (const payment of payments) {
         const payload = Object.assign(new CreatePaymentDto(), {
           branchId: saleContext.branchId,
@@ -829,26 +1005,28 @@ export class SaleService {
       this.db.query(
         `
           SELECT
-            id,
-            tenant_id,
-            sale_id,
+            allocation.id,
+            payment.tenant_id,
+            allocation.reference_id AS sale_id,
             CASE
               WHEN method.tipo = 'BANK' THEN 'TRANSFER'
               WHEN method.tipo IN ('DIGITAL', 'CREDIT') THEN 'OTHER'
               ELSE method.tipo
             END AS payment_method,
-            payment.amount,
+            allocation.allocated_amount AS amount,
             COALESCE(payment.reference_number, payment.notes) AS reference,
-            created_at
-          FROM payments AS payment
+            allocation.created_at
+          FROM payment_allocations AS allocation
+          INNER JOIN payments AS payment
+            ON payment.id = allocation.payment_id
           INNER JOIN payment_methods AS method
             ON method.id = payment.payment_method_id
            AND method.tenant_id = payment.tenant_id
-          WHERE payment.reference_type = 'SALE'
-            AND payment.reference_id = $1
+          WHERE allocation.reference_type = 'SALE'
+            AND allocation.reference_id = $1
             AND payment.tenant_id = $2
             AND payment.status IN ('PENDING', 'COMPLETED')
-          ORDER BY payment.created_at ASC, payment.id ASC
+          ORDER BY allocation.created_at ASC, allocation.id ASC
         `,
         [id, tenantId]
       ),

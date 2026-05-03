@@ -203,6 +203,55 @@ export class PaymentsRepository {
     return created;
   }
 
+  async updateAllocation(
+    client: PoolClient,
+    allocationId: string,
+    data: {
+      referenceType?: PaymentReferenceType;
+      referenceId?: string;
+      allocatedAmount?: number;
+    }
+  ) {
+    const updates: string[] = [];
+    const params: unknown[] = [allocationId];
+
+    if (data.referenceType !== undefined) {
+      params.push(data.referenceType);
+      updates.push(`reference_type = $${params.length}`);
+    }
+
+    if (data.referenceId !== undefined) {
+      params.push(data.referenceId);
+      updates.push(`reference_id = $${params.length}`);
+    }
+
+    if (data.allocatedAmount !== undefined) {
+      params.push(data.allocatedAmount);
+      updates.push(`allocated_amount = $${params.length}`);
+    }
+
+    if (updates.length === 0) {
+      return null;
+    }
+
+    const result = await this.query<PaymentAllocationRecord>(
+      `UPDATE payment_allocations
+      SET ${updates.join(", ")}
+      WHERE id = $1
+      RETURNING
+        id,
+        payment_id,
+        reference_type,
+        reference_id,
+        allocated_amount::text AS allocated_amount,
+        created_at`,
+      params,
+      client
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   async listAllocationsByPaymentIds(
     paymentIds: string[],
     client?: PoolClient
@@ -357,14 +406,17 @@ export class PaymentsRepository {
     if (supportedType === "SALE") {
       const result = await this.query<PaymentDocumentRecord>(
         `SELECT
-          id,
-          tenant_id,
-          branch_id,
-          status,
-          total::text AS total,
-          COALESCE(balance_due, balance)::text AS balance
-        FROM sales
-        WHERE p.id = $1 AND p.tenant_id = $2
+          s.id,
+          s.tenant_id,
+          s.branch_id,
+          s.status,
+          s.total::text AS total,
+          CASE
+            WHEN s.type = 'CASH' THEN s.total
+            ELSE COALESCE(s.balance_due, s.balance)
+          END::text AS balance
+        FROM sales AS s
+        WHERE s.id = $1 AND s.tenant_id = $2
         LIMIT 1`,
         [referenceId, tenantId],
         client
@@ -392,7 +444,7 @@ export class PaymentsRepository {
           ORDER BY ae.created_at DESC, ae.id DESC
           LIMIT 1
         ) AS audit_context ON TRUE
-        WHERE o.id = $1 AND o.tenant_id = $2
+        WHERE p.id = $1 AND p.tenant_id = $2
         LIMIT 1`,
         [referenceId, tenantId],
         client
@@ -420,7 +472,7 @@ export class PaymentsRepository {
           ORDER BY ae.created_at DESC, ae.id DESC
           LIMIT 1
         ) AS audit_context ON TRUE
-        WHERE id = $1 AND tenant_id = $2
+        WHERE o.id = $1 AND o.tenant_id = $2
         LIMIT 1`,
         [referenceId, tenantId],
         client

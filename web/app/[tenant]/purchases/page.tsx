@@ -64,8 +64,10 @@ const PurchasesPage = () => {
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
 
-  const canCreate = hasPermission("inventory.create");
-  const canReceive = hasPermission("inventory.update");
+  const isAdminLikeRole =
+    role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
+  const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
 
   useAutoClearState(toastMessage, setToastMessage);
 

@@ -90,6 +90,85 @@ export type CashSession = {
   createdAt: string;
 };
 
+export type CashSessionPaymentBreakdown = {
+  paymentMethodId: string;
+  paymentMethodNombre: string;
+  paymentMethodTipo: string;
+  direction: PaymentDirection;
+  count: number;
+  total: number;
+};
+
+export type CashSessionMovementBreakdown = {
+  movementType: CashMovementType | string;
+  direction: CashMovementDirection;
+  count: number;
+  total: number;
+};
+
+export type CashSessionRecentMovement = {
+  id: string;
+  movementType: CashMovementType | string;
+  direction: CashMovementDirection;
+  referenceType: string | null;
+  referenceId: string | null;
+  amount: number;
+  description: string | null;
+  createdBy: string;
+  createdByEmail: string | null;
+  createdAt: string;
+};
+
+export type CashSessionLastCount = {
+  id: string;
+  countedCashAmount: number;
+  expectedAmount: number;
+  differenceAmount: number;
+  notes: string | null;
+  countedByUserId: string;
+  countedByUserEmail: string | null;
+  countedAt: string;
+} | null;
+
+export type CashSessionSummary = {
+  sessionId: string;
+  tenantId: string;
+  branchId: string;
+  cashRegisterId: string;
+  cashRegisterCodigo: string | null;
+  cashRegisterNombre: string | null;
+  terminalId: string | null;
+  terminalName: string | null;
+  openedByUserId: string;
+  openedByUserEmail: string | null;
+  closedByUserId: string | null;
+  closedByUserEmail: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  status: CashSessionStatus;
+  totals: {
+    openingAmount: number;
+    paymentsIn: number;
+    paymentsOut: number;
+    expenses: number;
+    withdrawals: number;
+    adjustmentsIn: number;
+    adjustmentsOut: number;
+    closingRecorded: number;
+    salesPayments: number;
+    purchasePayments: number;
+    refundPayments: number;
+    expectedAmount: number;
+    netAmount: number;
+    movementCount: number;
+    paymentCount: number;
+  };
+  paymentBreakdown: CashSessionPaymentBreakdown[];
+  movementBreakdown: CashSessionMovementBreakdown[];
+  recentMovements: CashSessionRecentMovement[];
+  lastCount: CashSessionLastCount;
+};
+
 export type CashMovementType =
   | "OPENING"
   | "CLOSING"
