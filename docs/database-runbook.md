@@ -26,6 +26,10 @@ Algunos scripts históricos también pueden usar:
 - `DB_ADMIN_USER`
 - `DB_ADMIN_PASSWORD`
 - `ENVIRONMENT`
+- `SEED_SUPER_ADMIN_EMAIL`
+- `SEED_SUPER_ADMIN_PASSWORD`
+- `SEED_SUPER_ADMIN_FIRST_NAME`
+- `SEED_SUPER_ADMIN_LAST_NAME`
 
 Archivo sugerido:
 
@@ -127,17 +131,21 @@ psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "\dt public.*"
 Para despliegue productivo mínimo, usar:
 
 ```bash
-sh scripts/database/migrate_prd.sh scripts/config/db.env
+bash scripts/database/migrate_prd.sh scripts/config/db.env
 ```
 
 O si ya estás dentro de `scripts/database`:
 
 ```bash
-sh migrate_prd.sh ../config/db.env
+bash migrate_prd.sh ../config/db.env
 ```
 
 ### Qué hace `migrate_prd.sh`
 
+- se conecta a `postgres` con `DB_ADMIN_USER` y `DB_ADMIN_PASSWORD`
+- crea el rol `DB_USER` si no existe
+- crea la base `DB_NAME` si no existe
+- otorga privilegios sobre la base al usuario de aplicación
 - valida `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - asegura `public.migrations_history`
 - aplica en orden:
@@ -149,12 +157,14 @@ sh migrate_prd.sh ../config/db.env
 
 ### Qué sí incluye
 
+- creación de base y usuario de aplicación para primer despliegue desde cero
 - schema completo necesario
 - tablas
 - índices
 - constraints
 - funciones/procedimientos SQL existentes
 - usuarios demo operativos y sus roles base
+- seed idempotente del usuario `SUPER_ADMIN`
 - seed mínimo de `CONSUMIDOR FINAL`
 
 ### Qué no incluye
@@ -162,6 +172,28 @@ sh migrate_prd.sh ../config/db.env
 - productos demo
 - proveedores demo
 - clientes demo masivos
+
+### Variables requeridas para `SUPER_ADMIN`
+
+El bootstrap PRD ejecuta también:
+
+- `scripts/database/004_seed_super_admin.sql`
+
+Por eso el archivo `scripts/config/db.env` debe incluir:
+
+```env
+SEED_SUPER_ADMIN_EMAIL=admin@manustienda.local
+SEED_SUPER_ADMIN_PASSWORD=cambia-esta-clave
+SEED_SUPER_ADMIN_FIRST_NAME=Super
+SEED_SUPER_ADMIN_LAST_NAME=Admin
+```
+
+El seed es idempotente:
+
+- crea o reutiliza la persona
+- crea o reutiliza el usuario
+- asegura el rol `SUPER_ADMIN`
+- reasigna la contraseña configurada
 
 ## 7. Seed mínimo de consumidor final
 
@@ -196,13 +228,13 @@ Ejemplos:
 Ejecutar:
 
 ```bash
-sh scripts/database/run_migrations.sh scripts/config/db.env
+bash scripts/database/run_migrations.sh scripts/config/db.env
 ```
 
 O desde `scripts/database`:
 
 ```bash
-sh run_migrations.sh ../config/db.env
+bash run_migrations.sh ../config/db.env
 ```
 
 ### Qué hace `run_migrations.sh`
@@ -283,17 +315,17 @@ psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT tenant_i
 ### Local histórico
 
 ```bash
-sh scripts/database/migrate.sh scripts/config/db.env
+bash scripts/database/migrate.sh scripts/config/db.env
 ```
 
 ### PRD mínimo
 
 ```bash
-sh scripts/database/migrate_prd.sh scripts/config/db.env
+bash scripts/database/migrate_prd.sh scripts/config/db.env
 ```
 
 ### Futuras migraciones incrementales
 
 ```bash
-sh scripts/database/run_migrations.sh scripts/config/db.env
+bash scripts/database/run_migrations.sh scripts/config/db.env
 ```
