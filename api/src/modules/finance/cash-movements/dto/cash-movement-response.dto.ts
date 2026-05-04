@@ -14,6 +14,9 @@ export class CashMovementResponseDto {
   cashSessionId!: string;
 
   @Expose()
+  paymentId!: string | null;
+
+  @Expose()
   cashRegisterId!: string | null;
 
   @Expose()
