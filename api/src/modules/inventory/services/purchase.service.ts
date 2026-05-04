@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { AuditService } from "../../../common/services/audit.service";
+import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
 import { PurchaseItemEntity } from "../entities/purchase-item.entity";
 import type { StockMovementEntity } from "../entities/stock-movement.entity";
 import {
@@ -21,8 +22,9 @@ import {
   type InventoryContext,
 } from "./stock-movement.service";
 import {
+  canViewAllBranches,
+  hasBranchScopedRole,
   normalizeOptionalFilter,
-  resolveBranchScopedFilters,
   type BranchScopedActor,
   type BranchScopedFilters,
 } from "../utils/access";
@@ -125,6 +127,8 @@ export class PurchaseService {
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
+    @Inject(FinanceAccessRepository)
+    private readonly financeAccessRepository: FinanceAccessRepository,
     @Inject(AuditService) private readonly auditService: AuditService
   ) {}
 
@@ -144,7 +148,33 @@ export class PurchaseService {
     });
   }
 
-  private resolvePurchaseScope(
+  private async resolveAllowedBranchIds(
+    actor: BranchScopedActor,
+    tenantId: string
+  ) {
+    if (canViewAllBranches(actor)) {
+      return undefined;
+    }
+    if (!actor.userId) {
+      throw new ForbiddenException("Usuario requerido");
+    }
+
+    const branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+      actor.userId,
+      tenantId
+    );
+
+    if (branchIds.length > 0) {
+      return branchIds;
+    }
+    if (actor.branchId) {
+      return [actor.branchId];
+    }
+
+    throw new ForbiddenException("Usuario sin sucursales asignadas");
+  }
+
+  private async resolvePurchaseScope(
     actor: BranchScopedActor,
     filters: BranchScopedFilters
   ) {
@@ -152,7 +182,7 @@ export class PurchaseService {
     const branchId = normalizeOptionalFilter(filters.branchId);
 
     if (actor.roles.includes("SUPER_ADMIN")) {
-      return { tenantId, branchId };
+      return { tenantId, branchId, branchIds: undefined as string[] | undefined };
     }
 
     if (!actor.tenantId) {
@@ -162,9 +192,29 @@ export class PurchaseService {
       throw new ForbiddenException("No autorizado para otro tenant");
     }
 
+    const resolvedTenantId = actor.tenantId;
+    const allowedBranchIds = await this.resolveAllowedBranchIds(actor, resolvedTenantId);
+
+    if (branchId && (allowedBranchIds?.length ?? 0) > 0 && !allowedBranchIds?.includes(branchId)) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
+    }
+
+    if (hasBranchScopedRole(actor) && actor.branchId) {
+      if (branchId && branchId !== actor.branchId) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+
+      return {
+        tenantId: resolvedTenantId,
+        branchId: actor.branchId,
+        branchIds: [actor.branchId],
+      };
+    }
+
     return {
-      tenantId: actor.tenantId,
+      tenantId: resolvedTenantId,
       branchId,
+      branchIds: allowedBranchIds,
     };
   }
 
@@ -375,7 +425,7 @@ export class PurchaseService {
 
   async createPurchase(data: CreatePurchaseInput) {
     this.assertItems(data.items);
-    const resolvedScope = this.resolvePurchaseScope(data.actor, {
+    const resolvedScope = await this.resolvePurchaseScope(data.actor, {
       tenantId: data.tenantId,
       branchId: data.branchId,
     });
@@ -490,10 +540,16 @@ export class PurchaseService {
     }
   }
 
-  async updatePurchase(id: string, tenantId: string, data: UpdatePurchaseInput) {
+  async updatePurchase(
+    id: string,
+    tenantId: string,
+    data: UpdatePurchaseInput,
+    actor: BranchScopedActor
+  ) {
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
+      await this.resolvePurchaseScope(actor, { tenantId });
 
       const currentResult = await client.query<PurchaseRow>(
         `
@@ -526,6 +582,12 @@ export class PurchaseService {
       if (current.status === "CANCELLED") {
         throw new BadRequestException("cancelled purchases cannot be updated");
       }
+
+      const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId, client);
+      await this.resolvePurchaseScope(actor, {
+        tenantId,
+        branchId: purchaseAuditContext.branch_id ?? undefined,
+      });
 
       if (data.items) {
         this.assertItems(data.items);
@@ -626,7 +688,7 @@ export class PurchaseService {
   }
 
   async getPurchases(filters: BranchScopedFilters, actor: BranchScopedActor) {
-    const resolvedFilters = this.resolvePurchaseScope(actor, filters);
+    const resolvedFilters = await this.resolvePurchaseScope(actor, filters);
     const params: unknown[] = [];
     const where: string[] = [];
 
@@ -638,6 +700,9 @@ export class PurchaseService {
     if (resolvedFilters.branchId) {
       params.push(resolvedFilters.branchId);
       where.push(`audit_context.branch_id = $${params.length}::uuid`);
+    } else if ((resolvedFilters.branchIds?.length ?? 0) > 0) {
+      params.push(resolvedFilters.branchIds);
+      where.push(`audit_context.branch_id = ANY($${params.length}::uuid[])`);
     }
 
     const result = await this.db.query<PurchaseListRow>(
@@ -701,7 +766,7 @@ export class PurchaseService {
 
   async getPurchaseById(id: string, tenantId: string, actor: BranchScopedActor) {
     const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId);
-    this.resolvePurchaseScope(actor, {
+    await this.resolvePurchaseScope(actor, {
       tenantId,
       branchId: purchaseAuditContext.branch_id ?? undefined,
     });
@@ -814,9 +879,10 @@ export class PurchaseService {
       }
 
       const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId, client);
-      this.resolvePurchaseScope(
+      await this.resolvePurchaseScope(
         actor ?? {
           roles: [],
+          userId: context?.userId ?? undefined,
           tenantId,
           branchId: context?.branchId ?? undefined,
         },

@@ -34,6 +34,8 @@ sql_files=(
   "007_update_sales_balance_constraint.sql"
   "008_update_orders_status_constraint.sql"
   "009_cancel_sale_function.sql"
+  "011_sales_refunded_branch_stock.sql"
+  "012_sale_financial_sync_and_pos_function.sql"
 )
 
 for sql_file in "${sql_files[@]}"; do

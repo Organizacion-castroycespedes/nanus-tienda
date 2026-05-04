@@ -305,8 +305,7 @@ export const OrderInvoiceForm = ({
           .map((payment) => ({
             paymentMethodId: payment.paymentMethodId,
             amount: payment.numericAmount,
-            cashSessionId:
-              payment.method?.tipo === "CASH" ? cashSession?.id ?? undefined : undefined,
+            cashSessionId: cashSession?.id ?? undefined,
             referenceNumber: payment.referenceNumber.trim() || undefined,
             notes: payment.notes.trim() || undefined,
           })),

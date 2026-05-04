@@ -159,6 +159,32 @@ export class PaymentsService {
     return normalized ? normalized : null;
   }
 
+  private async resolveImplicitCashSession(
+    actor: FinanceActor,
+    tenantId: string,
+    branchId: string,
+    existingClient?: PoolClient
+  ) {
+    const currentSession = await this.cashSessionsRepository.findCurrentByUser(
+      actor.userId,
+      tenantId
+    );
+
+    if (!currentSession) {
+      return null;
+    }
+
+    if (currentSession.status !== "OPEN") {
+      return null;
+    }
+
+    if (currentSession.branch_id !== branchId) {
+      return null;
+    }
+
+    return this.cashSessionsRepository.findById(currentSession.id, tenantId, existingClient);
+  }
+
   private computeDueBefore(
     document: PaymentDocumentRecord,
     alreadyAllocated: number
@@ -402,18 +428,30 @@ export class PaymentsService {
 
     const status = payload.status ?? "COMPLETED";
 
-    if (paymentMethod.tipo === "CASH" && !payload.cashSessionId) {
-      throw new BadRequestException("cashSessionId es requerido para pagos en efectivo");
-    }
-
-    if (status === "COMPLETED" && paymentMethod.tipo === "CASH" && !payload.cashSessionId) {
-      throw new BadRequestException("cashSessionId es requerido para pagos en efectivo");
-    }
-
     let cashSession: Awaited<ReturnType<CashSessionsRepository["findById"]>> | null = null;
-    if (payload.cashSessionId) {
+    const resolvedCashSessionId =
+      payload.cashSessionId ??
+      (
+        await this.resolveImplicitCashSession(
+          actor,
+          tenantId,
+          payload.branchId,
+          existingClient
+        )
+      )?.id ??
+      null;
+
+    if (paymentMethod.tipo === "CASH" && !resolvedCashSessionId) {
+      throw new BadRequestException("cashSessionId es requerido para pagos en efectivo");
+    }
+
+    if (status === "COMPLETED" && paymentMethod.tipo === "CASH" && !resolvedCashSessionId) {
+      throw new BadRequestException("cashSessionId es requerido para pagos en efectivo");
+    }
+
+    if (resolvedCashSessionId) {
       cashSession = await this.cashSessionsRepository.findById(
-        payload.cashSessionId,
+        resolvedCashSessionId,
         tenantId,
         existingClient
       );
@@ -509,7 +547,7 @@ export class PaymentsService {
         tenantId,
         branchId: payload.branchId,
         paymentMethodId: payload.paymentMethodId,
-        cashSessionId: payload.cashSessionId ?? null,
+        cashSessionId: resolvedCashSessionId,
         referenceType: payload.referenceType,
         referenceId: payload.referenceId,
         direction: payload.direction,

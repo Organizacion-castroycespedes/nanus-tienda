@@ -105,6 +105,7 @@ export class InventoryRepository {
   async listInventoryProducts(filters: {
     tenantId?: string;
     branchId?: string;
+    branchIds?: string[];
   }) {
     const params: unknown[] = [];
     const where: string[] = ["p.is_active = TRUE", "b.estado = 'ACTIVE'"];
@@ -117,6 +118,9 @@ export class InventoryRepository {
     if (filters.branchId) {
       params.push(filters.branchId);
       where.push(`b.id = $${params.length}`);
+    } else if ((filters.branchIds?.length ?? 0) > 0) {
+      params.push(filters.branchIds);
+      where.push(`b.id = ANY($${params.length}::uuid[])`);
     }
 
     const result = await this.db.query<InventoryProductRow>(

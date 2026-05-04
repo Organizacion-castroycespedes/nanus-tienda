@@ -11,7 +11,9 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../../../common/guards/roles.guard";
 import { SaleService } from "../services/sale.service";
 
 type AuthRequest = Request & {
@@ -52,7 +54,8 @@ type CreateSaleBody = {
 };
 
 @Controller("sales")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class SaleController {
   constructor(
     @Inject(SaleService)
@@ -86,6 +89,16 @@ export class SaleController {
     };
   }
 
+  private buildActor(request: AuthRequest) {
+    const context = this.getSaleContext(request);
+    return {
+      roles: Array.isArray(context.roles) ? context.roles : [],
+      userId: context.userId,
+      tenantId: context.tenantId,
+      branchId: context.branchId,
+    };
+  }
+
   @Post()
   create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
     return this.saleService.createSale({
@@ -99,16 +112,16 @@ export class SaleController {
 
   @Get()
   list(@Req() request: AuthRequest) {
-    return this.saleService.getSales(this.getTenantId(request));
+    return this.saleService.getSales(this.buildActor(request));
   }
 
   @Get(":id")
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
-    return this.saleService.getSaleById(id, this.getTenantId(request));
+    return this.saleService.getSaleById(id, this.buildActor(request));
   }
 
   @Post(":id/cancel")
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {
-    return this.saleService.cancelSale(id, this.getTenantId(request));
+    return this.saleService.cancelSale(id, this.buildActor(request));
   }
 }

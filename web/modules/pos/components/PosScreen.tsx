@@ -628,7 +628,7 @@ export const PosScreen = () => {
       return basePayments.map((payment) => ({
         paymentMethodId: payment.paymentMethodId,
         amount: payment.numericAmount,
-        cashSessionId: payment.method?.tipo === "CASH" ? currentCashSession?.id ?? null : null,
+        cashSessionId: currentCashSession?.id ?? null,
         referenceNumber: payment.reference.trim() || null,
         notes: null,
       }));
