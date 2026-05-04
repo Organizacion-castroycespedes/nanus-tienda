@@ -12,7 +12,7 @@ const assertNonNegativeDecimal = (value: number, field: string) => {
 export const SALE_TYPES = ["CASH", "CREDIT"] as const;
 export type SaleType = (typeof SALE_TYPES)[number];
 
-export const SALE_STATUSES = ["DRAFT", "CONFIRMED", "CANCELLED"] as const;
+export const SALE_STATUSES = ["DRAFT", "CONFIRMED", "CANCELLED", "REFUNDED"] as const;
 export type SaleStatus = (typeof SALE_STATUSES)[number];
 
 export const SALE_PAYMENT_STATUSES = [

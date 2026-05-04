@@ -37,6 +37,8 @@ type CreateCashMovementInput = {
 
 @Injectable()
 export class CashMovementsRepository {
+  private paymentIdColumnExists: boolean | null = null;
+
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
   private async query<T extends QueryResultRow>(
@@ -50,13 +52,38 @@ export class CashMovementsRepository {
     return this.db.query<T>(text, params);
   }
 
-  private buildBaseQuery() {
+  private async hasPaymentIdColumn(client?: PoolClient) {
+    if (this.paymentIdColumnExists !== null) {
+      return this.paymentIdColumnExists;
+    }
+
+    const result = await this.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'cash_movements'
+          AND column_name = 'payment_id'
+      ) AS exists`,
+      [],
+      client
+    );
+
+    this.paymentIdColumnExists = Boolean(result.rows[0]?.exists);
+    return this.paymentIdColumnExists;
+  }
+
+  private async buildBaseQuery(client?: PoolClient) {
+    const paymentIdSelect = (await this.hasPaymentIdColumn(client))
+      ? "movement.payment_id"
+      : "NULL::uuid AS payment_id";
+
     return `SELECT
       movement.id,
       movement.tenant_id,
       movement.branch_id,
       movement.cash_session_id,
-      movement.payment_id,
+      ${paymentIdSelect},
       session.cash_register_id,
       register.nombre AS cash_register_nombre,
       movement.movement_type,
@@ -81,12 +108,24 @@ export class CashMovementsRepository {
   }
 
   async create(client: PoolClient, data: CreateCashMovementInput) {
+    const hasPaymentIdColumn = await this.hasPaymentIdColumn(client);
+    const paymentIdColumn = hasPaymentIdColumn ? "payment_id," : "";
+    const paymentIdValue = hasPaymentIdColumn ? "$4," : "";
+    const paymentIdParam = hasPaymentIdColumn ? [data.paymentId ?? null] : [];
+    const movementTypeParamIndex = hasPaymentIdColumn ? 5 : 4;
+    const directionParamIndex = hasPaymentIdColumn ? 6 : 5;
+    const referenceTypeParamIndex = hasPaymentIdColumn ? 7 : 6;
+    const referenceIdParamIndex = hasPaymentIdColumn ? 8 : 7;
+    const amountParamIndex = hasPaymentIdColumn ? 9 : 8;
+    const descriptionParamIndex = hasPaymentIdColumn ? 10 : 9;
+    const createdByParamIndex = hasPaymentIdColumn ? 11 : 10;
+
     const result = await this.query<{ id: string }>(
       `INSERT INTO cash_movements (
         tenant_id,
         branch_id,
         cash_session_id,
-        payment_id,
+        ${paymentIdColumn}
         movement_type,
         direction,
         reference_type,
@@ -95,13 +134,23 @@ export class CashMovementsRepository {
         description,
         created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES (
+        $1, $2, $3,
+        ${paymentIdValue}
+        $${movementTypeParamIndex},
+        $${directionParamIndex},
+        $${referenceTypeParamIndex},
+        $${referenceIdParamIndex},
+        $${amountParamIndex},
+        $${descriptionParamIndex},
+        $${createdByParamIndex}
+      )
       RETURNING id`,
       [
         data.tenantId,
         data.branchId,
         data.cashSessionId,
-        data.paymentId ?? null,
+        ...paymentIdParam,
         data.movementType,
         data.direction,
         data.referenceType ?? null,
@@ -127,6 +176,10 @@ export class CashMovementsRepository {
       referenceId: string;
     }
   ) {
+    if (!(await this.hasPaymentIdColumn(client))) {
+      return;
+    }
+
     await this.query<QueryResultRow>(
       `UPDATE cash_movements
        SET
@@ -152,8 +205,9 @@ export class CashMovementsRepository {
       whereClause += ` AND movement.tenant_id = $${params.length}`;
     }
 
+    const baseQuery = await this.buildBaseQuery(client);
     const result = await this.query<CashMovementRecord>(
-      `${this.buildBaseQuery()}
+      `${baseQuery}
       ${whereClause}
       LIMIT 1`,
       params,
@@ -213,8 +267,9 @@ export class CashMovementsRepository {
     params.push(filters.limit);
     params.push(filters.offset);
 
+    const baseQuery = await this.buildBaseQuery();
     const result = await this.query<CashMovementRecord>(
-      `${this.buildBaseQuery()}
+      `${baseQuery}
       WHERE ${where.join(" AND ")}
       ORDER BY movement.created_at DESC
       LIMIT $${params.length - 1}

@@ -6,10 +6,14 @@ import type { SaleType } from "../entities/sale.entity";
 export type SaleRow = {
   id: string;
   tenant_id: string;
+  branch_id?: string;
+  terminal_id?: string;
+  user_id?: string;
+  pos_session_id?: string;
   customer_id: string;
   order_id: string | null;
   type: SaleType;
-  status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+  status: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REFUNDED";
   total: string | number;
   balance: string | number;
   payment_status: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
@@ -76,6 +80,23 @@ type CurrentPosContextRow = {
   pos_session_id: string;
   branch_id: string;
   terminal_id: string;
+};
+
+type InventoryCreateSaleFunctionRow = {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  order_id: string | null;
+  type: SaleType;
+  status: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REFUNDED";
+  total: string | number;
+  balance: string | number;
+  created_at: string | Date;
+};
+
+type PaymentMethodLookupRow = {
+  id: string;
+  tipo: string;
 };
 
 @Injectable()
@@ -207,6 +228,7 @@ export class SaleRepository {
        AND t.tenant_id = p.tenant_id
       WHERE p.id = $1
         AND p.tenant_id = $2
+        AND p.is_active = TRUE
       LIMIT 1`,
       [productId, tenantId],
       client
@@ -244,6 +266,7 @@ export class SaleRepository {
 
   async getAvailableStock(
     tenantId: string,
+    branchId: string,
     productId: string,
     client: PoolClient
   ): Promise<number> {
@@ -253,8 +276,9 @@ export class SaleRepository {
         - COALESCE(SUM(quantity) FILTER (WHERE type = 'OUT'), 0) AS available_stock
       FROM stock_movements
       WHERE tenant_id = $1
-        AND product_id = $2`,
-      [tenantId, productId],
+        AND branch_id = $2
+        AND product_id = $3`,
+      [tenantId, branchId, productId],
       client
     );
     const value = result.rows[0]?.available_stock ?? 0;
@@ -305,6 +329,10 @@ export class SaleRepository {
       RETURNING
         id,
         tenant_id,
+        branch_id,
+        terminal_id,
+        user_id,
+        pos_session_id,
         customer_id,
         order_id,
         type,
@@ -328,6 +356,152 @@ export class SaleRepository {
       client
     );
     return result.rows[0] ?? null;
+  }
+
+  async createSaleWithFunction(
+    data: CreateSaleInput,
+    paymentMethods: Array<{
+      paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      amount: number;
+      reference?: string | null;
+    }>,
+    client: PoolClient
+  ): Promise<InventoryCreateSaleFunctionRow | null> {
+    const functionItems = (data.items ?? []).map((item) => ({
+      product_id: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+      order_item_id: item.orderItemId ?? null,
+    }));
+    const functionPaymentMethods = (paymentMethods ?? []).map((payment) => ({
+      payment_method: payment.paymentMethod,
+      amount: payment.amount,
+      reference: payment.reference ?? null,
+    }));
+
+    const result = await this.query<InventoryCreateSaleFunctionRow>(
+      `SELECT
+        id,
+        tenant_id,
+        customer_id,
+        order_id,
+        type,
+        status,
+        total,
+        balance,
+        created_at
+      FROM inventory_create_sale(
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        $4::uuid,
+        $5::uuid,
+        $6::uuid,
+        $7::uuid,
+        $8::varchar(20),
+        $9::jsonb,
+        $10::jsonb
+      )`,
+      [
+        data.tenantId,
+        data.branchId,
+        data.terminalId,
+        data.userId,
+        data.posSessionId,
+        data.customerId,
+        data.orderId ?? null,
+        data.type,
+        JSON.stringify(functionItems),
+        JSON.stringify(functionPaymentMethods),
+      ],
+      client
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  async invoiceOrderWithFunction(
+    data: SaleCreateContext & {
+      orderId: string;
+      type: SaleType;
+      payments?: CreateSalePaymentInput[];
+    },
+    client: PoolClient
+  ): Promise<InventoryCreateSaleFunctionRow | null> {
+    const functionPayments = (data.payments ?? []).map((payment) => ({
+      payment_method_id: payment.paymentMethodId,
+      amount: payment.amount,
+      cash_session_id: payment.cashSessionId ?? null,
+      reference_number: payment.referenceNumber ?? null,
+      notes: payment.notes ?? null,
+    }));
+
+    const result = await this.query<InventoryCreateSaleFunctionRow>(
+      `SELECT
+        id,
+        tenant_id,
+        customer_id,
+        order_id,
+        type,
+        status,
+        total,
+        balance,
+        created_at
+      FROM inventory_invoice_order(
+        $1::uuid,
+        $2::uuid,
+        $3::uuid,
+        $4::uuid,
+        $5::uuid,
+        $6::uuid,
+        $7::varchar(20),
+        $8::jsonb
+      )`,
+      [
+        data.tenantId,
+        data.branchId,
+        data.terminalId,
+        data.userId,
+        data.posSessionId,
+        data.orderId,
+        data.type,
+        JSON.stringify(functionPayments),
+      ],
+      client
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  async findPaymentMethodTypesByIds(
+    tenantId: string,
+    paymentMethodIds: string[],
+    client: PoolClient
+  ) {
+    if (paymentMethodIds.length === 0) {
+      return new Map<string, "CASH" | "CARD" | "TRANSFER" | "OTHER">();
+    }
+
+    const result = await this.query<PaymentMethodLookupRow>(
+      `SELECT id, tipo
+       FROM payment_methods
+       WHERE tenant_id = $1
+         AND id = ANY($2::uuid[])`,
+      [tenantId, paymentMethodIds],
+      client
+    );
+
+    return new Map(
+      result.rows.map((row) => {
+        const paymentMethod =
+          row.tipo === "BANK"
+            ? "TRANSFER"
+            : row.tipo === "CASH" || row.tipo === "CARD"
+              ? row.tipo
+              : "OTHER";
+        return [row.id, paymentMethod as "CASH" | "CARD" | "TRANSFER" | "OTHER"];
+      })
+    );
   }
 
   async insertSaleItem(
@@ -519,6 +693,62 @@ export class SaleRepository {
       WHERE id = $1
         AND tenant_id = $2`,
       [saleId, tenantId, total],
+      client
+    );
+  }
+
+  async insertSalePaymentMethod(
+    tenantId: string,
+    saleId: string,
+    payment: {
+      paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      amount: number;
+      reference?: string | null;
+    },
+    client: PoolClient
+  ) {
+    await this.query(
+      `INSERT INTO sale_payment_methods (
+        id,
+        tenant_id,
+        sale_id,
+        payment_method,
+        amount,
+        reference,
+        created_at
+      )
+      VALUES (
+        gen_random_uuid(),
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        NOW()
+      )`,
+      [
+        tenantId,
+        saleId,
+        payment.paymentMethod,
+        payment.amount,
+        payment.reference ?? null,
+      ],
+      client
+    );
+  }
+
+  async updateSaleStatus(
+    saleId: string,
+    tenantId: string,
+    status: SaleRow["status"],
+    client: PoolClient
+  ) {
+    await this.query(
+      `UPDATE sales
+       SET status = $3
+       WHERE id = $1
+         AND tenant_id = $2`,
+      [saleId, tenantId, status],
       client
     );
   }

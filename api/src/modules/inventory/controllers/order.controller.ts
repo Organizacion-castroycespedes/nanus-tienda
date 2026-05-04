@@ -99,6 +99,7 @@ export class OrderController {
   private buildActor(request: AuthRequest) {
     return {
       roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
+      userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
     };

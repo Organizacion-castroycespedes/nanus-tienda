@@ -78,17 +78,26 @@ export class StockMovementService {
   private async getCurrentStock(
     productId: string,
     tenantId: string,
+    branchId?: string | null,
     client?: PoolClient
   ) {
+    const params: unknown[] = [productId, tenantId];
+    let branchFilter = "";
+
+    if (branchId) {
+      params.push(branchId);
+      branchFilter = ` AND branch_id = $${params.length}`;
+    }
+
     const result = await this.query<StockBalanceRow>(
       `
       SELECT
         COALESCE(SUM(quantity) FILTER (WHERE type = 'IN'), 0)
         - COALESCE(SUM(quantity) FILTER (WHERE type = 'OUT'), 0) AS stock
       FROM stock_movements
-      WHERE product_id = $1 AND tenant_id = $2
+      WHERE product_id = $1 AND tenant_id = $2${branchFilter}
       `,
-      [productId, tenantId],
+      params,
       client
     );
 
@@ -135,9 +144,19 @@ export class StockMovementService {
     }
 
     const stockBefore =
-      data.stockBefore ?? (await this.getCurrentStock(data.productId, data.tenantId, client));
+      data.stockBefore ??
+      (await this.getCurrentStock(
+        data.productId,
+        data.tenantId,
+        data.branchId ?? null,
+        client
+      ));
     const delta = data.type === "IN" ? data.quantity : -data.quantity;
     const stockAfter = data.stockAfter ?? stockBefore + delta;
+
+    if (data.type === "OUT" && stockAfter < 0) {
+      throw new BadRequestException("insufficient stock for branch");
+    }
 
     const movement = StockMovementEntity.create({
       ...data,
@@ -232,11 +251,12 @@ export class StockMovementService {
     return createdMovement;
   }
 
-  async getStockByProduct(productId: string, tenantId: string) {
+  async getStockByProduct(productId: string, tenantId: string, branchId?: string | null) {
     return {
       productId,
       tenantId,
-      stock: await this.getCurrentStock(productId, tenantId),
+      branchId: branchId ?? null,
+      stock: await this.getCurrentStock(productId, tenantId, branchId ?? null),
     };
   }
 }

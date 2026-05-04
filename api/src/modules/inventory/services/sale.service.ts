@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -9,6 +10,7 @@ import crypto from "node:crypto";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { CreatePaymentDto } from "../../finance/payments/dto/create-payment.dto";
+import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
 import {
   PaymentsRepository,
   type PaymentAllocationRecord,
@@ -31,13 +33,25 @@ import {
   type CreateSaleInput,
   type SaleRow,
 } from "../repositories/sale.repository";
+import {
+  canViewAllBranches,
+  hasBranchScopedRole,
+  normalizeOptionalFilter,
+  type BranchScopedActor,
+  type BranchScopedFilters,
+} from "../utils/access";
 import { StockMovementService } from "./stock-movement.service";
 
 type SaleListRow = SaleRow & {
+  branch_id: string;
   customer_name: string | null;
 };
 
 type SaleDetailRow = SaleRow & {
+  branch_id: string;
+  terminal_id: string | null;
+  user_id: string | null;
+  pos_session_id: string | null;
   customer_name: string | null;
 };
 
@@ -101,9 +115,30 @@ type SaleContext = {
   roles?: string[];
 };
 
+type SaleStockMovementRow = {
+  id: string;
+  product_id: string;
+  quantity: string | number;
+  branch_id: string | null;
+  terminal_id: string | null;
+  pos_session_code: string | null;
+  user_id: string | null;
+};
+
 type InheritableOrderPayment = {
   payment: PaymentRecord;
   availableAmount: number;
+};
+
+type CreatedPaymentSnapshot = {
+  paymentMethodTipo: string | null;
+  amount: number;
+  reference: string | null;
+};
+
+type InheritedOrderPaymentResult = {
+  inheritedTotal: number;
+  inheritedPayments: CreatedPaymentSnapshot[];
 };
 
 @Injectable()
@@ -114,6 +149,8 @@ export class SaleService {
     @Inject(AuditService) private readonly auditService: AuditService,
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
+    @Inject(FinanceAccessRepository)
+    private readonly financeAccessRepository: FinanceAccessRepository,
     @Inject(PaymentsRepository)
     private readonly paymentsRepository: PaymentsRepository,
     @Inject(PaymentsService)
@@ -148,6 +185,7 @@ export class SaleService {
   private mapSaleSummary(row: SaleListRow | SaleDetailRow) {
     return {
       ...this.mapSale(row),
+      branchId: row.branch_id,
       customer: {
         id: row.customer_id,
         name: row.customer_name ?? null,
@@ -271,6 +309,32 @@ export class SaleService {
     });
   }
 
+  private async buildLegacySalePaymentMethods(
+    tenantId: string,
+    payments: ReturnType<SaleService["normalizePayments"]>,
+    client: PoolClient
+  ) {
+    const paymentMethodIds = [...new Set(payments.map((payment) => payment.paymentMethodId))];
+    const paymentMethodTypes = await this.repository.findPaymentMethodTypesByIds(
+      tenantId,
+      paymentMethodIds,
+      client
+    );
+
+    return payments.map((payment) => {
+      const paymentMethod = paymentMethodTypes.get(payment.paymentMethodId);
+      if (!paymentMethod) {
+        throw new BadRequestException("payment method not found for tenant");
+      }
+
+      return {
+        paymentMethod,
+        amount: payment.amount,
+        reference: payment.referenceNumber ?? payment.notes ?? null,
+      };
+    });
+  }
+
   private buildFinanceActor(context: SaleContext) {
     if (!context.userId || !context.tenantId) {
       throw new UnauthorizedException("Incomplete POS context");
@@ -281,6 +345,84 @@ export class SaleService {
       tenantId: context.tenantId,
       roles: Array.isArray(context.roles) ? context.roles : [],
       sessionId: context.sessionId,
+    };
+  }
+
+  private async resolveAllowedBranchIds(
+    actor: BranchScopedActor,
+    tenantId: string
+  ) {
+    if (canViewAllBranches(actor)) {
+      return undefined;
+    }
+    if (!actor.userId) {
+      throw new ForbiddenException("Usuario requerido");
+    }
+
+    const branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+      actor.userId,
+      tenantId
+    );
+
+    if (branchIds.length > 0) {
+      return branchIds;
+    }
+    if (actor.branchId) {
+      return [actor.branchId];
+    }
+
+    throw new ForbiddenException("Usuario sin sucursales asignadas");
+  }
+
+  private async resolveSaleScope(
+    actor: BranchScopedActor,
+    filters: BranchScopedFilters
+  ) {
+    const requestedTenantId = normalizeOptionalFilter(filters.tenantId);
+    const requestedBranchId = normalizeOptionalFilter(filters.branchId);
+
+    if (actor.roles.includes("SUPER_ADMIN")) {
+      return {
+        tenantId: requestedTenantId,
+        branchId: requestedBranchId,
+        branchIds: undefined as string[] | undefined,
+      };
+    }
+
+    if (!actor.tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+    if (requestedTenantId && requestedTenantId !== actor.tenantId) {
+      throw new ForbiddenException("No autorizado para otro tenant");
+    }
+
+    const tenantId = actor.tenantId;
+    const allowedBranchIds = await this.resolveAllowedBranchIds(actor, tenantId);
+
+    if (
+      requestedBranchId &&
+      (allowedBranchIds?.length ?? 0) > 0 &&
+      !allowedBranchIds?.includes(requestedBranchId)
+    ) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
+    }
+
+    if (hasBranchScopedRole(actor) && actor.branchId) {
+      if (requestedBranchId && requestedBranchId !== actor.branchId) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+
+      return {
+        tenantId,
+        branchId: actor.branchId,
+        branchIds: [actor.branchId],
+      };
+    }
+
+    return {
+      tenantId,
+      branchId: requestedBranchId,
+      branchIds: allowedBranchIds,
     };
   }
 
@@ -352,8 +494,11 @@ export class SaleService {
     saleId: string,
     saleTotal: number,
     client: PoolClient
-  ) {
+  ): Promise<InheritedOrderPaymentResult> {
     const orderPayments = await this.listInheritableOrderPayments(tenantId, orderId, client);
+    const paymentById = new Map(
+      orderPayments.map((item) => [item.payment.id, item.payment] as const)
+    );
     const allocations = await this.paymentsRepository.listAllocationsByPaymentIds(
       orderPayments.map((item) => item.payment.id),
       client
@@ -375,6 +520,10 @@ export class SaleService {
 
     let remaining = this.roundCurrency(saleTotal);
     let inheritedTotal = 0;
+    const inheritedByPaymentId = new Map<
+      string,
+      { paymentMethodTipo: string | null; amount: number; reference: string | null }
+    >();
 
     for (const allocation of orderAllocations) {
       if (remaining <= 0) {
@@ -409,11 +558,294 @@ export class SaleService {
         ]);
       }
 
+      const sourcePayment = paymentById.get(allocation.payment_id);
+      if (sourcePayment) {
+        const current = inheritedByPaymentId.get(allocation.payment_id);
+        inheritedByPaymentId.set(allocation.payment_id, {
+          paymentMethodTipo: sourcePayment.payment_method_tipo,
+          amount: this.roundCurrency((current?.amount ?? 0) + allocatedAmount),
+          reference:
+            sourcePayment.reference_number ?? sourcePayment.notes ?? current?.reference ?? null,
+        });
+      }
+
       inheritedTotal = this.roundCurrency(inheritedTotal + allocatedAmount);
       remaining = this.roundCurrency(remaining - allocatedAmount);
     }
 
-    return inheritedTotal;
+    return {
+      inheritedTotal,
+      inheritedPayments: Array.from(inheritedByPaymentId.values()).filter(
+        (payment) => payment.amount > 0
+      ),
+    };
+  }
+
+  private determineConfirmedStatus(
+    total: number,
+    totalPaid: number
+  ): "CONFIRMED" {
+    return totalPaid > 0 ? "CONFIRMED" : "CONFIRMED";
+  }
+
+  private determineCancelledStatus(
+    hasRefundedPayments: boolean
+  ): "CANCELLED" | "REFUNDED" {
+    return hasRefundedPayments ? "REFUNDED" : "CANCELLED";
+  }
+
+  private mapLegacySalePaymentMethod(
+    paymentMethodType: string | null
+  ): "CASH" | "CARD" | "TRANSFER" | "OTHER" {
+    switch (paymentMethodType) {
+      case "CASH":
+        return "CASH";
+      case "CARD":
+        return "CARD";
+      case "BANK":
+        return "TRANSFER";
+      default:
+        return "OTHER";
+    }
+  }
+
+  private async persistSalePaymentMethods(
+    tenantId: string,
+    saleId: string,
+    payments: CreatedPaymentSnapshot[],
+    client: PoolClient
+  ) {
+    for (const payment of payments) {
+      await this.repository.insertSalePaymentMethod(
+        tenantId,
+        saleId,
+        {
+          paymentMethod: this.mapLegacySalePaymentMethod(payment.paymentMethodTipo),
+          amount: payment.amount,
+          reference: payment.reference,
+        },
+        client
+      );
+    }
+  }
+
+  private async finalizeSale(
+    saleId: string,
+    tenantId: string,
+    total: number,
+    client: PoolClient
+  ) {
+    await this.paymentsRepository.syncSaleFinancialState(client, saleId, tenantId);
+    const financialState = await client.query<{
+      total_paid: string | number;
+    }>(
+      `
+        SELECT total_paid
+        FROM sales
+        WHERE id = $1
+          AND tenant_id = $2
+        LIMIT 1
+      `,
+      [saleId, tenantId]
+    );
+    const totalPaid = this.toNumber(financialState.rows[0]?.total_paid ?? 0);
+
+    await this.repository.updateSaleStatus(
+      saleId,
+      tenantId,
+      this.determineConfirmedStatus(total, totalPaid),
+      client
+    );
+  }
+
+  private async finalizeCancelledSale(
+    saleId: string,
+    tenantId: string,
+    status: "CANCELLED" | "REFUNDED",
+    client: PoolClient
+  ) {
+    await client.query(
+      `
+        UPDATE sales
+        SET
+          status = $3,
+          total_paid = 0,
+          balance = 0,
+          balance_due = 0,
+          payment_status = 'PENDING'
+        WHERE id = $1
+          AND tenant_id = $2
+      `,
+      [saleId, tenantId, status]
+    );
+  }
+
+  private async validateInvoiceableOrder(
+    tenantId: string,
+    orderId: string,
+    client: PoolClient
+  ) {
+    const orderResult = await client.query<InvoiceableOrderRow>(
+      `
+        SELECT id, customer_id, type
+        FROM orders
+        WHERE id = $1
+          AND tenant_id = $2
+          AND status IN ('PARTIAL', 'COMPLETED')
+        LIMIT 1
+      `,
+      [orderId, tenantId]
+    );
+    const order = orderResult.rows[0];
+    if (!order) {
+      throw new BadRequestException("order not found or not ready for invoicing");
+    }
+
+    const validCustomer = await this.repository.validateCustomer(
+      tenantId,
+      order.customer_id,
+      client
+    );
+    if (!validCustomer) {
+      throw new BadRequestException("customer not found for tenant");
+    }
+
+    return order;
+  }
+
+  private async getInvoiceableOrderItems(orderId: string, client: PoolClient) {
+    const itemsResult = await client.query<InvoiceableOrderItemRow>(
+      `
+        SELECT
+          oi.id,
+          oi.product_id,
+          oi.delivered_quantity,
+          COALESCE(oi.billed_quantity, 0) AS billed_quantity,
+          oi.price
+        FROM order_items oi
+        WHERE oi.order_id = $1
+          AND oi.delivered_quantity > COALESCE(oi.billed_quantity, 0)
+        ORDER BY oi.id
+        FOR UPDATE
+      `,
+      [orderId]
+    );
+    if (itemsResult.rows.length === 0) {
+      throw new BadRequestException("order has no delivered items pending invoicing");
+    }
+
+    return itemsResult.rows;
+  }
+
+  private async createSaleItemsFromOrderDelivery(
+    saleId: string,
+    tenantId: string,
+    orderItems: InvoiceableOrderItemRow[],
+    client: PoolClient
+  ) {
+    let total = 0;
+
+    for (const item of orderItems) {
+      const quantity = this.roundCurrency(
+        this.toNumber(item.delivered_quantity) - this.toNumber(item.billed_quantity)
+      );
+      if (quantity <= 0) {
+        continue;
+      }
+
+      const price = this.roundCurrency(this.toNumber(item.price));
+      const product = await this.repository.getProductForSale(
+        tenantId,
+        item.product_id,
+        client
+      );
+      if (!product) {
+        throw new BadRequestException("product not found for tenant");
+      }
+
+      const taxRate = this.toNumber(product.tax_rate ?? 0);
+      const priceWithoutTax =
+        taxRate > 0 ? this.roundCurrency(price / (1 + taxRate)) : price;
+      const taxTotal =
+        taxRate > 0
+          ? this.roundCurrency((price - priceWithoutTax) * quantity)
+          : 0;
+      const subtotal = this.roundCurrency(price * quantity);
+      total = this.roundCurrency(total + subtotal);
+
+      const saleItemId = await this.repository.insertSaleItem(
+        saleId,
+        tenantId,
+        {
+          productId: item.product_id,
+          orderItemId: item.id,
+          quantity,
+          price,
+          priceWithoutTax,
+          taxTotal,
+          subtotal,
+        },
+        client
+      );
+
+      if (product.tax_id && product.tax_name) {
+        await this.repository.insertSaleItemTax(
+          tenantId,
+          saleItemId,
+          {
+            taxId: product.tax_id,
+            taxName: product.tax_name,
+            taxRate,
+            taxAmount: taxTotal,
+            isIncluded: product.tax_is_included ?? false,
+          },
+          client
+        );
+      }
+
+      await this.repository.updateOrderItemBilledQuantity(item.id, quantity, client);
+    }
+
+    return total;
+  }
+
+  private async createSalePayments(
+    saleId: string,
+    saleContext: Awaited<ReturnType<SaleService["normalizeSaleContext"]>>,
+    payments: ReturnType<SaleService["normalizePayments"]>,
+    inheritedPayments: CreatedPaymentSnapshot[],
+    client: PoolClient
+  ) {
+    const createdPayments: CreatedPaymentSnapshot[] = [...inheritedPayments];
+
+    for (const payment of payments) {
+      const payload = Object.assign(new CreatePaymentDto(), {
+        branchId: saleContext.branchId,
+        paymentMethodId: payment.paymentMethodId,
+        cashSessionId: payment.cashSessionId,
+        referenceType: "SALE",
+        referenceId: saleId,
+        direction: "IN",
+        status: "COMPLETED",
+        amount: payment.amount,
+        referenceNumber: payment.referenceNumber,
+        notes: payment.notes,
+      });
+
+      const createdPayment = await this.paymentsService.createInTransaction(
+        payload,
+        this.buildFinanceActor(saleContext),
+        client
+      );
+
+      createdPayments.push({
+        paymentMethodTipo: createdPayment.paymentMethodTipo,
+        amount: createdPayment.amount,
+        reference: createdPayment.referenceNumber ?? createdPayment.notes ?? null,
+      });
+    }
+
+    return createdPayments;
   }
 
   async createSale(
@@ -454,166 +886,24 @@ export class SaleService {
         }
       }
 
-      const saleRow = await this.repository.createSale(
+      const payments = this.normalizePayments(data.payments);
+      const legacyPaymentMethods = await this.buildLegacySalePaymentMethods(
+        saleContext.tenantId,
+        payments,
+        client
+      );
+
+      const saleRow = await this.repository.createSaleWithFunction(
         {
           ...data,
           ...saleContext,
         },
+        legacyPaymentMethods,
         client
       );
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
       }
-
-      let total = 0;
-      const createdMovements: StockMovementEntity[] = [];
-
-      for (const item of data.items) {
-        const quantity = this.roundCurrency(Number(item.quantity));
-        const price = this.roundCurrency(Number(item.price));
-
-        if (!item.productId) {
-          throw new BadRequestException("productId is required");
-        }
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-          throw new BadRequestException("quantity must be a positive number");
-        }
-        if (!Number.isFinite(price) || price < 0) {
-          throw new BadRequestException("price must be a non-negative number");
-        }
-
-        const product = await this.repository.getProductForSale(
-          saleContext.tenantId,
-          item.productId,
-          client
-        );
-        if (!product) {
-          throw new BadRequestException("product not found for tenant");
-        }
-
-        if (item.orderItemId) {
-          if (!data.orderId) {
-            throw new BadRequestException(
-              "orderId is required when orderItemId is provided"
-            );
-          }
-
-          const orderItem = await this.repository.getOrderItemForUpdate(
-            saleContext.tenantId,
-            data.orderId,
-            item.orderItemId,
-            client
-          );
-          if (!orderItem) {
-            throw new BadRequestException("order item not found for order and tenant");
-          }
-
-          const remainingOrderQuantity =
-            this.toNumber(orderItem.ordered_quantity) -
-            this.toNumber(orderItem.delivered_quantity);
-          if (quantity > remainingOrderQuantity) {
-            throw new BadRequestException(
-              `sale quantity exceeds pending quantity for order item ${item.orderItemId}`
-            );
-          }
-        } else if (data.orderId) {
-          throw new BadRequestException(
-            "orderItemId is required for sale items linked to an order"
-          );
-        }
-
-        const availableStock = await this.repository.getAvailableStock(
-          saleContext.tenantId,
-          item.productId,
-          client
-        );
-        if (availableStock < quantity) {
-          throw new BadRequestException(
-            `insufficient stock for product ${item.productId}`
-          );
-        }
-
-        const taxRate = this.toNumber(product.tax_rate ?? 0);
-        const priceWithoutTax =
-          taxRate > 0 ? this.roundCurrency(price / (1 + taxRate)) : price;
-        const taxTotal =
-          taxRate > 0
-            ? this.roundCurrency((price - priceWithoutTax) * quantity)
-            : 0;
-        const subtotal = this.roundCurrency(price * quantity);
-        total = this.roundCurrency(total + subtotal);
-
-        const saleItemId = await this.repository.insertSaleItem(
-          saleRow.id,
-          saleContext.tenantId,
-          {
-            productId: item.productId,
-            orderItemId: item.orderItemId ?? null,
-            quantity,
-            price,
-            priceWithoutTax,
-            taxTotal,
-            subtotal,
-          },
-          client
-        );
-
-        if (product.tax_id && product.tax_name) {
-          await this.repository.insertSaleItemTax(
-            saleContext.tenantId,
-            saleItemId,
-            {
-              taxId: product.tax_id,
-              taxName: product.tax_name,
-              taxRate,
-              taxAmount: taxTotal,
-              isIncluded: product.tax_is_included ?? false,
-            },
-            client
-          );
-        }
-
-        const movement = await this.stockMovementService.createMovement(
-          {
-            id: crypto.randomUUID(),
-            tenantId: saleContext.tenantId,
-            productId: item.productId,
-            type: "OUT",
-            quantity,
-            referenceType: "SALE",
-            referenceId: saleRow.id,
-            branchId: saleContext.branchId,
-            terminalId: saleContext.terminalId,
-            posSessionCode: saleContext.posSessionId,
-            userId: saleContext.userId,
-            referenceTable: "sales",
-            createdAt: new Date(),
-          },
-          client
-        );
-        createdMovements.push(movement);
-
-        if (item.orderItemId) {
-          await this.repository.updateOrderItemDeliveredQuantity(
-            item.orderItemId,
-            quantity,
-            client
-          );
-          await this.repository.updateOrderItemBilledQuantity(
-            item.orderItemId,
-            quantity,
-            client
-          );
-        }
-      }
-
-      const payments = this.normalizePayments(data.payments);
-      await this.repository.initializeSaleFinancials(
-        saleRow.id,
-        saleContext.tenantId,
-        total,
-        client
-      );
 
       for (const payment of payments) {
         const payload = Object.assign(new CreatePaymentDto(), {
@@ -629,25 +919,21 @@ export class SaleService {
           notes: payment.notes,
         });
 
-        await this.paymentsService.createInTransaction(
+        const createdPayment = await this.paymentsService.createInTransaction(
           payload,
           this.buildFinanceActor(saleContext),
           client
         );
       }
 
-      if (data.orderId) {
-        await this.repository.refreshOrderStatus(
-          data.orderId,
-          saleContext.tenantId,
-          client
-        );
-      }
+      await this.finalizeSale(
+        saleRow.id,
+        saleContext.tenantId,
+        this.toNumber(saleRow.total),
+        client
+      );
 
       await client.query("COMMIT");
-      createdMovements.forEach((movement) =>
-        this.stockMovementService.logMovementAuditEvent(movement)
-      );
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -688,196 +974,20 @@ export class SaleService {
         throw new UnauthorizedException("POS session is invalid");
       }
 
-      const orderResult = await client.query<InvoiceableOrderRow>(
-        `
-          SELECT id, customer_id, type
-          FROM orders
-          WHERE id = $1
-            AND tenant_id = $2
-            AND status IN ('PARTIAL', 'COMPLETED')
-          LIMIT 1
-        `,
-        [data.orderId, saleContext.tenantId]
-      );
-      const order = orderResult.rows[0];
-      if (!order) {
-        throw new BadRequestException("order not found or not ready for invoicing");
-      }
+      await this.validateInvoiceableOrder(saleContext.tenantId, data.orderId, client);
+      const payments = this.normalizePayments(data.payments);
 
-      const validCustomer = await this.repository.validateCustomer(
-        saleContext.tenantId,
-        order.customer_id,
-        client
-      );
-      if (!validCustomer) {
-        throw new BadRequestException("customer not found for tenant");
-      }
-
-      const itemsResult = await client.query<InvoiceableOrderItemRow>(
-        `
-          SELECT
-            oi.id,
-            oi.product_id,
-            oi.delivered_quantity,
-            COALESCE(oi.billed_quantity, 0) AS billed_quantity,
-            oi.price
-          FROM order_items oi
-          WHERE oi.order_id = $1
-            AND oi.delivered_quantity > COALESCE(oi.billed_quantity, 0)
-          ORDER BY oi.id
-          FOR UPDATE
-        `,
-        [data.orderId]
-      );
-      if (itemsResult.rows.length === 0) {
-        throw new BadRequestException("order has no delivered items pending invoicing");
-      }
-
-      const saleRow = await this.repository.createSale(
+      const saleRow = await this.repository.invoiceOrderWithFunction(
         {
-          tenantId: saleContext.tenantId,
-          branchId: saleContext.branchId,
-          terminalId: saleContext.terminalId,
-          userId: saleContext.userId,
-          posSessionId: saleContext.posSessionId,
-          customerId: order.customer_id,
+          ...saleContext,
           orderId: data.orderId,
           type: data.type,
-          items: [],
-          payments: data.payments ?? [],
+          payments,
         },
         client
       );
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
-      }
-
-      let total = 0;
-      for (const item of itemsResult.rows) {
-        const quantity = this.roundCurrency(
-          this.toNumber(item.delivered_quantity) - this.toNumber(item.billed_quantity)
-        );
-        if (quantity <= 0) {
-          continue;
-        }
-
-        const price = this.roundCurrency(this.toNumber(item.price));
-        const product = await this.repository.getProductForSale(
-          saleContext.tenantId,
-          item.product_id,
-          client
-        );
-        if (!product) {
-          throw new BadRequestException("product not found for tenant");
-        }
-
-        const taxRate = this.toNumber(product.tax_rate ?? 0);
-        const priceWithoutTax =
-          taxRate > 0 ? this.roundCurrency(price / (1 + taxRate)) : price;
-        const taxTotal =
-          taxRate > 0
-            ? this.roundCurrency((price - priceWithoutTax) * quantity)
-            : 0;
-        const subtotal = this.roundCurrency(price * quantity);
-        total = this.roundCurrency(total + subtotal);
-
-        const saleItemId = await this.repository.insertSaleItem(
-          saleRow.id,
-          saleContext.tenantId,
-          {
-            productId: item.product_id,
-            orderItemId: item.id,
-            quantity,
-            price,
-            priceWithoutTax,
-            taxTotal,
-            subtotal,
-          },
-          client
-        );
-
-        if (product.tax_id && product.tax_name) {
-          await this.repository.insertSaleItemTax(
-            saleContext.tenantId,
-            saleItemId,
-            {
-              taxId: product.tax_id,
-              taxName: product.tax_name,
-              taxRate,
-              taxAmount: taxTotal,
-              isIncluded: product.tax_is_included ?? false,
-            },
-            client
-          );
-        }
-
-        await this.repository.updateOrderItemBilledQuantity(item.id, quantity, client);
-      }
-
-      const payments = this.normalizePayments(data.payments);
-      await this.repository.initializeSaleFinancials(
-        saleRow.id,
-        saleContext.tenantId,
-        total,
-        client
-      );
-
-      const inheritedTotal = await this.applyInheritedOrderPaymentsToSale(
-        saleContext.tenantId,
-        data.orderId,
-        saleRow.id,
-        total,
-        client
-      );
-
-      await this.paymentsRepository.syncOrderFinancialState(
-        client,
-        data.orderId,
-        saleContext.tenantId
-      );
-
-      await this.paymentsRepository.syncSaleFinancialState(
-        client,
-        saleRow.id,
-        saleContext.tenantId
-      );
-
-      const paymentsTotal = this.roundCurrency(
-        payments.reduce((sum, payment) => sum + payment.amount, 0)
-      );
-      const coveredTotal = this.roundCurrency(inheritedTotal + paymentsTotal);
-
-      if (data.type === "CASH" && coveredTotal !== this.roundCurrency(total)) {
-        throw new BadRequestException(
-          "Las ventas CASH generadas desde orden deben quedar totalmente cubiertas entre abonos heredados y pagos nuevos"
-        );
-      }
-
-      if (coveredTotal > this.roundCurrency(total)) {
-        throw new BadRequestException(
-          "Los pagos heredados y nuevos no pueden superar el total a facturar"
-        );
-      }
-
-      for (const payment of payments) {
-        const payload = Object.assign(new CreatePaymentDto(), {
-          branchId: saleContext.branchId,
-          paymentMethodId: payment.paymentMethodId,
-          cashSessionId: payment.cashSessionId,
-          referenceType: "SALE",
-          referenceId: saleRow.id,
-          direction: "IN",
-          status: "COMPLETED",
-          amount: payment.amount,
-          referenceNumber: payment.referenceNumber,
-          notes: payment.notes,
-        });
-
-        await this.paymentsService.createInTransaction(
-          payload,
-          this.buildFinanceActor(saleContext),
-          client
-        );
       }
 
       await client.query("COMMIT");
@@ -898,13 +1008,28 @@ export class SaleService {
       client.release();
     }
   }
+  async getSales(actor: BranchScopedActor) {
+    const scope = await this.resolveSaleScope(actor, {
+      tenantId: actor.tenantId,
+      branchId: actor.branchId,
+    });
+    const params: unknown[] = [scope.tenantId];
+    const where = [`s.tenant_id = $1`];
 
-  async getSales(tenantId: string) {
+    if (scope.branchId) {
+      params.push(scope.branchId);
+      where.push(`s.branch_id = $${params.length}`);
+    } else if ((scope.branchIds?.length ?? 0) > 0) {
+      params.push(scope.branchIds);
+      where.push(`s.branch_id = ANY($${params.length}::uuid[])`);
+    }
+
     const result = (await this.db.query(
       `
         SELECT
           s.id,
           s.tenant_id,
+          s.branch_id,
           s.customer_id,
           s.order_id,
           s.type,
@@ -920,21 +1045,31 @@ export class SaleService {
         LEFT JOIN customers c
           ON c.id = s.customer_id
          AND c.tenant_id = s.tenant_id
-        WHERE s.tenant_id = $1
+        WHERE ${where.join("\n          AND ")}
         ORDER BY s.created_at DESC, s.id DESC
       `,
-      [tenantId]
+      params
     )) as { rows: SaleListRow[] };
 
     return result.rows.map((row) => this.mapSaleSummary(row));
   }
 
-  async getSaleById(id: string, tenantId: string) {
+  async getSaleById(id: string, actorOrTenantId: BranchScopedActor | string) {
+    const tenantId =
+      typeof actorOrTenantId === "string" ? actorOrTenantId : actorOrTenantId.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+
     const saleResult = (await this.db.query(
       `
         SELECT
           s.id,
           s.tenant_id,
+          s.branch_id,
+          s.terminal_id,
+          s.user_id,
+          s.pos_session_id,
           s.customer_id,
           s.order_id,
           s.type,
@@ -960,6 +1095,13 @@ export class SaleService {
     const saleRow = saleResult.rows[0];
     if (!saleRow) {
       throw new NotFoundException("sale not found");
+    }
+
+    if (typeof actorOrTenantId !== "string") {
+      await this.resolveSaleScope(actorOrTenantId, {
+        tenantId,
+        branchId: saleRow.branch_id,
+      });
     }
 
     const [itemsResult, itemTaxesResult, paymentMethodsResult] = await Promise.all([
@@ -1053,22 +1195,233 @@ export class SaleService {
     };
   }
 
-  async cancelSale(id: string, tenantId: string) {
-    const result = (await this.db.query(
-      `
-        SELECT *
-        FROM inventory_cancel_sale(
-          $1::uuid,
-          $2::uuid
-        )
-      `,
-      [id, tenantId]
-    )) as { rows: SaleRow[] };
+  async cancelSale(id: string, actor: BranchScopedActor) {
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
 
-    if (!result.rows[0]) {
-      throw new NotFoundException("sale not found");
+      const saleResult = await client.query<SaleDetailRow>(
+        `
+          SELECT
+            s.id,
+            s.tenant_id,
+            s.branch_id,
+            s.terminal_id,
+            s.user_id,
+            s.pos_session_id,
+            s.customer_id,
+            s.order_id,
+            s.type,
+            s.status,
+            s.total,
+            s.balance,
+            s.payment_status,
+            s.total_paid,
+            s.balance_due,
+            s.created_at,
+            c.name AS customer_name
+          FROM sales s
+          LEFT JOIN customers c
+            ON c.id = s.customer_id
+           AND c.tenant_id = s.tenant_id
+          WHERE s.id = $1
+            AND s.tenant_id = $2
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [id, actor.tenantId]
+      );
+
+      const sale = saleResult.rows[0];
+      if (!sale) {
+        throw new NotFoundException("sale not found");
+      }
+
+      await this.resolveSaleScope(actor, {
+        tenantId: sale.tenant_id,
+        branchId: sale.branch_id,
+      });
+
+      if (sale.status === "CANCELLED" || sale.status === "REFUNDED") {
+        await client.query("COMMIT");
+        return this.mapSale(sale);
+      }
+
+      if (sale.status !== "DRAFT" && sale.status !== "CONFIRMED") {
+        throw new BadRequestException("sale cannot be cancelled in its current status");
+      }
+
+      const saleItemsResult = await client.query<SaleItemRow>(
+        `
+          SELECT
+            id,
+            tenant_id,
+            sale_id,
+            product_id,
+            order_item_id,
+            quantity,
+            price,
+            price_without_tax,
+            tax_total,
+            subtotal,
+            created_at
+          FROM sale_items
+          WHERE sale_id = $1
+            AND tenant_id = $2
+          ORDER BY created_at ASC, id ASC
+        `,
+        [id, sale.tenant_id]
+      );
+
+      const stockMovementsResult = await client.query<SaleStockMovementRow>(
+        `
+          SELECT
+            id,
+            product_id,
+            quantity,
+            branch_id,
+            terminal_id,
+            pos_session_code,
+            user_id
+          FROM stock_movements
+          WHERE tenant_id = $1
+            AND reference_type = 'SALE'
+            AND reference_id = $2
+            AND reference_table = 'sales'
+            AND type = 'OUT'
+          ORDER BY created_at ASC, id ASC
+        `,
+        [sale.tenant_id, id]
+      );
+
+      const movementByProduct = new Map<string, SaleStockMovementRow[]>();
+      for (const movement of stockMovementsResult.rows) {
+        const current = movementByProduct.get(movement.product_id) ?? [];
+        current.push(movement);
+        movementByProduct.set(movement.product_id, current);
+      }
+
+      for (const item of saleItemsResult.rows) {
+        const originalMovements = movementByProduct.get(item.product_id) ?? [];
+        const originalMovement = originalMovements.shift();
+
+        if (originalMovement) {
+          await this.stockMovementService.createMovement(
+            {
+              id: crypto.randomUUID(),
+              tenantId: sale.tenant_id,
+              productId: item.product_id,
+              type: "IN",
+              quantity: this.toNumber(item.quantity),
+              referenceType: "SALE",
+              referenceId: id,
+              branchId: originalMovement.branch_id,
+              terminalId: originalMovement.terminal_id,
+              posSessionCode: originalMovement.pos_session_code,
+              userId: actor.userId ?? sale.user_id ?? null,
+              referenceTable: "sales",
+              createdAt: new Date(),
+            },
+            client
+          );
+        }
+
+        if (sale.order_id && item.order_item_id) {
+          await client.query(
+            `
+              UPDATE order_items
+              SET
+                billed_quantity = GREATEST(COALESCE(billed_quantity, 0) - $2, 0),
+                delivered_quantity = CASE
+                  WHEN $3 THEN GREATEST(delivered_quantity - $2, 0)
+                  ELSE delivered_quantity
+                END
+              WHERE id = $1
+            `,
+            [item.order_item_id, this.toNumber(item.quantity), Boolean(originalMovement)]
+          );
+        }
+      }
+
+      const allocatedPayments = await this.paymentsRepository.listAllocatedPayments(
+        sale.tenant_id,
+        "SALE",
+        id,
+        client
+      );
+
+      let hasRefundedPayments = false;
+
+      for (const payment of allocatedPayments) {
+        const saleAllocations = (await this.paymentsRepository.listAllocationsByPaymentIds(
+          [payment.id],
+          client
+        )).filter(
+          (allocation) =>
+            allocation.reference_type === "SALE" && allocation.reference_id === id
+        );
+
+        if (sale.order_id && payment.reference_type === "SALES_ORDER") {
+          for (const allocation of saleAllocations) {
+            await this.paymentsRepository.updateAllocation(client, allocation.id, {
+              referenceType: "SALES_ORDER",
+              referenceId: sale.order_id,
+            });
+          }
+          await this.paymentsRepository.syncOrderFinancialState(
+            client,
+            sale.order_id,
+            sale.tenant_id
+          );
+          continue;
+        }
+
+        if (payment.status === "COMPLETED" || payment.status === "PENDING") {
+          if (payment.status === "COMPLETED") {
+            hasRefundedPayments = true;
+          }
+
+          await this.paymentsRepository.updatePaymentStatus(
+            client,
+            payment.id,
+            payment.status === "COMPLETED" ? "REFUNDED" : "CANCELLED"
+          );
+
+          if (payment.status === "COMPLETED" && payment.cash_session_id) {
+            await this.paymentsRepository.createCashRefundMovement(
+              client,
+              payment,
+              {
+                tenantId: sale.tenant_id,
+                branchId: payment.branch_id,
+                cashSessionId: payment.cash_session_id,
+                amount: this.toNumber(payment.amount),
+                createdBy: actor.userId ?? sale.user_id ?? payment.created_by,
+                referenceId: id,
+              }
+            );
+          }
+        }
+
+        for (const allocation of saleAllocations) {
+          await this.paymentsRepository.deleteAllocation(client, allocation.id);
+        }
+      }
+
+      if (sale.order_id) {
+        await this.repository.refreshOrderStatus(sale.order_id, sale.tenant_id, client);
+      }
+
+      const nextStatus = this.determineCancelledStatus(hasRefundedPayments);
+      await this.finalizeCancelledSale(id, sale.tenant_id, nextStatus, client);
+
+      await client.query("COMMIT");
+      return this.getSaleById(id, sale.tenant_id);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-
-    return this.mapSale(result.rows[0]);
   }
 }
