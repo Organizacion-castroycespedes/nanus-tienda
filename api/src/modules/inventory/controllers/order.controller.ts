@@ -12,8 +12,10 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { OrderService } from "../services/order.service";
 
@@ -71,7 +73,7 @@ type InvoiceOrderBody = {
 };
 
 @Controller("orders")
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class OrderController {
   constructor(
     @Inject(OrderService)
@@ -107,6 +109,7 @@ export class OrderController {
 
   @Post()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   create(@Body() body: CreateOrderBody, @Req() request: AuthRequest) {
     return this.orderService.createOrder({
       tenantId: this.getTenantId(request),
@@ -122,6 +125,7 @@ export class OrderController {
 
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "READ" })
   list(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
@@ -138,6 +142,7 @@ export class OrderController {
 
   @Get(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.orderService.getOrderById(
       id,
@@ -148,6 +153,7 @@ export class OrderController {
 
   @Put(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   update(
     @Param("id") id: string,
     @Body() body: UpdateOrderBody,
@@ -170,6 +176,7 @@ export class OrderController {
 
   @Post(":id/deliver")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   deliver(
     @Param("id") id: string,
     @Body() body: DeliverOrderBody,
@@ -189,6 +196,7 @@ export class OrderController {
 
   @Post(":id/confirm")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   confirm(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.orderService.confirmOrder(
       id,
@@ -200,6 +208,7 @@ export class OrderController {
 
   @Post(":id/invoice")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   invoice(
     @Param("id") id: string,
     @Body() body: InvoiceOrderBody,
@@ -219,6 +228,7 @@ export class OrderController {
 
   @Post(":id/cancel")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.orderService.cancelOrder(
       id,

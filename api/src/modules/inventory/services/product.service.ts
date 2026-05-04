@@ -113,14 +113,15 @@ export class ProductService {
     });
   }
 
-  async listProducts(tenantId: string) {
+  async listProducts(tenantId: string, branchId: string) {
     const products = await this.productRepository.findAllByTenant(tenantId);
 
     return Promise.all(
       products.map(async (product) => {
         const stockResult = await this.stockMovementService.getStockByProduct(
           product.id,
-          tenantId
+          tenantId,
+          branchId
         );
 
         return {
@@ -139,11 +140,12 @@ export class ProductService {
     return product;
   }
 
-  async getProductWithStock(id: string, tenantId: string) {
+  async getProductWithStock(id: string, tenantId: string, branchId: string) {
     const product = await this.getProductById(id, tenantId);
     const stockResult = await this.stockMovementService.getStockByProduct(
       id,
-      tenantId
+      tenantId,
+      branchId
     );
 
     return {

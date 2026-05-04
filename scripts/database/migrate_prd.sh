@@ -205,6 +205,12 @@ function_files=(
   "products/2026_05_01_inventory_dashboard.sql"
 )
 
+readarray -t incremental_migration_files < <(
+  find "${SCRIPT_DIR}/migrations" -maxdepth 1 -type f -name '*.sql' | sort | while read -r file_path; do
+    basename "$file_path"
+  done
+)
+
 minimal_seed_files=(
   "011_prd_default_customer.sql"
 )
@@ -240,6 +246,11 @@ done
 echo "Running functions..."
 for sql_file in "${function_files[@]}"; do
   apply_sql_file "$sql_file"
+done
+
+echo "Running incremental migrations..."
+for sql_file in "${incremental_migration_files[@]}"; do
+  apply_sql_file "migrations/${sql_file}"
 done
 
 echo "Running minimal seed (consumer)..."

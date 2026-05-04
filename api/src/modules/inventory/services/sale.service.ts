@@ -1353,12 +1353,17 @@ export class SaleService {
       let hasRefundedPayments = false;
 
       for (const payment of allocatedPayments) {
-        const saleAllocations = (await this.paymentsRepository.listAllocationsByPaymentIds(
+        const paymentAllocations = await this.paymentsRepository.listAllocationsByPaymentIds(
           [payment.id],
           client
-        )).filter(
+        );
+        const saleAllocations = paymentAllocations.filter(
           (allocation) =>
             allocation.reference_type === "SALE" && allocation.reference_id === id
+        );
+        const refundedAmount = saleAllocations.reduce(
+          (sum, allocation) => sum + this.toNumber(allocation.allocated_amount),
+          0
         );
 
         if (sale.order_id && payment.reference_type === "SALES_ORDER") {
@@ -1376,35 +1381,68 @@ export class SaleService {
           continue;
         }
 
-        if (payment.status === "COMPLETED" || payment.status === "PENDING") {
+        if (refundedAmount > 0 && (payment.status === "COMPLETED" || payment.status === "PENDING")) {
           if (payment.status === "COMPLETED") {
             hasRefundedPayments = true;
-          }
+            const refundPayment = await this.paymentsRepository.createPayment(client, {
+              tenantId: sale.tenant_id,
+              branchId: payment.branch_id,
+              paymentMethodId: payment.payment_method_id,
+              cashSessionId: payment.cash_session_id,
+              referenceType: "REFUND",
+              referenceId: id,
+              direction: "OUT",
+              status: "COMPLETED",
+              amount: refundedAmount,
+              referenceNumber: payment.reference_number,
+              notes: `Refund for cancelled sale ${id}`,
+              createdBy: actor.userId ?? sale.user_id ?? payment.created_by,
+            });
 
-          await this.paymentsRepository.updatePaymentStatus(
-            client,
-            payment.id,
-            payment.status === "COMPLETED" ? "REFUNDED" : "CANCELLED"
-          );
+            if (!refundPayment) {
+              throw new BadRequestException("refund payment could not be created");
+            }
 
-          if (payment.status === "COMPLETED" && payment.cash_session_id) {
-            await this.paymentsRepository.createCashRefundMovement(
-              client,
-              payment,
+            await this.paymentsRepository.createAllocations(client, refundPayment.id, [
               {
+                referenceType: "SALE",
+                referenceId: id,
+                allocatedAmount: refundedAmount,
+              },
+            ]);
+
+            if (payment.cash_session_id) {
+              await this.paymentsRepository.createCashRefundMovement(client, {
                 tenantId: sale.tenant_id,
                 branchId: payment.branch_id,
                 cashSessionId: payment.cash_session_id,
-                amount: this.toNumber(payment.amount),
+                paymentId: refundPayment.id,
+                amount: refundedAmount,
                 createdBy: actor.userId ?? sale.user_id ?? payment.created_by,
                 referenceId: id,
-              }
-            );
+                description: `Refund sale ${id} from payment ${payment.id}`,
+              });
+            }
           }
         }
 
         for (const allocation of saleAllocations) {
           await this.paymentsRepository.deleteAllocation(client, allocation.id);
+        }
+
+        const remainingAllocations = paymentAllocations.filter(
+          (allocation) => !saleAllocations.some((saleAllocation) => saleAllocation.id === allocation.id)
+        );
+        const paymentAmount = this.toNumber(payment.amount);
+
+        if (payment.status === "PENDING" && remainingAllocations.length === 0) {
+          await this.paymentsRepository.updatePaymentStatus(client, payment.id, "CANCELLED");
+        } else if (
+          payment.status === "COMPLETED" &&
+          remainingAllocations.length === 0 &&
+          refundedAmount >= paymentAmount
+        ) {
+          await this.paymentsRepository.updatePaymentStatus(client, payment.id, "REFUNDED");
         }
       }
 

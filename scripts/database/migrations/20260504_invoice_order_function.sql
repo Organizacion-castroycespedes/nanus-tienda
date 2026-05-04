@@ -15,7 +15,15 @@ AS $$
 BEGIN
   RETURN QUERY
   WITH payment_totals AS (
-    SELECT COALESCE(SUM(allocation.allocated_amount), 0)::numeric(12, 2) AS total_paid
+    SELECT COALESCE(
+      SUM(
+        CASE
+          WHEN payment.direction = 'OUT' THEN -allocation.allocated_amount
+          ELSE allocation.allocated_amount
+        END
+      ),
+      0
+    )::numeric(12, 2) AS total_paid
     FROM payment_allocations AS allocation
     INNER JOIN payments AS payment
       ON payment.id = allocation.payment_id
