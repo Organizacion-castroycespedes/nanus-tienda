@@ -23,6 +23,7 @@ export type CashMovementProps = {
   tenantId: string;
   branchId: string;
   cashSessionId: string;
+  paymentId?: string | null;
   movementType: CashMovementType;
   direction: CashMovementDirection;
   referenceType?: string | null;
@@ -38,6 +39,7 @@ export class CashMovementEntity {
   readonly tenantId: string;
   readonly branchId: string;
   readonly cashSessionId: string;
+  readonly paymentId: string | null;
   readonly movementType: CashMovementType;
   readonly direction: CashMovementDirection;
   readonly referenceType: string | null;
@@ -59,6 +61,9 @@ export class CashMovementEntity {
     }
     if (!isUuid(props.cashSessionId)) {
       throw new Error("cashSessionId must be a valid UUID");
+    }
+    if (props.paymentId != null && !isUuid(props.paymentId)) {
+      throw new Error("paymentId must be a valid UUID");
     }
     if (!isUuid(props.createdBy)) {
       throw new Error("createdBy must be a valid UUID");
@@ -83,6 +88,7 @@ export class CashMovementEntity {
     this.tenantId = props.tenantId;
     this.branchId = props.branchId;
     this.cashSessionId = props.cashSessionId;
+    this.paymentId = props.paymentId ?? null;
     this.movementType = props.movementType;
     this.direction = props.direction;
     this.referenceType = referenceType;
@@ -113,6 +119,11 @@ export const CASH_MOVEMENT_RELATIONS = {
     type: "ManyToOne",
     target: "CashSessionEntity",
     foreignKey: "cash_session_id",
+  },
+  payment: {
+    type: "ManyToOne",
+    target: "PaymentEntity",
+    foreignKey: "payment_id",
   },
   createdByUser: {
     type: "ManyToOne",

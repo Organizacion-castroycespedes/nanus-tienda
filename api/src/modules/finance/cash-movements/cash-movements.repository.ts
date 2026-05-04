@@ -7,6 +7,7 @@ export type CashMovementRecord = {
   tenant_id: string;
   branch_id: string;
   cash_session_id: string;
+  payment_id: string | null;
   cash_register_id: string | null;
   cash_register_nombre: string | null;
   movement_type: string;
@@ -24,6 +25,7 @@ type CreateCashMovementInput = {
   tenantId: string;
   branchId: string;
   cashSessionId: string;
+  paymentId?: string | null;
   movementType: string;
   direction: string;
   referenceType?: string | null;
@@ -54,6 +56,7 @@ export class CashMovementsRepository {
       movement.tenant_id,
       movement.branch_id,
       movement.cash_session_id,
+      movement.payment_id,
       session.cash_register_id,
       register.nombre AS cash_register_nombre,
       movement.movement_type,
@@ -83,6 +86,7 @@ export class CashMovementsRepository {
         tenant_id,
         branch_id,
         cash_session_id,
+        payment_id,
         movement_type,
         direction,
         reference_type,
@@ -91,12 +95,13 @@ export class CashMovementsRepository {
         description,
         created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id`,
       [
         data.tenantId,
         data.branchId,
         data.cashSessionId,
+        data.paymentId ?? null,
         data.movementType,
         data.direction,
         data.referenceType ?? null,
@@ -112,6 +117,26 @@ export class CashMovementsRepository {
       return null;
     }
     return this.findById(created.id, undefined, client);
+  }
+
+  async syncPaymentMovementReference(
+    client: PoolClient,
+    paymentId: string,
+    data: {
+      referenceType: string;
+      referenceId: string;
+    }
+  ) {
+    await this.query<QueryResultRow>(
+      `UPDATE cash_movements
+       SET
+         reference_type = $2,
+         reference_id = $3
+       WHERE payment_id = $1
+         AND movement_type = 'PAYMENT'`,
+      [paymentId, data.referenceType, data.referenceId],
+      client
+    );
   }
 
   async findById(

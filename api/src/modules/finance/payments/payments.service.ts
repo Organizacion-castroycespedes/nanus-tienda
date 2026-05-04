@@ -540,6 +540,7 @@ export class PaymentsService {
           tenantId,
           branchId: payload.branchId,
           cashSessionId: cashSession.id,
+          paymentId: created.id,
           movementType: "PAYMENT",
           direction: payload.direction,
           referenceType: payload.referenceType,

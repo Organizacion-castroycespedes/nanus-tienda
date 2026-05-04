@@ -194,6 +194,7 @@ export const OrderInvoiceForm = ({
     () => round(Math.max(total - inheritedTotal - enteredTotal, 0)),
     [enteredTotal, inheritedTotal, total]
   );
+  const cashSessionMatchesBranch = !cashSession || cashSession.branchId === order?.branchId;
 
   const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
     setSubmitError(null);
@@ -250,6 +251,18 @@ export const OrderInvoiceForm = ({
       )
     ) {
       return "Necesitas una caja abierta para registrar pagos en efectivo.";
+    }
+
+    if (
+      parsedPayments.some(
+        (payment) =>
+          payment.numericAmount > 0 &&
+          payment.method?.tipo === "CASH" &&
+          cashSession?.id &&
+          cashSession.branchId !== order?.branchId
+      )
+    ) {
+      return "La caja abierta actual pertenece a otra sucursal y no puede usarse para esta factura.";
     }
 
     if (enteredTotal > remainingToCover) {
@@ -418,7 +431,20 @@ export const OrderInvoiceForm = ({
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Wallet className="h-4 w-4" />
-              Abonos heredados de la orden
+              Caja y abonos heredados
+            </div>
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              {cashSession
+                ? `${cashSession.cashRegisterNombre ?? "Caja"} abierta con fondo ${formatCurrency(
+                    cashSession.openingAmount
+                  )}.`
+                : "No hay una caja abierta para este usuario. Los pagos nuevos en efectivo quedaran bloqueados."}
+              {cashSession && !cashSessionMatchesBranch ? (
+                <p className="mt-2 text-amber-700">
+                  La caja abierta actual pertenece a otra sucursal. Si agregas pagos nuevos en
+                  efectivo, la operacion sera bloqueada.
+                </p>
+              ) : null}
             </div>
             {inheritedPayments.length === 0 ? (
               <p className="text-sm text-slate-600">

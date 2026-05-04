@@ -164,6 +164,7 @@ export const DocumentPaymentForm = ({
   );
 
   const isFullyPaid = paymentStatus === "PAID" || paymentStatus === "OVERPAID";
+  const cashSessionMatchesBranch = !cashSession || cashSession.branchId === branchId;
 
   const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
     setSubmitError(null);
@@ -216,6 +217,16 @@ export const DocumentPaymentForm = ({
       )
     ) {
       return "Necesitas una caja abierta para registrar pagos en efectivo.";
+    }
+    if (
+      parsedPayments.some(
+        (payment) =>
+          payment.method?.tipo === "CASH" &&
+          cashSession?.id &&
+          cashSession.branchId !== branchId
+      )
+    ) {
+      return "La caja abierta actual pertenece a otra sucursal y no puede usarse para este documento.";
     }
     if (enteredTotal > balanceDue) {
       return "El total ingresado no puede superar el saldo pendiente del documento.";
@@ -326,6 +337,12 @@ export const DocumentPaymentForm = ({
                   )}.`
                 : "No hay una caja abierta para este usuario. Los pagos en efectivo quedaran bloqueados."}
             </p>
+            {cashSession && !cashSessionMatchesBranch ? (
+              <p className="mt-2 text-sm text-amber-700">
+                La caja abierta pertenece a otra sucursal. Los pagos en efectivo para este
+                documento quedaran bloqueados hasta abrir caja en la sucursal correcta.
+              </p>
+            ) : null}
           </section>
 
           <section className="space-y-3">

@@ -252,6 +252,25 @@ export class PaymentsRepository {
     return result.rows[0] ?? null;
   }
 
+  async updatePaymentReference(
+    client: PoolClient,
+    paymentId: string,
+    data: {
+      referenceType: PaymentReferenceType;
+      referenceId: string;
+    }
+  ) {
+    await this.query<QueryResultRow>(
+      `UPDATE payments
+       SET
+         reference_type = $2,
+         reference_id = $3
+       WHERE id = $1`,
+      [paymentId, data.referenceType, data.referenceId],
+      client
+    );
+  }
+
   async listAllocationsByPaymentIds(
     paymentIds: string[],
     client?: PoolClient

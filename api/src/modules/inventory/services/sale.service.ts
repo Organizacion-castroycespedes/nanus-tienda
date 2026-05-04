@@ -830,6 +830,12 @@ export class SaleService {
         client
       );
 
+      await this.paymentsRepository.syncOrderFinancialState(
+        client,
+        data.orderId,
+        saleContext.tenantId
+      );
+
       await this.paymentsRepository.syncSaleFinancialState(
         client,
         saleRow.id,
