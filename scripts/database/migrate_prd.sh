@@ -189,6 +189,7 @@ schema_files=(
   "sale/005_relations_indexes.sql"
   "sale/007_update_sales_balance_constraint.sql"
   "sale/008_update_orders_status_constraint.sql"
+  "sale/011_sales_refunded_branch_stock.sql"
   "finance/migrations/20260430_1753_finance_base_infrastructure.sql"
   "finance/migrations/20260430_1947_finance_payments_engine.sql"
   "finance/migrations/20260502_1015_finance_cash_closing_controls.sql"
@@ -200,6 +201,7 @@ schema_files=(
 function_files=(
   "sale/006_create_sale_function.sql"
   "sale/009_cancel_sale_function.sql"
+  "sale/012_sale_financial_sync_and_pos_function.sql"
   "products/2026_05_01_inventory_dashboard.sql"
 )
 

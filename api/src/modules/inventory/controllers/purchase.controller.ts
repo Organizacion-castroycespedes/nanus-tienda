@@ -1,18 +1,20 @@
 import {
   Body,
   Controller,
-    Get,
-    Inject,
-    NotFoundException,
-    Param,
-    Post,
-    Put,
-    Query,
-    Req,
-    UseGuards,
-  } from "@nestjs/common";
+  Get,
+  Inject,
+  NotFoundException,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import type { Request } from "express";
+import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../../../common/guards/roles.guard";
 import { PurchaseService } from "../services/purchase.service";
 
 type AuthRequest = Request & {
@@ -57,7 +59,8 @@ type ReceivePurchaseBody = {
 };
 
 @Controller("purchases")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class PurchaseController {
   constructor(
     @Inject(PurchaseService)
@@ -85,6 +88,7 @@ export class PurchaseController {
   private buildActor(request: AuthRequest) {
     return {
       roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
+      userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
     };
@@ -118,7 +122,7 @@ export class PurchaseController {
       balance: body.balance !== undefined ? Number(body.balance) : undefined,
       status: body.status,
       items: body.items,
-    });
+    }, this.buildActor(request));
   }
 
   @Get()

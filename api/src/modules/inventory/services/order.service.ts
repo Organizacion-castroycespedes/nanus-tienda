@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { AuditService } from "../../../common/services/audit.service";
+import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
 import { OrderItemEntity } from "../entities/order-item.entity";
 import { OrderEntity, type OrderStatus, type OrderType } from "../entities/order.entity";
 import { SaleService } from "./sale.service";
@@ -17,6 +18,8 @@ import {
   type InventoryContext,
 } from "./stock-movement.service";
 import {
+  canViewAllBranches,
+  hasBranchScopedRole,
   normalizeOptionalFilter,
   type BranchScopedActor,
   type BranchScopedFilters,
@@ -125,6 +128,8 @@ export class OrderService {
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(AuditService) private readonly auditService: AuditService,
+    @Inject(FinanceAccessRepository)
+    private readonly financeAccessRepository: FinanceAccessRepository,
     @Inject(SaleService) private readonly saleService: SaleService,
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService
@@ -168,7 +173,33 @@ export class OrderService {
     };
   }
 
-  private resolveOrderScope(
+  private async resolveAllowedBranchIds(
+    actor: BranchScopedActor,
+    tenantId: string
+  ) {
+    if (canViewAllBranches(actor)) {
+      return undefined;
+    }
+    if (!actor.userId) {
+      throw new ForbiddenException("Usuario requerido");
+    }
+
+    const branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+      actor.userId,
+      tenantId
+    );
+
+    if (branchIds.length > 0) {
+      return branchIds;
+    }
+    if (actor.branchId) {
+      return [actor.branchId];
+    }
+
+    throw new ForbiddenException("Usuario sin sucursales asignadas");
+  }
+
+  private async resolveOrderScope(
     actor: BranchScopedActor,
     filters: BranchScopedFilters
   ) {
@@ -176,7 +207,7 @@ export class OrderService {
     const branchId = normalizeOptionalFilter(filters.branchId);
 
     if (actor.roles.includes("SUPER_ADMIN")) {
-      return { tenantId, branchId };
+      return { tenantId, branchId, branchIds: undefined as string[] | undefined };
     }
 
     if (!actor.tenantId) {
@@ -186,9 +217,29 @@ export class OrderService {
       throw new ForbiddenException("No autorizado para otro tenant");
     }
 
+    const resolvedTenantId = actor.tenantId;
+    const allowedBranchIds = await this.resolveAllowedBranchIds(actor, resolvedTenantId);
+
+    if (branchId && (allowedBranchIds?.length ?? 0) > 0 && !allowedBranchIds?.includes(branchId)) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
+    }
+
+    if (hasBranchScopedRole(actor) && actor.branchId) {
+      if (branchId && branchId !== actor.branchId) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+
+      return {
+        tenantId: resolvedTenantId,
+        branchId: actor.branchId,
+        branchIds: [actor.branchId],
+      };
+    }
+
     return {
-      tenantId: actor.tenantId,
+      tenantId: resolvedTenantId,
       branchId,
+      branchIds: allowedBranchIds,
     };
   }
 
@@ -412,7 +463,7 @@ export class OrderService {
 
   async createOrder(data: CreateOrderInput) {
     this.assertItems(data.items);
-    const resolvedScope = this.resolveOrderScope(data.actor, {
+    const resolvedScope = await this.resolveOrderScope(data.actor, {
       tenantId: data.tenantId,
       branchId: data.branchId,
     });
@@ -529,7 +580,7 @@ export class OrderService {
     try {
       await client.query("BEGIN");
 
-      this.resolveOrderScope(actor, { tenantId });
+      await this.resolveOrderScope(actor, { tenantId });
       const currentAuditContext = await this.getOrderAuditContext(id, tenantId, client);
 
       const currentResult = await client.query<OrderRow>(
@@ -680,7 +731,7 @@ export class OrderService {
   }
 
   async getOrders(filters: BranchScopedFilters, actor: BranchScopedActor) {
-    const resolvedFilters = this.resolveOrderScope(actor, filters);
+    const resolvedFilters = await this.resolveOrderScope(actor, filters);
     const params: unknown[] = [];
     const where: string[] = [];
 
@@ -692,6 +743,9 @@ export class OrderService {
     if (resolvedFilters.branchId) {
       params.push(resolvedFilters.branchId);
       where.push(`audit_context.branch_id = $${params.length}::uuid`);
+    } else if ((resolvedFilters.branchIds?.length ?? 0) > 0) {
+      params.push(resolvedFilters.branchIds);
+      where.push(`audit_context.branch_id = ANY($${params.length}::uuid[])`);
     }
 
     const result = (await this.db.query(
@@ -769,7 +823,7 @@ export class OrderService {
 
   async getOrderById(id: string, tenantId: string, actor: BranchScopedActor) {
     const orderAuditContext = await this.getOrderAuditContext(id, tenantId);
-    this.resolveOrderScope(actor, {
+    await this.resolveOrderScope(actor, {
       tenantId,
       branchId: orderAuditContext.branch_id ?? undefined,
     });
@@ -925,9 +979,10 @@ export class OrderService {
       }
 
       const orderAuditContext = await this.getOrderAuditContext(id, tenantId, client);
-      this.resolveOrderScope(
+      await this.resolveOrderScope(
         actor ?? {
           roles: [],
+          userId: context?.userId ?? undefined,
           tenantId,
           branchId: context?.branchId ?? undefined,
         },
@@ -1001,7 +1056,8 @@ export class OrderService {
 
         const stockResult = await this.stockMovementService.getStockByProduct(
           productId,
-          tenantId
+          tenantId,
+          orderAuditContext.branch_id ?? context?.branchId ?? null
         );
         if (stockResult.stock < quantity) {
           throw new BadRequestException("insufficient stock for delivery");
@@ -1132,6 +1188,7 @@ export class OrderService {
       tenantId,
       actor ?? {
         roles: [],
+        userId: context?.userId ?? undefined,
         tenantId,
         branchId: context?.branchId ?? undefined,
       }
@@ -1198,6 +1255,7 @@ export class OrderService {
       tenantId,
       actor ?? {
         roles: [],
+        userId: context?.userId ?? undefined,
         tenantId,
         branchId: context?.branchId ?? undefined,
       }

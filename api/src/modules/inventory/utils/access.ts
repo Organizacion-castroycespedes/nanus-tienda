@@ -2,6 +2,7 @@ import { ForbiddenException } from "@nestjs/common";
 
 export type BranchScopedActor = {
   roles: string[];
+  userId?: string;
   tenantId?: string;
   branchId?: string;
 };
@@ -13,6 +14,9 @@ export type BranchScopedFilters = {
 
 export const canViewAllBranches = (actor: BranchScopedActor) =>
   actor.roles.includes("SUPER_ADMIN") || actor.roles.includes("SUPER_USER");
+
+export const hasBranchScopedRole = (actor: BranchScopedActor) =>
+  actor.roles.includes("ADMIN") || actor.roles.includes("USER");
 
 export const normalizeOptionalFilter = (value: string | undefined) => {
   const normalized = value?.trim();

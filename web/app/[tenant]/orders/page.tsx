@@ -276,6 +276,11 @@ const OrdersPage = () => {
     (order.status === "PARTIAL" || order.status === "COMPLETED") &&
     order.billingStatus !== "INVOICED";
 
+  const canRegisterOrderPayment = (order: OrderResponse) =>
+    order.status !== "CANCELLED" &&
+    order.balanceDue > 0 &&
+    order.billingStatus !== "INVOICED";
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -511,7 +516,7 @@ const OrdersPage = () => {
                           canUpdate &&
                           (canEditOrder(order.status) ||
                             canDeliverOrder(order.status) ||
-                            (order.status !== "CANCELLED" && order.balanceDue > 0) ||
+                            canRegisterOrderPayment(order) ||
                             canInvoiceOrder(order) ||
                             canCancelOrder(order.status));
 
@@ -548,7 +553,7 @@ const OrdersPage = () => {
                             Facturar
                           </Button>
                         ) : null}
-                        {canUpdate && order.status !== "CANCELLED" && order.balanceDue > 0 ? (
+                        {canUpdate && canRegisterOrderPayment(order) ? (
                           <Button
                             variant="ghost"
                             size="sm"

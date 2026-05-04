@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
-import type { PaymentReferenceType } from "../entities/payment.entity";
+import type { PaymentReferenceType, PaymentStatus } from "../entities/payment.entity";
 
 export type PaymentRecord = {
   id: string;
@@ -296,6 +296,92 @@ export class PaymentsRepository {
     return result.rows ?? [];
   }
 
+  async listAllocatedPayments(
+    tenantId: string,
+    referenceType: PaymentReferenceType,
+    referenceId: string,
+    client?: PoolClient
+  ) {
+    const result = await this.query<PaymentRecord>(
+      `${this.buildBaseQuery().replace("SELECT", "SELECT DISTINCT ON (payment.id)")}
+      INNER JOIN payment_allocations AS allocation
+        ON allocation.payment_id = payment.id
+      WHERE payment.tenant_id = $1
+        AND allocation.reference_type = $2
+        AND allocation.reference_id = $3
+      ORDER BY payment.id ASC, payment.created_at ASC`,
+      [tenantId, referenceType, referenceId],
+      client
+    );
+
+    return result.rows ?? [];
+  }
+
+  async deleteAllocation(client: PoolClient, allocationId: string) {
+    await this.query<QueryResultRow>(
+      `DELETE FROM payment_allocations
+       WHERE id = $1`,
+      [allocationId],
+      client
+    );
+  }
+
+  async updatePaymentStatus(
+    client: PoolClient,
+    paymentId: string,
+    status: PaymentStatus
+  ) {
+    await this.query<QueryResultRow>(
+      `UPDATE payments
+       SET status = $2
+       WHERE id = $1`,
+      [paymentId, status],
+      client
+    );
+  }
+
+  async createCashRefundMovement(
+    client: PoolClient,
+    payment: PaymentRecord,
+    data: {
+      tenantId: string;
+      branchId: string;
+      cashSessionId: string;
+      amount: number;
+      createdBy: string;
+      referenceId: string;
+    }
+  ) {
+    await this.query<QueryResultRow>(
+      `INSERT INTO cash_movements (
+        tenant_id,
+        branch_id,
+        cash_session_id,
+        payment_id,
+        movement_type,
+        direction,
+        reference_type,
+        reference_id,
+        amount,
+        description,
+        created_by
+      )
+      VALUES (
+        $1, $2, $3, NULL, 'PAYMENT', 'OUT', 'REFUND', $4, $5, $6, $7
+      )`,
+      [
+        data.tenantId,
+        data.branchId,
+        data.cashSessionId,
+        data.referenceId,
+        data.amount,
+        `Reversion pago ${payment.id}`,
+        data.createdBy,
+      ],
+      client
+    );
+  }
+
   async findById(
     paymentId: string,
     tenantId?: string,
@@ -511,8 +597,14 @@ export class PaymentsRepository {
       `UPDATE sales
       SET
         total_paid = COALESCE(payment_totals.total_paid, 0),
-        balance_due = GREATEST(sales.total - COALESCE(payment_totals.total_paid, 0), 0),
-        balance = GREATEST(sales.total - COALESCE(payment_totals.total_paid, 0), 0),
+        balance_due = CASE
+          WHEN sales.type = 'CASH' THEN 0
+          ELSE GREATEST(sales.total - COALESCE(payment_totals.total_paid, 0), 0)
+        END,
+        balance = CASE
+          WHEN sales.type = 'CASH' THEN 0
+          ELSE GREATEST(sales.total - COALESCE(payment_totals.total_paid, 0), 0)
+        END,
         payment_status = CASE
           WHEN COALESCE(payment_totals.total_paid, 0) <= 0 THEN 'PENDING'
           WHEN COALESCE(payment_totals.total_paid, 0) < sales.total THEN 'PARTIAL'
@@ -573,28 +665,10 @@ export class PaymentsRepository {
     orderId: string,
     tenantId: string
   ) {
+    console.log("Syncing financial state for order", orderId);
     await this.query<QueryResultRow>(
-      `UPDATE orders
-      SET
-        total_paid = COALESCE(payment_totals.total_paid, 0),
-        balance_due = GREATEST(orders.total - COALESCE(payment_totals.total_paid, 0), 0),
-        payment_status = CASE
-          WHEN COALESCE(payment_totals.total_paid, 0) <= 0 THEN 'PENDING'
-          WHEN COALESCE(payment_totals.total_paid, 0) < orders.total THEN 'PARTIAL'
-          WHEN COALESCE(payment_totals.total_paid, 0) = orders.total THEN 'PAID'
-          ELSE 'OVERPAID'
-        END
-      FROM (
-        SELECT COALESCE(SUM(allocation.allocated_amount), 0) AS total_paid
-        FROM payment_allocations AS allocation
-        INNER JOIN payments AS payment
-          ON payment.id = allocation.payment_id
-        WHERE payment.tenant_id = $2
-          AND allocation.reference_type = 'SALES_ORDER'
-          AND allocation.reference_id = $1
-          AND payment.status IN ('PENDING', 'COMPLETED')
-      ) AS payment_totals
-      WHERE id = $1 AND tenant_id = $2`,
+      `SELECT *
+       FROM finance_sync_order_financial_state($1::uuid, $2::uuid)`,
       [orderId, tenantId],
       client
     );

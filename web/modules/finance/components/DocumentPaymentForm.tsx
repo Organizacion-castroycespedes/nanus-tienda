@@ -251,7 +251,7 @@ export const DocumentPaymentForm = ({
         const payload: CreatePaymentPayload = {
           branchId,
           paymentMethodId: payment.paymentMethodId,
-          cashSessionId: payment.method?.tipo === "CASH" ? cashSession?.id ?? undefined : undefined,
+          cashSessionId: cashSession?.id ?? undefined,
           referenceType,
           referenceId,
           direction,

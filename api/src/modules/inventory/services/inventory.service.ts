@@ -11,6 +11,8 @@ import {
   type InventoryProductRow,
 } from "../repositories/inventory.repository";
 import {
+  canViewAllBranches,
+  hasBranchScopedRole,
   normalizeOptionalFilter,
   type BranchScopedActor,
   type BranchScopedFilters,
@@ -73,7 +75,7 @@ export class InventoryService {
     const branchId = normalizeOptionalFilter(filters.branchId);
 
     if (actor.roles.includes("SUPER_ADMIN")) {
-      return { tenantId, branchId };
+      return { tenantId, branchId, branchIds: undefined };
     }
 
     if (!actor.tenantId) {
@@ -86,12 +88,52 @@ export class InventoryService {
     return {
       tenantId: actor.tenantId,
       branchId,
+      branchIds: undefined as string[] | undefined,
     };
   }
 
   async listInventoryProducts(filters: BranchScopedFilters, actor: BranchScopedActor) {
     const resolvedFilters = this.resolveProductFilters(actor, filters);
-    const rows = await this.repository.listInventoryProducts(resolvedFilters);
+    const tenantId = resolvedFilters.tenantId;
+
+    if (!tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+    let branchIds: string[] | undefined;
+
+    if (!canViewAllBranches(actor)) {
+      if (!actor.userId) {
+        throw new ForbiddenException("Usuario requerido");
+      }
+
+      branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+        actor.userId,
+        tenantId
+      );
+
+      if (branchIds.length === 0) {
+        if (actor.branchId) {
+          branchIds = [actor.branchId];
+        } else {
+          throw new ForbiddenException("Usuario sin sucursales asignadas");
+        }
+      }
+
+      if (resolvedFilters.branchId && !branchIds.includes(resolvedFilters.branchId)) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+
+      if (hasBranchScopedRole(actor) && !resolvedFilters.branchId && actor.branchId) {
+        branchIds = branchIds.includes(actor.branchId) ? [actor.branchId] : branchIds;
+      }
+    }
+
+    const rows = await this.repository.listInventoryProducts({
+      tenantId,
+      branchId:
+        branchIds && branchIds.length === 1 ? branchIds[0] : resolvedFilters.branchId,
+      branchIds,
+    });
     return rows.map((row) => this.mapInventoryRow(row));
   }
 
