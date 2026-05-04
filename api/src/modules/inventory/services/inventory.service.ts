@@ -71,17 +71,21 @@ export class InventoryService {
     actor: BranchScopedActor,
     filters: BranchScopedFilters
   ) {
-    const tenantId = normalizeOptionalFilter(filters.tenantId);
+    const requestedTenantId = normalizeOptionalFilter(filters.tenantId);
     const branchId = normalizeOptionalFilter(filters.branchId);
 
     if (actor.roles.includes("SUPER_ADMIN")) {
-      return { tenantId, branchId, branchIds: undefined };
+      return {
+        tenantId: requestedTenantId ?? actor.tenantId,
+        branchId,
+        branchIds: undefined,
+      };
     }
 
     if (!actor.tenantId) {
       throw new ForbiddenException("Tenant requerido");
     }
-    if (tenantId && tenantId !== actor.tenantId) {
+    if (requestedTenantId && requestedTenantId !== actor.tenantId) {
       throw new ForbiddenException("No autorizado para otro tenant");
     }
 

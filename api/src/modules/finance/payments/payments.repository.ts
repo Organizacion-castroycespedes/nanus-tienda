@@ -665,7 +665,6 @@ export class PaymentsRepository {
     orderId: string,
     tenantId: string
   ) {
-    console.log("Syncing financial state for order", orderId);
     await this.query<QueryResultRow>(
       `SELECT *
        FROM finance_sync_order_financial_state($1::uuid, $2::uuid)`,
