@@ -112,14 +112,18 @@ const parseError = async (response: Response) => {
   return new ApiError(message, response.status, undefined, payload);
 };
 
-export const apiClient = async <T>(url: string, options?: RequestInit): Promise<T> => {
+const sendAuthorizedRequest = async (
+  url: string,
+  options?: RequestInit,
+  customBaseUrl?: string
+): Promise<Response> => {
   const mergedHeaders = buildRequestHeaders(options);
 
   const response = await requestRaw(url, {
     ...options,
     credentials: "include",
     headers: mergedHeaders,
-  });
+  }, customBaseUrl);
 
   if (response.status === 401) {
     const requestError = await parseError(response);
@@ -141,7 +145,7 @@ export const apiClient = async <T>(url: string, options?: RequestInit): Promise<
       ...options,
       credentials: "include",
       headers: retryHeaders,
-    });
+    }, customBaseUrl);
     if (retryResponse.status === 401) {
       const retryError = await parseError(retryResponse);
       if (isInvalidPosSessionError(retryError.message)) {
@@ -149,15 +153,56 @@ export const apiClient = async <T>(url: string, options?: RequestInit): Promise<
       }
       throw retryError;
     }
-    if (!retryResponse.ok) {
-      throw await parseError(retryResponse);
-    }
-    return parseJson<T>(retryResponse);
+    return retryResponse;
   }
+
+  return response;
+};
+
+export const apiClient = async <T>(url: string, options?: RequestInit): Promise<T> => {
+  const response = await sendAuthorizedRequest(url, options);
 
   if (!response.ok) {
     throw await parseError(response);
   }
 
   return parseJson<T>(response);
+};
+
+export const apiBlobClient = async (url: string, options?: RequestInit): Promise<Blob> => {
+  const response = await sendAuthorizedRequest(url, options);
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response.blob();
+};
+
+export const apiClientWithBaseUrl = async <T>(
+  baseUrl: string | undefined,
+  url: string,
+  options?: RequestInit
+): Promise<T> => {
+  const response = await sendAuthorizedRequest(url, options, baseUrl);
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return parseJson<T>(response);
+};
+
+export const apiBlobClientWithBaseUrl = async (
+  baseUrl: string | undefined,
+  url: string,
+  options?: RequestInit
+): Promise<Blob> => {
+  const response = await sendAuthorizedRequest(url, options, baseUrl);
+
+  if (!response.ok) {
+    throw await parseError(response);
+  }
+
+  return response.blob();
 };

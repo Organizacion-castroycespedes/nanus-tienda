@@ -11,8 +11,10 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { SaleService } from "../services/sale.service";
 
@@ -54,7 +56,7 @@ type CreateSaleBody = {
 };
 
 @Controller("sales")
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class SaleController {
   constructor(
@@ -100,6 +102,7 @@ export class SaleController {
   }
 
   @Post()
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
   create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
     return this.saleService.createSale({
       customerId: body.customerId,
@@ -111,16 +114,19 @@ export class SaleController {
   }
 
   @Get()
+  @RequirePermission({ menuKey: "POS", level: "READ" })
   list(@Req() request: AuthRequest) {
     return this.saleService.getSales(this.buildActor(request));
   }
 
   @Get(":id")
+  @RequirePermission({ menuKey: "POS", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.saleService.getSaleById(id, this.buildActor(request));
   }
 
   @Post(":id/cancel")
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.saleService.cancelSale(id, this.buildActor(request));
   }

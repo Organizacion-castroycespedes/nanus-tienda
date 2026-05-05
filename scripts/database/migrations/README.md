@@ -1,6 +1,7 @@
 # Incremental Migrations
 
-Todas las nuevas migraciones post-PRD deben crearse aqui.
+Todas las nuevas migraciones incrementales y overrides de funciones post-base deben crearse aqui.
+Este directorio es la fuente de verdad para cambios SQL nuevos que deban entrar por `migrate_prd.sh`.
 
 Formato de nombre:
 

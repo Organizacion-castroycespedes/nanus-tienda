@@ -24,7 +24,7 @@ import { usePosCartStore } from "../hooks/usePosCartStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
-import { hasPermission } from "../../../lib/permissions";
+import { hasMenuAccess } from "../../../lib/permissions";
 import {
   getCurrentCashSession,
   listPaymentMethods,
@@ -113,6 +113,7 @@ const buildImageLabel = (name: string) => {
 export const PosScreen = () => {
   const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
+  const posBranchId = useAppSelector((state) => state.pos.branchId);
   const {
     items: cart,
     payments,
@@ -123,8 +124,8 @@ export const PosScreen = () => {
     setSaleStatus,
     setSelectedCustomerId,
   } = usePosCartStore();
-  const canRead = hasPermission("pos.read");
-  const canCreate = hasPermission("pos.create");
+  const canRead = hasMenuAccess("POS", "READ");
+  const canCreate = hasMenuAccess("POS", "WRITE");
 
   if (!hasSession) {
     return null;
@@ -178,6 +179,14 @@ export const PosScreen = () => {
   }, []);
 
   useEffect(() => {
+    const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
+    if (!activeBranchId) {
+      setCatalogLoading(false);
+      setCatalogError("No hay una sucursal POS activa para cargar inventario.");
+      setProducts([]);
+      return;
+    }
+
     let active = true;
 
     const loadCatalog = async () => {
@@ -185,9 +194,9 @@ export const PosScreen = () => {
       setCatalogError(null);
       setCatalogWarnings([]);
 
-      try {
-        const [productsResult, customersResult, taxesResult] = await Promise.allSettled([
-          getPosProducts(),
+        try {
+          const [productsResult, customersResult, taxesResult] = await Promise.allSettled([
+          getPosProducts(activeBranchId),
           getPosCustomers(),
           getPosTaxes(),
         ]);
@@ -253,7 +262,7 @@ export const PosScreen = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [authUser?.branchId, posBranchId]);
 
   useEffect(() => {
     const defaultCustomer =
@@ -770,7 +779,11 @@ export const PosScreen = () => {
       showToast("Venta confirmada correctamente.", "success");
 
       try {
-        const productsResult = await getPosProducts();
+        const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
+        if (!activeBranchId) {
+          throw new Error("missing branch");
+        }
+        const productsResult = await getPosProducts(activeBranchId);
         setProducts(productsResult.filter((product) => product.isActive));
       } catch {
         // ignore background refresh issues

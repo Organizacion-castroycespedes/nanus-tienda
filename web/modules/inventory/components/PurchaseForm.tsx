@@ -91,7 +91,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
             : Promise.resolve<BranchResponse[]>([]);
         const [suppliersResult, productsResult, branchesResult] = await Promise.all([
           getSuppliers(),
-          getProducts(),
+          getProducts({ branchId: values.branchId || currentBranch || undefined }),
           branchPromise,
         ]);
 
@@ -118,7 +118,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
     return () => {
       mounted = false;
     };
-  }, [currentTenant, isSuperRole]);
+  }, [currentTenant, isSuperRole, currentBranch, values.branchId]);
 
   const selectedBranchName = useMemo(() => {
     if (isSuperRole) {
