@@ -7,13 +7,17 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   UseGuards,
   Put,
   Req,
+  BadRequestException,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { ProductService } from "../services/product.service";
 
@@ -22,6 +26,9 @@ type AuthRequest = Request & {
     tenantId?: string;
     id?: string;
     roles?: string[];
+  };
+  context?: {
+    branchId?: string;
   };
 };
 
@@ -45,7 +52,7 @@ type UpdateProductBody = Partial<
 >;
 
 @Controller("products")
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ProductController {
   constructor(
     @Inject(ProductService)
@@ -60,8 +67,17 @@ export class ProductController {
     return tenantId;
   }
 
+  private getBranchId(request: AuthRequest, branchId: string | undefined) {
+    const resolvedBranchId = branchId ?? request.context?.branchId;
+    if (!resolvedBranchId) {
+      throw new BadRequestException("branchId is required");
+    }
+    return resolvedBranchId;
+  }
+
   @Post()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   create(@Body() body: CreateProductBody, @Req() request: AuthRequest) {
     const tenantId = this.getTenantId(request);
     return this.productService.createProduct({
@@ -72,18 +88,27 @@ export class ProductController {
 
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  list(@Req() request: AuthRequest) {
-    return this.productService.listProducts(this.getTenantId(request));
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  list(
+    @Query("branchId") branchId: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.productService.listProducts(
+      this.getTenantId(request),
+      this.getBranchId(request, branchId)
+    );
   }
 
   @Get(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.getProductById(id, this.getTenantId(request));
   }
 
   @Put(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   update(
     @Param("id") id: string,
     @Body() body: UpdateProductBody,
@@ -98,6 +123,7 @@ export class ProductController {
 
   @Delete(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.softDeleteProduct(id, this.getTenantId(request));
   }

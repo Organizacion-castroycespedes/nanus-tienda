@@ -342,14 +342,15 @@ export class PaymentsRepository {
 
   async createCashRefundMovement(
     client: PoolClient,
-    payment: PaymentRecord,
     data: {
       tenantId: string;
       branchId: string;
       cashSessionId: string;
+      paymentId: string;
       amount: number;
       createdBy: string;
       referenceId: string;
+      description?: string | null;
     }
   ) {
     await this.query<QueryResultRow>(
@@ -367,15 +368,16 @@ export class PaymentsRepository {
         created_by
       )
       VALUES (
-        $1, $2, $3, NULL, 'PAYMENT', 'OUT', 'REFUND', $4, $5, $6, $7
+        $1, $2, $3, $4, 'PAYMENT', 'OUT', 'REFUND', $5, $6, $7, $8
       )`,
       [
         data.tenantId,
         data.branchId,
         data.cashSessionId,
+        data.paymentId,
         data.referenceId,
         data.amount,
-        `Reversion pago ${payment.id}`,
+        data.description ?? `Refund ${data.paymentId}`,
         data.createdBy,
       ],
       client
@@ -612,7 +614,15 @@ export class PaymentsRepository {
           ELSE 'OVERPAID'
         END
       FROM (
-        SELECT COALESCE(SUM(allocation.allocated_amount), 0) AS total_paid
+        SELECT COALESCE(
+          SUM(
+            CASE
+              WHEN payment.direction = 'OUT' THEN -allocation.allocated_amount
+              ELSE allocation.allocated_amount
+            END
+          ),
+          0
+        ) AS total_paid
         FROM payment_allocations AS allocation
         INNER JOIN payments AS payment
           ON payment.id = allocation.payment_id

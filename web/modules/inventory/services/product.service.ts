@@ -5,6 +5,7 @@ export type GetProductsParams = {
   search?: string;
   page?: number;
   pageSize?: number;
+  branchId?: string;
 };
 
 export type GetInventoryProductsParams = {
@@ -38,6 +39,9 @@ const buildProductsQuery = (params: GetProductsParams = {}) => {
   }
   if (typeof params.pageSize === "number") {
     searchParams.set("pageSize", String(params.pageSize));
+  }
+  if (params.branchId) {
+    searchParams.set("branchId", params.branchId);
   }
 
   const query = searchParams.toString();

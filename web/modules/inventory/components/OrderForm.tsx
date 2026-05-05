@@ -121,7 +121,7 @@ export const OrderForm = ({
             : Promise.resolve<BranchResponse[]>([]);
         const [customersResult, productsResult, branchesResult] = await Promise.all([
           getCustomers(),
-          getProducts(),
+          getProducts({ branchId: values.branchId || currentBranch || undefined }),
           branchPromise,
         ]);
 
@@ -148,7 +148,7 @@ export const OrderForm = ({
     return () => {
       mounted = false;
     };
-  }, [canSelectBranch, currentTenant]);
+  }, [canSelectBranch, currentTenant, currentBranch, values.branchId]);
 
   const selectedBranchName = useMemo(() => {
     if (canSelectBranch) {

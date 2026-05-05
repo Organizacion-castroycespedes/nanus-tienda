@@ -39,8 +39,10 @@ export type SaleResponse = {
   createdAt: string;
 };
 
-export const getPosProducts = (headers?: HeadersInit) =>
-  apiClient<ProductResponse[]>("/products", { headers });
+export const getPosProducts = (branchId: string, headers?: HeadersInit) =>
+  apiClient<ProductResponse[]>(`/products?branchId=${encodeURIComponent(branchId)}`, {
+    headers,
+  });
 
 export const getPosCustomers = (headers?: HeadersInit) =>
   apiClient<CustomerResponse[]>("/customers", { headers });

@@ -12,8 +12,10 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { PurchaseService } from "../services/purchase.service";
 
@@ -59,7 +61,7 @@ type ReceivePurchaseBody = {
 };
 
 @Controller("purchases")
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class PurchaseController {
   constructor(
@@ -95,6 +97,7 @@ export class PurchaseController {
   }
 
   @Post()
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   create(@Body() body: CreatePurchaseBody, @Req() request: AuthRequest) {
     return this.purchaseService.createPurchase({
       tenantId: this.getTenantId(request),
@@ -110,6 +113,7 @@ export class PurchaseController {
   }
 
   @Put(":id")
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   update(
     @Param("id") id: string,
     @Body() body: UpdatePurchaseBody,
@@ -126,6 +130,7 @@ export class PurchaseController {
   }
 
   @Get()
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "READ" })
   list(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
@@ -141,6 +146,7 @@ export class PurchaseController {
   }
 
   @Get(":id")
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.purchaseService.getPurchaseById(
       id,
@@ -150,6 +156,7 @@ export class PurchaseController {
   }
 
   @Post(":id/receive")
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   receive(
     @Param("id") id: string,
     @Body() body: ReceivePurchaseBody,

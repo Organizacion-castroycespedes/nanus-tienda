@@ -14,14 +14,15 @@ export class ApiError extends Error {
   }
 }
 
-export const buildUrl = (url: string) => {
-  if (!baseUrl) {
+export const buildUrl = (url: string, customBaseUrl?: string) => {
+  const resolvedBaseUrl = customBaseUrl?.replace(/\/$/, "") ?? baseUrl;
+  if (!resolvedBaseUrl) {
     return url;
   }
   if (url.startsWith("/")) {
-    return `${baseUrl}${url}`;
+    return `${resolvedBaseUrl}${url}`;
   }
-  return `${baseUrl}/${url}`;
+  return `${resolvedBaseUrl}/${url}`;
 };
 
 const mergeHeaders = (headers?: HeadersInit) => {
@@ -34,9 +35,13 @@ const mergeHeaders = (headers?: HeadersInit) => {
   return mergedHeaders;
 };
 
-export const requestRaw = async (url: string, options?: RequestInit) => {
+export const requestRaw = async (
+  url: string,
+  options?: RequestInit,
+  customBaseUrl?: string
+) => {
   const headers = mergeHeaders(options?.headers);
-  return fetch(buildUrl(url), {
+  return fetch(buildUrl(url, customBaseUrl), {
     ...options,
     headers,
   });
