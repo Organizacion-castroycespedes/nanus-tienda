@@ -1,4 +1,4 @@
-import { apiClient } from "../../../lib/http";
+import { apiBlobClient, apiClient } from "../../../lib/http";
 
 export type OrderResponse = {
   id: string;
@@ -113,6 +113,9 @@ export const createOrder = (
 
 export const getOrderById = (id: string, headers?: HeadersInit) =>
   apiClient<OrderDetailResponse>(`/orders/${id}`, { headers });
+
+export const getOrderTicket = (id: string, headers?: HeadersInit) =>
+  apiBlobClient(`/orders/${id}/ticket`, { headers });
 
 export const updateOrder = (
   id: string,

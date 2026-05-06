@@ -1,6 +1,6 @@
 "use client";
 
-import { PackageCheck, Plus, RefreshCw, Search } from "lucide-react";
+import { Download, Eye, PackageCheck, Plus, RefreshCw, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
@@ -17,6 +17,9 @@ import {
   getPurchases,
   type PurchaseResponse,
 } from "../../../modules/inventory/services/purchase.service";
+import { PdfPreviewModal } from "../../../modules/reporteria/components/PdfPreviewModal";
+import { getPurchaseTicket } from "../../../modules/reporteria/services/reporting.service";
+import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
 
 type PurchaseFilters = {
   query: string;
@@ -60,6 +63,7 @@ const PurchasesPage = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [receivingPurchaseId, setReceivingPurchaseId] = useState<string | null>(null);
   const [payingPurchase, setPayingPurchase] = useState<PurchaseResponse | null>(null);
+  const [previewPurchase, setPreviewPurchase] = useState<PurchaseResponse | null>(null);
   const { currentTenant, isSuperRole } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
@@ -194,6 +198,17 @@ const PurchasesPage = () => {
     }
   };
 
+  const canAccessTicket = (status: PurchaseResponse["status"]) => status !== "DRAFT";
+
+  const handleDownloadTicket = async (purchase: PurchaseResponse) => {
+    try {
+      const blob = await getPurchaseTicket(purchase.id);
+      downloadBlob(blob, `ticket-compra-${purchase.id}.pdf`);
+    } catch (error) {
+      showToast(getApiErrorMessage(error, "No se pudo descargar el ticket."), "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -257,6 +272,24 @@ const PurchasesPage = () => {
           }}
         />
       ) : null}
+
+      <PdfPreviewModal
+        isOpen={Boolean(previewPurchase)}
+        title={
+          previewPurchase
+            ? `Ticket de compra ${previewPurchase.id.slice(0, 8)}`
+            : "Ticket de compra"
+        }
+        fileName={
+          previewPurchase ? `ticket-compra-${previewPurchase.id}.pdf` : "ticket-compra.pdf"
+        }
+        onClose={() => setPreviewPurchase(null)}
+        getPdf={() =>
+          previewPurchase
+            ? getPurchaseTicket(previewPurchase.id)
+            : Promise.reject(new Error("purchase ticket not selected"))
+        }
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div
@@ -429,6 +462,26 @@ const PurchasesPage = () => {
                             Pagar
                           </Button>
                         ) : null}
+                        {canAccessTicket(purchase.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPreviewPurchase(purchase)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            Ver Ticket
+                          </Button>
+                        ) : null}
+                        {canAccessTicket(purchase.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleDownloadTicket(purchase)}
+                          >
+                            <Download className="h-4 w-4" />
+                            Descargar
+                          </Button>
+                        ) : null}
                         {!(
                           (canReceive &&
                             purchase.status !== "CANCELLED" &&
@@ -436,7 +489,8 @@ const PurchasesPage = () => {
                           (canReceive &&
                             purchase.status !== "CANCELLED" &&
                             purchase.balanceDue > 0 &&
-                            purchase.branchId)
+                            purchase.branchId) ||
+                          canAccessTicket(purchase.status)
                         ) ? (
                           <span className="text-xs text-slate-400">Sin acciones</span>
                         ) : null}

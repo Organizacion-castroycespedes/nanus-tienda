@@ -1,4 +1,4 @@
-import { apiClient } from "../../../lib/http";
+import { apiBlobClient, apiClient } from "../../../lib/http";
 
 export type PurchaseResponse = {
   id: string;
@@ -86,6 +86,9 @@ export const createPurchase = (
 
 export const getPurchaseById = (id: string, headers?: HeadersInit) =>
   apiClient<PurchaseDetailResponse>(`/purchases/${id}`, { headers });
+
+export const getPurchaseTicket = (id: string, headers?: HeadersInit) =>
+  apiBlobClient(`/purchases/${id}/ticket`, { headers });
 
 export const receivePurchase = (
   id: string,

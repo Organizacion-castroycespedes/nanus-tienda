@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Download,
+  Eye,
   PackageCheck,
   Pencil,
   Plus,
@@ -30,6 +32,9 @@ import {
   type OrderResponse,
 } from "../../../modules/inventory/services/order.service";
 import { useAppSelector } from "../../../store/hooks";
+import { PdfPreviewModal } from "../../../modules/reporteria/components/PdfPreviewModal";
+import { getOrderSaleTicket as getOrderTicket } from "../../../modules/reporteria/services/reporting.service";
+import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
 
 type OrderFilters = {
   query: string;
@@ -78,6 +83,7 @@ const OrdersPage = () => {
   const [selectedOrder, setSelectedOrder] = useState<OrderDetailResponse | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
+  const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
@@ -281,6 +287,17 @@ const OrdersPage = () => {
     order.balanceDue > 0 &&
     order.billingStatus !== "INVOICED";
 
+  const canAccessTicket = (status: OrderResponse["status"]) => status !== "DRAFT";
+
+  const handleDownloadTicket = async (order: OrderResponse) => {
+    try {
+      const blob = await getOrderTicket(order.id);
+      downloadBlob(blob, `ticket-pedido-${order.id}.pdf`);
+    } catch (error) {
+      showToast(getApiErrorMessage(error, "No se pudo descargar el ticket."), "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -362,6 +379,18 @@ const OrdersPage = () => {
           onSuccess={() => void refreshAfterMutation("Abono registrado correctamente.")}
         />
       ) : null}
+
+      <PdfPreviewModal
+        isOpen={Boolean(previewOrder)}
+        title={previewOrder ? `Ticket de pedido ${previewOrder.id.slice(0, 8)}` : "Ticket de pedido"}
+        fileName={previewOrder ? `ticket-pedido-${previewOrder.id}.pdf` : "ticket-pedido.pdf"}
+        onClose={() => setPreviewOrder(null)}
+        getPdf={() =>
+          previewOrder
+            ? getOrderTicket(previewOrder.id)
+            : Promise.reject(new Error("order ticket not selected"))
+        }
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div
@@ -513,12 +542,13 @@ const OrdersPage = () => {
                     <td className="px-4 py-3">
                       {(() => {
                         const hasRowActions =
-                          canUpdate &&
-                          (canEditOrder(order.status) ||
-                            canDeliverOrder(order.status) ||
-                            canRegisterOrderPayment(order) ||
-                            canInvoiceOrder(order) ||
-                            canCancelOrder(order.status));
+                          (canUpdate &&
+                            (canEditOrder(order.status) ||
+                              canDeliverOrder(order.status) ||
+                              canRegisterOrderPayment(order) ||
+                              canInvoiceOrder(order) ||
+                              canCancelOrder(order.status))) ||
+                          canAccessTicket(order.status);
 
                         return (
                       <div className="flex flex-wrap gap-2">
@@ -571,6 +601,26 @@ const OrdersPage = () => {
                           >
                             <XCircle className="h-4 w-4" />
                             Cancelar
+                          </Button>
+                        ) : null}
+                        {canAccessTicket(order.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPreviewOrder(order)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            Ver Ticket
+                          </Button>
+                        ) : null}
+                        {canAccessTicket(order.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleDownloadTicket(order)}
+                          >
+                            <Download className="h-4 w-4" />
+                            Descargar
                           </Button>
                         ) : null}
                         {!hasRowActions ? (
