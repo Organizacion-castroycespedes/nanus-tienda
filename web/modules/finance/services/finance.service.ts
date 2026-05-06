@@ -2,6 +2,7 @@ import { apiClient } from "../../../lib/http";
 import type {
   CashMovement,
   CashMovementFilters,
+  CashMovementListResponse,
   CashRegister,
   CashRegisterFilters,
   CashSession,
@@ -126,7 +127,7 @@ export const getCashSessionSummary = (cashSessionId: string) =>
   apiClient<CashSessionSummary>(`/finance/cash-sessions/${cashSessionId}/summary`);
 
 export const listCashMovements = (filters: CashMovementFilters = {}) =>
-  apiClient<CashMovement[]>(
+  apiClient<CashMovement[] | CashMovementListResponse>(
     `/finance/cash-movements${buildQuery({
       tenantId: filters.tenantId,
       branchId: filters.branchId,
@@ -136,6 +137,10 @@ export const listCashMovements = (filters: CashMovementFilters = {}) =>
       direction: filters.direction,
       limit: filters.limit ? String(filters.limit) : undefined,
       offset: filters.offset ? String(filters.offset) : undefined,
+      includeSummary:
+        filters.includeSummary === undefined
+          ? undefined
+          : String(filters.includeSummary),
     })}`
   );
 

@@ -46,6 +46,16 @@ export type PaymentDocumentRecord = {
   balance: string | null;
 };
 
+export type PaymentMethodSummaryRecord = {
+  payment_method_id: string;
+  payment_method: string;
+  payment_method_codigo: string | null;
+  payment_method_nombre: string | null;
+  payment_method_tipo: string | null;
+  count: string;
+  total: string;
+};
+
 type CreatePaymentInput = {
   tenantId: string;
   branchId: string;
@@ -478,6 +488,40 @@ export class PaymentsRepository {
       OFFSET $${params.length}`,
       params
     );
+    return result.rows ?? [];
+  }
+
+  async summarizeByPaymentMethodForCashSession(
+    tenantId: string,
+    cashSessionId: string,
+    client?: PoolClient
+  ) {
+    const result = await this.query<PaymentMethodSummaryRecord>(
+      `SELECT
+        payment.payment_method_id,
+        COALESCE(NULLIF(TRIM(method.nombre), ''), NULLIF(TRIM(method.codigo), ''), method.tipo) AS payment_method,
+        method.codigo AS payment_method_codigo,
+        method.nombre AS payment_method_nombre,
+        method.tipo AS payment_method_tipo,
+        COUNT(*)::text AS count,
+        COALESCE(SUM(payment.amount), 0)::text AS total
+      FROM payments AS payment
+      INNER JOIN payment_methods AS method
+        ON method.id = payment.payment_method_id
+       AND method.tenant_id = payment.tenant_id
+      WHERE payment.tenant_id = $1
+        AND payment.cash_session_id = $2
+        AND payment.status = 'COMPLETED'
+      GROUP BY
+        payment.payment_method_id,
+        method.codigo,
+        method.nombre,
+        method.tipo
+      ORDER BY payment_method ASC`,
+      [tenantId, cashSessionId],
+      client
+    );
+
     return result.rows ?? [];
   }
 

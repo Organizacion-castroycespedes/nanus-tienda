@@ -65,6 +65,13 @@ export const buildCashClosingTicketTemplate = (
     },
   ];
 
+  const paymentBreakdownRows = dataset.paymentBreakdown
+    .filter((item) => item.direction === "IN" && item.total > 0)
+    .map(
+      (item) =>
+        [item.paymentMethodNombre.toUpperCase(), formatCurrency(item.total)] as [string, string]
+    );
+
   if (dataset.lastCount) {
     sections.push({
       stack: [
@@ -90,6 +97,15 @@ export const buildCashClosingTicketTemplate = (
       ),
     ],
   });
+
+  if (paymentBreakdownRows.length > 0) {
+    sections.push({
+      stack: [
+        buildThermalSectionTitle("Resumen por medio de pago"),
+        buildMiniTable(paymentBreakdownRows),
+      ],
+    });
+  }
 
   return buildThermalDocument({
     title: "Ticket de cierre de caja",

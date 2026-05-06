@@ -734,6 +734,9 @@ export class OrderService {
     const resolvedFilters = await this.resolveOrderScope(actor, filters);
     const params: unknown[] = [];
     const where: string[] = [];
+    const fromDate = normalizeOptionalFilter(filters.fromDate);
+    const toDate = normalizeOptionalFilter(filters.toDate);
+    const paymentMethod = normalizeOptionalFilter(filters.paymentMethod);
 
     if (resolvedFilters.tenantId) {
       params.push(resolvedFilters.tenantId);
@@ -746,6 +749,44 @@ export class OrderService {
     } else if ((resolvedFilters.branchIds?.length ?? 0) > 0) {
       params.push(resolvedFilters.branchIds);
       where.push(`audit_context.branch_id = ANY($${params.length}::uuid[])`);
+    }
+
+    if (fromDate) {
+      params.push(fromDate);
+      where.push(`o.created_at >= $${params.length}::date`);
+    }
+
+    if (toDate) {
+      params.push(toDate);
+      where.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (paymentMethod) {
+      params.push(paymentMethod);
+      where.push(`
+        (
+          EXISTS (
+            SELECT 1
+            FROM payments AS pay
+            WHERE pay.tenant_id = o.tenant_id
+              AND pay.reference_type = 'SALES_ORDER'
+              AND pay.reference_id = o.id
+              AND pay.payment_method_id = $${params.length}::uuid
+              AND pay.status IN ('PENDING', 'COMPLETED')
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM payment_allocations AS allocation
+            INNER JOIN payments AS pay
+              ON pay.id = allocation.payment_id
+            WHERE pay.tenant_id = o.tenant_id
+              AND allocation.reference_type = 'SALES_ORDER'
+              AND allocation.reference_id = o.id
+              AND pay.payment_method_id = $${params.length}::uuid
+              AND pay.status IN ('PENDING', 'COMPLETED')
+          )
+        )
+      `);
     }
 
     const result = (await this.db.query(

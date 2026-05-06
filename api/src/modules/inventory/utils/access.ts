@@ -10,6 +10,9 @@ export type BranchScopedActor = {
 export type BranchScopedFilters = {
   tenantId?: string;
   branchId?: string;
+  fromDate?: string;
+  toDate?: string;
+  paymentMethod?: string;
 };
 
 export const canViewAllBranches = (actor: BranchScopedActor) =>

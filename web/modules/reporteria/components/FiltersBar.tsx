@@ -1,6 +1,7 @@
 import { Button } from "../../../components/design-system/Button";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
 import { Select } from "../../../components/design-system/Select";
+import type { ReactNode } from "react";
 import type { SelectorOption } from "../types";
 
 type FiltersBarProps = {
@@ -9,6 +10,7 @@ type FiltersBarProps = {
     to: string;
   };
   onDateRangeChange: (value: { from: string; to: string }) => void;
+  showDateRange?: boolean;
   tenantId: string;
   branchId: string;
   onTenantChange: (value: string) => void;
@@ -22,12 +24,14 @@ type FiltersBarProps = {
   tenantLabel?: string;
   branchLabel?: string;
   isSearching?: boolean;
+  extraFilters?: ReactNode;
   onSearch: () => void;
 };
 
 export const FiltersBar = ({
   dateRange,
   onDateRangeChange,
+  showDateRange = true,
   tenantId,
   branchId,
   onTenantChange,
@@ -41,13 +45,13 @@ export const FiltersBar = ({
   tenantLabel,
   branchLabel,
   isSearching = false,
+  extraFilters,
   onSearch,
 }: FiltersBarProps) => {
   return (
     <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr_auto] xl:items-end">
-        <DateRangePicker value={dateRange} onChange={onDateRangeChange} />
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="flex flex-wrap items-end justify-center gap-4">
+        <div className="order-2 w-full min-w-[280px] max-w-[360px] sm:order-1 xl:flex-1 xl:basis-[280px]">
           {showTenantSelector ? (
             <Select
               label="Tenant"
@@ -74,6 +78,15 @@ export const FiltersBar = ({
               </p>
             </div>
           )}
+        </div>
+
+        {showDateRange ? (
+          <div className="order-1 w-full min-w-[280px] max-w-[420px] sm:order-2 xl:flex-[1.2] xl:basis-[340px]">
+            <DateRangePicker value={dateRange} onChange={onDateRangeChange} />
+          </div>
+        ) : null}
+
+        <div className="order-3 w-full min-w-[280px] max-w-[360px] xl:flex-1 xl:basis-[280px]">
           {showBranchSelector ? (
             <Select
               label="Sucursal"
@@ -98,14 +111,24 @@ export const FiltersBar = ({
             </div>
           )}
         </div>
-        <Button
-          className="w-full xl:w-auto"
-          onClick={onSearch}
-          isLoading={isSearching}
-          disabled={!dateRange.from || !dateRange.to || (showTenantSelector && !tenantId)}
-        >
-          Buscar
-        </Button>
+
+        <div className="order-4 w-full min-w-[280px] max-w-[360px] xl:flex-1 xl:basis-[280px]">
+          {extraFilters ? extraFilters : <div />}
+        </div>
+
+        <div className="order-5 flex w-full justify-center xl:w-auto xl:justify-start">
+          <Button
+            className="w-full xl:w-auto"
+            onClick={onSearch}
+            isLoading={isSearching}
+            disabled={
+              (showDateRange && (!dateRange.from || !dateRange.to)) ||
+              (showTenantSelector && !tenantId)
+            }
+          >
+            Buscar
+          </Button>
+        </div>
       </div>
     </section>
   );

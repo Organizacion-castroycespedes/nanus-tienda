@@ -75,14 +75,15 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
       {
         stack: [
           buildThermalSectionTitle("Pagos"),
-          ...(dataset.payments.length > 0
-            ? dataset.payments.map(
+          ...(dataset.paymentBreakdown.length > 0
+            ? dataset.paymentBreakdown.map(
                 (payment): Content => ({
                   columns: [
                     {
                       width: "*",
-                      text: `${payment.method} (${payment.status})`,
+                      text: payment.method,
                       fontSize: 8.5,
+                      bold: true,
                     },
                     {
                       width: "auto",

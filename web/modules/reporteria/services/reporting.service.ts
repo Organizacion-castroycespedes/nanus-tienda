@@ -22,6 +22,8 @@ const buildQuery = (filters: ReportFilters) => {
     branchId: filters.branchId,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
+    customerDocument: filters.customerDocument,
+    customerName: filters.customerName,
   });
 
   Object.entries(normalized).forEach(([key, value]) => {

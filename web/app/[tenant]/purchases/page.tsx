@@ -1,11 +1,13 @@
 "use client";
 
-import { PackageCheck, Plus, RefreshCw, Search } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { Download, Eye, PackageCheck, Plus, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { listPaymentMethods } from "../../../modules/finance/services/finance.service";
+import type { PaymentMethod } from "../../../modules/finance/types";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
@@ -17,17 +19,26 @@ import {
   getPurchases,
   type PurchaseResponse,
 } from "../../../modules/inventory/services/purchase.service";
+import { PdfPreviewModal } from "../../../modules/reporteria/components/PdfPreviewModal";
+import { getPurchaseTicket } from "../../../modules/reporteria/services/reporting.service";
+import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
 
 type PurchaseFilters = {
   query: string;
   tenantId: string;
   branchId: string;
+  fromDate: string;
+  toDate: string;
+  paymentMethod: string;
 };
 
 const defaultFilters: PurchaseFilters = {
   query: "",
   tenantId: "",
   branchId: "",
+  fromDate: "",
+  toDate: "",
+  paymentMethod: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
@@ -60,6 +71,8 @@ const PurchasesPage = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [receivingPurchaseId, setReceivingPurchaseId] = useState<string | null>(null);
   const [payingPurchase, setPayingPurchase] = useState<PurchaseResponse | null>(null);
+  const [previewPurchase, setPreviewPurchase] = useState<PurchaseResponse | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const { currentTenant, isSuperRole } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
@@ -82,12 +95,18 @@ const PurchasesPage = () => {
         return {
           tenantId: filters?.tenantId || undefined,
           branchId: filters?.branchId || undefined,
+          fromDate: filters?.fromDate || undefined,
+          toDate: filters?.toDate || undefined,
+          paymentMethod: filters?.paymentMethod || undefined,
         };
       }
 
       return {
         tenantId: currentTenant || undefined,
         branchId: filters?.branchId || undefined,
+        fromDate: filters?.fromDate || undefined,
+        toDate: filters?.toDate || undefined,
+        paymentMethod: filters?.paymentMethod || undefined,
       };
     },
     [canViewAllTenants, currentTenant]
@@ -108,6 +127,17 @@ const PurchasesPage = () => {
       setLoading(false);
     }
   }, [appliedFilters, resolvePurchaseFilters]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await listPaymentMethods({ active: true });
+        setPaymentMethods(result.filter((method) => method.active));
+      } catch {
+        setPaymentMethods([]);
+      }
+    })();
+  }, []);
 
   const tenantOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -194,6 +224,17 @@ const PurchasesPage = () => {
     }
   };
 
+  const canAccessTicket = (status: PurchaseResponse["status"]) => status !== "DRAFT";
+
+  const handleDownloadTicket = async (purchase: PurchaseResponse) => {
+    try {
+      const blob = await getPurchaseTicket(purchase.id);
+      downloadBlob(blob, `ticket-compra-${purchase.id}.pdf`);
+    } catch (error) {
+      showToast(getApiErrorMessage(error, "No se pudo descargar el ticket."), "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -258,12 +299,30 @@ const PurchasesPage = () => {
         />
       ) : null}
 
+      <PdfPreviewModal
+        isOpen={Boolean(previewPurchase)}
+        title={
+          previewPurchase
+            ? `Ticket de compra ${previewPurchase.id.slice(0, 8)}`
+            : "Ticket de compra"
+        }
+        fileName={
+          previewPurchase ? `ticket-compra-${previewPurchase.id}.pdf` : "ticket-compra.pdf"
+        }
+        onClose={() => setPreviewPurchase(null)}
+        getPdf={() =>
+          previewPurchase
+            ? getPurchaseTicket(previewPurchase.id)
+            : Promise.reject(new Error("purchase ticket not selected"))
+        }
+      />
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div
           className={
             canViewAllTenants
-              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto_auto]"
-              : "grid gap-4 md:grid-cols-[1fr_auto_auto]"
+              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_220px_220px_auto_auto]"
+              : "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_auto_auto]"
           }
         >
           <Input
@@ -311,6 +370,36 @@ const PurchasesPage = () => {
               ))}
             </Select>
           ) : null}
+          <Input
+            label="Desde"
+            type="date"
+            value={draftFilters.fromDate}
+            onChange={(event) =>
+              setDraftFilters((prev) => ({ ...prev, fromDate: event.target.value }))
+            }
+          />
+          <Input
+            label="Hasta"
+            type="date"
+            value={draftFilters.toDate}
+            onChange={(event) =>
+              setDraftFilters((prev) => ({ ...prev, toDate: event.target.value }))
+            }
+          />
+          <Select
+            label="Metodo de pago"
+            value={draftFilters.paymentMethod}
+            onChange={(event) =>
+              setDraftFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))
+            }
+          >
+            <option value="">Todos</option>
+            {paymentMethods.map((method) => (
+              <option key={method.id} value={method.id}>
+                {method.nombre}
+              </option>
+            ))}
+          </Select>
           <div className="flex items-end gap-2">
             <Button variant="outline" onClick={applyFilters}>
               <Search className="h-4 w-4" />
@@ -429,6 +518,26 @@ const PurchasesPage = () => {
                             Pagar
                           </Button>
                         ) : null}
+                        {canAccessTicket(purchase.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPreviewPurchase(purchase)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            Ver Ticket
+                          </Button>
+                        ) : null}
+                        {canAccessTicket(purchase.status) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleDownloadTicket(purchase)}
+                          >
+                            <Download className="h-4 w-4" />
+                            Descargar
+                          </Button>
+                        ) : null}
                         {!(
                           (canReceive &&
                             purchase.status !== "CANCELLED" &&
@@ -436,7 +545,8 @@ const PurchasesPage = () => {
                           (canReceive &&
                             purchase.status !== "CANCELLED" &&
                             purchase.balanceDue > 0 &&
-                            purchase.branchId)
+                            purchase.branchId) ||
+                          canAccessTicket(purchase.status)
                         ) ? (
                           <span className="text-xs text-slate-400">Sin acciones</span>
                         ) : null}

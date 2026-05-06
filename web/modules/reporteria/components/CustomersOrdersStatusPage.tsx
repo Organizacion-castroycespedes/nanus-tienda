@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { Input } from "../../../components/design-system/Input";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
 import { useCustomersOrdersStatus } from "../hooks/use-customers-orders-status";
 import { useReportingScope } from "../hooks/use-reporting-scope";
@@ -9,15 +10,14 @@ import type { CustomerOrdersStatusRow } from "../types";
 import {
   downloadReportWorkbook,
   formatCurrency,
-  getTodayRange,
 } from "../utils";
 import { FiltersBar } from "./FiltersBar";
 import { ReportExportCard } from "./ReportExportCard";
 import { ReportMetricCard } from "./ReportMetricCard";
 
 const CustomersOrdersStatusPage = () => {
-  const initialRange = useMemo(() => getTodayRange(), []);
-  const [dateRange, setDateRange] = useState(initialRange);
+  const [customerDocument, setCustomerDocument] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const {
     canViewReports,
     showTenantSelector,
@@ -43,10 +43,10 @@ const CustomersOrdersStatusPage = () => {
     await loadReports({
       tenantId,
       branchId: branchId || undefined,
-      dateFrom: dateRange.from,
-      dateTo: dateRange.to,
+      customerDocument: customerDocument || undefined,
+      customerName: customerName || undefined,
     });
-  }, [branchId, dateRange.from, dateRange.to, loadReports, tenantId]);
+  }, [branchId, customerDocument, customerName, loadReports, tenantId]);
 
   useEffect(() => {
     if (!canViewReports || !tenantId) {
@@ -56,10 +56,10 @@ const CustomersOrdersStatusPage = () => {
     void loadReports({
       tenantId,
       branchId: branchId || undefined,
-      dateFrom: initialRange.from,
-      dateTo: initialRange.to,
+      customerDocument: customerDocument || undefined,
+      customerName: customerName || undefined,
     });
-  }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
+  }, [branchId, canViewReports, loadReports, tenantId]);
 
   const columns = useMemo<DataTableColumn<CustomerOrdersStatusRow>[]>(
     () => [
@@ -116,7 +116,7 @@ const CustomersOrdersStatusPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Reporteria clientes</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900">Clientes con pedidos por estado</h1>
@@ -125,82 +125,105 @@ const CustomersOrdersStatusPage = () => {
         </p>
       </section>
 
-      <FiltersBar
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        tenantId={tenantId}
-        branchId={branchId}
-        onTenantChange={setTenantId}
-        onBranchChange={setBranchId}
-        showTenantSelector={showTenantSelector}
-        showBranchSelector={showBranchSelector}
-        tenantOptions={tenantOptions}
-        branchOptions={branchOptions}
-        loadingTenants={loadingTenants}
-        loadingBranches={loadingBranches}
-        tenantLabel={resolvedTenantLabel}
-        branchLabel={resolvedBranchLabel}
-        isSearching={loading}
-        onSearch={() => void handleSearch()}
-      />
+      <section className="grid gap-6 ">
+        <div className="min-w-0 w-full">
+          <FiltersBar
+            dateRange={{ from: "", to: "" }}
+            onDateRangeChange={() => undefined}
+            showDateRange={false}
+            tenantId={tenantId}
+            branchId={branchId}
+            onTenantChange={setTenantId}
+            onBranchChange={setBranchId}
+            showTenantSelector={showTenantSelector}
+            showBranchSelector={showBranchSelector}
+            tenantOptions={tenantOptions}
+            branchOptions={branchOptions}
+            loadingTenants={loadingTenants}
+            loadingBranches={loadingBranches}
+            tenantLabel={resolvedTenantLabel}
+            branchLabel={resolvedBranchLabel}
+            isSearching={loading}
+            extraFilters={
+              <div className="grid w-full gap-4 sm:grid-cols-2">
+                <Input
+                  label="Documento"
+                  placeholder="Buscar por documento"
+                  value={customerDocument}
+                  onChange={(event) => setCustomerDocument(event.target.value)}
+                />
+                <Input
+                  label="Nombre"
+                  placeholder="Buscar por nombre"
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                />
+              </div>
+            }
+            onSearch={() => void handleSearch()}
+          />
+        </div>
 
-      <ReportExportCard
-        title="Descargar clientes con pedidos para conciliacion"
-        description="Genera un Excel agrupado por cliente con pedidos pendientes, parciales, completados y saldo consolidado."
-        helper="Sirve para cartera, seguimiento comercial y conciliacion de pedidos por cliente."
-        actions={[
-          {
-            label: "Descargar Excel",
-            disabled: !canExport,
-            onClick: () => {
-              if (!dataset) {
-                return;
-              }
+        <div className="min-w-0 w-full">
+          <ReportExportCard
+            title="Descargar clientes con pedidos para conciliacion"
+            description="Genera un Excel agrupado por cliente con pedidos pendientes, parciales, completados y saldo consolidado."
+            helper="Sirve para cartera, seguimiento comercial y conciliacion de pedidos por cliente."
+            actions={[
+              {
+                label: "Descargar Excel",
+                disabled: !canExport,
+                onClick: () => {
+                  if (!dataset) {
+                    return;
+                  }
 
-              downloadReportWorkbook({
-                fileName: `reporte-clientes-pedidos-${tenantId}-${dateRange.from}-${dateRange.to}.xls`,
-                summaryTitle: "Clientes con pedidos por estado",
-                detailTitle: "Detalle por cliente",
-                filters: [
-                  { label: "Tenant", value: resolvedTenantLabel },
-                  { label: "Sucursal", value: resolvedBranchLabel },
-                  { label: "Desde", value: dateRange.from },
-                  { label: "Hasta", value: dateRange.to },
-                ],
-                summary: [
-                  { label: "Clientes", value: dataset.summary.count },
-                  { label: "Pedidos", value: dataset.summary.totalOrders },
-                  { label: "Pendientes", value: dataset.summary.pendingOrders },
-                  { label: "Parciales", value: dataset.summary.partialOrders },
-                  { label: "Completados", value: dataset.summary.completedOrders },
-                  { label: "Monto total", value: dataset.summary.totalAmount },
-                  { label: "Saldo pendiente", value: dataset.summary.totalPending },
-                ],
-                columns: [
-                  "Cliente",
-                  "Cliente ID",
-                  "Total pedidos",
-                  "Pendientes",
-                  "Parciales",
-                  "Completados",
-                  "Monto total",
-                  "Saldo pendiente",
-                ],
-                rows: dataset.rows.map((row) => [
-                  row.customerName,
-                  row.customerId,
-                  row.totalOrders,
-                  row.pendingOrders,
-                  row.partialOrders,
-                  row.completedOrders,
-                  row.totalAmount,
-                  row.totalPending,
-                ]),
-              });
-            },
-          },
-        ]}
-      />
+                  downloadReportWorkbook({
+                    fileName: `reporte-clientes-pedidos-${tenantId}.xls`,
+                    summaryTitle: "Clientes con pedidos por estado",
+                    detailTitle: "Detalle por cliente",
+                    filters: [
+                      { label: "Tenant", value: resolvedTenantLabel },
+                      { label: "Sucursal", value: resolvedBranchLabel },
+                      { label: "Documento", value: customerDocument || "-" },
+                      { label: "Nombre", value: customerName || "-" },
+                    ],
+                    summary: [
+                      { label: "Clientes", value: dataset.summary.count },
+                      { label: "Pedidos", value: dataset.summary.totalOrders },
+                      { label: "Pendientes", value: dataset.summary.pendingOrders },
+                      { label: "Parciales", value: dataset.summary.partialOrders },
+                      { label: "Completados", value: dataset.summary.completedOrders },
+                      { label: "Monto total", value: dataset.summary.totalAmount },
+                      { label: "Saldo pendiente", value: dataset.summary.totalPending },
+                    ],
+                    columns: [
+                      "Cliente",
+                      "Cliente ID",
+                      "Total pedidos",
+                      "Pendientes",
+                      "Parciales",
+                      "Completados",
+                      "Monto total",
+                      "Saldo pendiente",
+                    ],
+                    rows: dataset.rows.map((row) => [
+                      row.customerName,
+                      row.customerId,
+                      row.totalOrders,
+                      row.pendingOrders,
+                      row.partialOrders,
+                      row.completedOrders,
+                      row.totalAmount,
+                      row.totalPending,
+                    ]),
+                  });
+                },
+              },
+            ]}
+          />
+        </div>
+      </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <ReportMetricCard
@@ -229,18 +252,20 @@ const CustomersOrdersStatusPage = () => {
         />
       </section>
 
-      <DataTable
-        columns={columns}
-        rows={dataset?.rows ?? []}
-        getRowKey={(row) => row.customerId}
-        loading={loading}
-        error={error}
-        emptyState={
-          searched
-            ? "No hay clientes con pedidos para los filtros seleccionados."
-            : "Usa los filtros y ejecuta la busqueda para cargar el reporte."
-        }
-      />
+      <section className="rounded-[32px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <DataTable
+          columns={columns}
+          rows={dataset?.rows ?? []}
+          getRowKey={(row) => row.customerId}
+          loading={loading}
+          error={error}
+          emptyState={
+            searched
+              ? "No hay clientes con pedidos para los filtros seleccionados."
+              : "Usa los filtros y ejecuta la busqueda para cargar el reporte."
+          }
+        />
+      </section>
     </div>
   );
 };

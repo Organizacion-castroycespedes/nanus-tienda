@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchProfile } from "../../../domains/auth/api";
+import { fetchSystemVersion } from "../../../domains/system/api";
 import type { AuthUser } from "../../../domains/auth/types";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setUser } from "../../../store/authSlice";
@@ -21,6 +22,7 @@ const DashboardPage = () => {
     .filter(Boolean)
     .join(" ");
   const cargo = user?.persona?.cargoNombre || "Sin cargo";
+  const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
     setUserState(authUser);
@@ -54,6 +56,27 @@ const DashboardPage = () => {
     })();
   }, [authStatus, authUser, dispatch]);
 
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      try {
+        const response = await fetchSystemVersion();
+        if (active) {
+          setAppVersion(response.version ?? "");
+        }
+      } catch {
+        if (active) {
+          setAppVersion("");
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -71,6 +94,7 @@ const DashboardPage = () => {
             <p className="font-semibold text-slate-900">Contexto activo</p>
             <p className="mt-1">Tenant: {companyName}</p>
             <p>Sucursal: {branchName}</p>
+            <p>Version: {appVersion || "No disponible"}</p>
           </div>
         </div>
       </section>

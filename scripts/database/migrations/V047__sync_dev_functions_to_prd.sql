@@ -2439,7 +2439,8 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.report_customer_orders_status(p_actor_user_id uuid, p_actor_role text, p_actor_tenant_id uuid, p_actor_branch_id uuid, p_tenant_id uuid DEFAULT NULL::uuid, p_branch_id uuid DEFAULT NULL::uuid, p_date_from timestamp with time zone DEFAULT NULL::timestamp with time zone, p_date_to timestamp with time zone DEFAULT NULL::timestamp with time zone)
+DROP FUNCTION public.report_customer_orders_status(uuid, text, uuid, uuid, uuid, uuid, timestamptz, timestamptz);
+CREATE OR REPLACE FUNCTION public.report_customer_orders_status(p_actor_user_id uuid, p_actor_role text, p_actor_tenant_id uuid, p_actor_branch_id uuid, p_tenant_id uuid DEFAULT NULL::uuid, p_branch_id uuid DEFAULT NULL::uuid, p_date_from timestamp with time zone DEFAULT NULL::timestamp with time zone, p_date_to timestamp with time zone DEFAULT NULL::timestamp with time zone, p_customer_document text DEFAULT NULL::text, p_customer_name text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
@@ -2473,6 +2474,7 @@ BEGIN
       o.id AS order_id,
       o.customer_id,
       customer.name AS customer_name,
+      customer.document_number AS customer_document,
       o.status,
       COALESCE(o.payment_status, 'PENDING') AS payment_status,
       o.total::NUMERIC(14, 2) AS total,
@@ -2528,6 +2530,14 @@ BEGIN
     WHERE o.tenant_id = v_effective_tenant_id
       AND (p_date_from IS NULL OR o.created_at >= p_date_from)
       AND (p_date_to IS NULL OR o.created_at < p_date_to)
+      AND (
+        p_customer_document IS NULL
+        OR customer.document_number ILIKE '%'::text || p_customer_document || '%'::text
+      )
+      AND (
+        p_customer_name IS NULL
+        OR customer.name ILIKE '%'::text || p_customer_name || '%'::text
+      )
       AND (
         v_effective_branch_id IS NULL
         OR COALESCE(sale_context.branch_id, payment_context.branch_id) = v_effective_branch_id
@@ -2594,6 +2604,8 @@ BEGIN
       'branchId', v_effective_branch_id,
       'dateFrom', p_date_from,
       'dateTo', p_date_to,
+      'customerDocument', p_customer_document,
+      'customerName', p_customer_name,
       'actorRole', UPPER(COALESCE(p_actor_role, 'USER'))
     ),
     'summary', jsonb_build_object(
@@ -3758,6 +3770,25 @@ BEGIN
           ORDER BY payment.created_at ASC, payment.id ASC
         )
         FROM payment_rows AS payment
+      ),
+      '[]'::JSONB
+    ),
+    'paymentBreakdown', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'method', grouped.method,
+            'amount', grouped.amount
+          )
+          ORDER BY grouped.method ASC
+        )
+        FROM (
+          SELECT
+            COALESCE(NULLIF(BTRIM(payment.payment_method_name), ''), 'SIN METODO') AS method,
+            SUM(payment.amount)::NUMERIC(14, 2) AS amount
+          FROM payment_rows AS payment
+          GROUP BY COALESCE(NULLIF(BTRIM(payment.payment_method_name), ''), 'SIN METODO')
+        ) AS grouped
       ),
       '[]'::JSONB
     ),

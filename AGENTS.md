@@ -1,4 +1,49 @@
+# Repository Guidelines
+
+## Project Structure & Module Organization
+This repo has three active apps plus docs and ops scripts. `web/` is the Next.js 14 frontend with `app/`, `components/`, `domains/`, `store/`, and `styles/`. `api/` is the main NestJS backend; shared helpers live in `src/common/`, feature code in `src/modules/`, and manual SQL in `api/database/`. `backend-reporteria/` is a second NestJS service for PDF and report output. Reference material lives in `docs/`, and utility scripts live in `scripts/`.
+
+## Build, Test, and Development Commands
+Run commands inside the target folder.
+
+- `cd web && npm run dev` starts the frontend.
+- `cd web && npm run build` creates the production build.
+- `cd web && npm run lint` runs ESLint for the frontend.
+- `cd api && npm run start:dev` starts the main API with `tsx watch`.
+- `cd api && npm run build` compiles the API to `dist/`.
+- `cd api && npx tsx --test src/**/*.spec.ts` runs backend unit tests.
+- `cd backend-reporteria && npm run start:dev` starts the reporting service.
+- `cd backend-reporteria && npm run build:bin` builds the packaged binary in `dist-bin/`.
+
+## Coding Style & Naming Conventions
+Use TypeScript across all apps. Match existing style: 2-space indentation, double quotes, semicolons, and trailing commas in multiline objects or parameter lists. Use `PascalCase` for classes and React components, `camelCase` for functions and variables, and domain-based folder names such as `src/modules/roles` or `web/domains/menu`.
+
+## Testing Guidelines
+Backend tests use Node's built-in runner with `node:test` and `assert/strict`. Name test files `*.spec.ts` and keep them beside the code they cover, for example `api/src/modules/roles/roles.service.spec.ts`. No frontend test suite is wired yet, so frontend changes should at least pass `npm run lint` and include manual verification notes in the PR.
+
+## Database & Configuration Tips
+Environment templates are in `api/.env.example`, `web/.env.example`, and `backend-reporteria/.env.example`. Database changes are manual: add dated SQL files under `api/database/` using the existing `YYYY_MM_DD_description.sql` pattern. Check local port and API URL alignment before testing; current example env files do not fully match.
+
+## Commit & Pull Request Guidelines
+Recent history mixes short imperative summaries like `Expose system version in backend and POS UI` with Conventional Commit prefixes like `feat:`. Keep commit messages short, specific, and scoped to one change. PRs should include a concise description, linked issue or ticket, touched areas (`web`, `api`, `backend-reporteria`, `database`), screenshots for UI updates, and notes for any env or SQL steps reviewers must apply manually.
+
+
 # Agent.md - ManusTienda Platform
+
+# Personal Codex instructions
+
+## Communication style
+
+- Respond in "caveman mode".
+- Use short, simple sentences.
+- Use light caveman phrasing, for example:
+  - "Me check code."
+  - "Bug here."
+  - "Test pass."
+  - "You run this command."
+- Keep technical terms, filenames, commands, APIs, errors, and stack traces exact.
+- Do not make the answer vague just to sound caveman.
+- For code explanations, be funny but still precise.
 
 ## 1. Resumen del Proyecto
 Proyecto SaaS multi-tenant con backend en NestJS (`apps/api`) y frontend en Next.js (`apps/web`). El core incluye autenticacion JWT, RBAC por roles y permisos de menu, y catalogo de menu por tenant.
