@@ -11,11 +11,13 @@ import {
   Search,
   XCircle,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { listPaymentMethods } from "../../../modules/finance/services/finance.service";
+import type { PaymentMethod } from "../../../modules/finance/types";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { hasPermission } from "../../../lib/permissions";
@@ -40,12 +42,18 @@ type OrderFilters = {
   query: string;
   tenantId: string;
   branchId: string;
+  fromDate: string;
+  toDate: string;
+  paymentMethod: string;
 };
 
 const defaultFilters: OrderFilters = {
   query: "",
   tenantId: "",
   branchId: "",
+  fromDate: "",
+  toDate: "",
+  paymentMethod: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
@@ -84,6 +92,7 @@ const OrdersPage = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
@@ -119,9 +128,16 @@ const OrdersPage = () => {
             ? {
                 tenantId: activeFilters.tenantId || undefined,
                 branchId: activeFilters.branchId || undefined,
+                fromDate: activeFilters.fromDate || undefined,
+                toDate: activeFilters.toDate || undefined,
+                paymentMethod: activeFilters.paymentMethod || undefined,
               }
             : {
                 tenantId: currentTenant ?? undefined,
+                branchId: activeFilters.branchId || undefined,
+                fromDate: activeFilters.fromDate || undefined,
+                toDate: activeFilters.toDate || undefined,
+                paymentMethod: activeFilters.paymentMethod || undefined,
               }
         );
         setOrders(result);
@@ -135,6 +151,17 @@ const OrdersPage = () => {
     },
     [appliedFilters, currentTenant, isGlobalRole]
   );
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await listPaymentMethods({ active: true });
+        setPaymentMethods(result.filter((method) => method.active));
+      } catch {
+        setPaymentMethods([]);
+      }
+    })();
+  }, []);
 
   const tenantOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -396,8 +423,8 @@ const OrdersPage = () => {
         <div
           className={
             isGlobalRole
-              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto_auto]"
-              : "grid gap-4 md:grid-cols-[1fr_auto_auto]"
+              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_220px_220px_auto_auto]"
+              : "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_auto_auto]"
           }
         >
           <Input
@@ -445,6 +472,36 @@ const OrdersPage = () => {
               ))}
             </Select>
           ) : null}
+          <Input
+            label="Desde"
+            type="date"
+            value={draftFilters.fromDate}
+            onChange={(event) =>
+              setDraftFilters((prev) => ({ ...prev, fromDate: event.target.value }))
+            }
+          />
+          <Input
+            label="Hasta"
+            type="date"
+            value={draftFilters.toDate}
+            onChange={(event) =>
+              setDraftFilters((prev) => ({ ...prev, toDate: event.target.value }))
+            }
+          />
+          <Select
+            label="Metodo de pago"
+            value={draftFilters.paymentMethod}
+            onChange={(event) =>
+              setDraftFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))
+            }
+          >
+            <option value="">Todos</option>
+            {paymentMethods.map((method) => (
+              <option key={method.id} value={method.id}>
+                {method.nombre}
+              </option>
+            ))}
+          </Select>
           <div className="flex items-end gap-2">
             <Button variant="outline" onClick={applyFilters}>
               <Search className="h-4 w-4" />
