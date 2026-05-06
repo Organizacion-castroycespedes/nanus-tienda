@@ -11,6 +11,7 @@ import { InventoryModule } from "./inventory/inventory.module";
 import { TerminalsModule } from "./terminals/terminals.module";
 import { PosUserSessionsModule } from "./pos-user-sessions/pos-user-sessions.module";
 import { FinanceModule } from "./finance/finance.module";
+import { SystemModule } from "./system/system.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { FinanceModule } from "./finance/finance.module";
     TerminalsModule,
     PosUserSessionsModule,
     FinanceModule,
+    SystemModule,
   ],
 })
 export class AppModule {}

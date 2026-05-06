@@ -25,6 +25,7 @@ import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSe
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { hasMenuAccess } from "../../../lib/permissions";
+import { fetchSystemVersion } from "../../../domains/system/api";
 import {
   getCurrentCashSession,
   listPaymentMethods,
@@ -148,6 +149,7 @@ export const PosScreen = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState("");
 
   // New state for cart drawer visibility
   const [isCartOpen, setIsCartOpen] = useState(true);
@@ -308,6 +310,29 @@ export const PosScreen = () => {
     };
 
     void loadFinanceCatalog();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadVersion = async () => {
+      try {
+        const response = await fetchSystemVersion();
+        if (active) {
+          setAppVersion(response.version ?? "");
+        }
+      } catch {
+        if (active) {
+          setAppVersion("");
+        }
+      }
+    };
+
+    void loadVersion();
 
     return () => {
       active = false;
@@ -1028,6 +1053,9 @@ export const PosScreen = () => {
               <h1 className="text-2xl font-semibold text-slate-950 dark:text-white">
                 Punto de venta
               </h1>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Version: {appVersion || "No disponible"}
+              </p>
             </div>
           </div>
 
