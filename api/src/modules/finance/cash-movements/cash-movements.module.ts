@@ -6,6 +6,7 @@ import { FinanceAuthzGuard } from "../common/guards/finance-authz.guard";
 import { FinanceAccessRepository } from "../common/repositories/finance-access.repository";
 import { CashRegistersRepository } from "../cash-registers/cash-registers.repository";
 import { CashSessionsRepository } from "../cash-sessions/cash-sessions.repository";
+import { PaymentsRepository } from "../payments/payments.repository";
 import { CashMovementsController } from "./cash-movements.controller";
 import { CashMovementsRepository } from "./cash-movements.repository";
 import { CashMovementsService } from "./cash-movements.service";
@@ -18,6 +19,7 @@ import { CashMovementsService } from "./cash-movements.service";
     CashMovementsRepository,
     CashSessionsRepository,
     CashRegistersRepository,
+    PaymentsRepository,
     FinanceAccessRepository,
     FinanceAuthzGuard,
   ],
