@@ -12,8 +12,14 @@ import type { FinanceActor } from "../common/finance.types";
 import { FinanceAccessRepository } from "../common/repositories/finance-access.repository";
 import { CashRegistersRepository } from "../cash-registers/cash-registers.repository";
 import { CashSessionsRepository } from "../cash-sessions/cash-sessions.repository";
+import { PaymentsRepository } from "../payments/payments.repository";
 import { CashMovementResponseDto } from "./dto/cash-movement-response.dto";
 import { CreateCashMovementDto } from "./dto/create-cash-movement.dto";
+import {
+  CashMovementListResponseDto,
+  CashMovementPaymentMethodSummaryDto,
+  CashMovementListSummaryDto,
+} from "./dto/list-cash-movements-response.dto";
 import { ListCashMovementsDto } from "./dto/list-cash-movements.dto";
 import {
   CashMovementsRepository,
@@ -29,6 +35,8 @@ export class CashMovementsService {
     private readonly sessionsRepository: CashSessionsRepository,
     @Inject(CashRegistersRepository)
     private readonly cashRegistersRepository: CashRegistersRepository,
+    @Inject(PaymentsRepository)
+    private readonly paymentsRepository: PaymentsRepository,
     @Inject(FinanceAccessRepository)
     private readonly accessRepository: FinanceAccessRepository,
     @Inject(DatabaseService) private readonly db: DatabaseService,
@@ -121,6 +129,56 @@ export class CashMovementsService {
         createdAt: record.created_at,
       },
       { excludeExtraneousValues: true }
+    );
+  }
+
+  private buildSummary(items: CashMovementResponseDto[]) {
+    const totalIn = items
+      .filter((item) => item.direction === "IN")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const totalOut = items
+      .filter((item) => item.direction === "OUT")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    return plainToInstance(
+      CashMovementListSummaryDto,
+      {
+        totalIn,
+        totalOut,
+        balance: totalIn - totalOut,
+        movementCount: items.length,
+      },
+      { excludeExtraneousValues: true }
+    );
+  }
+
+  private async buildPaymentMethodSummary(
+    tenantId: string,
+    cashSessionId?: string
+  ) {
+    if (!cashSessionId) {
+      return [] as CashMovementPaymentMethodSummaryDto[];
+    }
+
+    const rows = await this.paymentsRepository.summarizeByPaymentMethodForCashSession(
+      tenantId,
+      cashSessionId
+    );
+
+    return rows.map((row) =>
+      plainToInstance(
+        CashMovementPaymentMethodSummaryDto,
+        {
+          paymentMethodId: row.payment_method_id,
+          paymentMethod: row.payment_method,
+          paymentMethodCodigo: row.payment_method_codigo,
+          paymentMethodNombre: row.payment_method_nombre,
+          paymentMethodTipo: row.payment_method_tipo,
+          count: Number(row.count),
+          total: Number(row.total),
+        },
+        { excludeExtraneousValues: true }
+      )
     );
   }
 
@@ -250,6 +308,22 @@ export class CashMovementsService {
       offset: filters.offset ?? 0,
     });
 
-    return records.map((record) => this.mapResponse(record));
+    const items = records.map((record) => this.mapResponse(record));
+    if (!filters.includeSummary) {
+      return items;
+    }
+
+    return plainToInstance(
+      CashMovementListResponseDto,
+      {
+        summary: this.buildSummary(items),
+        byPaymentMethod: await this.buildPaymentMethodSummary(
+          tenantId,
+          filters.cashSessionId
+        ),
+        items,
+      },
+      { excludeExtraneousValues: true }
+    );
   }
 }

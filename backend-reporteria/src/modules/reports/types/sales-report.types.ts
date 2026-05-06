@@ -59,6 +59,11 @@ export type PosSaleTicketPayment = {
   notes?: string | null;
 };
 
+export type PosSaleTicketPaymentBreakdown = {
+  method: string;
+  amount: number;
+};
+
 export type PosSaleTicketDataset = {
   header: {
     saleId: string;
@@ -77,6 +82,7 @@ export type PosSaleTicketDataset = {
   };
   items: PosSaleTicketItem[];
   payments: PosSaleTicketPayment[];
+  paymentBreakdown: PosSaleTicketPaymentBreakdown[];
   totals: {
     subtotal: number;
     taxes: number;

@@ -94,6 +94,16 @@ export class CashReportsService {
     return Number(value ?? 0);
   }
 
+  private normalizePaymentBreakdown(
+    items: CashClosingTicketDataset["paymentBreakdown"] | null | undefined
+  ): CashClosingTicketDataset["paymentBreakdown"] {
+    return (items ?? []).map((item) => ({
+      ...item,
+      count: this.toNumber(item.count),
+      total: this.toNumber(item.total),
+    }));
+  }
+
   private normalizeCashClosingRow(row: CashClosingListRow): CashClosingListRow {
     return {
       ...row,
@@ -222,11 +232,7 @@ export class CashReportsService {
         closingAmount: this.toNumber(payload.totals?.closingAmount),
         difference: this.toNumber(payload.totals?.difference),
       },
-      paymentBreakdown: (payload.paymentBreakdown ?? []).map((item) => ({
-        ...item,
-        count: this.toNumber(item.count),
-        total: this.toNumber(item.total),
-      })),
+      paymentBreakdown: this.normalizePaymentBreakdown(payload.paymentBreakdown),
       movementBreakdown: (payload.movementBreakdown ?? []).map((item) => ({
         ...item,
         count: this.toNumber(item.count),

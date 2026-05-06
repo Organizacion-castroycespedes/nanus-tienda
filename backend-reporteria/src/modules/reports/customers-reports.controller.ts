@@ -33,6 +33,8 @@ export class CustomersReportsController {
       branchId?: string;
       dateFrom?: string;
       dateTo?: string;
+      customerDocument?: string;
+      customerName?: string;
       format?: string;
     },
     @Req() request: AuthenticatedRequest,

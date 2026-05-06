@@ -48,6 +48,8 @@ const CashMovementsPage = () => {
   const { canViewFinance, canCreateCashMovements } = getFinancePermissions(role);
   const {
     movements,
+    summary,
+    byPaymentMethod,
     loading,
     saving,
     errorMessage,
@@ -130,7 +132,7 @@ const CashMovementsPage = () => {
       }
       return true;
     });
-  }, [branchFilter, directionFilter, movements, registerFilter, typeFilter]);
+  }, [branchFilter, currentSession?.id, directionFilter, movements, registerFilter, typeFilter]);
 
   const totalIn = filteredMovements
     .filter((item) => item.direction === "IN")
@@ -148,7 +150,21 @@ const CashMovementsPage = () => {
           item.referenceType === "PURCHASE"
       )
       .reduce((sum, item) => sum + item.amount, 0);
-  const quickBalance = sessionSummary?.totals.netAmount ?? totalIn - totalOut;
+  const quickBalance = totalIn - totalOut;
+  const hasLocalFilters =
+    Boolean(branchFilter) ||
+    Boolean(registerFilter) ||
+    directionFilter !== "all" ||
+    typeFilter !== "all";
+  const overviewSummary =
+    !hasLocalFilters && summary
+      ? summary
+      : {
+          totalIn,
+          totalOut,
+          balance: quickBalance,
+          movementCount: filteredMovements.length,
+        };
 
   const handleCreateMovement = async () => {
     if (!form.cashSessionId || !form.amount) {
@@ -211,12 +227,12 @@ const CashMovementsPage = () => {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <FinanceMetricCard
           label="Entradas"
-          value={formatCurrency(totalIn)}
+          value={formatCurrency(overviewSummary.totalIn)}
           accent="emerald"
         />
         <FinanceMetricCard
           label="Salidas"
-          value={formatCurrency(totalOut)}
+          value={formatCurrency(overviewSummary.totalOut)}
           accent="rose"
         />
         <FinanceMetricCard
@@ -226,14 +242,89 @@ const CashMovementsPage = () => {
         />
         <FinanceMetricCard
           label="Balance rapido"
-          value={formatCurrency(quickBalance)}
-          accent={quickBalance >= 0 ? "blue" : "rose"}
+          value={formatCurrency(overviewSummary.balance)}
+          accent={overviewSummary.balance >= 0 ? "blue" : "rose"}
         />
         <FinanceMetricCard
           label="Movimientos"
-          value={filteredMovements.length}
+          value={overviewSummary.movementCount}
           accent="slate"
         />
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+              Metodos de pago
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-900">
+              Desglose por sesion de caja
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Totalizado desde payments usando el cash_session_id de la sesion activa.
+            </p>
+          </div>
+        </div>
+
+        {byPaymentMethod.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            No hay pagos asociados a esta sesion para discriminar por metodo.
+          </div>
+        ) : (
+          <>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {byPaymentMethod.map((item) => (
+                <article
+                  key={item.paymentMethodId}
+                  className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5"
+                >
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    {item.paymentMethodTipo ?? "Metodo"}
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-slate-900">
+                    {item.paymentMethodNombre ?? item.paymentMethod}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {item.count} pago{item.count === 1 ? "" : "s"}
+                  </p>
+                  <p className="mt-4 text-2xl font-semibold text-slate-900">
+                    {formatCurrency(item.total)}
+                  </p>
+                </article>
+              ))}
+            </div>
+
+            <div className="mt-6 overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50 text-left text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Metodo</th>
+                    <th className="px-4 py-3 font-medium">Tipo</th>
+                    <th className="px-4 py-3 font-medium">Pagos</th>
+                    <th className="px-4 py-3 font-medium">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {byPaymentMethod.map((item) => (
+                    <tr key={`${item.paymentMethodId}-row`}>
+                      <td className="px-4 py-3 text-slate-900">
+                        {item.paymentMethodNombre ?? item.paymentMethod}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {item.paymentMethodTipo ?? "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{item.count}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {formatCurrency(item.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
 
       {currentSession ? (

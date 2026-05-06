@@ -1,4 +1,4 @@
-import { apiClient } from "../../../lib/http";
+import { apiBlobClient, apiClient } from "../../../lib/http";
 
 export type PurchaseResponse = {
   id: string;
@@ -22,6 +22,9 @@ export type PurchaseResponse = {
 export type GetPurchasesParams = {
   tenantId?: string;
   branchId?: string;
+  fromDate?: string;
+  toDate?: string;
+  paymentMethod?: string;
 };
 
 export type PurchaseItemResponse = {
@@ -70,6 +73,15 @@ export const getPurchases = (
   if (params.branchId) {
     query.set("branchId", params.branchId);
   }
+  if (params.fromDate) {
+    query.set("fromDate", params.fromDate);
+  }
+  if (params.toDate) {
+    query.set("toDate", params.toDate);
+  }
+  if (params.paymentMethod) {
+    query.set("paymentMethod", params.paymentMethod);
+  }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<PurchaseResponse[]>(`/purchases${suffix}`, { headers });
 };
@@ -86,6 +98,9 @@ export const createPurchase = (
 
 export const getPurchaseById = (id: string, headers?: HeadersInit) =>
   apiClient<PurchaseDetailResponse>(`/purchases/${id}`, { headers });
+
+export const getPurchaseTicket = (id: string, headers?: HeadersInit) =>
+  apiBlobClient(`/purchases/${id}/ticket`, { headers });
 
 export const receivePurchase = (
   id: string,
