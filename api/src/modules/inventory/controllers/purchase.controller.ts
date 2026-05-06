@@ -134,12 +134,18 @@ export class PurchaseController {
   list(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
+    @Query("fromDate") fromDate: string | undefined,
+    @Query("toDate") toDate: string | undefined,
+    @Query("paymentMethod") paymentMethod: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.purchaseService.getPurchases(
       {
         tenantId,
         branchId,
+        fromDate,
+        toDate,
+        paymentMethod,
       },
       this.buildActor(request)
     );

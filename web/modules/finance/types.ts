@@ -184,6 +184,7 @@ export type CashMovement = {
   tenantId: string;
   branchId: string;
   cashSessionId: string;
+  paymentId?: string | null;
   cashRegisterId: string | null;
   cashRegisterNombre: string | null;
   movementType: CashMovementType;
@@ -195,6 +196,29 @@ export type CashMovement = {
   createdBy: string;
   createdByEmail: string | null;
   createdAt: string;
+};
+
+export type CashMovementSummary = {
+  totalIn: number;
+  totalOut: number;
+  balance: number;
+  movementCount: number;
+};
+
+export type CashMovementPaymentMethodSummary = {
+  paymentMethodId: string;
+  paymentMethod: string;
+  paymentMethodCodigo: string | null;
+  paymentMethodNombre: string | null;
+  paymentMethodTipo: PaymentMethodType | string | null;
+  count: number;
+  total: number;
+};
+
+export type CashMovementListResponse = {
+  summary: CashMovementSummary;
+  byPaymentMethod: CashMovementPaymentMethodSummary[];
+  items: CashMovement[];
 };
 
 export type PaymentAllocation = {
@@ -263,6 +287,7 @@ export type CashMovementFilters = {
   direction?: CashMovementDirection;
   limit?: number;
   offset?: number;
+  includeSummary?: boolean;
 };
 
 export type PaymentFilters = {

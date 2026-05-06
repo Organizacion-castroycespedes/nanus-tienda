@@ -10,6 +10,8 @@ type CustomersListParams = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
+  customerName?: string;
 };
 
 @Injectable()
@@ -23,18 +25,35 @@ export class CustomersReportAdapter {
     actor: ReportActorContext,
     filters: CustomersListParams
   ): Promise<CustomerOrdersStatusDataset | null> {
+    const hasAdvancedCustomerFilters = Boolean(
+      filters.customerDocument ?? filters.customerName
+    );
+
     return this.functionRunnerService.executeFunction<CustomerOrdersStatusDataset | null>(
       "report_customer_orders_status",
-      [
-        actor.userId,
-        actor.role,
-        actor.tenantId,
-        actor.branchId,
-        filters.tenantId ?? null,
-        filters.branchId ?? null,
-        filters.dateFrom ?? null,
-        filters.dateTo ?? null,
-      ]
+      hasAdvancedCustomerFilters
+        ? [
+            actor.userId,
+            actor.role,
+            actor.tenantId,
+            actor.branchId,
+            filters.tenantId ?? null,
+            filters.branchId ?? null,
+            filters.dateFrom ?? null,
+            filters.dateTo ?? null,
+            filters.customerDocument ?? null,
+            filters.customerName ?? null,
+          ]
+        : [
+            actor.userId,
+            actor.role,
+            actor.tenantId,
+            actor.branchId,
+            filters.tenantId ?? null,
+            filters.branchId ?? null,
+            filters.dateFrom ?? null,
+            filters.dateTo ?? null,
+          ]
     );
   }
 }

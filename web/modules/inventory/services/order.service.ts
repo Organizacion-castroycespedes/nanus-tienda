@@ -1,4 +1,4 @@
-import { apiClient } from "../../../lib/http";
+import { apiBlobClient, apiClient } from "../../../lib/http";
 
 export type OrderResponse = {
   id: string;
@@ -51,6 +51,9 @@ export type OrderDetailResponse = OrderResponse & {
 export type GetOrdersParams = {
   tenantId?: string;
   branchId?: string;
+  fromDate?: string;
+  toDate?: string;
+  paymentMethod?: string;
 };
 
 export type CreateOrderPayload = {
@@ -97,6 +100,15 @@ export const getOrders = (
   if (params.branchId) {
     query.set("branchId", params.branchId);
   }
+  if (params.fromDate) {
+    query.set("fromDate", params.fromDate);
+  }
+  if (params.toDate) {
+    query.set("toDate", params.toDate);
+  }
+  if (params.paymentMethod) {
+    query.set("paymentMethod", params.paymentMethod);
+  }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<OrderResponse[]>(`/orders${suffix}`, { headers });
 };
@@ -113,6 +125,9 @@ export const createOrder = (
 
 export const getOrderById = (id: string, headers?: HeadersInit) =>
   apiClient<OrderDetailResponse>(`/orders/${id}`, { headers });
+
+export const getOrderTicket = (id: string, headers?: HeadersInit) =>
+  apiBlobClient(`/orders/${id}/ticket`, { headers });
 
 export const updateOrder = (
   id: string,

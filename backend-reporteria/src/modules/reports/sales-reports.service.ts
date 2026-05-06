@@ -156,6 +156,10 @@ export class SalesReportsService {
         ...payment,
         amount: Number(payment.amount ?? 0),
       })),
+      paymentBreakdown: (payload.paymentBreakdown ?? []).map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount ?? 0),
+      })),
       totals: {
         subtotal: Number(payload.totals?.subtotal ?? 0),
         taxes: Number(payload.totals?.taxes ?? 0),
