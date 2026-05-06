@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEFAULT_ENV_FILE="${ROOT_DIR}/scripts/config/db.env"
 ENV_FILE="${1:-${DB_ENV_FILE:-$DEFAULT_ENV_FILE}}"
+MIGRATIONS_DIR="${SCRIPT_DIR}/migrations"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
@@ -75,17 +76,29 @@ if ! "${PSQL_APP[@]}" -tAc "SELECT 1;" >/dev/null 2>&1; then
   exit 1
 fi
 
-"${PSQL_APP[@]}" -c "
-CREATE SCHEMA IF NOT EXISTS public;
-CREATE TABLE IF NOT EXISTS public.migrations_history (
-  id bigserial PRIMARY KEY,
-  version text NOT NULL UNIQUE,
-  applied_at timestamptz NOT NULL DEFAULT now(),
-  applied_by text NOT NULL DEFAULT current_user,
-  checksum text,
-  success boolean NOT NULL DEFAULT true,
-  details text
-);"
+ensure_migrations_history_schema() {
+  "${PSQL_APP[@]}" -c "
+  CREATE SCHEMA IF NOT EXISTS public;
+  CREATE TABLE IF NOT EXISTS public.migrations_history (
+    id bigserial PRIMARY KEY,
+    version text NOT NULL UNIQUE,
+    applied_at timestamptz NOT NULL DEFAULT now(),
+    applied_by text NOT NULL DEFAULT current_user,
+    checksum text,
+    success boolean NOT NULL DEFAULT true,
+    details text,
+    execution_time_ms integer NULL
+  );
+  ALTER TABLE public.migrations_history
+    ADD COLUMN IF NOT EXISTS execution_time_ms integer NULL;"
+}
+
+ensure_migrations_history_schema
+
+if [[ ! -d "$MIGRATIONS_DIR" ]]; then
+  echo "[prd] Missing migrations directory: ${MIGRATIONS_DIR}" >&2
+  exit 1
+fi
 
 checksum_for_file() {
   local file_path="$1"
@@ -96,11 +109,82 @@ checksum_for_file() {
   fi
 }
 
-is_applied() {
+current_time_ms() {
+  if date +%s%3N >/dev/null 2>&1; then
+    date +%s%3N
+  else
+    echo "$(( $(date +%s) * 1000 ))"
+  fi
+}
+
+escape_sql_literal() {
+  local value="${1:-}"
+  value="${value//\'/\'\'}"
+  printf "%s" "$value"
+}
+
+validate_incremental_migration_name() {
   local version="$1"
-  "${PSQL_APP[@]}" -tAc \
-    "SELECT 1 FROM public.migrations_history WHERE version = '$version' AND success = true;" \
-    | tr -d '[:space:]'
+
+  if [[ "$version" =~ ^V[0-9]{3}__.+\.sql$ ]]; then
+    return 0
+  fi
+
+  if [[ "$version" =~ ^[0-9]{8}_.+\.sql$ ]]; then
+    return 0
+  fi
+
+  echo "[prd] Invalid migration name '${version}'." >&2
+  echo "[prd] Use V###__description.sql for new migrations. Legacy YYYYMMDD_description.sql remains supported." >&2
+  exit 1
+}
+
+get_migration_row() {
+  local version="$1"
+  local escaped_version
+  escaped_version="$(escape_sql_literal "$version")"
+
+  "${PSQL_APP[@]}" -F $'\t' -Atc \
+    "SELECT COALESCE(checksum, ''), success::text
+     FROM public.migrations_history
+     WHERE version = '${escaped_version}'
+     LIMIT 1;"
+}
+
+verify_applied_migration_integrity() {
+  local version="$1"
+  local checksum="$2"
+  local migration_row
+  local stored_checksum
+  local stored_success
+
+  migration_row="$(get_migration_row "$version")"
+  if [[ -z "$migration_row" ]]; then
+    return 1
+  fi
+
+  IFS=$'\t' read -r stored_checksum stored_success <<< "$migration_row"
+
+  if [[ "$stored_success" != "true" ]]; then
+    echo "[prd] Migration ${version} is registered with success=false. Resolve it manually before continuing." >&2
+    exit 1
+  fi
+
+  if [[ -n "$stored_checksum" && "$stored_checksum" != "$checksum" ]]; then
+    echo "[prd] Checksum mismatch for ${version}." >&2
+    echo "[prd] Stored:  ${stored_checksum}" >&2
+    echo "[prd] Current: ${checksum}" >&2
+    echo "[prd] Execution aborted to avoid running an altered migration." >&2
+    exit 1
+  fi
+
+  if [[ -z "$stored_checksum" ]]; then
+    echo "[prd] Skipping already applied legacy migration without checksum: ${version}"
+  else
+    echo "[prd] Skipping already applied migration: ${version}"
+  fi
+
+  return 0
 }
 
 record_migration() {
@@ -108,16 +192,18 @@ record_migration() {
   local checksum="$2"
   local success="$3"
   local details="$4"
+  local execution_time_ms="$5"
+  local escaped_version
+  local escaped_checksum
+  local escaped_details
+
+  escaped_version="$(escape_sql_literal "$version")"
+  escaped_checksum="$(escape_sql_literal "$checksum")"
+  escaped_details="$(escape_sql_literal "$details")"
 
   "${PSQL_APP[@]}" -c "
-    INSERT INTO public.migrations_history (version, checksum, success, details)
-    VALUES ('$version', '$checksum', $success, '$details')
-    ON CONFLICT (version)
-    DO UPDATE SET
-      applied_at = now(),
-      checksum = EXCLUDED.checksum,
-      success = EXCLUDED.success,
-      details = EXCLUDED.details;"
+    INSERT INTO public.migrations_history (version, checksum, success, details, execution_time_ms)
+    VALUES ('${escaped_version}', '${escaped_checksum}', ${success}, '${escaped_details}', ${execution_time_ms});"
 }
 
 apply_sql_file_with_args() {
@@ -127,24 +213,33 @@ apply_sql_file_with_args() {
   local version="$relative_path"
   local checksum
   local psql_args=("$@")
+  local start_time_ms
+  local end_time_ms
+  local execution_time_ms
 
   if [[ ! -f "$file_path" ]]; then
     echo "[prd] Missing SQL file: ${relative_path}" >&2
     exit 1
   fi
 
-  if [[ "$(is_applied "$version")" == "1" ]]; then
-    echo "[prd] Skipping already applied: ${version}"
+  checksum="$(checksum_for_file "$file_path")"
+
+  if verify_applied_migration_integrity "$version" "$checksum"; then
     return
   fi
 
-  checksum="$(checksum_for_file "$file_path")"
+  start_time_ms="$(current_time_ms)"
   echo "[prd] Applying ${version}..."
 
   if "${PSQL_APP[@]}" "${psql_args[@]}" --single-transaction -f "$file_path"; then
-    record_migration "$version" "$checksum" "true" "applied by migrate_prd.sh"
+    end_time_ms="$(current_time_ms)"
+    execution_time_ms="$((end_time_ms - start_time_ms))"
+    record_migration "$version" "$checksum" "true" "applied by migrate_prd.sh" "$execution_time_ms"
+    echo "[prd] ${version} | ${execution_time_ms} ms | OK"
   else
-    record_migration "$version" "$checksum" "false" "failed in migrate_prd.sh"
+    end_time_ms="$(current_time_ms)"
+    execution_time_ms="$((end_time_ms - start_time_ms))"
+    echo "[prd] ${version} | ${execution_time_ms} ms | ERROR" >&2
     echo "[prd] Failed while running ${version}" >&2
     exit 1
   fi
@@ -206,9 +301,11 @@ function_files=(
 )
 
 readarray -t incremental_migration_files < <(
-  find "${SCRIPT_DIR}/migrations" -maxdepth 1 -type f -name '*.sql' | sort | while read -r file_path; do
-    basename "$file_path"
-  done
+  find "${MIGRATIONS_DIR}" -maxdepth 1 -type f -name '*.sql' -print \
+    | LC_ALL=C sort \
+    | while read -r file_path; do
+        basename "$file_path"
+      done
 )
 
 minimal_seed_files=(
@@ -249,7 +346,23 @@ for sql_file in "${function_files[@]}"; do
 done
 
 echo "Running incremental migrations..."
+found_pending_incremental="false"
 for sql_file in "${incremental_migration_files[@]}"; do
+  validate_incremental_migration_name "$sql_file"
+
+  file_path="${MIGRATIONS_DIR}/${sql_file}"
+  checksum="$(checksum_for_file "$file_path")"
+
+  if verify_applied_migration_integrity "$sql_file" "$checksum"; then
+    if [[ "$found_pending_incremental" == "true" ]]; then
+      echo "[prd] Out-of-order incremental migration detected: ${sql_file} is already applied after a pending earlier migration." >&2
+      echo "[prd] Add new migrations at the end of the alphabetical sequence only." >&2
+      exit 1
+    fi
+    continue
+  fi
+
+  found_pending_incremental="true"
   apply_sql_file "migrations/${sql_file}"
 done
 
