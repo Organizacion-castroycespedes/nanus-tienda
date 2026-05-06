@@ -890,6 +890,25 @@ BEGIN
       ),
       '[]'::JSONB
     ),
+    'paymentBreakdown', COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'method', grouped.method,
+            'amount', grouped.amount
+          )
+          ORDER BY grouped.method ASC
+        )
+        FROM (
+          SELECT
+            COALESCE(NULLIF(BTRIM(payment.payment_method_name), ''), 'SIN METODO') AS method,
+            SUM(payment.amount)::NUMERIC(14, 2) AS amount
+          FROM payment_rows AS payment
+          GROUP BY COALESCE(NULLIF(BTRIM(payment.payment_method_name), ''), 'SIN METODO')
+        ) AS grouped
+      ),
+      '[]'::JSONB
+    ),
     'totals', jsonb_build_object(
       'subtotal', COALESCE((SELECT SUM(item.subtotal - item.tax_total) FROM item_rows AS item), 0),
       'taxes', COALESCE((SELECT SUM(item.tax_total) FROM item_rows AS item), 0),
