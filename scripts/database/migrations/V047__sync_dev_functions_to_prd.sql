@@ -566,6 +566,8 @@ BEGIN
   WHERE s.id = v_sale_id
     AND s.tenant_id = p_tenant_id;
 
+  PERFORM finance_sync_order_financial_state(p_order_id, p_tenant_id);
+
   IF p_order_id IS NOT NULL THEN
     SELECT
       COUNT(*)::INTEGER,
@@ -588,7 +590,7 @@ BEGIN
     WHERE id = p_order_id
       AND tenant_id = p_tenant_id;
   END IF;
-
+  
   RETURN QUERY
   SELECT
     s.id,
