@@ -5,6 +5,8 @@ export type ReportFilters = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
+  customerName?: string;
 };
 
 export type PosSalesListRow = {
@@ -27,6 +29,8 @@ export type PosSalesListDataset = {
     branchId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
+    customerDocument: string | null;
+    customerName: string | null;
     actorRole: string;
   };
   summary: {

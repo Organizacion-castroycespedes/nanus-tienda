@@ -14,6 +14,8 @@ type CustomersListQuery = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
+  customerName?: string;
   format?: string;
 };
 
@@ -87,6 +89,11 @@ export class CustomersReportsService {
     return Number(value ?? 0);
   }
 
+  private normalizeOptionalText(value: string | undefined) {
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
+  }
+
   private normalizeCustomerRow(row: CustomerOrdersStatusRow): CustomerOrdersStatusRow {
     return {
       ...row,
@@ -109,6 +116,12 @@ export class CustomersReportsService {
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      customerDocument:
+        payload?.filters?.customerDocument ??
+        this.normalizeOptionalText(query.customerDocument) ??
+        null,
+      customerName:
+        payload?.filters?.customerName ?? this.normalizeOptionalText(query.customerName) ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -151,6 +164,8 @@ export class CustomersReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeOptionalText(query.customerDocument),
+      customerName: this.normalizeOptionalText(query.customerName),
     });
 
     return this.normalizeCustomerOrdersStatusDataset(payload, actor, query);
