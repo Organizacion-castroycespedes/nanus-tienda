@@ -10,6 +10,7 @@ export type BrandingConfig = {
   };
   font: string;
   logo?: string;
+  logoUrl?: string;
   spacing: {
     sm: string;
     md: string;
