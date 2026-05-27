@@ -62,6 +62,10 @@ WITH role_targets AS (
           'INVENTORY_SUPPLIERS'
         )
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
+        || CASE
+          WHEN mi.key = 'INVENTORY_PURCHASES' THEN '{"cancel": true}'::jsonb
+          ELSE '{}'::jsonb
+        END
       WHEN r.nombre = 'USER'
         AND mi.key IN (
           'INVENTORY',
@@ -203,6 +207,10 @@ WITH role_targets AS (
           'INVENTORY_SUPPLIERS'
         )
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
+        || CASE
+          WHEN mi.key = 'INVENTORY_PURCHASES' THEN '{"cancel": true}'::jsonb
+          ELSE '{}'::jsonb
+        END
       WHEN r.nombre = 'USER'
         AND mi.key IN (
           'INVENTORY',

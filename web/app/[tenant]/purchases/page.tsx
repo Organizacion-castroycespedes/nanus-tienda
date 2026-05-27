@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Eye, PackageCheck, Plus, RefreshCw, Search } from "lucide-react";
+import { Download, Eye, PackageCheck, Plus, RefreshCw, Search, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
@@ -12,13 +12,17 @@ import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../store/hooks";
+import {
+  CancelPurchaseDialog,
+  validateCancelPurchaseReason,
+} from "../../../modules/inventory/components/CancelPurchaseDialog";
 import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
+import { PurchaseDetailDialog } from "../../../modules/inventory/components/PurchaseDetailDialog";
 import { PurchaseReceiveForm } from "../../../modules/inventory/components/PurchaseReceiveForm";
-import {
-  getPurchases,
-  type PurchaseResponse,
-} from "../../../modules/inventory/services/purchase.service";
+import { usePurchases } from "../../../modules/inventory/hooks/use-purchases";
+import type { PurchaseResponse } from "../../../modules/inventory/services/purchase.service";
+import { isPurchaseCancelable } from "../../../modules/inventory/utils/purchase-cancellation";
 import { PdfPreviewModal } from "../../../modules/reporteria/components/PdfPreviewModal";
 import { getPurchaseTicket } from "../../../modules/reporteria/services/reporting.service";
 import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
@@ -57,23 +61,38 @@ const formatDate = (value: string) =>
     day: "2-digit",
   }).format(new Date(value));
 
+const isPurchaseCancellationConflict = (message: string) =>
+  /recibid|cerrad|pagad|inventario|reverso|estado/i.test(message);
+
 const PurchasesPage = () => {
-  const [purchases, setPurchases] = useState<PurchaseResponse[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    purchases,
+    loading,
+    canceling: isCancelling,
+    loadingDetail,
+    purchaseDetail,
+    errorMessage,
+    hasLoaded: hasSearched,
+    loadPurchases: loadPurchaseList,
+    loadPurchaseDetail,
+    cancelItem,
+  } = usePurchases();
   const [draftFilters, setDraftFilters] = useState<PurchaseFilters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<PurchaseFilters>(defaultFilters);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [receivingPurchaseId, setReceivingPurchaseId] = useState<string | null>(null);
   const [payingPurchase, setPayingPurchase] = useState<PurchaseResponse | null>(null);
   const [previewPurchase, setPreviewPurchase] = useState<PurchaseResponse | null>(null);
+  const [cancelingPurchase, setCancelingPurchase] = useState<PurchaseResponse | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancellationError, setCancellationError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const { currentTenant, isSuperRole } = useInventoryScope();
+  const { currentTenant } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
 
@@ -81,6 +100,7 @@ const PurchasesPage = () => {
     role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
   const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
   const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
+  const canCancel = hasPermission("inventory.cancel");
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -114,19 +134,8 @@ const PurchasesPage = () => {
 
   const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
     const activeFilters = filters ?? appliedFilters;
-    setLoading(true);
-      setErrorMessage(null);
-      try {
-        const result = await getPurchases(resolvePurchaseFilters(activeFilters));
-        setPurchases(result);
-        setHasSearched(true);
-      } catch {
-      setErrorMessage("No se pudieron cargar las compras.");
-      setHasSearched(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [appliedFilters, resolvePurchaseFilters]);
+    await loadPurchaseList(resolvePurchaseFilters(activeFilters));
+  }, [appliedFilters, loadPurchaseList, resolvePurchaseFilters]);
 
   useEffect(() => {
     void (async () => {
@@ -224,6 +233,56 @@ const PurchasesPage = () => {
     }
   };
 
+  const canCancelPurchase = (purchase: PurchaseResponse) =>
+    isPurchaseCancelable(purchase, canCancel);
+
+  const openCancelModal = (purchase: PurchaseResponse) => {
+    setCancelingPurchase(purchase);
+    setCancellationReason("");
+    setCancellationError(null);
+  };
+
+  const closeCancelModal = () => {
+    if (isCancelling) {
+      return;
+    }
+    setCancelingPurchase(null);
+    setCancellationReason("");
+    setCancellationError(null);
+  };
+
+  const handleCancelPurchase = async () => {
+    const reason = cancellationReason.trim();
+    if (!cancelingPurchase) {
+      return;
+    }
+    const validationError = validateCancelPurchaseReason(reason);
+    if (validationError) {
+      setCancellationError(validationError);
+      return;
+    }
+
+    setCancellationError(null);
+    try {
+      await cancelItem(cancelingPurchase.id, { motivoCancelacion: reason });
+      setCancelingPurchase(null);
+      setCancellationReason("");
+      showToast("Compra cancelada correctamente.", "success");
+    } catch (error) {
+      const apiMessage = error instanceof Error ? error.message : getApiErrorMessage(error, "");
+      const message = isPurchaseCancellationConflict(apiMessage)
+        ? "Esta compra no puede cancelarse porque ya fue recibida, cerrada o pagada."
+        : "No se pudo cancelar la compra. Intenta nuevamente.";
+      setCancellationError(message);
+      showToast(message, "error");
+    }
+  };
+
+  const openDetail = (purchase: PurchaseResponse) => {
+    setIsDetailOpen(true);
+    void loadPurchaseDetail(purchase.id);
+  };
+
   const canAccessTicket = (status: PurchaseResponse["status"]) => status !== "DRAFT";
 
   const handleDownloadTicket = async (purchase: PurchaseResponse) => {
@@ -316,6 +375,29 @@ const PurchasesPage = () => {
             : Promise.reject(new Error("purchase ticket not selected"))
         }
       />
+
+      {cancelingPurchase ? (
+        <CancelPurchaseDialog
+          purchase={cancelingPurchase}
+          reason={cancellationReason}
+          error={cancellationError}
+          isSubmitting={isCancelling}
+          onReasonChange={(value) => {
+            setCancellationReason(value);
+            setCancellationError(null);
+          }}
+          onCancel={closeCancelModal}
+          onConfirm={() => void handleCancelPurchase()}
+        />
+      ) : null}
+
+      {isDetailOpen ? (
+        <PurchaseDetailDialog
+          purchase={purchaseDetail}
+          loading={loadingDetail}
+          onClose={() => setIsDetailOpen(false)}
+        />
+      ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div
@@ -496,6 +578,14 @@ const PurchasesPage = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openDetail(purchase)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Detalle
+                        </Button>
                         {canReceive &&
                         purchase.status !== "CANCELLED" &&
                         purchase.status !== "RECEIVED" ? (
@@ -518,6 +608,16 @@ const PurchasesPage = () => {
                             Pagar
                           </Button>
                         ) : null}
+                        {canCancelPurchase(purchase) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openCancelModal(purchase)}
+                          >
+                            <XCircle className="h-4 w-4" />
+                            Cancelar compra
+                          </Button>
+                        ) : null}
                         {canAccessTicket(purchase.status) ? (
                           <Button
                             variant="ghost"
@@ -537,18 +637,6 @@ const PurchasesPage = () => {
                             <Download className="h-4 w-4" />
                             Descargar
                           </Button>
-                        ) : null}
-                        {!(
-                          (canReceive &&
-                            purchase.status !== "CANCELLED" &&
-                            purchase.status !== "RECEIVED") ||
-                          (canReceive &&
-                            purchase.status !== "CANCELLED" &&
-                            purchase.balanceDue > 0 &&
-                            purchase.branchId) ||
-                          canAccessTicket(purchase.status)
-                        ) ? (
-                          <span className="text-xs text-slate-400">Sin acciones</span>
                         ) : null}
                       </div>
                     </td>

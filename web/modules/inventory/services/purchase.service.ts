@@ -17,6 +17,10 @@ export type PurchaseResponse = {
   totalPaid: number;
   balanceDue: number;
   createdAt: string;
+  motivoCancelacion?: string | null;
+  canceladoPor?: string | null;
+  canceladoPorNombre?: string | null;
+  canceladoEn?: string | null;
 };
 
 export type GetPurchasesParams = {
@@ -38,8 +42,19 @@ export type PurchaseItemResponse = {
   subtotal: number;
 };
 
+export type PurchaseStatusHistoryItem = {
+  action: string;
+  estadoAnterior?: PurchaseResponse["status"] | null;
+  estadoNuevo?: PurchaseResponse["status"] | null;
+  motivo?: string | null;
+  usuarioId?: string | null;
+  usuarioNombre?: string | null;
+  createdAt: string;
+};
+
 export type PurchaseDetailResponse = PurchaseResponse & {
   items: PurchaseItemResponse[];
+  statusHistory?: PurchaseStatusHistoryItem[];
 };
 
 export type CreatePurchasePayload = {
@@ -60,6 +75,20 @@ export type ReceivePurchasePayload = {
     product_id: string;
     quantity: number;
   }>;
+};
+
+export type CancelPurchasePayload = {
+  motivoCancelacion: string;
+};
+
+export type CancelPurchaseResponse = {
+  statusCode: number;
+  message: string;
+  data: PurchaseResponse & {
+    estado: PurchaseResponse["status"];
+    motivoCancelacion: string;
+    canceladoEn: string;
+  };
 };
 
 export const getPurchases = (
@@ -109,6 +138,17 @@ export const receivePurchase = (
 ) =>
   apiClient<PurchaseResponse>(`/purchases/${id}/receive`, {
     method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const cancelPurchase = (
+  id: string,
+  payload: CancelPurchasePayload,
+  headers?: HeadersInit
+) =>
+  apiClient<CancelPurchaseResponse>(`/purchases/${id}/cancel`, {
+    method: "PATCH",
     headers,
     body: JSON.stringify(payload),
   });
