@@ -7,6 +7,7 @@ import { store } from "../store";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import AuthSessionManager from "../components/auth/AuthSessionManager";
 import { ConfirmProvider } from "../providers/confirm-provider";
+import { useTenantTheme } from "../hooks/useTenantTheme";
 import {
   persistPosState,
   rehydratePosContextFromStorage,
@@ -22,16 +23,38 @@ import { setInventoryScope } from "../store/inventoryScopeSlice";
 
 const BrandingApplier = ({ children }: { children: ReactNode }) => {
   const config = useAppSelector((state) => state.branding.config);
+  const theme = useTenantTheme();
 
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty("--color-primary", config.colors.primary);
-    root.style.setProperty("--color-secondary", config.colors.secondary);
-    root.style.setProperty("--color-bg", config.colors.background);
-    root.style.setProperty("--color-text", config.colors.text);
-    root.style.setProperty("--brand-primary", config.colors.primary);
+    root.style.setProperty("--color-primary", theme.primary);
+    root.style.setProperty("--color-secondary", theme.secondary);
+    root.style.setProperty("--color-bg", theme.surface.page);
+    root.style.setProperty("--color-text", theme.surface.text);
+    root.style.setProperty("--brand-primary", theme.primary);
+    root.style.setProperty("--brand-primary-hover", theme.header.actionHover);
+    root.style.setProperty("--brand-secondary", theme.secondary);
+    root.style.setProperty("--brand-background", theme.surface.page);
+    root.style.setProperty("--brand-text", theme.surface.text);
     root.style.setProperty("--font-base", config.font);
-  }, [config]);
+    root.style.setProperty("--brand-sidebar-bg", theme.sidebar.background);
+    root.style.setProperty("--brand-sidebar-text", theme.sidebar.text);
+    root.style.setProperty("--brand-sidebar-muted", theme.sidebar.mutedText);
+    root.style.setProperty("--brand-sidebar-active", theme.sidebar.activeBackground);
+    root.style.setProperty("--brand-sidebar-active-text", theme.sidebar.activeText);
+    root.style.setProperty("--brand-sidebar-hover", theme.sidebar.itemHoverBackground);
+    root.style.setProperty("--brand-sidebar-border", theme.sidebar.border);
+    root.style.setProperty("--brand-header-bg", theme.header.background);
+    root.style.setProperty("--brand-header-text", theme.header.text);
+    root.style.setProperty("--brand-header-muted", theme.header.mutedText);
+    root.style.setProperty("--brand-header-border", theme.header.border);
+    root.style.setProperty("--brand-header-icon-bg", theme.header.iconButtonBackground);
+    root.style.setProperty("--brand-header-icon-border", theme.header.iconButtonBorder);
+    root.style.setProperty("--brand-header-icon-text", theme.header.iconButtonText);
+    root.style.setProperty("--brand-surface-card", theme.surface.card);
+    root.style.setProperty("--brand-surface-muted", theme.surface.mutedText);
+    root.style.setProperty("--brand-surface-border", theme.surface.border);
+  }, [config, theme]);
 
   return <>{children}</>;
 };
