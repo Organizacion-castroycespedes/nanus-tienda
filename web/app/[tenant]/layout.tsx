@@ -58,6 +58,7 @@ import type { AuthProfile } from "../../domains/auth/types";
 import type { MenuItem, MenuResponse } from "../../domains/menu/types";
 import { Select } from "../../components/design-system/Select";
 import { isConfirmCancelledError, useConfirm } from "../../hooks/use-confirm";
+import { useTenantTheme } from "../../hooks/useTenantTheme";
 import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 
@@ -102,11 +103,15 @@ const iconByName: Record<string, LucideIcon> = {
   x: X,
 };
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "flexibuild.sidebar.collapsed";
+const SIDEBAR_MENU_STATE_STORAGE_KEY = "sidebar_open_menu_items";
+
 const TenantLayout = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openMenuItems, setOpenMenuItems] = useState<Record<string, boolean>>({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -131,6 +136,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   });
   const dispatch = useAppDispatch();
   const branding = useAppSelector((state) => state.branding.config);
+  const tenantTheme = useTenantTheme();
   const company = useAppSelector((state) => state.company.details);
   const authUser = useAppSelector((state) => state.auth.user);
   const authStatus = useAppSelector((state) => state.auth.authStatus);
@@ -145,6 +151,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const hasPendingPosSale = posCartItemCount > 0;
   const confirm = useConfirm();
   const sidebarCompanyName = company?.razonSocial || authUser?.tenantName || "Empresa";
+  const brandingLogo = branding.logoUrl ?? branding.logo;
   const tenantSlug = authUser?.tenantId ?? "default";
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -161,6 +168,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     () => Boolean(pathname && /^\/[^/]+\/pos\/select-context\/?$/i.test(pathname)),
     [pathname]
   );
+  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-3" : "lg:w-72 lg:px-4";
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -173,6 +181,67 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setSidebarCollapsed(
+      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true"
+    );
+
+    const storedOpenMenuItems = window.localStorage.getItem(
+      SIDEBAR_MENU_STATE_STORAGE_KEY
+    );
+
+    if (!storedOpenMenuItems) {
+      return;
+    }
+
+    try {
+      setOpenMenuItems(JSON.parse(storedOpenMenuItems) as Record<string, boolean>);
+    } catch {
+      window.localStorage.removeItem(SIDEBAR_MENU_STATE_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY,
+      String(sidebarCollapsed)
+    );
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      SIDEBAR_MENU_STATE_STORAGE_KEY,
+      JSON.stringify(openMenuItems)
+    );
+  }, [openMenuItems]);
+
+  useEffect(() => {
+    if (!sidebarOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarOpen]);
 
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
@@ -480,34 +549,113 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const renderMenuItems = (items: MenuItem[], depth = 0) => (
-    <ul className={`mt-2 space-y-1 ${depth > 0 ? "pl-4" : ""}`}>
+    <ul
+      className={`mt-1.5 ${depth > 0 ? "ml-5 space-y-0.5 border-l pl-3" : "space-y-1"}`}
+      style={depth > 0 ? { borderColor: tenantTheme.sidebar.border } : undefined}
+    >
       {items.map((item) => {
         const Icon = getMenuIcon(item.label, item.module, item.icon);
         const isActive = pathname === item.route;
         const hasChildren = Array.isArray(item.children) && item.children.length > 0;
         const isExpanded = openMenuItems[item.id] ?? false;
+        const activeChildChain = hasChildren
+          ? getActiveMenuChain(item.children ?? [], pathname ?? "")
+          : [];
+        const hasActiveChild = activeChildChain.length > 0;
+        const isDirectActive = isActive;
+        const isVisuallyActive = isDirectActive || hasActiveChild;
         return (
           <li key={item.key}>
             <div
-              className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-white/90 transition hover:bg-white/10 ${
-                isActive ? "bg-white/15 text-white" : ""
+              className={`group relative flex items-center gap-2 overflow-hidden transition-all duration-200 ${
+                depth > 0
+                  ? ""
+                  : "rounded-xl px-3 py-2 text-sm"
+              } ${
+                isVisuallyActive
+                  ? "bg-[var(--brand-sidebar-active)] text-[var(--brand-sidebar-active-text)] shadow-sm"
+                  : "text-[var(--brand-sidebar-text)] hover:bg-[var(--brand-sidebar-hover)]"
               }`}
+              style={{
+                backgroundColor:
+                  isDirectActive
+                    ? depth > 0
+                      ? tenantTheme.sidebar.subItemActiveBackground
+                      : tenantTheme.sidebar.activeBackground
+                    : hasActiveChild
+                      ? depth > 0
+                        ? "transparent"
+                        : `color-mix(in srgb, ${tenantTheme.sidebar.activeBackground} 24%, transparent)`
+                      : undefined,
+                color: isDirectActive || hasActiveChild
+                  ? depth > 0
+                    ? tenantTheme.sidebar.subItemActiveText
+                    : tenantTheme.sidebar.activeText
+                  : tenantTheme.sidebar.text,
+              }}
+              title={sidebarCollapsed ? item.label : undefined}
             >
+              <span
+                aria-hidden="true"
+                className={`absolute left-0 w-0.5 rounded-r-full transition-all duration-200 ${
+                  depth > 0 ? "inset-y-1" : "inset-y-2"
+                } ${
+                  isDirectActive
+                    ? "bg-[var(--brand-sidebar-active-text)] opacity-100"
+                    : hasActiveChild
+                      ? "bg-[var(--brand-sidebar-active)] opacity-60"
+                      : "bg-[var(--brand-sidebar-active)] opacity-0 group-hover:opacity-70"
+                }`}
+              />
               <Link
                 href={item.route}
-                aria-current={isActive ? "page" : undefined}
-                className="flex flex-1 items-center gap-3"
+                aria-current={isDirectActive ? "page" : undefined}
+                className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-active)] ${
+                  depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
+                } ${
+                  sidebarCollapsed ? "justify-center" : ""
+                }`}
                 onClick={() => setSidebarOpen(false)}
+                aria-label={sidebarCollapsed ? item.label : undefined}
               >
-                <Icon className="h-4 w-4" />
-                <span className="flex-1">{item.label}</span>
+                {depth > 0 ? (
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                ) : (
+                  <span
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-all duration-200"
+                  style={{
+                    backgroundColor: isDirectActive
+                      ? "rgba(255,255,255,0.16)"
+                      : hasActiveChild
+                        ? "rgba(255,255,255,0.10)"
+                      : "rgba(255,255,255,0.08)",
+                    color: isDirectActive || hasActiveChild
+                      ? tenantTheme.sidebar.activeText
+                      : tenantTheme.sidebar.text,
+                  }}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                )}
+                {!sidebarCollapsed ? (
+                  <span className="flex-1 truncate leading-5">{item.label}</span>
+                ) : null}
               </Link>
               {hasChildren ? (
                 <button
                   type="button"
-                  className="rounded p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+                  className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-active)] ${
+                    isVisuallyActive
+                      ? "text-[var(--brand-sidebar-active-text)] hover:bg-black/10"
+                      : "text-[var(--brand-sidebar-muted)] hover:bg-[var(--brand-sidebar-hover)] hover:text-[var(--brand-sidebar-text)]"
+                  }`}
                   aria-label={isExpanded ? "Colapsar submenu" : "Expandir submenu"}
                   aria-expanded={isExpanded}
+                  title={
+                    sidebarCollapsed
+                      ? `${isExpanded ? "Colapsar" : "Expandir"} ${item.label}`
+                      : undefined
+                  }
                   onClick={() =>
                     setOpenMenuItems((prev) => ({
                       ...prev,
@@ -516,14 +664,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   }
                 >
                   {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className="h-3.5 w-3.5" />
                   ) : (
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-3.5 w-3.5" />
                   )}
                 </button>
               ) : null}
             </div>
-            {hasChildren && isExpanded ? renderMenuItems(item.children ?? [], depth + 1) : null}
+            {hasChildren && isExpanded && !sidebarCollapsed
+              ? renderMenuItems(item.children ?? [], depth + 1)
+              : null}
           </li>
         );
       })}
@@ -531,11 +681,20 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   const renderMenuSections = (sections: Record<string, MenuItem[]>, prefix: string) => (
-    <ul className="space-y-3 text-sm">
+    <ul className="space-y-2 text-sm">
       {Object.entries(sections).map(([section, items]) => {
         const sectionKey = `${prefix}:${section}`;
         const isExpanded = openSections[sectionKey] ?? true;
-        return <li key={sectionKey}>{isExpanded ? renderMenuItems(items) : null}</li>;
+        return (
+          <li key={sectionKey} className="border-t border-white/7 pt-2 first:border-t-0 first:pt-0">
+            {!sidebarCollapsed ? (
+              <p className="mb-2 mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--brand-sidebar-muted)] opacity-70">
+                {section}
+              </p>
+            ) : null}
+            {isExpanded ? renderMenuItems(items) : null}
+          </li>
+        );
       })}
     </ul>
   );
@@ -734,6 +893,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               },
               font: configResponse.config.font ?? "Inter, system-ui, sans-serif",
               logo: configResponse.config.logo,
+              logoUrl: configResponse.config.logoUrl,
               spacing: {
                 sm: configResponse.config.spacing?.sm ?? "8px",
                 md: configResponse.config.spacing?.md ?? "16px",
@@ -768,12 +928,30 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div
-      className="min-h-screen bg-[var(--brand-background)] text-[var(--brand-text)]"
+      className="flex h-screen overflow-hidden overscroll-none bg-[var(--brand-background)] text-[var(--brand-text)]"
       style={{
-        ["--brand-primary" as never]: branding.colors.primary,
-        ["--brand-secondary" as never]: branding.colors.secondary,
-        ["--brand-background" as never]: branding.colors.background,
-        ["--brand-text" as never]: branding.colors.text,
+        ["--brand-primary" as never]: tenantTheme.primary,
+        ["--brand-secondary" as never]: tenantTheme.secondary,
+        ["--brand-background" as never]: tenantTheme.surface.page,
+        ["--brand-text" as never]: tenantTheme.surface.text,
+        ["--brand-primary-hover" as never]: tenantTheme.header.actionHover,
+        ["--brand-sidebar-bg" as never]: tenantTheme.sidebar.background,
+        ["--brand-sidebar-text" as never]: tenantTheme.sidebar.text,
+        ["--brand-sidebar-muted" as never]: tenantTheme.sidebar.mutedText,
+        ["--brand-sidebar-active" as never]: tenantTheme.sidebar.activeBackground,
+        ["--brand-sidebar-active-text" as never]: tenantTheme.sidebar.activeText,
+        ["--brand-sidebar-hover" as never]: tenantTheme.sidebar.hoverBackground,
+        ["--brand-sidebar-border" as never]: tenantTheme.sidebar.border,
+        ["--brand-header-bg" as never]: tenantTheme.header.background,
+        ["--brand-header-text" as never]: tenantTheme.header.text,
+        ["--brand-header-muted" as never]: tenantTheme.header.mutedText,
+        ["--brand-header-border" as never]: tenantTheme.header.border,
+        ["--brand-header-icon-bg" as never]: tenantTheme.header.iconButtonBackground,
+        ["--brand-header-icon-border" as never]: tenantTheme.header.iconButtonBorder,
+        ["--brand-header-icon-text" as never]: tenantTheme.header.iconButtonText,
+        ["--brand-surface-card" as never]: tenantTheme.surface.card,
+        ["--brand-surface-muted" as never]: tenantTheme.surface.mutedText,
+        ["--brand-surface-border" as never]: tenantTheme.surface.border,
         ["--brand-spacing-sm" as never]: branding.spacing.sm,
         ["--brand-spacing-md" as never]: branding.spacing.md,
         ["--brand-spacing-lg" as never]: branding.spacing.lg,
@@ -790,71 +968,110 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-30 bg-slate-900/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <div className="lg:grid lg:grid-cols-[280px_1fr]">
-        <aside
-          className={`fixed inset-y-0 left-0 z-40 w-72 transform bg-slate-900 px-6 py-8 text-white transition lg:static lg:translate-x-0 ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-          style={{
-            background: `linear-gradient(180deg, ${branding.colors.secondary}, #0B1220)`,
-          }}
-        >
-          <div className="flex items-center justify-between lg:justify-start">
-            <div className="flex items-center gap-3">
-              {branding.logo ? (
+      <aside
+        aria-label="Barra lateral de navegacion"
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 lg:sticky lg:top-0 lg:z-30 lg:translate-x-0 lg:px-4 ${desktopSidebarWidthClass} ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={{
+          background: `linear-gradient(180deg, ${tenantTheme.sidebar.background}, ${tenantTheme.sidebar.border})`,
+          color: tenantTheme.sidebar.text,
+        }}
+      >
+          <div className={`mb-5 flex items-center gap-3 ${sidebarCollapsed ? "lg:justify-center" : ""}`}>
+            <div className={`flex min-w-0 items-center gap-2.5 ${sidebarCollapsed ? "lg:flex-col" : ""}`}>
+              {brandingLogo ? (
                 <img
-                  src={branding.logo}
+                  src={brandingLogo}
                   alt="Logo empresa"
-                  className="h-10 w-10 rounded-full bg-white object-contain"
+                  className="h-10 w-10 shrink-0 rounded-xl object-contain p-1"
+                  style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
                 />
               ) : (
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-900">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                  style={{
+                    backgroundColor: tenantTheme.sidebar.logoBackground,
+                    color: tenantTheme.sidebar.logoText,
+                  }}
+                >
                   {companyInitials}
                 </div>
               )}
-              <div>
-                <p className="text-lg font-semibold text-white">{sidebarCompanyName}</p>
-              </div>
+              {!sidebarCollapsed ? (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
+                    {sidebarCompanyName}
+                  </p>
+                  <p className="truncate text-xs text-[var(--brand-sidebar-muted)]">
+                    FlexiBuild Core
+                  </p>
+                </div>
+              ) : null}
             </div>
-            <button
-              type="button"
-              className="lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className={`ml-auto flex items-center gap-2 ${sidebarCollapsed ? "lg:ml-0" : ""}`}>
+              <button
+                type="button"
+                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-bg)] lg:grid"
+                aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
+                onClick={() => setSidebarCollapsed((prev) => !prev)}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-5 w-5" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 rotate-180" />
+                )}
+              </button>
+              <button
+                type="button"
+                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-bg)] lg:hidden"
+                aria-label="Cerrar menu lateral"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-          <nav className="mt-8" aria-label="Navegacion principal">
+          <nav className="mt-4 flex-1 pb-2" aria-label="Navegacion principal">
             {renderMenuSections(menuSections, "primary")}
             {Object.keys(mainMenuSections).length > 0 ? (
               <>
-                <div className="mt-10 text-xs uppercase tracking-widest text-white/40">
+                <div className="mt-4 px-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--brand-sidebar-muted)]">
                   Menu principal
                 </div>
-                <div className="mt-3">{renderMenuSections(mainMenuSections, "main")}</div>
+                <div className="mt-1.5">{renderMenuSections(mainMenuSections, "main")}</div>
               </>
             ) : null}
           </nav>
-        </aside>
-        <div className="flex min-h-screen flex-col">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white/80 px-4 py-4 shadow-sm backdrop-blur md:px-6">
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <header
+            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b bg-[var(--brand-header-bg)]/90 px-4 py-4 shadow-sm backdrop-blur-md md:px-6"
+            style={{ borderColor: tenantTheme.header.border }}
+          >
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 p-2 text-slate-600 lg:hidden"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] lg:hidden"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
+                }}
                 onClick={() => setSidebarOpen(true)}
+                aria-label="Abrir menu lateral"
               >
                 <Menu className="h-5 w-5" />
               </button>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">
+                <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)]">
                   Sistema
                 </p>
-                <h1 className="text-lg font-semibold text-slate-900">
+                <h1 className="text-lg font-semibold text-[var(--brand-header-text)]">
                   Panel de control
                 </h1>
               </div>
@@ -862,13 +1079,23 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href={`/${tenantSlug}/dashboard`}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-[var(--brand-sidebar-active-text)] shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  backgroundColor: tenantTheme.header.actionBackground,
+                  color: tenantTheme.header.actionText,
+                }}
+                aria-label="Ir al dashboard"
               >
                 <LayoutDashboard className="h-4 w-4" />
               </Link>
               <button
                 type="button"
-                className="relative rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50"
+                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
+                }}
                 aria-label="Ver notificaciones"
               >
                 <Bell className="h-5 w-5" />
@@ -876,7 +1103,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
+                }}
                 aria-label="Mensajes"
               >
                 <MessageCircle className="h-5 w-5" />
@@ -897,10 +1129,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <div className="relative">
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-50"
+                  className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  style={{
+                    borderColor: tenantTheme.header.iconButtonBorder,
+                    backgroundColor: tenantTheme.header.iconButtonBackground,
+                    color: tenantTheme.header.iconButtonText,
+                  }}
                   onClick={() => setUserMenuOpen((prev) => !prev)}
                   aria-haspopup="menu"
                   aria-expanded={userMenuOpen}
+                  aria-label="Abrir menu de usuario"
                 >
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
                   <span className="max-w-[160px] truncate">
@@ -910,7 +1148,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </button>
                 {userMenuOpen && (
                   <div
-                    className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-2 text-sm text-slate-700 shadow-lg"
+                    className="absolute right-0 mt-2 w-56 rounded-lg border bg-white py-2 text-sm text-slate-700 shadow-lg"
+                    style={{ borderColor: tenantTheme.header.border }}
                     role="menu"
                   >
                     <button
@@ -940,7 +1179,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
               <button
                 type="button"
-                className="rounded-full border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50"
+                className="rounded-full border p-2 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
+                }}
                 aria-label="Cerrar sesion"
                 onClick={() => logout()}
               >
@@ -950,9 +1194,37 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           </header>
           <main
             id="contenido-principal"
-            className="flex-1 px-4 py-6 md:px-6 lg:px-8"
+            className="flex-1 overflow-y-auto overscroll-contain"
           >
-            {children}
+            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8">
+              {children}
+            </div>
+            <footer
+              className="border-t px-4 py-4 text-sm md:px-6"
+              style={{
+                borderColor: tenantTheme.surface.border,
+                backgroundColor: tenantTheme.surface.card,
+                color: tenantTheme.surface.mutedText,
+              }}
+            >
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="font-semibold" style={{ color: tenantTheme.surface.text }}>
+                    {company?.razonSocial || authUser?.tenantName || "Empresa"}
+                  </p>
+                  <p>
+                    {company?.nit ? `NIT ${company.nit}${company.dv ? `-${company.dv}` : ""}` : "Gestion administrativa y operativa."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-4 text-slate-500">
+                  {company?.emailCorporativo && (
+                    <span>{company.emailCorporativo}</span>
+                  )}
+                  {company?.sitioWeb && <span>{company.sitioWeb}</span>}
+                  {company?.telefono && <span>{company.telefono}</span>}
+                </div>
+              </div>
+            </footer>
           </main>
           {profileModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
@@ -1164,27 +1436,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
             </div>
           )}
-          <footer className="border-t border-slate-200 bg-white px-4 py-4 text-sm text-slate-600 md:px-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="font-semibold text-slate-800">
-                  {company?.razonSocial || authUser?.tenantName || "Empresa"}
-                </p>
-                <p>
-                  {company?.nit ? `NIT ${company.nit}${company.dv ? `-${company.dv}` : ""}` : "Gestion administrativa y operativa."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-4 text-slate-500">
-                {company?.emailCorporativo && (
-                  <span>{company.emailCorporativo}</span>
-                )}
-                {company?.sitioWeb && <span>{company.sitioWeb}</span>}
-                {company?.telefono && <span>{company.telefono}</span>}
-              </div>
-            </div>
-          </footer>
         </div>
-      </div>
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
     </div>
   );

@@ -7,6 +7,7 @@ export type TenantConfig = {
   };
   font: string;
   logo?: string;
+  logoUrl?: string;
   spacing?: {
     sm?: string;
     md?: string;

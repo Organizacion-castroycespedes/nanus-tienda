@@ -4,6 +4,7 @@ export type TenantConfigResponse = {
     colors: Record<string, string>;
     font: string;
     logo?: string;
+    logoUrl?: string;
     spacing?: Record<string, string>;
   };
 };
