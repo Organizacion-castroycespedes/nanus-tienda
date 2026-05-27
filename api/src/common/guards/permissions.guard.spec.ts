@@ -232,3 +232,36 @@ test("PermissionsGuard: blocks missing explicit action permission", async () => 
     /Permisos insuficientes/
   );
 });
+
+test("PermissionsGuard: allows settle partial purchase action permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: "INVENTORY_PURCHASES",
+      level: "WRITE",
+      action: "settle_partial",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () =>
+      new Map([
+        [
+          "INVENTORY_PURCHASES",
+          {
+            key: "INVENTORY_PURCHASES",
+            accessLevel: "WRITE",
+            actions: { settle_partial: true },
+          },
+        ],
+      ]),
+    findPermission: (permissions: Map<string, unknown>, menuKey: string) =>
+      permissions.get(menuKey),
+    isActionAllowed: (permission: any, required: any, action: string) =>
+      required === "WRITE" &&
+      permission?.accessLevel === "WRITE" &&
+      permission?.actions?.[action] === true,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(buildContext({ id: "user", tenantId: "tenant" }));
+  assert.equal(allowed, true);
+});

@@ -104,6 +104,8 @@
 | GET | `/api/purchases/:id` |
 | PUT | `/api/purchases/:id` |
 | POST | `/api/purchases/:id/receive` |
+| PATCH | `/api/purchases/:id/cancel` |
+| PATCH | `/api/purchases/:id/settle-partial` |
 | GET | `/api/orders` |
 | POST | `/api/orders` |
 | GET | `/api/orders/:id` |

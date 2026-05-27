@@ -55,7 +55,7 @@ WITH role_targets AS (
       WHEN r.nombre = 'SUPER_ADMIN'
         THEN CASE
           WHEN mi.key = 'INVENTORY_PURCHASES'
-            THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true}'::jsonb
+            THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true, "settle_partial": true}'::jsonb
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'SUPER_USER'
@@ -64,7 +64,7 @@ WITH role_targets AS (
           WHEN mi.key = 'DASHBOARD_TENANT_DASHBOARD'
             THEN '{"read": true}'::jsonb
           WHEN mi.key = 'INVENTORY_PURCHASES'
-            THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true}'::jsonb
+            THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true, "settle_partial": true}'::jsonb
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'ADMIN'
@@ -85,7 +85,7 @@ WITH role_targets AS (
           WHEN mi.key = 'DASHBOARD_TENANT_DASHBOARD'
             THEN '{"read": true}'::jsonb
           WHEN mi.key = 'INVENTORY_PURCHASES'
-            THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true}'::jsonb
+            THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true, "settle_partial": true}'::jsonb
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'USER'

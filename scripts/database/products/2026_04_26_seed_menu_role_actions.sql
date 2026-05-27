@@ -63,7 +63,7 @@ WITH role_targets AS (
         )
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         || CASE
-          WHEN mi.key = 'INVENTORY_PURCHASES' THEN '{"cancel": true}'::jsonb
+          WHEN mi.key = 'INVENTORY_PURCHASES' THEN '{"cancel": true, "settle_partial": true}'::jsonb
           ELSE '{}'::jsonb
         END
       WHEN r.nombre = 'USER'
@@ -208,7 +208,7 @@ WITH role_targets AS (
         )
         THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         || CASE
-          WHEN mi.key = 'INVENTORY_PURCHASES' THEN '{"cancel": true}'::jsonb
+          WHEN mi.key = 'INVENTORY_PURCHASES' THEN '{"cancel": true, "settle_partial": true}'::jsonb
           ELSE '{}'::jsonb
         END
       WHEN r.nombre = 'USER'

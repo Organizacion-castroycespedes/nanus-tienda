@@ -17,12 +17,14 @@ const ids = {
 };
 
 type Scenario = {
-  status?: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CANCELLED";
+  status?: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CERRADA_PARCIAL" | "CANCELLED";
   paymentStatus?: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
   totalPaid?: number;
   receivedQuantity?: number;
   hasMovement?: boolean;
   tenantMatches?: boolean;
+  itemReceivedQuantity?: number;
+  itemCost?: number;
 };
 
 const buildPurchaseRow = (scenario: Scenario = {}) => ({
@@ -78,13 +80,58 @@ class FakeClient {
         ],
       };
     }
-    if (trimmed.includes("FROM purchase_items")) {
+    if (trimmed.includes("SELECT received_quantity") && trimmed.includes("FROM purchase_items")) {
       return { rows: [{ received_quantity: this.scenario.receivedQuantity ?? 0 }] };
+    }
+    if (trimmed.includes("FROM purchase_items")) {
+      return {
+        rows: [
+          {
+            id: "50000000-0000-0000-0000-000000000001",
+            purchase_id: ids.purchase,
+            product_id: "60000000-0000-0000-0000-000000000001",
+            ordered_quantity: 10,
+            received_quantity: this.scenario.itemReceivedQuantity ?? 7,
+            cost: this.scenario.itemCost ?? 10000,
+            subtotal: 100000,
+          },
+        ],
+      };
     }
     if (trimmed.includes("FROM stock_movements")) {
       return { rows: this.scenario.hasMovement ? [{ id: "movement-1" }] : [] };
     }
+    if (trimmed.includes("FROM payment_allocations")) {
+      return { rows: [{ total_paid: this.scenario.totalPaid ?? 0 }] };
+    }
     if (trimmed.startsWith("UPDATE purchases")) {
+      if (trimmed.includes("motivo_liquidacion")) {
+        const totalLiquidado = Number(params[3]);
+        const totalPaid = Number(params[11] ?? 0);
+        return {
+          rows: [
+            {
+              ...buildPurchaseRow({
+                ...this.scenario,
+                status: "CERRADA_PARCIAL",
+                paymentStatus:
+                  totalPaid <= 0 ? "PENDING" : totalPaid < totalLiquidado ? "PARTIAL" : "PAID",
+              }),
+              total: totalLiquidado,
+              balance: params[4],
+              balance_due: params[4],
+              total_paid: totalPaid,
+              total_pedido: 100000,
+              total_recibido: totalLiquidado,
+              total_liquidado: totalLiquidado,
+              total_no_recibido: params[6],
+              motivo_liquidacion: params[7],
+              liquidado_por: params[8],
+              liquidado_en: params[9],
+            },
+          ],
+        };
+      }
       return {
         rows: [
           {
@@ -95,6 +142,9 @@ class FakeClient {
           },
         ],
       };
+    }
+    if (trimmed.startsWith("UPDATE purchase_items")) {
+      return { rows: [] };
     }
     if (trimmed.startsWith("INSERT INTO auditoria_eventos")) {
       return { rows: [] };
@@ -245,5 +295,193 @@ test("PurchaseService.cancelPurchase: bloquea si hay movimiento de inventario", 
         actor,
       }),
     ConflictException
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: liquida compra parcial pendiente de pago", async () => {
+  const { service, db } = buildService({
+    status: "PARTIAL",
+    itemReceivedQuantity: 7,
+    itemCost: 10000,
+  });
+
+  const result = await service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+    motivoLiquidacion: "Proveedor no enviara saldo",
+    actor,
+    context: { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.data.estado, "CERRADA_PARCIAL");
+  assert.equal(result.data.totalLiquidado, 70000);
+  assert.equal(result.data.diferenciaNoRecibida, 30000);
+  assert.equal(result.data.totalPagado, 0);
+  assert.equal(result.data.saldoPendiente, 70000);
+  assert.equal(result.data.paymentStatus, "PENDING");
+  assert.ok(db.client.params.some((params) => params.includes("PURCHASE_PARTIAL_CLOSED")));
+  assert.equal(
+    db.client.queries.some((query) => query.startsWith("INSERT INTO stock_movements")),
+    false
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: permite pago parcial menor al total liquidado", async () => {
+  const { service } = buildService({
+    status: "PARTIAL",
+    paymentStatus: "PARTIAL",
+    totalPaid: 40000,
+    itemReceivedQuantity: 7,
+    itemCost: 10000,
+  });
+
+  const result = await service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+    motivoLiquidacion: "Proveedor no enviara saldo",
+    actor,
+  });
+
+  assert.equal(result.data.estado, "CERRADA_PARCIAL");
+  assert.equal(result.data.balanceDue, 30000);
+  assert.equal(result.data.paymentStatus, "PARTIAL");
+});
+
+test("PurchaseService.settlePartialPurchase: calcula total liquidado desde items en base de datos", async () => {
+  const { service } = buildService({
+    status: "PARTIAL",
+    itemReceivedQuantity: 3,
+    itemCost: 1234.56,
+  });
+
+  const result = await service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+    motivoLiquidacion: "Proveedor no enviara saldo",
+    actor,
+  });
+
+  assert.equal(result.data.totalLiquidado, 3703.68);
+  assert.equal(result.data.diferenciaNoRecibida, 8641.92);
+  assert.equal(result.data.saldoPendiente, 3703.68);
+});
+
+test("PurchaseService.settlePartialPurchase: marca pago completo si pago iguala total liquidado", async () => {
+  const { service } = buildService({
+    status: "PARTIAL",
+    paymentStatus: "PAID",
+    totalPaid: 70000,
+    itemReceivedQuantity: 7,
+    itemCost: 10000,
+  });
+
+  const result = await service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+    motivoLiquidacion: "Proveedor no enviara saldo",
+    actor,
+  });
+
+  assert.equal(result.data.estado, "CERRADA_PARCIAL");
+  assert.equal(result.data.totalLiquidado, 70000);
+  assert.equal(result.data.totalPagado, 70000);
+  assert.equal(result.data.saldoPendiente, 0);
+  assert.equal(result.data.balanceDue, 0);
+  assert.equal(result.data.paymentStatus, "PAID");
+});
+
+test("PurchaseService.settlePartialPurchase: bloquea pago mayor al total liquidado", async () => {
+  const { service } = buildService({
+    status: "PARTIAL",
+    paymentStatus: "PARTIAL",
+    totalPaid: 90000,
+    itemReceivedQuantity: 7,
+    itemCost: 10000,
+  });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "Proveedor no enviara saldo",
+        actor,
+      }),
+    /pagos registrados superan el valor recibido/
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: rechaza compra recibida completa", async () => {
+  const { service } = buildService({ status: "RECEIVED" });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "Proveedor no enviara saldo",
+        actor,
+      }),
+    BadRequestException
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: rechaza compra cancelada", async () => {
+  const { service } = buildService({ status: "CANCELLED" });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "Proveedor no enviara saldo",
+        actor,
+      }),
+    BadRequestException
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: rechaza compra ya cerrada parcialmente", async () => {
+  const { service } = buildService({ status: "CERRADA_PARCIAL" });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "Proveedor no enviara saldo",
+        actor,
+      }),
+    ConflictException
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: rechaza compra sin cantidades recibidas", async () => {
+  const { service } = buildService({
+    status: "PARTIAL",
+    itemReceivedQuantity: 0,
+  });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "Proveedor no enviara saldo",
+        actor,
+      }),
+    BadRequestException
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: rechaza motivo vacio", async () => {
+  const { service } = buildService({ status: "PARTIAL" });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "   ",
+        actor,
+      }),
+    BadRequestException
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: respeta tenant_id", async () => {
+  const { service } = buildService({
+    status: "PARTIAL",
+    tenantMatches: false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+        motivoLiquidacion: "Proveedor no enviara saldo",
+        actor,
+      }),
+    NotFoundException
   );
 });

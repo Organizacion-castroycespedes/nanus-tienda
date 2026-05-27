@@ -18,6 +18,11 @@ import {
 } from "../../../modules/inventory/components/CancelPurchaseDialog";
 import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
+import {
+  OVERPAYMENT_SETTLEMENT_MESSAGE,
+  SettlePartialPurchaseDialog,
+  validateSettlePartialPurchaseReason,
+} from "../../../modules/inventory/components/SettlePartialPurchaseDialog";
 import { PurchaseDetailDialog } from "../../../modules/inventory/components/PurchaseDetailDialog";
 import { PurchaseReceiveForm } from "../../../modules/inventory/components/PurchaseReceiveForm";
 import { usePurchases } from "../../../modules/inventory/hooks/use-purchases";
@@ -69,6 +74,7 @@ const PurchasesPage = () => {
     purchases,
     loading,
     canceling: isCancelling,
+    liquidating: isLiquidating,
     loadingDetail,
     purchaseDetail,
     errorMessage,
@@ -76,6 +82,7 @@ const PurchasesPage = () => {
     loadPurchases: loadPurchaseList,
     loadPurchaseDetail,
     cancelItem,
+    liquidateItem,
   } = usePurchases();
   const [draftFilters, setDraftFilters] = useState<PurchaseFilters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<PurchaseFilters>(defaultFilters);
@@ -88,9 +95,12 @@ const PurchasesPage = () => {
   const [payingPurchase, setPayingPurchase] = useState<PurchaseResponse | null>(null);
   const [previewPurchase, setPreviewPurchase] = useState<PurchaseResponse | null>(null);
   const [cancelingPurchase, setCancelingPurchase] = useState<PurchaseResponse | null>(null);
+  const [liquidatingPurchaseId, setLiquidatingPurchaseId] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancellationError, setCancellationError] = useState<string | null>(null);
+  const [liquidationReason, setLiquidationReason] = useState("");
+  const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const { currentTenant } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
@@ -101,6 +111,7 @@ const PurchasesPage = () => {
   const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
   const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
   const canCancel = hasPermission("inventory.cancel");
+  const canSettlePartial = hasPermission("inventory.settle_partial");
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -236,6 +247,9 @@ const PurchasesPage = () => {
   const canCancelPurchase = (purchase: PurchaseResponse) =>
     isPurchaseCancelable(purchase, canCancel);
 
+  const canLiquidatePurchase = (purchase: PurchaseResponse) =>
+    canSettlePartial && purchase.status === "PARTIAL";
+
   const openCancelModal = (purchase: PurchaseResponse) => {
     setCancelingPurchase(purchase);
     setCancellationReason("");
@@ -281,6 +295,63 @@ const PurchasesPage = () => {
   const openDetail = (purchase: PurchaseResponse) => {
     setIsDetailOpen(true);
     void loadPurchaseDetail(purchase.id);
+  };
+
+  const openLiquidateModal = (purchase: PurchaseResponse) => {
+    setLiquidatingPurchaseId(purchase.id);
+    setLiquidationReason("");
+    setLiquidationError(null);
+    void loadPurchaseDetail(purchase.id);
+  };
+
+  const openLiquidateFromDetail = () => {
+    if (!purchaseDetail) {
+      return;
+    }
+    setIsDetailOpen(false);
+    setLiquidatingPurchaseId(purchaseDetail.id);
+    setLiquidationReason("");
+    setLiquidationError(null);
+  };
+
+  const closeLiquidateModal = () => {
+    if (isLiquidating) {
+      return;
+    }
+    setLiquidatingPurchaseId(null);
+    setLiquidationReason("");
+    setLiquidationError(null);
+  };
+
+  const handleLiquidatePurchase = async () => {
+    const reason = liquidationReason.trim();
+    if (!liquidatingPurchaseId) {
+      return;
+    }
+    const validationError = validateSettlePartialPurchaseReason(reason);
+    if (validationError) {
+      setLiquidationError(validationError);
+      return;
+    }
+
+    setLiquidationError(null);
+    try {
+      await liquidateItem(liquidatingPurchaseId, { motivoLiquidacion: reason });
+      setLiquidatingPurchaseId(null);
+      setLiquidationReason("");
+      showToast("Compra liquidada correctamente con las cantidades recibidas.", "success");
+    } catch (error) {
+      const apiMessage = error instanceof Error
+        ? error.message
+        : getApiErrorMessage(error, "");
+      const message = /pagos registrados superan el valor recibido/i.test(apiMessage)
+        ? OVERPAYMENT_SETTLEMENT_MESSAGE
+        : /estado parcial/i.test(apiMessage)
+          ? "Esta compra no puede liquidarse porque no está en estado parcial."
+          : "No se pudo liquidar la compra. Intenta nuevamente.";
+      setLiquidationError(message);
+      showToast(message, "error");
+    }
   };
 
   const canAccessTicket = (status: PurchaseResponse["status"]) => status !== "DRAFT";
@@ -395,7 +466,25 @@ const PurchasesPage = () => {
         <PurchaseDetailDialog
           purchase={purchaseDetail}
           loading={loadingDetail}
+          canLiquidate={canSettlePartial}
           onClose={() => setIsDetailOpen(false)}
+          onLiquidate={openLiquidateFromDetail}
+        />
+      ) : null}
+
+      {liquidatingPurchaseId ? (
+        <SettlePartialPurchaseDialog
+          purchase={purchaseDetail}
+          loading={loadingDetail}
+          reason={liquidationReason}
+          error={liquidationError}
+          isSubmitting={isLiquidating}
+          onReasonChange={(value) => {
+            setLiquidationReason(value);
+            setLiquidationError(null);
+          }}
+          onCancel={closeLiquidateModal}
+          onConfirm={() => void handleLiquidatePurchase()}
         />
       ) : null}
 
@@ -588,7 +677,8 @@ const PurchasesPage = () => {
                         </Button>
                         {canReceive &&
                         purchase.status !== "CANCELLED" &&
-                        purchase.status !== "RECEIVED" ? (
+                        purchase.status !== "RECEIVED" &&
+                        purchase.status !== "CERRADA_PARCIAL" ? (
                           <Button
                             variant="ghost"
                             onClick={() => setReceivingPurchaseId(purchase.id)}
@@ -606,6 +696,15 @@ const PurchasesPage = () => {
                             onClick={() => setPayingPurchase(purchase)}
                           >
                             Pagar
+                          </Button>
+                        ) : null}
+                        {canLiquidatePurchase(purchase) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openLiquidateModal(purchase)}
+                          >
+                            Liquidar
                           </Button>
                         ) : null}
                         {canCancelPurchase(purchase) ? (

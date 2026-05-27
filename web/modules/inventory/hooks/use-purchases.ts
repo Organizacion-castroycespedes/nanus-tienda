@@ -6,8 +6,10 @@ import {
   cancelPurchase,
   getPurchaseById,
   getPurchases,
+  liquidatePurchase,
   type CancelPurchasePayload,
   type GetPurchasesParams,
+  type LiquidatePurchasePayload,
   type PurchaseDetailResponse,
   type PurchaseResponse,
 } from "../services/purchase.service";
@@ -21,6 +23,7 @@ export const usePurchases = () => {
   const [loading, setLoading] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [liquidating, setLiquidating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
   const lastFiltersRef = useRef<GetPurchasesParams>({});
@@ -95,17 +98,53 @@ export const usePurchases = () => {
     [loadPurchases]
   );
 
+  const liquidateItem = useCallback(
+    async (purchaseId: string, payload: LiquidatePurchasePayload) => {
+      setLiquidating(true);
+      setErrorMessage(null);
+      try {
+        const response = await liquidatePurchase(purchaseId, payload);
+        const liquidated = response.data;
+        setPurchases((prev) =>
+          prev.map((purchase) => (purchase.id === purchaseId ? liquidated : purchase))
+        );
+        setPurchaseDetail((prev) =>
+          prev?.id === purchaseId
+            ? {
+                ...prev,
+                ...liquidated,
+              }
+            : prev
+        );
+        await loadPurchases(lastFiltersRef.current);
+        return response;
+      } catch (error) {
+        const message = normalizePurchaseError(
+          error,
+          "No se pudo liquidar la compra. Intenta nuevamente."
+        );
+        setErrorMessage(message);
+        throw new Error(message);
+      } finally {
+        setLiquidating(false);
+      }
+    },
+    [loadPurchases]
+  );
+
   return {
     purchases,
     purchaseDetail,
     loading,
     loadingDetail,
     canceling,
+    liquidating,
     errorMessage,
     hasLoaded,
     setErrorMessage,
     loadPurchases,
     loadPurchaseDetail,
     cancelItem,
+    liquidateItem,
   };
 };

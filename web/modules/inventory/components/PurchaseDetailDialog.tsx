@@ -7,7 +7,9 @@ import type { PurchaseDetailResponse } from "../services/purchase.service";
 type PurchaseDetailDialogProps = {
   purchase: PurchaseDetailResponse | null;
   loading?: boolean;
+  canLiquidate?: boolean;
   onClose: () => void;
+  onLiquidate?: () => void;
 };
 
 const formatCurrency = (value: number) =>
@@ -29,15 +31,32 @@ const formatDateTime = (value?: string | null) =>
     : "-";
 
 const displayStatus = (status?: string | null) =>
-  status === "CANCELLED" ? "CANCELADA" : status ?? "-";
+  status === "CANCELLED"
+    ? "CANCELADA"
+    : status === "CERRADA_PARCIAL"
+      ? "CERRADA_PARCIAL"
+      : status ?? "-";
 
 export const PurchaseDetailDialog = ({
   purchase,
   loading = false,
+  canLiquidate = false,
   onClose,
+  onLiquidate,
 }: PurchaseDetailDialogProps) => {
   const isCancelled = purchase?.status === "CANCELLED";
+  const isClosedPartial = purchase?.status === "CERRADA_PARCIAL";
   const history = purchase?.statusHistory ?? [];
+  const hasReceived = purchase?.items.some((item) => item.receivedQuantity > 0) ?? false;
+  const hasPending = purchase?.items.some(
+    (item) => item.receivedQuantity < item.orderedQuantity
+  ) ?? false;
+  const showLiquidate =
+    canLiquidate &&
+    purchase?.status === "PARTIAL" &&
+    hasReceived &&
+    hasPending &&
+    Boolean(onLiquidate);
 
   return (
     <Modal
@@ -116,6 +135,42 @@ export const PurchaseDetailDialog = ({
             </section>
           ) : null}
 
+          {isClosedPartial ? (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
+              <h3 className="font-semibold text-emerald-900">Compra cerrada parcialmente</h3>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">
+                    Motivo de liquidacion
+                  </p>
+                  <p className="mt-1 text-emerald-950">{purchase.motivoLiquidacion || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">
+                    Fecha de liquidacion
+                  </p>
+                  <p className="mt-1 text-emerald-950">{formatDateTime(purchase.liquidadoEn)}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">
+                    Usuario que liquido
+                  </p>
+                  <p className="mt-1 text-emerald-950">
+                    {purchase.liquidadoPorNombre || purchase.liquidadoPor || "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">
+                    Valor no recibido
+                  </p>
+                  <p className="mt-1 text-emerald-950">
+                    {formatCurrency(Number(purchase.totalNoRecibido ?? 0))}
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <section className="rounded-lg border border-slate-200 bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -154,7 +209,11 @@ export const PurchaseDetailDialog = ({
                     key={`${event.action}-${event.createdAt}`}
                     className="rounded-lg border border-slate-200 bg-slate-50 p-3"
                   >
-                    <p className="font-medium text-slate-900">Compra cancelada</p>
+                    <p className="font-medium text-slate-900">
+                      {event.action === "PURCHASE_PARTIAL_CLOSED"
+                        ? "Compra cerrada parcialmente"
+                        : "Compra cancelada"}
+                    </p>
                     <p className="mt-1 text-slate-700">
                       Estado anterior: {displayStatus(event.estadoAnterior)} | Estado nuevo:{" "}
                       {displayStatus(event.estadoNuevo)}
@@ -172,10 +231,15 @@ export const PurchaseDetailDialog = ({
             )}
           </section>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-3">
             <Button variant="ghost" onClick={onClose}>
               Volver
             </Button>
+            {showLiquidate ? (
+              <Button onClick={onLiquidate}>
+                Liquidar compra
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : (
