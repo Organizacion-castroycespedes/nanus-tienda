@@ -18,6 +18,17 @@ Gestiona compras, recepcion de mercancia y entrada a inventario.
 
 - `DRAFT`, `PENDING`, `PARTIAL`, `RECEIVED`, `CERRADA_PARCIAL`, `CANCELLED`
 
+## Matriz de estados de compra
+
+| Estado | Significado | Recibe mercancia | Puede liquidar parcial |
+| --- | --- | --- | --- |
+| `DRAFT` | Compra en borrador o no confirmada | No | No |
+| `PENDING` | Compra abierta sin recepcion completa | Si | No |
+| `PARTIAL` | Compra parcialmente recibida y abierta | Si | Si, con permiso |
+| `RECEIVED` | Compra recibida completa | No | No |
+| `CERRADA_PARCIAL` | Compra liquidada con cantidades realmente recibidas | No | No |
+| `CANCELLED` | Compra cancelada/anulada | No | No |
+
 ## Reglas
 
 - solo compras recibidas afectan stock
@@ -89,6 +100,15 @@ Respuesta:
 - Auditoria: si, evento `PURCHASE_PARTIAL_CLOSED`
 - Total liquidado: `SUM(received_quantity * cost)`
 - Valor no recibido: `SUM((ordered_quantity - received_quantity) * cost)`
+
+## Funcionalidad: Liquidacion de compra parcial con cantidades realmente recibidas
+
+- Ruta: `/[tenant]/inventory/purchases`
+- Endpoint solicitado: `PATCH /api/inventory/purchases/:purchaseId/settle-partial`
+- Endpoint real actual: `PATCH /api/purchases/:purchaseId/settle-partial`
+- Estado destino: `CERRADA_PARCIAL`
+- Regla principal: la compra se cierra tomando como valor final el total realmente recibido.
+- Restriccion: no se puede liquidar si los pagos registrados superan el valor recibido.
 
 Body:
 
