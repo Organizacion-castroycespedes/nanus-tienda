@@ -7,8 +7,6 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { NoticeDialog } from "../../../components/design-system/NoticeDialog";
 import { Select } from "../../../components/design-system/Select";
-import { listPaymentMethods } from "../../../modules/finance/services/finance.service";
-import type { PaymentMethod } from "../../../modules/finance/types";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
 import { useNoticeDialog } from "../../../hooks/useNoticeDialog";
@@ -40,7 +38,6 @@ type PurchaseFilters = {
   fromDate: string;
   toDate: string;
   status: string;
-  paymentMethod: string;
 };
 
 type PurchasePanelAction =
@@ -60,7 +57,6 @@ const defaultFilters: PurchaseFilters = {
   fromDate: "",
   toDate: "",
   status: "",
-  paymentMethod: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
@@ -81,7 +77,6 @@ const filterQueryKeys = [
   "fromDate",
   "toDate",
   "status",
-  "paymentMethod",
   "page",
   "pageSize",
 ] as const;
@@ -93,7 +88,6 @@ const getFiltersFromQuery = (params: URLSearchParams): PurchaseFilters => ({
   fromDate: params.get("fromDate") ?? "",
   toDate: params.get("toDate") ?? "",
   status: params.get("status") ?? "",
-  paymentMethod: params.get("paymentMethod") ?? "",
 });
 
 const getPageFromQuery = (params: URLSearchParams) => {
@@ -119,7 +113,6 @@ const writeFiltersToQuery = (
     ["fromDate", "fromDate"],
     ["toDate", "toDate"],
     ["status", "status"],
-    ["paymentMethod", "paymentMethod"],
   ];
 
   entries.forEach(([filterKey, queryKey]) => {
@@ -199,7 +192,6 @@ const PurchasesPage = () => {
   const [cancellationError, setCancellationError] = useState<string | null>(null);
   const [liquidationReason, setLiquidationReason] = useState("");
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
@@ -275,7 +267,6 @@ const PurchasesPage = () => {
           fromDate: filters?.fromDate || undefined,
           toDate: filters?.toDate || undefined,
           status: filters?.status || undefined,
-          paymentMethod: filters?.paymentMethod || undefined,
         };
       }
 
@@ -285,7 +276,6 @@ const PurchasesPage = () => {
         fromDate: filters?.fromDate || undefined,
         toDate: filters?.toDate || undefined,
         status: filters?.status || undefined,
-        paymentMethod: filters?.paymentMethod || undefined,
       };
     },
     [canViewAllTenants, currentTenant]
@@ -353,17 +343,6 @@ const PurchasesPage = () => {
       setLiquidationError(null);
     }
   }, [activeAction, activePurchaseId]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const result = await listPaymentMethods({ active: true });
-        setPaymentMethods(result.filter((method) => method.active));
-      } catch {
-        setPaymentMethods([]);
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     if (activeAction !== "ticket" || !activePurchaseId) {
@@ -990,8 +969,8 @@ const PurchasesPage = () => {
   );
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <div className="w-full max-w-full min-w-0 space-y-4 overflow-x-hidden sm:space-y-6">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
@@ -1039,13 +1018,9 @@ const PurchasesPage = () => {
       ) : null}
 
       {!isActionMode ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div
-            className={
-              canViewAllTenants
-                ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_180px_180px_180px_180px_auto_auto]"
-                : "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_180px_180px_auto_auto]"
-            }
+            className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
             <Input
               label="Buscar"
@@ -1123,29 +1098,6 @@ const PurchasesPage = () => {
               ))}
             </Select>
             <Select
-              label="Metodo de pago"
-              value={draftFilters.paymentMethod}
-              onChange={(event) =>
-                setDraftFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))
-              }
-            >
-              <option value="">Todos</option>
-              {paymentMethods.map((method) => (
-                <option key={method.id} value={method.id}>
-                  {method.nombre}
-                </option>
-              ))}
-            </Select>
-            <div className="flex items-end gap-2">
-              <Button variant="outline" onClick={applyFilters}>
-                <Search className="h-4 w-4" />
-                Buscar
-              </Button>
-              <Button variant="ghost" onClick={resetFilters}>
-                Limpiar
-              </Button>
-            </div>
-            <Select
               label="Filas por pagina"
               value={String(pageSize)}
               onChange={(event) => {
@@ -1161,6 +1113,15 @@ const PurchasesPage = () => {
                 </option>
               ))}
             </Select>
+          </div>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={applyFilters} className="w-full sm:w-auto">
+              <Search className="h-4 w-4" />
+              Buscar
+            </Button>
+            <Button variant="ghost" onClick={resetFilters} className="w-full sm:w-auto">
+              Limpiar
+            </Button>
           </div>
         </section>
       ) : null}
@@ -1209,9 +1170,9 @@ const PurchasesPage = () => {
       />
 
       {!isActionMode ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="w-full max-w-full overflow-x-auto">
+            <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
                   <th className="px-4 py-3 font-medium">Proveedor</th>

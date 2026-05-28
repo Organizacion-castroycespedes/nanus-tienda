@@ -37,7 +37,6 @@ export type GetPurchasesParams = {
   fromDate?: string;
   toDate?: string;
   status?: PurchaseResponse["status"] | string;
-  paymentMethod?: string;
 };
 
 export type PurchaseItemResponse = {
@@ -140,9 +139,6 @@ export const getPurchases = (
   }
   if (params.status) {
     query.set("status", params.status);
-  }
-  if (params.paymentMethod) {
-    query.set("paymentMethod", params.paymentMethod);
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<PurchaseResponse[]>(`/purchases${suffix}`, { headers });
