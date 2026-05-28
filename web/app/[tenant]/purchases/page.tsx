@@ -339,11 +339,9 @@ const PurchasesPage = () => {
       activeAction === "settle-partial" ||
       activeAction === "ticket"
     ) {
-      if (purchaseDetail?.id !== activePurchaseId) {
-        void loadPurchaseDetail(activePurchaseId);
-      }
+      void loadPurchaseDetail(activePurchaseId);
     }
-  }, [activeAction, activePurchaseId, loadPurchaseDetail, purchaseDetail?.id]);
+  }, [activeAction, activePurchaseId, loadPurchaseDetail]);
 
   useEffect(() => {
     if (activeAction !== "cancel") {
