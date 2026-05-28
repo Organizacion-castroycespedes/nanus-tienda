@@ -10,7 +10,7 @@ import type { BranchResponse } from "../../../domains/branches/dtos";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
-import { createPurchase } from "../services/purchase.service";
+import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
 import { useAppSelector } from "../../../store/hooks";
 
@@ -36,7 +36,8 @@ type PurchaseFormErrors = {
 
 type PurchaseFormProps = {
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (response?: PurchaseResponse) => void;
+  onError?: (error: unknown) => void;
 };
 
 const createEmptyItem = (): PurchaseFormItem => ({
@@ -52,7 +53,7 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
+export const PurchaseForm = ({ onCancel, onSuccess, onError }: PurchaseFormProps) => {
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
   const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
   const [values, setValues] = useState<PurchaseFormValues>({
@@ -204,7 +205,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
     setIsSubmitting(true);
 
     try {
-      await createPurchase({
+      const response = await createPurchase({
         supplierId: values.supplierId,
         branchId: values.branchId,
         type: values.type,
@@ -217,8 +218,9 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
         })),
       });
 
-      onSuccess();
-    } catch {
+      onSuccess(response);
+    } catch (error) {
+      onError?.(error);
       setErrors({
         submit: "No se pudo guardar la compra.",
       });

@@ -1,15 +1,23 @@
 "use client";
 
 import { Button } from "../../../components/design-system/Button";
-import { Modal } from "../../../components/design-system/Modal";
 import type { PurchaseDetailResponse } from "../services/purchase.service";
 
-type PurchaseDetailDialogProps = {
+type PurchaseDetailPanelProps = {
   purchase: PurchaseDetailResponse | null;
   loading?: boolean;
+  canReceive?: boolean;
   canLiquidate?: boolean;
+  canPay?: boolean;
+  canCancel?: boolean;
+  canViewTicket?: boolean;
   onClose: () => void;
+  onReceive?: () => void;
   onLiquidate?: () => void;
+  onPay?: () => void;
+  onCancelPurchase?: () => void;
+  onViewTicket?: () => void;
+  onDownload?: () => void;
 };
 
 const formatCurrency = (value: number) =>
@@ -37,13 +45,22 @@ const displayStatus = (status?: string | null) =>
       ? "CERRADA_PARCIAL"
       : status ?? "-";
 
-export const PurchaseDetailDialog = ({
+export const PurchaseDetailPanel = ({
   purchase,
   loading = false,
+  canReceive = false,
   canLiquidate = false,
+  canPay = false,
+  canCancel = false,
+  canViewTicket = false,
   onClose,
+  onReceive,
   onLiquidate,
-}: PurchaseDetailDialogProps) => {
+  onPay,
+  onCancelPurchase,
+  onViewTicket,
+  onDownload,
+}: PurchaseDetailPanelProps) => {
   const isCancelled = purchase?.status === "CANCELLED";
   const isClosedPartial = purchase?.status === "CERRADA_PARCIAL";
   const history = purchase?.statusHistory ?? [];
@@ -57,20 +74,49 @@ export const PurchaseDetailDialog = ({
     hasReceived &&
     hasPending &&
     Boolean(onLiquidate);
+  const totalPedido =
+    Number(purchase?.totalPedido ?? NaN) ||
+    purchase?.items.reduce(
+      (sum, item) => sum + Number(item.orderedQuantity) * Number(item.cost),
+      0
+    ) ||
+    Number(purchase?.total ?? 0);
+  const totalRecibido =
+    Number(purchase?.totalRecibido ?? NaN) ||
+    purchase?.items.reduce(
+      (sum, item) =>
+        sum +
+        Number(item.receivedSubtotal ?? Number(item.receivedQuantity) * Number(item.cost)),
+      0
+    ) ||
+    0;
+  const totalLiquidado =
+    purchase?.totalLiquidado == null ? null : Number(purchase.totalLiquidado);
 
   return (
-    <Modal
-      title={purchase ? `Detalle compra ${purchase.id.slice(0, 8)}` : "Detalle compra"}
-      description="Consulta estado, items y trazabilidad de la compra."
-      onClose={onClose}
-    >
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Detalle de compra</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+            {purchase ? `Compra ${purchase.id.slice(0, 8)}` : "Compra"}
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Consulta estado, items y trazabilidad sin salir del listado.
+          </p>
+        </div>
+        <Button variant="ghost" onClick={onClose}>
+          Volver
+        </Button>
+      </div>
+
       {loading ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
           Cargando detalle de la compra...
         </div>
       ) : purchase ? (
         <div className="space-y-4">
-          <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-3">
+          <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-3 xl:grid-cols-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-500">Proveedor</p>
               <p className="mt-1 font-medium text-slate-900">
@@ -84,18 +130,6 @@ export const PurchaseDetailDialog = ({
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-              <p className="mt-1 font-medium text-slate-900">
-                {formatCurrency(Number(purchase.total))}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
-              <p className="mt-1 font-medium text-slate-900">
-                {purchase.branchName || purchase.branchId || "-"}
-              </p>
-            </div>
-            <div>
               <p className="text-xs uppercase tracking-wide text-slate-500">Pago</p>
               <p className="mt-1 font-medium text-slate-900">{purchase.paymentStatus}</p>
             </div>
@@ -103,6 +137,28 @@ export const PurchaseDetailDialog = ({
               <p className="text-xs uppercase tracking-wide text-slate-500">Fecha</p>
               <p className="mt-1 font-medium text-slate-900">
                 {formatDateTime(purchase.createdAt)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Total pedido</p>
+              <p className="mt-1 font-medium text-slate-900">
+                {formatCurrency(totalPedido)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Total recibido</p>
+              <p className="mt-1 font-medium text-slate-900">{formatCurrency(totalRecibido)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Total liquidado</p>
+              <p className="mt-1 font-medium text-slate-900">
+                {totalLiquidado == null ? "-" : formatCurrency(totalLiquidado)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Saldo</p>
+              <p className="mt-1 font-medium text-slate-900">
+                {formatCurrency(Number(purchase.balanceDue))}
               </p>
             </div>
           </div>
@@ -179,22 +235,28 @@ export const PurchaseDetailDialog = ({
                     <th className="px-4 py-3 font-medium">Producto</th>
                     <th className="px-4 py-3 font-medium">Pedido</th>
                     <th className="px-4 py-3 font-medium">Recibido</th>
+                    <th className="px-4 py-3 font-medium">Pendiente</th>
                     <th className="px-4 py-3 font-medium">Subtotal</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {purchase.items.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3 text-slate-900">
-                        {item.productName || item.productId}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">{item.orderedQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700">{item.receivedQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {formatCurrency(Number(item.subtotal))}
-                      </td>
-                    </tr>
-                  ))}
+                  {purchase.items.map((item) => {
+                    const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
+
+                    return (
+                      <tr key={item.id}>
+                        <td className="px-4 py-3 text-slate-900">
+                          {item.productName || item.productId}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">{item.orderedQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700">{item.receivedQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700">{pending}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {formatCurrency(Number(item.subtotal))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -222,12 +284,14 @@ export const PurchaseDetailDialog = ({
                     <p className="mt-1 text-slate-700">
                       Usuario: {event.usuarioNombre || event.usuarioId || "-"}
                     </p>
-                    <p className="mt-1 text-slate-500">Fecha/hora: {formatDateTime(event.createdAt)}</p>
+                    <p className="mt-1 text-slate-500">
+                      Fecha/hora: {formatDateTime(event.createdAt)}
+                    </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-slate-500">Sin eventos de cancelacion registrados.</p>
+              <p className="mt-2 text-slate-500">Sin eventos de trazabilidad registrados.</p>
             )}
           </section>
 
@@ -235,9 +299,22 @@ export const PurchaseDetailDialog = ({
             <Button variant="ghost" onClick={onClose}>
               Volver
             </Button>
-            {showLiquidate ? (
-              <Button onClick={onLiquidate}>
-                Liquidar compra
+            {canReceive && onReceive ? <Button variant="outline" onClick={onReceive}>Recibir</Button> : null}
+            {canPay && onPay ? <Button variant="outline" onClick={onPay}>Pagar</Button> : null}
+            {canCancel && onCancelPurchase ? (
+              <Button variant="danger" onClick={onCancelPurchase}>
+                Cancelar compra
+              </Button>
+            ) : null}
+            {showLiquidate ? <Button onClick={onLiquidate}>Liquidar compra</Button> : null}
+            {canViewTicket && onViewTicket ? (
+              <Button variant="outline" onClick={onViewTicket}>
+                Ver Ticket
+              </Button>
+            ) : null}
+            {canViewTicket && onDownload ? (
+              <Button variant="outline" onClick={onDownload}>
+                Descargar
               </Button>
             ) : null}
           </div>
@@ -247,6 +324,6 @@ export const PurchaseDetailDialog = ({
           No se pudo cargar el detalle de la compra.
         </div>
       )}
-    </Modal>
+    </section>
   );
 };

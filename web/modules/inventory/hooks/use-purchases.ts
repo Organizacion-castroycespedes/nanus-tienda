@@ -90,7 +90,7 @@ export const usePurchases = () => {
           "No se pudo cancelar la compra. Intenta nuevamente."
         );
         setErrorMessage(message);
-        throw new Error(message);
+        throw error;
       } finally {
         setCanceling(false);
       }
@@ -124,7 +124,7 @@ export const usePurchases = () => {
           "No se pudo liquidar la compra. Intenta nuevamente."
         );
         setErrorMessage(message);
-        throw new Error(message);
+        throw error;
       } finally {
         setLiquidating(false);
       }

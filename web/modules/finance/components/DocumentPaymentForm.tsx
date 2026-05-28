@@ -35,11 +35,18 @@ type DocumentPaymentFormProps = {
   referenceId: string;
   direction: PaymentDirection;
   total: number;
+  effectiveTotal?: number | null;
+  totalLabel?: string;
+  effectiveTotalLabel?: string;
   totalPaid: number;
   balanceDue: number;
   paymentStatus: FinancePaymentStatus;
+  blockReason?: string | null;
+  confirmLabel?: string;
+  cancelLabel?: string;
   onCancel: () => void;
   onSuccess: () => void;
+  onError?: (error: unknown) => void;
 };
 
 const formatCurrency = (value: number) =>
@@ -76,11 +83,18 @@ export const DocumentPaymentForm = ({
   referenceId,
   direction,
   total,
+  effectiveTotal,
+  totalLabel = "Total",
+  effectiveTotalLabel = "Total recibido/liquidado",
   totalPaid,
   balanceDue,
   paymentStatus,
+  blockReason,
+  confirmLabel = "Registrar pago",
+  cancelLabel = "Cancelar",
   onCancel,
   onSuccess,
+  onError,
 }: DocumentPaymentFormProps) => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
@@ -187,6 +201,9 @@ export const DocumentPaymentForm = ({
   };
 
   const validate = () => {
+    if (blockReason) {
+      return blockReason;
+    }
     if (!branchId) {
       return "No se encontro la sucursal del documento.";
     }
@@ -272,7 +289,8 @@ export const DocumentPaymentForm = ({
       }
 
       onSuccess();
-    } catch {
+    } catch (error) {
+      onError?.(error);
       setSubmitError("No se pudo registrar el pago.");
     } finally {
       setSubmitting(false);
@@ -288,7 +306,7 @@ export const DocumentPaymentForm = ({
           <p className="mt-2 text-sm text-slate-600">{description}</p>
         </div>
         <Button variant="ghost" onClick={onCancel} disabled={submitting}>
-          Cancelar
+          {cancelLabel}
         </Button>
       </div>
 
@@ -304,11 +322,21 @@ export const DocumentPaymentForm = ({
         <form className="grid gap-5" onSubmit={handleSubmit}>
           <section className="grid gap-4 md:grid-cols-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500">{totalLabel}</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">{formatCurrency(total)}</p>
             </div>
+            {effectiveTotal == null ? null : (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  {effectiveTotalLabel}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {formatCurrency(effectiveTotal)}
+                </p>
+              </div>
+            )}
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Pagado</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Total pagado</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">
                 {formatCurrency(totalPaid)}
               </p>
@@ -443,12 +471,22 @@ export const DocumentPaymentForm = ({
             </div>
           ) : null}
 
+          {blockReason ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {blockReason}
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" isLoading={submitting} disabled={isFullyPaid || balanceDue <= 0}>
-              Registrar pago
+            <Button
+              type="submit"
+              isLoading={submitting}
+              disabled={Boolean(blockReason) || isFullyPaid || balanceDue <= 0}
+            >
+              {confirmLabel}
             </Button>
             <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting}>
-              Cancelar
+              {cancelLabel}
             </Button>
           </div>
         </form>

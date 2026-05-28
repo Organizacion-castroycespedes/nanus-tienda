@@ -1,34 +1,34 @@
 "use client";
 
-import { Download, Eye, PackageCheck, Plus, RefreshCw, Search, XCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download, Eye, PackageCheck, Plus, RefreshCw, Search, X, XCircle } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
+import { NoticeDialog } from "../../../components/design-system/NoticeDialog";
 import { Select } from "../../../components/design-system/Select";
-import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { listPaymentMethods } from "../../../modules/finance/services/finance.service";
 import type { PaymentMethod } from "../../../modules/finance/types";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
-import { useAutoClearState } from "../../../lib/useAutoClearState";
+import { useNoticeDialog } from "../../../hooks/useNoticeDialog";
 import { useAppSelector } from "../../../store/hooks";
 import {
-  CancelPurchaseDialog,
+  CancelPurchaseForm,
   validateCancelPurchaseReason,
-} from "../../../modules/inventory/components/CancelPurchaseDialog";
+} from "../../../modules/inventory/components/CancelPurchaseForm";
 import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
 import {
   OVERPAYMENT_SETTLEMENT_MESSAGE,
-  SettlePartialPurchaseDialog,
+  SettlePartialPurchaseForm,
   validateSettlePartialPurchaseReason,
-} from "../../../modules/inventory/components/SettlePartialPurchaseDialog";
-import { PurchaseDetailDialog } from "../../../modules/inventory/components/PurchaseDetailDialog";
+} from "../../../modules/inventory/components/SettlePartialPurchaseForm";
+import { PurchaseDetailPanel } from "../../../modules/inventory/components/PurchaseDetailPanel";
 import { PurchaseReceiveForm } from "../../../modules/inventory/components/PurchaseReceiveForm";
 import { usePurchases } from "../../../modules/inventory/hooks/use-purchases";
 import type { PurchaseResponse } from "../../../modules/inventory/services/purchase.service";
 import { isPurchaseCancelable } from "../../../modules/inventory/utils/purchase-cancellation";
-import { PdfPreviewModal } from "../../../modules/reporteria/components/PdfPreviewModal";
 import { getPurchaseTicket } from "../../../modules/reporteria/services/reporting.service";
 import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
 
@@ -40,6 +40,16 @@ type PurchaseFilters = {
   toDate: string;
   paymentMethod: string;
 };
+
+type PurchasePanelAction =
+  | "detail"
+  | "receive"
+  | "pay"
+  | "cancel"
+  | "settle-partial"
+  | "ticket";
+
+type NoticeConfirmAction = "cancel" | "settle-partial" | null;
 
 const defaultFilters: PurchaseFilters = {
   query: "",
@@ -69,6 +79,18 @@ const formatDate = (value: string) =>
 const isPurchaseCancellationConflict = (message: string) =>
   /recibid|cerrad|pagad|inventario|reverso|estado/i.test(message);
 
+const purchasePanelActions = new Set<PurchasePanelAction>([
+  "detail",
+  "receive",
+  "pay",
+  "cancel",
+  "settle-partial",
+  "ticket",
+]);
+
+const isPurchasePanelAction = (value: string | null): value is PurchasePanelAction =>
+  value !== null && purchasePanelActions.has(value as PurchasePanelAction);
+
 const PurchasesPage = () => {
   const {
     purchases,
@@ -88,20 +110,24 @@ const PurchasesPage = () => {
   const [appliedFilters, setAppliedFilters] = useState<PurchaseFilters>(defaultFilters);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [receivingPurchaseId, setReceivingPurchaseId] = useState<string | null>(null);
-  const [payingPurchase, setPayingPurchase] = useState<PurchaseResponse | null>(null);
-  const [previewPurchase, setPreviewPurchase] = useState<PurchaseResponse | null>(null);
-  const [cancelingPurchase, setCancelingPurchase] = useState<PurchaseResponse | null>(null);
-  const [liquidatingPurchaseId, setLiquidatingPurchaseId] = useState<string | null>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancellationError, setCancellationError] = useState<string | null>(null);
   const [liquidationReason, setLiquidationReason] = useState("");
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
+  const notice = useNoticeDialog();
+  const ticketFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activePurchaseId = searchParams.get("purchaseId");
+  const activeActionParam = searchParams.get("action");
+  const activeAction = isPurchasePanelAction(activeActionParam) ? activeActionParam : null;
   const { currentTenant } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
@@ -113,12 +139,23 @@ const PurchasesPage = () => {
   const canCancel = hasPermission("inventory.cancel");
   const canSettlePartial = hasPermission("inventory.settle_partial");
 
-  useAutoClearState(toastMessage, setToastMessage);
+  const openPurchasePanel = useCallback(
+    (action: PurchasePanelAction, purchaseId: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("purchaseId", purchaseId);
+      params.set("action", action);
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
-  const showToast = useCallback((message: string, variant: ToastVariant) => {
-    setToastMessage(message);
-    setToastVariant(variant);
-  }, []);
+  const closePurchasePanel = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("purchaseId");
+    params.delete("action");
+    const nextQuery = params.toString();
+    router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const resolvePurchaseFilters = useCallback(
     (filters?: PurchaseFilters) => {
@@ -148,6 +185,44 @@ const PurchasesPage = () => {
     await loadPurchaseList(resolvePurchaseFilters(activeFilters));
   }, [appliedFilters, loadPurchaseList, resolvePurchaseFilters]);
 
+  const activePurchase = useMemo(() => {
+    if (!activePurchaseId) {
+      return null;
+    }
+    return (
+      purchases.find((purchase) => purchase.id === activePurchaseId) ??
+      (purchaseDetail?.id === activePurchaseId ? purchaseDetail : null)
+    );
+  }, [activePurchaseId, purchaseDetail, purchases]);
+
+  useEffect(() => {
+    if (!activePurchaseId || !activeAction) {
+      return;
+    }
+    if (
+      activeAction === "detail" ||
+      activeAction === "pay" ||
+      activeAction === "cancel" ||
+      activeAction === "settle-partial" ||
+      activeAction === "ticket"
+    ) {
+      if (purchaseDetail?.id !== activePurchaseId) {
+        void loadPurchaseDetail(activePurchaseId);
+      }
+    }
+  }, [activeAction, activePurchaseId, loadPurchaseDetail, purchaseDetail?.id]);
+
+  useEffect(() => {
+    if (activeAction !== "cancel") {
+      setCancellationReason("");
+      setCancellationError(null);
+    }
+    if (activeAction !== "settle-partial") {
+      setLiquidationReason("");
+      setLiquidationError(null);
+    }
+  }, [activeAction, activePurchaseId]);
+
   useEffect(() => {
     void (async () => {
       try {
@@ -158,6 +233,57 @@ const PurchasesPage = () => {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (activeAction !== "ticket" || !activePurchaseId) {
+      setPreviewBlob(null);
+      setPreviewError(null);
+      return;
+    }
+
+    let active = true;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewBlob(null);
+
+    void getPurchaseTicket(activePurchaseId)
+      .then((blob) => {
+        if (active) {
+          setPreviewBlob(blob);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          const message = getApiErrorMessage(error, "No se pudo abrir el PDF.");
+          setPreviewError(message);
+          notice.showFromApiError(error, message);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeAction, activePurchaseId, notice.showFromApiError]);
+
+  const previewObjectUrl = useMemo(() => {
+    if (!previewBlob) {
+      return null;
+    }
+    return URL.createObjectURL(previewBlob);
+  }, [previewBlob]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrl) {
+        URL.revokeObjectURL(previewObjectUrl);
+      }
+    };
+  }, [previewObjectUrl]);
 
   const tenantOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -228,17 +354,21 @@ const PurchasesPage = () => {
     setPage(0);
   };
 
-  const handleCreateSuccess = async () => {
+  const handleCreateSuccess = async (response?: unknown) => {
     setShowCreateForm(false);
-    showToast("Compra creada correctamente.", "success");
+    notice.showFromApiResponse(response, "Compra creada correctamente.", "Operacion exitosa");
     if (hasSearched) {
       await loadPurchases();
     }
   };
 
-  const handleReceiveSuccess = async () => {
-    setReceivingPurchaseId(null);
-    showToast("Recepcion registrada correctamente.", "success");
+  const handleReceiveSuccess = async (response?: unknown) => {
+    closePurchasePanel();
+    notice.showFromApiResponse(
+      response,
+      "Recepcion registrada correctamente.",
+      "Operacion exitosa"
+    );
     if (hasSearched) {
       await loadPurchases();
     }
@@ -250,24 +380,20 @@ const PurchasesPage = () => {
   const canLiquidatePurchase = (purchase: PurchaseResponse) =>
     canSettlePartial && purchase.status === "PARTIAL";
 
-  const openCancelModal = (purchase: PurchaseResponse) => {
-    setCancelingPurchase(purchase);
-    setCancellationReason("");
-    setCancellationError(null);
-  };
-
-  const closeCancelModal = () => {
+  const closeCancelForm = () => {
     if (isCancelling) {
       return;
     }
-    setCancelingPurchase(null);
+    setNoticeConfirmAction(null);
+    notice.close();
+    closePurchasePanel();
     setCancellationReason("");
     setCancellationError(null);
   };
 
-  const handleCancelPurchase = async () => {
+  const requestCancelConfirmation = () => {
     const reason = cancellationReason.trim();
-    if (!cancelingPurchase) {
+    if (!activePurchase) {
       return;
     }
     const validationError = validateCancelPurchaseReason(reason);
@@ -277,55 +403,67 @@ const PurchasesPage = () => {
     }
 
     setCancellationError(null);
+    setNoticeConfirmAction("cancel");
+    notice.showWarning(
+      "Cancelar compra",
+      "Esta accion cambiara el estado de la compra y no podra recibirse mercancia asociada."
+    );
+  };
+
+  const handleCancelPurchase = async () => {
+    const reason = cancellationReason.trim();
+    if (!activePurchase) {
+      return;
+    }
+
+    setCancellationError(null);
     try {
-      await cancelItem(cancelingPurchase.id, { motivoCancelacion: reason });
-      setCancelingPurchase(null);
+      const response = await cancelItem(activePurchase.id, { motivoCancelacion: reason });
+      closePurchasePanel();
       setCancellationReason("");
-      showToast("Compra cancelada correctamente.", "success");
+      setNoticeConfirmAction(null);
+      notice.showFromApiResponse(
+        response,
+        "Compra cancelada correctamente.",
+        "Operacion exitosa"
+      );
+      if (hasSearched) {
+        await loadPurchases();
+      }
     } catch (error) {
       const apiMessage = error instanceof Error ? error.message : getApiErrorMessage(error, "");
       const message = isPurchaseCancellationConflict(apiMessage)
         ? "Esta compra no puede cancelarse porque ya fue recibida, cerrada o pagada."
         : "No se pudo cancelar la compra. Intenta nuevamente.";
       setCancellationError(message);
-      showToast(message, "error");
+      setNoticeConfirmAction(null);
+      notice.showFromApiError(error, message);
     }
-  };
-
-  const openDetail = (purchase: PurchaseResponse) => {
-    setIsDetailOpen(true);
-    void loadPurchaseDetail(purchase.id);
-  };
-
-  const openLiquidateModal = (purchase: PurchaseResponse) => {
-    setLiquidatingPurchaseId(purchase.id);
-    setLiquidationReason("");
-    setLiquidationError(null);
-    void loadPurchaseDetail(purchase.id);
   };
 
   const openLiquidateFromDetail = () => {
     if (!purchaseDetail) {
       return;
     }
-    setIsDetailOpen(false);
-    setLiquidatingPurchaseId(purchaseDetail.id);
+    openPurchasePanel("settle-partial", purchaseDetail.id);
     setLiquidationReason("");
     setLiquidationError(null);
   };
 
-  const closeLiquidateModal = () => {
+  const closeLiquidateForm = () => {
     if (isLiquidating) {
       return;
     }
-    setLiquidatingPurchaseId(null);
+    setNoticeConfirmAction(null);
+    notice.close();
+    closePurchasePanel();
     setLiquidationReason("");
     setLiquidationError(null);
   };
 
-  const handleLiquidatePurchase = async () => {
+  const requestLiquidateConfirmation = () => {
     const reason = liquidationReason.trim();
-    if (!liquidatingPurchaseId) {
+    if (!activePurchaseId) {
       return;
     }
     const validationError = validateSettlePartialPurchaseReason(reason);
@@ -335,11 +473,30 @@ const PurchasesPage = () => {
     }
 
     setLiquidationError(null);
+    setNoticeConfirmAction("settle-partial");
+    notice.showWarning(
+      "Liquidar compra parcial",
+      "Esta accion cerrara la compra con las cantidades realmente recibidas. No podras recibir cantidades pendientes despues de liquidarla."
+    );
+  };
+
+  const handleLiquidatePurchase = async () => {
+    const reason = liquidationReason.trim();
+    if (!activePurchaseId) {
+      return;
+    }
+
+    setLiquidationError(null);
     try {
-      await liquidateItem(liquidatingPurchaseId, { motivoLiquidacion: reason });
-      setLiquidatingPurchaseId(null);
+      const response = await liquidateItem(activePurchaseId, { motivoLiquidacion: reason });
+      closePurchasePanel();
       setLiquidationReason("");
-      showToast("Compra liquidada correctamente con las cantidades recibidas.", "success");
+      setNoticeConfirmAction(null);
+      notice.showFromApiResponse(
+        response,
+        "Compra liquidada correctamente con las cantidades recibidas.",
+        "Operacion exitosa"
+      );
     } catch (error) {
       const apiMessage = error instanceof Error
         ? error.message
@@ -350,7 +507,8 @@ const PurchasesPage = () => {
           ? "Esta compra no puede liquidarse porque no está en estado parcial."
           : "No se pudo liquidar la compra. Intenta nuevamente.";
       setLiquidationError(message);
-      showToast(message, "error");
+      setNoticeConfirmAction(null);
+      notice.showFromApiError(error, message);
     }
   };
 
@@ -361,9 +519,227 @@ const PurchasesPage = () => {
       const blob = await getPurchaseTicket(purchase.id);
       downloadBlob(blob, `ticket-compra-${purchase.id}.pdf`);
     } catch (error) {
-      showToast(getApiErrorMessage(error, "No se pudo descargar el ticket."), "error");
+      notice.showFromApiError(error, "No se pudo descargar el ticket.");
     }
   };
+
+  const contextualPanel = (
+    <>
+      {activeAction === "receive" && activePurchaseId ? (
+        <PurchaseReceiveForm
+          purchaseId={activePurchaseId}
+          onCancel={closePurchasePanel}
+          onSuccess={(response) => void handleReceiveSuccess(response)}
+          onError={(error) =>
+            notice.showFromApiError(error, "No se pudo registrar la recepcion.")
+          }
+        />
+      ) : null}
+
+      {activeAction === "pay" && activePurchase ? (
+        <DocumentPaymentForm
+          title="Pagar compra"
+          description="Registra el pago asociado a esta compra."
+          branchId={activePurchase.branchId ?? ""}
+          referenceType="PURCHASE"
+          referenceId={activePurchase.id}
+          direction="OUT"
+          total={activePurchase.total}
+          totalLabel="Total compra"
+          effectiveTotal={
+            activePurchase.status === "CERRADA_PARCIAL"
+              ? activePurchase.totalLiquidado ?? activePurchase.total
+              : activePurchase.totalRecibido ?? activePurchase.totalLiquidado ?? null
+          }
+          totalPaid={activePurchase.totalPaid}
+          balanceDue={activePurchase.balanceDue}
+          paymentStatus={activePurchase.paymentStatus}
+          blockReason={
+            activePurchase.status === "CANCELLED"
+              ? "No se puede pagar una compra cancelada."
+              : null
+          }
+          confirmLabel="Confirmar pago"
+          cancelLabel="Volver"
+          onCancel={closePurchasePanel}
+          onSuccess={async () => {
+            closePurchasePanel();
+            notice.showSuccess("Operacion exitosa", "Pago registrado correctamente.");
+            if (hasSearched) {
+              await loadPurchases();
+            }
+          }}
+          onError={(error) => notice.showFromApiError(error, "No se pudo registrar el pago.")}
+        />
+      ) : null}
+
+      {activeAction === "ticket" && activePurchase ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closePurchasePanel();
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="purchase-ticket-title"
+            aria-describedby="purchase-ticket-description"
+            className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 id="purchase-ticket-title" className="text-xl font-semibold text-slate-900">
+                  Ticket de compra {activePurchase.id.slice(0, 8)}
+                </h2>
+                <p id="purchase-ticket-description" className="mt-2 text-sm text-slate-600">
+                  Vista previa del ticket generado por el backend.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Cerrar ticket"
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                onClick={closePurchasePanel}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="min-h-[420px] flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 sm:min-h-[520px]">
+              {previewLoading ? (
+                <div className="flex h-[420px] items-center justify-center text-sm text-slate-200 sm:h-[520px]">
+                  Generando vista previa del PDF...
+                </div>
+              ) : previewError ? (
+                <div className="flex h-[420px] items-center justify-center px-6 text-center text-sm text-rose-200 sm:h-[520px]">
+                  {previewError}
+                </div>
+              ) : previewObjectUrl ? (
+                <iframe
+                  ref={ticketFrameRef}
+                  src={previewObjectUrl}
+                  title={`Ticket de compra ${activePurchase.id.slice(0, 8)}`}
+                  className="h-[420px] w-full bg-white sm:h-[520px]"
+                />
+              ) : (
+                <div className="flex h-[420px] items-center justify-center text-sm text-slate-200 sm:h-[520px]">
+                  No fue posible cargar el archivo.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={closePurchasePanel}>
+                Cerrar
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (previewBlob) {
+                    downloadBlob(previewBlob, `ticket-compra-${activePurchase.id}.pdf`);
+                  }
+                }}
+                disabled={!previewBlob || previewLoading}
+              >
+                Descargar
+              </Button>
+              <Button
+                onClick={() => ticketFrameRef.current?.contentWindow?.print()}
+                disabled={!previewObjectUrl || previewLoading}
+              >
+                Imprimir
+              </Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeAction === "cancel" && activePurchase ? (
+        <CancelPurchaseForm
+          purchase={activePurchase}
+          reason={cancellationReason}
+          error={cancellationError}
+          isSubmitting={isCancelling}
+          onReasonChange={(value) => {
+            setCancellationReason(value);
+            setCancellationError(null);
+          }}
+          onCancel={closeCancelForm}
+          onConfirm={requestCancelConfirmation}
+        />
+      ) : null}
+
+      {activeAction === "detail" ? (
+        <PurchaseDetailPanel
+          purchase={purchaseDetail}
+          loading={loadingDetail}
+          canReceive={Boolean(
+            purchaseDetail &&
+              canReceive &&
+              purchaseDetail.status !== "CANCELLED" &&
+              purchaseDetail.status !== "RECEIVED" &&
+              purchaseDetail.status !== "CERRADA_PARCIAL"
+          )}
+          canLiquidate={canSettlePartial}
+          canPay={Boolean(
+            purchaseDetail &&
+              canReceive &&
+              purchaseDetail.status !== "CANCELLED" &&
+              purchaseDetail.balanceDue > 0 &&
+              purchaseDetail.branchId
+          )}
+          canCancel={Boolean(purchaseDetail && canCancelPurchase(purchaseDetail))}
+          canViewTicket={Boolean(purchaseDetail && canAccessTicket(purchaseDetail.status))}
+          onClose={closePurchasePanel}
+          onReceive={
+            purchaseDetail
+              ? () => openPurchasePanel("receive", purchaseDetail.id)
+              : undefined
+          }
+          onLiquidate={openLiquidateFromDetail}
+          onPay={
+            purchaseDetail
+              ? () => openPurchasePanel("pay", purchaseDetail.id)
+              : undefined
+          }
+          onCancelPurchase={
+            purchaseDetail
+              ? () => openPurchasePanel("cancel", purchaseDetail.id)
+              : undefined
+          }
+          onViewTicket={
+            purchaseDetail
+              ? () => openPurchasePanel("ticket", purchaseDetail.id)
+              : undefined
+          }
+          onDownload={
+            purchaseDetail
+              ? () => void handleDownloadTicket(purchaseDetail)
+              : undefined
+          }
+        />
+      ) : null}
+
+      {activeAction === "settle-partial" && activePurchaseId ? (
+        <SettlePartialPurchaseForm
+          purchase={purchaseDetail}
+          loading={loadingDetail}
+          reason={liquidationReason}
+          error={liquidationError}
+          isSubmitting={isLiquidating}
+          onReasonChange={(value) => {
+            setLiquidationReason(value);
+            setLiquidationError(null);
+          }}
+          onCancel={closeLiquidateForm}
+          onConfirm={requestLiquidateConfirmation}
+        />
+      ) : null}
+    </>
+  );
 
   return (
     <div className="space-y-6">
@@ -394,97 +770,8 @@ const PurchasesPage = () => {
       {showCreateForm ? (
         <PurchaseForm
           onCancel={() => setShowCreateForm(false)}
-          onSuccess={() => void handleCreateSuccess()}
-        />
-      ) : null}
-
-      {receivingPurchaseId ? (
-        <PurchaseReceiveForm
-          purchaseId={receivingPurchaseId}
-          onCancel={() => setReceivingPurchaseId(null)}
-          onSuccess={() => void handleReceiveSuccess()}
-        />
-      ) : null}
-
-      {payingPurchase ? (
-        <DocumentPaymentForm
-          title="Registrar pago al proveedor"
-          description="Aplica egresos o abonos parciales sobre la compra seleccionada."
-          branchId={payingPurchase.branchId ?? ""}
-          referenceType="PURCHASE"
-          referenceId={payingPurchase.id}
-          direction="OUT"
-          total={payingPurchase.total}
-          totalPaid={payingPurchase.totalPaid}
-          balanceDue={payingPurchase.balanceDue}
-          paymentStatus={payingPurchase.paymentStatus}
-          onCancel={() => setPayingPurchase(null)}
-          onSuccess={async () => {
-            setPayingPurchase(null);
-            showToast("Pago registrado correctamente.", "success");
-            if (hasSearched) {
-              await loadPurchases();
-            }
-          }}
-        />
-      ) : null}
-
-      <PdfPreviewModal
-        isOpen={Boolean(previewPurchase)}
-        title={
-          previewPurchase
-            ? `Ticket de compra ${previewPurchase.id.slice(0, 8)}`
-            : "Ticket de compra"
-        }
-        fileName={
-          previewPurchase ? `ticket-compra-${previewPurchase.id}.pdf` : "ticket-compra.pdf"
-        }
-        onClose={() => setPreviewPurchase(null)}
-        getPdf={() =>
-          previewPurchase
-            ? getPurchaseTicket(previewPurchase.id)
-            : Promise.reject(new Error("purchase ticket not selected"))
-        }
-      />
-
-      {cancelingPurchase ? (
-        <CancelPurchaseDialog
-          purchase={cancelingPurchase}
-          reason={cancellationReason}
-          error={cancellationError}
-          isSubmitting={isCancelling}
-          onReasonChange={(value) => {
-            setCancellationReason(value);
-            setCancellationError(null);
-          }}
-          onCancel={closeCancelModal}
-          onConfirm={() => void handleCancelPurchase()}
-        />
-      ) : null}
-
-      {isDetailOpen ? (
-        <PurchaseDetailDialog
-          purchase={purchaseDetail}
-          loading={loadingDetail}
-          canLiquidate={canSettlePartial}
-          onClose={() => setIsDetailOpen(false)}
-          onLiquidate={openLiquidateFromDetail}
-        />
-      ) : null}
-
-      {liquidatingPurchaseId ? (
-        <SettlePartialPurchaseDialog
-          purchase={purchaseDetail}
-          loading={loadingDetail}
-          reason={liquidationReason}
-          error={liquidationError}
-          isSubmitting={isLiquidating}
-          onReasonChange={(value) => {
-            setLiquidationReason(value);
-            setLiquidationError(null);
-          }}
-          onCancel={closeLiquidateModal}
-          onConfirm={() => void handleLiquidatePurchase()}
+          onSuccess={(response) => void handleCreateSuccess(response)}
+          onError={(error) => notice.showFromApiError(error, "No se pudo guardar la compra.")}
         />
       ) : null}
 
@@ -603,7 +890,38 @@ const PurchasesPage = () => {
         </section>
       ) : null}
 
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      <NoticeDialog
+        open={notice.open}
+        title={notice.title}
+        message={notice.message}
+        variant={notice.variant}
+        onClose={() => {
+          setNoticeConfirmAction(null);
+          notice.close();
+        }}
+        onConfirm={
+          noticeConfirmAction === "cancel"
+            ? () => void handleCancelPurchase()
+            : noticeConfirmAction === "settle-partial"
+              ? () => void handleLiquidatePurchase()
+              : undefined
+        }
+        closeText={noticeConfirmAction ? "Volver" : "Entendido"}
+        confirmText={
+          noticeConfirmAction === "cancel"
+            ? "Confirmar cancelacion"
+            : noticeConfirmAction === "settle-partial"
+              ? "Confirmar liquidacion"
+              : "Confirmar"
+        }
+        confirming={
+          noticeConfirmAction === "cancel"
+            ? isCancelling
+            : noticeConfirmAction === "settle-partial"
+              ? isLiquidating
+              : false
+        }
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="overflow-x-auto">
@@ -670,7 +988,7 @@ const PurchasesPage = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => openDetail(purchase)}
+                          onClick={() => openPurchasePanel("detail", purchase.id)}
                         >
                           <Eye className="h-4 w-4" />
                           Detalle
@@ -681,7 +999,7 @@ const PurchasesPage = () => {
                         purchase.status !== "CERRADA_PARCIAL" ? (
                           <Button
                             variant="ghost"
-                            onClick={() => setReceivingPurchaseId(purchase.id)}
+                            onClick={() => openPurchasePanel("receive", purchase.id)}
                           >
                             <PackageCheck className="h-4 w-4" />
                             Recibir
@@ -693,7 +1011,7 @@ const PurchasesPage = () => {
                         purchase.branchId ? (
                           <Button
                             variant="ghost"
-                            onClick={() => setPayingPurchase(purchase)}
+                            onClick={() => openPurchasePanel("pay", purchase.id)}
                           >
                             Pagar
                           </Button>
@@ -702,7 +1020,7 @@ const PurchasesPage = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => openLiquidateModal(purchase)}
+                            onClick={() => openPurchasePanel("settle-partial", purchase.id)}
                           >
                             Liquidar
                           </Button>
@@ -711,7 +1029,7 @@ const PurchasesPage = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => openCancelModal(purchase)}
+                            onClick={() => openPurchasePanel("cancel", purchase.id)}
                           >
                             <XCircle className="h-4 w-4" />
                             Cancelar compra
@@ -721,7 +1039,7 @@ const PurchasesPage = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setPreviewPurchase(purchase)}
+                            onClick={() => openPurchasePanel("ticket", purchase.id)}
                           >
                             <Eye className="h-4 w-4" />
                             Ver Ticket
@@ -768,6 +1086,8 @@ const PurchasesPage = () => {
           </div>
         </div>
       </section>
+
+      {contextualPanel}
     </div>
   );
 };

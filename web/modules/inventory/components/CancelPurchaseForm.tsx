@@ -2,11 +2,10 @@
 
 import { XCircle } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
-import { Modal } from "../../../components/design-system/Modal";
 import { Textarea } from "../../../components/design-system/Textarea";
 import type { PurchaseResponse } from "../services/purchase.service";
 
-type CancelPurchaseDialogProps = {
+type CancelPurchaseFormProps = {
   purchase: PurchaseResponse;
   reason: string;
   error?: string | null;
@@ -37,7 +36,7 @@ export const validateCancelPurchaseReason = (reason: string) => {
   return null;
 };
 
-export const CancelPurchaseDialog = ({
+export const CancelPurchaseForm = ({
   purchase,
   reason,
   error,
@@ -45,17 +44,27 @@ export const CancelPurchaseDialog = ({
   onReasonChange,
   onCancel,
   onConfirm,
-}: CancelPurchaseDialogProps) => {
+}: CancelPurchaseFormProps) => {
   const validationError = validateCancelPurchaseReason(reason);
   const confirmDisabled = isSubmitting || Boolean(validationError);
 
   return (
-    <Modal
-      title="Cancelar compra"
-      description="Esta accion cambiara el estado de la compra a CANCELADA. No se podra recibir mercancia asociada a esta compra despues de cancelarla."
-      onClose={onCancel}
-    >
+    <section className="rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
       <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-rose-600">Accion de compra</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-900">Cancelar compra</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Esta accion cambiara el estado de la compra y bloqueara nuevas operaciones sobre
+              ella.
+            </p>
+          </div>
+          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+            Volver
+          </Button>
+        </div>
+
         <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Compra</p>
@@ -76,6 +85,10 @@ export const CancelPurchaseDialog = ({
             <p className="mt-1 font-medium text-slate-900">
               {formatCurrency(Number(purchase.total))}
             </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Pago</p>
+            <p className="mt-1 font-medium text-slate-900">{purchase.paymentStatus}</p>
           </div>
         </div>
 
@@ -113,6 +126,6 @@ export const CancelPurchaseDialog = ({
           </Button>
         </div>
       </div>
-    </Modal>
+    </section>
   );
 };

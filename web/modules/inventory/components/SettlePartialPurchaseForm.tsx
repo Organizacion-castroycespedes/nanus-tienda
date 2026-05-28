@@ -2,11 +2,10 @@
 
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
-import { Modal } from "../../../components/design-system/Modal";
 import { Textarea } from "../../../components/design-system/Textarea";
 import type { PurchaseDetailResponse } from "../services/purchase.service";
 
-type SettlePartialPurchaseDialogProps = {
+type SettlePartialPurchaseFormProps = {
   purchase: PurchaseDetailResponse | null;
   loading?: boolean;
   reason: string;
@@ -30,7 +29,7 @@ export const OVERPAYMENT_SETTLEMENT_MESSAGE =
 export const validateSettlePartialPurchaseReason = (reason: string) => {
   const normalized = reason.trim();
   if (!normalized) {
-    return "El motivo de liquidación es obligatorio.";
+    return "El motivo de liquidacion es obligatorio.";
   }
   if (normalized.length < 5) {
     return "El motivo debe tener al menos 5 caracteres.";
@@ -58,6 +57,7 @@ export const getSettlePartialPurchaseSummary = (purchase: PurchaseDetailResponse
         Number(item.cost),
     0
   );
+
   return {
     totalPedido,
     totalRecibido,
@@ -68,7 +68,7 @@ export const getSettlePartialPurchaseSummary = (purchase: PurchaseDetailResponse
   };
 };
 
-export const SettlePartialPurchaseDialog = ({
+export const SettlePartialPurchaseForm = ({
   purchase,
   loading = false,
   reason,
@@ -77,18 +77,28 @@ export const SettlePartialPurchaseDialog = ({
   onReasonChange,
   onCancel,
   onConfirm,
-}: SettlePartialPurchaseDialogProps) => {
+}: SettlePartialPurchaseFormProps) => {
   const summary = getSettlePartialPurchaseSummary(purchase);
   const validationError = validateSettlePartialPurchaseReason(reason);
   const confirmDisabled =
     isSubmitting || loading || !purchase || Boolean(validationError) || summary.hasOverpayment;
 
   return (
-    <Modal
-      title="Liquidar compra parcial"
-      description="Esta acción cerrará la compra con las cantidades realmente recibidas. No podrás recibir las cantidades pendientes después de liquidarla."
-      onClose={onCancel}
-    >
+    <section className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-emerald-700">Accion de compra</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">Liquidar compra parcial</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Esta accion cerrara la compra con las cantidades realmente recibidas. No podras
+            recibir las cantidades pendientes despues de liquidarla.
+          </p>
+        </div>
+        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+          Volver
+        </Button>
+      </div>
+
       {loading ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
           Cargando detalle de la compra...
@@ -138,7 +148,7 @@ export const SettlePartialPurchaseDialog = ({
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-slate-500">
-                Saldo pendiente después de liquidar
+                Saldo pendiente despues de liquidar
               </p>
               <p className="mt-1 font-medium text-slate-900">
                 {formatCurrency(summary.saldoDespues)}
@@ -170,6 +180,7 @@ export const SettlePartialPurchaseDialog = ({
                     const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
                     const receivedValue = item.receivedQuantity * item.cost;
                     const unreceivedValue = pending * item.cost;
+
                     return (
                       <tr key={item.id}>
                         <td className="px-4 py-3 text-slate-900">
@@ -193,10 +204,10 @@ export const SettlePartialPurchaseDialog = ({
           </section>
 
           <Textarea
-            label="Motivo de liquidación"
+            label="Motivo de liquidacion"
             value={reason}
             onChange={(event) => onReasonChange(event.target.value)}
-            placeholder="Ej. proveedor no enviará el saldo pendiente"
+            placeholder="Ej. proveedor no enviara el saldo pendiente"
             rows={4}
             maxLength={300}
             disabled={isSubmitting}
@@ -217,7 +228,7 @@ export const SettlePartialPurchaseDialog = ({
             </Button>
             <Button onClick={onConfirm} isLoading={isSubmitting} disabled={confirmDisabled}>
               <CheckCircle2 className="h-4 w-4" />
-              Confirmar liquidación
+              Confirmar liquidacion
             </Button>
           </div>
         </div>
@@ -226,6 +237,6 @@ export const SettlePartialPurchaseDialog = ({
           No se pudo cargar el detalle de la compra.
         </div>
       )}
-    </Modal>
+    </section>
   );
 };
