@@ -53,7 +53,6 @@ export type GetOrdersParams = {
   branchId?: string;
   fromDate?: string;
   toDate?: string;
-  paymentMethod?: string;
 };
 
 export type CreateOrderPayload = {
@@ -105,9 +104,6 @@ export const getOrders = (
   }
   if (params.toDate) {
     query.set("toDate", params.toDate);
-  }
-  if (params.paymentMethod) {
-    query.set("paymentMethod", params.paymentMethod);
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<OrderResponse[]>(`/orders${suffix}`, { headers });

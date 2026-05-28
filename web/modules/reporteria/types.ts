@@ -7,6 +7,7 @@ export type ReportFilters = {
   dateTo?: string;
   customerDocument?: string;
   customerName?: string;
+  status?: string;
 };
 
 export type PosSalesListRow = {
@@ -126,6 +127,9 @@ export type PurchasesListRow = {
   date: string;
   supplierName: string;
   total: number;
+  totalPedido?: number;
+  totalLiquidado?: number;
+  diferenciaNoRecibida?: number;
   paid: number;
   balance: number;
   paymentStatus: string;
@@ -140,11 +144,15 @@ export type PurchasesListDataset = {
     branchId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
+    status?: string | null;
     actorRole: string;
   };
   summary: {
     count: number;
+    activeCount?: number;
+    cancelled?: number;
     total: number;
+    totalNoRecibido?: number;
     paid: number;
     balance: number;
   };

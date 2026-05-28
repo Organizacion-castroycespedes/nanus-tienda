@@ -59,7 +59,15 @@ export class PermissionsGuard implements CanActivate {
       permissions,
       requiredPermission.menuKey
     );
-    if (!this.accessControlService.isAccessAllowed(permission, requiredPermission.level)) {
+    const allowed = requiredPermission.action
+      ? this.accessControlService.isActionAllowed(
+          permission,
+          requiredPermission.level,
+          requiredPermission.action
+        )
+      : this.accessControlService.isAccessAllowed(permission, requiredPermission.level);
+
+    if (!allowed) {
       throw new ForbiddenException("Permisos insuficientes");
     }
 

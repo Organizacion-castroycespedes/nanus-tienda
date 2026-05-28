@@ -6,6 +6,7 @@ export const PERMISSION_KEY = "permission";
 export type RequiredPermission = {
   menuKey: string;
   level: PermissionAccessLevel;
+  action?: string;
 };
 
 export const RequirePermission = (permission: RequiredPermission) =>

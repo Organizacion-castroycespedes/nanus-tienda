@@ -16,8 +16,6 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
-import { listPaymentMethods } from "../../../modules/finance/services/finance.service";
-import type { PaymentMethod } from "../../../modules/finance/types";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { hasPermission } from "../../../lib/permissions";
@@ -44,7 +42,6 @@ type OrderFilters = {
   branchId: string;
   fromDate: string;
   toDate: string;
-  paymentMethod: string;
 };
 
 const defaultFilters: OrderFilters = {
@@ -53,7 +50,6 @@ const defaultFilters: OrderFilters = {
   branchId: "",
   fromDate: "",
   toDate: "",
-  paymentMethod: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
@@ -92,7 +88,6 @@ const OrdersPage = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
@@ -130,14 +125,12 @@ const OrdersPage = () => {
                 branchId: activeFilters.branchId || undefined,
                 fromDate: activeFilters.fromDate || undefined,
                 toDate: activeFilters.toDate || undefined,
-                paymentMethod: activeFilters.paymentMethod || undefined,
               }
             : {
                 tenantId: currentTenant ?? undefined,
                 branchId: activeFilters.branchId || undefined,
                 fromDate: activeFilters.fromDate || undefined,
                 toDate: activeFilters.toDate || undefined,
-                paymentMethod: activeFilters.paymentMethod || undefined,
               }
         );
         setOrders(result);
@@ -151,17 +144,6 @@ const OrdersPage = () => {
     },
     [appliedFilters, currentTenant, isGlobalRole]
   );
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const result = await listPaymentMethods({ active: true });
-        setPaymentMethods(result.filter((method) => method.active));
-      } catch {
-        setPaymentMethods([]);
-      }
-    })();
-  }, []);
 
   const tenantOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -326,8 +308,8 @@ const OrdersPage = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
@@ -419,13 +401,9 @@ const OrdersPage = () => {
         }
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div
-          className={
-            isGlobalRole
-              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_220px_220px_auto_auto]"
-              : "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_auto_auto]"
-          }
+          className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
         >
           <Input
             label="Buscar"
@@ -489,29 +467,6 @@ const OrdersPage = () => {
             }
           />
           <Select
-            label="Metodo de pago"
-            value={draftFilters.paymentMethod}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))
-            }
-          >
-            <option value="">Todos</option>
-            {paymentMethods.map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.nombre}
-              </option>
-            ))}
-          </Select>
-          <div className="flex items-end gap-2">
-            <Button variant="outline" onClick={applyFilters}>
-              <Search className="h-4 w-4" />
-              Buscar
-            </Button>
-            <Button variant="ghost" onClick={resetFilters}>
-              Limpiar
-            </Button>
-          </div>
-          <Select
             label="Filas por pagina"
             value={String(pageSize)}
             onChange={(event) => {
@@ -526,6 +481,15 @@ const OrdersPage = () => {
             ))}
           </Select>
         </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <Button variant="outline" onClick={applyFilters} className="w-full sm:w-auto">
+            <Search className="h-4 w-4" />
+            Buscar
+          </Button>
+          <Button variant="ghost" onClick={resetFilters} className="w-full sm:w-auto">
+            Limpiar
+          </Button>
+        </div>
       </section>
 
       {errorMessage ? (
@@ -536,9 +500,9 @@ const OrdersPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="w-full max-w-full overflow-x-auto">
+          <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">Cliente</th>

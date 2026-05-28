@@ -30,7 +30,9 @@ export const buildPurchasesReportLayout = (
         {
           text: `Sucursal: ${dataset.filters.branchId ?? "Todas"} | Desde: ${formatDate(
             dataset.filters.dateFrom
-          )} | Hasta: ${formatDate(dataset.filters.dateTo)}`,
+          )} | Hasta: ${formatDate(dataset.filters.dateTo)} | Estado: ${
+            dataset.filters.status ?? "Todos"
+          }`,
           style: "meta",
         },
       ],
@@ -40,6 +42,11 @@ export const buildPurchasesReportLayout = (
       columns: [
         { width: "*", text: `Compras: ${dataset.summary.count}`, style: "summary" },
         { width: "*", text: `Total: ${formatCurrency(dataset.summary.total)}`, style: "summary" },
+        {
+          width: "*",
+          text: `No recibido: ${formatCurrency(dataset.summary.totalNoRecibido ?? 0)}`,
+          style: "summary",
+        },
         { width: "*", text: `Pagado: ${formatCurrency(dataset.summary.paid)}`, style: "summary" },
         {
           width: "*",
@@ -52,13 +59,14 @@ export const buildPurchasesReportLayout = (
     {
       table: {
         headerRows: 1,
-        widths: ["auto", "*", "auto", "auto", "auto", "auto"],
+        widths: ["auto", "*", "auto", "auto", "auto", "auto", "auto"],
         body: [
           [
             { text: "Compra", style: "tableHeader" },
             { text: "Proveedor", style: "tableHeader" },
             { text: "Estado", style: "tableHeader" },
             { text: "Total", style: "tableHeader", alignment: "right" },
+            { text: "No recibido", style: "tableHeader", alignment: "right" },
             { text: "Pagado", style: "tableHeader", alignment: "right" },
             { text: "Saldo", style: "tableHeader", alignment: "right" },
           ] as TableCell[],
@@ -69,6 +77,10 @@ export const buildPurchasesReportLayout = (
                 row.supplierName,
                 `${row.status} / ${row.paymentStatus}`,
                 { text: formatCurrency(row.total), alignment: "right" },
+                {
+                  text: formatCurrency(row.diferenciaNoRecibida ?? 0),
+                  alignment: "right",
+                },
                 { text: formatCurrency(row.paid), alignment: "right" },
                 { text: formatCurrency(row.balance), alignment: "right" },
               ] as TableCell[]

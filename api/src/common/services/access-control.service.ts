@@ -137,4 +137,23 @@ export class AccessControlService {
     }
     return permission.accessLevel === "WRITE";
   }
+
+  isActionAllowed(
+    permission: PermissionSummary | undefined,
+    required: PermissionAccessLevel,
+    action: string
+  ) {
+    if (!this.isAccessAllowed(permission, required)) {
+      return false;
+    }
+
+    const normalizedAction = action.trim().toLowerCase();
+    if (!normalizedAction) {
+      return false;
+    }
+
+    return Object.entries(permission?.actions ?? {}).some(
+      ([key, allowed]) => key.trim().toLowerCase() === normalizedAction && Boolean(allowed)
+    );
+  }
 }

@@ -4,13 +4,10 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import {
-  isConfirmCancelledError,
-  useConfirm,
-} from "../../../hooks/use-confirm";
-import {
   getPurchaseById,
   receivePurchase,
   type PurchaseDetailResponse,
+  type PurchaseResponse,
 } from "../services/purchase.service";
 
 type ReceiveItemValue = {
@@ -26,7 +23,8 @@ type ReceiveFormErrors = {
 type PurchaseReceiveFormProps = {
   purchaseId: string;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (response?: PurchaseResponse) => void;
+  onError?: (error: unknown) => void;
 };
 
 const formatCurrency = (value: number) =>
@@ -40,8 +38,8 @@ export const PurchaseReceiveForm = ({
   purchaseId,
   onCancel,
   onSuccess,
+  onError,
 }: PurchaseReceiveFormProps) => {
-  const confirm = useConfirm();
   const [purchase, setPurchase] = useState<PurchaseDetailResponse | null>(null);
   const [values, setValues] = useState<ReceiveItemValue[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,8 +99,19 @@ export const PurchaseReceiveForm = ({
     });
   }, [purchase]);
 
+  const isBlockedStatus =
+    purchase?.status === "CANCELLED" ||
+    purchase?.status === "RECEIVED" ||
+    purchase?.status === "CERRADA_PARCIAL";
+
   const validate = () => {
     const nextErrors: ReceiveFormErrors = {};
+
+    if (isBlockedStatus) {
+      nextErrors.items = "No se puede recibir una compra cancelada, recibida o cerrada parcial.";
+      setErrors(nextErrors);
+      return false;
+    }
 
     const hasAnyQuantity = values.some((value) => {
       const quantity = Number(value.quantity);
@@ -155,24 +164,12 @@ export const PurchaseReceiveForm = ({
           .filter((item): item is { product_id: string; quantity: number } => item !== null),
       };
 
-      await confirm({
-        title: "Confirmar recepción",
-        description:
-          "Se registrará la recepción parcial de esta compra y se actualizará el inventario.",
-        confirmText: "Confirmar recepción",
-        cancelText: "Volver",
-        variant: "warning",
-      });
-
-      await receivePurchase(purchaseId, payload);
-      onSuccess();
+      const response = await receivePurchase(purchaseId, payload);
+      onSuccess(response);
     } catch (error) {
-      if (isConfirmCancelledError(error)) {
-        return;
-      }
-
+      onError?.(error);
       setErrors({
-        submit: "No se pudo registrar la recepción.",
+        submit: "No se pudo registrar la recepcion.",
       });
     } finally {
       setIsSubmitting(false);
@@ -180,17 +177,17 @@ export const PurchaseReceiveForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
           <h2 className="text-xl font-semibold text-slate-900">Recibir compra</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Registra cantidades recibidas por item sin cerrar automaticamente la compra.
+            Registra las cantidades realmente recibidas por producto.
           </p>
         </div>
-        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-          Cancelar
+        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
+          Volver
         </Button>
       </div>
 
@@ -243,12 +240,12 @@ export const PurchaseReceiveForm = ({
 
           <section className="rounded-2xl border border-slate-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <table className="min-w-[760px] divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
-                    <th className="px-4 py-3 font-medium">Cantidad pedida</th>
-                    <th className="px-4 py-3 font-medium">Cantidad recibida</th>
+                    <th className="px-4 py-3 font-medium">Pedido</th>
+                    <th className="px-4 py-3 font-medium">Recibido acumulado</th>
                     <th className="px-4 py-3 font-medium">Pendiente</th>
                     <th className="px-4 py-3 font-medium">Recibir ahora</th>
                   </tr>
@@ -287,7 +284,7 @@ export const PurchaseReceiveForm = ({
                             );
                             setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
                           }}
-                          disabled={pending <= 0}
+                          disabled={isBlockedStatus || pending <= 0}
                         />
                       </td>
                     </tr>
@@ -303,18 +300,32 @@ export const PurchaseReceiveForm = ({
             </div>
           ) : null}
 
+          {isBlockedStatus ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              No se puede recibir esta compra porque esta cancelada, recibida o cerrada parcial.
+            </div>
+          ) : null}
+
           {errors.submit ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {errors.submit}
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit" isLoading={isSubmitting}>
-              Guardar recepción
+          <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <p className="font-medium text-amber-950">Confirmar recepcion</p>
+            <p className="mt-1">
+              Al guardar, se registrara la recepcion parcial de esta compra y se actualizara
+              el inventario con las cantidades ingresadas.
+            </p>
+          </section>
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <Button type="submit" isLoading={isSubmitting} disabled={isBlockedStatus} className="w-full sm:w-auto">
+              Confirmar recepcion
             </Button>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-              Cancelar
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
+              Volver
             </Button>
           </div>
         </form>
