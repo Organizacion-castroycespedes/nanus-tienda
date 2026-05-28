@@ -24,6 +24,7 @@ const buildQuery = (filters: ReportFilters) => {
     dateTo: filters.dateTo,
     customerDocument: filters.customerDocument,
     customerName: filters.customerName,
+    status: filters.status,
   });
 
   Object.entries(normalized).forEach(([key, value]) => {

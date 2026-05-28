@@ -11,6 +11,7 @@ type PurchasesListParams = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  status?: string;
 };
 
 @Injectable()
@@ -35,6 +36,9 @@ export class PurchasesReportAdapter {
         filters.branchId ?? null,
         filters.dateFrom ?? null,
         filters.dateTo ?? null,
+        null,
+        null,
+        filters.status ?? null,
       ]
     );
   }

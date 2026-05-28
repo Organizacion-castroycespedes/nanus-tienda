@@ -104,6 +104,21 @@
 | GET | `/api/purchases/:id` |
 | PUT | `/api/purchases/:id` |
 | POST | `/api/purchases/:id/receive` |
+| PATCH | `/api/purchases/:id/cancel` |
+| PATCH | `/api/purchases/:id/settle-partial` |
+
+### Liquidacion parcial de compra
+
+| Campo | Valor |
+| --- | --- |
+| Ruta UI | `/[tenant]/inventory/purchases` |
+| Endpoint conceptual | `PATCH /api/inventory/purchases/:purchaseId/settle-partial` |
+| Endpoint real actual | `PATCH /api/purchases/:purchaseId/settle-partial` |
+| Estado destino | `CERRADA_PARCIAL` |
+| Permiso | `INVENTORY_PURCHASES` accion `settle_partial` |
+| Regla principal | Cierra la compra tomando como valor final el total realmente recibido |
+| Restriccion | Bloquea si los pagos registrados superan el valor recibido |
+
 | GET | `/api/orders` |
 | POST | `/api/orders` |
 | GET | `/api/orders/:id` |

@@ -20,8 +20,53 @@ const formatDate = (value: string | null | undefined) =>
       }).format(new Date(value))
     : "N/A";
 
-export const buildPurchaseTicketTemplate = (dataset: PurchaseTicketDataset) =>
-  buildThermalDocument({
+const isClosedPartial = (dataset: PurchaseTicketDataset) =>
+  dataset.header.status === "CERRADA_PARCIAL";
+
+const buildLiquidationMetadata = (dataset: PurchaseTicketDataset) =>
+  isClosedPartial(dataset)
+    ? [
+        {
+          label: "Motivo liquidacion",
+          value: dataset.header.motivoLiquidacion ?? "N/A",
+        },
+        {
+          label: "Fecha liquidacion",
+          value: formatDate(dataset.header.liquidadoEn),
+        },
+        {
+          label: "Usuario liquido",
+          value:
+            dataset.header.liquidadoPorNombre ??
+            dataset.header.liquidadoPor ??
+            "N/A",
+        },
+      ]
+    : [];
+
+export const buildPurchaseTicketTemplate = (dataset: PurchaseTicketDataset) => {
+  const liquidationTotals = isClosedPartial(dataset)
+    ? [
+        {
+          label: "Total pedido",
+          value: formatCurrency(dataset.totals.totalPedido ?? dataset.totals.total),
+        },
+        {
+          label: "Total recibido/liquidado",
+          value: formatCurrency(
+            dataset.totals.totalLiquidado ??
+              dataset.totals.totalRecibido ??
+              dataset.totals.total
+          ),
+        },
+        {
+          label: "Diferencia no recibida",
+          value: formatCurrency(dataset.totals.diferenciaNoRecibida ?? 0),
+        },
+      ]
+    : [];
+
+  return buildThermalDocument({
     title: dataset.header.tenantName ?? "Compras",
     subtitle: dataset.header.branchName ?? "Sucursal",
     metadata: [
@@ -34,6 +79,7 @@ export const buildPurchaseTicketTemplate = (dataset: PurchaseTicketDataset) =>
         label: "Estado",
         value: `${dataset.header.status} / ${dataset.header.paymentStatus}`,
       },
+      ...buildLiquidationMetadata(dataset),
     ],
     sections: [
       {
@@ -54,9 +100,25 @@ export const buildPurchaseTicketTemplate = (dataset: PurchaseTicketDataset) =>
                         stack: [
                           { text: item.productName, bold: true },
                           {
-                            text: `${item.quantity} x ${formatCurrency(item.unitCost)}`,
+                            text: `Pedida: ${item.quantity} | Recibida: ${item.receivedQuantity} | No recibida: ${item.unreceivedQuantity ?? Math.max(item.quantity - item.receivedQuantity, 0)}`,
                             color: "#475569",
                           },
+                          {
+                            text: `Costo unitario: ${formatCurrency(item.unitCost)}`,
+                            color: "#475569",
+                          },
+                          ...(isClosedPartial(dataset)
+                            ? [
+                                {
+                                  text: `Subtotal recibido: ${formatCurrency(item.receivedSubtotal ?? item.receivedQuantity * item.unitCost)}`,
+                                  color: "#475569",
+                                },
+                                {
+                                  text: `Subtotal no recibido: ${formatCurrency(item.unreceivedSubtotal ?? Math.max(item.quantity - item.receivedQuantity, 0) * item.unitCost)}`,
+                                  color: "#475569",
+                                },
+                              ]
+                            : []),
                         ],
                       },
                       { text: formatCurrency(item.subtotal), alignment: "right" },
@@ -94,8 +156,10 @@ export const buildPurchaseTicketTemplate = (dataset: PurchaseTicketDataset) =>
       },
     ],
     totals: [
+      ...liquidationTotals,
       { label: "Total", value: formatCurrency(dataset.totals.total) },
       { label: "Pagado", value: formatCurrency(dataset.totals.paid) },
       { label: "Saldo", value: formatCurrency(dataset.totals.balance) },
     ],
   });
+};

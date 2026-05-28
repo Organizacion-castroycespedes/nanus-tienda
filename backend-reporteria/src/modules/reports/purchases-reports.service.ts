@@ -16,6 +16,7 @@ type PurchasesListQuery = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  status?: string;
   format?: string;
 };
 
@@ -93,6 +94,9 @@ export class PurchasesReportsService {
     return {
       ...row,
       total: this.toNumber(row.total),
+      totalPedido: this.toNumber(row.totalPedido ?? row.total),
+      totalLiquidado: this.toNumber(row.totalLiquidado ?? row.total),
+      diferenciaNoRecibida: this.toNumber(row.diferenciaNoRecibida),
       paid: this.toNumber(row.paid),
       balance: this.toNumber(row.balance),
       branchId: row.branchId ?? null,
@@ -110,6 +114,7 @@ export class PurchasesReportsService {
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      status: payload?.filters?.status ?? query.status ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -122,7 +127,17 @@ export class PurchasesReportsService {
       rows,
       summary: {
         count: this.toNumber(payload?.summary?.count ?? rows.length),
+        activeCount: this.toNumber(
+          payload?.summary?.activeCount ?? rows.filter((row) => row.status !== "CANCELLED").length
+        ),
+        cancelled: this.toNumber(
+          payload?.summary?.cancelled ?? rows.filter((row) => row.status === "CANCELLED").length
+        ),
         total: this.toNumber(payload?.summary?.total ?? rows.reduce((sum, row) => sum + row.total, 0)),
+        totalNoRecibido: this.toNumber(
+          payload?.summary?.totalNoRecibido ??
+            rows.reduce((sum, row) => sum + (row.diferenciaNoRecibida ?? 0), 0)
+        ),
         paid: this.toNumber(payload?.summary?.paid ?? rows.reduce((sum, row) => sum + row.paid, 0)),
         balance: this.toNumber(
           payload?.summary?.balance ?? rows.reduce((sum, row) => sum + row.balance, 0)
@@ -142,11 +157,18 @@ export class PurchasesReportsService {
         ...item,
         quantity: this.toNumber(item.quantity),
         receivedQuantity: this.toNumber(item.receivedQuantity),
+        unreceivedQuantity: this.toNumber(item.unreceivedQuantity),
         unitCost: this.toNumber(item.unitCost),
         subtotal: this.toNumber(item.subtotal),
+        receivedSubtotal: this.toNumber(item.receivedSubtotal),
+        unreceivedSubtotal: this.toNumber(item.unreceivedSubtotal),
       })),
       totals: {
         total: this.toNumber(payload.totals?.total),
+        totalPedido: this.toNumber(payload.totals?.totalPedido),
+        totalRecibido: this.toNumber(payload.totals?.totalRecibido),
+        totalLiquidado: this.toNumber(payload.totals?.totalLiquidado),
+        diferenciaNoRecibida: this.toNumber(payload.totals?.diferenciaNoRecibida),
         paid: this.toNumber(payload.totals?.paid),
         balance: this.toNumber(payload.totals?.balance),
       },
@@ -164,6 +186,7 @@ export class PurchasesReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      status: query.status,
     });
 
     return this.normalizePurchasesListDataset(payload, actor, query);

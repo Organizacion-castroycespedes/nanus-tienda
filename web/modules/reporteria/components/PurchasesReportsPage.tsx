@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Eye } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { Select } from "../../../components/design-system/Select";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
 import { usePurchasesReports } from "../hooks/use-purchases-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
@@ -31,6 +32,7 @@ type PdfConfig = {
 const PurchasesReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
+  const [status, setStatus] = useState("");
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const {
     canViewReports,
@@ -59,8 +61,9 @@ const PurchasesReportsPage = () => {
       branchId: branchId || undefined,
       dateFrom: dateRange.from,
       dateTo: dateRange.to,
+      status: status || undefined,
     });
-  }, [branchId, dateRange.from, dateRange.to, loadReports, tenantId]);
+  }, [branchId, dateRange.from, dateRange.to, loadReports, status, tenantId]);
 
   useEffect(() => {
     if (!canViewReports || !tenantId) {
@@ -72,8 +75,9 @@ const PurchasesReportsPage = () => {
       branchId: branchId || undefined,
       dateFrom: initialRange.from,
       dateTo: initialRange.to,
+      status: status || undefined,
     });
-  }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
+  }, [branchId, canViewReports, initialRange, loadReports, status, tenantId]);
 
   const columns = useMemo<DataTableColumn<PurchasesListRow>[]>(
     () => [
@@ -100,7 +104,21 @@ const PurchasesReportsPage = () => {
       {
         key: "total",
         header: "Total",
-        render: (row) => <span className="font-medium text-slate-900">{formatCurrency(row.total)}</span>,
+        render: (row) => (
+          <div>
+            <p className="font-medium text-slate-900">{formatCurrency(row.total)}</p>
+            {row.status === "CERRADA_PARCIAL" ? (
+              <p className="text-xs text-slate-500">
+                Pedido: {formatCurrency(row.totalPedido ?? row.total)}
+              </p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        key: "difference",
+        header: "No recibido",
+        render: (row) => formatCurrency(row.diferenciaNoRecibida ?? 0),
       },
       {
         key: "paid",
@@ -194,6 +212,20 @@ const PurchasesReportsPage = () => {
         tenantLabel={resolvedTenantLabel}
         branchLabel={resolvedBranchLabel}
         isSearching={loading}
+        extraFilters={
+          <Select
+            label="Estado"
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="PENDING">PENDING</option>
+            <option value="PARTIAL">PARTIAL</option>
+            <option value="RECEIVED">RECEIVED</option>
+            <option value="CERRADA_PARCIAL">CERRADA_PARCIAL</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </Select>
+        }
         onSearch={() => void handleSearch()}
       />
 
@@ -219,10 +251,12 @@ const PurchasesReportsPage = () => {
                   { label: "Sucursal", value: resolvedBranchLabel },
                   { label: "Desde", value: dateRange.from },
                   { label: "Hasta", value: dateRange.to },
+                  { label: "Estado", value: status || "Todos" },
                 ],
                 summary: [
                   { label: "Compras", value: dataset.summary.count },
                   { label: "Total", value: dataset.summary.total },
+                  { label: "Diferencia no recibida", value: dataset.summary.totalNoRecibido ?? 0 },
                   { label: "Pagado", value: dataset.summary.paid },
                   { label: "Saldo", value: dataset.summary.balance },
                 ],
@@ -232,6 +266,9 @@ const PurchasesReportsPage = () => {
                   "Proveedor",
                   "Compra ID",
                   "Total",
+                  "Total pedido",
+                  "Total liquidado",
+                  "Diferencia no recibida",
                   "Pagado",
                   "Saldo",
                   "Estado",
@@ -243,6 +280,9 @@ const PurchasesReportsPage = () => {
                   row.supplierName,
                   row.purchaseId,
                   row.total,
+                  row.totalPedido ?? row.total,
+                  row.totalLiquidado ?? row.total,
+                  row.diferenciaNoRecibida ?? 0,
                   row.paid,
                   row.balance,
                   row.status,
@@ -266,6 +306,12 @@ const PurchasesReportsPage = () => {
           value={dataset ? formatCurrency(dataset.summary.total) : searched ? "$ 0" : "--"}
           helper="Monto total comprado."
           accent="emerald"
+        />
+        <ReportMetricCard
+          label="No recibido"
+          value={dataset ? formatCurrency(dataset.summary.totalNoRecibido ?? 0) : searched ? "$ 0" : "--"}
+          helper="Diferencia trazada en compras cerradas parcial."
+          accent="blue"
         />
         <ReportMetricCard
           label="Pagado"

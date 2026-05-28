@@ -5,6 +5,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -17,6 +18,8 @@ import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { CancelPurchaseDto } from "../dto/cancel-purchase.dto";
+import { SettlePartialPurchaseDto } from "../dto/settle-partial-purchase.dto";
 import { PurchaseService } from "../services/purchase.service";
 
 type AuthRequest = Request & {
@@ -177,6 +180,43 @@ export class PurchaseController {
       })),
       this.getInventoryContext(request),
       this.buildActor(request)
+    );
+  }
+
+  @Patch(":id/cancel")
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "cancel" })
+  cancel(
+    @Param("id") id: string,
+    @Body() body: CancelPurchaseDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.purchaseService.cancelPurchase(
+      id,
+      this.getTenantId(request),
+      {
+        motivoCancelacion: body.motivoCancelacion,
+        context: this.getInventoryContext(request),
+        actor: this.buildActor(request),
+      }
+    );
+  }
+
+  @Patch(":id/settle-partial")
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "settle_partial" })
+  settlePartial(
+    @Param("id") id: string,
+    @Body() body: SettlePartialPurchaseDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.purchaseService.settlePartialPurchase(
+      id,
+      this.getTenantId(request),
+      request.context?.userId ?? request.user?.id ?? null,
+      {
+        motivoLiquidacion: body.motivoLiquidacion,
+        context: this.getInventoryContext(request),
+        actor: this.buildActor(request),
+      }
     );
   }
 }

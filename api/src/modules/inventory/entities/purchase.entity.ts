@@ -14,6 +14,7 @@ export const PURCHASE_STATUSES = [
   "PENDING",
   "PARTIAL",
   "RECEIVED",
+  "CERRADA_PARCIAL",
   "CANCELLED",
 ] as const;
 
@@ -124,7 +125,7 @@ export class PurchaseEntity {
   }
 
   affectsInventory() {
-    // Draft, pending and cancelled purchases should not move stock.
+    // Draft, pending, closed partial and cancelled purchases should not move stock by status alone.
     return this.status === "RECEIVED";
   }
 }

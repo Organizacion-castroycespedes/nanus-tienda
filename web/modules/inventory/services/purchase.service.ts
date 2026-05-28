@@ -10,13 +10,25 @@ export type PurchaseResponse = {
   branchName?: string | null;
   terminalName?: string | null;
   type: "CASH" | "CREDIT";
-  status: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CANCELLED";
+  status: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CERRADA_PARCIAL" | "CANCELLED";
   total: number;
   balance: number;
   paymentStatus: "PENDING" | "PARTIAL" | "PAID" | "OVERPAID";
   totalPaid: number;
   balanceDue: number;
   createdAt: string;
+  motivoCancelacion?: string | null;
+  canceladoPor?: string | null;
+  canceladoPorNombre?: string | null;
+  canceladoEn?: string | null;
+  totalPedido?: number | null;
+  totalRecibido?: number | null;
+  totalLiquidado?: number | null;
+  totalNoRecibido?: number | null;
+  motivoLiquidacion?: string | null;
+  liquidadoPor?: string | null;
+  liquidadoPorNombre?: string | null;
+  liquidadoEn?: string | null;
 };
 
 export type GetPurchasesParams = {
@@ -24,7 +36,7 @@ export type GetPurchasesParams = {
   branchId?: string;
   fromDate?: string;
   toDate?: string;
-  paymentMethod?: string;
+  status?: PurchaseResponse["status"] | string;
 };
 
 export type PurchaseItemResponse = {
@@ -34,12 +46,26 @@ export type PurchaseItemResponse = {
   productName?: string | null;
   orderedQuantity: number;
   receivedQuantity: number;
+  pendingQuantity?: number | null;
   cost: number;
   subtotal: number;
+  receivedSubtotal?: number | null;
+  unreceivedSubtotal?: number | null;
+};
+
+export type PurchaseStatusHistoryItem = {
+  action: string;
+  estadoAnterior?: PurchaseResponse["status"] | null;
+  estadoNuevo?: PurchaseResponse["status"] | null;
+  motivo?: string | null;
+  usuarioId?: string | null;
+  usuarioNombre?: string | null;
+  createdAt: string;
 };
 
 export type PurchaseDetailResponse = PurchaseResponse & {
   items: PurchaseItemResponse[];
+  statusHistory?: PurchaseStatusHistoryItem[];
 };
 
 export type CreatePurchasePayload = {
@@ -62,6 +88,38 @@ export type ReceivePurchasePayload = {
   }>;
 };
 
+export type CancelPurchasePayload = {
+  motivoCancelacion: string;
+};
+
+export type LiquidatePurchasePayload = {
+  motivoLiquidacion: string;
+};
+
+export type LiquidatePurchaseResponse = {
+  statusCode: number;
+  message: string;
+  data: PurchaseResponse & {
+    estado: PurchaseResponse["status"];
+    totalPedido: number;
+    totalRecibido: number;
+    totalLiquidado: number;
+    totalPagado: number;
+    saldoPendiente: number;
+    diferenciaNoRecibida: number;
+  };
+};
+
+export type CancelPurchaseResponse = {
+  statusCode: number;
+  message: string;
+  data: PurchaseResponse & {
+    estado: PurchaseResponse["status"];
+    motivoCancelacion: string;
+    canceladoEn: string;
+  };
+};
+
 export const getPurchases = (
   params: GetPurchasesParams = {},
   headers?: HeadersInit
@@ -79,8 +137,8 @@ export const getPurchases = (
   if (params.toDate) {
     query.set("toDate", params.toDate);
   }
-  if (params.paymentMethod) {
-    query.set("paymentMethod", params.paymentMethod);
+  if (params.status) {
+    query.set("status", params.status);
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<PurchaseResponse[]>(`/purchases${suffix}`, { headers });
@@ -109,6 +167,28 @@ export const receivePurchase = (
 ) =>
   apiClient<PurchaseResponse>(`/purchases/${id}/receive`, {
     method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const cancelPurchase = (
+  id: string,
+  payload: CancelPurchasePayload,
+  headers?: HeadersInit
+) =>
+  apiClient<CancelPurchaseResponse>(`/purchases/${id}/cancel`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const liquidatePurchase = (
+  id: string,
+  payload: LiquidatePurchasePayload,
+  headers?: HeadersInit
+) =>
+  apiClient<LiquidatePurchaseResponse>(`/purchases/${id}/settle-partial`, {
+    method: "PATCH",
     headers,
     body: JSON.stringify(payload),
   });

@@ -34,6 +34,7 @@ export class PurchasesReportsController {
       branchId?: string;
       dateFrom?: string;
       dateTo?: string;
+      status?: string;
       format?: string;
     },
     @Req() request: AuthenticatedRequest,
