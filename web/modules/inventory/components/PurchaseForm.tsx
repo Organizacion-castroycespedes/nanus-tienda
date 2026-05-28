@@ -10,7 +10,7 @@ import type { BranchResponse } from "../../../domains/branches/dtos";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
-import { createPurchase } from "../services/purchase.service";
+import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
 import { useAppSelector } from "../../../store/hooks";
 
@@ -36,7 +36,9 @@ type PurchaseFormErrors = {
 
 type PurchaseFormProps = {
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (response?: PurchaseResponse) => void;
+  onError?: (error: unknown) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 const createEmptyItem = (): PurchaseFormItem => ({
@@ -52,7 +54,12 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
+export const PurchaseForm = ({
+  onCancel,
+  onSuccess,
+  onError,
+  onDirtyChange,
+}: PurchaseFormProps) => {
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
   const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
   const [values, setValues] = useState<PurchaseFormValues>({
@@ -68,6 +75,10 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
   const [branches, setBranches] = useState<BranchResponse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  const markDirty = () => {
+    onDirtyChange?.(true);
+  };
 
   useEffect(() => {
     if (!currentBranch) {
@@ -184,6 +195,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
     field: keyof PurchaseFormItem,
     value: string
   ) => {
+    markDirty();
     setValues((prev) => ({
       ...prev,
       items: prev.items.map((item, itemIndex) =>
@@ -204,7 +216,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
     setIsSubmitting(true);
 
     try {
-      await createPurchase({
+      const response = await createPurchase({
         supplierId: values.supplierId,
         branchId: values.branchId,
         type: values.type,
@@ -217,8 +229,10 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
         })),
       });
 
-      onSuccess();
-    } catch {
+      onSuccess(response);
+      onDirtyChange?.(false);
+    } catch (error) {
+      onError?.(error);
       setErrors({
         submit: "No se pudo guardar la compra.",
       });
@@ -252,6 +266,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
               value={values.supplierId}
               disabled={catalogLoading || suppliers.length === 0}
               onChange={(event) => {
+                markDirty();
                 setValues((prev) => ({ ...prev, supplierId: event.target.value }));
                 setErrors((prev) => ({ ...prev, supplierId: undefined, submit: undefined }));
               }}
@@ -278,6 +293,7 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
                 value={values.branchId}
                 disabled={catalogLoading || branches.length === 0}
                 onChange={(event) => {
+                  markDirty();
                   setValues((prev) => ({ ...prev, branchId: event.target.value }));
                   setErrors((prev) => ({ ...prev, branchId: undefined, submit: undefined }));
                 }}
@@ -302,12 +318,13 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
           <Select
             label="Tipo"
             value={values.type}
-            onChange={(event) =>
+            onChange={(event) => {
+              markDirty();
               setValues((prev) => ({
                 ...prev,
                 type: event.target.value as "CASH" | "CREDIT",
-              }))
-            }
+              }));
+            }}
           >
             <option value="CASH">CASH</option>
             <option value="CREDIT">CREDIT</option>
@@ -324,12 +341,13 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
             </div>
             <Button
               variant="outline"
-              onClick={() =>
+              onClick={() => {
+                markDirty();
                 setValues((prev) => ({
                   ...prev,
                   items: [...prev.items, createEmptyItem()],
-                }))
-              }
+                }));
+              }}
             >
               <Plus className="h-4 w-4" />
               Agregar item
@@ -391,15 +409,16 @@ export const PurchaseForm = ({ onCancel, onSuccess }: PurchaseFormProps) => {
                   </div>
                   <Button
                     variant="ghost"
-                    onClick={() =>
+                    onClick={() => {
+                      markDirty();
                       setValues((prev) => ({
                         ...prev,
                         items:
                           prev.items.length > 1
                             ? prev.items.filter((_, itemIndex) => itemIndex !== index)
                             : prev.items,
-                      }))
-                    }
+                      }));
+                    }}
                     disabled={values.items.length === 1}
                   >
                     <Trash2 className="h-4 w-4" />

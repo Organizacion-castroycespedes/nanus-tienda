@@ -25,6 +25,7 @@
 - deja pasar a `SUPER_ADMIN`
 - deja pasar a `SUPER_USER` para ciertas claves de configuracion
 - consulta `AccessControlService` para fusionar permisos del usuario por tenant
+- si `@RequirePermission` declara `action`, valida tambien `role_menu_permissions.actions[action] = true`
 
 ## Resolucion frontend
 
@@ -37,3 +38,9 @@ El layout por tenant:
 ## Observacion importante
 
 No todos los endpoints de inventario usan `PermissionsGuard`; varios usan solo JWT + roles. En la UI si existen chequeos por acciones como `inventory.create` o `pos.create`. Esto crea una separacion entre seguridad UI y seguridad API que debe considerarse en roadmap.
+
+## Acciones especificas
+
+- Cancelar compras usa `INVENTORY_PURCHASES` con accion `cancel`.
+- En frontend se consulta como `hasPermission("inventory.cancel")`.
+- Seeds/migraciones asignan `cancel` por defecto a `SUPER_ADMIN`, `SUPER_USER` y `ADMIN`; un `USER` requiere asignacion explicita.
