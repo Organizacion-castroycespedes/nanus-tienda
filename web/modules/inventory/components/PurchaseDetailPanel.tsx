@@ -94,7 +94,7 @@ export const PurchaseDetailPanel = ({
     purchase?.totalLiquidado == null ? null : Number(purchase.totalLiquidado);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Detalle de compra</p>
@@ -102,10 +102,10 @@ export const PurchaseDetailPanel = ({
             {purchase ? `Compra ${purchase.id.slice(0, 8)}` : "Compra"}
           </h2>
           <p className="mt-2 text-sm text-slate-600">
-            Consulta estado, items y trazabilidad sin salir del listado.
+            Consulta estado, items y trazabilidad en modo enfocado.
           </p>
         </div>
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
           Volver
         </Button>
       </div>
@@ -229,7 +229,7 @@ export const PurchaseDetailPanel = ({
 
           <section className="rounded-lg border border-slate-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <table className="min-w-[760px] divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
@@ -295,25 +295,25 @@ export const PurchaseDetailPanel = ({
             )}
           </section>
 
-          <div className="flex flex-wrap justify-end gap-3">
-            <Button variant="ghost" onClick={onClose}>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
               Volver
             </Button>
-            {canReceive && onReceive ? <Button variant="outline" onClick={onReceive}>Recibir</Button> : null}
-            {canPay && onPay ? <Button variant="outline" onClick={onPay}>Pagar</Button> : null}
+            {canReceive && onReceive ? <Button variant="outline" onClick={onReceive} className="w-full sm:w-auto">Recibir</Button> : null}
+            {canPay && onPay ? <Button variant="outline" onClick={onPay} className="w-full sm:w-auto">Pagar</Button> : null}
             {canCancel && onCancelPurchase ? (
-              <Button variant="danger" onClick={onCancelPurchase}>
+              <Button variant="danger" onClick={onCancelPurchase} className="w-full sm:w-auto">
                 Cancelar compra
               </Button>
             ) : null}
-            {showLiquidate ? <Button onClick={onLiquidate}>Liquidar compra</Button> : null}
+            {showLiquidate ? <Button onClick={onLiquidate} className="w-full sm:w-auto">Liquidar compra</Button> : null}
             {canViewTicket && onViewTicket ? (
-              <Button variant="outline" onClick={onViewTicket}>
+              <Button variant="outline" onClick={onViewTicket} className="w-full sm:w-auto">
                 Ver Ticket
               </Button>
             ) : null}
             {canViewTicket && onDownload ? (
-              <Button variant="outline" onClick={onDownload}>
+              <Button variant="outline" onClick={onDownload} className="w-full sm:w-auto">
                 Descargar
               </Button>
             ) : null}

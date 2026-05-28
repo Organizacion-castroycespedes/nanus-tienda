@@ -177,7 +177,7 @@ export const PurchaseReceiveForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
@@ -186,7 +186,7 @@ export const PurchaseReceiveForm = ({
             Registra las cantidades realmente recibidas por producto.
           </p>
         </div>
-        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
           Volver
         </Button>
       </div>
@@ -240,7 +240,7 @@ export const PurchaseReceiveForm = ({
 
           <section className="rounded-2xl border border-slate-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <table className="min-w-[760px] divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
@@ -320,11 +320,11 @@ export const PurchaseReceiveForm = ({
             </p>
           </section>
 
-          <div className="flex flex-wrap gap-3">
-            <Button type="submit" isLoading={isSubmitting} disabled={isBlockedStatus}>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <Button type="submit" isLoading={isSubmitting} disabled={isBlockedStatus} className="w-full sm:w-auto">
               Confirmar recepcion
             </Button>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
               Volver
             </Button>
           </div>

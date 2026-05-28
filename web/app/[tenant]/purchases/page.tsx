@@ -18,6 +18,7 @@ import {
   validateCancelPurchaseReason,
 } from "../../../modules/inventory/components/CancelPurchaseForm";
 import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
+import { PurchaseActionHeader } from "../../../modules/inventory/components/PurchaseActionHeader";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
 import {
   OVERPAYMENT_SETTLEMENT_MESSAGE,
@@ -38,6 +39,7 @@ type PurchaseFilters = {
   branchId: string;
   fromDate: string;
   toDate: string;
+  status: string;
   paymentMethod: string;
 };
 
@@ -49,7 +51,7 @@ type PurchasePanelAction =
   | "settle-partial"
   | "ticket";
 
-type NoticeConfirmAction = "cancel" | "settle-partial" | null;
+type NoticeConfirmAction = "cancel" | "settle-partial" | "discard-create" | null;
 
 const defaultFilters: PurchaseFilters = {
   query: "",
@@ -57,10 +59,90 @@ const defaultFilters: PurchaseFilters = {
   branchId: "",
   fromDate: "",
   toDate: "",
+  status: "",
   paymentMethod: "",
 };
 
 const pageSizeOptions = [10, 25, 50];
+
+const purchaseStatusOptions: Array<PurchaseResponse["status"]> = [
+  "DRAFT",
+  "PENDING",
+  "PARTIAL",
+  "RECEIVED",
+  "CERRADA_PARCIAL",
+  "CANCELLED",
+];
+
+const filterQueryKeys = [
+  "search",
+  "tenantId",
+  "branchId",
+  "fromDate",
+  "toDate",
+  "status",
+  "paymentMethod",
+  "page",
+  "pageSize",
+] as const;
+
+const getFiltersFromQuery = (params: URLSearchParams): PurchaseFilters => ({
+  query: params.get("search") ?? "",
+  tenantId: params.get("tenantId") ?? "",
+  branchId: params.get("branchId") ?? "",
+  fromDate: params.get("fromDate") ?? "",
+  toDate: params.get("toDate") ?? "",
+  status: params.get("status") ?? "",
+  paymentMethod: params.get("paymentMethod") ?? "",
+});
+
+const getPageFromQuery = (params: URLSearchParams) => {
+  const queryPage = Number(params.get("page"));
+  return Number.isFinite(queryPage) && queryPage > 0 ? queryPage - 1 : 0;
+};
+
+const getPageSizeFromQuery = (params: URLSearchParams) => {
+  const queryPageSize = Number(params.get("pageSize"));
+  return pageSizeOptions.includes(queryPageSize) ? queryPageSize : 10;
+};
+
+const writeFiltersToQuery = (
+  params: URLSearchParams,
+  filters: PurchaseFilters,
+  nextPage: number,
+  nextPageSize: number
+) => {
+  const entries: Array<[keyof PurchaseFilters, string]> = [
+    ["query", "search"],
+    ["tenantId", "tenantId"],
+    ["branchId", "branchId"],
+    ["fromDate", "fromDate"],
+    ["toDate", "toDate"],
+    ["status", "status"],
+    ["paymentMethod", "paymentMethod"],
+  ];
+
+  entries.forEach(([filterKey, queryKey]) => {
+    const value = filters[filterKey].trim();
+    if (value) {
+      params.set(queryKey, value);
+    } else {
+      params.delete(queryKey);
+    }
+  });
+
+  if (nextPage > 0) {
+    params.set("page", String(nextPage + 1));
+  } else {
+    params.delete("page");
+  }
+
+  if (nextPageSize !== 10) {
+    params.set("pageSize", String(nextPageSize));
+  } else {
+    params.delete("pageSize");
+  }
+};
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -110,7 +192,6 @@ const PurchasesPage = () => {
   const [appliedFilters, setAppliedFilters] = useState<PurchaseFilters>(defaultFilters);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -120,6 +201,7 @@ const PurchasesPage = () => {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
+  const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
   const ticketFrameRef = useRef<HTMLIFrameElement | null>(null);
   const router = useRouter();
@@ -127,7 +209,15 @@ const PurchasesPage = () => {
   const searchParams = useSearchParams();
   const activePurchaseId = searchParams.get("purchaseId");
   const activeActionParam = searchParams.get("action");
+  const isCreateAction = activeActionParam === "create";
   const activeAction = isPurchasePanelAction(activeActionParam) ? activeActionParam : null;
+  const filterQuerySignature = filterQueryKeys
+    .map((key) => `${key}:${searchParams.get(key) ?? ""}`)
+    .join("|");
+  const activeViewMode: PurchasePanelAction | "create" | null = isCreateAction
+    ? "create"
+    : activeAction;
+  const isActionMode = activeViewMode !== null;
   const { currentTenant } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
@@ -149,13 +239,32 @@ const PurchasesPage = () => {
     [pathname, router, searchParams]
   );
 
-  const closePurchasePanel = useCallback(() => {
+  const openCreateForm = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("purchaseId");
+    params.set("action", "create");
+    const nextQuery = params.toString();
+    router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const handleBackToList = useCallback(() => {
+    setCreateHasUnsavedChanges(false);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("purchaseId");
     params.delete("action");
     const nextQuery = params.toString();
     router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
+
+  const requestBackToList = useCallback(() => {
+    if (activeViewMode === "create" && createHasUnsavedChanges) {
+      setNoticeConfirmAction("discard-create");
+      notice.showWarning("Cambios sin guardar", "Tienes cambios sin guardar. ¿Deseas salir?");
+      return;
+    }
+
+    handleBackToList();
+  }, [activeViewMode, createHasUnsavedChanges, handleBackToList, notice]);
 
   const resolvePurchaseFilters = useCallback(
     (filters?: PurchaseFilters) => {
@@ -165,6 +274,7 @@ const PurchasesPage = () => {
           branchId: filters?.branchId || undefined,
           fromDate: filters?.fromDate || undefined,
           toDate: filters?.toDate || undefined,
+          status: filters?.status || undefined,
           paymentMethod: filters?.paymentMethod || undefined,
         };
       }
@@ -174,6 +284,7 @@ const PurchasesPage = () => {
         branchId: filters?.branchId || undefined,
         fromDate: filters?.fromDate || undefined,
         toDate: filters?.toDate || undefined,
+        status: filters?.status || undefined,
         paymentMethod: filters?.paymentMethod || undefined,
       };
     },
@@ -184,6 +295,18 @@ const PurchasesPage = () => {
     const activeFilters = filters ?? appliedFilters;
     await loadPurchaseList(resolvePurchaseFilters(activeFilters));
   }, [appliedFilters, loadPurchaseList, resolvePurchaseFilters]);
+
+  const pushListQuery = useCallback(
+    (filters: PurchaseFilters, nextPage: number, nextPageSize: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("purchaseId");
+      params.delete("action");
+      writeFiltersToQuery(params, filters, nextPage, nextPageSize);
+      const nextQuery = params.toString();
+      router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   const activePurchase = useMemo(() => {
     if (!activePurchaseId) {
@@ -196,11 +319,21 @@ const PurchasesPage = () => {
   }, [activePurchaseId, purchaseDetail, purchases]);
 
   useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const nextFilters = getFiltersFromQuery(params);
+    setDraftFilters(nextFilters);
+    setAppliedFilters(nextFilters);
+    setPage(getPageFromQuery(params));
+    setPageSize(getPageSizeFromQuery(params));
+  }, [filterQuerySignature]);
+
+  useEffect(() => {
     if (!activePurchaseId || !activeAction) {
       return;
     }
     if (
       activeAction === "detail" ||
+      activeAction === "receive" ||
       activeAction === "pay" ||
       activeAction === "cancel" ||
       activeAction === "settle-partial" ||
@@ -315,11 +448,19 @@ const PurchasesPage = () => {
 
   const filteredPurchases = useMemo(() => {
     const query = appliedFilters.query.trim().toLowerCase();
+    const statusFilter = appliedFilters.status.trim();
+    const statusMatches = (purchase: PurchaseResponse) =>
+      !statusFilter || purchase.status === statusFilter;
+
     if (!query) {
-      return purchases;
+      return purchases.filter(statusMatches);
     }
 
     return purchases.filter((purchase) => {
+      if (!statusMatches(purchase)) {
+        return false;
+      }
+
       const supplierName = (purchase.supplierName ?? "").toLowerCase();
       const type = purchase.type.toLowerCase();
       const status = purchase.status.toLowerCase();
@@ -333,7 +474,7 @@ const PurchasesPage = () => {
         terminalName.includes(query)
       );
     });
-  }, [appliedFilters.query, purchases]);
+  }, [appliedFilters.query, appliedFilters.status, purchases]);
 
   const paginatedPurchases = useMemo(() => {
     const start = page * pageSize;
@@ -345,6 +486,7 @@ const PurchasesPage = () => {
   const applyFilters = () => {
     setAppliedFilters(draftFilters);
     setPage(0);
+    pushListQuery(draftFilters, 0, pageSize);
     void loadPurchases(draftFilters);
   };
 
@@ -352,10 +494,17 @@ const PurchasesPage = () => {
     setDraftFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
     setPage(0);
+    pushListQuery(defaultFilters, 0, pageSize);
+  };
+
+  const discardCreateChanges = () => {
+    setNoticeConfirmAction(null);
+    notice.close();
+    handleBackToList();
   };
 
   const handleCreateSuccess = async (response?: unknown) => {
-    setShowCreateForm(false);
+    handleBackToList();
     notice.showFromApiResponse(response, "Compra creada correctamente.", "Operacion exitosa");
     if (hasSearched) {
       await loadPurchases();
@@ -363,7 +512,7 @@ const PurchasesPage = () => {
   };
 
   const handleReceiveSuccess = async (response?: unknown) => {
-    closePurchasePanel();
+    handleBackToList();
     notice.showFromApiResponse(
       response,
       "Recepcion registrada correctamente.",
@@ -386,7 +535,7 @@ const PurchasesPage = () => {
     }
     setNoticeConfirmAction(null);
     notice.close();
-    closePurchasePanel();
+    handleBackToList();
     setCancellationReason("");
     setCancellationError(null);
   };
@@ -419,7 +568,7 @@ const PurchasesPage = () => {
     setCancellationError(null);
     try {
       const response = await cancelItem(activePurchase.id, { motivoCancelacion: reason });
-      closePurchasePanel();
+      handleBackToList();
       setCancellationReason("");
       setNoticeConfirmAction(null);
       notice.showFromApiResponse(
@@ -456,7 +605,7 @@ const PurchasesPage = () => {
     }
     setNoticeConfirmAction(null);
     notice.close();
-    closePurchasePanel();
+    handleBackToList();
     setLiquidationReason("");
     setLiquidationError(null);
   };
@@ -489,7 +638,7 @@ const PurchasesPage = () => {
     setLiquidationError(null);
     try {
       const response = await liquidateItem(activePurchaseId, { motivoLiquidacion: reason });
-      closePurchasePanel();
+      handleBackToList();
       setLiquidationReason("");
       setNoticeConfirmAction(null);
       notice.showFromApiResponse(
@@ -523,12 +672,113 @@ const PurchasesPage = () => {
     }
   };
 
+  const actionHeaderCopy = useMemo(() => {
+    switch (activeViewMode) {
+      case "create":
+        return {
+          title: "Crear compra",
+          subtitle: "Registra una nueva compra y sus productos asociados.",
+        };
+      case "detail":
+        return {
+          title: "Detalle de compra",
+          subtitle: "Consulta estado, productos, pagos y trazabilidad de la compra.",
+        };
+      case "receive":
+        return {
+          title: "Recibir compra",
+          subtitle: "Registra las cantidades realmente recibidas.",
+        };
+      case "pay":
+        return {
+          title: "Pagar compra",
+          subtitle: "Registra pagos asociados a la compra.",
+        };
+      case "cancel":
+        return {
+          title: "Cancelar compra",
+          subtitle: "Cancela una compra que aun no puede continuar su flujo.",
+        };
+      case "settle-partial":
+        return {
+          title: "Liquidar compra parcial",
+          subtitle: "Cierra una compra parcial con las cantidades realmente recibidas.",
+        };
+      case "ticket":
+        return {
+          title: "Ticket de compra",
+          subtitle: "Visualiza el documento generado para esta compra.",
+        };
+      default:
+        return null;
+    }
+  }, [activeViewMode]);
+
+  const actionHeaderPurchase = activePurchase ?? purchaseDetail;
+
+  const isInvalidAction = useMemo(() => {
+    const purchase = actionHeaderPurchase;
+    if (!activeAction || activeAction === "detail" || !purchase) {
+      return false;
+    }
+
+    if (activeAction === "receive") {
+      return (
+        purchase.status === "CANCELLED" ||
+        purchase.status === "RECEIVED" ||
+        purchase.status === "CERRADA_PARCIAL"
+      );
+    }
+
+    if (activeAction === "pay") {
+      return purchase.status === "CANCELLED" || purchase.balanceDue <= 0 || !purchase.branchId;
+    }
+
+    if (activeAction === "settle-partial") {
+      return purchase.status !== "PARTIAL";
+    }
+
+    if (activeAction === "cancel") {
+      return !canCancelPurchase(purchase);
+    }
+
+    if (activeAction === "ticket") {
+      return !canAccessTicket(purchase.status);
+    }
+
+    return false;
+  }, [activeAction, actionHeaderPurchase]);
+
+  const actionUnavailablePanel = (
+    <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-amber-700">Accion no disponible</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+            Accion no disponible
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Esta accion no esta disponible para el estado actual de la compra.
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Vuelve al listado y selecciona una accion valida para esta compra.
+        </div>
+        <Button variant="outline" onClick={handleBackToList} className="w-full sm:w-auto">
+          Volver al listado
+        </Button>
+      </div>
+    </section>
+  );
+
   const contextualPanel = (
     <>
-      {activeAction === "receive" && activePurchaseId ? (
+      {isInvalidAction ? actionUnavailablePanel : null}
+
+      {!isInvalidAction && activeAction === "receive" && activePurchaseId ? (
         <PurchaseReceiveForm
           purchaseId={activePurchaseId}
-          onCancel={closePurchasePanel}
+          onCancel={handleBackToList}
           onSuccess={(response) => void handleReceiveSuccess(response)}
           onError={(error) =>
             notice.showFromApiError(error, "No se pudo registrar la recepcion.")
@@ -536,7 +786,7 @@ const PurchasesPage = () => {
         />
       ) : null}
 
-      {activeAction === "pay" && activePurchase ? (
+      {!isInvalidAction && activeAction === "pay" && activePurchase ? (
         <DocumentPaymentForm
           title="Pagar compra"
           description="Registra el pago asociado a esta compra."
@@ -561,9 +811,9 @@ const PurchasesPage = () => {
           }
           confirmLabel="Confirmar pago"
           cancelLabel="Volver"
-          onCancel={closePurchasePanel}
+          onCancel={handleBackToList}
           onSuccess={async () => {
-            closePurchasePanel();
+            handleBackToList();
             notice.showSuccess("Operacion exitosa", "Pago registrado correctamente.");
             if (hasSearched) {
               await loadPurchases();
@@ -573,12 +823,12 @@ const PurchasesPage = () => {
         />
       ) : null}
 
-      {activeAction === "ticket" && activePurchase ? (
+      {!isInvalidAction && activeAction === "ticket" && activePurchase ? (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              closePurchasePanel();
+              handleBackToList();
             }
           }}
         >
@@ -602,7 +852,7 @@ const PurchasesPage = () => {
                 type="button"
                 aria-label="Cerrar ticket"
                 className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-                onClick={closePurchasePanel}
+                onClick={handleBackToList}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -632,7 +882,7 @@ const PurchasesPage = () => {
             </div>
 
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={closePurchasePanel}>
+              <Button variant="outline" onClick={handleBackToList}>
                 Cerrar
               </Button>
               <Button
@@ -657,7 +907,7 @@ const PurchasesPage = () => {
         </div>
       ) : null}
 
-      {activeAction === "cancel" && activePurchase ? (
+      {!isInvalidAction && activeAction === "cancel" && activePurchase ? (
         <CancelPurchaseForm
           purchase={activePurchase}
           reason={cancellationReason}
@@ -672,7 +922,7 @@ const PurchasesPage = () => {
         />
       ) : null}
 
-      {activeAction === "detail" ? (
+      {!isInvalidAction && activeAction === "detail" ? (
         <PurchaseDetailPanel
           purchase={purchaseDetail}
           loading={loadingDetail}
@@ -693,7 +943,7 @@ const PurchasesPage = () => {
           )}
           canCancel={Boolean(purchaseDetail && canCancelPurchase(purchaseDetail))}
           canViewTicket={Boolean(purchaseDetail && canAccessTicket(purchaseDetail.status))}
-          onClose={closePurchasePanel}
+          onClose={handleBackToList}
           onReceive={
             purchaseDetail
               ? () => openPurchasePanel("receive", purchaseDetail.id)
@@ -723,7 +973,7 @@ const PurchasesPage = () => {
         />
       ) : null}
 
-      {activeAction === "settle-partial" && activePurchaseId ? (
+      {!isInvalidAction && activeAction === "settle-partial" && activePurchaseId ? (
         <SettlePartialPurchaseForm
           purchase={purchaseDetail}
           loading={loadingDetail}
@@ -742,147 +992,180 @@ const PurchasesPage = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="space-y-4 sm:space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
             <h1 className="text-2xl font-semibold text-slate-900">Compras</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Consulta compras registradas por proveedor, tipo y estado.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Consulta compras registradas por proveedor, tipo y estado."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="ghost" onClick={() => void loadPurchases()} isLoading={loading}>
-              <RefreshCw className="h-4 w-4" />
-              Actualizar
-            </Button>
-            {canCreate ? (
-              <Button onClick={() => setShowCreateForm(true)}>
-                <Plus className="h-4 w-4" />
-                Crear compra
+          {!isActionMode ? (
+            <div className="flex flex-wrap gap-3">
+              <Button variant="ghost" onClick={() => void loadPurchases()} isLoading={loading}>
+                <RefreshCw className="h-4 w-4" />
+                Actualizar
               </Button>
-            ) : null}
-          </div>
+              {canCreate ? (
+                <Button onClick={openCreateForm}>
+                  <Plus className="h-4 w-4" />
+                  Crear compra
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
 
-      {showCreateForm ? (
-        <PurchaseForm
-          onCancel={() => setShowCreateForm(false)}
-          onSuccess={(response) => void handleCreateSuccess(response)}
-          onError={(error) => notice.showFromApiError(error, "No se pudo guardar la compra.")}
+      {isActionMode && actionHeaderCopy ? (
+        <PurchaseActionHeader
+          title={actionHeaderCopy.title}
+          subtitle={actionHeaderCopy.subtitle}
+          purchaseCode={actionHeaderPurchase?.id.slice(0, 8)}
+          status={actionHeaderPurchase?.status}
+          onBack={requestBackToList}
         />
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div
-          className={
-            canViewAllTenants
-              ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_220px_220px_auto_auto]"
-              : "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_220px_auto_auto]"
-          }
-        >
-          <Input
-            label="Buscar"
-            placeholder="Proveedor, sucursal, terminal, tipo o estado"
-            value={draftFilters.query}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, query: event.target.value }))
+      {activeViewMode === "create" ? (
+        <PurchaseForm
+          onCancel={requestBackToList}
+          onSuccess={(response) => void handleCreateSuccess(response)}
+          onError={(error) => notice.showFromApiError(error, "No se pudo guardar la compra.")}
+          onDirtyChange={setCreateHasUnsavedChanges}
+        />
+      ) : null}
+
+      {!isActionMode ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div
+            className={
+              canViewAllTenants
+                ? "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_180px_180px_180px_180px_auto_auto]"
+                : "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_180px_180px_auto_auto]"
             }
-          />
-          {canViewAllTenants ? (
-            <Select
-              label="Tenant"
-              value={draftFilters.tenantId}
+          >
+            <Input
+              label="Buscar"
+              placeholder="Proveedor, sucursal, terminal, tipo o estado"
+              value={draftFilters.query}
               onChange={(event) =>
-                setDraftFilters((prev) => ({
-                  ...prev,
-                  tenantId: event.target.value,
-                  branchId:
-                    prev.tenantId && prev.tenantId !== event.target.value ? "" : prev.branchId,
-                }))
+                setDraftFilters((prev) => ({ ...prev, query: event.target.value }))
+              }
+            />
+            {canViewAllTenants ? (
+              <Select
+                label="Tenant"
+                value={draftFilters.tenantId}
+                onChange={(event) =>
+                  setDraftFilters((prev) => ({
+                    ...prev,
+                    tenantId: event.target.value,
+                    branchId:
+                      prev.tenantId && prev.tenantId !== event.target.value ? "" : prev.branchId,
+                  }))
+                }
+              >
+                <option value="">Todos</option>
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            {canViewAllTenants ? (
+              <Select
+                label="Sucursal"
+                value={draftFilters.branchId}
+                onChange={(event) =>
+                  setDraftFilters((prev) => ({ ...prev, branchId: event.target.value }))
+                }
+              >
+                <option value="">Todas</option>
+                {branchOptions.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            <Input
+              label="Desde"
+              type="date"
+              value={draftFilters.fromDate}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, fromDate: event.target.value }))
+              }
+            />
+            <Input
+              label="Hasta"
+              type="date"
+              value={draftFilters.toDate}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, toDate: event.target.value }))
+              }
+            />
+            <Select
+              label="Estado"
+              value={draftFilters.status}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, status: event.target.value }))
               }
             >
               <option value="">Todos</option>
-              {tenantOptions.map((tenant) => (
-                <option key={tenant.id} value={tenant.id}>
-                  {tenant.name}
+              {purchaseStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
                 </option>
               ))}
             </Select>
-          ) : null}
-          {canViewAllTenants ? (
             <Select
-              label="Sucursal"
-              value={draftFilters.branchId}
+              label="Metodo de pago"
+              value={draftFilters.paymentMethod}
               onChange={(event) =>
-                setDraftFilters((prev) => ({ ...prev, branchId: event.target.value }))
+                setDraftFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))
               }
             >
-              <option value="">Todas</option>
-              {branchOptions.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
+              <option value="">Todos</option>
+              {paymentMethods.map((method) => (
+                <option key={method.id} value={method.id}>
+                  {method.nombre}
                 </option>
               ))}
             </Select>
-          ) : null}
-          <Input
-            label="Desde"
-            type="date"
-            value={draftFilters.fromDate}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, fromDate: event.target.value }))
-            }
-          />
-          <Input
-            label="Hasta"
-            type="date"
-            value={draftFilters.toDate}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, toDate: event.target.value }))
-            }
-          />
-          <Select
-            label="Metodo de pago"
-            value={draftFilters.paymentMethod}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, paymentMethod: event.target.value }))
-            }
-          >
-            <option value="">Todos</option>
-            {paymentMethods.map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.nombre}
-              </option>
-            ))}
-          </Select>
-          <div className="flex items-end gap-2">
-            <Button variant="outline" onClick={applyFilters}>
-              <Search className="h-4 w-4" />
-              Buscar
-            </Button>
-            <Button variant="ghost" onClick={resetFilters}>
-              Limpiar
-            </Button>
+            <div className="flex items-end gap-2">
+              <Button variant="outline" onClick={applyFilters}>
+                <Search className="h-4 w-4" />
+                Buscar
+              </Button>
+              <Button variant="ghost" onClick={resetFilters}>
+                Limpiar
+              </Button>
+            </div>
+            <Select
+              label="Filas por pagina"
+              value={String(pageSize)}
+              onChange={(event) => {
+                const nextPageSize = Number(event.target.value);
+                setPageSize(nextPageSize);
+                setPage(0);
+                pushListQuery(appliedFilters, 0, nextPageSize);
+              }}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
           </div>
-          <Select
-            label="Filas por pagina"
-            value={String(pageSize)}
-            onChange={(event) => {
-              setPageSize(Number(event.target.value));
-              setPage(0);
-            }}
-          >
-            {pageSizeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {errorMessage ? (
         <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
@@ -904,7 +1187,9 @@ const PurchasesPage = () => {
             ? () => void handleCancelPurchase()
             : noticeConfirmAction === "settle-partial"
               ? () => void handleLiquidatePurchase()
-              : undefined
+              : noticeConfirmAction === "discard-create"
+                ? discardCreateChanges
+                : undefined
         }
         closeText={noticeConfirmAction ? "Volver" : "Entendido"}
         confirmText={
@@ -912,7 +1197,9 @@ const PurchasesPage = () => {
             ? "Confirmar cancelacion"
             : noticeConfirmAction === "settle-partial"
               ? "Confirmar liquidacion"
-              : "Confirmar"
+              : noticeConfirmAction === "discard-create"
+                ? "Salir sin guardar"
+                : "Confirmar"
         }
         confirming={
           noticeConfirmAction === "cancel"
@@ -923,171 +1210,181 @@ const PurchasesPage = () => {
         }
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Proveedor</th>
-                <th className="px-4 py-3 font-medium">Sucursal</th>
-                <th className="px-4 py-3 font-medium">Terminal</th>
-                <th className="px-4 py-3 font-medium">Total</th>
-                <th className="px-4 py-3 font-medium">Pagado</th>
-                <th className="px-4 py-3 font-medium">Saldo</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Estado</th>
-                <th className="px-4 py-3 font-medium">Pago</th>
-                <th className="px-4 py-3 font-medium">Fecha</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
+      {!isActionMode ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
-                    Cargando compras...
-                  </td>
+                  <th className="px-4 py-3 font-medium">Proveedor</th>
+                  <th className="px-4 py-3 font-medium">Sucursal</th>
+                  <th className="px-4 py-3 font-medium">Terminal</th>
+                  <th className="px-4 py-3 font-medium">Total</th>
+                  <th className="px-4 py-3 font-medium">Pagado</th>
+                  <th className="px-4 py-3 font-medium">Saldo</th>
+                  <th className="px-4 py-3 font-medium">Tipo</th>
+                  <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Pago</th>
+                  <th className="px-4 py-3 font-medium">Fecha</th>
+                  <th className="px-4 py-3 font-medium">Acciones</th>
                 </tr>
-              ) : !hasSearched ? (
-                <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
-                    Usa el boton Buscar para consultar compras.
-                  </td>
-                </tr>
-              ) : paginatedPurchases.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
-                    No hay compras para mostrar.
-                  </td>
-                </tr>
-              ) : (
-                paginatedPurchases.map((purchase) => (
-                  <tr key={purchase.id}>
-                    <td className="px-4 py-3 text-slate-900">
-                      {purchase.supplierName || purchase.supplierId}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{purchase.branchName ?? "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">{purchase.terminalName ?? "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatCurrency(Number(purchase.total))}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatCurrency(Number(purchase.totalPaid))}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatCurrency(Number(purchase.balanceDue))}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{purchase.type}</td>
-                    <td className="px-4 py-3 text-slate-700">{purchase.status}</td>
-                    <td className="px-4 py-3 text-slate-700">{purchase.paymentStatus}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {formatDate(purchase.createdAt)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openPurchasePanel("detail", purchase.id)}
-                        >
-                          <Eye className="h-4 w-4" />
-                          Detalle
-                        </Button>
-                        {canReceive &&
-                        purchase.status !== "CANCELLED" &&
-                        purchase.status !== "RECEIVED" &&
-                        purchase.status !== "CERRADA_PARCIAL" ? (
-                          <Button
-                            variant="ghost"
-                            onClick={() => openPurchasePanel("receive", purchase.id)}
-                          >
-                            <PackageCheck className="h-4 w-4" />
-                            Recibir
-                          </Button>
-                        ) : null}
-                        {canReceive &&
-                        purchase.status !== "CANCELLED" &&
-                        purchase.balanceDue > 0 &&
-                        purchase.branchId ? (
-                          <Button
-                            variant="ghost"
-                            onClick={() => openPurchasePanel("pay", purchase.id)}
-                          >
-                            Pagar
-                          </Button>
-                        ) : null}
-                        {canLiquidatePurchase(purchase) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openPurchasePanel("settle-partial", purchase.id)}
-                          >
-                            Liquidar
-                          </Button>
-                        ) : null}
-                        {canCancelPurchase(purchase) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openPurchasePanel("cancel", purchase.id)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Cancelar compra
-                          </Button>
-                        ) : null}
-                        {canAccessTicket(purchase.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openPurchasePanel("ticket", purchase.id)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Ver Ticket
-                          </Button>
-                        ) : null}
-                        {canAccessTicket(purchase.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleDownloadTicket(purchase)}
-                          >
-                            <Download className="h-4 w-4" />
-                            Descargar
-                          </Button>
-                        ) : null}
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                      Cargando compras...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
-          <span>
-            Pagina {Math.min(page + 1, totalPages)} de {totalPages}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
-              disabled={page === 0 || loading}
-            >
-              Anterior
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setPage((prev) => Math.min(prev + 1, Math.max(totalPages - 1, 0)))}
-              disabled={page >= totalPages - 1 || loading}
-            >
-              Siguiente
-            </Button>
+                ) : !hasSearched ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                      Usa el boton Buscar para consultar compras.
+                    </td>
+                  </tr>
+                ) : paginatedPurchases.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                      No hay compras para mostrar.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedPurchases.map((purchase) => (
+                    <tr key={purchase.id}>
+                      <td className="px-4 py-3 text-slate-900">
+                        {purchase.supplierName || purchase.supplierId}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{purchase.branchName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">{purchase.terminalName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatCurrency(Number(purchase.total))}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatCurrency(Number(purchase.totalPaid))}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatCurrency(Number(purchase.balanceDue))}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{purchase.type}</td>
+                      <td className="px-4 py-3 text-slate-700">{purchase.status}</td>
+                      <td className="px-4 py-3 text-slate-700">{purchase.paymentStatus}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDate(purchase.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openPurchasePanel("detail", purchase.id)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            Detalle
+                          </Button>
+                          {canReceive &&
+                          purchase.status !== "CANCELLED" &&
+                          purchase.status !== "RECEIVED" &&
+                          purchase.status !== "CERRADA_PARCIAL" ? (
+                            <Button
+                              variant="ghost"
+                              onClick={() => openPurchasePanel("receive", purchase.id)}
+                            >
+                              <PackageCheck className="h-4 w-4" />
+                              Recibir
+                            </Button>
+                          ) : null}
+                          {canReceive &&
+                          purchase.status !== "CANCELLED" &&
+                          purchase.balanceDue > 0 &&
+                          purchase.branchId ? (
+                            <Button
+                              variant="ghost"
+                              onClick={() => openPurchasePanel("pay", purchase.id)}
+                            >
+                              Pagar
+                            </Button>
+                          ) : null}
+                          {canLiquidatePurchase(purchase) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openPurchasePanel("settle-partial", purchase.id)}
+                            >
+                              Liquidar
+                            </Button>
+                          ) : null}
+                          {canCancelPurchase(purchase) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openPurchasePanel("cancel", purchase.id)}
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Cancelar compra
+                            </Button>
+                          ) : null}
+                          {canAccessTicket(purchase.status) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openPurchasePanel("ticket", purchase.id)}
+                            >
+                              <Eye className="h-4 w-4" />
+                              Ver Ticket
+                            </Button>
+                          ) : null}
+                          {canAccessTicket(purchase.status) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void handleDownloadTicket(purchase)}
+                            >
+                              <Download className="h-4 w-4" />
+                              Descargar
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-        </div>
-      </section>
 
-      {contextualPanel}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+            <span>
+              Pagina {Math.min(page + 1, totalPages)} de {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  const nextPage = Math.max(page - 1, 0);
+                  setPage(nextPage);
+                  pushListQuery(appliedFilters, nextPage, pageSize);
+                }}
+                disabled={page === 0 || loading}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  const nextPage = Math.min(page + 1, Math.max(totalPages - 1, 0));
+                  setPage(nextPage);
+                  pushListQuery(appliedFilters, nextPage, pageSize);
+                }}
+                disabled={page >= totalPages - 1 || loading}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {isActionMode ? contextualPanel : null}
     </div>
   );
 };

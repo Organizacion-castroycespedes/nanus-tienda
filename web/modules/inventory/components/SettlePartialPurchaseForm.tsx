@@ -84,7 +84,7 @@ export const SettlePartialPurchaseForm = ({
     isSubmitting || loading || !purchase || Boolean(validationError) || summary.hasOverpayment;
 
   return (
-    <section className="rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-emerald-700">Accion de compra</p>
@@ -94,7 +94,7 @@ export const SettlePartialPurchaseForm = ({
             recibir las cantidades pendientes despues de liquidarla.
           </p>
         </div>
-        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
           Volver
         </Button>
       </div>
@@ -164,7 +164,7 @@ export const SettlePartialPurchaseForm = ({
 
           <section className="rounded-lg border border-slate-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <table className="min-w-[860px] divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
@@ -222,11 +222,11 @@ export const SettlePartialPurchaseForm = ({
             </div>
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-3">
-            <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
               Volver
             </Button>
-            <Button onClick={onConfirm} isLoading={isSubmitting} disabled={confirmDisabled}>
+            <Button onClick={onConfirm} isLoading={isSubmitting} disabled={confirmDisabled} className="w-full sm:w-auto">
               <CheckCircle2 className="h-4 w-4" />
               Confirmar liquidacion
             </Button>

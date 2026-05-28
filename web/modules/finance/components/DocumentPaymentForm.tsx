@@ -298,14 +298,14 @@ export const DocumentPaymentForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Finance</p>
           <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
           <p className="mt-2 text-sm text-slate-600">{description}</p>
         </div>
-        <Button variant="ghost" onClick={onCancel} disabled={submitting}>
+        <Button variant="ghost" onClick={onCancel} disabled={submitting} className="w-full sm:w-auto">
           {cancelLabel}
         </Button>
       </div>
@@ -398,7 +398,7 @@ export const DocumentPaymentForm = ({
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <Select
-                      label="Metodo"
+                      label="Metodo de pago"
                       value={payment.paymentMethodId}
                       onChange={(event) =>
                         updatePayment(payment.id, "paymentMethodId", event.target.value)
@@ -413,7 +413,7 @@ export const DocumentPaymentForm = ({
                     </Select>
 
                     <Input
-                      label="Monto"
+                      label="Valor a pagar"
                       inputMode="decimal"
                       value={payment.amount}
                       onChange={(event) =>
@@ -477,15 +477,16 @@ export const DocumentPaymentForm = ({
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
             <Button
               type="submit"
               isLoading={submitting}
               disabled={Boolean(blockReason) || isFullyPaid || balanceDue <= 0}
+              className="w-full sm:w-auto"
             >
               {confirmLabel}
             </Button>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting}>
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting} className="w-full sm:w-auto">
               {cancelLabel}
             </Button>
           </div>

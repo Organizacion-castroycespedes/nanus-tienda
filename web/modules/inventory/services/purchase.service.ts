@@ -36,6 +36,7 @@ export type GetPurchasesParams = {
   branchId?: string;
   fromDate?: string;
   toDate?: string;
+  status?: PurchaseResponse["status"] | string;
   paymentMethod?: string;
 };
 
@@ -136,6 +137,9 @@ export const getPurchases = (
   }
   if (params.toDate) {
     query.set("toDate", params.toDate);
+  }
+  if (params.status) {
+    query.set("status", params.status);
   }
   if (params.paymentMethod) {
     query.set("paymentMethod", params.paymentMethod);

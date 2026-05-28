@@ -49,7 +49,7 @@ export const CancelPurchaseForm = ({
   const confirmDisabled = isSubmitting || Boolean(validationError);
 
   return (
-    <section className="rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-rose-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -60,7 +60,7 @@ export const CancelPurchaseForm = ({
               ella.
             </p>
           </div>
-          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
             Volver
           </Button>
         </div>
@@ -111,8 +111,8 @@ export const CancelPurchaseForm = ({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap justify-end gap-3">
-          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
             Volver
           </Button>
           <Button
@@ -120,6 +120,7 @@ export const CancelPurchaseForm = ({
             onClick={onConfirm}
             isLoading={isSubmitting}
             disabled={confirmDisabled}
+            className="w-full sm:w-auto"
           >
             <XCircle className="h-4 w-4" />
             Confirmar cancelacion
