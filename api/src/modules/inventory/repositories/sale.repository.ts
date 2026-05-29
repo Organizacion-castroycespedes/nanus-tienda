@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import type { SaleType } from "../entities/sale.entity";
@@ -99,11 +99,25 @@ type PaymentMethodLookupRow = {
   tipo: string;
 };
 
+const CREATE_SALE_FUNCTION_NAMES = {
+  legacy: "inventory_create_sale",
+  primary: "inventory_create_sale_v2",
+} as const;
+
+type CreateSaleFunctionName =
+  (typeof CREATE_SALE_FUNCTION_NAMES)[keyof typeof CREATE_SALE_FUNCTION_NAMES];
+
 @Injectable()
 export class SaleRepository {
+  private readonly logger = new Logger(SaleRepository.name);
+
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService
   ) {}
+
+  private resolveCreateSaleFunctionName(): CreateSaleFunctionName {
+    return CREATE_SALE_FUNCTION_NAMES.primary;
+  }
 
   private async query<T extends QueryResultRow>(
     text: string,
@@ -378,6 +392,9 @@ export class SaleRepository {
       amount: payment.amount,
       reference: payment.reference ?? null,
     }));
+    const createSaleFunctionName = this.resolveCreateSaleFunctionName();
+
+    this.logger.debug(`Using ${createSaleFunctionName} for POS sale creation`);
 
     const result = await this.query<InventoryCreateSaleFunctionRow>(
       `SELECT
@@ -390,7 +407,7 @@ export class SaleRepository {
         total,
         balance,
         created_at
-      FROM inventory_create_sale(
+      FROM ${createSaleFunctionName}(
         $1::uuid,
         $2::uuid,
         $3::uuid,

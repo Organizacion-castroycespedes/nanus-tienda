@@ -16,6 +16,13 @@ type ProductRow = QueryResultRow & {
   price_with_tax: string | number;
   price_without_tax: string | number;
   is_active: boolean;
+  is_perishable: boolean;
+  requires_lot: boolean;
+  requires_expiration: boolean;
+  operational_status: ProductProps["operationalStatus"];
+  rotation_class: ProductProps["rotationClass"];
+  min_stock: string | number | null;
+  max_stock: string | number | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -35,6 +42,13 @@ type UpdateProductData = Partial<
     | "priceWithTax"
     | "priceWithoutTax"
     | "isActive"
+    | "isPerishable"
+    | "requiresLot"
+    | "requiresExpiration"
+    | "operationalStatus"
+    | "rotationClass"
+    | "minStock"
+    | "maxStock"
   >
 >;
 
@@ -55,6 +69,30 @@ export class ProductRepository {
     return this.db.query<T>(text, params);
   }
 
+  private readonly selectColumns = `
+    id,
+    tenant_id,
+    unit_id,
+    tax_id,
+    name,
+    description,
+    sku,
+    price,
+    cost,
+    price_with_tax,
+    price_without_tax,
+    is_active,
+    is_perishable,
+    requires_lot,
+    requires_expiration,
+    operational_status,
+    rotation_class,
+    min_stock,
+    max_stock,
+    created_at,
+    updated_at
+  `;
+
   private mapRowToEntity(row: ProductRow): ProductEntity {
     return ProductEntity.create({
       id: row.id,
@@ -71,6 +109,13 @@ export class ProductRepository {
       priceWithTax: Number(row.price_with_tax),
       priceWithoutTax: Number(row.price_without_tax),
       isActive: row.is_active,
+      isPerishable: row.is_perishable,
+      requiresLot: row.requires_lot,
+      requiresExpiration: row.requires_expiration,
+      operationalStatus: row.operational_status,
+      rotationClass: row.rotation_class,
+      minStock: row.min_stock === null ? null : Number(row.min_stock),
+      maxStock: row.max_stock === null ? null : Number(row.max_stock),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     });
@@ -95,26 +140,22 @@ export class ProductRepository {
         price_with_tax,
         price_without_tax,
         is_active,
+        is_perishable,
+        requires_lot,
+        requires_expiration,
+        operational_status,
+        rotation_class,
+        min_stock,
+        max_stock,
         created_at,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19,
+        $20, $21
       )
       RETURNING
-        id,
-        tenant_id,
-        unit_id,
-        tax_id,
-        name,
-        description,
-        sku,
-        price,
-        cost,
-        price_with_tax,
-        price_without_tax,
-        is_active,
-        created_at,
-        updated_at
+        ${this.selectColumns}
       `,
       [
         product.id,
@@ -129,6 +170,13 @@ export class ProductRepository {
         product.priceWithTax,
         product.priceWithoutTax,
         product.isActive ?? true,
+        product.isPerishable ?? false,
+        product.requiresLot ?? false,
+        product.requiresExpiration ?? false,
+        product.operationalStatus ?? "ACTIVE",
+        product.rotationClass ?? null,
+        product.minStock ?? null,
+        product.maxStock ?? null,
         product.createdAt,
         product.updatedAt,
       ],
@@ -145,20 +193,7 @@ export class ProductRepository {
     const result = await this.query<ProductRow>(
       `
       SELECT
-        id,
-        tenant_id,
-        unit_id,
-        tax_id,
-        name,
-        description,
-        sku,
-        price,
-        cost,
-        price_with_tax,
-        price_without_tax,
-        is_active,
-        created_at,
-        updated_at
+        ${this.selectColumns}
       FROM products
       WHERE tenant_id = $1
       ORDER BY created_at DESC
@@ -178,20 +213,7 @@ export class ProductRepository {
     const result = await this.query<ProductRow>(
       `
       SELECT
-        id,
-        tenant_id,
-        unit_id,
-        tax_id,
-        name,
-        description,
-        sku,
-        price,
-        cost,
-        price_with_tax,
-        price_without_tax,
-        is_active,
-        created_at,
-        updated_at
+        ${this.selectColumns}
       FROM products
       WHERE id = $1 AND tenant_id = $2
       LIMIT 1
@@ -211,20 +233,7 @@ export class ProductRepository {
     const result = await this.query<ProductRow>(
       `
       SELECT
-        id,
-        tenant_id,
-        unit_id,
-        tax_id,
-        name,
-        description,
-        sku,
-        price,
-        cost,
-        price_with_tax,
-        price_without_tax,
-        is_active,
-        created_at,
-        updated_at
+        ${this.selectColumns}
       FROM products
       WHERE sku = $1 AND tenant_id = $2
       LIMIT 1
@@ -242,52 +251,87 @@ export class ProductRepository {
     data: UpdateProductData,
     client?: PoolClient
   ): Promise<ProductEntity | null> {
+    const updates: string[] = [];
+    const params: unknown[] = [id, tenantId];
+
+    const addUpdate = (column: string, value: unknown) => {
+      params.push(value);
+      updates.push(`${column} = $${params.length}`);
+    };
+
+    if (data.unitId !== undefined && data.unitId !== null) {
+      addUpdate("unit_id", data.unitId);
+    }
+    if (data.taxId !== undefined && data.taxId !== null) {
+      addUpdate("tax_id", data.taxId);
+    }
+    if (data.name !== undefined && data.name !== null) {
+      addUpdate("name", data.name);
+    }
+    if (data.description !== undefined && data.description !== null) {
+      addUpdate("description", data.description);
+    }
+    if (data.sku !== undefined && data.sku !== null) {
+      addUpdate("sku", data.sku);
+    }
+    if (data.price !== undefined && data.price !== null) {
+      addUpdate("price", data.price);
+    }
+    if (data.cost !== undefined && data.cost !== null) {
+      addUpdate("cost", data.cost);
+    }
+    if (data.priceWithTax !== undefined && data.priceWithTax !== null) {
+      addUpdate("price_with_tax", data.priceWithTax);
+    }
+    if (data.priceWithoutTax !== undefined && data.priceWithoutTax !== null) {
+      addUpdate("price_without_tax", data.priceWithoutTax);
+    }
+    if (data.isActive !== undefined && data.isActive !== null) {
+      addUpdate("is_active", data.isActive);
+    }
+    if (data.isPerishable !== undefined && data.isPerishable !== null) {
+      addUpdate("is_perishable", data.isPerishable);
+    }
+    if (data.requiresLot !== undefined && data.requiresLot !== null) {
+      addUpdate("requires_lot", data.requiresLot);
+    }
+    if (
+      data.requiresExpiration !== undefined &&
+      data.requiresExpiration !== null
+    ) {
+      addUpdate("requires_expiration", data.requiresExpiration);
+    }
+    if (
+      data.operationalStatus !== undefined &&
+      data.operationalStatus !== null
+    ) {
+      addUpdate("operational_status", data.operationalStatus);
+    }
+    if (data.rotationClass !== undefined) {
+      addUpdate("rotation_class", data.rotationClass);
+    }
+    if (data.minStock !== undefined) {
+      addUpdate("min_stock", data.minStock);
+    }
+    if (data.maxStock !== undefined) {
+      addUpdate("max_stock", data.maxStock);
+    }
+
+    if (updates.length === 0) {
+      return this.findById(id, tenantId, client);
+    }
+
     const result = await this.query<ProductRow>(
       `
       UPDATE products
       SET
-        unit_id = COALESCE($3, unit_id),
-        tax_id = CASE WHEN $4::uuid IS NULL THEN tax_id ELSE $4 END,
-        name = COALESCE($5, name),
-        description = COALESCE($6, description),
-        sku = COALESCE($7, sku),
-        price = COALESCE($8, price),
-        cost = COALESCE($9, cost),
-        price_with_tax = COALESCE($10, price_with_tax),
-        price_without_tax = COALESCE($11, price_without_tax),
-        is_active = COALESCE($12, is_active),
+        ${updates.join(",\n        ")},
         updated_at = NOW()
       WHERE id = $1 AND tenant_id = $2
       RETURNING
-        id,
-        tenant_id,
-        unit_id,
-        tax_id,
-        name,
-        description,
-        sku,
-        price,
-        cost,
-        price_with_tax,
-        price_without_tax,
-        is_active,
-        created_at,
-        updated_at
+        ${this.selectColumns}
       `,
-      [
-        id,
-        tenantId,
-        data.unitId ?? null,
-        data.taxId ?? null,
-        data.name ?? null,
-        data.description ?? null,
-        data.sku ?? null,
-        data.price ?? null,
-        data.cost ?? null,
-        data.priceWithTax ?? null,
-        data.priceWithoutTax ?? null,
-        data.isActive ?? null,
-      ],
+      params,
       client
     );
 
@@ -307,20 +351,7 @@ export class ProductRepository {
         updated_at = NOW()
       WHERE id = $1 AND tenant_id = $2
       RETURNING
-        id,
-        tenant_id,
-        unit_id,
-        tax_id,
-        name,
-        description,
-        sku,
-        price,
-        cost,
-        price_with_tax,
-        price_without_tax,
-        is_active,
-        created_at,
-        updated_at
+        ${this.selectColumns}
       `,
       [id, tenantId],
       client

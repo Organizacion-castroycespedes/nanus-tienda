@@ -125,6 +125,26 @@ type SaleStockMovementRow = {
   user_id: string | null;
 };
 
+type SaleStockMovementLotRow = {
+  id: string;
+  product_id: string;
+  lot_id: string | null;
+  location_id: string | null;
+  quantity: string | number;
+};
+
+type SaleLotRow = {
+  id: string;
+  status: string;
+  branch_id: string;
+  product_id: string;
+};
+
+type ProductLotRequirementRow = {
+  id: string;
+  requires_lot: boolean;
+};
+
 type InheritableOrderPayment = {
   payment: PaymentRecord;
   availableAmount: number;
@@ -255,6 +275,8 @@ export class SaleService {
         branchId: context.branchId,
         terminalId: context.terminalId,
         posSessionId: context.posSessionId,
+        sessionId: context.sessionId,
+        roles: Array.isArray(context.roles) ? context.roles : [],
       };
     }
 
@@ -273,6 +295,8 @@ export class SaleService {
       branchId: currentPosContext.branch_id,
       terminalId: currentPosContext.terminal_id,
       posSessionId: currentPosContext.pos_session_id,
+      sessionId: context.sessionId,
+      roles: Array.isArray(context.roles) ? context.roles : [],
     };
   }
 
@@ -678,6 +702,193 @@ export class SaleService {
       `,
       [saleId, tenantId, status]
     );
+  }
+
+  private async productRequiresLot(
+    tenantId: string,
+    productId: string,
+    client: PoolClient
+  ) {
+    const result = await client.query<ProductLotRequirementRow>(
+      `
+        SELECT id, requires_lot
+        FROM products
+        WHERE id = $1
+          AND tenant_id = $2
+        LIMIT 1
+      `,
+      [productId, tenantId]
+    );
+
+    const product = result.rows[0];
+    if (!product) {
+      throw new BadRequestException("product not found for tenant");
+    }
+
+    return product.requires_lot;
+  }
+
+  private async assertCanSkipLottedReversal(
+    tenantId: string,
+    productId: string,
+    client: PoolClient
+  ) {
+    const requiresLot = await this.productRequiresLot(tenantId, productId, client);
+    if (requiresLot) {
+      throw new BadRequestException(
+        "lotted sale movement is missing stock_movement_lots for reversal"
+      );
+    }
+  }
+
+  private async reverseLottedStockMovement(
+    tenantId: string,
+    originalMovement: SaleStockMovementRow,
+    reverseMovementId: string,
+    client: PoolClient
+  ) {
+    const lotLinksResult = await client.query<SaleStockMovementLotRow>(
+      `
+        SELECT
+          sml.id,
+          sml.product_id,
+          sml.lot_id,
+          sml.location_id,
+          sml.quantity
+        FROM stock_movement_lots AS sml
+        WHERE sml.tenant_id = $1
+          AND sml.stock_movement_id = $2
+        ORDER BY sml.created_at ASC, sml.id ASC
+      `,
+      [tenantId, originalMovement.id]
+    );
+
+    if (lotLinksResult.rows.length === 0) {
+      await this.assertCanSkipLottedReversal(
+        tenantId,
+        originalMovement.product_id,
+        client
+      );
+      return;
+    }
+
+    if (!originalMovement.branch_id) {
+      throw new BadRequestException(
+        "lotted sale movement is missing branch for reversal"
+      );
+    }
+
+    const movementQuantity = this.toNumber(originalMovement.quantity);
+    const linkedQuantity = lotLinksResult.rows.reduce(
+      (sum, link) => sum + this.toNumber(link.quantity),
+      0
+    );
+
+    if (Math.abs(linkedQuantity - movementQuantity) > 0.0001) {
+      throw new BadRequestException(
+        "lotted sale movement link quantity does not match stock movement"
+      );
+    }
+
+    for (const link of lotLinksResult.rows) {
+      const quantity = this.toNumber(link.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new BadRequestException("stock_movement_lots quantity is invalid");
+      }
+      if (!link.lot_id) {
+        throw new BadRequestException("stock_movement_lots lot is invalid");
+      }
+
+      const lotResult = await client.query<SaleLotRow>(
+        `
+          SELECT id, status, branch_id, product_id
+          FROM inventory_lots
+          WHERE tenant_id = $1
+            AND id = $2
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [tenantId, link.lot_id]
+      );
+      const lot = lotResult.rows[0];
+
+      if (!lot) {
+        throw new BadRequestException("stock_movement_lots lot is invalid");
+      }
+      if (lot.status === "CANCELLED") {
+        throw new BadRequestException(
+          "CANCELLED lot cannot be reversed automatically"
+        );
+      }
+      if (lot.branch_id !== originalMovement.branch_id) {
+        throw new BadRequestException("stock_movement_lots lot branch mismatch");
+      }
+      if (
+        link.product_id !== originalMovement.product_id ||
+        lot.product_id !== originalMovement.product_id
+      ) {
+        throw new BadRequestException("stock_movement_lots product mismatch");
+      }
+
+      const balanceResult = await client.query<{ id: string }>(
+        `
+          UPDATE inventory_lot_balances AS balance
+          SET
+            quantity_on_hand = balance.quantity_on_hand + $5,
+            last_movement_at = NOW(),
+            updated_at = NOW()
+          WHERE balance.tenant_id = $1
+            AND balance.branch_id = $2
+            AND balance.product_id = $3
+            AND balance.lot_id = $4
+            AND (
+              ($6::uuid IS NULL AND balance.location_id IS NULL)
+              OR balance.location_id = $6::uuid
+            )
+          RETURNING balance.id
+        `,
+        [
+          tenantId,
+          originalMovement.branch_id,
+          originalMovement.product_id,
+          link.lot_id,
+          quantity,
+          link.location_id,
+        ]
+      );
+
+      if (!balanceResult.rows[0]) {
+        throw new BadRequestException(
+          "inventory lot balance not found for reversal"
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO stock_movement_lots (
+            id,
+            tenant_id,
+            stock_movement_id,
+            product_id,
+            lot_id,
+            location_id,
+            quantity,
+            created_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, NOW()
+          )
+        `,
+        [
+          crypto.randomUUID(),
+          tenantId,
+          reverseMovementId,
+          originalMovement.product_id,
+          link.lot_id,
+          link.location_id,
+          quantity,
+        ]
+      );
+    }
   }
 
   private async validateInvoiceableOrder(
@@ -1227,7 +1438,7 @@ export class SaleService {
           WHERE s.id = $1
             AND s.tenant_id = $2
           LIMIT 1
-          FOR UPDATE
+          FOR UPDATE OF s
         `,
         [id, actor.tenantId]
       );
@@ -1306,13 +1517,13 @@ export class SaleService {
         const originalMovement = originalMovements.shift();
 
         if (originalMovement) {
-          await this.stockMovementService.createMovement(
+          const reverseMovement = await this.stockMovementService.createMovement(
             {
               id: crypto.randomUUID(),
               tenantId: sale.tenant_id,
               productId: item.product_id,
               type: "IN",
-              quantity: this.toNumber(item.quantity),
+              quantity: this.toNumber(originalMovement.quantity),
               referenceType: "SALE",
               referenceId: id,
               branchId: originalMovement.branch_id,
@@ -1322,6 +1533,19 @@ export class SaleService {
               referenceTable: "sales",
               createdAt: new Date(),
             },
+            client
+          );
+
+          await this.reverseLottedStockMovement(
+            sale.tenant_id,
+            originalMovement,
+            reverseMovement.id,
+            client
+          );
+        } else {
+          await this.assertCanSkipLottedReversal(
+            sale.tenant_id,
+            item.product_id,
             client
           );
         }

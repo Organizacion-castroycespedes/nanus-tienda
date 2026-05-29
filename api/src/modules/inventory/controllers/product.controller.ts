@@ -19,6 +19,10 @@ import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import type {
+  ProductOperationalStatus,
+  ProductRotationClass,
+} from "../entities/product.entity";
 import { ProductService } from "../services/product.service";
 
 type AuthRequest = Request & {
@@ -43,6 +47,13 @@ type CreateProductBody = {
   priceWithTax?: number;
   priceWithoutTax?: number;
   isActive?: boolean;
+  isPerishable?: boolean;
+  requiresLot?: boolean;
+  requiresExpiration?: boolean;
+  operationalStatus?: ProductOperationalStatus;
+  rotationClass?: ProductRotationClass;
+  minStock?: number | null;
+  maxStock?: number | null;
 };
 
 type UpdateProductBody = Partial<

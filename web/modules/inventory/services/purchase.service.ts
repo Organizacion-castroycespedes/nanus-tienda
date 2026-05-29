@@ -44,6 +44,10 @@ export type PurchaseItemResponse = {
   purchaseId: string;
   productId: string;
   productName?: string | null;
+  productSku?: string | null;
+  isPerishable?: boolean;
+  requiresLot?: boolean;
+  requiresExpiration?: boolean;
   orderedQuantity: number;
   receivedQuantity: number;
   pendingQuantity?: number | null;
@@ -83,8 +87,15 @@ export type CreatePurchasePayload = {
 
 export type ReceivePurchasePayload = {
   items: Array<{
-    product_id: string;
-    quantity: number;
+    product_id?: string;
+    productId?: string;
+    purchaseItemId?: string;
+    quantity?: number;
+    receivedQuantity?: number;
+    lotCode?: string | null;
+    expirationDate?: string | null;
+    locationId?: string | null;
+    unitCost?: number;
   }>;
 };
 

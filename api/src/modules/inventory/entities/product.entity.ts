@@ -12,6 +12,26 @@ const assertNonNegativeDecimal = (value: number, field: string) => {
   }
 };
 
+export const PRODUCT_OPERATIONAL_STATUSES = [
+  "ACTIVE",
+  "INACTIVE",
+  "BLOCKED",
+  "DISCONTINUED",
+] as const;
+
+export const PRODUCT_ROTATION_CLASSES = [
+  "HIGH",
+  "MEDIUM",
+  "LOW",
+  "NO_MOVEMENT",
+] as const;
+
+export type ProductOperationalStatus =
+  (typeof PRODUCT_OPERATIONAL_STATUSES)[number];
+
+export type ProductRotationClass =
+  (typeof PRODUCT_ROTATION_CLASSES)[number] | null;
+
 export type ProductProps = {
   id: string;
   tenantId: string;
@@ -27,6 +47,13 @@ export type ProductProps = {
   priceWithTax: number;
   priceWithoutTax: number;
   isActive?: boolean;
+  isPerishable?: boolean;
+  requiresLot?: boolean;
+  requiresExpiration?: boolean;
+  operationalStatus?: ProductOperationalStatus;
+  rotationClass?: ProductRotationClass;
+  minStock?: number | null;
+  maxStock?: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -46,6 +73,13 @@ export class ProductEntity {
   readonly priceWithTax: number;
   readonly priceWithoutTax: number;
   readonly isActive: boolean;
+  readonly isPerishable: boolean;
+  readonly requiresLot: boolean;
+  readonly requiresExpiration: boolean;
+  readonly operationalStatus: ProductOperationalStatus;
+  readonly rotationClass: ProductRotationClass;
+  readonly minStock: number | null;
+  readonly maxStock: number | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -73,6 +107,46 @@ export class ProductEntity {
     assertNonNegativeDecimal(props.cost, "cost");
     assertNonNegativeDecimal(props.priceWithTax, "priceWithTax");
     assertNonNegativeDecimal(props.priceWithoutTax, "priceWithoutTax");
+    if (props.minStock !== undefined && props.minStock !== null) {
+      assertNonNegativeDecimal(props.minStock, "minStock");
+    }
+    if (props.maxStock !== undefined && props.maxStock !== null) {
+      assertNonNegativeDecimal(props.maxStock, "maxStock");
+    }
+    if (
+      props.operationalStatus !== undefined &&
+      !PRODUCT_OPERATIONAL_STATUSES.includes(props.operationalStatus)
+    ) {
+      throw new Error("operationalStatus is invalid");
+    }
+    if (
+      props.rotationClass !== undefined &&
+      props.rotationClass !== null &&
+      !PRODUCT_ROTATION_CLASSES.includes(props.rotationClass)
+    ) {
+      throw new Error("rotationClass is invalid");
+    }
+    if (
+      props.minStock !== undefined &&
+      props.minStock !== null &&
+      props.maxStock !== undefined &&
+      props.maxStock !== null &&
+      props.maxStock < props.minStock
+    ) {
+      throw new Error("maxStock must be greater than or equal to minStock");
+    }
+    if (props.requiresExpiration === true && props.requiresLot !== true) {
+      throw new Error("requiresLot is required when requiresExpiration is true");
+    }
+    if (
+      props.isPerishable === true &&
+      props.requiresLot !== true &&
+      props.requiresExpiration !== true
+    ) {
+      throw new Error(
+        "isPerishable requires requiresLot or requiresExpiration"
+      );
+    }
 
     this.id = props.id;
     this.tenantId = props.tenantId;
@@ -88,6 +162,13 @@ export class ProductEntity {
     this.priceWithTax = props.priceWithTax;
     this.priceWithoutTax = props.priceWithoutTax;
     this.isActive = props.isActive ?? true;
+    this.isPerishable = props.isPerishable ?? false;
+    this.requiresLot = props.requiresLot ?? false;
+    this.requiresExpiration = props.requiresExpiration ?? false;
+    this.operationalStatus = props.operationalStatus ?? "ACTIVE";
+    this.rotationClass = props.rotationClass ?? null;
+    this.minStock = props.minStock ?? null;
+    this.maxStock = props.maxStock ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

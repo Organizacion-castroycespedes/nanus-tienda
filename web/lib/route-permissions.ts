@@ -46,6 +46,14 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: "inventory", action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/inventory\/locations\/?$/i,
+    requirement: { module: "inventory", action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/inventory\/lots\/?$/i,
+    requirement: { module: "inventory", action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/inventory\/taxes\/?$/i,
     requirement: { module: "inventory", action: "read" },
   },

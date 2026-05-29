@@ -1,6 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
+import type {
+  ProductOperationalStatus,
+  ProductRotationClass,
+} from "../entities/product.entity";
 
 export type InventoryProductRow = QueryResultRow & {
   tenant_id: string;
@@ -18,6 +22,13 @@ export type InventoryProductRow = QueryResultRow & {
   price_with_tax: string | number;
   price_without_tax: string | number;
   is_active: boolean;
+  is_perishable: boolean;
+  requires_lot: boolean;
+  requires_expiration: boolean;
+  operational_status: ProductOperationalStatus;
+  rotation_class: ProductRotationClass;
+  min_stock: string | number | null;
+  max_stock: string | number | null;
   created_at: string | Date;
   updated_at: string | Date;
   stock: string | number;
@@ -141,6 +152,13 @@ export class InventoryRepository {
         p.price_with_tax,
         p.price_without_tax,
         p.is_active,
+        p.is_perishable,
+        p.requires_lot,
+        p.requires_expiration,
+        p.operational_status,
+        p.rotation_class,
+        p.min_stock,
+        p.max_stock,
         p.created_at,
         p.updated_at,
         COALESCE(stock_summary.stock, 0) AS stock,

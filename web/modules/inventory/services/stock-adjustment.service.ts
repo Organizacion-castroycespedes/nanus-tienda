@@ -6,6 +6,11 @@ export type CreateStockAdjustmentPayload = {
   type: "IN" | "OUT";
   quantity: number;
   reason: string;
+  lotCode?: string | null;
+  lotId?: string | null;
+  expirationDate?: string | null;
+  locationId?: string | null;
+  unitCost?: number;
 };
 
 export const createStockAdjustment = (

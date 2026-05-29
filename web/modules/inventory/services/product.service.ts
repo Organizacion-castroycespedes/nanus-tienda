@@ -1,5 +1,11 @@
 import { apiClient } from "../../../lib/http";
-import type { ProductResponse } from "../../../domains/products/dtos";
+import type {
+  ProductBarcode,
+  ProductBarcodeType,
+  ProductOperationalStatus,
+  ProductResponse,
+  ProductRotationClass,
+} from "../../../domains/products/dtos";
 
 export type GetProductsParams = {
   search?: string;
@@ -24,9 +30,24 @@ export type CreateProductPayload = {
   priceWithTax?: number;
   priceWithoutTax?: number;
   isActive?: boolean;
+  isPerishable?: boolean;
+  requiresLot?: boolean;
+  requiresExpiration?: boolean;
+  operationalStatus?: ProductOperationalStatus;
+  rotationClass?: ProductRotationClass | null;
+  minStock?: number | null;
+  maxStock?: number | null;
 };
 
 export type UpdateProductPayload = Partial<CreateProductPayload>;
+
+export type CreateProductBarcodePayload = {
+  barcode: string;
+  barcodeType?: ProductBarcodeType;
+  isPrimary?: boolean;
+};
+
+export type UpdateProductBarcodePayload = Partial<CreateProductBarcodePayload>;
 
 const buildProductsQuery = (params: GetProductsParams = {}) => {
   const searchParams = new URLSearchParams();
@@ -92,5 +113,51 @@ export const updateProduct = (
 export const deleteProduct = (productId: string, headers?: HeadersInit) =>
   apiClient<void>(`/products/${productId}`, {
     method: "DELETE",
+    headers,
+  });
+
+export const listProductBarcodes = (productId: string, headers?: HeadersInit) =>
+  apiClient<ProductBarcode[]>(`/products/${productId}/barcodes`, { headers });
+
+export const createProductBarcode = (
+  productId: string,
+  payload: CreateProductBarcodePayload,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductBarcode>(`/products/${productId}/barcodes`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const updateProductBarcode = (
+  productId: string,
+  barcodeId: string,
+  payload: UpdateProductBarcodePayload,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductBarcode>(`/products/${productId}/barcodes/${barcodeId}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const deactivateProductBarcode = (
+  productId: string,
+  barcodeId: string,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductBarcode>(`/products/${productId}/barcodes/${barcodeId}/deactivate`, {
+    method: "PATCH",
+    headers,
+  });
+
+export const setPrimaryProductBarcode = (
+  productId: string,
+  barcodeId: string,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductBarcode>(`/products/${productId}/barcodes/${barcodeId}/set-primary`, {
+    method: "PATCH",
     headers,
   });

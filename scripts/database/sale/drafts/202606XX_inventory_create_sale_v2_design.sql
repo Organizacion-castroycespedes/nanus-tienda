@@ -1,0 +1,178 @@
+-- NO EJECUTAR - DISENO CONCEPTUAL
+-- Fase 3.11: diseno tecnico de public.inventory_create_sale_v2.
+-- Este archivo NO es migracion activa.
+-- Este archivo NO debe ser llamado por el sistema.
+-- Este archivo NO contiene CREATE OR REPLACE FUNCTION ejecutable.
+-- La implementacion real debe vivir en una migracion futura revisada.
+
+-- Objetivo:
+-- - Mantener inventory_create_sale intacta.
+-- - Crear en fase futura una funcion separada inventory_create_sale_v2.
+-- - Conservar firma y retorno compatibles con v1.
+-- - Resolver FEFO dentro de SQL para productos requires_lot=true.
+-- - Mantener stock_movements como ledger principal.
+-- - Descontar inventory_lot_balances y crear stock_movement_lots.
+
+-- Firma conceptual preferida:
+-- public.inventory_create_sale_v2(
+--   p_tenant_id UUID,
+--   p_branch_id UUID,
+--   p_terminal_id UUID,
+--   p_user_id UUID,
+--   p_pos_session_id UUID,
+--   p_customer_id UUID,
+--   p_order_id UUID,
+--   p_type VARCHAR(20),
+--   p_items JSONB,
+--   p_payment_methods JSONB DEFAULT '[]'::JSONB
+-- )
+-- RETURNS TABLE (
+--   id UUID,
+--   tenant_id UUID,
+--   customer_id UUID,
+--   order_id UUID,
+--   type VARCHAR(20),
+--   status VARCHAR(20),
+--   total NUMERIC(12, 2),
+--   balance NUMERIC(12, 2),
+--   created_at TIMESTAMPTZ
+-- )
+
+-- Variables conceptuales adicionales:
+-- v_stock_movement_id UUID;
+-- v_remaining_lot_quantity NUMERIC(14, 2);
+-- v_quantity_from_lot NUMERIC(14, 2);
+-- v_lot_balance RECORD;
+
+-- Paso conceptual dentro del LOOP de items:
+-- 1. Leer producto con:
+--    p.id,
+--    p.tax_id,
+--    t.name,
+--    t.rate,
+--    t.is_included,
+--    p.requires_lot,
+--    p.requires_expiration
+--
+-- 2. Validar stock agregado igual que v1:
+--    SELECT SUM(IN) - SUM(OUT)
+--    FROM stock_movements
+--    WHERE tenant_id = p_tenant_id
+--      AND branch_id = p_branch_id
+--      AND product_id = v_item.product_id;
+--
+-- 3. Insertar sale_items y sale_item_taxes igual que v1.
+--
+-- 4. Insertar stock_movements OUT capturando id:
+--    INSERT INTO stock_movements (...)
+--    VALUES (...)
+--    RETURNING id INTO v_stock_movement_id;
+--
+-- 5. Si producto no requiere lote:
+--    -- No crear stock_movement_lots.
+--    -- No tocar inventory_lot_balances.
+--    -- Continuar siguiente item.
+--
+-- 6. Si producto requiere lote:
+--    v_remaining_lot_quantity := v_quantity;
+--
+--    FOR v_lot_balance IN
+--      SELECT
+--        balance.id AS balance_id,
+--        balance.lot_id,
+--        balance.location_id,
+--        balance.quantity_available,
+--        lot.lot_code,
+--        lot.expiration_date,
+--        lot.received_at,
+--        lot.status
+--      FROM inventory_lot_balances AS balance
+--      INNER JOIN inventory_lots AS lot
+--        ON lot.id = balance.lot_id
+--       AND lot.tenant_id = balance.tenant_id
+--       AND lot.branch_id = balance.branch_id
+--       AND lot.product_id = balance.product_id
+--      WHERE balance.tenant_id = p_tenant_id
+--        AND balance.branch_id = p_branch_id
+--        AND balance.product_id = v_item.product_id
+--        AND balance.quantity_available > 0
+--        AND lot.status = 'ACTIVE'
+--        AND (
+--          lot.expiration_date IS NULL
+--          OR lot.expiration_date >= CURRENT_DATE
+--        )
+--        AND (
+--          v_product.requires_expiration = FALSE
+--          OR lot.expiration_date IS NOT NULL
+--        )
+--      ORDER BY
+--        lot.expiration_date ASC NULLS LAST,
+--        lot.received_at ASC,
+--        lot.lot_code ASC,
+--        lot.id ASC
+--      FOR UPDATE OF balance
+--    LOOP
+--      v_quantity_from_lot :=
+--        LEAST(v_remaining_lot_quantity, v_lot_balance.quantity_available);
+--
+--      IF v_quantity_from_lot <= 0 THEN
+--        CONTINUE;
+--      END IF;
+--
+--      UPDATE inventory_lot_balances
+--      SET
+--        quantity_on_hand = quantity_on_hand - v_quantity_from_lot,
+--        last_movement_at = v_now,
+--        updated_at = v_now
+--      WHERE id = v_lot_balance.balance_id
+--        AND tenant_id = p_tenant_id
+--        AND quantity_available >= v_quantity_from_lot;
+--
+--      IF NOT FOUND THEN
+--        RAISE EXCEPTION
+--          'insufficient FEFO lot stock for product %',
+--          v_item.product_id;
+--      END IF;
+--
+--      INSERT INTO stock_movement_lots (
+--        id,
+--        tenant_id,
+--        stock_movement_id,
+--        product_id,
+--        lot_id,
+--        location_id,
+--        quantity,
+--        created_at
+--      ) VALUES (
+--        gen_random_uuid(),
+--        p_tenant_id,
+--        v_stock_movement_id,
+--        v_item.product_id,
+--        v_lot_balance.lot_id,
+--        v_lot_balance.location_id,
+--        v_quantity_from_lot,
+--        v_now
+--      );
+--
+--      v_remaining_lot_quantity :=
+--        ROUND(v_remaining_lot_quantity - v_quantity_from_lot, 2);
+--
+--      EXIT WHEN v_remaining_lot_quantity <= 0;
+--    END LOOP;
+--
+--    IF v_remaining_lot_quantity > 0 THEN
+--      RAISE EXCEPTION
+--        'insufficient FEFO lot stock for product %',
+--        v_item.product_id;
+--    END IF;
+--
+-- 7. Pagos legacy, totales, estado y retorno siguen como v1.
+
+-- Cancelacion futura conceptual:
+-- - Buscar stock_movements OUT originales de SALE.
+-- - Buscar stock_movement_lots asociados.
+-- - Crear stock_movements IN reverso.
+-- - Si lote esta CANCELLED, no reversar automaticamente.
+-- - Si lote esta vencido o BLOCKED, permitir reverso.
+-- - Incrementar inventory_lot_balances del mismo lot_id/location_id.
+-- - Crear stock_movement_lots para movimiento IN reverso.
