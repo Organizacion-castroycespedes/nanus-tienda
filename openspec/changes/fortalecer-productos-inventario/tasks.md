@@ -798,6 +798,30 @@
 - [x] Documentar bloqueo interactivo de `cd web && npm run lint`.
 - [x] Confirmar que no se toco PRD real, servidor remoto, POS UI, `backend-reporteria/`, migraciones ni funciones SQL de venta.
 
+### Fase 5.R: validacion integral operativa producto-compra-inventario-venta
+
+- [x] Confirmar QA local sobre copia PRD: `localhost:5432/manus_tienda_prd`.
+- [x] Crear backup local antes de tocar datos de prueba.
+- [x] Confirmar PostgreSQL 16.12.
+- [x] Confirmar funciones `inventory_create_sale`, `inventory_create_sale_v2` e `inventory_invoice_order`.
+- [x] Confirmar tablas `products`, `purchases`, `purchase_items`, `stock_movements`, `inventory_lots`, `inventory_lot_balances`, `stock_movement_lots`, `sales` y `sale_items`.
+- [x] Crear script de prueba integral `scripts/database/tests/20260528_phase5_operational_integral_test.ts`.
+- [x] Crear cleanup local seguro `scripts/database/dev/20260528_fixture_phase5_operational_cleanup.sql`.
+- [x] Validar producto enriquecido: crear, editar, consultar `GET /api/products/:id` y `GET /api/inventory/products`.
+- [x] Validar compra y recepcion loteada con `stock_movements IN`, `inventory_lots`, `inventory_lot_balances` y `stock_movement_lots`.
+- [x] Validar compra y recepcion no loteada sin `stock_movement_lots` ni balances loteados.
+- [x] Validar ajuste manual loteado `IN` y `OUT` con balances y links loteados.
+- [x] Validar ajuste manual no loteado sin links loteados.
+- [x] Validar venta FEFO con dos lotes y consumo por vencimiento mas cercano.
+- [x] Validar venta mixta con links solo para producto loteado.
+- [x] Validar stock loteado insuficiente con rollback total.
+- [x] Validar cancelacion loteada y mixta devolviendo al lote original sin duplicar reversos.
+- [x] Validar reconciliacion del fixture con `critical=0`, `high=0` y `discrepancies=0`.
+- [x] Ejecutar cleanup y confirmar `fixture_rows_remaining=0`.
+- [x] Corregir solo bugs de fixture/cleanup local: tablas opcionales y orden FK `purchase_items_product_id_fkey`.
+- [x] Crear `docs/evidencia-validacion-integral-operativa-fase-5.md`.
+- [x] Confirmar que no se toco PRD real, servidor remoto, `backend-reporteria/`, POS UI, migraciones, `inventory_create_sale` v1 ni `inventory_invoice_order`.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
