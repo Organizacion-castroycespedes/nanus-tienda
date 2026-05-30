@@ -887,6 +887,21 @@
 - [x] Crear `docs/evidencia-validacion-ux-operativa-fase-5-1R.md`.
 - [x] Confirmar que no se toco `api/`, `backend-reporteria/`, SQL, migraciones ni funciones SQL.
 
+### Fase 5.1.R2: hardening UX tecnico previo a pricing
+
+- [x] Corregir keys duplicadas en `/inventory/lots` deduplicando opciones y filas por `id`.
+- [x] Corregir key duplicada en alertas de reconciliacion del dashboard de inventario.
+- [x] Crear fixture local/dev de producto sin `price` y producto sin `cost`.
+- [x] Validar Orders con producto sin `price`: campo editable, aviso discreto, subtotal/total sin `NaN`.
+- [x] Validar Purchases con producto sin `cost`: campo editable, aviso discreto, subtotal/total sin `NaN`.
+- [x] Ejecutar cleanup de fixture local con `fixture_rows_remaining=0`.
+- [x] Resolver prompt interactivo de `npm run lint` con configuracion minima de Next ESLint.
+- [x] Ejecutar `cd web && npm.cmd run lint` sin prompt interactivo y sin errores.
+- [x] Ejecutar `cd web && npx.cmd tsc --noEmit --pretty false`.
+- [x] Ejecutar `cd web && npm.cmd run build`.
+- [x] Crear `docs/evidencia-hardening-ux-tecnico-fase-5-1R2.md`.
+- [x] Confirmar que no se toco `backend-reporteria/`, SQL estructural, migraciones productivas, POS, ventas ni funciones SQL.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

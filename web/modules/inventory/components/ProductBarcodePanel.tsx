@@ -10,6 +10,8 @@ import type {
   ProductBarcode,
   ProductBarcodeType,
 } from "../../../domains/products/dtos";
+import { useConfirm } from "../../../hooks/use-confirm";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
 import {
   createProductBarcode,
   deactivateProductBarcode,
@@ -67,6 +69,7 @@ export const ProductBarcodePanel = ({
   productId,
   productName,
 }: ProductBarcodePanelProps) => {
+  const confirm = useConfirm();
   const [barcodes, setBarcodes] = useState<ProductBarcode[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -171,10 +174,27 @@ export const ProductBarcodePanel = ({
       } else {
         await createProductBarcode(productId, payload);
       }
+      const successTitle = editingBarcode ? "Codigo actualizado" : "Codigo guardado";
+      const successDescription = editingBarcode
+        ? "El codigo de barras fue actualizado correctamente."
+        : "El codigo de barras fue guardado correctamente.";
       resetForm();
       await loadBarcodes();
+      await confirm({
+        title: successTitle,
+        description: successDescription,
+        confirmText: "Entendido",
+        hideCancel: true,
+      }).catch(() => undefined);
     } catch (error) {
-      setErrors({ submit: formatBarcodeError(error) });
+      const fallback = formatBarcodeError(error);
+      setErrors({ submit: fallback });
+      const dialog = buildConfirmFromApiError(error, fallback);
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
+      }).catch(() => undefined);
     } finally {
       setIsSubmitting(false);
     }

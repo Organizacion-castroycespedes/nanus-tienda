@@ -59,6 +59,9 @@ type LotRow = {
   balance: InventoryLotBalanceResponse | null;
 };
 
+const uniqueById = <T extends { id: string }>(items: T[]) =>
+  Array.from(new Map(items.map((item) => [item.id, item])).values());
+
 const createDefaultFilters = (branchId?: string | null): LotFilters => ({
   search: "",
   branchId: branchId ?? "",
@@ -276,7 +279,7 @@ const InventoryLotsPage = () => {
           branchId,
           isActive: true,
         });
-        setLocations(result);
+        setLocations(uniqueById(result));
       } catch {
         setLocations([]);
       }
@@ -297,7 +300,7 @@ const InventoryLotsPage = () => {
         }),
       ]);
 
-      const branchOptions = nextBranches.map(mapBranch);
+        const branchOptions = uniqueById(nextBranches.map(mapBranch));
       if (currentBranch && !branchOptions.some((branch) => branch.id === currentBranch)) {
         branchOptions.unshift({
           id: currentBranch,
@@ -306,7 +309,7 @@ const InventoryLotsPage = () => {
       }
 
       setBranches(branchOptions);
-      setProducts(nextProducts);
+      setProducts(uniqueById(nextProducts));
       await loadLocationsLookup(isSuperRole ? draftFilters.branchId || undefined : currentBranch ?? undefined);
     } catch {
       if (currentBranch) {
@@ -381,8 +384,8 @@ const InventoryLotsPage = () => {
           listInventoryLots(lotParams),
           listInventoryLotBalances(balanceParams),
         ]);
-        setLots(nextLots);
-        setBalances(nextBalances);
+        setLots(uniqueById(nextLots));
+        setBalances(uniqueById(nextBalances));
 
         const [nextSummary, nextDiscrepancies] = await Promise.all([
           getLotReconciliationSummary(reconciliationParams).catch(() => null),

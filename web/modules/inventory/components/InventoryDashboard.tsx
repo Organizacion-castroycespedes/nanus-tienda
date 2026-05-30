@@ -888,9 +888,20 @@ export const InventoryDashboard = () => {
                 </div>
                 {alertDiscrepancies.length > 0 ? (
                   <div className="mt-4 space-y-2 text-xs">
-                    {alertDiscrepancies.slice(0, 3).map((item) => (
+                    {alertDiscrepancies.slice(0, 3).map((item, index) => (
                       <p
-                        key={`${item.discrepancyType}:${item.lotId ?? item.balanceId ?? item.detectedAt}`}
+                        key={[
+                          item.discrepancyType,
+                          item.severity,
+                          item.productId ?? "no-product",
+                          item.lotId ?? "no-lot",
+                          item.balanceId ?? "no-balance",
+                          item.stockMovementId ?? "no-movement",
+                          item.stockMovementLotId ?? "no-link",
+                          item.branchId ?? "no-branch",
+                          item.detectedAt,
+                          index,
+                        ].join(":")}
                         className="rounded-xl bg-white/70 px-3 py-2"
                       >
                         {item.severity} - {item.discrepancyType}
