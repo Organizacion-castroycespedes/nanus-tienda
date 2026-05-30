@@ -902,6 +902,10 @@
 - [x] Crear `docs/evidencia-hardening-ux-tecnico-fase-5-1R2.md`.
 - [x] Confirmar que no se toco `backend-reporteria/`, SQL estructural, migraciones productivas, POS, ventas ni funciones SQL.
 
+## Fase 6.0: diseno fiscal de pricing, promociones y base para facturacion electronica
+
+- [x] Crear `docs/diseno-fiscal-pricing-promociones-facturacion-electronica-fase-6-0.md` sin cambios funcionales y validar con `openspec validate` y `git diff --check`.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
