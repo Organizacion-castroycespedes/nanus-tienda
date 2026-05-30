@@ -298,6 +298,54 @@ const OrdersPage = () => {
 
   const canAccessTicket = (status: OrderResponse["status"]) => status !== "DRAFT";
 
+  const isActionMode = formMode !== null;
+
+  const selectedOrderSummary = useMemo(() => {
+    if (selectedOrder) {
+      return selectedOrder;
+    }
+    if (selectedPaymentOrder) {
+      return selectedPaymentOrder;
+    }
+    if (!selectedOrderId) {
+      return null;
+    }
+    return orders.find((order) => order.id === selectedOrderId) ?? null;
+  }, [orders, selectedOrder, selectedOrderId, selectedPaymentOrder]);
+
+  const actionHeaderCopy = useMemo(() => {
+    if (!formMode) {
+      return null;
+    }
+    const labels: Record<NonNullable<typeof formMode>, string> = {
+      create: "Crear pedido",
+      edit: "Editar pedido",
+      deliver: "Entregar pedido",
+      invoice: "Facturar pedido",
+      payment: "Registrar abono",
+    };
+    return {
+      title: labels[formMode],
+      description: selectedOrderSummary
+        ? `Pedido ${selectedOrderSummary.id.slice(0, 8)} · ${
+            selectedOrderSummary.customerName || selectedOrderSummary.customerId
+          }`
+        : "Completa la accion activa y vuelve al listado cuando termines.",
+    };
+  }, [formMode, selectedOrderSummary]);
+
+  const showActionResult = useCallback(
+    async (title: string, description: string) => {
+      await confirm({
+        title,
+        description,
+        confirmText: "Entendido",
+        hideCancel: true,
+      });
+    },
+    [confirm]
+  );
+
   const handleDownloadTicket = async (order: OrderResponse) => {
     try {
       const blob = await getOrderTicket(order.id);
@@ -315,9 +363,12 @@ const OrdersPage = () => {
             <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
             <h1 className="text-2xl font-semibold text-slate-900">Pedidos</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Consulta pedidos registrados por cliente, sucursal, tipo y estado.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Consulta pedidos registrados por cliente, sucursal, tipo y estado."}
             </p>
           </div>
+          {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
             <Button variant="ghost" onClick={() => void loadOrders()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
@@ -330,8 +381,28 @@ const OrdersPage = () => {
               </Button>
             ) : null}
           </div>
+          ) : null}
         </div>
       </section>
+
+      {isActionMode && actionHeaderCopy ? (
+        <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-blue-700">Accion activa</p>
+              <h2 className="mt-1 text-xl font-semibold text-slate-950">
+                {actionHeaderCopy.title}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                {actionHeaderCopy.description}
+              </p>
+            </div>
+            <Button variant="outline" onClick={closeForms}>
+              Volver al listado
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
       {formMode === "create" ? (
         <OrderForm
@@ -360,7 +431,15 @@ const OrdersPage = () => {
         <OrderDeliverForm
           orderId={selectedOrderId}
           onCancel={closeForms}
-          onSuccess={() => void refreshAfterMutation("Entrega registrada correctamente.")}
+          onSuccess={() =>
+            void (async () => {
+              await showActionResult(
+                "Entrega registrada",
+                "La entrega del pedido fue guardada correctamente."
+              );
+              await refreshAfterMutation("Entrega registrada correctamente.");
+            })()
+          }
         />
       ) : null}
 
@@ -368,7 +447,15 @@ const OrdersPage = () => {
         <OrderInvoiceForm
           orderId={selectedOrderId}
           onCancel={closeForms}
-          onSuccess={() => void refreshAfterMutation("Venta creada correctamente desde la orden.")}
+          onSuccess={() =>
+            void (async () => {
+              await showActionResult(
+                "Venta creada",
+                "La venta fue creada correctamente desde el pedido."
+              );
+              await refreshAfterMutation("Venta creada correctamente desde la orden.");
+            })()
+          }
         />
       ) : null}
 
@@ -401,6 +488,7 @@ const OrdersPage = () => {
         }
       />
 
+      {!isActionMode ? (
       <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div
           className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
@@ -491,6 +579,7 @@ const OrdersPage = () => {
           </Button>
         </div>
       </section>
+      ) : null}
 
       {errorMessage ? (
         <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
@@ -500,6 +589,7 @@ const OrdersPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
+      {!isActionMode ? (
       <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="w-full max-w-full overflow-x-auto">
           <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
@@ -680,6 +770,7 @@ const OrdersPage = () => {
           </div>
         </div>
       </section>
+      ) : null}
     </div>
   );
 };

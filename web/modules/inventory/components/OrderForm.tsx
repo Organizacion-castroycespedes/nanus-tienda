@@ -8,7 +8,9 @@ import { Select } from "../../../components/design-system/Select";
 import { listBranches } from "../../../domains/branches/api";
 import type { BranchResponse } from "../../../domains/branches/dtos";
 import type { ProductResponse } from "../../../domains/products/dtos";
+import { useConfirm } from "../../../hooks/use-confirm";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
 import { useAppSelector } from "../../../store/hooks";
 import { getCustomers, type CustomerResponse } from "../services/customer.service";
 import {
@@ -51,6 +53,11 @@ const createEmptyItem = (): OrderFormItem => ({
   price: "",
 });
 
+const getProductDefaultPrice = (product: ProductResponse | undefined) => {
+  const price = Number(product?.price);
+  return Number.isFinite(price) && price > 0 ? String(price) : "";
+};
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
     style: "currency",
@@ -80,6 +87,7 @@ export const OrderForm = ({
   onSuccess,
 }: OrderFormProps) => {
   const { currentBranch, currentTenant } = useInventoryScope();
+  const confirm = useConfirm();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? null);
   const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
   const [values, setValues] = useState<OrderFormValues>(() =>
@@ -217,7 +225,19 @@ export const OrderForm = ({
     setValues((prev) => ({
       ...prev,
       items: prev.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
+        itemIndex === index
+          ? {
+              ...item,
+              [field]: value,
+              ...(field === "productId"
+                ? {
+                    price: getProductDefaultPrice(
+                      products.find((product) => product.id === value)
+                    ),
+                  }
+                : {}),
+            }
+          : item
       ),
     }));
     setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
@@ -254,11 +274,18 @@ export const OrderForm = ({
       }
 
       onSuccess();
-    } catch {
+    } catch (error) {
+      const fallback =
+        mode === "edit" ? "No se pudo actualizar el pedido." : "No se pudo guardar el pedido.";
       setErrors({
-        submit:
-          mode === "edit" ? "No se pudo actualizar el pedido." : "No se pudo guardar el pedido.",
+        submit: fallback,
       });
+      const dialog = buildConfirmFromApiError(error, fallback);
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
+      }).catch(() => undefined);
     } finally {
       setIsSubmitting(false);
     }
@@ -374,86 +401,101 @@ export const OrderForm = ({
           </div>
 
           <div className="grid gap-4">
-            {values.items.map((item, index) => (
-              <div
-                key={`${index}-${item.productId}`}
-                className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_1fr_auto]"
-              >
-                <Select
-                  label="Producto"
-                  value={item.productId}
-                  disabled={catalogLoading || products.length === 0}
-                  onChange={(event) =>
-                    handleItemChange(index, "productId", event.target.value)
-                  }
+            {values.items.map((item, index) => {
+              const selectedProduct = products.find((product) => product.id === item.productId);
+              const selectedProductPrice = Number(selectedProduct?.price);
+              const productHasNoDefaultPrice =
+                Boolean(selectedProduct) &&
+                (!Number.isFinite(selectedProductPrice) || selectedProductPrice <= 0);
+
+              return (
+                <div
+                  key={`${index}-${item.productId}`}
+                  className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_1fr_auto]"
                 >
-                  <option value="">
-                    {catalogLoading ? "Cargando..." : "Selecciona un producto"}
-                  </option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </Select>
-
-                <Input
-                  label="Cantidad pedida"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.quantity}
-                  onChange={(event) =>
-                    handleItemChange(index, "quantity", event.target.value)
-                  }
-                />
-
-                <Input
-                  label="Entregado"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={mode === "edit" && order ? String(order.items[index]?.deliveredQuantity ?? 0) : "0"}
-                  disabled
-                  readOnly
-                />
-
-                <Input
-                  label="Precio"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.price}
-                  onChange={(event) => handleItemChange(index, "price", event.target.value)}
-                />
-
-                <div className="flex items-end gap-2">
-                  <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Subtotal
-                    </p>
-                    <p className="mt-1 font-semibold text-slate-900">
-                      {formatCurrency(itemSubtotals[index] ?? 0)}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      setValues((prev) => ({
-                        ...prev,
-                        items:
-                          prev.items.length > 1
-                            ? prev.items.filter((_, itemIndex) => itemIndex !== index)
-                            : prev.items,
-                      }))
+                  <Select
+                    label="Producto"
+                    value={item.productId}
+                    disabled={catalogLoading || products.length === 0}
+                    onChange={(event) =>
+                      handleItemChange(index, "productId", event.target.value)
                     }
-                    disabled={values.items.length === 1}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    <option value="">
+                      {catalogLoading ? "Cargando..." : "Selecciona un producto"}
+                    </option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </Select>
+
+                  <Input
+                    label="Cantidad pedida"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={item.quantity}
+                    onChange={(event) =>
+                      handleItemChange(index, "quantity", event.target.value)
+                    }
+                  />
+
+                  <Input
+                    label="Entregado"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={mode === "edit" && order ? String(order.items[index]?.deliveredQuantity ?? 0) : "0"}
+                    disabled
+                    readOnly
+                  />
+
+                  <div className="space-y-1">
+                    <Input
+                      label="Precio"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.price}
+                      onChange={(event) => handleItemChange(index, "price", event.target.value)}
+                    />
+                    {productHasNoDefaultPrice ? (
+                      <p className="text-xs text-amber-700">
+                        Este producto no tiene precio registrado. Ingresa el precio manualmente.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Subtotal
+                      </p>
+                      <p className="mt-1 font-semibold text-slate-900">
+                        {formatCurrency(itemSubtotals[index] ?? 0)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        setValues((prev) => ({
+                          ...prev,
+                          items:
+                            prev.items.length > 1
+                              ? prev.items.filter((_, itemIndex) => itemIndex !== index)
+                              : prev.items,
+                        }))
+                      }
+                      disabled={values.items.length === 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {errors.items ? <p className="mt-3 text-xs text-rose-600">{errors.items}</p> : null}

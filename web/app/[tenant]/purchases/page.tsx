@@ -9,6 +9,8 @@ import { NoticeDialog } from "../../../components/design-system/NoticeDialog";
 import { Select } from "../../../components/design-system/Select";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
+import { useConfirm } from "../../../hooks/use-confirm";
 import { useNoticeDialog } from "../../../hooks/useNoticeDialog";
 import { useAppSelector } from "../../../store/hooks";
 import {
@@ -195,6 +197,7 @@ const PurchasesPage = () => {
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
+  const confirm = useConfirm();
   const ticketFrameRef = useRef<HTMLIFrameElement | null>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -220,6 +223,18 @@ const PurchasesPage = () => {
   const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
   const canCancel = hasPermission("inventory.cancel");
   const canSettlePartial = hasPermission("inventory.settle_partial");
+
+  const showApiConfirmError = useCallback(
+    async (error: unknown, fallbackMessage: string) => {
+      const dialog = buildConfirmFromApiError(error, fallbackMessage);
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
+      });
+    },
+    [confirm]
+  );
 
   const openPurchasePanel = useCallback(
     (action: PurchasePanelAction, purchaseId: string) => {
@@ -758,7 +773,7 @@ const PurchasesPage = () => {
           onCancel={handleBackToList}
           onSuccess={(response) => void handleReceiveSuccess(response)}
           onError={(error) =>
-            notice.showFromApiError(error, "No se pudo registrar la recepcion.")
+            void showApiConfirmError(error, "No se pudo registrar la recepcion.")
           }
         />
       ) : null}
@@ -1012,7 +1027,9 @@ const PurchasesPage = () => {
         <PurchaseForm
           onCancel={requestBackToList}
           onSuccess={(response) => void handleCreateSuccess(response)}
-          onError={(error) => notice.showFromApiError(error, "No se pudo guardar la compra.")}
+          onError={(error) =>
+            void showApiConfirmError(error, "No se pudo guardar la compra.")
+          }
           onDirtyChange={setCreateHasUnsavedChanges}
         />
       ) : null}

@@ -822,6 +822,71 @@
 - [x] Crear `docs/evidencia-validacion-integral-operativa-fase-5.md`.
 - [x] Confirmar que no se toco PRD real, servidor remoto, `backend-reporteria/`, POS UI, migraciones, `inventory_create_sale` v1 ni `inventory_invoice_order`.
 
+### Fase 5.1: UX operativo pagos rapidos, foco de acciones y mensajes consistentes
+
+- [x] Revisar `web/components/design-system/confirm-dialog.tsx`.
+- [x] Extender `ConfirmDialog` con `hideCancel` para mensajes de exito/error sin crear modal duplicado.
+- [x] Crear helper frontend `web/modules/shared/payments/payment-allocation.helper.ts`.
+- [x] Implementar deteccion robusta de metodo EFECTIVO/CASH sin UUID hardcodeado.
+- [x] POS `Cobrar venta` inicia con efectivo por defecto por el total.
+- [x] POS rebalancea efectivo al agregar, editar o quitar otros medios de pago.
+- [x] POS bloquea sobrepago no efectivo, montos invalidos y metodos duplicados.
+- [x] POS mejora modal de cobro con scroll interno para pantallas pequenas.
+- [x] Orders entrega pedido muestra errores API con `confirm-dialog.tsx`.
+- [x] Orders entrega/facturacion muestran confirmacion de exito con `confirm-dialog.tsx`.
+- [x] Orders aplica focus mode real y oculta filtros/listado durante acciones.
+- [x] Orders facturar/crear venta usa efectivo por defecto y rebalanceo automatico.
+- [x] Orders facturar/crear venta muestra errores API con `confirm-dialog.tsx`.
+- [x] Purchases crear compra autocompleta costo desde `product.cost`.
+- [x] Purchases muestra aviso discreto cuando producto no tiene costo registrado.
+- [x] Purchases crear/recibir compra muestra errores criticos con `confirm-dialog.tsx`.
+- [x] Ejecutar `cd web && npx.cmd tsc --noEmit --pretty false`.
+- [x] Ejecutar `cd web && npm.cmd run build`.
+- [x] Documentar bloqueo interactivo de `cd web && npm.cmd run lint`.
+- [x] Crear `docs/evidencia-ux-operativo-pagos-focus-confirmaciones-fase-5-1.md`.
+- [x] Confirmar que no se toco `api/`, `backend-reporteria/`, SQL, migraciones, POS backend ni funciones SQL.
+
+### Fase 5.1.1: Orders precio automatico del producto al crear pedido
+
+- [x] Revisar flujo de crear pedido en `/[tenant]/orders`.
+- [x] Confirmar que el catalogo frontend de productos expone `product.price`.
+- [x] Usar `product.price` como precio por defecto del item al seleccionar producto.
+- [x] Confirmar que no se usa `product.cost` para pedidos.
+- [x] Mantener precio editable manualmente por el usuario.
+- [x] Actualizar precio cuando el usuario cambia de producto.
+- [x] Mantener recalculo de subtotal y total.
+- [x] Mostrar aviso discreto cuando producto no tiene precio valido.
+- [x] Usar `confirm-dialog.tsx` para errores criticos de crear/editar pedido.
+- [x] Ejecutar `cd web && npx.cmd tsc --noEmit --pretty false`.
+- [x] Ejecutar `cd web && npm.cmd run build`.
+- [x] Documentar bloqueo interactivo de `cd web && npm.cmd run lint`.
+- [x] Crear `docs/evidencia-orders-precio-producto-fase-5-1-1.md`.
+- [x] Confirmar que no se toco `api/`, `backend-reporteria/`, SQL, migraciones, POS ni compras.
+
+### Fase 5.1.R: validacion UX operativa POS, Orders y Purchases
+
+- [x] Validar POS `Cobrar venta` con `EFECTIVO` por defecto.
+- [x] Validar POS rebalanceando efectivo al agregar `NEQUI`.
+- [x] Validar POS con efectivo en `0` cuando otro medio cubre total.
+- [x] Validar POS bloqueando sobrepago de medio no efectivo.
+- [x] Validar modal POS con foco visual y contenido accesible.
+- [x] Validar Orders `Crear pedido` autocompletando precio desde `product.price`.
+- [x] Validar Orders respetando edicion manual de precio al cambiar cantidad.
+- [x] Validar Orders actualizando precio al cambiar producto.
+- [x] Validar Orders focus mode para `Entregar pedido`.
+- [x] Validar Orders entrega con confirmacion visual y dialog de exito.
+- [x] Validar Orders focus mode para `Facturar pedido`.
+- [x] Validar Orders facturacion con `EFECTIVO` por defecto.
+- [x] Validar Orders facturacion rebalanceando efectivo al agregar `NEQUI`.
+- [x] Validar Orders facturacion bloqueando sobrepago.
+- [x] Validar Orders `Crear venta` con confirmacion visual y dialog de exito.
+- [x] Validar Purchases `Crear compra` autocompletando costo desde `product.cost`.
+- [x] Validar Purchases respetando edicion manual de costo al cambiar cantidad.
+- [x] Validar Purchases actualizando costo al cambiar producto.
+- [x] Confirmar que errores criticos operativos usan `confirm-dialog.tsx`.
+- [x] Crear `docs/evidencia-validacion-ux-operativa-fase-5-1R.md`.
+- [x] Confirmar que no se toco `api/`, `backend-reporteria/`, SQL, migraciones ni funciones SQL.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

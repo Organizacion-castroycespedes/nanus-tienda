@@ -44,10 +44,17 @@ import {
 import {
   buildDefaultPayments,
   buildPaymentId,
+  type PaymentDraft,
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import type { TaxResponse } from "../../inventory/services/tax.service";
+import {
+  createDefaultCashPayment,
+  findCashPaymentMethod,
+  parsePaymentAmount,
+  rebalanceCashPayment,
+} from "../../shared/payments/payment-allocation.helper";
 
 type CategoryKey = "all" | "available" | "low" | "out";
 
@@ -82,11 +89,21 @@ const normalizeText = (value: string) =>
 
 const round = (value: number) => Number(value.toFixed(2));
 
-const parseAmount = (value: string) => {
-  const sanitized = value.replace(",", ".").replace(/[^0-9.]/g, "");
-  const parsed = Number(sanitized);
-  return Number.isFinite(parsed) ? round(parsed) : 0;
-};
+const arePaymentsEqual = (
+  first: PaymentDraft[],
+  second: PaymentDraft[]
+) =>
+  first.length === second.length &&
+  first.every((payment, index) => {
+    const other = second[index];
+    return (
+      other &&
+      payment.id === other.id &&
+      payment.paymentMethodId === other.paymentMethodId &&
+      payment.amount === other.amount &&
+      payment.reference === other.reference
+    );
+  });
 
 const isLowStock = (stock: number) => stock > 0 && stock <= 5;
 
@@ -149,6 +166,7 @@ export const PosScreen = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
 
   // New state for cart drawer visibility
@@ -339,30 +357,6 @@ export const PosScreen = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (paymentMethodsCatalog.length === 0) {
-      return;
-    }
-
-    const defaultPaymentMethodId = paymentMethodsCatalog[0]?.id ?? "";
-    if (!defaultPaymentMethodId) {
-      return;
-    }
-
-    const needsDefaultMethod = payments.some((payment) => !payment.paymentMethodId);
-    if (!needsDefaultMethod) {
-      return;
-    }
-
-    setPayments(
-      payments.map((payment, index) =>
-        index === 0 && !payment.paymentMethodId
-          ? { ...payment, paymentMethodId: defaultPaymentMethodId }
-          : payment
-      )
-    );
-  }, [paymentMethodsCatalog, payments, setPayments]);
-
   const taxById = useMemo(
     () =>
       taxes.reduce<Record<string, TaxResponse>>((acc, tax) => {
@@ -393,6 +387,21 @@ export const PosScreen = () => {
         label: method.nombre,
       })),
     [paymentMethodsCatalog]
+  );
+
+  const cashPaymentMethod = useMemo(
+    () => findCashPaymentMethod(paymentMethodsCatalog),
+    [paymentMethodsCatalog]
+  );
+
+  const createPaymentDraft = useCallback(
+    (paymentMethodId: string, amount: string): PaymentDraft => ({
+      id: buildPaymentId(),
+      paymentMethodId,
+      amount,
+      reference: "",
+    }),
+    []
   );
 
   const categoryCounts = useMemo(() => {
@@ -476,11 +485,25 @@ export const PosScreen = () => {
     };
   }, [cartWithDerivedValues]);
 
+  const rebalancePaymentsForTotal = useCallback(
+    (nextPayments: PaymentDraft[]) => {
+      const result = rebalanceCashPayment(
+        summary.total,
+        nextPayments,
+        cashPaymentMethod,
+        createPaymentDraft
+      );
+      setPaymentWarning(result.error);
+      return result.payments;
+    },
+    [cashPaymentMethod, createPaymentDraft, summary.total]
+  );
+
   const parsedPayments = useMemo(
     () =>
       payments.map((payment) => ({
         ...payment,
-        numericAmount: parseAmount(payment.amount),
+        numericAmount: parsePaymentAmount(payment.amount),
         method: paymentMethodById[payment.paymentMethodId] ?? null,
       })),
     [paymentMethodById, payments]
@@ -526,6 +549,23 @@ export const PosScreen = () => {
   }, [summary.total, totalPaid, totalCashEntered]);
 
   const canCharge = canRead && canCreate && cartWithDerivedValues.length > 0;
+
+  useEffect(() => {
+    if (!paymentModalOpen || paymentMethodsCatalog.length === 0) {
+      return;
+    }
+
+    const nextPayments = rebalancePaymentsForTotal(payments);
+    if (!arePaymentsEqual(payments, nextPayments)) {
+      setPayments(nextPayments);
+    }
+  }, [
+    paymentMethodsCatalog.length,
+    paymentModalOpen,
+    payments,
+    rebalancePaymentsForTotal,
+    setPayments,
+  ]);
 
   // Cart item count for floating button
   const cartItemCount = cartWithDerivedValues.reduce((sum, item) => sum + item.quantity, 0);
@@ -605,14 +645,24 @@ export const PosScreen = () => {
   };
 
   const resetPayments = () => {
-    setPayments(buildDefaultPayments());
+    const result = createDefaultCashPayment(
+      summary.total,
+      paymentMethodsCatalog,
+      createPaymentDraft
+    );
+    setPaymentWarning(result.error);
+    setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
   };
 
   const openChargeModal = () => {
     setSubmitError(null);
-    if (payments.length === 0) {
-      resetPayments();
-    }
+    const result = createDefaultCashPayment(
+      summary.total,
+      paymentMethodsCatalog,
+      createPaymentDraft
+    );
+    setPaymentWarning(result.error);
+    setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
     setPaymentModalOpen(true);
   };
 
@@ -631,27 +681,33 @@ export const PosScreen = () => {
   ) => {
     setSubmitError(null);
     setPayments(
-      payments.map((payment) =>
-        payment.id === id ? { ...payment, [field]: value } : payment
+      rebalancePaymentsForTotal(
+        payments.map((payment) =>
+          payment.id === id ? { ...payment, [field]: value } : payment
+        )
       )
     );
   };
 
   const addPaymentRow = () => {
-    setPayments([
-      ...payments,
-      {
-        id: buildPaymentId(),
-        paymentMethodId: paymentMethodsCatalog[0]?.id ?? "",
-        amount: "",
-        reference: "",
-      },
-    ]);
+    const firstNonCashMethod =
+      paymentMethodsCatalog.find((method) => method.id !== cashPaymentMethod?.id) ??
+      paymentMethodsCatalog[0] ??
+      null;
+    setSubmitError(null);
+    setPayments(
+      rebalancePaymentsForTotal([
+        ...payments,
+        createPaymentDraft(firstNonCashMethod?.id ?? "", ""),
+      ])
+    );
   };
 
   const removePaymentRow = (id: string) => {
     setPayments(
-      payments.length === 1 ? payments : payments.filter((payment) => payment.id !== id)
+      payments.length === 1
+        ? payments
+        : rebalancePaymentsForTotal(payments.filter((payment) => payment.id !== id))
     );
   };
 
@@ -714,12 +770,16 @@ export const PosScreen = () => {
       return "Hay items que superan el stock disponible.";
     }
 
-    if (paymentDerivedState.overpayment > 0 && totalCashEntered <= 0) {
-      return "El cambio solo puede calcularse cuando existe un pago en efectivo.";
+    if (paymentWarning) {
+      return paymentWarning;
     }
 
     if (paymentDerivedState.overpayment > 0 && totalNonCashPaid > summary.total) {
       return "Los pagos no en efectivo no pueden exceder el total de la venta.";
+    }
+
+    if (paymentDerivedState.overpayment > 0 && totalCashEntered <= 0) {
+      return "El cambio solo puede calcularse cuando existe un pago en efectivo.";
     }
 
     const hasInvalidPayments = parsedPayments.some(
@@ -746,6 +806,13 @@ export const PosScreen = () => {
       return "Los metodos que exigen referencia deben incluirla.";
     }
 
+    const duplicateMethods = parsedPayments
+      .filter((payment) => payment.numericAmount > 0 && payment.paymentMethodId)
+      .map((payment) => payment.paymentMethodId);
+    if (new Set(duplicateMethods).size !== duplicateMethods.length) {
+      return "No repitas el mismo metodo de pago en varias lineas.";
+    }
+
     const hasCashWithoutSession = parsedPayments.some(
       (payment) => payment.numericAmount > 0 && payment.method?.tipo === "CASH" && !currentCashSession
     );
@@ -755,6 +822,10 @@ export const PosScreen = () => {
 
     if (paymentDerivedState.pending === 0 && totalPaid === 0) {
       return "Registra al menos un metodo de pago para una venta al contado.";
+    }
+
+    if (paymentDerivedState.pending > 0) {
+      return "El total pagado debe ser igual al total de la venta.";
     }
 
     return null;
@@ -1301,7 +1372,9 @@ export const PosScreen = () => {
       {paymentModalOpen ? (
         <Modal
           title="Cobrar venta"
-          className="max-w-3xl dark:bg-slate-950"
+          size="lg"
+          onClose={closeChargeModal}
+          className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
         >
           <div className="space-y-5">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -1430,6 +1503,12 @@ export const PosScreen = () => {
                 </p>
               )}
             </div>
+
+            {paymentWarning ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                {paymentWarning}
+              </div>
+            ) : null}
 
             {submitError ? (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
