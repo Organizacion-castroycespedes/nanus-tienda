@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope
+  xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+  xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <soap:Body>
+    <GetAcquirerResponse>
+      <cac:AccountingCustomerParty>
+        <cac:Party>
+          <cac:PartyIdentification>
+            <cbc:ID schemeName="31">3199991</cbc:ID>
+          </cac:PartyIdentification>
+          <cac:Contact>
+            <cbc:Name>Nombre NIT 1</cbc:Name>
+            <cbc:ElectronicMail>Mail_NIT_1@mail.com</cbc:ElectronicMail>
+          </cac:Contact>
+        </cac:Party>
+      </cac:AccountingCustomerParty>
+      <cac:TaxRepresentativeParty>
+        <cac:PartyIdentification>
+          <cbc:ID>3199991</cbc:ID>
+        </cac:PartyIdentification>
+      </cac:TaxRepresentativeParty>
+    </GetAcquirerResponse>
+  </soap:Body>
+</soap:Envelope>

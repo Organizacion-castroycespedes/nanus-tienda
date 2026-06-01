@@ -349,6 +349,11 @@ export const ProductForm = ({
               value={values.price}
               onChange={(event) => setFieldValue("price", event.target.value)}
               placeholder="0.00"
+              hint={
+                mode === "edit"
+                  ? "Para trazabilidad use Cambiar precio desde el listado."
+                  : undefined
+              }
             />
             {errors.price ? <p className="text-xs text-rose-600">{errors.price}</p> : null}
           </div>

@@ -62,6 +62,11 @@ type UpdateProductBody = Partial<
   }
 >;
 
+type ChangeProductPriceBody = {
+  newPrice: number;
+  reason: string;
+};
+
 @Controller("products")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ProductController {
@@ -76,6 +81,14 @@ export class ProductController {
       throw new NotFoundException("tenant not found in request context");
     }
     return tenantId;
+  }
+
+  private getUserId(request: AuthRequest) {
+    const userId = request.user?.id;
+    if (!userId) {
+      throw new BadRequestException("userId is required");
+    }
+    return userId;
   }
 
   private getBranchId(request: AuthRequest, branchId: string | undefined) {
@@ -115,6 +128,29 @@ export class ProductController {
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.getProductById(id, this.getTenantId(request));
+  }
+
+  @Get(":id/price-history")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  getPriceHistory(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.productService.getPriceHistory(id, this.getTenantId(request));
+  }
+
+  @Post(":id/change-price")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
+  changePrice(
+    @Param("id") id: string,
+    @Body() body: ChangeProductPriceBody,
+    @Req() request: AuthRequest
+  ) {
+    return this.productService.changePrice(
+      id,
+      this.getTenantId(request),
+      this.getUserId(request),
+      body
+    );
   }
 
   @Put(":id")

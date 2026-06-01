@@ -49,3 +49,33 @@ export type ProductResponse = {
   terminalName?: string | null;
   stock?: number;
 };
+
+export type ProductPriceHistoryStatus =
+  | "APPLIED"
+  | "PENDING_APPROVAL"
+  | "REJECTED";
+
+export type ProductPriceHistoryEntry = {
+  id: string;
+  tenantId: string;
+  productId: string;
+  previousPrice: number;
+  newPrice: number;
+  reason: string;
+  changedBy: string | null;
+  validFrom: string;
+  validTo: string | null;
+  status: ProductPriceHistoryStatus;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+};
+
+export type ProductPriceChangeResponse = {
+  productId: string;
+  previousPrice: number;
+  newPrice: number;
+  reason: string;
+  changedBy: string | null;
+  appliedAt: string;
+};

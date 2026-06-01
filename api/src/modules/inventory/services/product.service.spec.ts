@@ -61,7 +61,94 @@ const buildService = (currentProduct = buildProduct()) => {
     getStockByProduct: async () => ({ stock: 0 }),
   };
 
-  return new ProductService(repository as any, stockMovementService as any);
+  const db = {
+    getClient: async () => ({
+      query: async () => ({ rows: [] }),
+      release: () => undefined,
+    }),
+  };
+
+  return new ProductService(
+    repository as any,
+    stockMovementService as any,
+    db as any
+  );
+};
+
+const buildPriceChangeService = (
+  currentProduct = buildProduct(),
+  options: { findByIdForUpdateReturns?: ProductEntity | null } = {}
+) => {
+  const calls: string[] = [];
+  const historyRows: any[] = [];
+  const updatedProducts: Partial<ProductProps>[] = [];
+  const repository = {
+    findById: async (id: string, productTenantId: string) =>
+      id === currentProduct.id && productTenantId === currentProduct.tenantId
+        ? currentProduct
+        : null,
+    findByIdForUpdate: async () =>
+      options.findByIdForUpdateReturns === undefined
+        ? currentProduct
+        : options.findByIdForUpdateReturns,
+    closeCurrentPriceHistory: async () => {
+      calls.push("closeCurrentPriceHistory");
+    },
+    createPriceHistory: async (data: any) => {
+      calls.push("createPriceHistory");
+      const row = {
+        id: randomUUID(),
+        ...data,
+        status: "APPLIED",
+        validTo: null,
+        approvedBy: null,
+        approvedAt: null,
+        createdAt: data.validFrom,
+      };
+      historyRows.push(row);
+      return row;
+    },
+    update: async (
+      id: string,
+      productTenantId: string,
+      data: Partial<ProductProps>
+    ) => {
+      calls.push("updateProduct");
+      updatedProducts.push(data);
+      return ProductEntity.create({
+        ...currentProduct,
+        ...data,
+        id,
+        tenantId: productTenantId,
+        updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+      });
+    },
+    findPriceHistoryByProduct: async () => historyRows,
+  };
+  const stockMovementService = {
+    getStockByProduct: async () => ({ stock: 0 }),
+  };
+  const client = {
+    query: async (sql: string) => {
+      calls.push(sql);
+      return { rows: [] };
+    },
+    release: () => calls.push("release"),
+  };
+  const db = {
+    getClient: async () => client,
+  };
+
+  return {
+    service: new ProductService(
+      repository as any,
+      stockMovementService as any,
+      db as any
+    ),
+    calls,
+    historyRows,
+    updatedProducts,
+  };
 };
 
 describe("ProductService enriched product rules", () => {
@@ -156,6 +243,109 @@ describe("ProductService enriched product rules", () => {
           rotationClass: "STATIC" as any,
         }),
       /rotationClass is invalid/
+    );
+  });
+
+  it("changes product price and stores applied history", async () => {
+    const current = buildProduct({ price: 10000 });
+    const { service, calls, historyRows, updatedProducts } =
+      buildPriceChangeService(current);
+
+    const result = await service.changePrice(current.id, tenantId, randomUUID(), {
+      newPrice: 12000,
+      reason: "Ajuste por nuevo costo de proveedor",
+    });
+
+    assert.equal(result.productId, current.id);
+    assert.equal(result.previousPrice, 10000);
+    assert.equal(result.newPrice, 12000);
+    assert.equal(result.reason, "Ajuste por nuevo costo de proveedor");
+    assert.equal(historyRows.length, 1);
+    assert.equal(historyRows[0].status, "APPLIED");
+    assert.equal(updatedProducts[0].price, 12000);
+    assert.ok(calls.includes("BEGIN"));
+    assert.ok(calls.includes("COMMIT"));
+    assert.ok(!calls.includes("ROLLBACK"));
+  });
+
+  it("rejects empty or short price change reason", async () => {
+    const { service } = buildPriceChangeService();
+
+    await assert.rejects(
+      () =>
+        service.changePrice(productId, tenantId, randomUUID(), {
+          newPrice: 120,
+          reason: "abcd",
+        }),
+      /reason must be at least 5 characters long/
+    );
+  });
+
+  it("rejects negative price change", async () => {
+    const { service } = buildPriceChangeService();
+
+    await assert.rejects(
+      () =>
+        service.changePrice(productId, tenantId, randomUUID(), {
+          newPrice: -1,
+          reason: "Ajuste valido",
+        }),
+      /newPrice must be a non-negative number/
+    );
+  });
+
+  it("rejects product from another tenant", async () => {
+    const { service, calls } = buildPriceChangeService(buildProduct(), {
+      findByIdForUpdateReturns: null,
+    });
+
+    await assert.rejects(
+      () =>
+        service.changePrice(productId, randomUUID(), randomUUID(), {
+          newPrice: 120,
+          reason: "Ajuste valido",
+        }),
+      /product not found/
+    );
+    assert.ok(calls.includes("ROLLBACK"));
+  });
+
+  it("returns product price history after validating tenant ownership", async () => {
+    const current = buildProduct();
+    const { service, historyRows } = buildPriceChangeService(current);
+    historyRows.push({
+      id: randomUUID(),
+      tenantId,
+      productId: current.id,
+      previousPrice: 100,
+      newPrice: 120,
+      reason: "Ajuste valido",
+      changedBy: randomUUID(),
+      validFrom: new Date("2026-01-02T00:00:00.000Z"),
+      validTo: null,
+      status: "APPLIED",
+      approvedBy: null,
+      approvedAt: null,
+      createdAt: new Date("2026-01-02T00:00:00.000Z"),
+    });
+
+    const result = await service.getPriceHistory(current.id, tenantId);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].newPrice, 120);
+  });
+
+  it("keeps historical sales untouched because price change only updates product and history", async () => {
+    const { service, calls } = buildPriceChangeService();
+
+    await service.changePrice(productId, tenantId, randomUUID(), {
+      newPrice: 130,
+      reason: "Ajuste valido",
+    });
+
+    assert.deepEqual(
+      calls.filter((call) => call.includes("sale_items") || call.includes("order_items")),
+      []
     );
   });
 });

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import "reflect-metadata";
+import { MENU_KEYS } from "../../../common/constants/menu-keys";
+import { PERMISSION_KEY } from "../../../common/decorators/require-permission.decorator";
 import { ElectronicInvoicingCustomersController } from "./electronic-invoicing-customers.controller";
 
 const request = {
@@ -9,6 +12,50 @@ const request = {
 } as never;
 
 describe("ElectronicInvoicingCustomersController", () => {
+  it("keeps the customers electronic invoicing permission key", () => {
+    const listPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.list
+    );
+    const createPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.create
+    );
+    const updatePermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.update
+    );
+    const getDefaultPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.getDefault
+    );
+    const ensureDefaultPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.ensureDefault
+    );
+
+    assert.deepEqual(listPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "READ",
+    });
+    assert.deepEqual(createPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(updatePermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(getDefaultPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "READ",
+    });
+    assert.deepEqual(ensureDefaultPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "WRITE",
+    });
+  });
+
   it("routes list to service with tenant context", async () => {
     const service = {
       listCustomers: async (tenantId: string, query: unknown) => ({

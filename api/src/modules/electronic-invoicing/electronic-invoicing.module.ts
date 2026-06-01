@@ -7,21 +7,28 @@ import { ElectronicInvoicingCustomersService } from "./customers/electronic-invo
 import { DianDocumentTypesController } from "./document-types/dian-document-types.controller";
 import { DianDocumentTypesRepository } from "./document-types/dian-document-types.repository";
 import { DianDocumentTypesService } from "./document-types/dian-document-types.service";
+import { ElectronicInvoicingSuppliersController } from "./suppliers/electronic-invoicing-suppliers.controller";
+import { ElectronicInvoicingSuppliersRepository } from "./suppliers/electronic-invoicing-suppliers.repository";
+import { ElectronicInvoicingSuppliersService } from "./suppliers/electronic-invoicing-suppliers.service";
 
 @Module({
   imports: [DatabaseModule, AccessControlModule],
   controllers: [
     ElectronicInvoicingCustomersController,
+    ElectronicInvoicingSuppliersController,
     DianDocumentTypesController,
   ],
   providers: [
     ElectronicInvoicingCustomersRepository,
     ElectronicInvoicingCustomersService,
+    ElectronicInvoicingSuppliersRepository,
+    ElectronicInvoicingSuppliersService,
     DianDocumentTypesRepository,
     DianDocumentTypesService,
   ],
   exports: [
     ElectronicInvoicingCustomersService,
+    ElectronicInvoicingSuppliersService,
     DianDocumentTypesService,
   ],
 })

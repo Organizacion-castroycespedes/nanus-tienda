@@ -13,6 +13,7 @@ import { PosUserSessionsModule } from "./pos-user-sessions/pos-user-sessions.mod
 import { FinanceModule } from "./finance/finance.module";
 import { SystemModule } from "./system/system.module";
 import { ElectronicInvoicingModule } from "./electronic-invoicing/electronic-invoicing.module";
+import { PricingModule } from "./pricing/pricing.module";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ElectronicInvoicingModule } from "./electronic-invoicing/electronic-inv
     FinanceModule,
     SystemModule,
     ElectronicInvoicingModule,
+    PricingModule,
   ],
 })
 export class AppModule {}
