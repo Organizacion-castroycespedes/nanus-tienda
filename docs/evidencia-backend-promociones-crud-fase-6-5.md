@@ -4,6 +4,8 @@
 
 FASE 6.5 COMPLETADA.
 
+Hardening CRUD promociones Fase 6.5.1-H completado sin cambio de contrato.
+
 ## Objetivo
 
 Crear modelo de datos y backend CRUD para promociones simples por producto/sucursal, sin aplicar promociones en POS ni Orders todavia.
@@ -15,6 +17,7 @@ Crear modelo de datos y backend CRUD para promociones simples por producto/sucur
 - `api/src/modules/pricing/promotions.repository.ts`
 - `api/src/modules/pricing/promotions.service.ts`
 - `api/src/modules/pricing/promotions.service.spec.ts`
+- `api/src/modules/pricing/pricing.controller.spec.ts`
 - `api/src/modules/pricing/promotions.types.ts`
 - `api/src/modules/pricing/pricing.module.ts`
 - `scripts/database/migrations/20260605_pricing_promotions_phase_1.sql`
@@ -84,15 +87,38 @@ Filtros `GET`:
 - No se evaluan promociones en ventas.
 - No se modifican `sale_items` ni `order_items`.
 
+## Hardening 6.5.1-H
+
+No se cambio el contrato funcional de los endpoints existentes.
+
+Se reforzo cobertura para:
+
+- `discountType` invalido.
+- `discountValue` negativo.
+- `PERCENTAGE > 100`.
+- `SPECIAL_PRICE` negativo y no finito.
+- `startsAt` invalido.
+- `endsAt` invalido.
+- `priority` negativo.
+- producto objetivo fuera del tenant.
+- sucursal objetivo fuera del tenant.
+- listado filtrado por `isActive=false`.
+- query `isActive` invalida.
+- request sin tenant autenticado.
+- desactivacion logica de promocion existente.
+- compatibilidad de `POST /api/pricing/preview-line` con campos de promocion aplicada.
+
+No se agregaron migraciones, tablas, permisos ni paginacion.
+
 ## Pruebas ejecutadas
 
 ```bash
-cd api && npx.cmd tsx --test src/modules/pricing/promotions*.spec.ts
+cd api && npx.cmd tsx --test src/modules/pricing/*.spec.ts
 ```
 
 Resultado:
 
-- 12 tests pass.
+- 47 tests pass.
 - 0 fail.
 
 Casos cubiertos:
@@ -105,11 +131,15 @@ Casos cubiertos:
 - rechazar promocion sin productos.
 - listar promociones.
 - filtrar por `productId`.
+- filtrar por `isActive`.
 - actualizar promocion.
 - desactivar promocion.
 - no borrar fisicamente.
 - aislar tenant.
 - controller usa tenant/user autenticados.
+- controller rechaza query `isActive` invalida.
+- controller rechaza request sin tenant.
+- preview-line mantiene campos de promocion aplicada.
 
 ```bash
 cd api && npm.cmd run build
@@ -133,14 +163,12 @@ Resultado:
 
 ## Riesgos vivos
 
-- `PricingService` todavia no evalua promociones. Eso queda para una fase posterior.
 - No hay UI de promociones todavia.
-- No se ejecuto migracion local en esta fase; queda documentado en runbook.
 - No existe permiso/menu dedicado para promociones; se usa `INVENTORY_PRODUCTS` como permiso operativo temporal.
+- Integridad tenant fuerte en `promotion_products` y `promotion_branches` depende del service para escrituras API; una migracion futura podria agregar FKs compuestas si se decide blindar SQL manual.
+- No hay paginacion en listado; queda fuera de alcance.
 
 ## Proximos pasos
 
-- Ejecutar migracion en QA local con rollback documentado.
-- Integrar lectura de promociones activas en `PricingService` sin tocar POS/Orders inicialmente.
 - Crear UI administrativa de promociones.
 - Definir permiso dedicado futuro si negocio separa precios/promociones de inventario.

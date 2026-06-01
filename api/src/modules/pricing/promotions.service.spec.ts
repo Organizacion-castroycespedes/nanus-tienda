@@ -78,6 +78,12 @@ const buildService = (initialPromotions: PromotionEntity[] = []) => {
         ) {
           return false;
         }
+        if (
+          filters.isActive !== undefined &&
+          promotion.isActive !== filters.isActive
+        ) {
+          return false;
+        }
         return true;
       }),
     findById: async (inputTenantId: string, promotionId: string) => {
@@ -198,6 +204,78 @@ describe("PromotionsService", () => {
     );
   });
 
+  it("rejects invalid discount type", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          discountType: "BOGO" as any,
+        }),
+      /discountType is invalid/
+    );
+  });
+
+  it("rejects negative discount value", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          discountValue: -1,
+        }),
+      /discountValue must be greater than or equal to 0/
+    );
+  });
+
+  it("rejects invalid special price values", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          discountType: "SPECIAL_PRICE",
+          discountValue: -10,
+        }),
+      /discountValue must be greater than or equal to 0/
+    );
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          discountType: "SPECIAL_PRICE",
+          discountValue: Number.NaN,
+        }),
+      /discountValue is required/
+    );
+  });
+
+  it("rejects invalid startsAt and endsAt dates", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          startsAt: "bad-date",
+        }),
+      /startsAt is invalid/
+    );
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          endsAt: "bad-date",
+        }),
+      /endsAt is invalid/
+    );
+  });
+
   it("rejects invalid validity range", async () => {
     const { service } = buildService();
 
@@ -208,6 +286,19 @@ describe("PromotionsService", () => {
           endsAt: "2026-05-31T00:00:00.000Z",
         }),
       /endsAt must be greater than startsAt/
+    );
+  });
+
+  it("rejects negative priority", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          priority: -1,
+        }),
+      /priority must be a non-negative integer/
     );
   });
 
@@ -224,6 +315,32 @@ describe("PromotionsService", () => {
     );
   });
 
+  it("rejects product from another tenant", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          productIds: [randomUUID()],
+        }),
+      /all products must belong to tenant/
+    );
+  });
+
+  it("rejects branch from another tenant", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          branchIds: [randomUUID()],
+        }),
+      /all branches must belong to tenant/
+    );
+  });
+
   it("lists and filters by productId", async () => {
     const matching = buildPromotion({ productIds: [productId] });
     const other = buildPromotion({ productIds: [secondProductId] });
@@ -234,6 +351,19 @@ describe("PromotionsService", () => {
     assert.deepEqual(
       result.map((promotion) => promotion.id),
       [matching.id]
+    );
+  });
+
+  it("lists and filters by isActive", async () => {
+    const active = buildPromotion({ isActive: true });
+    const inactive = buildPromotion({ isActive: false });
+    const { service } = buildService([active, inactive]);
+
+    const result = await service.listPromotions(tenantId, { isActive: false });
+
+    assert.deepEqual(
+      result.map((promotion) => promotion.id),
+      [inactive.id]
     );
   });
 

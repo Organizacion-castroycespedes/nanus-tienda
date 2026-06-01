@@ -53,4 +53,27 @@ describe("PromotionsController", () => {
     assert.equal(calls[0].tenantId, tenantId);
     assert.equal(calls[0].filters.isActive, false);
   });
+
+  it("rejects invalid isActive filter", () => {
+    const tenantId = randomUUID();
+    const controller = new PromotionsController({
+      listPromotions: async () => [],
+    } as any);
+
+    assert.throws(
+      () => controller.list({ user: { tenantId } } as any, undefined, "yes"),
+      /isActive must be true or false/
+    );
+  });
+
+  it("rejects request without authenticated tenant", () => {
+    const controller = new PromotionsController({
+      listPromotions: async () => [],
+    } as any);
+
+    assert.throws(
+      () => controller.list({ user: {} } as any),
+      /tenantId is required/
+    );
+  });
 });
