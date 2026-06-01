@@ -4,6 +4,7 @@ import { CommonServicesModule } from "../../common/services/common-services.modu
 import { DatabaseModule } from "../../common/db/database.module";
 import { FinanceModule } from "../finance/finance.module";
 import { FinanceAccessRepository } from "../finance/common/repositories/finance-access.repository";
+import { PricingModule } from "../pricing/pricing.module";
 import { CustomerController } from "./controllers/customer.controller";
 import { InventoryFefoController } from "./controllers/inventory-fefo.controller";
 import { InventoryController } from "./controllers/inventory.controller";
@@ -55,7 +56,13 @@ import { TaxRepository } from "./repositories/tax.repository";
 import { UnitRepository } from "./repositories/unit.repository";
 
 @Module({
-  imports: [DatabaseModule, AccessControlModule, CommonServicesModule, FinanceModule],
+  imports: [
+    DatabaseModule,
+    AccessControlModule,
+    CommonServicesModule,
+    FinanceModule,
+    PricingModule,
+  ],
   controllers: [
     InventoryFefoController,
     InventoryController,
