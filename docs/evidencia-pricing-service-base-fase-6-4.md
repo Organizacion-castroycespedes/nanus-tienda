@@ -1,152 +1,139 @@
-# Evidencia PricingService base - Fase 6.4
+# Evidencia PricingService base - Fase 6.4 hardening
 
 ## Resultado
 
-FASE 6.4 COMPLETADA.
+FASE 6.4 HARDENING COMPLETADA.
+
+Se fortalecio el calculo base de pricing sin promociones y se mantuvo compatible el flujo actual de `POST /api/pricing/preview-line`, que ya puede aplicar promociones.
 
 ## Objetivo
 
-Implementar un `PricingService` base para centralizar calculo de precio, impuesto y total de linea para futura integracion POS/Orders, sin promociones y sin persistir datos.
+Separar el calculo base de precio, impuesto, subtotal y total de linea para que exista una ruta sin promociones reutilizable, sin eliminar ni romper la logica posterior de promociones.
 
 ## Archivos modificados
 
-- `api/src/modules/app.module.ts`
-- `api/src/modules/pricing/pricing.module.ts`
-- `api/src/modules/pricing/pricing.controller.ts`
-- `api/src/modules/pricing/pricing.repository.ts`
 - `api/src/modules/pricing/pricing.service.ts`
-- `api/src/modules/pricing/pricing.types.ts`
-- `api/src/modules/pricing/pricing.controller.spec.ts`
 - `api/src/modules/pricing/pricing.service.spec.ts`
 - `openspec/changes/fortalecer-productos-inventario/tasks.md`
+- `docs/evidencia-pricing-service-base-fase-6-4.md`
 
 ## Reglas implementadas
 
-- `PricingService.calculateLinePrice(input)` lee el producto por `tenantId + productId`.
-- Rechaza producto inexistente o de otro tenant con `product not found`.
-- Rechaza producto inactivo con `product is inactive`.
-- Rechaza `quantity <= 0`.
-- Valida `channel` en `POS | ORDER`.
-- Usa `products.price` como `baseUnitPrice`.
-- No aplica promociones:
-  - `finalUnitPrice = baseUnitPrice`.
-  - `discountAmount = 0`.
-  - `discountPercent = 0`.
-  - `appliedPromotionId = null`.
-  - `appliedPromotionName = null`.
-- No modifica `products`.
-- No modifica `sale_items`.
-- No modifica `order_items`.
-- No persiste nada; solo hace lectura.
+- `PricingService.calculateLineWithoutPromotions(input)` calcula la linea base sin consultar promociones.
+- `PricingService.calculateLinePrice(input)` reutiliza el calculo base y despues aplica la promocion seleccionada si existe.
+- `POST /api/pricing/preview-line` mantiene el contrato actual.
+- `findApplicablePromotions` se mantiene.
+- `selectBestPromotion` se mantiene.
+- Promociones CRUD se mantiene sin cambios.
+- `products.price` sigue siendo la fuente de precio vigente.
+- No se persisten ventas, pedidos, productos ni historial.
 
-## Calculo impuesto/precio
+## Calculo base
 
-Regla aplicada para esta fase:
+Respuesta base:
 
-- `products.price` se trata como precio visible con impuesto incluido.
-- Esta decision respeta la logica actual observada en ventas y funciones SQL:
-  - `price_without_tax = price / (1 + tax_rate)`.
-  - `tax_amount = line_total - tax_base`.
-- `taxes.rate` usa valores tipo `0.19` para 19%.
-- `taxes.is_included` se conserva como snapshot conceptual, pero no cambia la formula en esta fase.
-- Redondeo a 2 decimales.
+- `productId`: producto consultado por `tenantId + productId`.
+- `quantity`: cantidad validada y redondeada a 2 decimales.
+- `baseUnitPrice`: `products.price`.
+- `finalUnitPrice`: igual a `baseUnitPrice`.
+- `discountAmount`: `0`.
+- `discountPercent`: `0`.
+- `appliedPromotionId`: `null`.
+- `appliedPromotionName`: `null`.
+- `taxId`: impuesto asociado o `null`.
+- `taxRate`: `taxes.rate`.
+- `taxBase`, `taxAmount`, `lineSubtotal`, `lineTotal`: calculados desde precio final y cantidad.
 
-Ejemplo con IVA 19%:
+Reglas de impuesto:
 
-```json
-{
-  "quantity": 2,
-  "baseUnitPrice": 119,
-  "finalUnitPrice": 119,
-  "taxRate": 0.19,
-  "taxBase": 200,
-  "taxAmount": 38,
-  "lineSubtotal": 200,
-  "lineTotal": 238
-}
-```
+- Si `taxes.is_included = true`, `products.price` se trata como precio visible con impuesto incluido.
+- Si `taxes.is_included = false`, `products.price` se trata como precio base sin impuesto y se suma el impuesto al total.
+- Si no hay impuesto o `taxRate = 0`, `taxAmount = 0`.
 
-## Endpoint creado
+## Compatibilidad con promociones
 
-`POST /api/pricing/preview-line`
+El preview con promociones sigue funcionando:
 
-Payload:
-
-```json
-{
-  "branchId": "uuid",
-  "productId": "uuid",
-  "quantity": 2,
-  "channel": "POS",
-  "customerId": "uuid opcional",
-  "date": "2026-06-01 opcional"
-}
-```
-
-Notas:
-
-- `tenantId` se toma del token autenticado.
-- Si el payload trae `tenantId`, el controller lo ignora para evitar spoofing.
-- Permiso usado: `INVENTORY_PRODUCTS` nivel `READ`.
-- Este endpoint solo previsualiza. No crea ventas ni pedidos.
+- Consulta promociones aplicables.
+- Calcula descuento unitario.
+- Selecciona promocion por prioridad, descuento, recencia e `id`.
+- Recalcula impuestos sobre el `finalUnitPrice`.
+- Mantiene `preview-line` sin persistencia.
 
 ## Pruebas ejecutadas
 
-```bash
-cd api && npx.cmd tsx --test src/modules/pricing/*.spec.ts
+Comando:
+
+```powershell
+cd api
+npx.cmd tsx --test src/modules/pricing/*.spec.ts
 ```
 
 Resultado:
 
-- 10 tests pass.
-- 0 fail.
+- suites: 4
+- tests: 36
+- pass: 36
+- fail: 0
 
 Casos cubiertos:
 
 - producto sin impuesto.
-- producto con impuesto.
+- producto con impuesto incluido.
+- producto con impuesto no incluido.
+- cantidad mayor a 1.
 - cantidad decimal.
-- `quantity = 0` falla.
+- `quantity <= 0` falla.
+- producto inexistente falla.
 - producto inactivo falla.
-- producto de otro tenant falla.
-- no aplica promociones.
-- descuento siempre `0`.
-- redondeo a 2 decimales.
-- no persiste datos.
-- endpoint preview usa tenant autenticado.
+- producto de otro tenant falla como `product not found`.
+- calculo base no consulta promociones.
+- preview con promociones sigue funcionando.
 
-```bash
-cd api && npm.cmd run build
+Build:
+
+```powershell
+cd api
+npm.cmd run build
 ```
 
-Resultado:
+Resultado: OK.
 
-- Build pass.
+OpenSpec:
 
-## Confirmaciones de alcance
+```powershell
+openspec.cmd validate fortalecer-productos-inventario --type change --strict --json
+```
 
-- No se implementaron promociones.
-- No se modifico POS.
-- No se modifico Orders.
-- No se modifico `SaleService`.
-- No se modifico `OrderService`.
-- No se modifico `inventory_create_sale_v2`.
-- No se modificaron ventas existentes.
-- No se modificaron pedidos existentes.
-- No se tocaron migraciones ni SQL.
-- No se toco frontend.
-- No se toco `backend-reporteria/`.
-- No se toco PRD real.
+Resultado: OK, 1 item passed, 0 failed.
+
+Diff check:
+
+```powershell
+git diff --check
+```
+
+Resultado: OK. Solo aviso LF/CRLF de Windows, sin errores de whitespace.
 
 ## Riesgos vivos
 
-- `taxes.is_included` aun no gobierna una bifurcacion fiscal real. La regla vigente mantiene precio visible con impuesto incluido para no romper ventas actuales.
-- POS y Orders todavia no consumen `PricingService`; esto queda para fase posterior.
-- No hay promociones todavia; los campos de promocion quedan en `0/null`.
+- `products.price` es la fuente vigente despues de `change-price`.
+- `price_with_tax` y `price_without_tax` pueden quedar desfasados porque `change-price` actualiza solo `products.price`.
+- POS y Orders aun no consumen `PricingService`.
+- Persistir descuentos/promociones aplicadas en ventas o pedidos sigue fuera de esta fase.
 
-## Proximos pasos
+## Confirmaciones de no alcance
 
-- Integrar `PricingService` en POS con flag o fase controlada.
-- Integrar `PricingService` en Orders sin recalcular historicos.
-- Definir regla final de `taxes.is_included` antes de facturacion electronica completa.
-- Diseñar promociones sobre este contrato sin cambiar ventas historicas.
+No se modifico:
+
+- facturacion electronica.
+- DIAN.
+- suppliers fiscales.
+- backend-facturacion-electronica.
+- POS.
+- Orders.
+- frontend.
+- migraciones.
+- promociones CRUD.
+- PRD real.
+- servidor remoto.

@@ -960,6 +960,11 @@
 - [x] Ejecutar `cd api && npm.cmd run build`.
 - [x] Crear `docs/evidencia-pricing-service-base-fase-6-4.md`.
 - [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Hardening: extraer `calculateLineWithoutPromotions` como calculo base sin consultar promociones.
+- [x] Hardening: reutilizar el calculo base desde `calculateLinePrice` antes de aplicar promociones.
+- [x] Hardening: mantener compatible `POST /api/pricing/preview-line` con promociones existentes.
+- [x] Hardening: agregar pruebas especificas del calculo base sin promociones.
+- [x] Hardening: documentar que `products.price` es fuente vigente y que `price_with_tax`/`price_without_tax` pueden quedar desfasados tras `change-price`.
 
 ## Fase 6.5: backend CRUD promociones simples
 
