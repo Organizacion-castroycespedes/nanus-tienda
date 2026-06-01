@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Barcode, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Barcode, DollarSign, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { listProducts } from "../../../../domains/products/api";
 import type {
   ProductOperationalStatus,
@@ -16,11 +16,14 @@ import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useInventoryScope } from "../../../../hooks/useInventoryScope";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
+import { buildConfirmFromApiError } from "../../../../lib/api-messages";
 import { hasPermission } from "../../../../lib/permissions";
 import { useAppSelector } from "../../../../store/hooks";
 import { ProductBarcodePanel } from "../../../../modules/inventory/components/ProductBarcodePanel";
 import { FocusActionLayout } from "../../../../modules/inventory/components/FocusActionLayout";
 import { ProductForm } from "../../../../modules/inventory/components/ProductForm";
+import { ProductPriceChangeModal } from "../../../../modules/inventory/components/ProductPriceChangeModal";
+import { ProductPriceHistoryPanel } from "../../../../modules/inventory/components/ProductPriceHistoryPanel";
 import { StockAdjustmentForm } from "../../../../modules/inventory/components/StockAdjustmentForm";
 import { deleteProduct } from "../../../../modules/inventory/services/product.service";
 
@@ -147,10 +150,18 @@ const ProductsPage = () => {
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null);
   const [barcodeProduct, setBarcodeProduct] = useState<ProductResponse | null>(null);
+  const [priceProduct, setPriceProduct] = useState<ProductResponse | null>(null);
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+  const [priceHistoryReloadKey, setPriceHistoryReloadKey] = useState(0);
   const [stockAdjustmentProduct, setStockAdjustmentProduct] = useState<ProductResponse | null>(null);
   const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductResponse | null>(null);
   const [pendingFocusCancel, setPendingFocusCancel] = useState(false);
   const [pendingHeaderAction, setPendingHeaderAction] = useState<"refresh" | "create" | null>(null);
+  const [priceFeedback, setPriceFeedback] = useState<{
+    title: string;
+    description?: string;
+    variant?: "default" | "danger" | "warning";
+  } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const { currentTenant, isSuperRole } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
@@ -299,6 +310,8 @@ const ProductsPage = () => {
     closeForm();
     closeStockAdjustmentForm();
     setBarcodeProduct(null);
+    setPriceProduct(null);
+    setIsPriceModalOpen(false);
     setPendingFocusCancel(false);
   };
 
@@ -329,14 +342,24 @@ const ProductsPage = () => {
   const handleEditClick = (product: ProductResponse) => {
     setSelectedProduct(product);
     setBarcodeProduct(null);
+    setPriceProduct(null);
     setStockAdjustmentProduct(null);
     setFormMode("edit");
   };
 
   const handleBarcodeClick = (product: ProductResponse) => {
     closeForm();
+    setPriceProduct(null);
     setStockAdjustmentProduct(null);
     setBarcodeProduct(product);
+  };
+
+  const handlePriceClick = (product: ProductResponse) => {
+    closeForm();
+    setBarcodeProduct(null);
+    setStockAdjustmentProduct(null);
+    setPriceProduct(product);
+    setIsPriceModalOpen(true);
   };
 
   const handleFormSuccess = (mode: "create" | "edit") => {
@@ -375,30 +398,71 @@ const ProductsPage = () => {
     }
   };
 
-  const isFocusMode = Boolean(formMode || barcodeProduct || stockAdjustmentProduct);
+  const handlePriceChangeSuccess = async (response: { productId: string; newPrice: number }) => {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === response.productId
+          ? { ...product, price: response.newPrice }
+          : product
+      )
+    );
+    setPriceProduct((current) =>
+      current && current.id === response.productId
+        ? { ...current, price: response.newPrice }
+        : current
+    );
+    setPriceHistoryReloadKey((current) => current + 1);
+    setPriceFeedback({
+      title: "Precio actualizado",
+      description: "El precio fue actualizado y el historial quedo registrado.",
+      variant: "default",
+    });
+    if (hasSearched) {
+      await loadProducts();
+    }
+  };
+
+  const handlePriceChangeError = (error: unknown) => {
+    setPriceFeedback(
+      buildConfirmFromApiError(
+        error,
+        "No se pudo cambiar el precio del producto."
+      )
+    );
+  };
+
+  const isFocusMode = Boolean(
+    formMode || barcodeProduct || stockAdjustmentProduct || priceProduct
+  );
   const focusTitle = formMode
     ? formMode === "create"
       ? "Crear producto"
       : "Editar producto"
     : barcodeProduct
       ? "Gestionar codigos de barras"
-      : stockAdjustmentProduct
-        ? "Ajustar stock"
-        : "";
+      : priceProduct
+        ? "Precio e historial"
+        : stockAdjustmentProduct
+          ? "Ajustar stock"
+          : "";
   const focusDescription = formMode
     ? "Completa el formulario principal. El listado queda oculto para mantener foco."
     : barcodeProduct
       ? "Administra codigos alternos del producto sin modificar SKU ni POS."
-      : stockAdjustmentProduct
-        ? "Registra el ajuste manual con el contexto del producto seleccionado."
-        : "";
+      : priceProduct
+        ? "Consulta historial y registra cambios de precio con motivo obligatorio."
+        : stockAdjustmentProduct
+          ? "Registra el ajuste manual con el contexto del producto seleccionado."
+          : "";
   const focusContext = selectedProduct
     ? `${selectedProduct.name} - ${selectedProduct.sku}`
     : barcodeProduct
       ? `${barcodeProduct.name} - ${barcodeProduct.sku}`
-      : stockAdjustmentProduct
-        ? `${stockAdjustmentProduct.name} - ${stockAdjustmentProduct.sku}`
-        : undefined;
+      : priceProduct
+        ? `${priceProduct.name} - ${priceProduct.sku}`
+        : stockAdjustmentProduct
+          ? `${stockAdjustmentProduct.name} - ${stockAdjustmentProduct.sku}`
+          : undefined;
   const headerActionTitle =
     pendingHeaderAction === "refresh" ? "Actualizar productos" : "Crear producto";
   const headerActionDescription =
@@ -444,6 +508,29 @@ const ProductsPage = () => {
         variant={pendingHeaderAction === "refresh" ? "default" : "warning"}
         onConfirm={handleHeaderActionConfirm}
         loading={pendingHeaderAction === "refresh" && loading}
+      />
+
+      <ConfirmDialog
+        open={Boolean(priceFeedback)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPriceFeedback(null);
+          }
+        }}
+        title={priceFeedback?.title ?? ""}
+        description={priceFeedback?.description}
+        confirmText="Entendido"
+        variant={priceFeedback?.variant ?? "default"}
+        hideCancel
+        onConfirm={() => setPriceFeedback(null)}
+      />
+
+      <ProductPriceChangeModal
+        open={isPriceModalOpen}
+        product={priceProduct}
+        onOpenChange={setIsPriceModalOpen}
+        onSuccess={(response) => handlePriceChangeSuccess(response)}
+        onError={handlePriceChangeError}
       />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -516,6 +603,21 @@ const ProductsPage = () => {
                 productId={barcodeProduct.id}
                 productName={barcodeProduct.name}
               />
+            ) : null}
+
+            {priceProduct ? (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <Button onClick={() => setIsPriceModalOpen(true)}>
+                    <DollarSign className="h-4 w-4" />
+                    Cambiar precio
+                  </Button>
+                </div>
+                <ProductPriceHistoryPanel
+                  product={priceProduct}
+                  reloadKey={priceHistoryReloadKey}
+                />
+              </div>
             ) : null}
 
             {stockAdjustmentProduct ? (
@@ -715,6 +817,16 @@ const ProductsPage = () => {
                               onClick={() => setStockAdjustmentProduct(product)}
                             >
                               Ajustar stock
+                            </Button>
+                          ) : null}
+                          {canEdit ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handlePriceClick(product)}
+                            >
+                              <DollarSign className="h-4 w-4" />
+                              Cambiar precio
                             </Button>
                           ) : null}
                           {canEdit ? (

@@ -1008,7 +1008,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     {sidebarCompanyName}
                   </p>
                   <p className="truncate text-xs text-[var(--brand-sidebar-muted)]">
-                    FlexiBuild Core
+                    Manus POS
                   </p>
                 </div>
               ) : null}

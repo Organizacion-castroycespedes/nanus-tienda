@@ -2,6 +2,8 @@ import { apiClient } from "../../../lib/http";
 import type {
   ProductBarcode,
   ProductBarcodeType,
+  ProductPriceChangeResponse,
+  ProductPriceHistoryEntry,
   ProductOperationalStatus,
   ProductResponse,
   ProductRotationClass,
@@ -40,6 +42,11 @@ export type CreateProductPayload = {
 };
 
 export type UpdateProductPayload = Partial<CreateProductPayload>;
+
+export type ChangeProductPricePayload = {
+  newPrice: number;
+  reason: string;
+};
 
 export type CreateProductBarcodePayload = {
   barcode: string;
@@ -114,6 +121,26 @@ export const deleteProduct = (productId: string, headers?: HeadersInit) =>
   apiClient<void>(`/products/${productId}`, {
     method: "DELETE",
     headers,
+  });
+
+export const getProductPriceHistory = (
+  productId: string,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductPriceHistoryEntry[]>(
+    `/products/${productId}/price-history`,
+    { headers }
+  );
+
+export const changeProductPrice = (
+  productId: string,
+  payload: ChangeProductPricePayload,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductPriceChangeResponse>(`/products/${productId}/change-price`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
   });
 
 export const listProductBarcodes = (productId: string, headers?: HeadersInit) =>

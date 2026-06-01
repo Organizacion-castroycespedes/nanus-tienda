@@ -27,6 +27,22 @@ type ProductRow = QueryResultRow & {
   updated_at: Date | string;
 };
 
+type ProductPriceHistoryRow = QueryResultRow & {
+  id: string;
+  tenant_id: string;
+  product_id: string;
+  previous_price: string | number;
+  new_price: string | number;
+  reason: string;
+  changed_by: string | null;
+  valid_from: Date | string;
+  valid_to: Date | string | null;
+  status: "APPLIED" | "PENDING_APPROVAL" | "REJECTED";
+  approved_by: string | null;
+  approved_at: Date | string | null;
+  created_at: Date | string;
+};
+
 type CreateProductData = ProductProps;
 
 type UpdateProductData = Partial<
@@ -51,6 +67,32 @@ type UpdateProductData = Partial<
     | "maxStock"
   >
 >;
+
+export type ProductPriceHistoryEntity = {
+  id: string;
+  tenantId: string;
+  productId: string;
+  previousPrice: number;
+  newPrice: number;
+  reason: string;
+  changedBy: string | null;
+  validFrom: Date;
+  validTo: Date | null;
+  status: "APPLIED" | "PENDING_APPROVAL" | "REJECTED";
+  approvedBy: string | null;
+  approvedAt: Date | null;
+  createdAt: Date;
+};
+
+export type CreateProductPriceHistoryData = {
+  tenantId: string;
+  productId: string;
+  previousPrice: number;
+  newPrice: number;
+  reason: string;
+  changedBy: string;
+  validFrom: Date;
+};
 
 @Injectable()
 export class ProductRepository {
@@ -119,6 +161,26 @@ export class ProductRepository {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     });
+  }
+
+  private mapPriceHistoryRow(
+    row: ProductPriceHistoryRow
+  ): ProductPriceHistoryEntity {
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      productId: row.product_id,
+      previousPrice: Number(row.previous_price),
+      newPrice: Number(row.new_price),
+      reason: row.reason,
+      changedBy: row.changed_by,
+      validFrom: new Date(row.valid_from),
+      validTo: row.valid_to === null ? null : new Date(row.valid_to),
+      status: row.status,
+      approvedBy: row.approved_by,
+      approvedAt: row.approved_at === null ? null : new Date(row.approved_at),
+      createdAt: new Date(row.created_at),
+    };
   }
 
   async create(
@@ -217,6 +279,26 @@ export class ProductRepository {
       FROM products
       WHERE id = $1 AND tenant_id = $2
       LIMIT 1
+      `,
+      [id, tenantId],
+      client
+    );
+
+    return result.rows[0] ? this.mapRowToEntity(result.rows[0]) : null;
+  }
+
+  async findByIdForUpdate(
+    id: string,
+    tenantId: string,
+    client: PoolClient
+  ): Promise<ProductEntity | null> {
+    const result = await this.query<ProductRow>(
+      `
+      SELECT
+        ${this.selectColumns}
+      FROM products
+      WHERE id = $1 AND tenant_id = $2
+      FOR UPDATE
       `,
       [id, tenantId],
       client
@@ -336,6 +418,106 @@ export class ProductRepository {
     );
 
     return result.rows[0] ? this.mapRowToEntity(result.rows[0]) : null;
+  }
+
+  async closeCurrentPriceHistory(
+    tenantId: string,
+    productId: string,
+    validTo: Date,
+    client: PoolClient
+  ) {
+    await this.query(
+      `
+      UPDATE product_price_history
+      SET valid_to = $3
+      WHERE tenant_id = $1
+        AND product_id = $2
+        AND status = 'APPLIED'
+        AND valid_to IS NULL
+      `,
+      [tenantId, productId, validTo],
+      client
+    );
+  }
+
+  async createPriceHistory(
+    data: CreateProductPriceHistoryData,
+    client: PoolClient
+  ): Promise<ProductPriceHistoryEntity> {
+    const result = await this.query<ProductPriceHistoryRow>(
+      `
+      INSERT INTO product_price_history (
+        tenant_id,
+        product_id,
+        previous_price,
+        new_price,
+        reason,
+        changed_by,
+        valid_from,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'APPLIED')
+      RETURNING
+        id,
+        tenant_id,
+        product_id,
+        previous_price,
+        new_price,
+        reason,
+        changed_by,
+        valid_from,
+        valid_to,
+        status,
+        approved_by,
+        approved_at,
+        created_at
+      `,
+      [
+        data.tenantId,
+        data.productId,
+        data.previousPrice,
+        data.newPrice,
+        data.reason,
+        data.changedBy,
+        data.validFrom,
+      ],
+      client
+    );
+
+    return this.mapPriceHistoryRow(result.rows[0]);
+  }
+
+  async findPriceHistoryByProduct(
+    tenantId: string,
+    productId: string,
+    client?: PoolClient
+  ): Promise<ProductPriceHistoryEntity[]> {
+    const result = await this.query<ProductPriceHistoryRow>(
+      `
+      SELECT
+        id,
+        tenant_id,
+        product_id,
+        previous_price,
+        new_price,
+        reason,
+        changed_by,
+        valid_from,
+        valid_to,
+        status,
+        approved_by,
+        approved_at,
+        created_at
+      FROM product_price_history
+      WHERE tenant_id = $1
+        AND product_id = $2
+      ORDER BY valid_from DESC, created_at DESC
+      `,
+      [tenantId, productId],
+      client
+    );
+
+    return result.rows.map((row) => this.mapPriceHistoryRow(row));
   }
 
   async softDelete(

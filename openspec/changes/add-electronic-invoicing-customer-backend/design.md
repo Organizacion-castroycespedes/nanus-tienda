@@ -131,7 +131,11 @@ Patron recomendado para el nuevo modulo:
 @RequirePermission({ menuKey: "ELECTRONIC_INVOICING_CUSTOMERS", level: "READ|WRITE" })
 ```
 
-SUPUESTO: La menu key final se confirmara antes de implementar seeds de menu/permisos.
+Decision cerrada:
+
+- Menu key principal: `ELECTRONIC_INVOICING_CUSTOMERS`.
+- Menu keys futuras reservadas: `ELECTRONIC_INVOICING_DOCUMENTS`, `ELECTRONIC_INVOICING_SETTINGS` y `ELECTRONIC_INVOICING_REPORTS`.
+- Los seeds de menu/permisos se disenan en una fase posterior. Esta fase solo fija nombres.
 
 ### Companias y sucursales
 
@@ -157,6 +161,8 @@ Decision recomendada:
 - En esta fase, el alcance fiscal de cliente queda por `tenant_id`.
 - Si luego se agrega tabla de companias multiples, se debe elevar la unicidad fiscal a `company_id`.
 - No usar `branch_id` para definir identidad fiscal del adquiriente.
+- La sucursal viene del contexto de venta, pedido o POS, no del cliente.
+- El consumidor final debe existir una sola vez por tenant, no una vez por sucursal.
 
 ### Migraciones actuales
 
@@ -173,7 +179,8 @@ Patron observado:
 
 Decision:
 
-- Esta fase no crea migraciones.
+- FE-0.1 no creo migraciones.
+- FE-1 crea migraciones SQL seguras y rollback conservador para preparar datos fiscales.
 - La fase de implementacion debe usar `scripts/database/migrations/YYYYMMDD_*.sql`.
 - Los seeds de catalogo DIAN y permisos deben ir separados.
 
@@ -194,7 +201,10 @@ Decision:
 - El nuevo modulo debe registrar auditoria en `auditoria_eventos`.
 - Desactivar cliente fiscal debe usar `is_active=false`, no delete fisico.
 - El consumidor final no debe inactivarse ni eliminarse.
-- Las consultas DIAN deben registrar evento de consulta y resultado, sin guardar datos sensibles innecesarios.
+- Las consultas DIAN o proveedor deben registrar evento de consulta y resultado, sin guardar datos sensibles innecesarios.
+- La primera version no debe guardar raw response completo de DIAN/proveedor.
+- La trazabilidad debe guardar solo resumen operativo: `status`, `statusCode`, `message`, `provider`, `lookupAt`, `requestHash` y `responseSummary`.
+- Si una fase futura requiere raw response, debe guardarse cifrado o en almacenamiento seguro, no como JSON plano en base transaccional.
 
 ## Contratos existentes que no se deben romper
 
@@ -248,68 +258,277 @@ Razon:
 - Duplicar cliente fiscal y cliente POS crea riesgo de dos identidades para el mismo adquiriente.
 - La facturacion electronica futura necesita el mismo `customerId` que ventas.
 
+### Ajuste FE-2.1R: backend especializado y sincronizacion fiscal de terceros
+
+La vision estrategica agrega un backend especializado `backend-facturacion-electronica/`. Ese servicio no reemplaza el modulo FE actual dentro de `api/`.
+
+Decision:
+
+- `api/` conserva `customers` y `suppliers` como tablas operativas canonicas.
+- `api/` conserva POS, ventas, pedidos, compras, pagos, inventario y endpoints operativos.
+- `backend-facturacion-electronica/` sera capa de consulta, normalizacion y sincronizacion fiscal de terceros.
+- Backend FE podra consultar fuentes fiscales externas o mock/provider.
+- Backend FE podra solicitar a `api/` crear o actualizar `customers` y `suppliers`.
+- Backend FE no debe duplicar `customers` ni `suppliers` como fuente principal.
+- Backend FE debe registrar logs seguros de lookup y sync.
+- La primera version no guarda raw response completo; guarda resumen operativo seguro.
+- Todo lookup/sync debe ser idempotente por `tenantId + partyType + documentTypeCode + documentNumberNormalized`.
+
+`GetAcquirer` se considera fuente candidata para adquirientes/clientes. La guia DIAN de consumo de Web Services describe GetAcquirer como servicio para completar informacion de adquirientes y usa `identificationType` e `identificationNumber` como datos de request. Para proveedores, el diseno queda provider-agnostic porque la fuente puede ser proveedor tecnologico, RUT, captura manual validada u otra fuente aprobada.
+
+Referencia: [DIAN - Guia Herramienta para el Consumo de Web Services](https://www.dian.gov.co/impuestos/factura-electronica/Documents/Guia-Herramienta-para-el-Consumo-de-Web-Services.pdf).
+
 ## Separacion de responsabilidades
 
 | Componente | Responsabilidad |
 | --- | --- |
 | `electronic-invoicing/customers` | CRUD fiscal, validaciones, consumidor final, auditoria. |
-| `electronic-invoicing/dian-acquirer` | Consultar DIAN, normalizar respuesta, preview, aplicar con confirmacion. |
-| `DianAcquirerGateway` | Interfaz desacoplada para DIAN directo o proveedor tecnologico. |
+| `electronic-invoicing/dian-acquirer` | Consultar adaptador configurado, normalizar respuesta, preview, aplicar con confirmacion. |
+| `ElectronicInvoicingProviderAdapter` | Interfaz futura desacoplada para `MOCK_LOCAL`, DIAN directo o proveedor tecnologico. |
 | `customers` | Identidad canonica del cliente/adquiriente. |
+| `suppliers` | Identidad canonica del proveedor operativo para compras e inventario. |
+| `backend-facturacion-electronica/customers-sync` | Consulta y normalizacion fiscal de adquirientes; solicita upsert en `api/` si existe o no existe customer. |
+| `backend-facturacion-electronica/suppliers-sync` | Consulta fiscal provider-agnostic de proveedores; solicita upsert en `api/` si existe o no existe supplier. |
 | `dian_document_types` | Catalogo versionado de tipos de documento. |
-| `dian_acquirer_lookup_logs` | Trazabilidad de consultas DIAN. |
+| `dian_acquirer_lookup_logs` | Trazabilidad resumida de consultas DIAN/proveedor/mock. |
+| `fiscal_party_lookup_logs` futuro | Trazabilidad de lookup y sync de customers/suppliers sin raw response completo. |
 | `auditoria_eventos` | Auditoria funcional de cambios y aplicacion de datos DIAN. |
+
+## Decisiones funcionales cerradas FE-0.1
+
+### Integracion DIAN/proveedor
+
+El diseno sera provider-agnostic. No se amarra todavia a DIAN directo ni a proveedor tecnologico.
+
+La fase futura debe preparar una capa `ElectronicInvoicingProviderAdapter`. Esa capa podra tener implementaciones como:
+
+- `MOCK_LOCAL`: preview local y pruebas sin consumo externo.
+- `DIAN_DIRECT`: consumo directo DIAN si se aprueba despues.
+- `PROVIDER`: proveedor tecnologico si se aprueba despues.
+
+La primera implementacion puede funcionar en modo `MOCK_LOCAL` o preview. Esto permite cerrar modelo y UX backend sin depender todavia de credenciales, certificados, SLA o contrato de proveedor.
+
+### Consumidor final
+
+Debe existir un consumidor final por tenant.
+
+Reglas cerradas:
+
+- No duplicar consumidor final por sucursal.
+- La sucursal se toma del contexto de venta, pedido o POS.
+- El cliente consumidor final usa la identidad canonica `customers.id`.
+- Debe existir endpoint para asegurar el consumidor final default.
+- El consumidor final es fallback cuando no hay cliente identificado.
+- POS debe poder vender con consumidor final sin email fiscal.
+
+### Email fiscal
+
+`fiscalEmail` no sera obligatorio al crear cliente fiscal.
+
+Sera requerido solo cuando el flujo de emision electronica nominada lo necesite. El backend podra guardar clientes incompletos fiscalmente, pero una fase de emision debera bloquear factura electronica nominada si falta el email requerido.
+
+### Catalogos
+
+`dian_document_types` debe ser catalogo versionable.
+
+Reglas cerradas:
+
+- No hardcodear tipos de documento DIAN en codigo funcional.
+- No sembrar catalogo hasta confirmar fuente vigente.
+- El catalogo debe conservar metadatos de version/fuente para permitir cambios DIAN o proveedor.
+
+### Compatibilidad
+
+La ruta actual `/api/customers` no debe romperse.
+
+Reglas cerradas:
+
+- Los campos fiscales nuevos son opcionales inicialmente.
+- Ventas, pedidos, POS y reportes actuales siguen usando `customers.id`, `name`, `document_number` e `is_active`.
+- El consumidor final funciona como fallback cuando no haya cliente identificado.
+- No se cambia frontend ni `backend-reporteria` en esta fase.
+
+### Customers sync desde backend FE
+
+El backend especializado podra consultar fuente fiscal, normalizar respuesta y sincronizar hacia `customers` mediante `api/`.
+
+Flujo si customer existe:
+
+1. Backend FE recibe `tenantId`, `documentTypeCode` y `documentNumber`.
+2. Calcula `documentNumberNormalized` e idempotency key.
+3. Consulta fuente configurada: `MOCK_LOCAL`, GetAcquirer, proveedor tecnologico o manual validado.
+4. Normaliza respuesta fiscal.
+5. Solicita a `api/` actualizar campos permitidos.
+6. `api/` valida tenant, duplicados y politica de sobrescritura.
+7. Se registra auditoria funcional y log de sync.
+
+Flujo si customer no existe:
+
+1. Backend FE consulta y normaliza datos.
+2. Solicita a `api/` crear customer en `customers`.
+3. `api/` crea registro compatible con `/api/customers`, ventas y POS.
+4. Backend FE registra `syncAction = CREATED` y referencia `customerId`.
+
+### Suppliers sync desde backend FE
+
+El backend especializado podra consultar fuente fiscal de proveedores y sincronizar hacia `suppliers` mediante `api/`.
+
+Flujo si supplier existe:
+
+1. Backend FE recibe `tenantId`, `documentTypeCode` y `documentNumber`.
+2. Consulta fuente provider-agnostic aprobada.
+3. Normaliza respuesta.
+4. Solicita a `api/` actualizar campos permitidos del supplier.
+5. `api/` conserva compatibilidad con compras e inventario.
+6. Se registra auditoria funcional y log de sync.
+
+Flujo si supplier no existe:
+
+1. Backend FE consulta fuente fiscal o recibe datos manuales normalizados.
+2. Solicita a `api/` crear supplier en `suppliers`.
+3. `api/` crea proveedor operativo compatible con compras e inventario.
+4. Backend FE registra `syncAction = CREATED` y referencia `supplierId`.
+
+Decision: GetAcquirer no se asume como fuente de proveedores. Para suppliers se requiere adapter provider-agnostic y confirmacion de fuente en FE-2.3/FE-2.8.
+
+### Diseno FE-2.4A: suppliers fiscales en `api/`
+
+El analisis de `suppliers` confirma que la tabla actual es operativa y no fiscal. Tiene `id`, `tenant_id`, `name`, `document_number`, contacto, ubicacion, `is_active`, `created_at` y `updated_at`. No tiene tipo de documento, numero normalizado, DV, razon social fiscal, email fiscal, estado fiscal ni ultima consulta.
+
+Decision:
+
+- `suppliers` debe evolucionar de forma aditiva antes de sync fiscal real.
+- No se crea tabla paralela de proveedores.
+- Compras siguen usando `purchases.supplier_id`.
+- `/api/suppliers` debe seguir funcionando.
+- Los campos fiscales nuevos deben ser opcionales inicialmente.
+- La fuente fiscal de suppliers debe ser provider-agnostic.
+
+Campos candidatos para migracion futura:
+
+| Campo | Regla |
+| --- | --- |
+| `document_type_code` | Opcional inicialmente. |
+| `document_number_normalized` | Derivado de `document_number`. |
+| `verification_digit` | Para NIT si aplica. |
+| `legal_name` | Razon social fiscal. |
+| `fiscal_email` | Email fiscal opcional. |
+| `fiscal_last_lookup_at` | Ultima consulta fiscal provider-agnostic. |
+| `fiscal_last_lookup_status` | `PENDING`, `FOUND`, `NOT_FOUND`, `ERROR`, `SKIPPED`. |
+| `fiscal_status` | `PENDING`, `VALIDATED`, `FAILED`, `NOT_REQUIRED`. |
+
+Endpoints futuros propuestos:
+
+```http
+GET /api/electronic-invoicing/suppliers
+POST /api/electronic-invoicing/suppliers
+PATCH /api/electronic-invoicing/suppliers/:id
+```
+
+Reglas futuras:
+
+- No duplicar proveedor activo por tenant + tipo documento + numero normalizado.
+- `fiscalEmail` opcional.
+- `documentNumberNormalized` derivado de `documentNumber`.
+- No exigir `documentTypeCode` a proveedores existentes.
+- No bloquear compras por datos fiscales incompletos.
+- Auditar before/after de cambios fiscales.
+- No sobrescribir datos manuales sin politica aprobada.
+
+Documento de detalle: `docs/diseno-suppliers-fiscales-fe-2-4A.md`.
+
+### Migracion FE-2.4B: suppliers fiscales
+
+Archivos creados:
+
+- `scripts/database/migrations/20260604_electronic_invoicing_suppliers_phase_1.sql`
+- `scripts/database/migrations/20260604_electronic_invoicing_suppliers_phase_1_rollback.sql`
+- `docs/runbook-migracion-suppliers-fe-fase-fe-2-4B.md`
+
+Alcance:
+
+- Extension aditiva de `suppliers`.
+- Campos fiscales opcionales inicialmente.
+- Backfill seguro de `document_number` hacia `document_number_normalized`.
+- Constraints para `fiscal_status` y `fiscal_last_lookup_status`.
+- Indices para documento normalizado, estado fiscal y ultimo lookup.
+- Rollback conservador que elimina datos fiscales nuevos sin tocar `purchases`.
+- Sin cambios funcionales backend, frontend, `backend-reporteria`, endpoints ni ejecucion SQL.
+
+Decision fisica:
+
+- Se usa `tenant_id` existente en `suppliers`.
+- No se crea unique fiscal en esta fase porque pueden existir duplicados historicos por `document_number`.
+- La unicidad fuerte por `tenant_id + document_type_code + document_number_normalized` queda para una fase posterior con diagnostico y limpieza.
+
+### Idempotencia de terceros fiscales
+
+Clave recomendada:
+
+```text
+tenantId:partyType:documentTypeCode:documentNumberNormalized
+```
+
+Reglas:
+
+- Reintentar el mismo lookup no debe crear duplicados.
+- Reintentar el mismo sync debe devolver el mismo `customerId` o `supplierId`.
+- Operaciones concurrentes para la misma clave deben bloquearse o responder `PENDING`.
+- Conflictos por duplicados existentes deben resolverse antes de crear.
+- `requestHash` y `correlationId` deben permitir trazabilidad sin exponer payload completo.
 
 ## Modelo de datos recomendado
 
-No crear migraciones en esta fase. Modelo fisico recomendado para fase futura:
+Modelo fisico recomendado para FE-1:
+
+### Migraciones FE-1 creadas
+
+Archivos:
+
+- `scripts/database/migrations/20260603_electronic_invoicing_customers_phase_1.sql`
+- `scripts/database/migrations/20260603_electronic_invoicing_customers_phase_1_rollback.sql`
+
+Alcance:
+
+- Extension aditiva de `customers`.
+- Catalogo versionable `dian_document_types` sin seed inicial.
+- Logs resumidos `dian_acquirer_lookup_logs`.
+- Indice unico parcial para un consumidor final activo por tenant.
+- Rollback conservador que elimina datos fiscales nuevos, sin tocar ventas ni pedidos.
+- Sin cambios funcionales backend, frontend, `backend-reporteria` ni endpoints.
 
 ### `customers` aditivo
 
-Agregar columnas fiscales opcionales con defaults seguros:
+FE-1 agrega columnas fiscales opcionales con defaults seguros:
 
 | Campo | Tipo recomendado | Regla |
 | --- | --- | --- |
-| `document_type_code` | varchar(10) null | FK logica a catalogo DIAN. |
-| `document_number_normalized` | varchar(50) null | Solo digitos/letras permitidas segun tipo. |
-| `verification_digit` | varchar(2) null | Solo para NIT cuando aplique. |
-| `legal_name` | varchar(255) null | Razon social o nombre fiscal. |
-| `trade_name` | varchar(255) null | Nombre comercial opcional. |
-| `fiscal_email` | varchar(255) null | Email de recepcion FE. |
-| `tax_regime` | varchar(80) null | Regimen fiscal. |
-| `tax_responsibilities` | jsonb null | Responsabilidades DIAN versionables. |
-| `organization_type` | varchar(40) null | Persona natural/juridica. |
-| `country_code` | varchar(2) not null default `CO` | Pais ISO. |
-| `department_code` | varchar(10) null | Codigo DANE o DIAN aprobado. |
-| `municipality_code` | varchar(10) null | Codigo DANE o DIAN aprobado. |
-| `fiscal_address` | text null | Direccion fiscal. |
+| `document_type_code` | text null | FK logica futura a catalogo DIAN. No obligatorio para clientes existentes. |
+| `document_number_normalized` | text null | Normalizado desde `document_number` cuando exista. |
+| `verification_digit` | text null | Solo para NIT cuando aplique. |
+| `legal_name` | text null | Razon social o nombre fiscal. |
+| `fiscal_email` | text null | Email de recepcion FE. No obligatorio al crear cliente. |
 | `is_final_consumer` | boolean not null default false | Alias fiscal de consumidor final. |
-| `fiscal_source` | varchar(20) not null default `MANUAL` | `MANUAL`, `DIAN`, `MIXED`. |
-| `manual_fields` | jsonb not null default `{}` | Campos protegidos contra overwrite. |
 | `dian_last_lookup_at` | timestamptz null | Ultima consulta. |
-| `dian_last_lookup_status` | varchar(30) null | `SUCCESS`, `NOT_FOUND`, `ERROR`, `DISABLED`. |
-| `dian_last_lookup_message` | text null | Mensaje resumido, sin PII sensible innecesaria. |
-| `created_by` | uuid null | Usuario creador futuro. |
-| `updated_by` | uuid null | Usuario editor futuro. |
+| `dian_last_lookup_status` | text null | `PENDING`, `FOUND`, `NOT_FOUND`, `ERROR`, `SKIPPED`. |
+| `fiscal_status` | text not null default `PENDING` | `PENDING`, `VALIDATED`, `FAILED`, `NOT_REQUIRED`. |
+
+Campos como `trade_name`, regimen, responsabilidades, ubicacion fiscal granular, `created_by` y `updated_by` quedan para fases posteriores si la emision electronica los exige.
 
 Indices recomendados:
 
 ```text
-idx_customers_tenant_document_type_number
-  on customers (tenant_id, document_type_code, document_number_normalized)
+idx_customers_tenant_document_number_normalized
+  on customers (tenant_id, document_number_normalized)
+  where document_number_normalized is not null
 
-ux_customers_tenant_fiscal_identity
-  unique (tenant_id, document_type_code, document_number_normalized)
-  where document_type_code is not null
-    and document_number_normalized is not null
-    and is_final_consumer = false
-
-ux_customers_tenant_final_consumer
+ux_customers_tenant_active_final_consumer
   unique (tenant_id)
   where is_final_consumer = true
+    and is_active = true
 ```
 
-Nota: Si se confirma compania fiscal multiple por tenant, esos indices deben cambiar a `company_id`.
+Nota: FE-1 no crea unicidad fiscal por documento porque `document_type_code` sigue opcional y el backfill puede ser ambiguo. Esa unicidad queda para cuando se confirme catalogo y estrategia de limpieza. Si se confirma compania fiscal multiple por tenant, esos indices deben cambiar a `company_id`.
 
 ### `dian_document_types`
 
@@ -317,16 +536,18 @@ Catalogo recomendado:
 
 | Campo | Tipo |
 | --- | --- |
-| `code` | varchar(10) primary key |
-| `name` | varchar(120) |
-| `short_name` | varchar(30) |
-| `requires_verification_digit` | boolean |
-| `is_active` | boolean |
-| `source_version` | varchar(50) |
-| `created_at` | timestamptz |
-| `updated_at` | timestamptz |
+| `id` | uuid primary key |
+| `code` | text not null |
+| `name` | text not null |
+| `description` | text null |
+| `country_code` | text not null default `CO` |
+| `is_active` | boolean not null default true |
+| `valid_from` | date null |
+| `valid_to` | date null |
+| `created_at` | timestamptz not null default `now()` |
+| `updated_at` | timestamptz not null default `now()` |
 
-Catalogo minimo inicial a confirmar antes de migrar:
+Catalogo candidato a confirmar antes de migrar:
 
 | Codigo | Nombre |
 | --- | --- |
@@ -342,7 +563,11 @@ Catalogo minimo inicial a confirmar antes de migrar:
 | `47` | Permiso Especial de Permanencia |
 | `48` | Permiso por Proteccion Temporal |
 
-SUPUESTO: `31` NIT requiere digito de verificacion. La formula de DV debe implementarse en backend antes de guardar o permitir DV manual validado.
+Decision: El catalogo no se hardcodea en codigo. El seed idempotente solo se crea despues de confirmar fuente vigente DIAN o proveedor aprobado.
+
+FE-1 crea `ux_dian_document_types_country_code_code` para evitar codigos duplicados por pais. No siembra datos.
+
+SUPUESTO TECNICO PENDIENTE: `31` NIT requiere digito de verificacion. La formula de DV debe implementarse en backend antes de guardar o permitir DV manual validado.
 
 ### `dian_acquirer_lookup_logs`
 
@@ -353,20 +578,19 @@ Tabla recomendada para trazabilidad:
 | `id` | uuid pk | Identificador. |
 | `tenant_id` | uuid not null | Scope obligatorio. |
 | `customer_id` | uuid null | Si consulta cliente existente. |
-| `document_type_code` | varchar(10) not null | Tipo consultado. |
-| `document_number_normalized` | varchar(50) not null | Numero consultado. |
-| `verification_digit` | varchar(2) null | DV si aplica. |
-| `status` | varchar(30) not null | `SUCCESS`, `NOT_FOUND`, `ERROR`, `DISABLED`. |
-| `request_hash` | varchar(128) null | Hash para trazabilidad sin exponer payload completo. |
+| `provider` | text not null | `MOCK_LOCAL`, `DIAN_DIRECT`, `PROVIDER` u otro proveedor aprobado. |
+| `document_type_code` | text null | Tipo consultado. |
+| `document_number` | text null | Numero consultado. |
+| `request_hash` | text null | Hash para trazabilidad sin exponer payload completo. |
+| `lookup_status` | text not null | `FOUND`, `NOT_FOUND`, `ERROR`, `SKIPPED`. |
+| `status_code` | text null | Codigo de proveedor, DIAN o mock. |
+| `message` | text null | Mensaje operativo resumido. |
 | `response_summary` | jsonb null | Datos normalizados resumidos. |
-| `raw_response_ref` | text null | Referencia externa si se guarda raw cifrado. |
-| `error_code` | varchar(80) null | Error tecnico/DIAN. |
-| `error_message` | text null | Mensaje resumido. |
-| `source` | varchar(30) not null | `DIAN_DIRECT`, `PROVIDER`, `MOCK`. |
-| `created_by` | uuid null | Usuario actor. |
-| `created_at` | timestamptz not null | Fecha consulta. |
+| `looked_up_by` | uuid null | Usuario actor. |
+| `looked_up_at` | timestamptz not null default `now()` | Fecha/hora de consulta. |
+| `created_at` | timestamptz not null default `now()` | Fecha de registro. |
 
-No guardar certificados, passwords ni XML crudo en esta tabla.
+No guardar certificados, passwords, XML crudo ni raw response DIAN/proveedor completo en esta tabla. Si una fase futura exige raw response, usar cifrado o almacenamiento seguro con referencia controlada.
 
 ## Variables de entorno DIAN propuestas
 
@@ -388,9 +612,11 @@ Estas variables son solo diseno. No se agregan todavia a `.env.example`.
 
 Estas variables no significan firma digital de facturas. Solo preparan consulta de adquiriente.
 
-## Integracion DIAN GetAcquirer desacoplada
+Decision FE-0.1: Estos nombres son candidatos, no contrato cerrado. La abstraccion final debe permitir `MOCK_LOCAL` sin credenciales externas y debe evitar una dependencia temprana con DIAN directo o proveedor tecnologico.
 
-Crear interfaz:
+## Integracion provider-agnostic de adquiriente
+
+Preparar interfaz futura:
 
 ```ts
 export type DianAcquirerLookupInput = {
@@ -402,8 +628,10 @@ export type DianAcquirerLookupInput = {
 
 export type DianAcquirerLookupResult = {
   status: "SUCCESS" | "NOT_FOUND" | "ERROR" | "DISABLED";
-  provider: "DIAN_DIRECT" | "PROVIDER" | "MOCK";
-  checkedAt: string;
+  statusCode?: string | null;
+  message?: string | null;
+  provider: "MOCK_LOCAL" | "DIAN_DIRECT" | "PROVIDER";
+  lookupAt: string;
   normalized?: {
     documentTypeCode: string;
     documentNumber: string;
@@ -424,20 +652,22 @@ export type DianAcquirerLookupResult = {
   };
 };
 
-export interface DianAcquirerGateway {
+export interface ElectronicInvoicingProviderAdapter {
   lookup(input: DianAcquirerLookupInput): Promise<DianAcquirerLookupResult>;
 }
 ```
 
 Reglas:
 
-- Si `DIAN_ACQUIRER_ENABLED=false`, responder `DISABLED`.
+- Si la integracion externa esta apagada, responder `DISABLED`.
+- Si el modo es `MOCK_LOCAL`, devolver preview controlado sin llamar servicios externos.
 - Si DIAN no responde, permitir registro manual.
-- Si DIAN responde, no persistir cambios automaticamente.
+- Si DIAN/proveedor responde, no persistir cambios automaticamente.
 - Mostrar preview normalizado.
 - Aplicar cambios solo con confirmacion explicita y seleccion de campos.
 - Registrar lookup en `dian_acquirer_lookup_logs`.
 - Registrar aplicacion en `auditoria_eventos`.
+- Guardar solo resumen operativo de respuesta, no raw response completo.
 
 ## Contratos API propuestos
 
@@ -545,7 +775,10 @@ Respuesta:
 {
   "lookupId": "uuid",
   "status": "SUCCESS",
-  "checkedAt": "iso-date",
+  "statusCode": "OK",
+  "message": "Consulta exitosa",
+  "provider": "MOCK_LOCAL",
+  "lookupAt": "iso-date",
   "manualRegistrationAllowed": true,
   "normalized": {
     "documentTypeCode": "31",
@@ -610,7 +843,7 @@ Campos:
 - `documentNumber`: requerido salvo consumidor final.
 - `verificationDigit`: opcional; permitido y validable para NIT.
 - `email`: opcional.
-- `fiscalEmail`: requerido para clientes que recibiran factura electronica.
+- `fiscalEmail`: opcional al crear cliente; requerido solo cuando el flujo de emision electronica nominada lo necesite.
 - `phone`: opcional.
 - `address`: opcional.
 - `fiscalAddress`: opcional.
@@ -651,16 +884,23 @@ Partial de create, excepto:
 
 1. El sistema SHALL NOT duplicar cliente por `tenant_id`, tipo de documento y numero normalizado.
 2. El sistema SHALL permitir digito de verificacion para NIT.
-3. El sistema SHALL validar email de recepcion de factura electronica.
-4. El sistema SHALL mantener un consumidor final por tenant o compania.
-5. El consumidor final SHALL NOT eliminarse ni inactivarse.
-6. La consulta DIAN SHALL NOT sobrescribir datos existentes sin confirmacion explicita.
-7. Si DIAN devuelve datos, el sistema SHALL permitir previsualizar, crear, actualizar o conservar campos manuales.
-8. Si DIAN no responde, el sistema SHALL permitir registro manual.
-9. El sistema SHALL registrar fecha y resultado de la ultima consulta DIAN.
-10. El sistema SHALL permitir desactivar DIAN sin afectar registro manual.
-11. Los datos fiscales nuevos SHALL ser aditivos y no romper `customers` actual.
-12. Todo endpoint SHALL filtrar por tenant efectivo desde JWT, salvo `SUPER_ADMIN` con regla explicita.
+3. El sistema SHALL validar email de recepcion de factura electronica cuando venga informado.
+4. El sistema SHALL exigir `fiscalEmail` solo para emision electronica nominada que lo requiera.
+5. El sistema SHALL mantener un consumidor final por tenant.
+6. El sistema SHALL NOT duplicar consumidor final por sucursal.
+7. El sistema SHALL tomar la sucursal desde el contexto de venta, pedido o POS.
+8. El sistema SHALL exponer o preparar endpoint para asegurar consumidor final default.
+9. El consumidor final SHALL NOT eliminarse ni inactivarse.
+10. La consulta DIAN/proveedor SHALL NOT sobrescribir datos existentes sin confirmacion explicita.
+11. Si DIAN/proveedor devuelve datos, el sistema SHALL permitir previsualizar, crear, actualizar o conservar campos manuales.
+12. Si DIAN/proveedor no responde, el sistema SHALL permitir registro manual.
+13. El sistema SHALL registrar fecha y resultado de la ultima consulta.
+14. El sistema SHALL permitir modo `MOCK_LOCAL` o integracion externa apagada sin afectar registro manual.
+15. Los datos fiscales nuevos SHALL ser aditivos y no romper `customers` actual.
+16. Todo endpoint SHALL filtrar por tenant efectivo desde JWT, salvo `SUPER_ADMIN` con regla explicita.
+17. El sistema SHALL guardar solo resumen operativo de consultas externas en primera version.
+18. El sistema SHALL usar `ELECTRONIC_INVOICING_CUSTOMERS` como menu key principal.
+19. El sistema SHALL tratar `dian_document_types` como catalogo versionable, sin hardcodear tipos en codigo.
 
 ## Casos de uso principales
 
@@ -701,6 +941,8 @@ Partial de create, excepto:
 2. Consumidor final no tiene flujo DIAN obligatorio.
 3. No se puede eliminar ni inactivar.
 4. Puede usarse por POS y ventas mientras no se exija factura electronica nominal.
+5. Sucursal de la venta sale del contexto POS/pedido, no del cliente.
+6. Endpoint `POST /api/electronic-invoicing/customers/default/ensure` debe asegurar el registro default.
 
 ## Seguridad
 
@@ -708,7 +950,7 @@ Partial de create, excepto:
 - Usar `RolesGuard` y `PermissionsGuard`.
 - No aceptar `tenantId` en body para usuarios no globales.
 - Enmascarar documento en logs tecnicos cuando sea posible.
-- No loguear certificados, passwords ni raw SOAP por defecto.
+- No loguear certificados, passwords, raw SOAP ni raw response DIAN/proveedor por defecto.
 - Registrar auditoria de cambios fiscales.
 - Registrar quien aplico datos DIAN y que campos cambio.
 - Validar que `customer_id` pertenezca al tenant.
@@ -719,7 +961,11 @@ Partial de create, excepto:
 
 - DIAN publica documentacion tecnica de factura electronica y anexos tecnicos en su sitio oficial.
 - El micrositio DIAN indica que Resolucion 000008 de 2024 adopta el Anexo Tecnico de Factura Electronica de Venta version 1.9.
-- La guia DIAN de consumo de Web Services menciona GetAcquirer para completar informacion de adquirientes.
+- La Guia Herramienta para el Consumo de Web Services GetAcquirer confirma que GetAcquirer completa informacion de adquirientes/compradores.
+- La guia GetAcquirer indica que el request usa `identificationType` e `identificationNumber`.
+- La guia GetAcquirer relaciona la respuesta con `AccountingCustomerParty / PartyIdentification / ID @schemeName`, `TaxRepresentativeParty / PartyIdentification / ID`, `AccountingCustomerParty / Contact / Name` y `AccountingCustomerParty / Contact / ElectronicMail`.
+- La guia GetAcquirer lista codigos `11`, `12`, `13`, `21`, `22`, `31`, `41`, `42`, `47`, `48`, `50` y `91`.
+- La guia GetAcquirer indica que el WSDL se obtiene desde el catalogo de participante DIAN, que se configura keystore/certificado, WS-Security Signature, Timestamp en milisegundos, Authentication, WS-A addressing y action `http://wcf.dian.colombia/IWcfDianCustomerServices/GetAcquirer`.
 - Normograma DIAN lista codigos de tipos de documento de tercero como `11`, `12`, `13`, `21`, `22`, `31`, `41`, `42`, `43`, `47`, `48`.
 
 PREGUNTA ABIERTA: Antes de migrar, confirmar el catalogo contra el anexo tecnico DIAN vigente y/o proveedor tecnologico elegido.
@@ -738,15 +984,25 @@ RIESGO: Reporteria y funciones SQL actuales esperan `customers.document_number`;
 
 RIESGO: Guardar raw response DIAN puede crear exposicion innecesaria de datos personales.
 
+RIESGO: Un adapter provider-agnostic puede ocultar diferencias reales entre DIAN directo y proveedor. La mitigacion es normalizar contratos minimos y registrar `provider`, `statusCode` y `message`.
+
+RIESGO: Sin idempotencia por tercero fiscal, backend FE podria crear customers o suppliers duplicados.
+
+RIESGO: Usar GetAcquirer para suppliers sin fuente confirmada podria mezclar alcances. La mitigacion es limitar GetAcquirer a customers/adquirientes y disenar suppliers provider-agnostic.
+
+RIESGO: Sync fiscal podria sobrescribir datos manuales confiables. La mitigacion es politica de campos permitidos, auditoria before/after y confirmacion cuando aplique.
+
 ## Preguntas pendientes antes de implementar
 
-1. Confirmar proveedor: DIAN directo, proveedor tecnologico o ambos.
-2. Confirmar catalogo DIAN vigente y fuente oficial para tipos de documento.
-3. Confirmar formato y documento del consumidor final.
-4. Confirmar si cliente fiscal sera unico por tenant o por compania futura.
-5. Confirmar si `fiscalEmail` sera obligatorio para todo cliente fiscal o solo al emitir factura electronica.
-6. Confirmar permisos y menu key.
-7. Confirmar si se agrega validation pipe global o validacion manual por servicio.
-8. Confirmar politica de retencion de logs DIAN.
-9. Confirmar si se cifra `raw_response_ref` o no se guarda raw response.
-10. Confirmar estrategia de backfill para clientes existentes con `document_number` sin tipo.
+1. Confirmar catalogo DIAN vigente y fuente oficial para tipos de documento antes de seed.
+2. Confirmar formato y documento fiscal exacto del consumidor final antes de migracion.
+3. Confirmar si cliente fiscal sera unico por tenant en FE-1 o si se anticipa `company_id` futuro.
+4. Confirmar si se agrega validation pipe global o validacion manual por servicio.
+5. Confirmar politica de retencion de logs de consulta.
+6. Confirmar estrategia de backfill para clientes existentes con `document_number` sin tipo.
+7. Confirmar criterio de avance de `MOCK_LOCAL` a DIAN directo o proveedor tecnologico.
+8. Confirmar contrato interno de upsert customer desde backend FE hacia `api/`.
+9. Confirmar contrato interno de upsert supplier desde backend FE hacia `api/`.
+10. Confirmar si `suppliers` tendra columnas fiscales equivalentes a `customers`.
+11. Confirmar fuente fiscal aprobada para proveedores.
+12. Confirmar politica de sobrescritura cuando fuente externa difiere de dato manual.

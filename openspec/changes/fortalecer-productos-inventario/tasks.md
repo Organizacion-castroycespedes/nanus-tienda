@@ -906,6 +906,138 @@
 
 - [x] Crear `docs/diseno-fiscal-pricing-promociones-facturacion-electronica-fase-6-0.md` sin cambios funcionales y validar con `openspec validate` y `git diff --check`.
 
+## Fase 6.1: backend cambio de precio con historial
+
+- [x] Implementar `POST /api/products/:id/change-price` con motivo obligatorio, precio no negativo y usuario autenticado.
+- [x] Implementar `GET /api/products/:id/price-history` filtrado por tenant.
+- [x] Usar `product_price_history` existente para registrar `previous_price`, `new_price`, `reason`, `changed_by`, `valid_from`, `status = APPLIED` y `created_at`.
+- [x] Actualizar solo `products.price` sin recalcular `sale_items`, `order_items`, POS, Orders ni `inventory_create_sale_v2`.
+- [x] Agregar pruebas unitarias de cambio de precio, validaciones, historial, tenant y no recalculo historico.
+- [x] Ejecutar build de `api/`.
+- [x] Crear `docs/evidencia-backend-cambio-precio-fase-6-1.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.2: frontend cambio de precio con historial
+
+- [x] Extender servicio frontend de productos con `getProductPriceHistory` y `changeProductPrice`.
+- [x] Crear modal de cambio de precio con precio actual, nuevo precio, diferencia, motivo obligatorio y validaciones UX.
+- [x] Crear panel de historial de precios con fecha, precio anterior/nuevo, motivo, usuario, estado y vacio amigable.
+- [x] Integrar boton `Cambiar precio` en productos sin tocar POS, Orders ni compras.
+- [x] Refrescar producto/listado e historial despues de guardar.
+- [x] Mostrar exito y errores con `ConfirmDialog` o patron consistente.
+- [x] Mantener `ProductForm` compatible y documentar ayuda para usar cambio trazable.
+- [x] Ejecutar `cd web && npx.cmd tsc --noEmit --pretty false`.
+- [x] Ejecutar `cd web && npm.cmd run build`.
+- [x] Ejecutar `cd web && npm.cmd run lint`.
+- [x] Crear `docs/evidencia-frontend-cambio-precio-fase-6-2.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.3: validacion punta a punta cambio de precio UI/API/DB
+
+- [x] Levantar API local contra copia QA local `localhost:5432/manus_tienda_prd`.
+- [x] Levantar web local y validar flujo real desde UI de productos.
+- [x] Cambiar precio desde UI con motivo obligatorio y confirmar exito visual.
+- [x] Validar que listado, `ProductForm` e historial reflejan el nuevo precio.
+- [x] Validar `products.price` y `product_price_history` en PostgreSQL.
+- [x] Validar errores de motivo corto, precio negativo y producto inexistente.
+- [x] Confirmar que `sale_items` y `order_items` historicos no cambian.
+- [x] Confirmar compatibilidad de `GET /api/products/:id` y `GET /api/inventory/products`.
+- [x] Crear `docs/evidencia-validacion-cambio-precio-fase-6-3.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.4: PricingService base sin promociones
+
+- [x] Crear modulo `api/src/modules/pricing` con `PricingService`.
+- [x] Implementar `calculateLinePrice` con lectura por `tenantId + productId`.
+- [x] Validar producto activo, `quantity > 0` y `channel` permitido.
+- [x] Usar `products.price` como precio visible vigente.
+- [x] Calcular impuesto con regla actual de precio incluido.
+- [x] Mantener promociones en `0/null`.
+- [x] Implementar endpoint preview `POST /api/pricing/preview-line`.
+- [x] Confirmar que no persiste ni modifica productos, ventas ni pedidos.
+- [x] Agregar tests de PricingService y preview controller.
+- [x] Ejecutar `cd api && npx.cmd tsx --test src/modules/pricing/*.spec.ts`.
+- [x] Ejecutar `cd api && npm.cmd run build`.
+- [x] Crear `docs/evidencia-pricing-service-base-fase-6-4.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.5: backend CRUD promociones simples
+
+- [x] Crear migracion `scripts/database/migrations/20260605_pricing_promotions_phase_1.sql`.
+- [x] Crear rollback `scripts/database/migrations/20260605_pricing_promotions_phase_1_rollback.sql`.
+- [x] Crear runbook `docs/runbook-migracion-promociones-fase-6-5.md`.
+- [x] Crear CRUD backend bajo `/api/pricing/promotions`.
+- [x] Validar productos y sucursales por tenant.
+- [x] Validar descuentos `PERCENTAGE`, `FIXED_AMOUNT` y `SPECIAL_PRICE`.
+- [x] Validar vigencia, prioridad y productos obligatorios.
+- [x] Implementar desactivacion logica sin borrado fisico.
+- [x] Agregar tests de servicio y controller de promociones.
+- [x] Ejecutar `cd api && npx.cmd tsx --test src/modules/pricing/promotions*.spec.ts`.
+- [x] Ejecutar `cd api && npm.cmd run build`.
+- [x] Crear `docs/evidencia-backend-promociones-crud-fase-6-5.md`.
+- [x] Confirmar que POS, Orders, `SaleService`, `OrderService` e `inventory_create_sale_v2` no se modificaron.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.5.1: prueba local migracion y API promociones
+
+- [x] Crear backup local previo fuera del repo.
+- [x] Ejecutar migracion `scripts/database/migrations/20260605_pricing_promotions_phase_1.sql` contra copia QA local `localhost:5432/manus_tienda_prd`.
+- [x] Validar tablas `promotions`, `promotion_products` y `promotion_branches`.
+- [x] Validar constraints e indices de promociones, productos y sucursales.
+- [x] Ejecutar rollback local y confirmar que productos, ventas y pedidos siguen intactos.
+- [x] Reaplicar migracion y dejar DB local migrada.
+- [x] Levantar API local y probar CRUD real de promociones.
+- [x] Crear promociones `PERCENTAGE`, `FIXED_AMOUNT`, `SPECIAL_PRICE`, con sucursal y sin sucursal.
+- [x] Listar, filtrar por `productId`, actualizar y desactivar promocion sin borrado fisico.
+- [x] Validar errores esperados: porcentaje mayor a 100, vigencia invalida, sin productos y producto inexistente.
+- [x] Confirmar que `GET /api/products/:id` y `GET /api/inventory/products` siguen funcionando.
+- [x] Confirmar que `POST /api/pricing/preview-line` sigue sin aplicar promociones.
+- [x] Confirmar que POS, Orders, `SaleService`, `OrderService` e `inventory_create_sale_v2` no se modificaron.
+- [x] Ejecutar cleanup de fixtures y validar `fixture_rows_remaining=0`.
+- [x] Crear `docs/evidencia-api-local-promociones-fase-6-5-1.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.6: PricingService preview con promociones
+
+- [x] Consultar promociones aplicables por `tenantId`, `branchId`, `productId` y fecha.
+- [x] Aplicar solo promociones activas, vigentes y asociadas al producto.
+- [x] Respetar alcance por sucursal: sin sucursal aplica a todo el tenant, con sucursal aplica solo a esa sucursal.
+- [x] Calcular descuentos `PERCENTAGE`, `FIXED_AMOUNT` y `SPECIAL_PRICE`.
+- [x] Evitar `finalUnitPrice < 0` y limitar descuentos a `baseUnitPrice`.
+- [x] No aplicar `SPECIAL_PRICE` cuando no beneficia al cliente.
+- [x] Seleccionar promocion no acumulable por menor prioridad, mayor descuento, mayor recencia e `id` estable.
+- [x] Recalcular `taxBase`, `taxAmount`, `lineSubtotal` y `lineTotal` sobre `finalUnitPrice`.
+- [x] Mantener comportamiento anterior cuando no hay promociones aplicables.
+- [x] Mantener `preview-line` sin persistencia y sin modificar ventas, pedidos ni productos.
+- [x] Agregar tests de promociones aplicadas, no aplicables, prioridad, empates, impuestos y no persistencia.
+- [x] Ejecutar `cd api && npx.cmd tsx --test src/modules/pricing/*.spec.ts`.
+- [x] Ejecutar `cd api && npm.cmd run build`.
+- [x] Crear `docs/evidencia-pricing-service-promociones-preview-fase-6-6.md`.
+- [x] Confirmar que no se toco POS, Orders, `SaleService`, `OrderService`, `inventory_create_sale_v2`, frontend, reporteria ni SQL.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
+## Fase 6.6.1: validacion API local PricingService promociones preview
+
+- [x] Crear backup local previo fuera del repo.
+- [x] Confirmar ambiente QA local `localhost:5432/manus_tienda_prd` y no PRD real.
+- [x] Levantar API local en puerto disponible.
+- [x] Crear fixture seguro con producto, IVA, sucursal y promociones de prueba.
+- [x] Validar `preview-line` sin promocion aplicable.
+- [x] Validar promocion `PERCENTAGE` activa.
+- [x] Validar promocion `FIXED_AMOUNT` activa.
+- [x] Validar promocion `SPECIAL_PRICE` activa.
+- [x] Validar que promocion vencida no aplica.
+- [x] Validar que promocion inactiva no aplica.
+- [x] Validar que promocion de otra sucursal no aplica.
+- [x] Validar prioridad: gana menor `priority`.
+- [x] Validar empate de prioridad: gana mayor descuento.
+- [x] Validar que descuento no deja precio final negativo.
+- [x] Validar `quantity > 1` y recalculo de impuestos.
+- [x] Confirmar no persistencia en `sale_items`, `order_items` ni productos base.
+- [x] Ejecutar cleanup de fixture y validar `fixture_rows_remaining=0`.
+- [x] Crear `docs/evidencia-api-local-pricing-promociones-preview-fase-6-6-1.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

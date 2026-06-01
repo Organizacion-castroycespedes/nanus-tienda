@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import crypto from "crypto";
+import { DatabaseService } from "../../../common/db/database.service";
 import {
   PRODUCT_OPERATIONAL_STATUSES,
   PRODUCT_ROTATION_CLASSES,
@@ -60,6 +61,8 @@ type UpdateProductInput = Partial<
   >
 >;
 
+type ProductUpdatePayload = UpdateProductInput & Record<string, unknown>;
+
 type ProductOperationalRules = {
   isPerishable: boolean;
   requiresLot: boolean;
@@ -76,7 +79,9 @@ export class ProductService {
     @Inject(ProductRepository)
     private readonly productRepository: ProductRepository,
     @Inject(StockMovementService)
-    private readonly stockMovementService: StockMovementService
+    private readonly stockMovementService: StockMovementService,
+    @Inject(DatabaseService)
+    private readonly db: DatabaseService
   ) {}
 
   private normalizeSku(sku: string) {
@@ -92,6 +97,33 @@ export class ProductService {
   private assertNonNegative(value: number | undefined, field: string) {
     if (value === undefined || !Number.isFinite(value) || value < 0) {
       throw new BadRequestException(`${field} must be a non-negative number`);
+    }
+  }
+
+  private validatePriceChangeReason(reason: string | undefined) {
+    if (!reason?.trim() || reason.trim().length < 5) {
+      throw new BadRequestException(
+        "reason must be at least 5 characters long"
+      );
+    }
+  }
+
+  private assertNoDirectPriceUpdate(data: ProductUpdatePayload) {
+    const blockedFields = [
+      "price",
+      "priceWithTax",
+      "priceWithoutTax",
+      "price_with_tax",
+      "price_without_tax",
+    ];
+    const attemptedFields = blockedFields.filter((field) =>
+      Object.prototype.hasOwnProperty.call(data, field)
+    );
+
+    if (attemptedFields.length > 0) {
+      throw new BadRequestException(
+        `price updates must use /products/:id/change-price; blocked fields: ${attemptedFields.join(", ")}`
+      );
     }
   }
 
@@ -308,8 +340,10 @@ export class ProductService {
   async updateProduct(
     id: string,
     tenantId: string,
-    data: UpdateProductInput
+    data: ProductUpdatePayload
   ) {
+    this.assertNoDirectPriceUpdate(data);
+
     const current = await this.productRepository.findById(id, tenantId);
     if (!current) {
       throw new NotFoundException("product not found");
@@ -350,6 +384,94 @@ export class ProductService {
     }
 
     return updated;
+  }
+
+  async changePrice(
+    productId: string,
+    tenantId: string,
+    changedBy: string | undefined,
+    data: { newPrice: number; reason: string }
+  ) {
+    if (!changedBy) {
+      throw new BadRequestException("changedBy is required");
+    }
+    this.assertNonNegative(data.newPrice, "newPrice");
+    this.validatePriceChangeReason(data.reason);
+
+    const reason = data.reason.trim();
+    const appliedAt = new Date();
+    const client = await this.db.getClient();
+
+    try {
+      await client.query("BEGIN");
+
+      const current = await this.productRepository.findByIdForUpdate(
+        productId,
+        tenantId,
+        client
+      );
+      if (!current) {
+        throw new NotFoundException("product not found");
+      }
+
+      await this.productRepository.closeCurrentPriceHistory(
+        tenantId,
+        productId,
+        appliedAt,
+        client
+      );
+
+      const history = await this.productRepository.createPriceHistory(
+        {
+          tenantId,
+          productId,
+          previousPrice: current.price,
+          newPrice: data.newPrice,
+          reason,
+          changedBy,
+          validFrom: appliedAt,
+        },
+        client
+      );
+
+      const updated = await this.productRepository.update(
+        productId,
+        tenantId,
+        { price: data.newPrice },
+        client
+      );
+      if (!updated) {
+        throw new NotFoundException("product not found");
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        productId,
+        previousPrice: history.previousPrice,
+        newPrice: history.newPrice,
+        reason: history.reason,
+        changedBy: history.changedBy,
+        appliedAt: history.validFrom,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getPriceHistory(productId: string, tenantId: string) {
+    const product = await this.productRepository.findById(productId, tenantId);
+    if (!product) {
+      throw new NotFoundException("product not found");
+    }
+
+    return this.productRepository.findPriceHistoryByProduct(
+      tenantId,
+      productId
+    );
   }
 
   async softDeleteProduct(id: string, tenantId: string) {
