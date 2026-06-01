@@ -49,6 +49,103 @@ export class PricingService {
     return date ? new Date(date) : new Date();
   }
 
+  private calculateLinePreview(input: {
+    product: {
+      id: string;
+      price: number;
+      taxId: string | null;
+      taxRate: number;
+      taxIsIncluded: boolean;
+    };
+    quantity: number;
+    finalUnitPrice: number;
+    discountAmount: number;
+    discountPercent: number;
+    appliedPromotionId: string | null;
+    appliedPromotionName: string | null;
+    explanation: string;
+  }): LinePricePreview {
+    const taxRate = this.roundCurrency(input.product.taxRate);
+    const baseUnitPrice = this.roundCurrency(input.product.price);
+    const finalUnitPrice = this.roundCurrency(input.finalUnitPrice);
+
+    let taxBase = 0;
+    let taxAmount = 0;
+    let lineSubtotal = 0;
+    let lineTotal = 0;
+
+    if (taxRate > 0 && !input.product.taxIsIncluded) {
+      lineSubtotal = this.roundCurrency(input.quantity * finalUnitPrice);
+      taxBase = lineSubtotal;
+      taxAmount = this.roundCurrency(taxBase * taxRate);
+      lineTotal = this.roundCurrency(lineSubtotal + taxAmount);
+    } else {
+      lineTotal = this.roundCurrency(input.quantity * finalUnitPrice);
+      const unitPriceWithoutTax =
+        taxRate > 0
+          ? this.roundCurrency(finalUnitPrice / (1 + taxRate))
+          : finalUnitPrice;
+      taxBase = this.roundCurrency(unitPriceWithoutTax * input.quantity);
+      taxAmount =
+        taxRate > 0 ? this.roundCurrency(lineTotal - taxBase) : 0;
+      lineSubtotal = taxBase;
+    }
+
+    return {
+      productId: input.product.id,
+      quantity: input.quantity,
+      baseUnitPrice,
+      finalUnitPrice,
+      discountAmount: this.roundCurrency(input.discountAmount),
+      discountPercent: this.roundCurrency(input.discountPercent),
+      appliedPromotionId: input.appliedPromotionId,
+      appliedPromotionName: input.appliedPromotionName,
+      taxId: input.product.taxId,
+      taxRate,
+      taxBase,
+      taxAmount,
+      lineSubtotal,
+      lineTotal,
+      explanation: input.explanation,
+    };
+  }
+
+  private async prepareBaseLine(input: CalculateLinePriceInput) {
+    this.assertInput(input);
+
+    const product = await this.pricingRepository.findProductSnapshot(
+      input.tenantId,
+      input.productId
+    );
+    if (!product) {
+      throw new NotFoundException("product not found");
+    }
+    if (!product.isActive) {
+      throw new BadRequestException("product is inactive");
+    }
+
+    const quantity = this.roundCurrency(input.quantity);
+    const pricingDate = this.resolveDate(input.date);
+    const basePreview = this.calculateLinePreview({
+      product,
+      quantity,
+      finalUnitPrice: product.price,
+      discountAmount: 0,
+      discountPercent: 0,
+      appliedPromotionId: null,
+      appliedPromotionName: null,
+      explanation:
+        "products.price is treated as the visible unit price with tax included; no active promotion applies.",
+    });
+
+    return {
+      product,
+      quantity,
+      pricingDate,
+      basePreview,
+    };
+  }
+
   private calculatePromotionCandidate(
     promotion: PricingPromotionSnapshot,
     baseUnitPrice: number
@@ -129,25 +226,19 @@ export class PricingService {
       })[0] ?? null;
   }
 
+  async calculateLineWithoutPromotions(
+    input: CalculateLinePriceInput
+  ): Promise<LinePricePreview> {
+    const { basePreview } = await this.prepareBaseLine(input);
+    return basePreview;
+  }
+
   async calculateLinePrice(
     input: CalculateLinePriceInput
   ): Promise<LinePricePreview> {
-    this.assertInput(input);
-
-    const product = await this.pricingRepository.findProductSnapshot(
-      input.tenantId,
-      input.productId
-    );
-    if (!product) {
-      throw new NotFoundException("product not found");
-    }
-    if (!product.isActive) {
-      throw new BadRequestException("product is inactive");
-    }
-
-    const pricingDate = this.resolveDate(input.date);
-    const quantity = this.roundCurrency(input.quantity);
-    const baseUnitPrice = this.roundCurrency(product.price);
+    const { product, quantity, pricingDate, basePreview } =
+      await this.prepareBaseLine(input);
+    const baseUnitPrice = basePreview.baseUnitPrice;
     const promotions = await this.pricingRepository.findApplicablePromotions({
       tenantId: input.tenantId,
       branchId: input.branchId,
@@ -158,36 +249,21 @@ export class PricingService {
       promotions,
       baseUnitPrice
     );
-    const finalUnitPrice = appliedPromotion?.finalUnitPrice ?? baseUnitPrice;
-    const lineTotal = this.roundCurrency(quantity * finalUnitPrice);
-    const taxRate = this.roundCurrency(product.taxRate);
-    const unitPriceWithoutTax =
-      taxRate > 0
-        ? this.roundCurrency(finalUnitPrice / (1 + taxRate))
-        : finalUnitPrice;
-    const taxBase = this.roundCurrency(unitPriceWithoutTax * quantity);
-    const taxAmount =
-      taxRate > 0 ? this.roundCurrency(lineTotal - taxBase) : 0;
-    const lineSubtotal = taxBase;
 
-    return {
-      productId: product.id,
+    if (!appliedPromotion) {
+      return basePreview;
+    }
+
+    return this.calculateLinePreview({
+      product,
       quantity,
-      baseUnitPrice,
-      finalUnitPrice,
-      discountAmount: appliedPromotion?.discountAmount ?? 0,
-      discountPercent: appliedPromotion?.discountPercent ?? 0,
-      appliedPromotionId: appliedPromotion?.promotion.id ?? null,
-      appliedPromotionName: appliedPromotion?.promotion.name ?? null,
-      taxId: product.taxId,
-      taxRate,
-      taxBase,
-      taxAmount,
-      lineSubtotal,
-      lineTotal,
-      explanation: appliedPromotion
-        ? "products.price is treated as the visible unit price with tax included; active non-stackable promotion applied by priority, discount and recency."
-        : "products.price is treated as the visible unit price with tax included; no active promotion applies.",
-    };
+      finalUnitPrice: appliedPromotion.finalUnitPrice,
+      discountAmount: appliedPromotion.discountAmount,
+      discountPercent: appliedPromotion.discountPercent,
+      appliedPromotionId: appliedPromotion.promotion.id,
+      appliedPromotionName: appliedPromotion.promotion.name,
+      explanation:
+        "products.price is treated as the visible unit price with tax included; active non-stackable promotion applied by priority, discount and recency.",
+    });
   }
 }

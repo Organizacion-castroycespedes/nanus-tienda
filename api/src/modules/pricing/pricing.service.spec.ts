@@ -74,10 +74,10 @@ const baseInput = () => ({
 });
 
 describe("PricingService", () => {
-  it("calculates a line without tax and without promotions", async () => {
+  it("calculates a base line without tax and without promotions", async () => {
     const { service, calls } = buildService(baseProduct({ price: 100 }));
 
-    const result = await service.calculateLinePrice(baseInput());
+    const result = await service.calculateLineWithoutPromotions(baseInput());
 
     assert.deepEqual(result, {
       productId,
@@ -97,7 +97,87 @@ describe("PricingService", () => {
       explanation:
         "products.price is treated as the visible unit price with tax included; no active promotion applies.",
     });
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0], `find:${tenantId}:${productId}`);
+  });
+
+  it("calculates a base line with included tax", async () => {
+    const taxId = randomUUID();
+    const { service } = buildService(
+      baseProduct({ price: 119, taxId, taxRate: 0.19, taxIsIncluded: true })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 2,
+    });
+
+    assert.equal(result.baseUnitPrice, 119);
+    assert.equal(result.finalUnitPrice, 119);
+    assert.equal(result.taxId, taxId);
+    assert.equal(result.taxRate, 0.19);
+    assert.equal(result.taxBase, 200);
+    assert.equal(result.taxAmount, 38);
+    assert.equal(result.lineSubtotal, 200);
+    assert.equal(result.lineTotal, 238);
+  });
+
+  it("calculates a base line with excluded tax", async () => {
+    const taxId = randomUUID();
+    const { service } = buildService(
+      baseProduct({ price: 100, taxId, taxRate: 0.19, taxIsIncluded: false })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 2,
+    });
+
+    assert.equal(result.baseUnitPrice, 100);
+    assert.equal(result.finalUnitPrice, 100);
+    assert.equal(result.taxBase, 200);
+    assert.equal(result.taxAmount, 38);
+    assert.equal(result.lineSubtotal, 200);
+    assert.equal(result.lineTotal, 238);
+  });
+
+  it("supports decimal quantity in the base calculation", async () => {
+    const { service } = buildService(
+      baseProduct({ price: 99.99, taxRate: 0.19, taxIsIncluded: true })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 1.5,
+    });
+
+    assert.equal(result.quantity, 1.5);
+    assert.equal(result.baseUnitPrice, 99.99);
+    assert.equal(result.lineTotal, 149.99);
+    assert.equal(result.taxBase, 126.05);
+    assert.equal(result.taxAmount, 23.94);
+  });
+
+  it("does not query promotions for the base calculation", async () => {
+    const calls: string[] = [];
+    const repository = {
+      findProductSnapshot: async (
+        inputTenantId: string,
+        inputProductId: string
+      ) => {
+        calls.push(`find:${inputTenantId}:${inputProductId}`);
+        return baseProduct({ price: 100 });
+      },
+      findApplicablePromotions: async () => {
+        throw new Error("promotions should not be queried");
+      },
+    };
+    const service = new PricingService(repository as any);
+
+    const result = await service.calculateLineWithoutPromotions(baseInput());
+
+    assert.equal(result.lineTotal, 200);
+    assert.deepEqual(calls, [`find:${tenantId}:${productId}`]);
   });
 
   it("applies active percentage promotion", async () => {
@@ -328,7 +408,7 @@ describe("PricingService", () => {
 
   it("supports decimal quantity and rounds to 2 decimals", async () => {
     const { service } = buildService(
-      baseProduct({ price: 99.99, taxRate: 0.19 })
+      baseProduct({ price: 99.99, taxRate: 0.19, taxIsIncluded: true })
     );
 
     const result = await service.calculateLinePrice({
@@ -347,7 +427,11 @@ describe("PricingService", () => {
     const { service } = buildService(baseProduct());
 
     await assert.rejects(
-      () => service.calculateLinePrice({ ...baseInput(), quantity: 0 }),
+      () =>
+        service.calculateLineWithoutPromotions({
+          ...baseInput(),
+          quantity: 0,
+        }),
       /quantity must be greater than 0/
     );
   });
@@ -356,7 +440,7 @@ describe("PricingService", () => {
     const { service } = buildService(baseProduct({ isActive: false }));
 
     await assert.rejects(
-      () => service.calculateLinePrice(baseInput()),
+      () => service.calculateLineWithoutPromotions(baseInput()),
       /product is inactive/
     );
   });
@@ -365,7 +449,7 @@ describe("PricingService", () => {
     const { service } = buildService(null);
 
     await assert.rejects(
-      () => service.calculateLinePrice(baseInput()),
+      () => service.calculateLineWithoutPromotions(baseInput()),
       /product not found/
     );
   });
@@ -375,7 +459,7 @@ describe("PricingService", () => {
 
     await assert.rejects(
       () =>
-        service.calculateLinePrice({
+        service.calculateLineWithoutPromotions({
           ...baseInput(),
           channel: "WEB" as any,
         }),
