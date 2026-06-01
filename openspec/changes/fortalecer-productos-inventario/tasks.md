@@ -1081,6 +1081,24 @@
 - [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
 - [x] Confirmar que no se toco `OrderService`, `SaleService`, frontend, POS, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
 
+## Fase 6.7.2: OrderService usa PricingService en pedidos DRAFT
+
+- [x] Importar `PricingModule` en `InventoryModule` sin circularidad.
+- [x] Inyectar `PricingService` en `OrderService`.
+- [x] Calcular lineas con `PricingService.calculateLinePrice` al crear pedidos.
+- [x] Resolver `branchId` antes de calcular y rechazar creacion sin sucursal.
+- [x] Ignorar `price`, `subtotal` y `total` enviados por frontend en creacion.
+- [x] Calcular `orders.total` como suma de `lineTotal`.
+- [x] Persistir `order_items.price = finalUnitPrice` y `order_items.subtotal = lineTotal`.
+- [x] Persistir snapshot de precio, descuento, promocion, impuesto y fecha de calculo en `order_items`.
+- [x] Recalcular lineas al actualizar pedidos `DRAFT` cuando llegan `items`.
+- [x] Mantener actualizacion sin recalculo cuando no llegan `items`.
+- [x] Documentar riesgo de cambio de `branchId`/`customerId` sin `items`.
+- [x] Agregar pruebas unitarias de `OrderService` sin base real.
+- [x] Crear `docs/evidencia-orders-pricing-service-fase-6-7-2.md`.
+- [x] Ejecutar tests autorizados, build, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se tocaron `SaleService`, `invoiceOrder`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
