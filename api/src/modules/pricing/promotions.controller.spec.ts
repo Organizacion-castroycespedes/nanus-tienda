@@ -1,9 +1,67 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
+import "reflect-metadata";
+import { MENU_KEYS } from "../../common/constants/menu-keys";
+import { PERMISSION_KEY } from "../../common/decorators/require-permission.decorator";
 import { PromotionsController } from "./promotions.controller";
 
 describe("PromotionsController", () => {
+  it("uses dedicated promotions permission key", () => {
+    const listPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      PromotionsController.prototype.list
+    );
+    const getByIdPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      PromotionsController.prototype.getById
+    );
+    const createPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      PromotionsController.prototype.create
+    );
+    const updatePermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      PromotionsController.prototype.update
+    );
+    const deactivatePermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      PromotionsController.prototype.deactivate
+    );
+
+    assert.equal(MENU_KEYS.INVENTORY_PROMOTIONS, "INVENTORY_PROMOTIONS");
+    assert.deepEqual(listPermission, {
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "READ",
+    });
+    assert.deepEqual(getByIdPermission, {
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "READ",
+    });
+    assert.deepEqual(createPermission, {
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "WRITE",
+    });
+    assert.deepEqual(updatePermission, {
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "WRITE",
+    });
+    assert.deepEqual(deactivatePermission, {
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "WRITE",
+    });
+
+    for (const permission of [
+      listPermission,
+      getByIdPermission,
+      createPermission,
+      updatePermission,
+      deactivatePermission,
+    ]) {
+      assert.notEqual(permission.menuKey, "INVENTORY_PRODUCTS");
+    }
+  });
+
   it("creates promotion with tenant and user from request", async () => {
     const tenantId = randomUUID();
     const userId = randomUUID();

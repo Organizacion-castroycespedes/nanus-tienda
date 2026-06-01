@@ -71,18 +71,19 @@ SELECT
   seed.icon,
   parent.id,
   seed.sort_order,
-  TRUE,
+  seed.visible,
   FALSE,
   '{}'::jsonb
 FROM inventory_parent parent
 CROSS JOIN (
   VALUES
-    ('INVENTORY_PRODUCTS', 'Productos', '/{tenant}/inventory/products', 'box', 101),
-    ('INVENTORY_UNITS', 'Unidades', '/{tenant}/inventory/units', 'ruler', 102),
-    ('INVENTORY_TAXES', 'Impuestos', '/{tenant}/inventory/taxes', 'calculator', 103),
-    ('INVENTORY_PURCHASES', 'Compras', '/{tenant}/inventory/purchases', 'shopping-bag', 104),
-    ('INVENTORY_SUPPLIERS', 'Proveedores', '/{tenant}/inventory/suppliers', 'truck', 105)
-) AS seed(key, label, route, icon, sort_order)
+    ('INVENTORY_PRODUCTS', 'Productos', '/{tenant}/inventory/products', 'box', 101, TRUE),
+    ('INVENTORY_UNITS', 'Unidades', '/{tenant}/inventory/units', 'ruler', 102, TRUE),
+    ('INVENTORY_TAXES', 'Impuestos', '/{tenant}/inventory/taxes', 'calculator', 103, TRUE),
+    ('INVENTORY_PURCHASES', 'Compras', '/{tenant}/inventory/purchases', 'shopping-bag', 104, TRUE),
+    ('INVENTORY_SUPPLIERS', 'Proveedores', '/{tenant}/inventory/suppliers', 'truck', 105, TRUE),
+    ('INVENTORY_PROMOTIONS', 'Promociones', '/{tenant}/inventory/promotions', 'tags', 106, FALSE)
+) AS seed(key, label, route, icon, sort_order, visible)
 WHERE NOT EXISTS (
   SELECT 1
   FROM public.menu_items mi
@@ -112,7 +113,8 @@ inventory_children AS (
       ('INVENTORY_UNITS', 102),
       ('INVENTORY_TAXES', 103),
       ('INVENTORY_PURCHASES', 104),
-      ('INVENTORY_SUPPLIERS', 105)
+      ('INVENTORY_SUPPLIERS', 105),
+      ('INVENTORY_PROMOTIONS', 106)
   ) AS seed(key, sort_order)
     ON seed.key = child.key
 )

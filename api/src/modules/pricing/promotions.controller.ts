@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { MENU_KEYS } from "../../common/constants/menu-keys";
 import { RequirePermission } from "../../common/decorators/require-permission.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -67,7 +68,7 @@ export class PromotionsController {
 
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "READ" })
   list(
     @Req() request: AuthRequest,
     @Query("search") search?: string,
@@ -93,14 +94,14 @@ export class PromotionsController {
 
   @Get(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.promotionsService.getPromotion(this.getTenantId(request), id);
   }
 
   @Post()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "WRITE" })
   create(@Body() body: CreatePromotionBody, @Req() request: AuthRequest) {
     return this.promotionsService.createPromotion({
       ...body,
@@ -112,7 +113,7 @@ export class PromotionsController {
 
   @Patch(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "WRITE" })
   update(
     @Param("id") id: string,
     @Body() body: UpdatePromotionBody,
@@ -130,7 +131,7 @@ export class PromotionsController {
 
   @Patch(":id/deactivate")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "WRITE" })
   deactivate(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.promotionsService.deactivatePromotion(
       this.getTenantId(request),
