@@ -1014,6 +1014,18 @@
 - [x] Actualizar `docs/evidencia-backend-promociones-crud-fase-6-5.md`.
 - [x] Confirmar que no se tocaron migraciones, POS, Orders, frontend, facturacion electronica, DIAN, suppliers ni PRD real.
 
+## Fase 6.5.2: permiso dedicado para promociones
+
+- [x] Agregar `MENU_KEYS.INVENTORY_PROMOTIONS`.
+- [x] Proteger CRUD de promociones con `INVENTORY_PROMOTIONS` y retirar `INVENTORY_PRODUCTS` del controller.
+- [x] Crear migracion idempotente para `INVENTORY_PROMOTIONS` oculto bajo Inventario.
+- [x] Actualizar seeds fresh DB de menu y permisos.
+- [x] Asignar permisos por defecto a `SUPER_ADMIN`, `SUPER_USER` y `ADMIN`; no asignar a `USER`.
+- [x] Agregar test de metadata RBAC de `PromotionsController`.
+- [x] Ejecutar pruebas y build autorizados.
+- [x] Crear `docs/evidencia-permiso-promociones-fase-6-5-2.md`.
+- [x] Confirmar que no se toco frontend, facturacion electronica, DIAN, suppliers, POS, Orders ni `PricingService`.
+
 ## Fase 6.6: PricingService preview con promociones
 
 - [x] Consultar promociones aplicables por `tenantId`, `branchId`, `productId` y fecha.

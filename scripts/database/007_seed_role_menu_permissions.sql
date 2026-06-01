@@ -25,6 +25,7 @@ WITH role_targets AS (
           'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
+          'INVENTORY_PROMOTIONS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -77,6 +78,7 @@ WITH role_targets AS (
           'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
+          'INVENTORY_PROMOTIONS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -160,6 +162,7 @@ WITH allowed_permissions AS (
           'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
+          'INVENTORY_PROMOTIONS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
