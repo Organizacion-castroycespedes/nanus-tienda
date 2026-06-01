@@ -282,7 +282,12 @@ export const ProductForm = ({
       const savedProduct =
         mode === "create"
           ? await createProduct(payload)
-          : await updateProduct(product!.id, payload as UpdateProductPayload);
+          : await updateProduct(product!.id, {
+              ...payload,
+              price: undefined,
+              priceWithTax: undefined,
+              priceWithoutTax: undefined,
+            } as UpdateProductPayload);
 
       void savedProduct;
       onSuccess(mode);
@@ -342,13 +347,15 @@ export const ProductForm = ({
           <div className="space-y-1">
             <Input
               label="Precio"
-              required
+              required={mode === "create"}
               type="number"
               min="0"
               step="0.01"
               value={values.price}
               onChange={(event) => setFieldValue("price", event.target.value)}
               placeholder="0.00"
+              disabled={mode === "edit"}
+              className={mode === "edit" ? "bg-slate-100 text-slate-500" : undefined}
               hint={
                 mode === "edit"
                   ? "Para trazabilidad use Cambiar precio desde el listado."

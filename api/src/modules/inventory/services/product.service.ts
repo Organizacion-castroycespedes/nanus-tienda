@@ -61,6 +61,8 @@ type UpdateProductInput = Partial<
   >
 >;
 
+type ProductUpdatePayload = UpdateProductInput & Record<string, unknown>;
+
 type ProductOperationalRules = {
   isPerishable: boolean;
   requiresLot: boolean;
@@ -102,6 +104,25 @@ export class ProductService {
     if (!reason?.trim() || reason.trim().length < 5) {
       throw new BadRequestException(
         "reason must be at least 5 characters long"
+      );
+    }
+  }
+
+  private assertNoDirectPriceUpdate(data: ProductUpdatePayload) {
+    const blockedFields = [
+      "price",
+      "priceWithTax",
+      "priceWithoutTax",
+      "price_with_tax",
+      "price_without_tax",
+    ];
+    const attemptedFields = blockedFields.filter((field) =>
+      Object.prototype.hasOwnProperty.call(data, field)
+    );
+
+    if (attemptedFields.length > 0) {
+      throw new BadRequestException(
+        `price updates must use /products/:id/change-price; blocked fields: ${attemptedFields.join(", ")}`
       );
     }
   }
@@ -319,8 +340,10 @@ export class ProductService {
   async updateProduct(
     id: string,
     tenantId: string,
-    data: UpdateProductInput
+    data: ProductUpdatePayload
   ) {
+    this.assertNoDirectPriceUpdate(data);
+
     const current = await this.productRepository.findById(id, tenantId);
     if (!current) {
       throw new NotFoundException("product not found");

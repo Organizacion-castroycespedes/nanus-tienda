@@ -246,6 +246,71 @@ describe("ProductService enriched product rules", () => {
     );
   });
 
+  it("rejects direct product price update through updateProduct", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          price: 120,
+        }),
+      /change-price/
+    );
+  });
+
+  it("rejects direct tax price updates through updateProduct", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          priceWithTax: 140,
+        }),
+      /change-price/
+    );
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          priceWithoutTax: 120,
+        }),
+      /change-price/
+    );
+  });
+
+  it("rejects direct snake_case tax price updates through updateProduct", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          price_with_tax: 140,
+        } as any),
+      /change-price/
+    );
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          price_without_tax: 120,
+        } as any),
+      /change-price/
+    );
+  });
+
+  it("updates product fields when no price fields are present", async () => {
+    const service = buildService();
+
+    const updated = await service.updateProduct(productId, tenantId, {
+      name: "Producto sin cambio de precio",
+      cost: 60,
+    });
+
+    assert.equal(updated.name, "Producto sin cambio de precio");
+    assert.equal(updated.price, 100);
+    assert.equal(updated.cost, 60);
+  });
+
   it("changes product price and stores applied history", async () => {
     const current = buildProduct({ price: 10000 });
     const { service, calls, historyRows, updatedProducts } =
@@ -276,6 +341,19 @@ describe("ProductService enriched product rules", () => {
         service.changePrice(productId, tenantId, randomUUID(), {
           newPrice: 120,
           reason: "abcd",
+        }),
+      /reason must be at least 5 characters long/
+    );
+  });
+
+  it("rejects missing price change reason", async () => {
+    const { service } = buildPriceChangeService();
+
+    await assert.rejects(
+      () =>
+        service.changePrice(productId, tenantId, randomUUID(), {
+          newPrice: 120,
+          reason: "   ",
         }),
       /reason must be at least 5 characters long/
     );

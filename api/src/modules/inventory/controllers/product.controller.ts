@@ -12,6 +12,7 @@ import {
   Put,
   Req,
   BadRequestException,
+  ValidationPipe,
 } from "@nestjs/common";
 import type { Request } from "express";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
@@ -19,6 +20,7 @@ import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { ChangeProductPriceDto } from "../dto/change-product-price.dto";
 import type {
   ProductOperationalStatus,
   ProductRotationClass,
@@ -62,10 +64,11 @@ type UpdateProductBody = Partial<
   }
 >;
 
-type ChangeProductPriceBody = {
-  newPrice: number;
-  reason: string;
-};
+const changeProductPriceValidationPipe = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
 
 @Controller("products")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -142,7 +145,7 @@ export class ProductController {
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   changePrice(
     @Param("id") id: string,
-    @Body() body: ChangeProductPriceBody,
+    @Body(changeProductPriceValidationPipe) body: ChangeProductPriceDto,
     @Req() request: AuthRequest
   ) {
     return this.productService.changePrice(
