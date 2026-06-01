@@ -1099,6 +1099,22 @@
 - [x] Ejecutar tests autorizados, build, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se tocaron `SaleService`, `invoiceOrder`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
 
+## Fase 6.7.3: validacion API local Orders + PricingService
+
+- [x] Confirmar ambiente QA local `::1/128:5432/manus_tienda_prd` y no PRD real.
+- [x] Confirmar migracion snapshot 6.7.1 aplicada en `order_items`.
+- [x] Levantar API local en puerto `4024`.
+- [x] Crear fixture local controlado con tenant, sucursal, usuario, cliente, productos, IVA y promocion.
+- [x] Hacer login local sin documentar token completo.
+- [x] Crear pedido sin promocion enviando `price`, `subtotal` y `total` basura.
+- [x] Verificar que backend calcula `orders.total`, `order_items.price`, `order_items.subtotal` y snapshot con `PricingService`.
+- [x] Crear pedido con promocion activa enviando `price`, `subtotal` y `total` basura.
+- [x] Verificar `applied_promotion_id`, `applied_promotion_name`, `discount_total`, `tax_base`, `tax_amount`, `line_total` y `pricing_snapshot`.
+- [x] Probar `updateOrder` DRAFT con `items` y verificar recalculo.
+- [x] Ejecutar cleanup y validar `fixtureRowsRemaining=0`.
+- [x] Crear `docs/evidencia-api-local-orders-pricing-fase-6-7-3.md`.
+- [x] Confirmar que no se tocaron logica funcional, `OrderService`, `SaleService`, `invoiceOrder`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
