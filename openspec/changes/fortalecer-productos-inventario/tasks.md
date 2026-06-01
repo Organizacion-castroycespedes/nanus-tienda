@@ -1067,6 +1067,20 @@
 - [x] Crear `docs/evidencia-api-local-pricing-promociones-preview-fase-6-6-1.md`.
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 
+## Fase 6.7.1: migracion snapshot pricing Orders
+
+- [x] Crear migracion idempotente para columnas snapshot de pricing en `order_items`.
+- [x] Crear rollback idempotente de columnas snapshot de pricing en `order_items`.
+- [x] Mantener `price` y `subtotal` actuales por compatibilidad.
+- [x] No recalcular ni poblar snapshot inventado para pedidos historicos.
+- [x] Actualizar entidad tipada `OrderItemEntity` con campos snapshot nullable.
+- [x] No crear indices prematuros para `applied_promotion_id` ni `tax_id`.
+- [x] Documentar que `price` seguira representando `finalUnitPrice` en Fase 6.7.2.
+- [x] Documentar que `subtotal` seguira representando `lineTotal` en Fase 6.7.2.
+- [x] Crear `docs/evidencia-orders-pricing-snapshot-fase-6-7-1.md`.
+- [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
+- [x] Confirmar que no se toco `OrderService`, `SaleService`, frontend, POS, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
