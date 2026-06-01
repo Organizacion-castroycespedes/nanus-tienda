@@ -1002,6 +1002,18 @@
 - [x] Crear `docs/evidencia-api-local-promociones-fase-6-5-1.md`.
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 
+## Fase 6.5.1-H: hardening CRUD promociones
+
+- [x] Reforzar cobertura de `PromotionsService` para `discountType` invalido, descuentos negativos/no finitos, `PERCENTAGE > 100`, fechas invalidas y `priority` negativo.
+- [x] Reforzar cobertura de pertenencia por tenant para productos y sucursales objetivo.
+- [x] Reforzar cobertura de listado por `isActive`, query `isActive` invalida y request sin tenant autenticado.
+- [x] Confirmar desactivacion logica de promocion existente sin borrado fisico.
+- [x] Confirmar que `POST /api/pricing/preview-line` mantiene compatibilidad con campos de promocion aplicada.
+- [x] Ejecutar `cd api && npx.cmd tsx --test src/modules/pricing/*.spec.ts`.
+- [x] Ejecutar `cd api && npm.cmd run build`.
+- [x] Actualizar `docs/evidencia-backend-promociones-crud-fase-6-5.md`.
+- [x] Confirmar que no se tocaron migraciones, POS, Orders, frontend, facturacion electronica, DIAN, suppliers ni PRD real.
+
 ## Fase 6.6: PricingService preview con promociones
 
 - [x] Consultar promociones aplicables por `tenantId`, `branchId`, `productId` y fecha.

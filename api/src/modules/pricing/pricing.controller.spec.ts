@@ -60,4 +60,54 @@ describe("PricingController", () => {
       /tenantId is required/
     );
   });
+
+  it("keeps preview-line compatible with promotion result fields", async () => {
+    const tenantId = randomUUID();
+    const productId = randomUUID();
+    const branchId = randomUUID();
+    const promotionId = randomUUID();
+    const calls: any[] = [];
+    const controller = new PricingController({
+      calculateLinePrice: async (input: any) => {
+        calls.push(input);
+        return {
+          productId: input.productId,
+          quantity: input.quantity,
+          baseUnitPrice: 100,
+          finalUnitPrice: 90,
+          discountAmount: 10,
+          discountPercent: 10,
+          appliedPromotionId: promotionId,
+          appliedPromotionName: "Promo QA",
+          taxId: null,
+          taxRate: 0,
+          taxBase: 90,
+          taxAmount: 0,
+          lineSubtotal: 90,
+          lineTotal: 90,
+          explanation: "active promotion applied",
+        };
+      },
+    } as any);
+
+    const result = await controller.previewLine(
+      {
+        branchId,
+        productId,
+        quantity: 1,
+        channel: "POS",
+      },
+      {
+        user: {
+          tenantId,
+        },
+      } as any
+    );
+
+    assert.equal(calls[0].tenantId, tenantId);
+    assert.equal(calls[0].branchId, branchId);
+    assert.equal(calls[0].productId, productId);
+    assert.equal(result.appliedPromotionId, promotionId);
+    assert.equal(result.finalUnitPrice, 90);
+  });
 });
