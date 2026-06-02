@@ -1328,6 +1328,21 @@
 - [x] Ejecutar build de `api/`, prueba auth env, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco pricing, POS, Orders, `inventory_create_sale_v2`, SQL, frontend, facturacion electronica, DIAN, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.9: frontend POS consume pricing y refleja promociones
+
+- [x] Analizar vista POS actual en `web/modules/pos/components/PosScreen.tsx`.
+- [x] Identificar agregado y cambio de cantidad del carrito POS.
+- [x] Identificar `createSale` en `web/modules/pos/services/pos.service.ts`.
+- [x] Consumir `POST /api/pricing/preview-line` desde servicio frontend POS.
+- [x] Consultar preview-line al agregar producto, cambiar cantidad o rehidratar carrito con pricing pendiente.
+- [x] Mostrar `finalUnitPrice`, descuento, nombre de promocion y `lineTotal` en carrito.
+- [x] Mantener `POST /api/sales` compatible y enviar `price` como precio unitario final visible.
+- [x] Mantener backend como fuente de verdad para precio, promociones, impuestos y persistencia.
+- [x] Manejar error de preview con toast y mensaje por item sin bloquear toda la pantalla.
+- [x] Crear `docs/evidencia-frontend-pos-pricing-fase-6-9.md`.
+- [x] Ejecutar lint/build frontend, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco backend, SQL, pagos/caja, stock/FEFO, Orders, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
