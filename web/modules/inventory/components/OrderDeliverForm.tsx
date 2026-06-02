@@ -12,6 +12,7 @@ import {
   getOrderById,
   type OrderDetailResponse,
 } from "../services/order.service";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
 
 type DeliverItemValue = {
   productId: string;
@@ -171,8 +172,17 @@ export const OrderDeliverForm = ({
         return;
       }
 
+      const dialog = buildConfirmFromApiError(
+        error,
+        "No se pudo registrar la entrega."
+      );
       setErrors({
-        submit: "No se pudo registrar la entrega.",
+        submit: dialog.description ?? "No se pudo registrar la entrega.",
+      });
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
       });
     } finally {
       setIsSubmitting(false);

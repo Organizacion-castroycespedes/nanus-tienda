@@ -7,6 +7,8 @@ export type PaymentDraft = {
   reference: string;
 };
 
+export type PosCartPricingStatus = "PENDING" | "READY" | "ERROR";
+
 export type PosCartItem = {
   productId: string;
   name: string;
@@ -16,6 +18,21 @@ export type PosCartItem = {
   stock: number;
   taxId: string | null;
   priceWithoutTax: number;
+  pricingStatus?: PosCartPricingStatus;
+  pricingRequestKey?: string | null;
+  pricingError?: string | null;
+  baseUnitPrice?: number;
+  basePriceWithoutTax?: number;
+  finalUnitPrice?: number;
+  discountAmount?: number;
+  discountPercent?: number;
+  appliedPromotionId?: string | null;
+  appliedPromotionName?: string | null;
+  taxRate?: number;
+  taxBase?: number;
+  taxAmount?: number;
+  lineSubtotal?: number;
+  lineTotal?: number;
 };
 
 export type PosCartContext = {

@@ -2160,7 +2160,7 @@ const ConfiguracionPage = () => {
         </>
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
-          Presiona "Modificar" en un tenant o crea uno nuevo para ver los
+          Presiona &quot;Modificar&quot; en un tenant o crea uno nuevo para ver los
           formularios de configuración.
         </div>
       )}

@@ -108,6 +108,7 @@ export const ConfirmProvider = ({ children }: { children: ReactNode }) => {
         confirmText={currentRequest?.options.confirmText}
         cancelText={currentRequest?.options.cancelText}
         variant={currentRequest?.options.variant}
+        hideCancel={currentRequest?.options.hideCancel}
         onConfirm={handleConfirm}
         loading={loading}
       />

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <GetAcquirerResponse>
+      <Status>NOT_FOUND</Status>
+      <Message>Acquirer not found in synthetic fixture</Message>
+    </GetAcquirerResponse>
+  </soap:Body>
+</soap:Envelope>

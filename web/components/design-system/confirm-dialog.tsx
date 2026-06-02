@@ -19,6 +19,7 @@ export interface ConfirmDialogProps {
   variant?: "default" | "danger" | "warning";
   onConfirm: () => void | Promise<void>;
   loading?: boolean;
+  hideCancel?: boolean;
 }
 
 const variantStyles = {
@@ -49,6 +50,7 @@ export const ConfirmDialog = ({
   variant = "default",
   onConfirm,
   loading = false,
+  hideCancel = false,
 }: ConfirmDialogProps) => {
   const titleId = useId();
   const descriptionId = useId();
@@ -120,7 +122,10 @@ export const ConfirmDialog = ({
               {title}
             </h2>
             {description ? (
-              <p id={descriptionId} className="text-sm leading-6 text-slate-600">
+              <p
+                id={descriptionId}
+                className="whitespace-pre-line break-words text-sm leading-6 text-slate-600"
+              >
                 {description}
               </p>
             ) : null}
@@ -128,14 +133,16 @@ export const ConfirmDialog = ({
         </div>
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button
-            ref={cancelButtonRef}
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={loading}
-          >
-            {cancelText}
-          </Button>
+          {hideCancel ? null : (
+            <Button
+              ref={cancelButtonRef}
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              {cancelText}
+            </Button>
+          )}
           <Button
             variant={config.confirmVariant}
             onClick={() => void onConfirm()}

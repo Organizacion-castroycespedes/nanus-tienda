@@ -7,12 +7,11 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import crypto from "crypto";
 import type { Request } from "express";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
-import { StockMovementService } from "../services/stock-movement.service";
+import { StockAdjustmentService } from "../services/stock-adjustment.service";
 
 type AuthRequest = Request & {
   user?: {
@@ -35,6 +34,10 @@ type CreateStockAdjustmentBody = {
   type: "IN" | "OUT";
   quantity: number;
   reason: string;
+  lotCode?: string | null;
+  expirationDate?: string | null;
+  locationId?: string | null;
+  unitCost?: number;
 };
 
 @Controller("stock-adjustments")
@@ -42,8 +45,8 @@ type CreateStockAdjustmentBody = {
 @Roles("SUPER_ADMIN", "SUPER_USER")
 export class StockAdjustmentController {
   constructor(
-    @Inject(StockMovementService)
-    private readonly stockMovementService: StockMovementService
+    @Inject(StockAdjustmentService)
+    private readonly stockAdjustmentService: StockAdjustmentService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -56,20 +59,25 @@ export class StockAdjustmentController {
 
   @Post()
   create(@Body() body: CreateStockAdjustmentBody, @Req() request: AuthRequest) {
-    return this.stockMovementService.createMovement({
-      id: crypto.randomUUID(),
+    return this.stockAdjustmentService.create({
       tenantId: this.getTenantId(request),
       productId: body.productId,
+      branchId: body.branchId,
       type: body.type,
       quantity: Number(body.quantity),
-      referenceType: "ADJUSTMENT",
-      referenceId: crypto.randomUUID(),
-      branchId: body.branchId,
-      terminalId: request.context?.terminalId ?? null,
-      posSessionCode: request.context?.posSessionId ?? null,
-      userId: request.context?.userId ?? request.user?.id ?? null,
-      referenceTable: "stock_adjustments",
-      createdAt: new Date(),
+      reason: body.reason,
+      lotCode: body.lotCode,
+      expirationDate: body.expirationDate,
+      locationId: body.locationId,
+      unitCost:
+        body.unitCost === undefined ? undefined : Number(body.unitCost),
+      context: {
+        tenantId: this.getTenantId(request),
+        branchId: body.branchId,
+        terminalId: request.context?.terminalId ?? null,
+        posSessionId: request.context?.posSessionId ?? null,
+        userId: request.context?.userId ?? request.user?.id ?? null,
+      },
     });
   }
 }

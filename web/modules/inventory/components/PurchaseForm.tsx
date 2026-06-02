@@ -199,7 +199,20 @@ export const PurchaseForm = ({
     setValues((prev) => ({
       ...prev,
       items: prev.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
+        itemIndex === index
+          ? {
+              ...item,
+              [field]: value,
+              ...(field === "productId"
+                ? {
+                    cost:
+                      value && Number(products.find((product) => product.id === value)?.cost) > 0
+                        ? String(products.find((product) => product.id === value)?.cost)
+                        : "",
+                  }
+                : {}),
+            }
+          : item
       ),
     }));
     setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
@@ -355,7 +368,13 @@ export const PurchaseForm = ({
           </div>
 
           <div className="grid gap-4">
-            {values.items.map((item, index) => (
+            {values.items.map((item, index) => {
+              const selectedProduct = products.find(
+                (product) => product.id === item.productId
+              );
+              const productCost = Number(selectedProduct?.cost ?? 0);
+
+              return (
               <div
                 key={`${index}-${item.productId}`}
                 className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_auto]"
@@ -398,6 +417,12 @@ export const PurchaseForm = ({
                   onChange={(event) => handleItemChange(index, "cost", event.target.value)}
                 />
 
+                {selectedProduct && productCost <= 0 ? (
+                  <p className="text-xs text-amber-700 md:col-start-3">
+                    Este producto no tiene costo registrado. Ingresa el costo de compra.
+                  </p>
+                ) : null}
+
                 <div className="flex items-end gap-2">
                   <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -425,7 +450,8 @@ export const PurchaseForm = ({
                   </Button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {errors.items ? <p className="mt-3 text-xs text-rose-600">{errors.items}</p> : null}
