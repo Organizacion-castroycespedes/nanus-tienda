@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Injectable, UnauthorizedException, Inject } from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
+import { resolveJwtSecret } from "../../common/config/auth-env";
 import { CacheService } from "../../common/services/cache.service";
 import { MenuItem, type MenuItemDto } from "./domain/entities/menu-item";
 import { Permission, type AccessLevel } from "./domain/entities/permission";
@@ -12,8 +13,6 @@ type TokenPayload = {
   roles?: string[];
   session_id?: string;
 };
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
 
 @Injectable()
 export class MenuService {
@@ -63,7 +62,7 @@ export class MenuService {
 
   private decodeAccessToken(token: string): TokenPayload {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, resolveJwtSecret());
       if (typeof decoded === "string") {
         return {};
       }

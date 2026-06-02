@@ -7,9 +7,8 @@ import {
 } from "@nestjs/common";
 import jwt from "jsonwebtoken";
 import { MenuService } from "./menu.service";
+import { resolveJwtSecret } from "../../common/config/auth-env";
 import { AccessControlService } from "../../common/services/access-control.service";
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
 
 type TokenPayload = {
   sub?: string;
@@ -57,7 +56,7 @@ export class MenuController {
 
   private decodeAccessToken(token: string): TokenPayload {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, resolveJwtSecret());
       if (typeof decoded === "string") {
         return {};
       }

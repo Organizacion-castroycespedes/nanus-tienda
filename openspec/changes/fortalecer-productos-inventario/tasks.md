@@ -1315,6 +1315,19 @@
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco logica funcional, SQL, TypeScript, frontend, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.8.5: hardening carga JWT_SECRET / dotenv en bootstrap auth
+
+- [x] Revisar carga de variables de entorno en `api/`.
+- [x] Revisar `main.ts`, `app.module.ts`, `AuthModule`, `AuthService`, `JwtAuthGuard`, `MenuService` y `MenuController`.
+- [x] Identificar lecturas directas de `process.env.JWT_SECRET` y fallback `"changeme"`.
+- [x] Cargar `.env` antes de inicializar modulos auth/JWT.
+- [x] Centralizar resolucion de `JWT_SECRET`, `JWT_EXPIRES_IN` y `REFRESH_TOKEN_EXPIRES_DAYS`.
+- [x] Evitar fallback inseguro fuera de `NODE_ENV=local` o `NODE_ENV=test` explicito.
+- [x] Agregar prueba especifica de hardening auth env.
+- [x] Crear `docs/evidencia-auth-env-loading-hardening-fase-6-8-5.md`.
+- [x] Ejecutar build de `api/`, prueba auth env, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco pricing, POS, Orders, `inventory_create_sale_v2`, SQL, frontend, facturacion electronica, DIAN, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

@@ -1,6 +1,5 @@
 import * as bcrypt from 'bcryptjs';
 import jwt from "jsonwebtoken";
-import type { SignOptions } from "jsonwebtoken";
 import crypto from "crypto";
 import {
   HttpException,
@@ -11,21 +10,17 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
+import {
+  resolveJwtExpiresIn,
+  resolveJwtSecret,
+  resolveRefreshTokenExpiresDays,
+} from "../../common/config/auth-env";
 import { AuthRepository } from "./auth.repository";
 import type { LoginDto } from "./dto/login.dto";
 import type { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import type { ResetPasswordDto } from "./dto/reset-password.dto";
 import type { RefreshTokenDto } from "./dto/refresh-token.dto";
 import type { AuthContextResponseDto } from "./dto/auth-context-response.dto";
-
-const JWT_EXPIRES_IN_RAW = process.env.JWT_EXPIRES_IN ?? "15m";
-const JWT_EXPIRES_IN: SignOptions["expiresIn"] = /^\d+$/.test(JWT_EXPIRES_IN_RAW)
-  ? Number(JWT_EXPIRES_IN_RAW)
-  : (JWT_EXPIRES_IN_RAW as SignOptions["expiresIn"]);
-const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
-const REFRESH_TOKEN_EXPIRES_DAYS = Number(
-  process.env.REFRESH_TOKEN_EXPIRES_DAYS ?? "30"
-);
 
 export type AuthTokens = {
   accessToken: string;
@@ -429,7 +424,7 @@ export class AuthService {
 
   private decodeAccessToken(token: string): TokenPayload {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, resolveJwtSecret());
       if (typeof decoded === "string") {
         return {};
       }
@@ -606,8 +601,8 @@ export class AuthService {
         roles: roles.filter(Boolean),
         session_id: sessionId,
       },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      resolveJwtSecret(),
+      { expiresIn: resolveJwtExpiresIn() }
     );
   }
 
@@ -706,9 +701,7 @@ export class AuthService {
   }
 
   private resolveRefreshTokenExpiry() {
-    const days = Number.isFinite(REFRESH_TOKEN_EXPIRES_DAYS) && REFRESH_TOKEN_EXPIRES_DAYS > 0
-      ? REFRESH_TOKEN_EXPIRES_DAYS
-      : 30;
+    const days = resolveRefreshTokenExpiresDays();
     return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   }
 
