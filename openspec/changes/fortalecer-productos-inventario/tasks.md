@@ -1163,6 +1163,25 @@
 - [x] Crear `docs/evidencia-api-local-invoice-order-snapshot-fase-6-7-4-3.md`.
 - [x] Confirmar que no se toco logica funcional, archivos SQL, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits; V048/V049 se aplicaron solo en DB local/copia QA aprobada.
 
+## Fase 6.7.4.QA: validacion complementaria invoice order snapshot
+
+- [x] Confirmar DB local/copia QA `::1/128:5432/manus_tienda_prd`.
+- [x] Confirmar efectos de V048/V049 por columnas snapshot en `sale_items` y marcadores en `inventory_invoice_order`.
+- [x] Confirmar API local en puerto `4024`.
+- [x] Crear fixture local controlado con prefijo UUID `67440000-*`.
+- [x] Validar fallback legacy sin snapshot suficiente en `order_items`.
+- [x] Verificar `sale_items.pricing_source = LEGACY_ORDER_ITEM_NO_PRICING_SNAPSHOT`.
+- [x] Verificar descuento/promocion en cero/null para fallback legacy.
+- [x] Validar producto sin `tax_id` con snapshot suficiente.
+- [x] Verificar que linea sin impuesto no crea `sale_item_taxes` y usa `ORDER_ITEM_SNAPSHOT`.
+- [x] Validar redondeo parcial con 3 facturas parciales de cantidad `1`.
+- [x] Documentar diferencia acumulada de centavos como riesgo sin corregir logica.
+- [x] Ejecutar cleanup y validar `fixtureRowsRemaining=0`.
+- [x] Detener API local despues de la prueba.
+- [x] Crear `docs/evidencia-api-local-invoice-order-snapshot-qa-fase-6-7-4.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco logica funcional, SQL permanente, migraciones, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
