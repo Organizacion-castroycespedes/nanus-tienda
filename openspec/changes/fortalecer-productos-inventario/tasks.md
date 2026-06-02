@@ -1258,6 +1258,22 @@
 - [x] Crear `docs/diseno-pos-pricing-service-fase-6-8-1.md`.
 - [x] Confirmar que no se toco logica funcional, SQL, `inventory_create_sale_v2`, `SaleService`, `SaleRepository`, `SaleItemEntity`, frontend POS, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.8.2: SaleService prepara payload POS con PricingService
+
+- [x] Inyectar `PricingService` en `SaleService`.
+- [x] Calcular cada item POS directo con `PricingService.calculateLinePrice`.
+- [x] Usar `tenantId`, `branchId`, `customerId`, `productId`, `quantity`, `channel = POS` y una fecha unica de venta.
+- [x] Ignorar `items[].price` enviado por frontend para el calculo final.
+- [x] Construir `backendTotal` como suma de `lineTotal`.
+- [x] Construir items enriquecidos con snapshot POS y `pricingSource = POS_PRICING_SERVICE`.
+- [x] Extender `SaleRepository.createSaleWithFunction` para serializar payload enriquecido en snake_case.
+- [x] Mantener compatibilidad con payload legacy.
+- [x] Rechazar ventas `CASH` cuando pagos enviados no coinciden con `backendTotal`.
+- [x] No autoajustar pagos ni modificar `PaymentsService` o cash session.
+- [x] Agregar tests de `SaleService.createSale` y `SaleRepository.createSaleWithFunction`.
+- [x] Crear `docs/evidencia-pos-pricing-payload-fase-6-8-2.md`.
+- [x] Confirmar que no se toco SQL, `inventory_create_sale_v2`, migraciones, frontend POS, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

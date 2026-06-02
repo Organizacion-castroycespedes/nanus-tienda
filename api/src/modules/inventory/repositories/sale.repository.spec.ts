@@ -199,3 +199,79 @@ test("SaleRepository keeps create sale payload unchanged for v2", async () => {
   assert.equal(calls.length, 1);
   assertCreateSaleCall(calls, "inventory_create_sale_v2");
 });
+
+test("SaleRepository serializes enriched pricing payload as snake_case", async () => {
+  const repository = new SaleRepository({} as never);
+  const { calls, client } = buildClient();
+  const pricingCalculatedAt = new Date("2026-06-02T12:34:56.000Z");
+
+  await repository.createSaleWithFunction(
+    {
+      ...saleInput,
+      items: [
+        {
+          productId: ids.product,
+          quantity: 2,
+          price: 9500,
+          orderItemId: ids.orderItem,
+          subtotal: 19000,
+          priceWithoutTax: 7983.19,
+          taxTotal: 3033.62,
+          baseUnitPrice: 10000,
+          finalUnitPrice: 9500,
+          discountAmount: 500,
+          discountPercent: 5,
+          discountTotal: 1000,
+          appliedPromotionId: "00000000-0000-0000-0000-000000000011",
+          appliedPromotionName: "Promo POS",
+          taxId: "00000000-0000-0000-0000-000000000012",
+          taxRate: 0.19,
+          taxBase: 15966.38,
+          taxAmount: 3033.62,
+          lineTotal: 19000,
+          pricingSnapshot: {
+            source: "PricingService",
+            channel: "POS",
+          },
+          pricingCalculatedAt,
+          pricingSource: "POS_PRICING_SERVICE",
+        },
+      ],
+    },
+    payments,
+    client
+  );
+
+  const call = findCreateSaleCall(calls);
+  const items = JSON.parse(call.params[8] as string);
+
+  assert.deepEqual(items, [
+    {
+      product_id: ids.product,
+      quantity: 2,
+      price: 9500,
+      order_item_id: ids.orderItem,
+      subtotal: 19000,
+      price_without_tax: 7983.19,
+      tax_total: 3033.62,
+      base_unit_price: 10000,
+      final_unit_price: 9500,
+      discount_amount: 500,
+      discount_percent: 5,
+      discount_total: 1000,
+      applied_promotion_id: "00000000-0000-0000-0000-000000000011",
+      applied_promotion_name: "Promo POS",
+      tax_id: "00000000-0000-0000-0000-000000000012",
+      tax_rate: 0.19,
+      tax_base: 15966.38,
+      tax_amount: 3033.62,
+      line_total: 19000,
+      pricing_snapshot: {
+        source: "PricingService",
+        channel: "POS",
+      },
+      pricing_calculated_at: "2026-06-02T12:34:56.000Z",
+      pricing_source: "POS_PRICING_SERVICE",
+    },
+  ]);
+});

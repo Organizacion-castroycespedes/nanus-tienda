@@ -3,6 +3,11 @@ import test from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { SaleService } from "./sale.service";
+import type { CreateSaleInput } from "../repositories/sale.repository";
+import type {
+  CalculateLinePriceInput,
+  LinePricePreview,
+} from "../../pricing/pricing.types";
 
 const ids = {
   tenant: "10000000-0000-0000-0000-000000000001",
@@ -18,6 +23,11 @@ const ids = {
   balance: "10000000-0000-0000-0000-000000000011",
   location: "10000000-0000-0000-0000-000000000012",
   link: "10000000-0000-0000-0000-000000000013",
+  posSession: "10000000-0000-0000-0000-000000000015",
+  paymentMethod: "10000000-0000-0000-0000-000000000016",
+  promotion: "10000000-0000-0000-0000-000000000017",
+  tax: "10000000-0000-0000-0000-000000000018",
+  productTwo: "10000000-0000-0000-0000-000000000019",
 };
 
 type Scenario = {
@@ -78,6 +88,124 @@ const movementOutRow = {
   pos_session_code: "POS-1",
   user_id: ids.user,
 };
+
+const makePreview = (
+  overrides: Partial<LinePricePreview> = {}
+): LinePricePreview => ({
+  productId: ids.product,
+  quantity: 2,
+  baseUnitPrice: 200,
+  finalUnitPrice: 180,
+  discountAmount: 20,
+  discountPercent: 10,
+  appliedPromotionId: ids.promotion,
+  appliedPromotionName: "Promo POS",
+  taxId: ids.tax,
+  taxRate: 0.19,
+  taxBase: 302.52,
+  taxAmount: 57.48,
+  lineSubtotal: 302.52,
+  lineTotal: 360,
+  explanation: "test pricing",
+  ...overrides,
+});
+
+class FakePricingService {
+  readonly calls: CalculateLinePriceInput[] = [];
+
+  constructor(private readonly previews: LinePricePreview[] = []) {}
+
+  async calculateLinePrice(input: CalculateLinePriceInput) {
+    this.calls.push(input);
+    const preview = this.previews.shift() ?? makePreview();
+    return {
+      ...preview,
+      productId: input.productId,
+      quantity: input.quantity,
+    };
+  }
+}
+
+class FakeCreateSaleClient {
+  readonly queries: RecordedQuery[] = [];
+  released = false;
+
+  async query<T>(text: string, params: unknown[] = []) {
+    this.queries.push({ text, params });
+    const sql = text.replace(/\s+/g, " ").trim();
+
+    if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") {
+      return { rows: [] as T[] };
+    }
+
+    if (sql.includes("SELECT total_paid FROM sales")) {
+      return { rows: [{ total_paid: 360 }] as T[] };
+    }
+
+    throw new Error(`Unexpected SQL in create sale test: ${sql}`);
+  }
+
+  release() {
+    this.released = true;
+  }
+}
+
+class FakeCreateSaleRepository {
+  readonly createSaleCalls: Array<{
+    data: CreateSaleInput;
+    paymentMethods: Array<{
+      paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      amount: number;
+      reference?: string | null;
+    }>;
+  }> = [];
+  readonly statusUpdates: unknown[] = [];
+
+  async validateActivePosSession() {
+    return true;
+  }
+
+  async validateCustomer() {
+    return true;
+  }
+
+  async validateOrder() {
+    return true;
+  }
+
+  async findPaymentMethodTypesByIds() {
+    return new Map([[ids.paymentMethod, "CASH"]]);
+  }
+
+  async createSaleWithFunction(
+    data: CreateSaleInput,
+    paymentMethods: Array<{
+      paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      amount: number;
+      reference?: string | null;
+    }>
+  ) {
+    this.createSaleCalls.push({ data, paymentMethods });
+    return {
+      id: ids.sale,
+      tenant_id: ids.tenant,
+      customer_id: data.customerId,
+      order_id: data.orderId ?? null,
+      type: data.type,
+      status: "CONFIRMED" as const,
+      total: data.items.reduce(
+        (sum, item) => sum + (item.lineTotal ?? item.subtotal ?? 0),
+        0
+      ),
+      balance: 0,
+      created_at: new Date("2026-06-02T00:00:00.000Z"),
+    };
+  }
+
+  async updateSaleStatus(...args: unknown[]) {
+    this.statusUpdates.push(args);
+  }
+}
 
 class FakeCancelClient {
   readonly queries: RecordedQuery[] = [];
@@ -195,7 +323,8 @@ const buildService = (scenario: Scenario = {}) => {
     {
       listAllocatedPayments: async () => [],
     } as never,
-    {} as never
+    {} as never,
+    new FakePricingService() as never
   );
 
   (service as unknown as { getSaleById: () => Promise<unknown> }).getSaleById =
@@ -204,11 +333,196 @@ const buildService = (scenario: Scenario = {}) => {
   return { service, client, createdMovements };
 };
 
+const buildCreateSaleService = (previews: LinePricePreview[]) => {
+  const client = new FakeCreateSaleClient();
+  const repository = new FakeCreateSaleRepository();
+  const pricingService = new FakePricingService([...previews]);
+  const createdPayments: unknown[] = [];
+  const auditEvents: unknown[] = [];
+
+  const service = new SaleService(
+    {
+      getClient: async () => client as unknown as PoolClient,
+    } as never,
+    repository as never,
+    {
+      logEvent: (event: unknown) => {
+        auditEvents.push(event);
+      },
+    } as never,
+    {} as never,
+    {
+      findAccessibleBranchIds: async () => [],
+    } as never,
+    {
+      syncSaleFinancialState: async () => undefined,
+    } as never,
+    {
+      createInTransaction: async (payload: {
+        amount: number;
+        referenceNumber?: string | null;
+        notes?: string | null;
+      }) => {
+        createdPayments.push(payload);
+        return {
+          paymentMethodTipo: "CASH",
+          amount: payload.amount,
+          referenceNumber: payload.referenceNumber ?? null,
+          notes: payload.notes ?? null,
+        };
+      },
+    } as never,
+    pricingService as never
+  );
+
+  (service as unknown as { getSaleById: () => Promise<unknown> }).getSaleById =
+    async () => ({ id: ids.sale, status: "CONFIRMED" });
+
+  return {
+    service,
+    client,
+    repository,
+    pricingService,
+    createdPayments,
+    auditEvents,
+  };
+};
+
+const createSalePayload = (overrides: Partial<CreateSaleInput> = {}) => ({
+  customerId: ids.customer,
+  orderId: null,
+  type: "CASH" as const,
+  items: [
+    {
+      productId: ids.product,
+      quantity: 2,
+      price: 0.01,
+    },
+  ],
+  payments: [
+    {
+      paymentMethodId: ids.paymentMethod,
+      amount: 360,
+      cashSessionId: ids.posSession,
+      referenceNumber: "POS-TEST",
+    },
+  ],
+  ...overrides,
+});
+
 const actor = {
   tenantId: ids.tenant,
   userId: ids.user,
   roles: ["SUPER_ADMIN"],
 };
+
+const posContext = {
+  tenantId: ids.tenant,
+  userId: ids.user,
+  branchId: ids.branch,
+  terminalId: ids.terminal,
+  posSessionId: ids.posSession,
+  roles: ["USER"],
+};
+
+test("SaleService.createSale calculates POS pricing and sends enriched payload", async () => {
+  const { service, repository, pricingService } = buildCreateSaleService([
+    makePreview(),
+  ]);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(pricingService.calls.length, 1);
+  assert.equal(pricingService.calls[0].tenantId, ids.tenant);
+  assert.equal(pricingService.calls[0].branchId, ids.branch);
+  assert.equal(pricingService.calls[0].customerId, ids.customer);
+  assert.equal(pricingService.calls[0].productId, ids.product);
+  assert.equal(pricingService.calls[0].quantity, 2);
+  assert.equal(pricingService.calls[0].channel, "POS");
+  assert.ok(pricingService.calls[0].date);
+
+  assert.equal(repository.createSaleCalls.length, 1);
+  const pricedItem = repository.createSaleCalls[0].data.items[0];
+  assert.equal(pricedItem.price, 180);
+  assert.equal(pricedItem.subtotal, 360);
+  assert.equal(pricedItem.priceWithoutTax, 151.26);
+  assert.equal(pricedItem.taxTotal, 57.48);
+  assert.equal(pricedItem.baseUnitPrice, 200);
+  assert.equal(pricedItem.finalUnitPrice, 180);
+  assert.equal(pricedItem.discountAmount, 20);
+  assert.equal(pricedItem.discountPercent, 10);
+  assert.equal(pricedItem.discountTotal, 40);
+  assert.equal(pricedItem.appliedPromotionId, ids.promotion);
+  assert.equal(pricedItem.appliedPromotionName, "Promo POS");
+  assert.equal(pricedItem.taxId, ids.tax);
+  assert.equal(pricedItem.taxRate, 0.19);
+  assert.equal(pricedItem.taxBase, 302.52);
+  assert.equal(pricedItem.taxAmount, 57.48);
+  assert.equal(pricedItem.lineTotal, 360);
+  assert.equal(pricedItem.pricingSource, "POS_PRICING_SERVICE");
+  assert.equal(pricedItem.pricingSnapshot?.channel, "POS");
+  assert.deepEqual(
+    (pricedItem.pricingSnapshot?.result as LinePricePreview).finalUnitPrice,
+    180
+  );
+});
+
+test("SaleService.createSale rejects CASH mismatch using backend lineTotal and skips repository", async () => {
+  const { service, repository } = buildCreateSaleService([
+    makePreview({
+      productId: ids.product,
+      quantity: 1,
+      finalUnitPrice: 100,
+      lineSubtotal: 100,
+      taxBase: 100,
+      taxAmount: 0,
+      lineTotal: 100,
+    }),
+    makePreview({
+      productId: ids.productTwo,
+      quantity: 1,
+      finalUnitPrice: 199,
+      lineSubtotal: 200,
+      taxBase: 200,
+      taxAmount: 0,
+      lineTotal: 200,
+    }),
+  ]);
+
+  await assert.rejects(
+    () =>
+      service.createSale(
+        createSalePayload({
+          items: [
+            {
+              productId: ids.product,
+              quantity: 1,
+              price: 99,
+            },
+            {
+              productId: ids.productTwo,
+              quantity: 1,
+              price: 200,
+            },
+          ],
+          payments: [
+            {
+              paymentMethodId: ids.paymentMethod,
+              amount: 299,
+              cashSessionId: ids.posSession,
+            },
+          ],
+        }),
+        posContext
+      ),
+    (error) =>
+      error instanceof BadRequestException &&
+      error.message ===
+        "Payment total does not match backend calculated sale total"
+  );
+
+  assert.equal(repository.createSaleCalls.length, 0);
+});
 
 test("SaleService.cancelSale keeps non-lotted cancellation without lot mutations", async () => {
   const { service, client, createdMovements } = buildService({

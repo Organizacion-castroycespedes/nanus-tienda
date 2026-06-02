@@ -17,6 +17,8 @@ import {
   type PaymentRecord,
 } from "../../finance/payments/payments.repository";
 import { PaymentsService } from "../../finance/payments/payments.service";
+import { PricingService } from "../../pricing/pricing.service";
+import type { LinePricePreview } from "../../pricing/pricing.types";
 import { AuditService } from "../../../common/services/audit.service";
 import { SaleEntity, type SaleType } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
@@ -163,6 +165,8 @@ type InheritedOrderPaymentResult = {
   inheritedPayments: CreatedPaymentSnapshot[];
 };
 
+const POS_PRICING_SOURCE = "POS_PRICING_SERVICE";
+
 @Injectable()
 export class SaleService {
   constructor(
@@ -176,7 +180,9 @@ export class SaleService {
     @Inject(PaymentsRepository)
     private readonly paymentsRepository: PaymentsRepository,
     @Inject(PaymentsService)
-    private readonly paymentsService: PaymentsService
+    private readonly paymentsService: PaymentsService,
+    @Inject(PricingService)
+    private readonly pricingService: PricingService
   ) {}
 
   private toNumber(value: string | number) {
@@ -361,6 +367,113 @@ export class SaleService {
         reference: payment.referenceNumber ?? payment.notes ?? null,
       };
     });
+  }
+
+  private buildPosPricingSnapshot(input: {
+    tenantId: string;
+    branchId: string;
+    customerId: string;
+    pricingCalculatedAt: Date;
+    preview: LinePricePreview;
+  }) {
+    return {
+      channel: "POS",
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      customerId: input.customerId,
+      calculatedAt: input.pricingCalculatedAt.toISOString(),
+      productId: input.preview.productId,
+      quantity: input.preview.quantity,
+      result: input.preview,
+    };
+  }
+
+  private async calculatePricedPosItems(input: {
+    tenantId: string;
+    branchId: string;
+    customerId: string;
+    items: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">["items"];
+    pricingCalculatedAt: Date;
+  }) {
+    const pricingDate = input.pricingCalculatedAt.toISOString();
+    const items: CreateSaleInput["items"] = [];
+
+    for (const item of input.items) {
+      const preview = await this.pricingService.calculateLinePrice({
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        customerId: input.customerId,
+        productId: item.productId,
+        quantity: item.quantity,
+        channel: "POS",
+        date: pricingDate,
+      });
+      const discountTotal = this.roundCurrency(
+        preview.discountAmount * preview.quantity
+      );
+      const priceWithoutTax =
+        preview.quantity > 0
+          ? this.roundCurrency(preview.taxBase / preview.quantity)
+          : 0;
+
+      items.push({
+        productId: item.productId,
+        quantity: preview.quantity,
+        price: preview.finalUnitPrice,
+        orderItemId: item.orderItemId ?? null,
+        subtotal: preview.lineTotal,
+        priceWithoutTax,
+        taxTotal: preview.taxAmount,
+        baseUnitPrice: preview.baseUnitPrice,
+        finalUnitPrice: preview.finalUnitPrice,
+        discountAmount: preview.discountAmount,
+        discountPercent: preview.discountPercent,
+        discountTotal,
+        appliedPromotionId: preview.appliedPromotionId,
+        appliedPromotionName: preview.appliedPromotionName,
+        taxId: preview.taxId,
+        taxRate: preview.taxRate,
+        taxBase: preview.taxBase,
+        taxAmount: preview.taxAmount,
+        lineTotal: preview.lineTotal,
+        pricingSnapshot: this.buildPosPricingSnapshot({
+          tenantId: input.tenantId,
+          branchId: input.branchId,
+          customerId: input.customerId,
+          pricingCalculatedAt: input.pricingCalculatedAt,
+          preview,
+        }),
+        pricingCalculatedAt: input.pricingCalculatedAt,
+        pricingSource: POS_PRICING_SOURCE,
+      });
+    }
+
+    return items;
+  }
+
+  private calculateBackendSaleTotal(items: CreateSaleInput["items"]) {
+    return this.roundCurrency(
+      items.reduce((sum, item) => sum + (item.lineTotal ?? item.subtotal ?? 0), 0)
+    );
+  }
+
+  private ensureCashPaymentsMatchBackendTotal(
+    type: SaleType,
+    payments: ReturnType<SaleService["normalizePayments"]>,
+    backendTotal: number
+  ) {
+    if (type !== "CASH") {
+      return;
+    }
+
+    const paymentTotal = this.roundCurrency(
+      payments.reduce((sum, payment) => sum + payment.amount, 0)
+    );
+    if (paymentTotal !== backendTotal) {
+      throw new BadRequestException(
+        "Payment total does not match backend calculated sale total"
+      );
+    }
   }
 
   private buildFinanceActor(context: SaleContext) {
@@ -1102,6 +1215,17 @@ export class SaleService {
       }
 
       const payments = this.normalizePayments(data.payments);
+      const pricingCalculatedAt = new Date();
+      const pricedItems = await this.calculatePricedPosItems({
+        tenantId: saleContext.tenantId,
+        branchId: saleContext.branchId,
+        customerId: data.customerId,
+        items: data.items,
+        pricingCalculatedAt,
+      });
+      const backendTotal = this.calculateBackendSaleTotal(pricedItems);
+      this.ensureCashPaymentsMatchBackendTotal(data.type, payments, backendTotal);
+
       const legacyPaymentMethods = await this.buildLegacySalePaymentMethods(
         saleContext.tenantId,
         payments,
@@ -1111,6 +1235,7 @@ export class SaleService {
       const saleRow = await this.repository.createSaleWithFunction(
         {
           ...data,
+          items: pricedItems,
           ...saleContext,
         },
         legacyPaymentMethods,
