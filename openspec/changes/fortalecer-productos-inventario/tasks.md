@@ -1144,6 +1144,25 @@
 - [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
 - [x] Confirmar que no se toco POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto, `SaleService`, `OrderService` ni commits.
 
+## Fase 6.7.4.3: validacion API local invoice order snapshot
+
+- [x] Confirmar ambiente QA local `::1/128:5432/manus_tienda_prd` y no PRD real.
+- [x] Aplicar V048 y V049 solo en DB local/copia QA al no estar presentes.
+- [x] Confirmar columnas snapshot en `sale_items`.
+- [x] Confirmar que `inventory_invoice_order` contiene `ORDER_ITEM_SNAPSHOT`.
+- [x] Levantar API local en puerto `4024`.
+- [x] Crear fixture local controlado con prefijo UUID `67430000-*`.
+- [x] Abrir sesion POS local para el fixture.
+- [x] Crear pedido con producto IVA incluido y promocion, enviando `price`, `subtotal` y `total` basura.
+- [x] Confirmar pedido y entregar parcialmente cantidad `1` de cantidad pedida `2`.
+- [x] Mutar despues del pedido `products.price`, `taxes.rate` y `promotions.is_active`.
+- [x] Facturar el pedido por API con `POST /api/orders/:id/invoice`.
+- [x] Verificar que `sale_items` usa `order_items.final_unit_price`, `line_total`, `discount_total` y promocion prorrateados/copiados desde snapshot.
+- [x] Verificar que `sale_item_taxes.tax_rate` y `tax_amount` vienen del snapshot y no de `taxes.rate` actual.
+- [x] Ejecutar cleanup y validar `fixtureRowsRemaining=0`.
+- [x] Crear `docs/evidencia-api-local-invoice-order-snapshot-fase-6-7-4-3.md`.
+- [x] Confirmar que no se toco logica funcional, archivos SQL, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits; V048/V049 se aplicaron solo en DB local/copia QA aprobada.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
