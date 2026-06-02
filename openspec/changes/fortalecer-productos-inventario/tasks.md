@@ -1244,6 +1244,20 @@
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco logica funcional, SQL, `SaleItemEntity`, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto, credenciales ni commits.
 
+## Fase 6.8.1: diseno tecnico POS usa PricingService
+
+- [x] Analizar flujo POS directo `POST /api/sales` -> `SaleController` -> `SaleService.createSale` -> `SaleRepository.createSaleWithFunction` -> `inventory_create_sale_v2`.
+- [x] Documentar que POS backend hoy confia en `items[].price` enviado por frontend para el calculo final.
+- [x] Documentar calculo actual de `sales.total`, `sale_items.price`, `price_without_tax`, `tax_total`, `subtotal` y `sale_item_taxes`.
+- [x] Documentar estrategia de inventario, stock agregado, `products.requires_lot`, `inventory_lot_balances`, `stock_movement_lots` y FEFO dentro de SQL.
+- [x] Confirmar campos snapshot de V048 disponibles en `sale_items`.
+- [x] Documentar diseno propuesto: `SaleService` calcula lineas con `PricingService`, ignora `items[].price`, envia payload enriquecido y mantiene stock/FEFO en `inventory_create_sale_v2`.
+- [x] Documentar contrato interno `SaleService` -> `PricingService` para POS.
+- [x] Documentar contrato JSON enriquecido hacia `inventory_create_sale_v2` con `pricing_source = POS_PRICING_SERVICE`.
+- [x] Documentar estrategia de `sale_item_taxes`, pagos/caja, `SaleItemEntity`, riesgos, criterios de aceptacion y validaciones futuras.
+- [x] Crear `docs/diseno-pos-pricing-service-fase-6-8-1.md`.
+- [x] Confirmar que no se toco logica funcional, SQL, `inventory_create_sale_v2`, `SaleService`, `SaleRepository`, `SaleItemEntity`, frontend POS, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
