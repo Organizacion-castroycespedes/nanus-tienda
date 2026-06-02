@@ -1182,6 +1182,20 @@
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco logica funcional, SQL permanente, migraciones, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.7.4.5: absorcion de redondeo en ultima factura parcial
+
+- [x] Crear migracion `V050__invoice_order_partial_rounding_absorption_phase_6_7_4_5.sql`.
+- [x] Crear rollback `V050__invoice_order_partial_rounding_absorption_phase_6_7_4_5_rollback.sql`.
+- [x] Eliminar `chk_sale_items_subtotal_matches` en la migracion para permitir absorcion de centavos.
+- [x] Crear indice parcial `idx_sale_items_tenant_order_item`.
+- [x] Actualizar `inventory_invoice_order` para absorber redondeo solo en la ultima factura parcial con `ORDER_ITEM_SNAPSHOT`.
+- [x] Mantener prorrateo normal en facturas parciales intermedias.
+- [x] Mantener fallback legacy sin absorcion.
+- [x] Actualizar fresh DB function `scripts/database/sale/012_sale_financial_sync_and_pos_function.sql`.
+- [x] Crear `docs/evidencia-invoice-order-partial-rounding-fase-6-7-4-5.md`.
+- [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
+- [x] Confirmar que no se toco API TypeScript, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
