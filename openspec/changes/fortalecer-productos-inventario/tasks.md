@@ -1130,6 +1130,20 @@
 - [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
 - [x] Confirmar que no se toco `inventory_invoice_order`, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
 
+## Fase 6.7.4.2: inventory_invoice_order usa snapshot de order_items
+
+- [x] Crear migracion `V049__invoice_order_uses_order_item_snapshot_phase_6_7_4_2.sql`.
+- [x] Crear rollback `V049__invoice_order_uses_order_item_snapshot_phase_6_7_4_2_rollback.sql`.
+- [x] Actualizar `inventory_invoice_order` para usar snapshot suficiente de `order_items`.
+- [x] No recalcular precio, promocion ni impuesto desde `products`/`taxes` cuando hay snapshot suficiente.
+- [x] Crear `sale_item_taxes` desde `order_items.tax_id`, `tax_rate` y `tax_amount` prorrateado.
+- [x] Mantener fallback legacy para pedidos sin snapshot suficiente.
+- [x] Prorratear `line_total`, `tax_base`, `tax_amount` y `discount_total` en facturacion parcial.
+- [x] Actualizar fresh DB function `scripts/database/sale/012_sale_financial_sync_and_pos_function.sql`.
+- [x] Crear `docs/evidencia-invoice-order-uses-order-snapshot-fase-6-7-4-2.md`.
+- [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
+- [x] Confirmar que no se toco POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto, `SaleService`, `OrderService` ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
