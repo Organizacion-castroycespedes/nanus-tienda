@@ -66,6 +66,8 @@ type SaleItemRow = {
   price_without_tax: string | number;
   tax_total: string | number;
   subtotal: string | number;
+  line_total: string | number | null;
+  pricing_source: string | null;
   created_at: Date;
 };
 
@@ -226,6 +228,8 @@ export class SaleService {
       priceWithoutTax: this.toNumber(row.price_without_tax),
       taxTotal: this.toNumber(row.tax_total),
       subtotal: this.toNumber(row.subtotal),
+      lineTotal: row.line_total == null ? null : this.toNumber(row.line_total),
+      pricingSource: row.pricing_source,
       createdAt: new Date(row.created_at),
     });
   }
@@ -1329,6 +1333,8 @@ export class SaleService {
             price_without_tax,
             tax_total,
             subtotal,
+            line_total,
+            pricing_source,
             created_at
           FROM sale_items
           WHERE sale_id = $1
