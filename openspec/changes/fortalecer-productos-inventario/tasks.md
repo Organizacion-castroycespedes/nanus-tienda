@@ -1291,6 +1291,30 @@
 - [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
 - [x] Confirmar que no se toco API TypeScript, `SaleService`, `SaleRepository`, frontend POS, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.8.4: QA API local POS pricing
+
+- [x] Confirmar DB local/copia QA `::1/128:5432/manus_tienda_prd`.
+- [x] Confirmar V048 por columnas snapshot en `sale_items`.
+- [x] Confirmar V050 por ausencia de `chk_sale_items_subtotal_matches`.
+- [x] Aplicar V051 solo en DB local/QA al no estar presente.
+- [x] Levantar API local en puerto `4024`.
+- [x] Crear fixture local controlado con tenant, sucursal, usuario, terminal, sesion POS, customer, unidad, IVA, promociones, productos, stock y lotes.
+- [x] Validar venta POS con promocion + IVA enviando `price` basura.
+- [x] Confirmar `sale_items.price = finalUnitPrice`, `subtotal = lineTotal` y `pricing_source = POS_PRICING_SERVICE`.
+- [x] Confirmar `discount_total`, promocion aplicada y `pricing_snapshot` persistidos.
+- [x] Confirmar `sale_item_taxes.tax_rate` y `tax_amount` desde snapshot POS.
+- [x] Mutar `products.price`, `taxes.rate` y `promotions.is_active` despues de la venta.
+- [x] Confirmar que la venta creada conserva snapshot y no cambia.
+- [x] Validar CASH mismatch por API y confirmar que no crea ventas ni movimientos huerfanos.
+- [x] Validar venta POS de producto loteado con FEFO y snapshot POS.
+- [x] Confirmar que `stock_movement_lots` consume primero el lote con vencimiento mas cercano.
+- [x] Validar legacy directo sin `pricing_source`.
+- [x] Ejecutar cleanup completo del fixture y confirmar `fixtureRowsRemaining = 0`.
+- [x] Apagar API local y confirmar puerto `4024` sin listener.
+- [x] Crear `docs/evidencia-api-local-pos-pricing-fase-6-8-4.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco logica funcional, SQL, TypeScript, frontend, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
