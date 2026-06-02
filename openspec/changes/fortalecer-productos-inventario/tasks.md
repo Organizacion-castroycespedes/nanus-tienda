@@ -1274,6 +1274,23 @@
 - [x] Crear `docs/evidencia-pos-pricing-payload-fase-6-8-2.md`.
 - [x] Confirmar que no se toco SQL, `inventory_create_sale_v2`, migraciones, frontend POS, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.8.3: inventory_create_sale_v2 persiste snapshot POS
+
+- [x] Crear migracion `scripts/database/migrations/V051__inventory_create_sale_v2_pos_pricing_snapshot_phase_6_8_3.sql`.
+- [x] Crear rollback `scripts/database/rollbacks/V051__inventory_create_sale_v2_pos_pricing_snapshot_phase_6_8_3_rollback.sql`.
+- [x] Ampliar lectura JSONB de `items` con campos enriquecidos de PricingService.
+- [x] Persistir snapshot POS en `sale_items` cuando `pricing_source = POS_PRICING_SERVICE`.
+- [x] Usar `final_unit_price` como `sale_items.price` y `line_total` como `sale_items.subtotal`.
+- [x] Sumar `sales.total` con `line_total` para snapshot POS.
+- [x] Crear `sale_item_taxes` desde `tax_id`, `tax_rate` y `tax_amount` del payload POS.
+- [x] No recalcular precio ni impuesto desde `products`/`taxes` en rama `POS_PRICING_SERVICE`.
+- [x] Mantener comportamiento legacy actual cuando no hay `pricing_source = POS_PRICING_SERVICE`.
+- [x] Mantener stock, FEFO, lotes, pagos, caja y Orders sin cambios funcionales.
+- [x] Actualizar fresh DB function en `scripts/database/sale/012_sale_financial_sync_and_pos_function.sql`.
+- [x] Crear `docs/evidencia-pos-sql-persists-pricing-snapshot-fase-6-8-3.md`.
+- [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
+- [x] Confirmar que no se toco API TypeScript, `SaleService`, `SaleRepository`, frontend POS, Orders, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
