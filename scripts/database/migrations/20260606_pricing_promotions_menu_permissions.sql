@@ -35,7 +35,7 @@ SELECT
   'tags',
   promotion_menu.parent_id,
   106,
-  FALSE,
+  TRUE,
   FALSE,
   '{}'::jsonb,
   NOW(),
@@ -50,7 +50,7 @@ DO UPDATE SET
   icon = EXCLUDED.icon,
   parent_id = EXCLUDED.parent_id,
   sort_order = EXCLUDED.sort_order,
-  visible = FALSE,
+  visible = TRUE,
   below_main_menu = FALSE,
   metadata = COALESCE(public.menu_items.metadata, '{}'::jsonb),
   updated_at = NOW();

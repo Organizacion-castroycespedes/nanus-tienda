@@ -200,7 +200,20 @@ describe("PromotionsService", () => {
           ...baseCreateInput(),
           discountValue: 101,
         }),
-      /percentage discountValue must be between 0 and 100/
+      /percentage discountValue must be greater than 0 and less than or equal to 100/
+    );
+  });
+
+  it("rejects percentage equal to zero", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          discountValue: 0,
+        }),
+      /percentage discountValue must be greater than 0 and less than or equal to 100/
     );
   });
 
@@ -217,7 +230,7 @@ describe("PromotionsService", () => {
     );
   });
 
-  it("rejects negative discount value", async () => {
+  it("rejects negative percentage discount value", async () => {
     const { service } = buildService();
 
     await assert.rejects(
@@ -226,7 +239,21 @@ describe("PromotionsService", () => {
           ...baseCreateInput(),
           discountValue: -1,
         }),
-      /discountValue must be greater than or equal to 0/
+      /percentage discountValue must be greater than 0 and less than or equal to 100/
+    );
+  });
+
+  it("rejects fixed amount equal to zero", async () => {
+    const { service } = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createPromotion({
+          ...baseCreateInput(),
+          discountType: "FIXED_AMOUNT",
+          discountValue: 0,
+        }),
+      /fixed amount discountValue must be greater than 0/
     );
   });
 
@@ -240,7 +267,7 @@ describe("PromotionsService", () => {
           discountType: "SPECIAL_PRICE",
           discountValue: -10,
         }),
-      /discountValue must be greater than or equal to 0/
+      /special price discountValue must be greater than or equal to 0/
     );
 
     await assert.rejects(
@@ -390,6 +417,19 @@ describe("PromotionsService", () => {
 
     assert.equal(result.isActive, false);
     assert.equal(promotions.has(current.id), true);
+  });
+
+  it("deactivates a legacy invalid fixed amount promotion", async () => {
+    const current = buildPromotion({
+      discountType: "FIXED_AMOUNT",
+      discountValue: 0,
+      isActive: true,
+    });
+    const { service } = buildService([current]);
+
+    const result = await service.deactivatePromotion(tenantId, current.id);
+
+    assert.equal(result.isActive, false);
   });
 
   it("isolates tenants", async () => {

@@ -29,6 +29,7 @@ import { Toast, type ToastVariant } from "../../../../components/design-system/T
 import { hasMenuAccess } from "../../../../lib/permissions";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../../store/hooks";
+import { useInventoryScope } from "../../../../hooks/useInventoryScope";
 import {
   createPromotion,
   deactivatePromotion,
@@ -146,8 +147,8 @@ const validateForm = (form: PromotionFormState) => {
   if (!Number.isFinite(discountValue)) {
     return "discountValue debe ser numerico.";
   }
-  if (form.discountType === "PERCENTAGE" && (discountValue < 0 || discountValue > 100)) {
-    return "PERCENTAGE debe estar entre 0 y 100.";
+  if (form.discountType === "PERCENTAGE" && (discountValue <= 0 || discountValue > 100)) {
+    return "PERCENTAGE debe ser mayor a 0 y menor o igual a 100.";
   }
   if (form.discountType === "FIXED_AMOUNT" && discountValue <= 0) {
     return "FIXED_AMOUNT debe ser mayor a 0.";
@@ -183,6 +184,7 @@ const validateForm = (form: PromotionFormState) => {
 const PromotionsAdminPage = () => {
   const params = useParams<{ tenant: string }>();
   const routeTenant = params?.tenant ?? "";
+  const { currentTenant } = useInventoryScope();
   const permissionsLoaded = useAppSelector((state) => state.auth.permissionsLoaded);
   const [filters, setFilters] = useState<PromotionFilters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] =
@@ -253,7 +255,7 @@ const PromotionsAdminPage = () => {
 
     try {
       const result = await listProducts({
-        tenantId: routeTenant || undefined,
+        tenantId: currentTenant ?? undefined,
       });
       setProducts(result);
     } catch (error) {
@@ -265,7 +267,7 @@ const PromotionsAdminPage = () => {
 
     try {
       const result = await listBranches({
-        tenantId: routeTenant || undefined,
+        tenantId: currentTenant ?? undefined,
       });
       setBranches(result);
     } catch (error) {
@@ -279,7 +281,7 @@ const PromotionsAdminPage = () => {
     } finally {
       setReferencesLoading(false);
     }
-  }, [routeTenant]);
+  }, [currentTenant]);
 
   useEffect(() => {
     void readPromotions(defaultFilters);
@@ -681,7 +683,11 @@ const PromotionsAdminPage = () => {
               <Input
                 label="discountValue"
                 type="number"
-                min={form.discountType === "PERCENTAGE" ? 0 : undefined}
+                min={
+                  form.discountType === "SPECIAL_PRICE"
+                    ? 0
+                    : 0.01
+                }
                 max={form.discountType === "PERCENTAGE" ? 100 : undefined}
                 step="0.01"
                 value={form.discountValue}

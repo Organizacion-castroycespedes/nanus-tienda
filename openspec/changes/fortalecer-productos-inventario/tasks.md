@@ -1367,6 +1367,42 @@
 - [x] Ejecutar lint/build frontend, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco backend, SQL, PricingService, POS venta, Orders, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.9.2: QA local frontend administracion de promociones
+
+- [x] Confirmar DB local/copia QA, API local y web local sin exponer credenciales.
+- [x] Validar que `/default/inventory/promotions` responde `200` y no cae en 404.
+- [x] Validar permiso local con usuario `SUPER_ADMIN` y endpoints de promociones.
+- [x] Validar listado y filtros `activas`, `inactivas` y `todas` por API local.
+- [x] Crear promocion `PERCENTAGE` local y confirmar listado.
+- [x] Crear promocion `FIXED_AMOUNT` local y documentar validacion inconsistente de `discountValue = 0`.
+- [x] Crear promocion `SPECIAL_PRICE` local y validar rechazo de valor negativo.
+- [x] Editar promocion y confirmar persistencia.
+- [x] Inactivar promocion y confirmar filtro inactivo.
+- [x] Validar `POST /api/pricing/preview-line` con promocion activa y reflejo de precio final, descuento, nombre de promocion y total linea.
+- [x] Ejecutar cleanup logico de fixtures por inactivacion y confirmar `activeRemaining = 0`.
+- [x] Documentar bloqueo de QA visual por in-app browser y bugs encontrados.
+- [x] Crear `docs/evidencia-frontend-promotions-admin-qa-fase-6-9-2.md`.
+- [x] Ejecutar lint/build frontend, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco logica funcional, backend, SQL, frontend funcional, POS venta, Orders, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
+
+## Fase 6.9.3: fixes promociones admin detectados en QA
+
+- [x] Corregir `web/app/[tenant]/inventory/promotions/page.tsx` para no enviar slug `default` como `tenantId` en productos/sucursales.
+- [x] Alinear validacion UX de promociones con reglas de backend.
+- [x] Corregir `PromotionsService` para rechazar `FIXED_AMOUNT <= 0`, `PERCENTAGE <= 0` y `PERCENTAGE > 100`.
+- [x] Mantener `SPECIAL_PRICE >= 0`.
+- [x] Permitir deactivar promociones legacy invalidas con `FIXED_AMOUNT = 0`.
+- [x] Agregar/ajustar tests de `PromotionsService`.
+- [x] Cambiar menu `INVENTORY_PROMOTIONS` a `visible = TRUE` en migracion/seed idempotentes.
+- [x] Agregar migracion idempotente `20260608_promotions_menu_visible_phase_6_9_3.sql`.
+- [x] Validar localmente que productos/sucursales cargan sin `tenantId=default`.
+- [x] Validar localmente que API rechaza `FIXED_AMOUNT = 0`.
+- [x] Validar localmente que `/auth/menu` incluye `INVENTORY_PROMOTIONS` para rol con permiso.
+- [x] Crear promocion por API, verla en listado, inactivarla y confirmar cleanup.
+- [x] Crear `docs/evidencia-promotions-admin-fixes-fase-6-9-3.md`.
+- [x] Ejecutar tests pricing, build API, lint/build web, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco PricingService, POS venta, Orders, `inventory_create_sale_v2`, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

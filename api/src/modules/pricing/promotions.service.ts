@@ -65,11 +65,14 @@ export class PromotionsService {
     if (!Number.isFinite(discountValue) || discountValue === undefined) {
       throw new BadRequestException("discountValue is required");
     }
-    if (discountValue < 0) {
-      throw new BadRequestException("discountValue must be greater than or equal to 0");
+    if (discountType === "PERCENTAGE" && (discountValue <= 0 || discountValue > 100)) {
+      throw new BadRequestException("percentage discountValue must be greater than 0 and less than or equal to 100");
     }
-    if (discountType === "PERCENTAGE" && discountValue > 100) {
-      throw new BadRequestException("percentage discountValue must be between 0 and 100");
+    if (discountType === "FIXED_AMOUNT" && discountValue <= 0) {
+      throw new BadRequestException("fixed amount discountValue must be greater than 0");
+    }
+    if (discountType === "SPECIAL_PRICE" && discountValue < 0) {
+      throw new BadRequestException("special price discountValue must be greater than or equal to 0");
     }
   }
 
@@ -197,16 +200,30 @@ export class PromotionsService {
     const discountValue = input.discountValue ?? current.discountValue;
     const priority = input.priority ?? current.priority;
     const name = input.name ?? current.name;
+    const isPureDeactivation =
+      input.isActive === false &&
+      input.name === undefined &&
+      input.description === undefined &&
+      input.discountType === undefined &&
+      input.discountValue === undefined &&
+      input.startsAt === undefined &&
+      input.endsAt === undefined &&
+      input.priority === undefined &&
+      input.isStackable === undefined &&
+      input.productIds === undefined &&
+      input.branchIds === undefined;
 
-    this.validateCore({
-      name,
-      discountType,
-      discountValue,
-      startsAt,
-      endsAt,
-      priority,
-    });
-    await this.validateTargets(tenantId, productIds, branchIds);
+    if (!isPureDeactivation) {
+      this.validateCore({
+        name,
+        discountType,
+        discountValue,
+        startsAt,
+        endsAt,
+        priority,
+      });
+      await this.validateTargets(tenantId, productIds, branchIds);
+    }
 
     const client = await this.db.getClient();
     try {
