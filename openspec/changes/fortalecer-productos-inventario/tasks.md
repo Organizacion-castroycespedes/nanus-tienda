@@ -1343,6 +1343,30 @@
 - [x] Ejecutar lint/build frontend, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco backend, SQL, pagos/caja, stock/FEFO, Orders, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.9.1: frontend administracion de promociones
+
+- [x] Crear ruta `web/app/[tenant]/inventory/promotions/page.tsx`.
+- [x] Crear servicio frontend `web/modules/pricing/services/promotions.service.ts`.
+- [x] Consumir `GET /api/pricing/promotions`.
+- [x] Consumir `GET /api/pricing/promotions/:id` para editar con datos frescos.
+- [x] Consumir `POST /api/pricing/promotions`.
+- [x] Consumir `PATCH /api/pricing/promotions/:id`.
+- [x] Consumir `PATCH /api/pricing/promotions/:id/deactivate`.
+- [x] Crear listado de promociones con estado, vigencia, prioridad, productos y sucursales.
+- [x] Crear formulario modal para crear y editar promociones.
+- [x] Permitir inactivar promocion.
+- [x] Permitir filtrar por estado activo/inactivo/todas.
+- [x] Permitir seleccionar productos aplicables con `productIds`.
+- [x] Permitir seleccionar sucursales opcionales con `branchIds` usando selector existente.
+- [x] Validar reglas UX de descuento, fechas, prioridad y producto obligatorio.
+- [x] Mostrar que menor `priority` gana.
+- [x] Indicar que `branchIds` vacio aplica a todas las sucursales permitidas.
+- [x] Agregar permiso frontend `MENU_KEYS.INVENTORY_PROMOTIONS` y regla de ruta.
+- [x] Agregar acceso rapido desde dashboard de Inventario.
+- [x] Crear `docs/evidencia-frontend-promotions-admin-fase-6-9-1.md`.
+- [x] Ejecutar lint/build frontend, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco backend, SQL, PricingService, POS venta, Orders, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

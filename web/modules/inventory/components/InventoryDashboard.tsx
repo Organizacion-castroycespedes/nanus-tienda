@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   ShoppingBag,
   Store,
+  Tags,
   TrendingUp,
 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
@@ -486,6 +487,12 @@ export const InventoryDashboard = () => {
       description: "Catalogo con badges de lote y vencimiento.",
       href: `/${tenantSlug}/inventory/products`,
       icon: PackageCheck,
+    },
+    {
+      label: "Administrar promociones",
+      description: "Descuentos por producto y alcance por sucursal.",
+      href: `/${tenantSlug}/inventory/promotions`,
+      icon: Tags,
     },
     {
       label: "Ver discrepancias",

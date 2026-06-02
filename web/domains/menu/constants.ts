@@ -4,6 +4,7 @@ export const MENU_KEYS = {
   CONFIG_ROLES: "CONFIG_ROLES",
   CONFIG_GENERAL: "CONFIG_GENERAL",
   CONFIG_MENU: "CONFIG_MENU",
+  INVENTORY_PROMOTIONS: "INVENTORY_PROMOTIONS",
 } as const;
 
 export const MENU_KEY_ALIASES: Record<string, string[]> = {
@@ -12,6 +13,7 @@ export const MENU_KEY_ALIASES: Record<string, string[]> = {
   [MENU_KEYS.CONFIG_ROLES]: ["ROLES_TENANT_ROLES"],
   [MENU_KEYS.CONFIG_GENERAL]: ["CONFIGURACION_TENANT_CONFIGURACION"],
   [MENU_KEYS.CONFIG_MENU]: ["CONFIGURACION_TENANT_CONFIGURACION_MENU"],
+  [MENU_KEYS.INVENTORY_PROMOTIONS]: [],
 };
 
 export const getMenuKeyCandidates = (menuKey: string): string[] => {
