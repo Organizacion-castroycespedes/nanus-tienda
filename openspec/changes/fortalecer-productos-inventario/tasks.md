@@ -1403,6 +1403,14 @@
 - [x] Ejecutar tests pricing, build API, lint/build web, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco PricingService, POS venta, Orders, `inventory_create_sale_v2`, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.10: release readiness pricing, promociones, POS y Orders
+
+- [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.
+- [x] Consolidar resumen ejecutivo, fases completadas, cambios backend/frontend/SQL, POS, Orders, promociones, validaciones, evidencias, riesgos, migraciones, checklists y rollback.
+- [x] Documentar explicitamente que la consulta DIAN de clientes y proveedores no se implementa en esta fase y queda separada como epica FE-3.
+- [x] Confirmar que no se toco codigo funcional, SQL, frontend, backend, PRD real, remoto ni commits.
+- [x] Ejecutar `openspec.cmd validate fortalecer-productos-inventario --type change --strict --json` y `git diff --check`.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
