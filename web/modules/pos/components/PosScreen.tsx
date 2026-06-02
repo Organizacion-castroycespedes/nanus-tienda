@@ -14,7 +14,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
@@ -39,12 +39,15 @@ import {
   getPosCustomers,
   getPosProducts,
   getPosTaxes,
+  previewPosLinePrice,
+  type PosLinePricePreviewResponse,
   type PosSalePayload,
 } from "../services/pos.service";
 import {
   buildDefaultPayments,
   buildPaymentId,
   type PaymentDraft,
+  type PosCartItem,
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
@@ -128,6 +131,92 @@ const buildImageLabel = (name: string) => {
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 };
 
+const buildPricingRequestKey = (
+  branchId: string,
+  customerId: string | null,
+  productId: string,
+  quantity: number
+) => `${branchId}:${customerId ?? "default"}:${productId}:${quantity}`;
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "No se pudo calcular precio/promocion.";
+};
+
+const markPricingPending = (
+  item: PosCartItem,
+  quantity: number,
+  pricingRequestKey: string
+): PosCartItem => ({
+  ...item,
+  quantity,
+  price: item.baseUnitPrice ?? item.price,
+  priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
+  pricingStatus: "PENDING",
+  pricingRequestKey,
+  pricingError: null,
+  finalUnitPrice: undefined,
+  discountAmount: 0,
+  discountPercent: 0,
+  appliedPromotionId: null,
+  appliedPromotionName: null,
+  taxBase: undefined,
+  taxAmount: undefined,
+  lineSubtotal: undefined,
+  lineTotal: undefined,
+});
+
+const applyPricingPreview = (
+  item: PosCartItem,
+  preview: PosLinePricePreviewResponse,
+  pricingRequestKey: string
+): PosCartItem => ({
+  ...item,
+  quantity: preview.quantity,
+  price: preview.finalUnitPrice,
+  priceWithoutTax:
+    preview.quantity > 0 ? round(preview.taxBase / preview.quantity) : item.priceWithoutTax,
+  taxId: preview.taxId,
+  pricingStatus: "READY",
+  pricingRequestKey,
+  pricingError: null,
+  baseUnitPrice: preview.baseUnitPrice,
+  finalUnitPrice: preview.finalUnitPrice,
+  discountAmount: preview.discountAmount,
+  discountPercent: preview.discountPercent,
+  appliedPromotionId: preview.appliedPromotionId,
+  appliedPromotionName: preview.appliedPromotionName,
+  taxRate: preview.taxRate,
+  taxBase: preview.taxBase,
+  taxAmount: preview.taxAmount,
+  lineSubtotal: preview.lineSubtotal,
+  lineTotal: preview.lineTotal,
+});
+
+const applyPricingError = (
+  item: PosCartItem,
+  pricingRequestKey: string,
+  pricingError: string
+): PosCartItem => ({
+  ...item,
+  price: item.baseUnitPrice ?? item.price,
+  priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
+  pricingStatus: "ERROR",
+  pricingRequestKey,
+  pricingError,
+  finalUnitPrice: undefined,
+  discountAmount: 0,
+  discountPercent: 0,
+  appliedPromotionId: null,
+  appliedPromotionName: null,
+  taxBase: undefined,
+  taxAmount: undefined,
+  lineSubtotal: undefined,
+  lineTotal: undefined,
+});
+
 export const PosScreen = () => {
   const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
@@ -172,8 +261,22 @@ export const PosScreen = () => {
   // New state for cart drawer visibility
   const [isCartOpen, setIsCartOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
+  const cartRef = useRef(cart);
 
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+
+  const setCartItemsAndRef = useCallback(
+    (items: PosCartItem[]) => {
+      cartRef.current = items;
+      setCartItems(items);
+    },
+    [setCartItems]
+  );
 
   // Detect mobile/tablet viewport
   useEffect(() => {
@@ -199,7 +302,6 @@ export const PosScreen = () => {
   }, []);
 
   useEffect(() => {
-    const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
     if (!activeBranchId) {
       setCatalogLoading(false);
       setCatalogError("No hay una sucursal POS activa para cargar inventario.");
@@ -282,7 +384,7 @@ export const PosScreen = () => {
     return () => {
       active = false;
     };
-  }, [authUser?.branchId, posBranchId]);
+  }, [activeBranchId]);
 
   useEffect(() => {
     const defaultCustomer =
@@ -444,28 +546,39 @@ export const PosScreen = () => {
 
   const cartWithDerivedValues = useMemo(() => {
     return cart.map((item) => {
-      const subtotal = round(item.price * item.quantity);
+      const unitPrice = item.finalUnitPrice ?? item.price;
+      const subtotal =
+        typeof item.lineTotal === "number"
+          ? round(item.lineTotal)
+          : round(unitPrice * item.quantity);
       const tax = item.taxId ? taxById[item.taxId] : null;
-      const perUnitTaxAmount = round(item.price - item.priceWithoutTax);
-      const itemTaxes: PosItemTax[] = tax
+      const fallbackTaxAmount = round(
+        Math.max(unitPrice - item.priceWithoutTax, 0) * item.quantity
+      );
+      const previewTaxAmount =
+        typeof item.taxAmount === "number" ? round(item.taxAmount) : undefined;
+      const itemTaxes: PosItemTax[] = item.taxId
         ? [
             {
-              id: tax.id,
-              name: tax.name,
-              rate: tax.rate,
-              amount: round(perUnitTaxAmount * item.quantity),
-              isIncluded: tax.isIncluded,
+              id: item.taxId,
+              name: tax?.name ?? "Impuesto",
+              rate: tax?.rate ?? item.taxRate ?? 0,
+              amount: previewTaxAmount ?? fallbackTaxAmount,
+              isIncluded: tax?.isIncluded ?? true,
             },
           ]
         : [];
 
       const taxTotal = round(itemTaxes.reduce((sum, current) => sum + current.amount, 0));
+      const discountTotal = round((item.discountAmount ?? 0) * item.quantity);
 
       return {
         ...item,
+        unitPrice,
         subtotal,
         taxes: itemTaxes,
         taxTotal,
+        discountTotal,
       };
     });
   }, [cart, taxById]);
@@ -477,10 +590,14 @@ export const PosScreen = () => {
     const taxesTotal = round(
       cartWithDerivedValues.reduce((sum, item) => sum + item.taxTotal, 0)
     );
+    const discountTotal = round(
+      cartWithDerivedValues.reduce((sum, item) => sum + item.discountTotal, 0)
+    );
 
     return {
       subtotal,
       taxesTotal,
+      discountTotal,
       total: subtotal,
     };
   }, [cartWithDerivedValues]);
@@ -548,7 +665,18 @@ export const PosScreen = () => {
     };
   }, [summary.total, totalPaid, totalCashEntered]);
 
-  const canCharge = canRead && canCreate && cartWithDerivedValues.length > 0;
+  const hasPricingPending = cartWithDerivedValues.some(
+    (item) => item.pricingStatus === "PENDING"
+  );
+  const pricingErrorItem = cartWithDerivedValues.find(
+    (item) => item.pricingStatus === "ERROR"
+  );
+  const canCharge =
+    canRead &&
+    canCreate &&
+    cartWithDerivedValues.length > 0 &&
+    !hasPricingPending &&
+    !pricingErrorItem;
 
   useEffect(() => {
     if (!paymentModalOpen || paymentMethodsCatalog.length === 0) {
@@ -570,11 +698,166 @@ export const PosScreen = () => {
   // Cart item count for floating button
   const cartItemCount = cartWithDerivedValues.reduce((sum, item) => sum + item.quantity, 0);
 
+  const refreshCartItemPricing = useCallback(
+    async (productId: string, quantity: number, pricingRequestKey: string) => {
+      if (!activeBranchId) {
+        return;
+      }
+
+      try {
+        const preview = await previewPosLinePrice({
+          branchId: activeBranchId,
+          productId,
+          quantity,
+          channel: "POS",
+          customerId: selectedCustomerId ?? undefined,
+        });
+        const currentCart = cartRef.current;
+        const target = currentCart.find(
+          (item) =>
+            item.productId === productId &&
+            item.quantity === quantity &&
+            item.pricingRequestKey === pricingRequestKey
+        );
+
+        if (!target) {
+          return;
+        }
+
+        setCartItemsAndRef(
+          currentCart.map((item) =>
+            item.productId === productId && item.pricingRequestKey === pricingRequestKey
+              ? applyPricingPreview(item, preview, pricingRequestKey)
+              : item
+          )
+        );
+      } catch (error) {
+        const currentCart = cartRef.current;
+        const target = currentCart.find(
+          (item) =>
+            item.productId === productId &&
+            item.quantity === quantity &&
+            item.pricingRequestKey === pricingRequestKey
+        );
+
+        if (!target) {
+          return;
+        }
+
+        const message = `No se pudo calcular precio/promocion para ${target.name}. ${getErrorMessage(
+          error
+        )}`;
+        setCartItemsAndRef(
+          currentCart.map((item) =>
+            item.productId === productId && item.pricingRequestKey === pricingRequestKey
+              ? applyPricingError(item, pricingRequestKey, message)
+              : item
+          )
+        );
+        showToast(message, "error");
+      }
+    },
+    [activeBranchId, selectedCustomerId, setCartItemsAndRef, showToast]
+  );
+
+  const queueCartItemPricing = useCallback(
+    (items: PosCartItem[], productId: string, quantity: number) => {
+      if (!activeBranchId) {
+        const message = "No hay una sucursal POS activa para calcular precio.";
+        setCartItemsAndRef(
+          items.map((item) =>
+            item.productId === productId
+              ? applyPricingError(item, "missing-branch", message)
+              : item
+          )
+        );
+        showToast(message, "error");
+        return;
+      }
+
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        productId,
+        quantity
+      );
+      const nextItems = items.map((item) =>
+        item.productId === productId
+          ? markPricingPending(item, quantity, pricingRequestKey)
+          : item
+      );
+
+      setCartItemsAndRef(nextItems);
+      void refreshCartItemPricing(productId, quantity, pricingRequestKey);
+    },
+    [
+      activeBranchId,
+      refreshCartItemPricing,
+      selectedCustomerId,
+      setCartItemsAndRef,
+      showToast,
+    ]
+  );
+
+  useEffect(() => {
+    if (!activeBranchId || cartRef.current.length === 0) {
+      return;
+    }
+
+    const currentCart = cartRef.current;
+    const staleItems = currentCart.filter((item) => {
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        item.productId,
+        item.quantity
+      );
+      return !item.pricingStatus || item.pricingRequestKey !== pricingRequestKey;
+    });
+
+    if (staleItems.length === 0) {
+      return;
+    }
+
+    const nextItems = currentCart.map((item) => {
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        item.productId,
+        item.quantity
+      );
+
+      if (item.pricingStatus && item.pricingRequestKey === pricingRequestKey) {
+        return item;
+      }
+
+      return markPricingPending(item, item.quantity, pricingRequestKey);
+    });
+
+    setCartItemsAndRef(nextItems);
+    staleItems.forEach((item) => {
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        item.productId,
+        item.quantity
+      );
+      void refreshCartItemPricing(item.productId, item.quantity, pricingRequestKey);
+    });
+  }, [
+    activeBranchId,
+    cart.length,
+    refreshCartItemPricing,
+    selectedCustomerId,
+    setCartItemsAndRef,
+  ]);
+
   const addToCart = (product: ProductResponse) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
 
-    const existing = cart.find((item) => item.productId === product.id);
+    const currentCart = cartRef.current;
+    const existing = currentCart.find((item) => item.productId === product.id);
     const stock = Number(product.stock ?? 0);
 
     if (stock <= 0) {
@@ -588,53 +871,68 @@ export const PosScreen = () => {
         return;
       }
 
-      setCartItems(
-        cart.map((item) =>
-          item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        )
+      const nextQuantity = existing.quantity + 1;
+      queueCartItemPricing(
+        currentCart.map((item) =>
+          item.productId === product.id ? { ...item, quantity: nextQuantity } : item
+        ),
+        product.id,
+        nextQuantity
       );
       return;
     }
 
-    setCartItems([
-      ...cart,
-      {
-        productId: product.id,
-        name: product.name,
-        sku: product.sku,
-        quantity: 1,
-        price: Number(product.price),
-        stock,
-        taxId: product.taxId ?? null,
-        priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
-      },
-    ]);
+    const nextItem: PosCartItem = {
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      quantity: 1,
+      price: Number(product.price),
+      stock,
+      taxId: product.taxId ?? null,
+      priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+      baseUnitPrice: Number(product.price),
+      basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+    };
+    queueCartItemPricing([...currentCart, nextItem], product.id, 1);
   };
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
 
-    setCartItems(
-      cart.flatMap((item) => {
+    const currentCart = cartRef.current;
+    const target = currentCart.find((item) => item.productId === productId);
+    if (!target) {
+      return;
+    }
+
+    if (nextQuantity <= 0) {
+      setCartItemsAndRef(currentCart.filter((item) => item.productId !== productId));
+      return;
+    }
+
+    const safeQuantity = Math.min(nextQuantity, target.stock);
+    if (safeQuantity === target.quantity && target.pricingStatus !== "ERROR") {
+      return;
+    }
+
+    queueCartItemPricing(
+      currentCart.flatMap((item) => {
         if (item.productId !== productId) {
           return [item];
         }
-
-        if (nextQuantity <= 0) {
-          return [];
-        }
-
-        const safeQuantity = Math.min(nextQuantity, item.stock);
         return [{ ...item, quantity: safeQuantity }];
-      })
+      }),
+      productId,
+      safeQuantity
     );
   };
 
   const removeCartItem = (productId: string) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
-    setCartItems(cart.filter((item) => item.productId !== productId));
+    setCartItemsAndRef(cartRef.current.filter((item) => item.productId !== productId));
   };
 
   const toggleTaxBreakdown = (productId: string) => {
@@ -770,6 +1068,17 @@ export const PosScreen = () => {
       return "Hay items que superan el stock disponible.";
     }
 
+    if (hasPricingPending) {
+      return "Espera el calculo de precio/promocion antes de vender.";
+    }
+
+    if (pricingErrorItem) {
+      return (
+        pricingErrorItem.pricingError ??
+        `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`
+      );
+    }
+
     if (paymentWarning) {
       return paymentWarning;
     }
@@ -855,7 +1164,7 @@ export const PosScreen = () => {
         items: cartWithDerivedValues.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
-          price: item.price,
+          price: item.finalUnitPrice ?? item.price,
         })),
         payments: effectivePayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
@@ -868,14 +1177,13 @@ export const PosScreen = () => {
 
       setSaleStatus("CONFIRMED");
       // Successful checkout clears the persisted sale for this POS context.
-      setCartItems([]);
+      setCartItemsAndRef([]);
       setExpandedTaxItems({});
       setPaymentModalOpen(false);
       resetPayments();
       showToast("Venta confirmada correctamente.", "success");
 
       try {
-        const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
         if (!activeBranchId) {
           throw new Error("missing branch");
         }
@@ -998,15 +1306,48 @@ export const PosScreen = () => {
                     </div>
 
                     <div className="text-sm text-slate-600 dark:text-slate-300">
-                      <p>{formatCurrency(item.price)} c/u</p>
+                      {item.discountTotal > 0 ? (
+                        <p className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs line-through">
+                            {formatCurrency(item.baseUnitPrice ?? item.unitPrice)}
+                          </span>
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                            {formatCurrency(item.unitPrice)} c/u
+                          </span>
+                        </p>
+                      ) : (
+                        <p>{formatCurrency(item.unitPrice)} c/u</p>
+                      )}
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         Stock disponible: {item.stock}
                       </p>
+                      {item.pricingStatus === "PENDING" ? (
+                        <p className="mt-2 flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Calculando precio/promocion...
+                        </p>
+                      ) : null}
+                      {item.pricingStatus === "ERROR" ? (
+                        <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+                          {item.pricingError}
+                        </p>
+                      ) : null}
+                      {item.appliedPromotionName ? (
+                        <p className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                          {item.appliedPromotionName}
+                        </p>
+                      ) : null}
+                      {item.discountTotal > 0 ? (
+                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                          Descuento {formatCurrency(item.discountTotal)}
+                          {item.discountPercent ? ` (${item.discountPercent}%)` : ""}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="text-right">
                       <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Subtotal
+                        Total linea
                       </p>
                       <p className="mt-1 text-base font-semibold text-slate-950 dark:text-white">
                         {formatCurrency(item.subtotal)}
@@ -1072,6 +1413,12 @@ export const PosScreen = () => {
                 <span>Impuestos</span>
                 <span>{formatCurrency(summary.taxesTotal)}</span>
               </div>
+              {summary.discountTotal > 0 ? (
+                <div className="flex items-center justify-between text-sm text-emerald-700 dark:text-emerald-300">
+                  <span>Descuentos aplicados</span>
+                  <span>{formatCurrency(summary.discountTotal)}</span>
+                </div>
+              ) : null}
               {/* Inline tax summary */}
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Incluye impuestos: {formatCurrency(summary.taxesTotal)}
@@ -1081,6 +1428,19 @@ export const PosScreen = () => {
                 <span>{formatCurrency(summary.total)}</span>
               </div>
             </div>
+
+            {hasPricingPending ? (
+              <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+                Calculando precio/promocion antes de cobrar.
+              </div>
+            ) : null}
+
+            {pricingErrorItem ? (
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                {pricingErrorItem.pricingError ??
+                  `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
+              </div>
+            ) : null}
 
             {/* Charge Button */}
             <div className="mt-4">
