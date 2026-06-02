@@ -1,0 +1,43 @@
+# Tasks: dian-terceros-clientes-proveedores-fe-3
+
+## FE-3.1 diseno
+
+- [x] 1. Analizar modelo actual de customers legacy.
+- [x] 2. Analizar modelo actual de suppliers legacy.
+- [x] 3. Confirmar existencia de modulo `electronic-invoicing`.
+- [x] 4. Identificar endpoints actuales de customers.
+- [x] 5. Identificar endpoints actuales de suppliers.
+- [x] 6. Analizar como POS selecciona `customerId`.
+- [x] 7. Analizar como POS muestra Consumidor Final.
+- [x] 8. Analizar manejo de `tenantId`, `branchId` y usuario autenticado.
+- [x] 9. Mapear campos fiscales existentes y faltantes.
+- [x] 10. Alinear GetAcquirer futuro con `identificationType` e `identificationNumber`.
+- [x] 11. Disenar flujo POS.
+- [x] 12. Disenar flujo customers.
+- [x] 13. Disenar flujo suppliers.
+- [x] 14. Definir modelo recomendado.
+- [x] 15. Definir reglas de no overwrite, fallback Consumidor Final y DIAN desactivable.
+- [x] 16. Proponer endpoints.
+- [x] 17. Definir fases FE-3.2 a FE-3.6.
+- [x] 18. Documentar riesgos.
+- [x] 19. Documentar decisiones pendientes.
+- [x] 20. Crear `docs/diseno-dian-terceros-clientes-proveedores-fe-3-1.md`.
+- [x] 21. Crear OpenSpec separado `dian-terceros-clientes-proveedores-fe-3`.
+- [x] 22. Crear delta spec `dian-third-party-lookup`.
+
+## Validacion
+
+- [x] 1. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 2. Ejecutar `git diff --check`.
+
+## Guardrails
+
+- [x] 1. No implementar DIAN real.
+- [x] 2. No implementar SOAP real nuevo.
+- [x] 3. No tocar pricing.
+- [x] 4. No tocar POS venta core.
+- [x] 5. No tocar Orders.
+- [x] 6. No tocar SQL funcional.
+- [x] 7. No tocar PRD real.
+- [x] 8. No usar remoto.
+- [x] 9. No hacer commit.
