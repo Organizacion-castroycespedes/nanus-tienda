@@ -1115,6 +1115,21 @@
 - [x] Crear `docs/evidencia-api-local-orders-pricing-fase-6-7-3.md`.
 - [x] Confirmar que no se tocaron logica funcional, `OrderService`, `SaleService`, `invoiceOrder`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
 
+## Fase 6.7.4.1: migracion snapshot pricing sale_items
+
+- [x] Crear migracion idempotente para columnas snapshot de pricing en `sale_items`.
+- [x] Crear rollback idempotente de columnas snapshot de pricing en `sale_items`.
+- [x] Mantener `price`, `price_without_tax`, `tax_total` y `subtotal` actuales por compatibilidad.
+- [x] No recalcular ni poblar snapshot inventado para ventas historicas.
+- [x] Actualizar entidad tipada `SaleItemEntity` con campos snapshot nullable.
+- [x] No crear indices prematuros para `applied_promotion_id` ni `pricing_snapshot`.
+- [x] Documentar que `sale_items.price` seguira representando `finalUnitPrice` en fases futuras.
+- [x] Documentar que `sale_items.subtotal` seguira representando `lineTotal` en fases futuras.
+- [x] Documentar que `sale_item_taxes` conservara `tax_id`, `tax_name`, `tax_rate` y `tax_amount`.
+- [x] Crear `docs/evidencia-sale-items-pricing-snapshot-fase-6-7-4-1.md`.
+- [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
+- [x] Confirmar que no se toco `inventory_invoice_order`, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers fiscales, PRD real, remoto ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.
