@@ -1182,6 +1182,68 @@
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco logica funcional, SQL permanente, migraciones, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.7.4.5: absorcion de redondeo en ultima factura parcial
+
+- [x] Crear migracion `V050__invoice_order_partial_rounding_absorption_phase_6_7_4_5.sql`.
+- [x] Crear rollback `V050__invoice_order_partial_rounding_absorption_phase_6_7_4_5_rollback.sql`.
+- [x] Eliminar `chk_sale_items_subtotal_matches` en la migracion para permitir absorcion de centavos.
+- [x] Crear indice parcial `idx_sale_items_tenant_order_item`.
+- [x] Actualizar `inventory_invoice_order` para absorber redondeo solo en la ultima factura parcial con `ORDER_ITEM_SNAPSHOT`.
+- [x] Mantener prorrateo normal en facturas parciales intermedias.
+- [x] Mantener fallback legacy sin absorcion.
+- [x] Actualizar fresh DB function `scripts/database/sale/012_sale_financial_sync_and_pos_function.sql`.
+- [x] Crear `docs/evidencia-invoice-order-partial-rounding-fase-6-7-4-5.md`.
+- [x] Ejecutar `openspec validate`, `git diff --check` y build de `api/`.
+- [x] Confirmar que no se toco API TypeScript, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
+## Fase 6.7.4.5.QA: validacion API local absorcion de redondeo
+
+- [x] Confirmar DB local/copia QA `::1/128:5432/manus_tienda_prd`.
+- [x] Aplicar V050 solo en DB local/copia QA.
+- [x] Confirmar que `inventory_invoice_order` contiene `v_use_rounding_absorption`.
+- [x] Confirmar que `chk_sale_items_subtotal_matches` no existe en DB local.
+- [x] Crear fixture local controlado con prefijo UUID `67500000-*`.
+- [x] Validar por DB directa 3 parciales `33.33`, `33.33`, `33.34`.
+- [x] Verificar suma `line_total = 100.00` y `tax_amount = 15.97`.
+- [x] Verificar `pricing_source = ORDER_ITEM_SNAPSHOT` en todas las lineas DB.
+- [x] Ejecutar cleanup y validar `fixtureRowsRemaining = 0`.
+- [x] Detener API local y confirmar sin listener en `4035`.
+- [x] Documentar bloqueo API: `SaleItemEntity` mantiene validacion legacy `subtotal = price * quantity`.
+- [x] Crear `docs/evidencia-api-local-invoice-order-partial-rounding-fase-6-7-4-5.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco logica funcional, SQL, API TypeScript, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, suppliers, PRD real, remoto ni commits.
+
+## Fase 6.7.4.6: compatibilidad SaleItemEntity con subtotal absorbido por snapshot
+
+- [x] Actualizar `SaleItemEntity` para permitir subtotal absorbido solo con `pricingSource = ORDER_ITEM_SNAPSHOT`.
+- [x] Mantener validacion legacy para `pricingSource` nulo o `LEGACY_ORDER_ITEM_NO_PRICING_SNAPSHOT`.
+- [x] Comparar montos monetarios redondeados a 2 decimales para evitar ruido de floating point.
+- [x] Validar que `lineTotal`, si viene informado en snapshot, coincida con `subtotal` redondeado.
+- [x] Actualizar solo lectura/mapeo de `SaleService.getSaleById` para `line_total` y `pricing_source`.
+- [x] Crear prueba `api/src/modules/inventory/entities/sale-item.entity.spec.ts`.
+- [x] Actualizar `docs/evidencia-api-local-invoice-order-partial-rounding-fase-6-7-4-5.md`.
+- [x] Ejecutar tests autorizados, build, `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco SQL, `inventory_invoice_order`, migraciones, logica de facturacion/escritura de `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto ni commits.
+
+## Fase 6.7.4.6.QA: validacion API local completa de absorcion
+
+- [x] Confirmar DB local/copia QA `::1/128:5432/manus_tienda_prd`.
+- [x] Confirmar V050 aplicada localmente y `inventory_invoice_order` con `v_use_rounding_absorption`.
+- [x] Levantar API local en puerto `4024`.
+- [x] Crear fixture local controlado con prefijo UUID `67600000-*`.
+- [x] Ejecutar 3 entregas parciales de cantidad `1` por API.
+- [x] Ejecutar 3 facturas parciales por API usando `type = CREDIT` para aislar redondeo de pagos/caja.
+- [x] Confirmar por API `lineTotal` `33.33`, `33.33`, `33.34`.
+- [x] Confirmar por API `sale_item_taxes.taxAmount` `5.32`, `5.32`, `5.33`.
+- [x] Confirmar por API `pricingSource = ORDER_ITEM_SNAPSHOT` en todas las lineas.
+- [x] Confirmar que respuesta de `invoice` y `GET /api/sales/:id` no fallan por `SaleItemEntity`.
+- [x] Confirmar por DB `line_total = 100.00`, `tax_amount = 15.97` y `billed_quantity = 3.00`.
+- [x] Ejecutar cleanup y validar `fixtureRowsRemaining = 0`.
+- [x] Detener API local y confirmar sin listener en `4024`.
+- [x] Actualizar `docs/evidencia-api-local-invoice-order-partial-rounding-fase-6-7-4-5.md`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Confirmar que no se toco logica funcional, SQL, `SaleItemEntity`, `SaleService`, `OrderService`, POS, frontend, facturacion electronica, DIAN, GetAcquirer, suppliers, PRD real, remoto, credenciales ni commits.
+
 ## Fase 6: integracion compras/ventas
 
 - [ ] Validar entrada de compra con lotes obligatorios.

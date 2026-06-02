@@ -63,6 +63,10 @@ const assertOptionalBoundedString = (
   }
 };
 
+const ORDER_ITEM_SNAPSHOT_PRICING_SOURCE = "ORDER_ITEM_SNAPSHOT";
+
+const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+
 export type SaleItemProps = {
   id: string;
   tenantId: string;
@@ -152,9 +156,23 @@ export class SaleItemEntity {
     assertOptionalNonNegativeDecimal(props.taxBase, "taxBase");
     assertOptionalNonNegativeDecimal(props.taxAmount, "taxAmount");
     assertOptionalNonNegativeDecimal(props.lineTotal, "lineTotal");
+    assertOptionalBoundedString(props.pricingSource, "pricingSource", 40);
 
-    if (props.subtotal !== props.price * props.quantity) {
+    const roundedSubtotal = roundCurrency(props.subtotal);
+    const roundedExpectedSubtotal = roundCurrency(props.price * props.quantity);
+    const usesOrderItemSnapshot =
+      props.pricingSource === ORDER_ITEM_SNAPSHOT_PRICING_SOURCE;
+
+    if (!usesOrderItemSnapshot && roundedSubtotal !== roundedExpectedSubtotal) {
       throw new Error("subtotal must equal price multiplied by quantity");
+    }
+    if (
+      usesOrderItemSnapshot &&
+      props.lineTotal !== null &&
+      props.lineTotal !== undefined &&
+      roundCurrency(props.lineTotal) !== roundedSubtotal
+    ) {
+      throw new Error("lineTotal must equal subtotal for snapshot-priced sale item");
     }
     if (!isOptionalUuid(props.appliedPromotionId)) {
       throw new Error("appliedPromotionId must be a valid UUID");
@@ -162,7 +180,6 @@ export class SaleItemEntity {
     if (!isValidOptionalDate(props.pricingCalculatedAt)) {
       throw new Error("pricingCalculatedAt must be a valid Date");
     }
-    assertOptionalBoundedString(props.pricingSource, "pricingSource", 40);
 
     this.id = props.id;
     this.tenantId = props.tenantId;
