@@ -11,6 +11,7 @@ import {
   ElectronicInvoicingSuppliersService,
   normalizeSupplierFiscalDocument,
 } from "./electronic-invoicing-suppliers.service";
+import { ThirdPartyLookupGetAcquirerAdapter } from "../third-party-lookup/third-party-lookup.get-acquirer-adapter";
 import { ThirdPartyLookupMockAdapter } from "../third-party-lookup/third-party-lookup.mock-adapter";
 import { ThirdPartyLookupService } from "../third-party-lookup/third-party-lookup.service";
 
@@ -18,7 +19,10 @@ const tenantId = "tenant-1";
 const otherTenantId = "tenant-2";
 
 const buildLookupService = () =>
-  new ThirdPartyLookupService(new ThirdPartyLookupMockAdapter());
+  new ThirdPartyLookupService(
+    new ThirdPartyLookupMockAdapter(),
+    new ThirdPartyLookupGetAcquirerAdapter()
+  );
 
 const withMockLookupEnv = async (fn: () => Promise<void> | void) => {
   const previousEnabled = process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED;

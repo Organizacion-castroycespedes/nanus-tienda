@@ -1,8 +1,8 @@
 export type ThirdPartyLookupPartyType = "CUSTOMER" | "SUPPLIER";
 
-export type ThirdPartyLookupMode = "mock" | "disabled";
+export type ThirdPartyLookupMode = "mock" | "disabled" | "real";
 
-export type ThirdPartyLookupProvider = "MOCK_LOCAL" | "NONE";
+export type ThirdPartyLookupProvider = "MOCK_LOCAL" | "NONE" | "DIAN_GET_ACQUIRER";
 
 export type ThirdPartyLookupStatus =
   | "FOUND"

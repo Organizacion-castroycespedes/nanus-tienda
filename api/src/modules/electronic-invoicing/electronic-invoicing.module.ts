@@ -10,6 +10,7 @@ import { DianDocumentTypesService } from "./document-types/dian-document-types.s
 import { ElectronicInvoicingSuppliersController } from "./suppliers/electronic-invoicing-suppliers.controller";
 import { ElectronicInvoicingSuppliersRepository } from "./suppliers/electronic-invoicing-suppliers.repository";
 import { ElectronicInvoicingSuppliersService } from "./suppliers/electronic-invoicing-suppliers.service";
+import { ThirdPartyLookupGetAcquirerAdapter } from "./third-party-lookup/third-party-lookup.get-acquirer-adapter";
 import { ThirdPartyLookupMockAdapter } from "./third-party-lookup/third-party-lookup.mock-adapter";
 import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup.service";
 
@@ -25,6 +26,7 @@ import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup
     ElectronicInvoicingCustomersService,
     ElectronicInvoicingSuppliersRepository,
     ElectronicInvoicingSuppliersService,
+    ThirdPartyLookupGetAcquirerAdapter,
     ThirdPartyLookupMockAdapter,
     ThirdPartyLookupService,
     DianDocumentTypesRepository,

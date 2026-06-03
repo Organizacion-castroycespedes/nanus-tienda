@@ -134,3 +134,25 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.5 Skeleton GetAcquirer real SOAP/WS-Security
+
+- [x] 1. Analizar contrato backend actual de `third-party-lookup`.
+- [x] 2. Crear interface de adapters provider-agnostic.
+- [x] 3. Agregar modo `real` junto a `disabled` y `mock`.
+- [x] 4. Agregar config env para `DIAN_GET_ACQUIRER_*`.
+- [x] 5. Validar configuracion real con errores claros y sin secretos.
+- [x] 6. Crear adapter skeleton seguro para `GetAcquirer`.
+- [x] 7. Preparar placeholders SOAP/WS-Security sin llamada externa.
+- [x] 8. Mantener `GetAcquirer` real solo para customers/adquirientes.
+- [x] 9. Mantener suppliers sin `GetAcquirer` real.
+- [x] 10. Agregar tests especificos de lookup real skeleton.
+- [x] 11. Actualizar `api/.env.example`.
+- [x] 12. Crear `docs/evidencia-getacquirer-skeleton-fe-3-5.md`.
+
+## Validacion FE-3.5
+
+- [x] 1. Ejecutar tests especificos backend FE-3.5.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { ThirdPartyLookupAdapter } from "./third-party-lookup.adapter";
 import type {
   NormalizedThirdPartyLookupRequest,
   ThirdPartyLookupContext,
@@ -15,7 +16,7 @@ const getDataValue = (
 ) => data[field];
 
 @Injectable()
-export class ThirdPartyLookupMockAdapter {
+export class ThirdPartyLookupMockAdapter implements ThirdPartyLookupAdapter {
   private calculateNitVerificationDigit(documentNumber: string): string | null {
     if (!/^\d+$/.test(documentNumber)) {
       return null;

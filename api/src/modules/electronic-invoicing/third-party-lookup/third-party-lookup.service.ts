@@ -1,5 +1,10 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import crypto from "crypto";
+import {
+  assertGetAcquirerConfig,
+  resolveThirdPartyLookupConfig,
+} from "./third-party-lookup.config";
+import { ThirdPartyLookupGetAcquirerAdapter } from "./third-party-lookup.get-acquirer-adapter";
 import { ThirdPartyLookupMockAdapter } from "./third-party-lookup.mock-adapter";
 import type {
   NormalizedThirdPartyLookupRequest,
@@ -29,28 +34,14 @@ export const normalizeThirdPartyLookupDocument = (
 export class ThirdPartyLookupService {
   constructor(
     @Inject(ThirdPartyLookupMockAdapter)
-    private readonly mockAdapter: ThirdPartyLookupMockAdapter
+    private readonly mockAdapter: ThirdPartyLookupMockAdapter,
+    @Inject(ThirdPartyLookupGetAcquirerAdapter)
+    private readonly getAcquirerAdapter: ThirdPartyLookupGetAcquirerAdapter
   ) {}
 
   private normalizeText(value?: string | null): string | null {
     const normalized = value?.trim() ?? "";
     return normalized.length > 0 ? normalized : null;
-  }
-
-  private resolveMode(): ThirdPartyLookupMode {
-    const enabled =
-      (process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED ?? "false")
-        .trim()
-        .toLowerCase() === "true";
-    const mode = (process.env.DIAN_THIRD_PARTY_LOOKUP_MODE ?? "disabled")
-      .trim()
-      .toLowerCase();
-
-    if (enabled && mode === "mock") {
-      return "mock";
-    }
-
-    return "disabled";
   }
 
   private normalizeRequest(
@@ -145,15 +136,32 @@ export class ThirdPartyLookupService {
 
   lookup(request: ThirdPartyLookupRequest): ThirdPartyLookupPreview {
     const input = this.normalizeRequest(request);
-    const mode = this.resolveMode();
+    const config = resolveThirdPartyLookupConfig();
+    const mode = config.mode;
 
     if (mode === "disabled") {
       return this.buildDisabledPreview(input);
     }
 
-    return this.mockAdapter.lookup(
+    if (mode === "mock") {
+      return this.mockAdapter.lookup(
+        input,
+        this.buildContext(input, "mock", "MOCK_LOCAL")
+      );
+    }
+
+    if (input.partyType !== "CUSTOMER") {
+      return this.getAcquirerAdapter.lookup(
+        input,
+        this.buildContext(input, "real", "DIAN_GET_ACQUIRER")
+      );
+    }
+
+    const getAcquirerConfig = assertGetAcquirerConfig(config.getAcquirer);
+    return this.getAcquirerAdapter.lookup(
       input,
-      this.buildContext(input, "mock", "MOCK_LOCAL")
+      this.buildContext(input, "real", "DIAN_GET_ACQUIRER"),
+      { getAcquirerConfig }
     );
   }
 
