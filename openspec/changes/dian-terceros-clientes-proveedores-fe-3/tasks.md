@@ -224,3 +224,24 @@
 - [x] 1. Ejecutar `cd api && npm.cmd run build`.
 - [x] 2. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 3. Ejecutar `git diff --check`.
+
+## FE-3.6.3 QA final mock customers POS
+
+- [x] 1. Confirmar API local disponible en `4020`.
+- [x] 2. Confirmar lookup mock por respuesta `MOCK_LOCAL`.
+- [x] 3. Crear customer fiscal con `taxResponsibilities`.
+- [x] 4. Validar lookup mock `FOUND`.
+- [x] 5. Validar `apply-lookup` seleccionando `taxResponsibilities`.
+- [x] 6. Verificar API devuelve `taxResponsibilities` como array.
+- [x] 7. Verificar DB guarda `taxResponsibilities` como JSONB array valido.
+- [x] 8. Validar POS usa `customerId` via `/customers`, `/pos/session`, `/sales`.
+- [x] 9. Validar Consumidor Final fallback.
+- [x] 10. Cleanup: cancelar venta QA y soft-delete customer fixture.
+- [x] 11. Crear `docs/evidencia-dian-mock-pos-e2e-final-fe-3-6-3.md`.
+
+## Validacion FE-3.6.3
+
+- [x] 1. Ejecutar `cd api && npm.cmd run build`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
