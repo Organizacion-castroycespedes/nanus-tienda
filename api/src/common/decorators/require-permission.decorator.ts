@@ -4,7 +4,7 @@ import type { PermissionAccessLevel } from "../services/access-control.service";
 export const PERMISSION_KEY = "permission";
 
 export type RequiredPermission = {
-  menuKey: string;
+  menuKey: string | string[];
   level: PermissionAccessLevel;
   action?: string;
 };

@@ -87,3 +87,28 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.4 POS quick customer fiscal form
+
+- [x] 1. Analizar POS actual, seleccion de `customerId` y fallback Consumidor Final.
+- [x] 2. Crear servicios frontend para customers fiscales y lookup mock.
+- [x] 3. Crear modal POS de cliente fiscal rapido.
+- [x] 4. Permitir busqueda y seleccion de cliente existente.
+- [x] 5. Permitir creacion rapida manual de customer fiscal.
+- [x] 6. Permitir consulta mock fiscal desde POS.
+- [x] 7. Mostrar preview mock y campos seleccionables.
+- [x] 8. Aplicar solo campos confirmados para evitar overwrite.
+- [x] 9. Seleccionar `customerId` guardado en POS para la venta.
+- [x] 10. Mantener Consumidor Final como fallback y no bloquear venta.
+- [x] 11. Agregar ajuste minimo backend para permiso POS en endpoints necesarios.
+- [x] 12. Agregar tests especificos del ajuste de permisos.
+- [x] 13. Crear evidencia documental FE-3.4.
+
+## Validacion FE-3.4
+
+- [x] 1. Ejecutar `cd web && npm.cmd run lint`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `cd api && npm.cmd run build`.
+- [x] 4. Ejecutar tests especificos backend del ajuste de permisos.
+- [x] 5. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 6. Ejecutar `git diff --check`.

@@ -60,7 +60,7 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Post()
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "WRITE" })
+  @RequirePermission({ menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"], level: "WRITE" })
   create(
     @Body() body: CreateElectronicInvoicingCustomerDto,
     @Req() request: AuthRequest
@@ -72,7 +72,7 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Post("lookup")
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "READ" })
+  @RequirePermission({ menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"], level: "READ" })
   lookup(
     @Body() body: ThirdPartyLookupDto,
     @Req() request: AuthRequest
@@ -98,7 +98,7 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Post(":id/apply-lookup")
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "WRITE" })
+  @RequirePermission({ menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"], level: "WRITE" })
   applyLookup(
     @Param("id") id: string,
     @Body() body: ApplyThirdPartyLookupDto,

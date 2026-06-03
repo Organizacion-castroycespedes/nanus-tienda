@@ -51,7 +51,7 @@ describe("ElectronicInvoicingCustomersController", () => {
       level: "READ",
     });
     assert.deepEqual(createPermission, {
-      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
       level: "WRITE",
     });
     assert.deepEqual(updatePermission, {
@@ -59,11 +59,11 @@ describe("ElectronicInvoicingCustomersController", () => {
       level: "WRITE",
     });
     assert.deepEqual(lookupPermission, {
-      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
       level: "READ",
     });
     assert.deepEqual(applyLookupPermission, {
-      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
       level: "WRITE",
     });
     assert.deepEqual(getDefaultPermission, {

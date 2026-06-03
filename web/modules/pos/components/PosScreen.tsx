@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Trash2,
   UserRound,
+  UserPlus,
   Wallet,
   X,
 } from "lucide-react";
@@ -52,6 +53,8 @@ import {
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import type { TaxResponse } from "../../inventory/services/tax.service";
+import { QuickFiscalCustomerModal } from "./QuickFiscalCustomerModal";
+import type { ElectronicInvoicingCustomer } from "../../electronic-invoicing/services/customer.service";
 import {
   createDefaultCashPayment,
   findCashPaymentMethod,
@@ -137,6 +140,36 @@ const buildPricingRequestKey = (
   productId: string,
   quantity: number
 ) => `${branchId}:${customerId ?? "default"}:${productId}:${quantity}`;
+
+const mapFiscalCustomerToPosCustomer = (
+  customer: ElectronicInvoicingCustomer
+): CustomerResponse => ({
+  id: customer.id,
+  tenantId: customer.tenantId,
+  name: customer.name,
+  documentNumber:
+    customer.identificationNumber ??
+    customer.documentNumberNormalized ??
+    customer.documentNumber,
+  phone: customer.phone,
+  email: customer.fiscalEmail ?? customer.invoiceEmail,
+  address: customer.address,
+  departamentoId: null,
+  municipioId: null,
+  ciudad: customer.municipalityCode,
+  departamento: customer.departmentCode,
+  isActive: customer.isActive,
+  createdAt: customer.createdAt,
+  updatedAt: customer.updatedAt,
+});
+
+const upsertCustomer = (
+  current: CustomerResponse[],
+  customer: CustomerResponse
+) => {
+  const next = current.filter((item) => item.id !== customer.id);
+  return customer.isActive ? [customer, ...next] : next;
+};
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error && error.message.trim()) {
@@ -244,6 +277,7 @@ export const PosScreen = () => {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -472,6 +506,48 @@ export const PosScreen = () => {
     () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
     [customers, selectedCustomerId]
   );
+  const finalConsumerCustomer = useMemo(
+    () =>
+      customers.find((customer) =>
+        normalizeText(customer.name).includes("consumidor final")
+      ) ?? null,
+    [customers]
+  );
+
+  const handleSelectPosCustomer = useCallback(
+    (customer: CustomerResponse) => {
+      setCustomers((current) => upsertCustomer(current, customer));
+      setSelectedCustomerId(customer.id);
+      setCustomerPickerOpen(false);
+      showToast("Cliente seleccionado.", "success");
+    },
+    [setSelectedCustomerId, showToast]
+  );
+
+  const handleFiscalCustomerSaved = useCallback(
+    async (customer: ElectronicInvoicingCustomer) => {
+      const mappedCustomer = mapFiscalCustomerToPosCustomer(customer);
+      try {
+        const refreshedCustomers = await getPosCustomers();
+        setCustomers(refreshedCustomers.filter((item) => item.isActive));
+      } catch {
+        setCustomers((current) => upsertCustomer(current, mappedCustomer));
+      }
+      setSelectedCustomerId(customer.id);
+      setCustomerPickerOpen(false);
+      showToast("Cliente fiscal listo.", "success");
+    },
+    [setSelectedCustomerId, showToast]
+  );
+
+  const handleUseFinalConsumer = useCallback(() => {
+    if (!finalConsumerCustomer) {
+      showToast("Consumidor Final no esta disponible.", "warning");
+      return;
+    }
+    setSelectedCustomerId(finalConsumerCustomer.id);
+    setCustomerPickerOpen(false);
+  }, [finalConsumerCustomer, setSelectedCustomerId, showToast]);
 
   const paymentMethodById = useMemo(
     () =>
@@ -1548,6 +1624,25 @@ export const PosScreen = () => {
                 </option>
               ))}
             </Select>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFiscalCustomerOpen(true)}
+              >
+                <UserPlus className="h-4 w-4" />
+                Cliente fiscal
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleUseFinalConsumer}
+                disabled={!finalConsumerCustomer}
+              >
+                <UserRound className="h-4 w-4" />
+                Consumidor Final
+              </Button>
+            </div>
           </div>
         ) : null}
       </section>
@@ -1726,6 +1821,16 @@ export const PosScreen = () => {
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
         </button>
+      ) : null}
+
+      {quickFiscalCustomerOpen ? (
+        <QuickFiscalCustomerModal
+          customers={customers}
+          selectedCustomerId={selectedCustomerId}
+          onClose={() => setQuickFiscalCustomerOpen(false)}
+          onCustomerSelected={handleSelectPosCustomer}
+          onCustomerSaved={handleFiscalCustomerSaved}
+        />
       ) : null}
 
       {/* Payment Modal */}
