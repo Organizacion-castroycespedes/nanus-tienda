@@ -342,3 +342,23 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.7.6 Integrar GetAcquirer signer en adapter sin llamada externa
+
+- [x] 1. Integrar request builder en `third-party-lookup.get-acquirer-adapter`.
+- [x] 2. Integrar signer XML en adapter.
+- [x] 3. Agregar runtime configurable para signing material.
+- [x] 4. Agregar transporte fake/injectable deshabilitado por defecto.
+- [x] 5. Construir SOAP firmado usando config `endpointUrl` y `timeoutMs`.
+- [x] 6. Mantener `externalCallEnabled=false`.
+- [x] 7. No exponer SOAP firmado completo en preview.
+- [x] 8. Mantener suppliers fuera de GetAcquirer real.
+- [x] 9. Agregar tests unitarios del adapter con cert TEST ONLY generado en runtime.
+- [x] 10. Crear `docs/evidencia-getacquirer-adapter-signed-soap-no-external-fe-3-7-6.md`.
+
+## Validacion FE-3.7.6
+
+- [x] 1. Ejecutar tests especificos FE-3.7.6.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
