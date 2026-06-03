@@ -112,3 +112,25 @@
 - [x] 4. Ejecutar tests especificos backend del ajuste de permisos.
 - [x] 5. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 6. Ejecutar `git diff --check`.
+
+## FE-3.4-QA smoke local POS cliente fiscal
+
+- [x] 1. Confirmar que web local responde en `/default/pos`.
+- [x] 2. Confirmar que API local responde en `/api/system/version`.
+- [ ] 3. Ejecutar smoke interactivo: abrir POS autenticado.
+- [ ] 4. Ejecutar smoke interactivo: abrir modal `Cliente fiscal`.
+- [ ] 5. Ejecutar smoke interactivo: validar busqueda cliente.
+- [ ] 6. Ejecutar smoke interactivo: validar lookup mock DIAN.
+- [ ] 7. Ejecutar smoke interactivo: aplicar campos seleccionados.
+- [ ] 8. Ejecutar smoke interactivo: crear cliente rapido.
+- [ ] 9. Ejecutar smoke interactivo: confirmar cliente seleccionado en POS.
+- [ ] 10. Ejecutar smoke interactivo: confirmar Consumidor Final disponible.
+- [x] 11. Documentar bloqueo de browser automatizado local.
+- [x] 12. Crear `docs/evidencia-pos-cliente-fiscal-mock-fe-3-4-qa.md`.
+
+## Validacion FE-3.4-QA
+
+- [x] 1. Ejecutar `cd web && npm.cmd run build`.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
