@@ -119,12 +119,40 @@ export type CreateElectronicInvoicingCustomerPayload = {
   documentTypeCode?: string | null;
   dianIdentificationType?: string | null;
   identificationNumber?: string | null;
+  verificationDigit?: string | null;
+  legalName?: string | null;
+  tradeName?: string | null;
   fiscalEmail?: string | null;
   invoiceEmail?: string | null;
   phone?: string | null;
   address?: string | null;
-  fiscalDataSource?: "MANUAL" | "MOCK_LOCAL";
+  countryCode?: string | null;
+  departmentCode?: string | null;
+  municipalityCode?: string | null;
+  personType?: "NATURAL" | "JURIDICA" | "UNKNOWN" | null;
+  taxRegime?: string | null;
+  taxResponsibilities?: string[] | null;
+  isFinalConsumer?: boolean;
+  isDianValidated?: boolean;
+  dianLastLookupAt?: string | null;
+  dianLastLookupStatus?: "PENDING" | "FOUND" | "NOT_FOUND" | "ERROR" | "SKIPPED" | null;
+  dianMetadata?: Record<string, unknown> | null;
+  fiscalDataSource?: "MANUAL" | "MOCK_LOCAL" | "DIAN_DIRECT" | "TECH_PROVIDER" | "RUT" | "UNKNOWN";
   fiscalStatus?: "PENDING" | "VALIDATED" | "FAILED" | "NOT_REQUIRED";
+  isActive?: boolean;
+};
+
+export type UpdateElectronicInvoicingCustomerPayload =
+  Partial<CreateElectronicInvoicingCustomerPayload>;
+
+export type ListElectronicInvoicingCustomersFilters = {
+  search?: string;
+  documentTypeCode?: string;
+  documentNumber?: string;
+  isFinalConsumer?: boolean;
+  isDianValidated?: boolean;
+  fiscalDataSource?: ElectronicInvoicingCustomer["fiscalDataSource"];
+  fiscalStatus?: ElectronicInvoicingCustomer["fiscalStatus"];
   isActive?: boolean;
 };
 
@@ -133,6 +161,40 @@ export type ApplyLookupCustomerResponse = {
   preview: ThirdPartyLookupPreview;
   appliedFields: ThirdPartyLookupField[];
 };
+
+const buildCustomerQuery = (
+  filters: ListElectronicInvoicingCustomersFilters = {}
+) => {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") {
+      return;
+    }
+    params.set(key, String(value));
+  });
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
+export const listElectronicInvoicingCustomers = (
+  filters?: ListElectronicInvoicingCustomersFilters,
+  headers?: HeadersInit
+) =>
+  apiClient<ElectronicInvoicingCustomer[]>(
+    `/electronic-invoicing/customers${buildCustomerQuery(filters)}`,
+    { headers }
+  );
+
+export const getElectronicInvoicingCustomer = (
+  customerId: string,
+  headers?: HeadersInit
+) =>
+  apiClient<ElectronicInvoicingCustomer>(
+    `/electronic-invoicing/customers/${customerId}`,
+    { headers }
+  );
 
 export const lookupElectronicInvoicingCustomer = (
   payload: LookupCustomerPayload,
@@ -153,6 +215,20 @@ export const createElectronicInvoicingCustomer = (
     headers,
     body: JSON.stringify(payload),
   });
+
+export const updateElectronicInvoicingCustomer = (
+  customerId: string,
+  payload: UpdateElectronicInvoicingCustomerPayload,
+  headers?: HeadersInit
+) =>
+  apiClient<ElectronicInvoicingCustomer>(
+    `/electronic-invoicing/customers/${customerId}`,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(payload),
+    }
+  );
 
 export const applyElectronicInvoicingCustomerLookup = (
   customerId: string,

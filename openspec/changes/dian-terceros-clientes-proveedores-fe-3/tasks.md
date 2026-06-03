@@ -431,3 +431,24 @@
 
 - [x] 1. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 2. Ejecutar `git diff --check`.
+
+## FE-3.10 Frontend customers fiscal-ready
+
+- [x] 1. Actualizar listado `customers` para cargar y mezclar datos fiscales desde `electronic-invoicing/customers`.
+- [x] 2. Mostrar badge de estado fiscal: Validado DIAN, Pendiente, Manual y Consumidor Final.
+- [x] 3. Extender formulario customer con campos fiscales DIAN requeridos.
+- [x] 4. Agregar consulta DIAN mock desde formulario customer.
+- [x] 5. Mostrar preview seguro sin raw SOAP ni secretos.
+- [x] 6. Permitir aplicar campos seleccionados desde preview mock.
+- [x] 7. Evitar overwrite de datos manuales sin confirmacion explicita.
+- [x] 8. Permitir marcar `fiscalDataSource`, `isDianValidated` y `fiscalStatus`.
+- [x] 9. Proteger Consumidor Final contra borrado/inactivacion desde UI.
+- [x] 10. Mantener fuera de alcance DIAN real, certificados, POS venta, pricing, Orders, PRD, remoto y commit.
+- [x] 11. Crear `docs/evidencia-frontend-customers-fiscal-ready-fe-3-10.md`.
+
+## Validacion FE-3.10
+
+- [x] 1. Ejecutar `cd web && npm.cmd run lint`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
