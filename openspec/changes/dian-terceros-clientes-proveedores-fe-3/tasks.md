@@ -386,3 +386,28 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.8 Release readiness DIAN terceros clientes/proveedores
+
+- [x] 1. Crear `docs/release-readiness-dian-terceros-clientes-proveedores-fe-3-8.md`.
+- [x] 2. Separar claramente listo para QA mock vs pendiente para DIAN real/habilitacion.
+- [x] 3. Documentar fases FE-3.1 a FE-3.7.7 completadas.
+- [x] 4. Documentar endpoints disponibles.
+- [x] 5. Documentar variables de entorno.
+- [x] 6. Documentar configuracion mock.
+- [x] 7. Documentar configuracion real controlada.
+- [x] 8. Documentar que esta probado y que no esta probado.
+- [x] 9. Documentar riesgos de seguridad.
+- [x] 10. Documentar dependencias agregadas y vulnerabilidades npm reportadas.
+- [x] 11. Documentar checklist predeploy QA mock.
+- [x] 12. Documentar checklist para habilitacion DIAN futura.
+- [x] 13. Confirmar decision: suppliers no usan GetAcquirer real.
+- [x] 14. Documentar pendientes P12/PFX real, parser respuesta DIAN real y prueba habilitacion.
+- [x] 15. Documentar rollback/reversion general.
+- [x] 16. Documentar criterios para pasar a FE-4 o facturacion electronica real.
+- [x] 17. Confirmar fuera de alcance: sin codigo funcional, sin SQL, sin PRD, sin remoto y sin commit.
+
+## Validacion FE-3.8
+
+- [x] 1. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 2. Ejecutar `git diff --check`.
