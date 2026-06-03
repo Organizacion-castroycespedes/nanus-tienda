@@ -262,3 +262,23 @@
 
 - [x] 1. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 2. Ejecutar `git diff --check`.
+
+## FE-3.7.2 Dependency spike GetAcquirer sin DIAN real
+
+- [x] 1. Agregar dependencias `xml-crypto`, `@xmldom/xmldom`, `node-forge` y `fast-xml-parser` en `api`.
+- [x] 2. Crear fixture XML SOAP local seguro para GetAcquirer.
+- [x] 3. Agregar test de imports de dependencias.
+- [x] 4. Agregar test de parseo XML con `@xmldom/xmldom`.
+- [x] 5. Agregar test de construccion basica `SignedXml` sin firmar DIAN real.
+- [x] 6. Agregar test de parseo SOAP con `fast-xml-parser`.
+- [x] 7. Dejar test P12/PFX pendiente por falta de fixture aprobado y por prohibicion de certificado real.
+- [x] 8. Crear `docs/evidencia-getacquirer-dependency-spike-fe-3-7-2.md`.
+- [x] 9. Confirmar fuera de alcance: sin DIAN real, sin certificado real, sin password real, sin llamada externa, sin PRD, sin remoto y sin commit.
+
+## Validacion FE-3.7.2
+
+- [x] 1. Ejecutar `cd api && npm.cmd install xml-crypto @xmldom/xmldom node-forge fast-xml-parser`.
+- [x] 2. Ejecutar tests especificos FE-3.7.2.
+- [x] 3. Ejecutar `cd api && npm.cmd run build`.
+- [x] 4. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 5. Ejecutar `git diff --check`.
