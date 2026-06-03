@@ -45,6 +45,8 @@ type CustomerRow = QueryResultRow & {
 const hasOwn = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key);
 
+const toJsonbString = (value: unknown) => JSON.stringify(value);
+
 const customerSelect = `
   id,
   tenant_id,
@@ -366,7 +368,7 @@ export class ElectronicInvoicingCustomersRepository {
         customer.municipalityCode ?? null,
         customer.personType ?? null,
         customer.taxRegime ?? null,
-        customer.taxResponsibilities ?? [],
+        toJsonbString(customer.taxResponsibilities ?? []),
         customer.isFinalConsumer ?? false,
         customer.isDianValidated ?? false,
         customer.dianLastLookupAt ?? null,
@@ -449,7 +451,7 @@ export class ElectronicInvoicingCustomersRepository {
       addSet("tax_regime", data.taxRegime ?? null);
     }
     if (hasOwn(data, "taxResponsibilities")) {
-      addSet("tax_responsibilities", data.taxResponsibilities ?? []);
+      addSet("tax_responsibilities", toJsonbString(data.taxResponsibilities ?? []));
     }
     if (hasOwn(data, "isFinalConsumer")) {
       addSet("is_final_consumer", data.isFinalConsumer ?? false);

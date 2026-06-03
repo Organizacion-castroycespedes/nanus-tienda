@@ -45,6 +45,8 @@ type SupplierRow = QueryResultRow & {
 const hasOwn = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key);
 
+const toJsonbString = (value: unknown) => JSON.stringify(value);
+
 const supplierSelect = `
   id,
   tenant_id,
@@ -330,7 +332,7 @@ export class ElectronicInvoicingSuppliersRepository {
         supplier.municipalityCode ?? null,
         supplier.personType ?? null,
         supplier.taxRegime ?? null,
-        supplier.taxResponsibilities ?? [],
+        toJsonbString(supplier.taxResponsibilities ?? []),
         supplier.fiscalStatus ?? "PENDING",
         supplier.fiscalProvider ?? null,
         supplier.fiscalDataSource ?? "MANUAL",
@@ -413,7 +415,7 @@ export class ElectronicInvoicingSuppliersRepository {
       addSet("tax_regime", data.taxRegime ?? null);
     }
     if (hasOwn(data, "taxResponsibilities")) {
-      addSet("tax_responsibilities", data.taxResponsibilities ?? []);
+      addSet("tax_responsibilities", toJsonbString(data.taxResponsibilities ?? []));
     }
     if (hasOwn(data, "fiscalStatus")) {
       addSet("fiscal_status", data.fiscalStatus ?? "PENDING");

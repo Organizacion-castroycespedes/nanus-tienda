@@ -156,3 +156,71 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.6 QA local DIAN mock desde POS
+
+- [x] 1. Confirmar web POS local responde en `/default/pos`.
+- [x] 2. Confirmar API mock local responde en `/api/system/version`.
+- [x] 3. Validar `POST /api/electronic-invoicing/customers/lookup` con mock.
+- [x] 4. Validar que lookup mock no expone raw SOAP ni secretos.
+- [ ] 5. Validar `apply-lookup` con campos seleccionados.
+- [ ] 6. Validar POS quick fiscal customer crea y selecciona customer.
+- [ ] 7. Validar Consumidor Final como fallback.
+- [ ] 8. Validar venta POS usando `customerId` seleccionado.
+- [x] 9. Documentar bloqueo local por DB sin columnas FE-3.2.
+- [x] 10. Documentar bloqueo de Browser automation local.
+- [x] 11. Cleanup: detener API mock temporal y confirmar que no se creo fixture persistente.
+- [x] 12. Crear `docs/evidencia-dian-mock-pos-e2e-fe-3-6.md`.
+
+## Validacion FE-3.6
+
+- [x] 1. Ejecutar `cd api && npm.cmd run build`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.6.1 Reintento QA DIAN mock POS con V052 local
+
+- [x] 1. Confirmar DB local `manus_tienda_prd` en loopback.
+- [x] 2. Aplicar solo `scripts/database/migrations/V052__electronic_invoicing_third_party_fiscal_fields_fe_3_2.sql`.
+- [x] 3. Validar columnas FE-3.2 en `customers`.
+- [x] 4. Reiniciar API principal local con lookup mock.
+- [x] 5. Validar lookup mock customer `FOUND`.
+- [ ] 6. Validar quick fiscal create directo por `POST /electronic-invoicing/customers`.
+- [x] 7. Crear customer operativo fixture seleccionable por POS.
+- [x] 8. Validar `apply-lookup` con campos seleccionados sin `taxResponsibilities`.
+- [x] 9. Validar customer con `isDianValidated=true` y `fiscalStatus=VALIDATED`.
+- [x] 10. Validar customer disponible en listado POS `/customers`.
+- [x] 11. Validar Consumidor Final sigue disponible.
+- [x] 12. Validar venta POS usa `customerId` seleccionado via `/sales`.
+- [x] 13. Cleanup: cancelar venta QA y soft-delete customer fixture.
+- [ ] 14. Ejecutar click-smoke visual POS en browser.
+- [x] 15. Documentar bugs bloqueantes y evidencia FE-3.6.1.
+- [x] 16. Crear `docs/evidencia-dian-mock-pos-e2e-fe-3-6-1.md`.
+
+## Validacion FE-3.6.1
+
+- [x] 1. Ejecutar `cd api && npm.cmd run build`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.6.2 Fix taxResponsibilities JSONB customers
+
+- [x] 1. Confirmar causa raiz de `taxResponsibilities` como PostgreSQL array literal.
+- [x] 2. Serializar `customers.taxResponsibilities` como JSONB array en create.
+- [x] 3. Serializar `customers.taxResponsibilities` como JSONB array en update/apply-lookup.
+- [x] 4. Aplicar fix equivalente en suppliers por mismo patron.
+- [x] 5. Agregar tests repository customers para create/update JSONB.
+- [x] 6. Agregar tests repository suppliers para create/update JSONB.
+- [x] 7. Ejecutar tests especificos customers/suppliers.
+- [x] 8. Verificar smoke API local: fiscal create con `taxResponsibilities`.
+- [x] 9. Verificar smoke API local: apply-lookup seleccionando `taxResponsibilities`.
+- [x] 10. Cleanup fixture local del smoke.
+- [x] 11. Crear `docs/evidencia-tax-responsibilities-jsonb-fe-3-6-2.md`.
+
+## Validacion FE-3.6.2
+
+- [x] 1. Ejecutar `cd api && npm.cmd run build`.
+- [x] 2. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 3. Ejecutar `git diff --check`.
