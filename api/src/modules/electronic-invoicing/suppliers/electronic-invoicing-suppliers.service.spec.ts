@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import { ConflictException, NotFoundException } from "@nestjs/common";
 import type {
   ElectronicInvoicingSupplier,
+  SupplierFiscalDataSource,
   SupplierFiscalStatus,
+  SupplierPersonType,
 } from "./electronic-invoicing-supplier.types";
 import {
   ElectronicInvoicingSuppliersService,
@@ -22,13 +24,28 @@ const buildSupplier = (
   documentNumber: "900.123-456",
   documentTypeCode: null,
   documentNumberNormalized: "900123456",
+  dianIdentificationType: null,
+  identificationNumber: "900123456",
   verificationDigit: null,
   legalName: null,
+  tradeName: null,
   fiscalEmail: null,
+  invoiceEmail: null,
+  phone: null,
+  address: null,
+  countryCode: null,
+  departmentCode: null,
+  municipalityCode: null,
+  personType: null,
+  taxRegime: null,
+  taxResponsibilities: [],
   fiscalStatus: "PENDING",
   fiscalProvider: null,
+  fiscalDataSource: "MANUAL",
+  isDianValidated: false,
   fiscalLastLookupAt: null,
   fiscalLastLookupStatus: null,
+  dianMetadata: {},
   isActive: true,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -39,11 +56,13 @@ const buildService = (
   overrides: Partial<{
     suppliers: ElectronicInvoicingSupplier[];
     duplicateDocument: ElectronicInvoicingSupplier | null;
+    duplicateFiscalIdentity: ElectronicInvoicingSupplier | null;
   }> = {}
 ) => {
   const state = {
     suppliers: overrides.suppliers ?? [buildSupplier()],
     duplicateDocument: overrides.duplicateDocument ?? null,
+    duplicateFiscalIdentity: overrides.duplicateFiscalIdentity ?? null,
     purchaseRowsTouched: false,
   };
 
@@ -54,6 +73,7 @@ const buildService = (
         (supplier) =>
           supplier.id === id && supplier.tenantId === requestedTenantId
       ) ?? null,
+    findByFiscalIdentity: async () => state.duplicateFiscalIdentity,
     findByNormalizedDocument: async () => state.duplicateDocument,
     create: async (input: {
       id: string;
@@ -62,11 +82,26 @@ const buildService = (
       documentNumber?: string | null;
       documentTypeCode?: string | null;
       documentNumberNormalized?: string | null;
+      dianIdentificationType?: string | null;
+      identificationNumber?: string | null;
       verificationDigit?: string | null;
       legalName?: string | null;
+      tradeName?: string | null;
       fiscalEmail?: string | null;
+      invoiceEmail?: string | null;
+      phone?: string | null;
+      address?: string | null;
+      countryCode?: string | null;
+      departmentCode?: string | null;
+      municipalityCode?: string | null;
+      personType?: SupplierPersonType | null;
+      taxRegime?: string | null;
+      taxResponsibilities?: string[];
       fiscalStatus?: SupplierFiscalStatus;
       fiscalProvider?: string | null;
+      fiscalDataSource?: SupplierFiscalDataSource;
+      isDianValidated?: boolean;
+      dianMetadata?: Record<string, unknown>;
       isActive?: boolean;
     }) => {
       const supplier = buildSupplier({
@@ -76,11 +111,26 @@ const buildService = (
         documentNumber: input.documentNumber ?? null,
         documentTypeCode: input.documentTypeCode ?? null,
         documentNumberNormalized: input.documentNumberNormalized ?? null,
+        dianIdentificationType: input.dianIdentificationType ?? null,
+        identificationNumber: input.identificationNumber ?? null,
         verificationDigit: input.verificationDigit ?? null,
         legalName: input.legalName ?? null,
+        tradeName: input.tradeName ?? null,
         fiscalEmail: input.fiscalEmail ?? null,
+        invoiceEmail: input.invoiceEmail ?? null,
+        phone: input.phone ?? null,
+        address: input.address ?? null,
+        countryCode: input.countryCode ?? null,
+        departmentCode: input.departmentCode ?? null,
+        municipalityCode: input.municipalityCode ?? null,
+        personType: input.personType ?? null,
+        taxRegime: input.taxRegime ?? null,
+        taxResponsibilities: input.taxResponsibilities ?? [],
         fiscalStatus: input.fiscalStatus ?? "PENDING",
         fiscalProvider: input.fiscalProvider ?? null,
+        fiscalDataSource: input.fiscalDataSource ?? "MANUAL",
+        isDianValidated: input.isDianValidated ?? false,
+        dianMetadata: input.dianMetadata ?? {},
         isActive: input.isActive ?? true,
       });
       state.suppliers.unshift(supplier);
@@ -140,8 +190,48 @@ describe("ElectronicInvoicingSuppliersService", () => {
     });
 
     assert.equal(supplier.documentNumberNormalized, "900123456");
+    assert.equal(supplier.dianIdentificationType, "31");
+    assert.equal(supplier.identificationNumber, "900123456");
+    assert.equal(supplier.tradeName, "Proveedor SAS");
     assert.equal(supplier.fiscalEmail, null);
+    assert.equal(supplier.invoiceEmail, null);
+    assert.equal(supplier.fiscalDataSource, "MANUAL");
     assert.equal(supplier.fiscalStatus, "PENDING");
+  });
+
+  it("creates a FE supplier with minimum fiscal base fields", async () => {
+    const { service } = buildService({ suppliers: [] });
+
+    const supplier = await service.createSupplier(tenantId, {
+      name: "Proveedor SAS",
+      documentNumber: "900.123-456",
+      dianIdentificationType: "31",
+      invoiceEmail: "FACTURAS@PROVEEDOR.CO",
+      phone: "3007654321",
+      address: "CL 4 5 6",
+      countryCode: "CO",
+      departmentCode: "11",
+      municipalityCode: "11001",
+      personType: "JURIDICA",
+      taxRegime: "ORDINARIO",
+      taxResponsibilities: ["R-99-PN"],
+      fiscalDataSource: "MOCK_LOCAL",
+      dianMetadata: { source: "manual" },
+    });
+
+    assert.equal(supplier.documentTypeCode, "31");
+    assert.equal(supplier.dianIdentificationType, "31");
+    assert.equal(supplier.invoiceEmail, "facturas@proveedor.co");
+    assert.equal(supplier.fiscalEmail, "facturas@proveedor.co");
+    assert.equal(supplier.phone, "3007654321");
+    assert.equal(supplier.address, "CL 4 5 6");
+    assert.equal(supplier.countryCode, "CO");
+    assert.equal(supplier.departmentCode, "11");
+    assert.equal(supplier.municipalityCode, "11001");
+    assert.equal(supplier.personType, "JURIDICA");
+    assert.deepEqual(supplier.taxResponsibilities, ["R-99-PN"]);
+    assert.equal(supplier.fiscalDataSource, "MOCK_LOCAL");
+    assert.deepEqual(supplier.dianMetadata, { source: "manual" });
   });
 
   it("creates a FE supplier without document number", async () => {
@@ -168,17 +258,45 @@ describe("ElectronicInvoicingSuppliersService", () => {
     );
   });
 
-  it("rejects duplicated normalized document by tenant", async () => {
+  it("rejects duplicated fiscal identity by tenant", async () => {
     const duplicate = buildSupplier({ id: "supplier-dup" });
-    const { service } = buildService({ duplicateDocument: duplicate });
+    const { service } = buildService({ duplicateFiscalIdentity: duplicate });
 
     await assert.rejects(
       () =>
         service.createSupplier(tenantId, {
           name: "Duplicado",
           documentNumber: "900123456",
+          documentTypeCode: "31",
         }),
       ConflictException
+    );
+  });
+
+  it("allows same number with different document type", async () => {
+    const duplicateByNumber = buildSupplier({ id: "supplier-dup" });
+    const { service } = buildService({ duplicateDocument: duplicateByNumber });
+
+    const supplier = await service.createSupplier(tenantId, {
+      name: "Mismo numero otro tipo",
+      documentNumber: "900123456",
+      documentTypeCode: "13",
+    });
+
+    assert.equal(supplier.documentTypeCode, "13");
+    assert.equal(supplier.identificationNumber, "900123456");
+  });
+
+  it("rejects DIAN_DIRECT for suppliers", async () => {
+    const { service } = buildService({ suppliers: [] });
+
+    await assert.rejects(
+      () =>
+        service.createSupplier(tenantId, {
+          name: "Proveedor DIAN",
+          fiscalDataSource: "DIAN_DIRECT",
+        }),
+      /DIAN_DIRECT is not supported for suppliers/
     );
   });
 
@@ -190,16 +308,26 @@ describe("ElectronicInvoicingSuppliersService", () => {
       fiscalEmail: "FACTURAS@PROVEEDOR.CO",
       documentNumber: "900-123-456",
       fiscalProvider: "MOCK_LOCAL",
+      fiscalDataSource: "MOCK_LOCAL",
       fiscalLastLookupStatus: "FOUND",
       fiscalStatus: "VALIDATED",
+      countryCode: "CO",
+      personType: "JURIDICA",
+      taxResponsibilities: ["O-13"],
     });
 
     assert.equal(updated.legalName, "Proveedor SAS");
     assert.equal(updated.fiscalEmail, "facturas@proveedor.co");
+    assert.equal(updated.invoiceEmail, "facturas@proveedor.co");
     assert.equal(updated.documentNumberNormalized, "900123456");
+    assert.equal(updated.identificationNumber, "900123456");
     assert.equal(updated.fiscalProvider, "MOCK_LOCAL");
+    assert.equal(updated.fiscalDataSource, "MOCK_LOCAL");
     assert.equal(updated.fiscalLastLookupStatus, "FOUND");
     assert.equal(updated.fiscalStatus, "VALIDATED");
+    assert.equal(updated.countryCode, "CO");
+    assert.equal(updated.personType, "JURIDICA");
+    assert.deepEqual(updated.taxResponsibilities, ["O-13"]);
   });
 
   it("rejects supplier from another tenant", async () => {

@@ -25,6 +25,10 @@ describe("ElectronicInvoicingSuppliersController", () => {
       PERMISSION_KEY,
       ElectronicInvoicingSuppliersController.prototype.update
     );
+    const getByIdPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.getById
+    );
 
     assert.deepEqual(listPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
@@ -37,6 +41,10 @@ describe("ElectronicInvoicingSuppliersController", () => {
     assert.deepEqual(updatePermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
       level: "WRITE",
+    });
+    assert.deepEqual(getByIdPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "READ",
     });
   });
 
@@ -59,11 +67,15 @@ describe("ElectronicInvoicingSuppliersController", () => {
     });
   });
 
-  it("routes create and update to service", async () => {
+  it("routes create, detail and update to service", async () => {
     const calls: string[] = [];
     const service = {
       createSupplier: async () => {
         calls.push("create");
+        return { id: "supplier-1" };
+      },
+      getSupplier: async () => {
+        calls.push("detail");
         return { id: "supplier-1" };
       },
       updateSupplier: async () => {
@@ -76,8 +88,9 @@ describe("ElectronicInvoicingSuppliersController", () => {
     );
 
     await controller.create({ name: "Proveedor" }, request);
+    await controller.getById("supplier-1", request);
     await controller.update("supplier-1", { legalName: "Proveedor SAS" }, request);
 
-    assert.deepEqual(calls, ["create", "update"]);
+    assert.deepEqual(calls, ["create", "detail", "update"]);
   });
 });

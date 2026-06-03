@@ -80,4 +80,10 @@ export class ElectronicInvoicingSuppliersController {
       body
     );
   }
+
+  @Get(":id")
+  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS, level: "READ" })
+  getById(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.suppliersService.getSupplier(id, this.getTenantId(request));
+  }
 }

@@ -41,3 +41,25 @@
 - [x] 7. No tocar PRD real.
 - [x] 8. No usar remoto.
 - [x] 9. No hacer commit.
+
+## FE-3.2 backend campos fiscales
+
+- [x] 1. Analizar tablas actuales `customers` y `suppliers`.
+- [x] 2. Agregar migracion SQL idempotente para campos fiscales minimos.
+- [x] 3. Agregar rollback conservador de la migracion FE-3.2.
+- [x] 4. Extender types/DTOs backend de customers fiscales.
+- [x] 5. Extender types/DTOs backend de suppliers fiscales.
+- [x] 6. Extender repositories/services/controllers fiscales existentes.
+- [x] 7. Mantener customers como entidad canonica de POS.
+- [x] 8. Mantener suppliers separado y sin GetAcquirer.
+- [x] 9. Evitar duplicados por tenant, tipo documento y numero.
+- [x] 10. Bloquear borrado/desactivacion de Consumidor Final.
+- [x] 11. Agregar tests especificos de customers/suppliers y Consumidor Final.
+- [x] 12. Crear evidencia documental FE-3.2.
+
+## Validacion FE-3.2
+
+- [x] 1. Ejecutar tests especificos backend FE-3.2.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.

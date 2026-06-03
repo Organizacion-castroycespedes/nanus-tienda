@@ -96,4 +96,10 @@ export class ElectronicInvoicingCustomersController {
       this.getTenantId(request)
     );
   }
+
+  @Get(":id")
+  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "READ" })
+  getById(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.customersService.getCustomer(id, this.getTenantId(request));
+  }
 }

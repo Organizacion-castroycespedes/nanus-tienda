@@ -12,8 +12,11 @@ import type { ListElectronicInvoicingCustomersDto } from "./dto/list-electronic-
 import type { UpdateElectronicInvoicingCustomerDto } from "./dto/update-electronic-invoicing-customer.dto";
 import type {
   CreateElectronicInvoicingCustomerInput,
+  DianLastLookupStatus,
+  FiscalDataSource,
   FiscalStatus,
   ListElectronicInvoicingCustomersFilters,
+  PersonType,
   UpdateElectronicInvoicingCustomerInput,
 } from "./electronic-invoicing-customer.types";
 
@@ -27,6 +30,29 @@ const VALID_FISCAL_STATUSES = new Set<FiscalStatus>([
   "VALIDATED",
   "FAILED",
   "NOT_REQUIRED",
+]);
+
+const VALID_LOOKUP_STATUSES = new Set<DianLastLookupStatus>([
+  "PENDING",
+  "FOUND",
+  "NOT_FOUND",
+  "ERROR",
+  "SKIPPED",
+]);
+
+const VALID_FISCAL_DATA_SOURCES = new Set<FiscalDataSource>([
+  "MANUAL",
+  "MOCK_LOCAL",
+  "DIAN_DIRECT",
+  "TECH_PROVIDER",
+  "RUT",
+  "UNKNOWN",
+]);
+
+const VALID_PERSON_TYPES = new Set<PersonType>([
+  "NATURAL",
+  "JURIDICA",
+  "UNKNOWN",
 ]);
 
 const BASIC_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -89,6 +115,147 @@ export class ElectronicInvoicingCustomersService {
     return value;
   }
 
+  private normalizeLookupStatus(
+    value?: DianLastLookupStatus | null
+  ): DianLastLookupStatus | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    if (!VALID_LOOKUP_STATUSES.has(value)) {
+      throw new BadRequestException("dianLastLookupStatus is invalid");
+    }
+    return value;
+  }
+
+  private normalizeFiscalDataSource(
+    value?: FiscalDataSource | null
+  ): FiscalDataSource | undefined {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (!VALID_FISCAL_DATA_SOURCES.has(value)) {
+      throw new BadRequestException("fiscalDataSource is invalid");
+    }
+    return value;
+  }
+
+  private normalizePersonType(value?: PersonType | null): PersonType | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    if (!VALID_PERSON_TYPES.has(value)) {
+      throw new BadRequestException("personType is invalid");
+    }
+    return value;
+  }
+
+  private normalizeTimestamp(value?: string | Date | null): Date | null | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null || value === "") {
+      return null;
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException("dianLastLookupAt is invalid");
+    }
+    return date;
+  }
+
+  private normalizeTaxResponsibilities(value?: string[] | null): string[] | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return [];
+    }
+    if (!Array.isArray(value)) {
+      throw new BadRequestException("taxResponsibilities must be an array");
+    }
+    return value.map((item) => {
+      const normalized = this.normalizeText(item);
+      if (!normalized) {
+        throw new BadRequestException("taxResponsibilities must not contain empty values");
+      }
+      return normalized;
+    });
+  }
+
+  private normalizeDianMetadata(
+    value?: Record<string, unknown> | null
+  ): Record<string, unknown> | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return {};
+    }
+    if (Array.isArray(value) || typeof value !== "object") {
+      throw new BadRequestException("dianMetadata must be an object");
+    }
+    return value;
+  }
+
+  private resolveTextAliases(
+    primary: string | null | undefined,
+    alias: string | null | undefined,
+    primaryName: string,
+    aliasName: string
+  ) {
+    const normalizedPrimary = this.normalizeText(primary);
+    const normalizedAlias = this.normalizeText(alias);
+    if (
+      normalizedPrimary &&
+      normalizedAlias &&
+      normalizedPrimary !== normalizedAlias
+    ) {
+      throw new BadRequestException(`${primaryName} must match ${aliasName}`);
+    }
+    return normalizedPrimary ?? normalizedAlias;
+  }
+
+  private resolveEmailAliases(
+    primary: string | null | undefined,
+    alias: string | null | undefined
+  ) {
+    const normalizedPrimary = this.normalizeFiscalEmail(primary);
+    const normalizedAlias = this.normalizeFiscalEmail(alias);
+    if (
+      normalizedPrimary &&
+      normalizedAlias &&
+      normalizedPrimary !== normalizedAlias
+    ) {
+      throw new BadRequestException("fiscalEmail must match invoiceEmail");
+    }
+    return normalizedPrimary ?? normalizedAlias;
+  }
+
+  private resolveDocumentNumberAliases(
+    documentNumber: string | null | undefined,
+    identificationNumber: string | null | undefined
+  ) {
+    const normalizedDocumentNumber = normalizeFiscalDocument(documentNumber);
+    const normalizedIdentificationNumber =
+      normalizeFiscalDocument(identificationNumber);
+    if (
+      normalizedDocumentNumber &&
+      normalizedIdentificationNumber &&
+      normalizedDocumentNumber !== normalizedIdentificationNumber
+    ) {
+      throw new BadRequestException(
+        "documentNumber must match identificationNumber"
+      );
+    }
+    return normalizedDocumentNumber ?? normalizedIdentificationNumber;
+  }
+
   private buildFilters(
     query: ListElectronicInvoicingCustomersDto
   ): ListElectronicInvoicingCustomersFilters {
@@ -96,31 +263,49 @@ export class ElectronicInvoicingCustomersService {
     return {
       search: this.normalizeText(query.search) ?? undefined,
       documentTypeCode: this.normalizeText(query.documentTypeCode) ?? undefined,
-      documentNumber: this.normalizeText(query.documentNumber) ?? undefined,
+      documentNumber:
+        normalizeFiscalDocument(query.documentNumber) ??
+        this.normalizeText(query.documentNumber) ??
+        undefined,
       isFinalConsumer: this.parseBoolean(
         query.isFinalConsumer,
         "isFinalConsumer"
       ),
+      isDianValidated: this.parseBoolean(
+        query.isDianValidated,
+        "isDianValidated"
+      ),
+      fiscalDataSource: this.normalizeFiscalDataSource(query.fiscalDataSource),
       fiscalStatus,
       isActive: this.parseBoolean(query.isActive, "isActive"),
     };
   }
 
-  private async ensureNoDuplicateDocument(
+  private async ensureNoDuplicateIdentity(
     tenantId: string,
-    documentNumberNormalized: string | null,
+    documentTypeCode: string | null,
+    identificationNumber: string | null,
     excludeCustomerId?: string
   ) {
-    if (!documentNumberNormalized) {
+    if (!identificationNumber) {
       return;
     }
-    const duplicate = await this.customersRepository.findByNormalizedDocument(
-      tenantId,
-      documentNumberNormalized,
-      excludeCustomerId
-    );
+
+    const duplicate = documentTypeCode
+      ? await this.customersRepository.findByFiscalIdentity(
+          tenantId,
+          documentTypeCode,
+          identificationNumber,
+          excludeCustomerId
+        )
+      : await this.customersRepository.findByNormalizedDocument(
+          tenantId,
+          identificationNumber,
+          excludeCustomerId
+        );
+
     if (duplicate) {
-      throw new ConflictException("documentNumber already exists for tenant");
+      throw new ConflictException("fiscal identity already exists for tenant");
     }
   }
 
@@ -146,11 +331,27 @@ export class ElectronicInvoicingCustomersService {
     );
   }
 
+  private isFiscalIdentityUniqueError(error: unknown) {
+    const pgError = error as PgErrorLike;
+    return (
+      pgError?.code === "23505" &&
+      pgError.constraint === "ux_customers_tenant_fiscal_identity_fe_3_2"
+    );
+  }
+
   listCustomers(tenantId: string, query: ListElectronicInvoicingCustomersDto) {
     return this.customersRepository.listByTenant(
       tenantId,
       this.buildFilters(query)
     );
+  }
+
+  async getCustomer(id: string, tenantId: string) {
+    const customer = await this.customersRepository.findById(id, tenantId);
+    if (!customer) {
+      throw new NotFoundException("customer not found");
+    }
+    return customer;
   }
 
   async createCustomer(
@@ -166,14 +367,31 @@ export class ElectronicInvoicingCustomersService {
       throw new BadRequestException("name is required");
     }
 
-    const documentNumber = this.normalizeText(dto.documentNumber);
-    const documentNumberNormalized = normalizeFiscalDocument(documentNumber);
-    const fiscalEmail = this.normalizeFiscalEmail(dto.fiscalEmail);
+    const documentTypeCode = this.resolveTextAliases(
+      dto.documentTypeCode,
+      dto.dianIdentificationType,
+      "documentTypeCode",
+      "dianIdentificationType"
+    );
+    const identificationNumber = this.resolveDocumentNumberAliases(
+      dto.documentNumber,
+      dto.identificationNumber
+    );
+    const documentNumber =
+      this.normalizeText(dto.documentNumber) ?? identificationNumber;
+    const invoiceEmail = this.resolveEmailAliases(
+      dto.fiscalEmail,
+      dto.invoiceEmail
+    );
     const fiscalStatus =
       this.normalizeFiscalStatus(dto.fiscalStatus) ??
       (isFinalConsumer ? "NOT_REQUIRED" : "PENDING");
 
-    await this.ensureNoDuplicateDocument(tenantId, documentNumberNormalized);
+    await this.ensureNoDuplicateIdentity(
+      tenantId,
+      documentTypeCode,
+      identificationNumber
+    );
     if (isFinalConsumer && (dto.isActive ?? true)) {
       await this.ensureNoOtherFinalConsumer(tenantId);
     }
@@ -183,12 +401,34 @@ export class ElectronicInvoicingCustomersService {
       tenantId,
       name,
       documentNumber,
-      documentTypeCode: this.normalizeText(dto.documentTypeCode),
-      documentNumberNormalized,
+      documentTypeCode,
+      documentNumberNormalized: identificationNumber,
+      dianIdentificationType: documentTypeCode,
+      identificationNumber,
       verificationDigit: this.normalizeText(dto.verificationDigit),
       legalName: this.normalizeText(dto.legalName),
-      fiscalEmail,
+      tradeName: this.normalizeText(dto.tradeName) ?? name,
+      fiscalEmail: invoiceEmail,
+      invoiceEmail,
+      phone: this.normalizeText(dto.phone),
+      address: this.normalizeText(dto.address),
+      countryCode: this.normalizeText(dto.countryCode),
+      departmentCode: this.normalizeText(dto.departmentCode),
+      municipalityCode: this.normalizeText(dto.municipalityCode),
+      personType: this.normalizePersonType(dto.personType) ?? null,
+      taxRegime: this.normalizeText(dto.taxRegime),
+      taxResponsibilities: this.normalizeTaxResponsibilities(
+        dto.taxResponsibilities
+      ) ?? [],
       isFinalConsumer,
+      isDianValidated: dto.isDianValidated ?? fiscalStatus === "VALIDATED",
+      dianLastLookupAt: this.normalizeTimestamp(dto.dianLastLookupAt) ?? null,
+      dianLastLookupStatus: this.normalizeLookupStatus(
+        dto.dianLastLookupStatus
+      ) ?? null,
+      dianMetadata: this.normalizeDianMetadata(dto.dianMetadata) ?? {},
+      fiscalDataSource:
+        this.normalizeFiscalDataSource(dto.fiscalDataSource) ?? "MANUAL",
       fiscalStatus,
       isActive: dto.isActive ?? true,
     };
@@ -198,6 +438,9 @@ export class ElectronicInvoicingCustomersService {
     } catch (error) {
       if (this.isFinalConsumerUniqueError(error)) {
         throw new ConflictException("final consumer already exists for tenant");
+      }
+      if (this.isFiscalIdentityUniqueError(error)) {
+        throw new ConflictException("fiscal identity already exists for tenant");
       }
       throw error;
     }
@@ -214,6 +457,10 @@ export class ElectronicInvoicingCustomersService {
     }
 
     const update: UpdateElectronicInvoicingCustomerInput = {};
+    let nextDocumentTypeCode =
+      current.dianIdentificationType ?? current.documentTypeCode;
+    let nextIdentificationNumber =
+      current.identificationNumber ?? current.documentNumberNormalized;
 
     if (hasOwn(dto, "name")) {
       const nextName = this.normalizeText(dto.name);
@@ -223,36 +470,125 @@ export class ElectronicInvoicingCustomersService {
       update.name = nextName ?? DEFAULT_FINAL_CONSUMER_NAME;
     }
 
-    if (hasOwn(dto, "documentNumber")) {
-      update.documentNumber = this.normalizeText(dto.documentNumber);
-      update.documentNumberNormalized = normalizeFiscalDocument(dto.documentNumber);
-      await this.ensureNoDuplicateDocument(
+    if (
+      hasOwn(dto, "documentTypeCode") ||
+      hasOwn(dto, "dianIdentificationType")
+    ) {
+      const documentTypeCode = this.resolveTextAliases(
+        hasOwn(dto, "documentTypeCode") ? dto.documentTypeCode : undefined,
+        hasOwn(dto, "dianIdentificationType")
+          ? dto.dianIdentificationType
+          : undefined,
+        "documentTypeCode",
+        "dianIdentificationType"
+      );
+      update.documentTypeCode = documentTypeCode;
+      update.dianIdentificationType = documentTypeCode;
+      nextDocumentTypeCode = documentTypeCode;
+    }
+
+    if (hasOwn(dto, "documentNumber") || hasOwn(dto, "identificationNumber")) {
+      const identificationNumber = this.resolveDocumentNumberAliases(
+        hasOwn(dto, "documentNumber") ? dto.documentNumber : undefined,
+        hasOwn(dto, "identificationNumber") ? dto.identificationNumber : undefined
+      );
+      update.documentNumber =
+        (hasOwn(dto, "documentNumber")
+          ? this.normalizeText(dto.documentNumber)
+          : identificationNumber) ?? null;
+      update.documentNumberNormalized = identificationNumber;
+      update.identificationNumber = identificationNumber;
+      nextIdentificationNumber = identificationNumber;
+    }
+
+    if (
+      hasOwn(dto, "documentTypeCode") ||
+      hasOwn(dto, "dianIdentificationType") ||
+      hasOwn(dto, "documentNumber") ||
+      hasOwn(dto, "identificationNumber")
+    ) {
+      await this.ensureNoDuplicateIdentity(
         tenantId,
-        update.documentNumberNormalized ?? null,
+        nextDocumentTypeCode,
+        nextIdentificationNumber,
         id
       );
     }
 
-    if (hasOwn(dto, "documentTypeCode")) {
-      update.documentTypeCode = this.normalizeText(dto.documentTypeCode);
-    }
     if (hasOwn(dto, "verificationDigit")) {
       update.verificationDigit = this.normalizeText(dto.verificationDigit);
     }
     if (hasOwn(dto, "legalName")) {
       update.legalName = this.normalizeText(dto.legalName);
     }
-    if (hasOwn(dto, "fiscalEmail")) {
-      update.fiscalEmail = this.normalizeFiscalEmail(dto.fiscalEmail);
+    if (hasOwn(dto, "tradeName")) {
+      update.tradeName = this.normalizeText(dto.tradeName);
+    }
+    if (hasOwn(dto, "fiscalEmail") || hasOwn(dto, "invoiceEmail")) {
+      const invoiceEmail = this.resolveEmailAliases(
+        hasOwn(dto, "fiscalEmail") ? dto.fiscalEmail : undefined,
+        hasOwn(dto, "invoiceEmail") ? dto.invoiceEmail : undefined
+      );
+      update.fiscalEmail = invoiceEmail;
+      update.invoiceEmail = invoiceEmail;
+    }
+    if (hasOwn(dto, "phone")) {
+      update.phone = this.normalizeText(dto.phone);
+    }
+    if (hasOwn(dto, "address")) {
+      update.address = this.normalizeText(dto.address);
+    }
+    if (hasOwn(dto, "countryCode")) {
+      update.countryCode = this.normalizeText(dto.countryCode);
+    }
+    if (hasOwn(dto, "departmentCode")) {
+      update.departmentCode = this.normalizeText(dto.departmentCode);
+    }
+    if (hasOwn(dto, "municipalityCode")) {
+      update.municipalityCode = this.normalizeText(dto.municipalityCode);
+    }
+    if (hasOwn(dto, "personType")) {
+      update.personType = this.normalizePersonType(dto.personType) ?? null;
+    }
+    if (hasOwn(dto, "taxRegime")) {
+      update.taxRegime = this.normalizeText(dto.taxRegime);
+    }
+    if (hasOwn(dto, "taxResponsibilities")) {
+      update.taxResponsibilities =
+        this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
     }
     if (hasOwn(dto, "fiscalStatus")) {
       update.fiscalStatus =
         this.normalizeFiscalStatus(dto.fiscalStatus) ?? "PENDING";
     }
+    if (hasOwn(dto, "isDianValidated")) {
+      update.isDianValidated = dto.isDianValidated ?? false;
+    }
+    if (hasOwn(dto, "dianLastLookupAt")) {
+      update.dianLastLookupAt =
+        this.normalizeTimestamp(dto.dianLastLookupAt) ?? null;
+    }
+    if (hasOwn(dto, "dianLastLookupStatus")) {
+      update.dianLastLookupStatus =
+        this.normalizeLookupStatus(dto.dianLastLookupStatus) ?? null;
+    }
+    if (hasOwn(dto, "dianMetadata")) {
+      update.dianMetadata = this.normalizeDianMetadata(dto.dianMetadata) ?? {};
+    }
+    if (hasOwn(dto, "fiscalDataSource")) {
+      update.fiscalDataSource =
+        this.normalizeFiscalDataSource(dto.fiscalDataSource) ?? "MANUAL";
+    }
     if (hasOwn(dto, "isActive")) {
+      if (current.isFinalConsumer && dto.isActive === false) {
+        throw new BadRequestException("final consumer cannot be deleted");
+      }
       update.isActive = dto.isActive ?? true;
     }
     if (hasOwn(dto, "isFinalConsumer")) {
+      if (current.isFinalConsumer && dto.isFinalConsumer === false) {
+        throw new BadRequestException("final consumer cannot be unset");
+      }
       update.isFinalConsumer = dto.isFinalConsumer ?? false;
       if (update.isFinalConsumer && (update.isActive ?? current.isActive)) {
         await this.ensureNoOtherFinalConsumer(tenantId, id);
@@ -271,6 +607,9 @@ export class ElectronicInvoicingCustomersService {
     } catch (error) {
       if (this.isFinalConsumerUniqueError(error)) {
         throw new ConflictException("final consumer already exists for tenant");
+      }
+      if (this.isFiscalIdentityUniqueError(error)) {
+        throw new ConflictException("fiscal identity already exists for tenant");
       }
       throw error;
     }
@@ -295,6 +634,8 @@ export class ElectronicInvoicingCustomersService {
         name: DEFAULT_FINAL_CONSUMER_NAME,
         isFinalConsumer: true,
         fiscalStatus: "NOT_REQUIRED",
+        fiscalDataSource: "MANUAL",
+        isDianValidated: false,
         isActive: true,
       });
     } catch (error) {

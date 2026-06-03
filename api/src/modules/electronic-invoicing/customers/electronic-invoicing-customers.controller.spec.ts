@@ -33,6 +33,10 @@ describe("ElectronicInvoicingCustomersController", () => {
       PERMISSION_KEY,
       ElectronicInvoicingCustomersController.prototype.ensureDefault
     );
+    const getByIdPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.getById
+    );
 
     assert.deepEqual(listPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
@@ -53,6 +57,10 @@ describe("ElectronicInvoicingCustomersController", () => {
     assert.deepEqual(ensureDefaultPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "WRITE",
+    });
+    assert.deepEqual(getByIdPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "READ",
     });
   });
 
@@ -75,11 +83,15 @@ describe("ElectronicInvoicingCustomersController", () => {
     });
   });
 
-  it("routes create and ensure default to service", async () => {
+  it("routes create, detail and ensure default to service", async () => {
     const calls: string[] = [];
     const service = {
       createCustomer: async () => {
         calls.push("create");
+        return { id: "customer-1" };
+      },
+      getCustomer: async () => {
+        calls.push("detail");
         return { id: "customer-1" };
       },
       ensureDefaultFinalConsumer: async () => {
@@ -92,8 +104,9 @@ describe("ElectronicInvoicingCustomersController", () => {
     );
 
     await controller.create({ name: "ACME" }, request);
+    await controller.getById("customer-1", request);
     await controller.ensureDefault(request);
 
-    assert.deepEqual(calls, ["create", "ensure"]);
+    assert.deepEqual(calls, ["create", "detail", "ensure"]);
   });
 });

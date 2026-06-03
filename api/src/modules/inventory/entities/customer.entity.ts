@@ -18,6 +18,7 @@ export type CustomerProps = {
   municipioId?: string | null;
   ciudad?: string | null;
   departamento?: string | null;
+  isFinalConsumer?: boolean;
   isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +36,7 @@ export class CustomerEntity {
   readonly municipioId: string | null;
   readonly ciudad: string | null;
   readonly departamento: string | null;
+  readonly isFinalConsumer: boolean;
   readonly isActive: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -78,6 +80,7 @@ export class CustomerEntity {
     this.municipioId = props.municipioId ?? null;
     this.ciudad = props.ciudad?.trim() || null;
     this.departamento = props.departamento?.trim() || null;
+    this.isFinalConsumer = props.isFinalConsumer ?? false;
     this.isActive = props.isActive ?? true;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
