@@ -15,13 +15,19 @@ export type GetAcquirerXmlSignatureMaterial = {
 };
 
 export type SignedGetAcquirerSoapRequest = {
+  binarySecurityTokenId: string;
   signedXml: string;
   signatureXml: string;
   signedReferenceUris: string[];
 };
 
+const BINARY_SECURITY_TOKEN_ID = "BinarySecurityToken-1";
 const BODY_XPATH =
   "//*[local-name(.)='Body' and namespace-uri(.)='http://www.w3.org/2003/05/soap-envelope']";
+const BST_ENCODING_TYPE =
+  "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary";
+const BST_VALUE_TYPE =
+  "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3";
 const SECURITY_XPATH =
   "//*[local-name(.)='Security' and namespace-uri(.)='http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd']";
 const SIGNATURE_XPATH =
@@ -29,10 +35,49 @@ const SIGNATURE_XPATH =
 const TIMESTAMP_XPATH =
   "//*[local-name(.)='Timestamp' and namespace-uri(.)='http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd']";
 
-const buildSigner = (material: GetAcquirerXmlSignatureMaterial) =>
+export const stripPemCertificate = (publicCertPem: string): string =>
+  publicCertPem
+    .replace(/-----BEGIN CERTIFICATE-----/g, "")
+    .replace(/-----END CERTIFICATE-----/g, "")
+    .replace(/\s+/g, "");
+
+const buildSecurityTokenReference = (tokenId: string): string =>
+  `<wsse:SecurityTokenReference xmlns:wsse="${GET_ACQUIRER_SOAP_NAMESPACES.wsse}">
+        <wsse:Reference URI="#${tokenId}" ValueType="${BST_VALUE_TYPE}" />
+      </wsse:SecurityTokenReference>`;
+
+const buildBinarySecurityToken = (
+  material: GetAcquirerXmlSignatureMaterial,
+  tokenId: string
+): string =>
+  `<wsse:BinarySecurityToken wsu:Id="${tokenId}" EncodingType="${BST_ENCODING_TYPE}" ValueType="${BST_VALUE_TYPE}">${stripPemCertificate(
+    material.publicCertPem
+  )}</wsse:BinarySecurityToken>`;
+
+const withBinarySecurityToken = (
+  soapXml: string,
+  material: GetAcquirerXmlSignatureMaterial,
+  tokenId: string
+): string => {
+  if (soapXml.includes(`wsu:Id="${tokenId}"`)) {
+    return soapXml;
+  }
+
+  return soapXml.replace(
+    "    </wsse:Security>",
+    `      ${buildBinarySecurityToken(material, tokenId)}
+    </wsse:Security>`
+  );
+};
+
+const buildSigner = (
+  material: GetAcquirerXmlSignatureMaterial,
+  tokenId: string
+) =>
   new SignedXml({
     canonicalizationAlgorithm:
       GET_ACQUIRER_XML_SIGNATURE_ALGORITHMS.canonicalization,
+    getKeyInfoContent: () => buildSecurityTokenReference(tokenId),
     idMode: "wssecurity",
     privateKey: material.privateKeyPem,
     publicCert: material.publicCertPem,
@@ -43,7 +88,13 @@ export const signGetAcquirerSoapRequest = (
   soapXml: string,
   material: GetAcquirerXmlSignatureMaterial
 ): SignedGetAcquirerSoapRequest => {
-  const signer = buildSigner(material);
+  const binarySecurityTokenId = BINARY_SECURITY_TOKEN_ID;
+  const soapXmlWithToken = withBinarySecurityToken(
+    soapXml,
+    material,
+    binarySecurityTokenId
+  );
+  const signer = buildSigner(material, binarySecurityTokenId);
   signer.addReference({
     digestAlgorithm: GET_ACQUIRER_XML_SIGNATURE_ALGORITHMS.digest,
     transforms: [GET_ACQUIRER_XML_SIGNATURE_ALGORITHMS.transform],
@@ -57,7 +108,7 @@ export const signGetAcquirerSoapRequest = (
     xpath: TIMESTAMP_XPATH,
   });
 
-  signer.computeSignature(soapXml, {
+  signer.computeSignature(soapXmlWithToken, {
     existingPrefixes: {
       dian: GET_ACQUIRER_SOAP_NAMESPACES.dian,
       soap: GET_ACQUIRER_SOAP_NAMESPACES.soap,
@@ -73,6 +124,7 @@ export const signGetAcquirerSoapRequest = (
   });
 
   return {
+    binarySecurityTokenId,
     signedXml: signer.getSignedXml(),
     signatureXml: signer.getSignatureXml(),
     signedReferenceUris: ["#Body-1", "#Timestamp-1"],
@@ -100,6 +152,7 @@ export const verifyGetAcquirerSoapSignature = (
 
 export const GET_ACQUIRER_SIGNATURE_XPATHS = {
   body: BODY_XPATH,
+  binarySecurityTokenId: BINARY_SECURITY_TOKEN_ID,
   security: SECURITY_XPATH,
   signature: SIGNATURE_XPATH,
   timestamp: TIMESTAMP_XPATH,

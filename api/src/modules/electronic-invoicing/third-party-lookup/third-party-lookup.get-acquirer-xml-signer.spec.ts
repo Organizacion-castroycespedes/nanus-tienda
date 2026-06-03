@@ -5,6 +5,7 @@ import forge from "node-forge";
 import { buildGetAcquirerSoapRequest } from "./third-party-lookup.get-acquirer-request.builder";
 import {
   signGetAcquirerSoapRequest,
+  stripPemCertificate,
   verifyGetAcquirerSoapSignature,
 } from "./third-party-lookup.get-acquirer-xml-signer";
 
@@ -38,7 +39,26 @@ const createTestOnlyCertificateFixture = () => {
   };
 };
 
-describe("GetAcquirer XML signer FE-3.7.4", () => {
+describe("GetAcquirer XML signer FE-3.7.4/FE-3.7.5", () => {
+  it("includes a test-only BinarySecurityToken with the fixture certificate", () => {
+    const fixture = createTestOnlyCertificateFixture();
+    const signed = signGetAcquirerSoapRequest(buildRequestXml(), fixture);
+    const document = new DOMParser().parseFromString(signed.signedXml, "text/xml");
+    const token = document.getElementsByTagName("wsse:BinarySecurityToken")[0];
+
+    assert.equal(signed.binarySecurityTokenId, "BinarySecurityToken-1");
+    assert.equal(token.getAttribute("wsu:Id"), "BinarySecurityToken-1");
+    assert.equal(
+      token.getAttribute("EncodingType"),
+      "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"
+    );
+    assert.equal(
+      token.getAttribute("ValueType"),
+      "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"
+    );
+    assert.equal(token.textContent, stripPemCertificate(fixture.publicCertPem));
+  });
+
   it("generates signed SOAP XML with ds:Signature inside wsse:Security", () => {
     const fixture = createTestOnlyCertificateFixture();
     const signed = signGetAcquirerSoapRequest(buildRequestXml(), fixture);
@@ -49,6 +69,26 @@ describe("GetAcquirer XML signer FE-3.7.4", () => {
     assert.ok(signature);
     assert.equal(signature.localName, "Signature");
     assert.equal(signed.signatureXml.includes("<ds:Signature"), true);
+  });
+
+  it("includes SecurityTokenReference pointing at BinarySecurityToken", () => {
+    const fixture = createTestOnlyCertificateFixture();
+    const signed = signGetAcquirerSoapRequest(buildRequestXml(), fixture);
+    const document = new DOMParser().parseFromString(signed.signedXml, "text/xml");
+    const keyInfo = document.getElementsByTagName("ds:KeyInfo")[0];
+    const securityTokenReference = keyInfo.getElementsByTagName(
+      "wsse:SecurityTokenReference"
+    )[0];
+    const reference = securityTokenReference.getElementsByTagName(
+      "wsse:Reference"
+    )[0];
+
+    assert.ok(securityTokenReference);
+    assert.equal(reference.getAttribute("URI"), "#BinarySecurityToken-1");
+    assert.equal(
+      reference.getAttribute("ValueType"),
+      "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"
+    );
   });
 
   it("includes references to Body and Timestamp", () => {

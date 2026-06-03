@@ -322,3 +322,23 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.7.5 BinarySecurityToken y SOAP firmado completo con fixture
+
+- [x] 1. Agregar `wsse:BinarySecurityToken` TEST ONLY al SOAP firmado.
+- [x] 2. Usar ID estable `BinarySecurityToken-1`.
+- [x] 3. Agregar `ds:KeyInfo` con `wsse:SecurityTokenReference`.
+- [x] 4. Apuntar `SecurityTokenReference` a `#BinarySecurityToken-1`.
+- [x] 5. Mantener referencias firmadas `#Body-1` y `#Timestamp-1`.
+- [x] 6. Validar firma local con certificado fixture.
+- [x] 7. Confirmar que private key y password no quedan en XML ni repo.
+- [x] 8. Mantener suppliers fuera de GetAcquirer real.
+- [x] 9. Actualizar tests unitarios del signer.
+- [x] 10. Crear `docs/evidencia-getacquirer-binary-security-token-fe-3-7-5.md`.
+
+## Validacion FE-3.7.5
+
+- [x] 1. Ejecutar tests especificos FE-3.7.5.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
