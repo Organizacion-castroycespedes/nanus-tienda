@@ -10,6 +10,8 @@ import { DianDocumentTypesService } from "./document-types/dian-document-types.s
 import { ElectronicInvoicingSuppliersController } from "./suppliers/electronic-invoicing-suppliers.controller";
 import { ElectronicInvoicingSuppliersRepository } from "./suppliers/electronic-invoicing-suppliers.repository";
 import { ElectronicInvoicingSuppliersService } from "./suppliers/electronic-invoicing-suppliers.service";
+import { ThirdPartyLookupMockAdapter } from "./third-party-lookup/third-party-lookup.mock-adapter";
+import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup.service";
 
 @Module({
   imports: [DatabaseModule, AccessControlModule],
@@ -23,12 +25,15 @@ import { ElectronicInvoicingSuppliersService } from "./suppliers/electronic-invo
     ElectronicInvoicingCustomersService,
     ElectronicInvoicingSuppliersRepository,
     ElectronicInvoicingSuppliersService,
+    ThirdPartyLookupMockAdapter,
+    ThirdPartyLookupService,
     DianDocumentTypesRepository,
     DianDocumentTypesService,
   ],
   exports: [
     ElectronicInvoicingCustomersService,
     ElectronicInvoicingSuppliersService,
+    ThirdPartyLookupService,
     DianDocumentTypesService,
   ],
 })

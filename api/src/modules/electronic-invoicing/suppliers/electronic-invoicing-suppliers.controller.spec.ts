@@ -25,6 +25,14 @@ describe("ElectronicInvoicingSuppliersController", () => {
       PERMISSION_KEY,
       ElectronicInvoicingSuppliersController.prototype.update
     );
+    const lookupPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.lookup
+    );
+    const applyLookupPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.applyLookup
+    );
     const getByIdPermission = Reflect.getMetadata(
       PERMISSION_KEY,
       ElectronicInvoicingSuppliersController.prototype.getById
@@ -39,6 +47,14 @@ describe("ElectronicInvoicingSuppliersController", () => {
       level: "WRITE",
     });
     assert.deepEqual(updatePermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(lookupPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "READ",
+    });
+    assert.deepEqual(applyLookupPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
       level: "WRITE",
     });
@@ -82,6 +98,14 @@ describe("ElectronicInvoicingSuppliersController", () => {
         calls.push("update");
         return { id: "supplier-1" };
       },
+      lookupSupplierFiscalData: async () => {
+        calls.push("lookup");
+        return { lookupStatus: "FOUND" };
+      },
+      applySupplierLookup: async () => {
+        calls.push("apply-lookup");
+        return { id: "supplier-1" };
+      },
     };
     const controller = new ElectronicInvoicingSuppliersController(
       service as never
@@ -90,7 +114,22 @@ describe("ElectronicInvoicingSuppliersController", () => {
     await controller.create({ name: "Proveedor" }, request);
     await controller.getById("supplier-1", request);
     await controller.update("supplier-1", { legalName: "Proveedor SAS" }, request);
+    await controller.lookup(
+      { documentTypeCode: "31", documentNumber: "900123456" },
+      request
+    );
+    await controller.applyLookup(
+      "supplier-1",
+      { documentTypeCode: "31", documentNumber: "900123456" },
+      request
+    );
 
-    assert.deepEqual(calls, ["create", "detail", "update"]);
+    assert.deepEqual(calls, [
+      "create",
+      "detail",
+      "update",
+      "lookup",
+      "apply-lookup",
+    ]);
   });
 });

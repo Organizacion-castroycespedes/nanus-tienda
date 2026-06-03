@@ -25,6 +25,14 @@ describe("ElectronicInvoicingCustomersController", () => {
       PERMISSION_KEY,
       ElectronicInvoicingCustomersController.prototype.update
     );
+    const lookupPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.lookup
+    );
+    const applyLookupPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingCustomersController.prototype.applyLookup
+    );
     const getDefaultPermission = Reflect.getMetadata(
       PERMISSION_KEY,
       ElectronicInvoicingCustomersController.prototype.getDefault
@@ -47,6 +55,14 @@ describe("ElectronicInvoicingCustomersController", () => {
       level: "WRITE",
     });
     assert.deepEqual(updatePermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(lookupPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "READ",
+    });
+    assert.deepEqual(applyLookupPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "WRITE",
     });
@@ -94,6 +110,14 @@ describe("ElectronicInvoicingCustomersController", () => {
         calls.push("detail");
         return { id: "customer-1" };
       },
+      lookupCustomerFiscalData: async () => {
+        calls.push("lookup");
+        return { lookupStatus: "FOUND" };
+      },
+      applyCustomerLookup: async () => {
+        calls.push("apply-lookup");
+        return { id: "customer-1" };
+      },
       ensureDefaultFinalConsumer: async () => {
         calls.push("ensure");
         return { id: "final-1" };
@@ -105,8 +129,23 @@ describe("ElectronicInvoicingCustomersController", () => {
 
     await controller.create({ name: "ACME" }, request);
     await controller.getById("customer-1", request);
+    await controller.lookup(
+      { documentTypeCode: "31", documentNumber: "900123456" },
+      request
+    );
+    await controller.applyLookup(
+      "customer-1",
+      { documentTypeCode: "31", documentNumber: "900123456" },
+      request
+    );
     await controller.ensureDefault(request);
 
-    assert.deepEqual(calls, ["create", "detail", "ensure"]);
+    assert.deepEqual(calls, [
+      "create",
+      "detail",
+      "lookup",
+      "apply-lookup",
+      "ensure",
+    ]);
   });
 });

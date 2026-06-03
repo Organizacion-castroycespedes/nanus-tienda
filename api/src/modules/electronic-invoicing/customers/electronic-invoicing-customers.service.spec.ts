@@ -5,6 +5,8 @@ import {
   ElectronicInvoicingCustomersService,
   normalizeFiscalDocument,
 } from "./electronic-invoicing-customers.service";
+import { ThirdPartyLookupMockAdapter } from "../third-party-lookup/third-party-lookup.mock-adapter";
+import { ThirdPartyLookupService } from "../third-party-lookup/third-party-lookup.service";
 import type {
   ElectronicInvoicingCustomer,
   FiscalDataSource,
@@ -13,6 +15,30 @@ import type {
 } from "./electronic-invoicing-customer.types";
 
 const tenantId = "tenant-1";
+
+const buildLookupService = () =>
+  new ThirdPartyLookupService(new ThirdPartyLookupMockAdapter());
+
+const withMockLookupEnv = async (fn: () => Promise<void> | void) => {
+  const previousEnabled = process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED;
+  const previousMode = process.env.DIAN_THIRD_PARTY_LOOKUP_MODE;
+  process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED = "true";
+  process.env.DIAN_THIRD_PARTY_LOOKUP_MODE = "mock";
+  try {
+    await fn();
+  } finally {
+    if (previousEnabled === undefined) {
+      delete process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED;
+    } else {
+      process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED = previousEnabled;
+    }
+    if (previousMode === undefined) {
+      delete process.env.DIAN_THIRD_PARTY_LOOKUP_MODE;
+    } else {
+      process.env.DIAN_THIRD_PARTY_LOOKUP_MODE = previousMode;
+    }
+  }
+};
 
 const buildCustomer = (
   overrides: Partial<ElectronicInvoicingCustomer> = {}
@@ -57,6 +83,7 @@ const buildService = (
     duplicateDocument: ElectronicInvoicingCustomer | null;
     duplicateFiscalIdentity: ElectronicInvoicingCustomer | null;
     activeFinalConsumer: ElectronicInvoicingCustomer | null;
+    lookupService: ThirdPartyLookupService;
   }> = {}
 ) => {
   const state = {
@@ -161,7 +188,10 @@ const buildService = (
     },
   };
 
-  return new ElectronicInvoicingCustomersService(repository as never);
+  return new ElectronicInvoicingCustomersService(
+    repository as never,
+    overrides.lookupService
+  );
 };
 
 describe("ElectronicInvoicingCustomersService", () => {
@@ -351,6 +381,82 @@ describe("ElectronicInvoicingCustomersService", () => {
     assert.equal(updated.countryCode, "CO");
     assert.equal(updated.personType, "JURIDICA");
     assert.deepEqual(updated.taxResponsibilities, ["O-13"]);
+  });
+
+  it("previews mock lookup without mutating customer", async () => {
+    await withMockLookupEnv(() => {
+      const customer = buildCustomer({ legalName: "Manual SAS" });
+      const service = buildService({
+        customers: [customer],
+        lookupService: buildLookupService(),
+      });
+
+      const preview = service.lookupCustomerFiscalData(tenantId, {
+        documentTypeCode: "31",
+        documentNumber: "900.123-456",
+      });
+
+      assert.equal(preview.lookupStatus, "FOUND");
+      assert.equal(preview.provider, "MOCK_LOCAL");
+      assert.equal(preview.data?.legalName, "Cliente Mock SAS 3456");
+      assert.equal(customer.legalName, "Manual SAS");
+    });
+  });
+
+  it("applies only selected customer lookup fields and status summary", async () => {
+    await withMockLookupEnv(async () => {
+      const service = buildService({ lookupService: buildLookupService() });
+
+      const result = await service.applyCustomerLookup("customer-1", tenantId, {
+        documentTypeCode: "31",
+        documentNumber: "900.123-456",
+        fieldsToApply: ["legalName", "fiscalEmail"],
+      });
+
+      assert.equal(result.customer.legalName, "Cliente Mock SAS 3456");
+      assert.equal(result.customer.fiscalEmail, "cliente-3456@mock.local");
+      assert.equal(result.customer.address, null);
+      assert.equal(result.customer.dianLastLookupStatus, "FOUND");
+      assert.equal(result.customer.fiscalDataSource, "MOCK_LOCAL");
+      assert.equal(result.customer.fiscalStatus, "VALIDATED");
+      assert.equal(result.customer.isDianValidated, true);
+      assert.deepEqual(result.appliedFields, ["legalName", "fiscalEmail"]);
+      assert.equal(
+        result.preview.fieldDiffs.some(
+          (diff) => diff.field === "address" && !diff.willApply
+        ),
+        true
+      );
+
+      const metadata = result.customer.dianMetadata.thirdPartyLookup as {
+        lastLookup?: Record<string, unknown>;
+      };
+      assert.equal(metadata.lastLookup?.lookupStatus, "FOUND");
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(metadata.lastLookup ?? {}, "data"),
+        false
+      );
+    });
+  });
+
+  it("does not overwrite customer data without selected fields", async () => {
+    await withMockLookupEnv(async () => {
+      const customer = buildCustomer({ legalName: "Manual SAS" });
+      const service = buildService({
+        customers: [customer],
+        lookupService: buildLookupService(),
+      });
+
+      const result = await service.applyCustomerLookup("customer-1", tenantId, {
+        documentTypeCode: "31",
+        documentNumber: "900.123-456",
+      });
+
+      assert.equal(result.customer.legalName, "Manual SAS");
+      assert.equal(result.customer.dianLastLookupStatus, "FOUND");
+      assert.equal(result.customer.fiscalStatus, "PENDING");
+      assert.deepEqual(result.appliedFields, []);
+    });
   });
 
   it("rejects deactivating final consumer", async () => {

@@ -4,11 +4,22 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import crypto from "crypto";
 import type { CreateElectronicInvoicingSupplierDto } from "./dto/create-electronic-invoicing-supplier.dto";
 import type { ListElectronicInvoicingSuppliersDto } from "./dto/list-electronic-invoicing-suppliers.dto";
 import type { UpdateElectronicInvoicingSupplierDto } from "./dto/update-electronic-invoicing-supplier.dto";
+import type {
+  ApplyThirdPartyLookupDto,
+  ThirdPartyLookupDto,
+} from "../third-party-lookup/dto/third-party-lookup.dto";
+import { ThirdPartyLookupService } from "../third-party-lookup/third-party-lookup.service";
+import type {
+  ThirdPartyLookupData,
+  ThirdPartyLookupField,
+  ThirdPartyLookupStatus,
+} from "../third-party-lookup/third-party-lookup.types";
 import type {
   CreateElectronicInvoicingSupplierInput,
   ListElectronicInvoicingSuppliersFilters,
@@ -71,7 +82,10 @@ export const normalizeSupplierFiscalDocument = (
 export class ElectronicInvoicingSuppliersService {
   constructor(
     @Inject(ElectronicInvoicingSuppliersRepository)
-    private readonly suppliersRepository: ElectronicInvoicingSuppliersRepository
+    private readonly suppliersRepository: ElectronicInvoicingSuppliersRepository,
+    @Optional()
+    @Inject(ThirdPartyLookupService)
+    private readonly thirdPartyLookupService?: ThirdPartyLookupService
   ) {}
 
   private parseBoolean(value: unknown, fieldName: string): boolean | undefined {
@@ -329,6 +343,50 @@ export class ElectronicInvoicingSuppliersService {
     );
   }
 
+  private getLookupService() {
+    if (!this.thirdPartyLookupService) {
+      throw new BadRequestException("third party lookup service is not configured");
+    }
+    return this.thirdPartyLookupService;
+  }
+
+  private resolveFiscalStatusFromLookup(
+    lookupStatus: ThirdPartyLookupStatus,
+    appliedFieldsCount: number
+  ): SupplierFiscalStatus | undefined {
+    if (lookupStatus === "FOUND" && appliedFieldsCount > 0) {
+      return "VALIDATED";
+    }
+    if (lookupStatus === "NOT_FOUND" || lookupStatus === "ERROR") {
+      return "FAILED";
+    }
+    return undefined;
+  }
+
+  private applyLookupField(
+    update: UpdateElectronicInvoicingSupplierDto,
+    data: ThirdPartyLookupData,
+    field: ThirdPartyLookupField
+  ) {
+    if (field === "documentTypeCode") {
+      update.documentTypeCode = data.documentTypeCode;
+      update.dianIdentificationType = data.dianIdentificationType;
+      return;
+    }
+    if (field === "documentNumber") {
+      update.documentNumber = data.documentNumber;
+      update.identificationNumber = data.identificationNumber;
+      return;
+    }
+    if (field === "fiscalEmail") {
+      update.fiscalEmail = data.fiscalEmail;
+      update.invoiceEmail = data.invoiceEmail;
+      return;
+    }
+
+    update[field] = data[field] as never;
+  }
+
   listSuppliers(
     tenantId: string,
     query: ListElectronicInvoicingSuppliersDto
@@ -345,6 +403,71 @@ export class ElectronicInvoicingSuppliersService {
       throw new NotFoundException("supplier not found");
     }
     return supplier;
+  }
+
+  lookupSupplierFiscalData(tenantId: string, dto: ThirdPartyLookupDto) {
+    return this.getLookupService().lookup({
+      tenantId,
+      partyType: "SUPPLIER",
+      ...dto,
+    });
+  }
+
+  async applySupplierLookup(
+    id: string,
+    tenantId: string,
+    dto: ApplyThirdPartyLookupDto
+  ) {
+    const current = await this.getSupplier(id, tenantId);
+    const lookupService = this.getLookupService();
+    const fieldsToApply = lookupService.resolveFieldsToApply(dto);
+    const preview = lookupService.lookup({
+      tenantId,
+      partyType: "SUPPLIER",
+      ...dto,
+    });
+    const fieldDiffs = lookupService.buildFieldDiffs(
+      current,
+      preview.data,
+      fieldsToApply
+    );
+    const fiscalStatus = this.resolveFiscalStatusFromLookup(
+      preview.lookupStatus,
+      fieldsToApply.length
+    );
+    const update: UpdateElectronicInvoicingSupplierDto = {
+      fiscalLastLookupAt: preview.lookupAt,
+      fiscalLastLookupStatus: preview.lookupStatus,
+      fiscalProvider: preview.provider === "MOCK_LOCAL" ? "MOCK_LOCAL" : "NONE",
+      fiscalDataSource:
+        preview.provider === "MOCK_LOCAL" ? "MOCK_LOCAL" : "UNKNOWN",
+      dianMetadata: lookupService.mergeLookupMetadata(
+        current.dianMetadata,
+        preview
+      ),
+    };
+
+    if (fiscalStatus) {
+      update.fiscalStatus = fiscalStatus;
+      update.isDianValidated = fiscalStatus === "VALIDATED";
+    }
+
+    if (preview.lookupStatus === "FOUND" && preview.data) {
+      for (const field of fieldsToApply) {
+        this.applyLookupField(update, preview.data, field);
+      }
+    }
+
+    const supplier = await this.updateSupplier(id, tenantId, update);
+
+    return {
+      supplier,
+      preview: {
+        ...preview,
+        fieldDiffs,
+      },
+      appliedFields: fieldsToApply,
+    };
   }
 
   async createSupplier(

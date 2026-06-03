@@ -11,9 +11,35 @@ import {
   ElectronicInvoicingSuppliersService,
   normalizeSupplierFiscalDocument,
 } from "./electronic-invoicing-suppliers.service";
+import { ThirdPartyLookupMockAdapter } from "../third-party-lookup/third-party-lookup.mock-adapter";
+import { ThirdPartyLookupService } from "../third-party-lookup/third-party-lookup.service";
 
 const tenantId = "tenant-1";
 const otherTenantId = "tenant-2";
+
+const buildLookupService = () =>
+  new ThirdPartyLookupService(new ThirdPartyLookupMockAdapter());
+
+const withMockLookupEnv = async (fn: () => Promise<void> | void) => {
+  const previousEnabled = process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED;
+  const previousMode = process.env.DIAN_THIRD_PARTY_LOOKUP_MODE;
+  process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED = "true";
+  process.env.DIAN_THIRD_PARTY_LOOKUP_MODE = "mock";
+  try {
+    await fn();
+  } finally {
+    if (previousEnabled === undefined) {
+      delete process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED;
+    } else {
+      process.env.DIAN_THIRD_PARTY_LOOKUP_ENABLED = previousEnabled;
+    }
+    if (previousMode === undefined) {
+      delete process.env.DIAN_THIRD_PARTY_LOOKUP_MODE;
+    } else {
+      process.env.DIAN_THIRD_PARTY_LOOKUP_MODE = previousMode;
+    }
+  }
+};
 
 const buildSupplier = (
   overrides: Partial<ElectronicInvoicingSupplier> = {}
@@ -57,6 +83,7 @@ const buildService = (
     suppliers: ElectronicInvoicingSupplier[];
     duplicateDocument: ElectronicInvoicingSupplier | null;
     duplicateFiscalIdentity: ElectronicInvoicingSupplier | null;
+    lookupService: ThirdPartyLookupService;
   }> = {}
 ) => {
   const state = {
@@ -156,7 +183,10 @@ const buildService = (
   };
 
   return {
-    service: new ElectronicInvoicingSuppliersService(repository as never),
+    service: new ElectronicInvoicingSuppliersService(
+      repository as never,
+      overrides.lookupService
+    ),
     state,
   };
 };
@@ -328,6 +358,74 @@ describe("ElectronicInvoicingSuppliersService", () => {
     assert.equal(updated.countryCode, "CO");
     assert.equal(updated.personType, "JURIDICA");
     assert.deepEqual(updated.taxResponsibilities, ["O-13"]);
+  });
+
+  it("previews supplier mock lookup with provider-agnostic adapter", async () => {
+    await withMockLookupEnv(() => {
+      const { service } = buildService({ lookupService: buildLookupService() });
+
+      const preview = service.lookupSupplierFiscalData(tenantId, {
+        documentTypeCode: "31",
+        documentNumber: "900.123-456",
+      });
+
+      assert.equal(preview.lookupStatus, "FOUND");
+      assert.equal(preview.provider, "MOCK_LOCAL");
+      assert.notEqual(preview.provider, "DIAN_DIRECT");
+      assert.equal(preview.data?.legalName, "Proveedor Mock SAS 3456");
+    });
+  });
+
+  it("applies only selected supplier lookup fields and status summary", async () => {
+    await withMockLookupEnv(async () => {
+      const { service } = buildService({ lookupService: buildLookupService() });
+
+      const result = await service.applySupplierLookup("supplier-1", tenantId, {
+        documentTypeCode: "31",
+        documentNumber: "900.123-456",
+        fieldsToApply: ["legalName", "fiscalEmail"],
+      });
+
+      assert.equal(result.supplier.legalName, "Proveedor Mock SAS 3456");
+      assert.equal(result.supplier.fiscalEmail, "proveedor-3456@mock.local");
+      assert.equal(result.supplier.address, null);
+      assert.equal(result.supplier.fiscalProvider, "MOCK_LOCAL");
+      assert.equal(result.supplier.fiscalDataSource, "MOCK_LOCAL");
+      assert.equal(result.supplier.fiscalLastLookupStatus, "FOUND");
+      assert.equal(result.supplier.fiscalStatus, "VALIDATED");
+      assert.equal(result.supplier.isDianValidated, true);
+      assert.deepEqual(result.appliedFields, ["legalName", "fiscalEmail"]);
+
+      const metadata = result.supplier.dianMetadata.thirdPartyLookup as {
+        lastLookup?: Record<string, unknown>;
+      };
+      assert.equal(metadata.lastLookup?.provider, "MOCK_LOCAL");
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(metadata.lastLookup ?? {}, "data"),
+        false
+      );
+    });
+  });
+
+  it("does not overwrite supplier data without selected fields", async () => {
+    await withMockLookupEnv(async () => {
+      const supplier = buildSupplier({ legalName: "Proveedor Manual SAS" });
+      const { service } = buildService({
+        suppliers: [supplier],
+        lookupService: buildLookupService(),
+      });
+
+      const result = await service.applySupplierLookup("supplier-1", tenantId, {
+        documentTypeCode: "31",
+        documentNumber: "900.123-456",
+      });
+
+      assert.equal(result.supplier.legalName, "Proveedor Manual SAS");
+      assert.equal(result.supplier.fiscalProvider, "MOCK_LOCAL");
+      assert.equal(result.supplier.fiscalLastLookupStatus, "FOUND");
+      assert.equal(result.supplier.fiscalStatus, "PENDING");
+      assert.deepEqual(result.appliedFields, []);
+    });
   });
 
   it("rejects supplier from another tenant", async () => {

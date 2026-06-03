@@ -21,6 +21,10 @@ import { RolesGuard } from "../../../common/guards/roles.guard";
 import type { CreateElectronicInvoicingCustomerDto } from "./dto/create-electronic-invoicing-customer.dto";
 import type { ListElectronicInvoicingCustomersDto } from "./dto/list-electronic-invoicing-customers.dto";
 import type { UpdateElectronicInvoicingCustomerDto } from "./dto/update-electronic-invoicing-customer.dto";
+import type {
+  ApplyThirdPartyLookupDto,
+  ThirdPartyLookupDto,
+} from "../third-party-lookup/dto/third-party-lookup.dto";
 import { ElectronicInvoicingCustomersService } from "./electronic-invoicing-customers.service";
 
 type AuthRequest = Request & {
@@ -67,6 +71,18 @@ export class ElectronicInvoicingCustomersController {
     );
   }
 
+  @Post("lookup")
+  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "READ" })
+  lookup(
+    @Body() body: ThirdPartyLookupDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.customersService.lookupCustomerFiscalData(
+      this.getTenantId(request),
+      body
+    );
+  }
+
   @Patch(":id")
   @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "WRITE" })
   update(
@@ -75,6 +91,20 @@ export class ElectronicInvoicingCustomersController {
     @Req() request: AuthRequest
   ) {
     return this.customersService.updateCustomer(
+      id,
+      this.getTenantId(request),
+      body
+    );
+  }
+
+  @Post(":id/apply-lookup")
+  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "WRITE" })
+  applyLookup(
+    @Param("id") id: string,
+    @Body() body: ApplyThirdPartyLookupDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.customersService.applyCustomerLookup(
       id,
       this.getTenantId(request),
       body

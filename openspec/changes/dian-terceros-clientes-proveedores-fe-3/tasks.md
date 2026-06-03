@@ -63,3 +63,27 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.3 mock DIAN customers/suppliers
+
+- [x] 1. Analizar contrato real existente de `electronic-invoicing/customers` y `electronic-invoicing/suppliers`.
+- [x] 2. Crear DTOs de lookup/apply provider-agnostic.
+- [x] 3. Crear adapter mock fiscal local sin SOAP real.
+- [x] 4. Agregar servicio lookup mock con env `DIAN_THIRD_PARTY_LOOKUP_ENABLED` y `DIAN_THIRD_PARTY_LOOKUP_MODE`.
+- [x] 5. Agregar `POST /api/electronic-invoicing/customers/lookup`.
+- [x] 6. Agregar `POST /api/electronic-invoicing/customers/:id/apply-lookup`.
+- [x] 7. Agregar `POST /api/electronic-invoicing/suppliers/lookup`.
+- [x] 8. Agregar `POST /api/electronic-invoicing/suppliers/:id/apply-lookup`.
+- [x] 9. Implementar preview con `fieldDiffs`, resumen seguro y sin raw sensible.
+- [x] 10. Implementar no overwrite: aplicar solo campos confirmados.
+- [x] 11. Registrar estado mock en campos fiscales existentes.
+- [x] 12. Mantener suppliers provider-agnostic y sin `GetAcquirer`.
+- [x] 13. Agregar tests especificos de customers/suppliers/mock lookup.
+- [x] 14. Crear evidencia documental FE-3.3.
+
+## Validacion FE-3.3
+
+- [x] 1. Ejecutar tests especificos backend FE-3.3.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
