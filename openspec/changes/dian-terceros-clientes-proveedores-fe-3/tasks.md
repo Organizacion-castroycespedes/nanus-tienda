@@ -302,3 +302,23 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.7.4 Firma XML local GetAcquirer con certificado fixture
+
+- [x] 1. Crear helper signer XML local para GetAcquirer.
+- [x] 2. Generar certificado fixture self-signed TEST ONLY en runtime de tests.
+- [x] 3. Firmar `soap:Body` con referencia `#Body-1`.
+- [x] 4. Firmar `wsu:Timestamp` con referencia `#Timestamp-1`.
+- [x] 5. Insertar `ds:Signature` dentro de `wsse:Security`.
+- [x] 6. Validar firma localmente con certificado fixture.
+- [x] 7. Confirmar que no se expone private key ni password real.
+- [x] 8. Mantener suppliers fuera de GetAcquirer real.
+- [x] 9. Crear tests unitarios FE-3.7.4.
+- [x] 10. Crear `docs/evidencia-getacquirer-xml-signature-fixture-fe-3-7-4.md`.
+
+## Validacion FE-3.7.4
+
+- [x] 1. Ejecutar tests especificos FE-3.7.4.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
