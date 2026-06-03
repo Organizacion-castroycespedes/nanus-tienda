@@ -1,6 +1,29 @@
 export const GET_ACQUIRER_ACTION =
   "http://wcf.dian.colombia/IWcfDianCustomerServices/GetAcquirer";
 
+export const GET_ACQUIRER_WS_ADDRESSING_ENABLED = true;
+
+export const GET_ACQUIRER_WSDL_ENDPOINT_SOURCE =
+  "DIAN participant catalog";
+
+export const GET_ACQUIRER_VALID_IDENTIFICATION_TYPES = [
+  "11",
+  "12",
+  "13",
+  "21",
+  "22",
+  "31",
+  "41",
+  "42",
+  "47",
+  "48",
+  "50",
+  "91",
+] as const;
+
+export type GetAcquirerIdentificationType =
+  (typeof GET_ACQUIRER_VALID_IDENTIFICATION_TYPES)[number];
+
 export const GET_ACQUIRER_SOAP_NAMESPACES = {
   soap: "http://www.w3.org/2003/05/soap-envelope",
   wsa: "http://www.w3.org/2005/08/addressing",
@@ -31,9 +54,13 @@ export type GetAcquirerSoapRequestInput = {
 
 export type GetAcquirerSoapRequest = {
   action: string;
+  contentType: string;
   createdAt: string;
   expiresAt: string;
   ids: GetAcquirerSoapRequestIds;
+  identificationNumber: string;
+  identificationType: GetAcquirerIdentificationType;
+  wsAddressingEnabled: true;
   xml: string;
 };
 
@@ -48,6 +75,10 @@ const DEFAULT_IDS: GetAcquirerSoapRequestIds = {
 
 const DEFAULT_TIMESTAMP_TTL_MS = 300000;
 
+const IDENTIFICATION_TYPE_SET = new Set<string>(
+  GET_ACQUIRER_VALID_IDENTIFICATION_TYPES
+);
+
 const escapeXml = (value: string): string =>
   value
     .replace(/&/g, "&amp;")
@@ -55,6 +86,44 @@ const escapeXml = (value: string): string =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+
+const assertHttpHeaderParameter = (value: string, label: string) => {
+  const normalized = value.trim();
+  if (!normalized || /["\r\n]/.test(normalized)) {
+    throw new Error(`${label} must be a non-empty HTTP header parameter`);
+  }
+  return normalized;
+};
+
+export const buildGetAcquirerSoapContentType = (
+  action = GET_ACQUIRER_ACTION
+): string => {
+  const normalizedAction = assertHttpHeaderParameter(
+    action,
+    "DIAN GetAcquirer action"
+  );
+  return `application/soap+xml; charset=utf-8; action="${normalizedAction}"`;
+};
+
+export const assertGetAcquirerIdentificationType = (
+  value: string
+): GetAcquirerIdentificationType => {
+  const normalized = value.trim();
+  if (!IDENTIFICATION_TYPE_SET.has(normalized)) {
+    throw new Error(
+      `DIAN GetAcquirer identificationType must be one of ${GET_ACQUIRER_VALID_IDENTIFICATION_TYPES.join(", ")}`
+    );
+  }
+  return normalized as GetAcquirerIdentificationType;
+};
+
+const assertGetAcquirerIdentificationNumber = (value: string): string => {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error("DIAN GetAcquirer identificationNumber is required");
+  }
+  return normalized;
+};
 
 export const buildGetAcquirerSoapRequest = (
   input: GetAcquirerSoapRequestInput
@@ -64,6 +133,13 @@ export const buildGetAcquirerSoapRequest = (
     ...input.ids,
   };
   const action = input.action?.trim() || GET_ACQUIRER_ACTION;
+  const contentType = buildGetAcquirerSoapContentType(action);
+  const identificationType = assertGetAcquirerIdentificationType(
+    input.identificationType
+  );
+  const identificationNumber = assertGetAcquirerIdentificationNumber(
+    input.identificationNumber
+  );
   const createdAt = input.createdAt.toISOString();
   const expiresAt = new Date(
     input.createdAt.getTime() + (input.timestampTtlMs ?? DEFAULT_TIMESTAMP_TTL_MS)
@@ -84,17 +160,21 @@ export const buildGetAcquirerSoapRequest = (
   </soap:Header>
   <soap:Body wsu:Id="${escapeXml(ids.bodyId)}">
     <dian:GetAcquirer>
-      <dian:identificationType>${escapeXml(input.identificationType)}</dian:identificationType>
-      <dian:identificationNumber>${escapeXml(input.identificationNumber)}</dian:identificationNumber>
+      <dian:identificationType>${escapeXml(identificationType)}</dian:identificationType>
+      <dian:identificationNumber>${escapeXml(identificationNumber)}</dian:identificationNumber>
     </dian:GetAcquirer>
   </soap:Body>
 </soap:Envelope>`;
 
   return {
     action,
+    contentType,
     createdAt,
     expiresAt,
     ids,
+    identificationNumber,
+    identificationType,
+    wsAddressingEnabled: GET_ACQUIRER_WS_ADDRESSING_ENABLED,
     xml,
   };
 };

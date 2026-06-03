@@ -387,6 +387,26 @@
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
 
+## FE-3.7.8 Alinear GetAcquirer builder con guia DIAN
+
+- [x] 1. Confirmar que GetAcquirer usa `identificationType` e `identificationNumber`.
+- [x] 2. Agregar constantes de action, WS-A, Content-Type y fuente WSDL/endpoint.
+- [x] 3. Validar valores permitidos de `identificationType`: `11`, `12`, `13`, `21`, `22`, `31`, `41`, `42`, `47`, `48`, `50`, `91`.
+- [x] 4. Alinear transporte para enviar `Content-Type: application/soap+xml; charset=utf-8; action="http://wcf.dian.colombia/IWcfDianCustomerServices/GetAcquirer"`.
+- [x] 5. Mantener WS-A addressing habilitado con `Action`, `To` y `MessageID`.
+- [x] 6. Ajustar parser minimo para nombre/razon social y correo del adquiriente en respuesta tipo guia.
+- [x] 7. Documentar que WSDL/endpoint se obtiene desde catalogo de participante DIAN.
+- [x] 8. Actualizar tests de request builder, transporte y parser.
+- [x] 9. Crear `docs/evidencia-getacquirer-guia-dian-fe-3-7-8.md`.
+- [x] 10. Confirmar fuera de alcance: sin llamada DIAN real, sin certificado real, sin password real, sin PRD, sin remoto, sin frontend/POS y sin commit.
+
+## Validacion FE-3.7.8
+
+- [x] 1. Ejecutar tests `third-party-lookup`.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
+
 ## FE-3.8 Release readiness DIAN terceros clientes/proveedores
 
 - [x] 1. Crear `docs/release-readiness-dian-terceros-clientes-proveedores-fe-3-8.md`.

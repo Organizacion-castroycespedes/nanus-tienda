@@ -7,6 +7,10 @@ import {
   type GetAcquirerSoapTransport,
   type GetAcquirerSoapTransportResult,
 } from "./third-party-lookup.get-acquirer-adapter";
+import {
+  GET_ACQUIRER_ACTION,
+  buildGetAcquirerSoapContentType,
+} from "./third-party-lookup.get-acquirer-request.builder";
 import { verifyGetAcquirerSoapSignature } from "./third-party-lookup.get-acquirer-xml-signer";
 import type { ValidatedGetAcquirerConfig } from "./third-party-lookup.config";
 import type {
@@ -102,6 +106,8 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.7", () => {
     assert.equal(signedRequest.externalCallEnabled, false);
     assert.equal(signedRequest.endpointUrl, config.endpointUrl);
     assert.equal(signedRequest.timeoutMs, 15000);
+    assert.equal(signedRequest.action, GET_ACQUIRER_ACTION);
+    assert.equal(signedRequest.contentType, buildGetAcquirerSoapContentType());
     assert.equal(signedRequest.identificationType, "31");
     assert.equal(signedRequest.identificationNumber, "900123456");
     assert.equal(signedRequest.signedXml.includes("<ds:Signature"), true);
@@ -193,6 +199,30 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.7", () => {
     );
 
     assert.equal(preview.statusCode, "UNSUPPORTED_PARTY_TYPE");
+    assert.equal(transport.requests.length, 0);
+  });
+
+  it("rejects identificationType values outside the DIAN guide before signing", async () => {
+    const adapter = new ThirdPartyLookupGetAcquirerAdapter();
+    const transport = new RecordingTransport();
+    adapter.configureGetAcquirerRuntime({
+      signingMaterialProvider: () => createTestOnlyCertificateFixture(),
+      transport,
+    });
+
+    await assert.rejects(
+      () =>
+        adapter.lookup(
+          {
+            ...customerInput,
+            documentTypeCode: "14",
+            dianIdentificationType: "14",
+          },
+          context,
+          { getAcquirerConfig: config }
+        ),
+      /identificationType must be one of 11, 12, 13, 21, 22, 31, 41, 42, 47, 48, 50, 91/
+    );
     assert.equal(transport.requests.length, 0);
   });
 

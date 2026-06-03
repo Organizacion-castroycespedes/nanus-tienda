@@ -31,11 +31,13 @@ describe("GetAcquirer dependency spike FE-3.7.2", () => {
     const document = new DOMParser().parseFromString(readSoapFixture(), "text/xml");
     const envelope = document.documentElement;
     const body = document.getElementsByTagName("soap:Body")[0];
-    const legalName = document.getElementsByTagName("dian:LegalName")[0];
+    const legalName = document.getElementsByTagName("cbc:Name")[0];
+    const fiscalEmail = document.getElementsByTagName("cbc:ElectronicMail")[0];
 
     assert.equal(envelope.localName, "Envelope");
     assert.equal(body.getAttribute("wsu:Id"), "Body-1");
     assert.equal(legalName.textContent, "Fixture Acquirer SAS");
+    assert.equal(fiscalEmail.textContent, "facturacion.fixture@example.test");
   });
 
   it("constructs a basic SignedXml instance without signing a DIAN request", () => {
@@ -63,10 +65,14 @@ describe("GetAcquirer dependency spike FE-3.7.2", () => {
     const result = parsed.Envelope.Body.GetAcquirerResponse.GetAcquirerResult;
 
     assert.equal(result.StatusCode, "DIAN_OK");
-    assert.equal(result.IdentificationType, 31);
-    assert.equal(result.IdentificationNumber, 900123456);
-    assert.equal(result.LegalName, "Fixture Acquirer SAS");
-    assert.equal(result.FiscalEmail, "facturacion.fixture@example.test");
+    assert.equal(result.AccountingCustomerParty.PartyIdentification.ID["#text"], 900123456);
+    assert.equal(result.AccountingCustomerParty.PartyIdentification.ID["@_schemeName"], "31");
+    assert.equal(result.AccountingCustomerParty.Contact.Name, "Fixture Acquirer SAS");
+    assert.equal(
+      result.AccountingCustomerParty.Contact.ElectronicMail,
+      "facturacion.fixture@example.test"
+    );
+    assert.equal(result.TaxRepresentativeParty.PartyIdentification.ID, 900123456);
   });
 
   it(

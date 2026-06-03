@@ -49,7 +49,7 @@ export class GetAcquirerHttpTransport implements GetAcquirerSoapTransport {
         method: "POST",
         headers: {
           Accept: "application/soap+xml, text/xml",
-          "Content-Type": `application/soap+xml; charset=utf-8; action="${request.action}"`,
+          "Content-Type": request.contentType,
         },
         body: request.signedXml,
         signal: controller.signal,

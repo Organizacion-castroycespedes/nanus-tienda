@@ -1,0 +1,26 @@
+{
+  "certificatePathInsideRepo": null,
+  "certificatePasswordConfigured": true,
+  "correlationId": null,
+  "dianStatusCode": null,
+  "dianStatusMessage": null,
+  "elapsedMs": null,
+  "endpointUrl": null,
+  "evidenceNote": "Sanitized evidence only. No raw SOAP, certificate, private key, password, or BinarySecurityToken stored.",
+  "executedAt": "2026-06-03T05:30:03.684Z",
+  "externalCallMade": false,
+  "httpStatus": null,
+  "lookupMode": "real",
+  "nodeEnv": "development",
+  "phase": "FE-3.9",
+  "preflightOnly": false,
+  "responseHash": null,
+  "responseSize": null,
+  "result": "BLOCKED",
+  "sanitizedSummary": {
+    "error": "DIAN_GET_ACQUIRER_WSDL_URL must be a valid URL"
+  },
+  "statusCode": "PREFLIGHT_FAILED",
+  "timeoutMs": null,
+  "wsdlUrl": null
+}

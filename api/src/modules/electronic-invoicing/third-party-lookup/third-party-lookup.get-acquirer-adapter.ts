@@ -5,7 +5,10 @@ import type {
   ThirdPartyLookupAdapterOptions,
 } from "./third-party-lookup.adapter";
 import type { ValidatedGetAcquirerConfig } from "./third-party-lookup.config";
-import { buildGetAcquirerSoapRequest } from "./third-party-lookup.get-acquirer-request.builder";
+import {
+  assertGetAcquirerIdentificationType,
+  buildGetAcquirerSoapRequest,
+} from "./third-party-lookup.get-acquirer-request.builder";
 import {
   signGetAcquirerSoapRequest,
   type GetAcquirerXmlSignatureMaterial,
@@ -40,6 +43,7 @@ export type GetAcquirerSignedSoapRequest = {
   endpointUrl: string;
   timeoutMs: number;
   action: string;
+  contentType: string;
   messageId: string;
   identificationType: string;
   identificationNumber: string;
@@ -112,13 +116,17 @@ export class ThirdPartyLookupGetAcquirerAdapter
     input: NormalizedThirdPartyLookupRequest,
     config: ValidatedGetAcquirerConfig
   ): GetAcquirerRequestSkeleton {
+    const identificationType = this.assertIdentificationType(
+      input.documentTypeCode
+    );
+
     return {
       operation: "GetAcquirer",
       externalCallEnabled: config.httpEnabled,
       wsdlUrl: config.wsdlUrl,
       endpointUrl: config.endpointUrl,
       timeoutMs: config.timeoutMs,
-      identificationType: input.documentTypeCode,
+      identificationType,
       identificationNumber: input.documentNumberNormalized,
       wsSecurity: {
         certificateConfigured: config.certificatePath.length > 0,
@@ -130,17 +138,32 @@ export class ThirdPartyLookupGetAcquirerAdapter
     };
   }
 
+  private assertIdentificationType(value: string): string {
+    try {
+      return assertGetAcquirerIdentificationType(value);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error
+          ? error.message
+          : "DIAN GetAcquirer identificationType is invalid"
+      );
+    }
+  }
+
   buildSignedSoapRequest(
     input: NormalizedThirdPartyLookupRequest,
     config: ValidatedGetAcquirerConfig,
     material: GetAcquirerXmlSignatureMaterial,
     options: { createdAt: Date; messageId: string }
   ): GetAcquirerSignedSoapRequest {
+    const identificationType = this.assertIdentificationType(
+      input.documentTypeCode
+    );
     const soapRequest = buildGetAcquirerSoapRequest({
       createdAt: options.createdAt,
       endpointUrl: config.endpointUrl,
       identificationNumber: input.documentNumberNormalized,
-      identificationType: input.documentTypeCode,
+      identificationType,
       messageId: options.messageId,
     });
     const signed = signGetAcquirerSoapRequest(soapRequest.xml, material);
@@ -155,8 +178,9 @@ export class ThirdPartyLookupGetAcquirerAdapter
       endpointUrl: config.endpointUrl,
       timeoutMs: config.timeoutMs,
       action: soapRequest.action,
+      contentType: soapRequest.contentType,
       messageId: options.messageId,
-      identificationType: input.documentTypeCode,
+      identificationType,
       identificationNumber: input.documentNumberNormalized,
       signedXml: signed.signedXml,
       signedXmlSha256,

@@ -6,6 +6,10 @@ import {
   GetAcquirerHttpTransport,
   type GetAcquirerFetch,
 } from "./third-party-lookup.get-acquirer-http-transport";
+import {
+  GET_ACQUIRER_ACTION,
+  buildGetAcquirerSoapContentType,
+} from "./third-party-lookup.get-acquirer-request.builder";
 
 const signedXml =
   "<soap:Envelope><wsse:BinarySecurityToken>TEST ONLY</wsse:BinarySecurityToken><ds:Signature>TEST ONLY</ds:Signature></soap:Envelope>";
@@ -17,7 +21,8 @@ const buildSignedRequest = (
   externalCallEnabled: false,
   endpointUrl: "https://example.test/GetAcquirer",
   timeoutMs: 50,
-  action: "https://example.test/GetAcquirer",
+  action: GET_ACQUIRER_ACTION,
+  contentType: buildGetAcquirerSoapContentType(),
   messageId: "urn:uuid:00000000-0000-4000-8000-000000000001",
   identificationType: "31",
   identificationNumber: "900123456",
@@ -85,8 +90,10 @@ describe("GetAcquirerHttpTransport FE-3.7.7", () => {
     assert.equal(calls[0].init?.body, request.signedXml);
     const headers = calls[0].init?.headers as Record<string, string>;
     assert.equal(headers.Accept, "application/soap+xml, text/xml");
-    assert.match(headers["Content-Type"], /application\/soap\+xml/);
-    assert.match(headers["Content-Type"], /GetAcquirer/);
+    assert.equal(
+      headers["Content-Type"],
+      `application/soap+xml; charset=utf-8; action="${GET_ACQUIRER_ACTION}"`
+    );
     assert.equal(result.externalCallMade, true);
     assert.equal(result.statusCode, "HTTP_OK");
     assert.equal(result.httpStatus, 200);
