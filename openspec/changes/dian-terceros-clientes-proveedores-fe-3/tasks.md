@@ -452,3 +452,23 @@
 - [x] 2. Ejecutar `cd web && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.11 Frontend suppliers fiscal-ready
+
+- [x] 1. Actualizar listado `suppliers` para cargar y mezclar datos fiscales desde `electronic-invoicing/suppliers`.
+- [x] 2. Mostrar badge de estado fiscal de proveedor.
+- [x] 3. Extender formulario supplier con campos fiscales requeridos.
+- [x] 4. Agregar consulta mock fiscal provider-agnostic desde formulario supplier.
+- [x] 5. Mostrar preview seguro sin raw SOAP ni secretos.
+- [x] 6. Permitir aplicar campos seleccionados desde preview mock.
+- [x] 7. Evitar overwrite de datos manuales sin confirmacion explicita.
+- [x] 8. Permitir marcar `fiscalDataSource`, `isDianValidated` y `fiscalStatus`.
+- [x] 9. Mantener suppliers sin `DIAN_DIRECT`, GetAcquirer real, SOAP real ni certificados.
+- [x] 10. Crear `docs/evidencia-frontend-suppliers-fiscal-ready-fe-3-11.md`.
+
+## Validacion FE-3.11
+
+- [x] 1. Ejecutar `cd web && npm.cmd run lint`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
