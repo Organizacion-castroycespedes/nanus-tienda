@@ -245,3 +245,20 @@
 - [x] 2. Ejecutar `cd web && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.7.1 Seleccion tecnica SOAP/XML Signature GetAcquirer
+
+- [x] 1. Analizar skeleton `third-party-lookup.get-acquirer-adapter.ts`.
+- [x] 2. Analizar config existente `DIAN_GET_ACQUIRER_*`.
+- [x] 3. Analizar estructura esperada `GetAcquirer`.
+- [x] 4. Documentar necesidades SOAP envelope, WS-A, WS-Security, Timestamp, BinarySecurityToken y Signature.
+- [x] 5. Investigar librerias candidatas Node.js/TypeScript.
+- [x] 6. Documentar estrategia de pruebas con fixtures.
+- [x] 7. Documentar riesgos de seguridad.
+- [x] 8. Crear `docs/diseno-getacquirer-soap-wssecurity-fe-3-7-1.md`.
+- [x] 9. Confirmar fuera de alcance: sin DIAN real, sin certificados reales, sin install, sin PRD, sin remoto y sin commit.
+
+## Validacion FE-3.7.1
+
+- [x] 1. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 2. Ejecutar `git diff --check`.
