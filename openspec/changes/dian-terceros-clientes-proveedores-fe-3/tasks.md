@@ -282,3 +282,23 @@
 - [x] 3. Ejecutar `cd api && npm.cmd run build`.
 - [x] 4. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 5. Ejecutar `git diff --check`.
+
+## FE-3.7.3 GetAcquirer request builder con fixtures
+
+- [x] 1. Crear request builder GetAcquirer en backend `third-party-lookup`.
+- [x] 2. Generar SOAP Envelope con namespaces claros.
+- [x] 3. Generar headers WS-Addressing `Action`, `To` y `MessageID`.
+- [x] 4. Generar `wsse:Security` con `wsu:Timestamp` placeholder.
+- [x] 5. Generar body `GetAcquirer` con `identificationType` e `identificationNumber`.
+- [x] 6. Agregar IDs estables para futura firma de Body/Timestamp/WS-A.
+- [x] 7. Crear fixture XML esperado `get-acquirer-basic-request.xml`.
+- [x] 8. Agregar tests unitarios del request builder y parseo con `@xmldom/xmldom`.
+- [x] 9. Confirmar que no incluye firma real, certificado, password ni llamada externa.
+- [x] 10. Crear `docs/evidencia-getacquirer-request-builder-fe-3-7-3.md`.
+
+## Validacion FE-3.7.3
+
+- [x] 1. Ejecutar tests especificos FE-3.7.3.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.
