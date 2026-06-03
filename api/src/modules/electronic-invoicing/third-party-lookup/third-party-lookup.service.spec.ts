@@ -21,6 +21,7 @@ const LOOKUP_ENV_KEYS = [
   "DIAN_CERTIFICATE_PATH",
   "DIAN_CERTIFICATE_PASSWORD",
   "DIAN_GET_ACQUIRER_TIMEOUT_MS",
+  "DIAN_GET_ACQUIRER_HTTP_ENABLED",
 ] as const;
 
 const withLookupEnv = async (
@@ -40,6 +41,7 @@ const withLookupEnv = async (
     DIAN_CERTIFICATE_PATH: undefined,
     DIAN_CERTIFICATE_PASSWORD: undefined,
     DIAN_GET_ACQUIRER_TIMEOUT_MS: undefined,
+    DIAN_GET_ACQUIRER_HTTP_ENABLED: undefined,
     ...extraEnv,
   };
 
@@ -75,10 +77,10 @@ describe("ThirdPartyLookupService", () => {
   });
 
   it("returns disabled preview when lookup env is off", async () => {
-    await withLookupEnv("false", "disabled", () => {
+    await withLookupEnv("false", "disabled", async () => {
       const service = buildService();
 
-      const preview = service.lookup({
+      const preview = await service.lookup({
         tenantId: "tenant-1",
         partyType: "CUSTOMER",
         documentTypeCode: "31",
@@ -93,10 +95,10 @@ describe("ThirdPartyLookupService", () => {
   });
 
   it("returns mock provider preview without raw payload", async () => {
-    await withLookupEnv("true", "mock", () => {
+    await withLookupEnv("true", "mock", async () => {
       const service = buildService();
 
-      const preview = service.lookup({
+      const preview = await service.lookup({
         tenantId: "tenant-1",
         partyType: "SUPPLIER",
         documentTypeCode: "31",
@@ -130,10 +132,10 @@ describe("ThirdPartyLookupService", () => {
     );
   });
 
-  it("requires document identity", () => {
+  it("requires document identity", async () => {
     const service = buildService();
 
-    assert.throws(
+    await assert.rejects(
       () =>
         service.lookup({
           tenantId: "tenant-1",
@@ -148,12 +150,12 @@ describe("ThirdPartyLookupService", () => {
     await withLookupEnv(
       "true",
       "real",
-      () => {
+      async () => {
         const service = buildService();
         let message = "";
 
         try {
-          service.lookup({
+          await service.lookup({
             tenantId: "tenant-1",
             partyType: "CUSTOMER",
             documentTypeCode: "31",
@@ -175,11 +177,35 @@ describe("ThirdPartyLookupService", () => {
     );
   });
 
+  it("validates GetAcquirer HTTP flag values", async () => {
+    await withLookupEnv(
+      "true",
+      "real",
+      async () => {
+        const service = buildService();
+
+        await assert.rejects(
+          () =>
+            service.lookup({
+              tenantId: "tenant-1",
+              partyType: "CUSTOMER",
+              documentTypeCode: "31",
+              documentNumber: "900123456",
+            }),
+          /DIAN_GET_ACQUIRER_HTTP_ENABLED must be true or false/
+        );
+      },
+      {
+        DIAN_GET_ACQUIRER_HTTP_ENABLED: "yes",
+      }
+    );
+  });
+
   it("keeps suppliers out of real GetAcquirer mode", async () => {
-    await withLookupEnv("true", "real", () => {
+    await withLookupEnv("true", "real", async () => {
       const service = buildService();
 
-      const preview = service.lookup({
+      const preview = await service.lookup({
         tenantId: "tenant-1",
         partyType: "SUPPLIER",
         documentTypeCode: "31",
@@ -199,10 +225,10 @@ describe("ThirdPartyLookupService", () => {
     await withLookupEnv(
       "true",
       "real",
-      () => {
+      async () => {
         const service = buildService();
 
-        const preview = service.lookup({
+        const preview = await service.lookup({
           tenantId: "tenant-1",
           partyType: "CUSTOMER",
           documentTypeCode: "31",
@@ -247,6 +273,7 @@ describe("ThirdPartyLookupService", () => {
         certificatePath: "C:\\certs\\dian.p12",
         certificatePassword: "super-secret",
         timeoutMs: 15000,
+        httpEnabled: false,
       }
     );
 

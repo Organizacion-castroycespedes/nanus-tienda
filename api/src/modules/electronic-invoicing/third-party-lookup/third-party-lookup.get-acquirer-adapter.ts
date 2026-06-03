@@ -10,6 +10,7 @@ import {
   signGetAcquirerSoapRequest,
   type GetAcquirerXmlSignatureMaterial,
 } from "./third-party-lookup.get-acquirer-xml-signer";
+import { GetAcquirerHttpTransport } from "./third-party-lookup.get-acquirer-http-transport";
 import type {
   NormalizedThirdPartyLookupRequest,
   ThirdPartyLookupContext,
@@ -18,7 +19,7 @@ import type {
 
 export type GetAcquirerRequestSkeleton = {
   operation: "GetAcquirer";
-  externalCallEnabled: false;
+  externalCallEnabled: boolean;
   wsdlUrl: string;
   endpointUrl: string;
   timeoutMs: number;
@@ -35,7 +36,7 @@ export type GetAcquirerRequestSkeleton = {
 
 export type GetAcquirerSignedSoapRequest = {
   operation: "GetAcquirer";
-  externalCallEnabled: false;
+  externalCallEnabled: boolean;
   endpointUrl: string;
   timeoutMs: number;
   action: string;
@@ -51,20 +52,31 @@ export type GetAcquirerSignedSoapRequest = {
   rawPasswordIncluded: false;
 };
 
+export type GetAcquirerSoapTransportStatusCode =
+  | "EXTERNAL_CALL_DISABLED"
+  | "HTTP_OK"
+  | "HTTP_ERROR"
+  | "HTTP_TIMEOUT"
+  | "HTTP_NETWORK_ERROR";
+
 export type GetAcquirerSoapTransportResult = {
-  externalCallMade: false;
-  statusCode: "EXTERNAL_CALL_DISABLED";
+  externalCallMade: boolean;
+  statusCode: GetAcquirerSoapTransportStatusCode;
+  message: string;
   signedXmlSha256: string;
   signedXmlSize: number;
   hasBinarySecurityToken: boolean;
   hasSignature: boolean;
   signedReferenceUris: string[];
+  httpStatus?: number;
+  responseTextSha256?: string;
+  responseTextSize?: number;
 };
 
 export interface GetAcquirerSoapTransport {
   submitSignedRequest(
     request: GetAcquirerSignedSoapRequest
-  ): GetAcquirerSoapTransportResult;
+  ): GetAcquirerSoapTransportResult | Promise<GetAcquirerSoapTransportResult>;
 }
 
 export type GetAcquirerSigningMaterialProvider = (
@@ -76,22 +88,6 @@ export type GetAcquirerRuntimeDependencies = {
   transport: GetAcquirerSoapTransport;
 };
 
-class DisabledGetAcquirerSoapTransport implements GetAcquirerSoapTransport {
-  submitSignedRequest(
-    request: GetAcquirerSignedSoapRequest
-  ): GetAcquirerSoapTransportResult {
-    return {
-      externalCallMade: false,
-      statusCode: "EXTERNAL_CALL_DISABLED",
-      signedXmlSha256: request.signedXmlSha256,
-      signedXmlSize: request.signedXmlSize,
-      hasBinarySecurityToken: request.signedXml.includes("BinarySecurityToken"),
-      hasSignature: request.signedXml.includes("<ds:Signature"),
-      signedReferenceUris: request.signedReferenceUris,
-    };
-  }
-}
-
 @Injectable()
 export class ThirdPartyLookupGetAcquirerAdapter
   implements ThirdPartyLookupAdapter
@@ -99,7 +95,7 @@ export class ThirdPartyLookupGetAcquirerAdapter
   private signingMaterialProvider: GetAcquirerSigningMaterialProvider | null =
     null;
   private transport: GetAcquirerSoapTransport =
-    new DisabledGetAcquirerSoapTransport();
+    new GetAcquirerHttpTransport();
 
   configureGetAcquirerRuntime(
     dependencies: Partial<GetAcquirerRuntimeDependencies>
@@ -118,7 +114,7 @@ export class ThirdPartyLookupGetAcquirerAdapter
   ): GetAcquirerRequestSkeleton {
     return {
       operation: "GetAcquirer",
-      externalCallEnabled: false,
+      externalCallEnabled: config.httpEnabled,
       wsdlUrl: config.wsdlUrl,
       endpointUrl: config.endpointUrl,
       timeoutMs: config.timeoutMs,
@@ -155,7 +151,7 @@ export class ThirdPartyLookupGetAcquirerAdapter
 
     return {
       operation: "GetAcquirer",
-      externalCallEnabled: false,
+      externalCallEnabled: config.httpEnabled,
       endpointUrl: config.endpointUrl,
       timeoutMs: config.timeoutMs,
       action: soapRequest.action,
@@ -172,11 +168,11 @@ export class ThirdPartyLookupGetAcquirerAdapter
     };
   }
 
-  lookup(
+  async lookup(
     input: NormalizedThirdPartyLookupRequest,
     context: ThirdPartyLookupContext,
     options: ThirdPartyLookupAdapterOptions = {}
-  ): ThirdPartyLookupPreview {
+  ): Promise<ThirdPartyLookupPreview> {
     if (input.partyType !== "CUSTOMER") {
       return {
         ...context,
@@ -207,6 +203,7 @@ export class ThirdPartyLookupGetAcquirerAdapter
     const signingMaterial = this.signingMaterialProvider?.(
       options.getAcquirerConfig
     );
+    let transportResult: GetAcquirerSoapTransportResult | null = null;
 
     if (signingMaterial) {
       const signedRequest = this.buildSignedSoapRequest(
@@ -218,15 +215,16 @@ export class ThirdPartyLookupGetAcquirerAdapter
           messageId: `urn:uuid:${context.correlationId}`,
         }
       );
-      this.transport.submitSignedRequest(signedRequest);
+      transportResult = await this.transport.submitSignedRequest(signedRequest);
     }
 
     return {
       ...context,
       partyType: input.partyType,
       lookupStatus: "ERROR",
-      statusCode: "REAL_LOOKUP_NOT_IMPLEMENTED",
+      statusCode: transportResult?.statusCode ?? "REAL_LOOKUP_NOT_IMPLEMENTED",
       message:
+        transportResult?.message ??
         "DIAN GetAcquirer signed SOAP request can be prepared locally; real external calls are disabled",
       documentTypeCode: input.documentTypeCode,
       documentNumberNormalized: input.documentNumberNormalized,

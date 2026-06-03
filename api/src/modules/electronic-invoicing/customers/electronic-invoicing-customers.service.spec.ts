@@ -388,14 +388,14 @@ describe("ElectronicInvoicingCustomersService", () => {
   });
 
   it("previews mock lookup without mutating customer", async () => {
-    await withMockLookupEnv(() => {
+    await withMockLookupEnv(async () => {
       const customer = buildCustomer({ legalName: "Manual SAS" });
       const service = buildService({
         customers: [customer],
         lookupService: buildLookupService(),
       });
 
-      const preview = service.lookupCustomerFiscalData(tenantId, {
+      const preview = await service.lookupCustomerFiscalData(tenantId, {
         documentTypeCode: "31",
         documentNumber: "900.123-456",
       });

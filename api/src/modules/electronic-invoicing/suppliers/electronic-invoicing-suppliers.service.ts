@@ -421,7 +421,7 @@ export class ElectronicInvoicingSuppliersService {
     const current = await this.getSupplier(id, tenantId);
     const lookupService = this.getLookupService();
     const fieldsToApply = lookupService.resolveFieldsToApply(dto);
-    const preview = lookupService.lookup({
+    const preview = await lookupService.lookup({
       tenantId,
       partyType: "SUPPLIER",
       ...dto,

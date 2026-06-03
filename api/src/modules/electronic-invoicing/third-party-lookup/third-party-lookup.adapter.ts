@@ -14,5 +14,5 @@ export interface ThirdPartyLookupAdapter {
     input: NormalizedThirdPartyLookupRequest,
     context: ThirdPartyLookupContext,
     options?: ThirdPartyLookupAdapterOptions
-  ): ThirdPartyLookupPreview;
+  ): ThirdPartyLookupPreview | Promise<ThirdPartyLookupPreview>;
 }

@@ -7,6 +7,7 @@ export type GetAcquirerConfig = {
   certificatePath: string | null;
   certificatePassword: string | null;
   timeoutMs: number;
+  httpEnabled: boolean;
 };
 
 export type ValidatedGetAcquirerConfig = {
@@ -15,6 +16,7 @@ export type ValidatedGetAcquirerConfig = {
   certificatePath: string;
   certificatePassword: string;
   timeoutMs: number;
+  httpEnabled: boolean;
 };
 
 export type ThirdPartyLookupConfig = {
@@ -49,6 +51,26 @@ const readTimeoutMs = (env: NodeJS.ProcessEnv): number => {
   return timeoutMs;
 };
 
+const readBooleanFlag = (
+  env: NodeJS.ProcessEnv,
+  key: string
+): boolean => {
+  const rawValue = readText(env, key);
+  if (!rawValue) {
+    return false;
+  }
+
+  const normalized = rawValue.toLowerCase();
+  if (normalized === "true") {
+    return true;
+  }
+  if (normalized === "false") {
+    return false;
+  }
+
+  throw new BadRequestException(`${key} must be true or false`);
+};
+
 const readGetAcquirerConfig = (
   env: NodeJS.ProcessEnv,
   validateTimeout: boolean
@@ -58,6 +80,7 @@ const readGetAcquirerConfig = (
   certificatePath: readText(env, "DIAN_CERTIFICATE_PATH"),
   certificatePassword: readText(env, "DIAN_CERTIFICATE_PASSWORD"),
   timeoutMs: validateTimeout ? readTimeoutMs(env) : 15000,
+  httpEnabled: readBooleanFlag(env, "DIAN_GET_ACQUIRER_HTTP_ENABLED"),
 });
 
 const readMode = (env: NodeJS.ProcessEnv): ThirdPartyLookupMode => {
@@ -142,5 +165,6 @@ export const assertGetAcquirerConfig = (
     certificatePath: certificatePath!,
     certificatePassword: certificatePassword!,
     timeoutMs: config.timeoutMs,
+    httpEnabled: config.httpEnabled,
   };
 };

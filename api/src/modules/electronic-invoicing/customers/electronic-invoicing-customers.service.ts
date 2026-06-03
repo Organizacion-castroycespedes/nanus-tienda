@@ -428,7 +428,7 @@ export class ElectronicInvoicingCustomersService {
     const current = await this.getCustomer(id, tenantId);
     const lookupService = this.getLookupService();
     const fieldsToApply = lookupService.resolveFieldsToApply(dto);
-    const preview = lookupService.lookup({
+    const preview = await lookupService.lookup({
       tenantId,
       partyType: "CUSTOMER",
       ...dto,

@@ -24,6 +24,8 @@ class RecordingTransport implements GetAcquirerSoapTransport {
     return {
       externalCallMade: false,
       statusCode: "EXTERNAL_CALL_DISABLED",
+      message:
+        "DIAN GetAcquirer HTTP transport is disabled by configuration",
       signedXmlSha256: request.signedXmlSha256,
       signedXmlSize: request.signedXmlSize,
       hasBinarySecurityToken: request.signedXml.includes("BinarySecurityToken"),
@@ -60,6 +62,7 @@ const config: ValidatedGetAcquirerConfig = {
   certificatePath: "C:\\certs\\test-only-fixture.p12",
   certificatePassword: "test-only-password",
   timeoutMs: 15000,
+  httpEnabled: false,
 };
 
 const customerInput: NormalizedThirdPartyLookupRequest = {
@@ -81,7 +84,7 @@ const context: ThirdPartyLookupContext = {
   requestHash: "request-hash",
 };
 
-describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.6", () => {
+describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.7", () => {
   it("builds a signed SOAP request from config and signer material", () => {
     const adapter = new ThirdPartyLookupGetAcquirerAdapter();
     const material = createTestOnlyCertificateFixture();
@@ -113,7 +116,7 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.6", () => {
     );
   });
 
-  it("uses fake transport in lookup and does not call external network", () => {
+  it("uses fake transport in lookup and does not call external network", async () => {
     const adapter = new ThirdPartyLookupGetAcquirerAdapter();
     const transport = new RecordingTransport();
     const material = createTestOnlyCertificateFixture();
@@ -122,12 +125,12 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.6", () => {
       transport,
     });
 
-    const preview = adapter.lookup(customerInput, context, {
+    const preview = await adapter.lookup(customerInput, context, {
       getAcquirerConfig: config,
     });
 
     assert.equal(preview.lookupStatus, "ERROR");
-    assert.equal(preview.statusCode, "REAL_LOOKUP_NOT_IMPLEMENTED");
+    assert.equal(preview.statusCode, "EXTERNAL_CALL_DISABLED");
     assert.equal(transport.requests.length, 1);
     assert.equal(transport.requests[0].externalCallEnabled, false);
     assert.equal(
@@ -141,20 +144,7 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.6", () => {
     assert.equal(Object.prototype.hasOwnProperty.call(preview, "raw"), false);
   });
 
-  it("does not invoke transport when signing material is not configured", () => {
-    const adapter = new ThirdPartyLookupGetAcquirerAdapter();
-    const transport = new RecordingTransport();
-    adapter.configureGetAcquirerRuntime({ transport });
-
-    const preview = adapter.lookup(customerInput, context, {
-      getAcquirerConfig: config,
-    });
-
-    assert.equal(preview.statusCode, "REAL_LOOKUP_NOT_IMPLEMENTED");
-    assert.equal(transport.requests.length, 0);
-  });
-
-  it("keeps suppliers out before any signed SOAP preparation", () => {
+  it("marks signed request as HTTP enabled only when config flag is true", async () => {
     const adapter = new ThirdPartyLookupGetAcquirerAdapter();
     const transport = new RecordingTransport();
     const material = createTestOnlyCertificateFixture();
@@ -163,7 +153,40 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.6", () => {
       transport,
     });
 
-    const preview = adapter.lookup(
+    await adapter.lookup(customerInput, context, {
+      getAcquirerConfig: {
+        ...config,
+        httpEnabled: true,
+      },
+    });
+
+    assert.equal(transport.requests.length, 1);
+    assert.equal(transport.requests[0].externalCallEnabled, true);
+  });
+
+  it("does not invoke transport when signing material is not configured", async () => {
+    const adapter = new ThirdPartyLookupGetAcquirerAdapter();
+    const transport = new RecordingTransport();
+    adapter.configureGetAcquirerRuntime({ transport });
+
+    const preview = await adapter.lookup(customerInput, context, {
+      getAcquirerConfig: config,
+    });
+
+    assert.equal(preview.statusCode, "REAL_LOOKUP_NOT_IMPLEMENTED");
+    assert.equal(transport.requests.length, 0);
+  });
+
+  it("keeps suppliers out before any signed SOAP preparation", async () => {
+    const adapter = new ThirdPartyLookupGetAcquirerAdapter();
+    const transport = new RecordingTransport();
+    const material = createTestOnlyCertificateFixture();
+    adapter.configureGetAcquirerRuntime({
+      signingMaterialProvider: () => material,
+      transport,
+    });
+
+    const preview = await adapter.lookup(
       { ...customerInput, partyType: "SUPPLIER" },
       context,
       { getAcquirerConfig: config }
@@ -173,10 +196,10 @@ describe("ThirdPartyLookupGetAcquirerAdapter FE-3.7.6", () => {
     assert.equal(transport.requests.length, 0);
   });
 
-  it("throws clear error when config is missing", () => {
+  it("throws clear error when config is missing", async () => {
     const adapter = new ThirdPartyLookupGetAcquirerAdapter();
 
-    assert.throws(
+    await assert.rejects(
       () => adapter.lookup(customerInput, context),
       /DIAN GetAcquirer real mode requires validated configuration/
     );

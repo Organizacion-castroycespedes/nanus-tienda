@@ -134,7 +134,7 @@ export class ThirdPartyLookupService {
     };
   }
 
-  lookup(request: ThirdPartyLookupRequest): ThirdPartyLookupPreview {
+  async lookup(request: ThirdPartyLookupRequest): Promise<ThirdPartyLookupPreview> {
     const input = this.normalizeRequest(request);
     const config = resolveThirdPartyLookupConfig();
     const mode = config.mode;

@@ -362,3 +362,27 @@
 - [x] 2. Ejecutar `cd api && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.7.7 Transporte HTTP real GetAcquirer controlado
+
+- [x] 1. Agregar env `DIAN_GET_ACQUIRER_HTTP_ENABLED`.
+- [x] 2. Validar flag HTTP como `true|false`.
+- [x] 3. Propagar `httpEnabled` a config GetAcquirer validada.
+- [x] 4. Permitir que el adapter genere SOAP firmado con `externalCallEnabled` segun config.
+- [x] 5. Hacer async el contrato de lookup para poder esperar transporte HTTP.
+- [x] 6. Agregar transporte HTTP con `fetch` inyectable.
+- [x] 7. Evitar llamada de red cuando `DIAN_GET_ACQUIRER_HTTP_ENABLED` no esta activo.
+- [x] 8. Agregar timeout configurable con `AbortController`.
+- [x] 9. Mapear HTTP 2xx, HTTP error, timeout y network error a estados tecnicos seguros.
+- [x] 10. Evitar exponer raw SOAP, XML firmado completo, certificado, password o token.
+- [x] 11. Mantener suppliers fuera de GetAcquirer real.
+- [x] 12. Agregar tests unitarios con `fetch` mock.
+- [x] 13. Crear `docs/evidencia-getacquirer-http-transport-controlled-fe-3-7-7.md`.
+- [x] 14. Confirmar fuera de alcance: sin DIAN real, sin certificado real, sin P12 real, sin password real, sin habilitacion, sin PRD, sin remoto, sin frontend/POS y sin commit.
+
+## Validacion FE-3.7.7
+
+- [x] 1. Ejecutar tests especificos FE-3.7.7.
+- [x] 2. Ejecutar `cd api && npm.cmd run build`.
+- [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 4. Ejecutar `git diff --check`.

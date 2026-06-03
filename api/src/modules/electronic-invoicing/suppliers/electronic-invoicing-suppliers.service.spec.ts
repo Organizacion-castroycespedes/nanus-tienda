@@ -365,10 +365,10 @@ describe("ElectronicInvoicingSuppliersService", () => {
   });
 
   it("previews supplier mock lookup with provider-agnostic adapter", async () => {
-    await withMockLookupEnv(() => {
+    await withMockLookupEnv(async () => {
       const { service } = buildService({ lookupService: buildLookupService() });
 
-      const preview = service.lookupSupplierFiscalData(tenantId, {
+      const preview = await service.lookupSupplierFiscalData(tenantId, {
         documentTypeCode: "31",
         documentNumber: "900.123-456",
       });
