@@ -472,3 +472,28 @@
 - [x] 2. Ejecutar `cd web && npm.cmd run build`.
 - [x] 3. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
 - [x] 4. Ejecutar `git diff --check`.
+
+## FE-3.12 QA release mock fiscal customers/suppliers
+
+- [x] 1. Confirmar rama `feat/qa-release-mock-fiscal-fe-3-12`.
+- [x] 2. Confirmar DB local/copia QA sin documentar credenciales.
+- [x] 3. Confirmar API local mock con `DIAN_THIRD_PARTY_LOOKUP_ENABLED=true`.
+- [x] 4. Confirmar API local mock con `DIAN_THIRD_PARTY_LOOKUP_MODE=mock`.
+- [x] 5. Confirmar `DIAN_GET_ACQUIRER_HTTP_ENABLED=false`.
+- [x] 6. Validar customers: listar, crear fiscal, lookup mock, apply-lookup con campos seleccionados, editar y cleanup.
+- [x] 7. Validar `taxResponsibilities` de customer como array persistido en flujo mock.
+- [x] 8. Validar suppliers: listar, crear fiscal, lookup mock provider-agnostic, apply-lookup con campos seleccionados, editar y cleanup.
+- [x] 9. Confirmar suppliers sin `DIAN_DIRECT`/GetAcquirer real disponible.
+- [x] 10. Validar Web local HTTP para customers, suppliers y POS.
+- [x] 11. Validar POS: customer fiscal aparece en `/customers`, venta usa `customerId`, Consumidor Final sigue disponible y venta QA se cancela.
+- [x] 12. Ejecutar test controlado GetAcquirer/third-party-lookup sin DIAN real.
+- [x] 13. Crear `docs/evidencia-qa-release-mock-fiscal-fe-3-12.md`.
+- [x] 14. Confirmar fuera de alcance: sin codigo funcional, sin SQL, sin DIAN real, sin certificados, sin PRD, sin remoto y sin commit.
+
+## Validacion FE-3.12
+
+- [x] 1. Ejecutar `cd api && npm.cmd run build`.
+- [x] 2. Ejecutar `cd web && npm.cmd run build`.
+- [x] 3. Ejecutar `npx.cmd tsx --test src/modules/electronic-invoicing/third-party-lookup/*.spec.ts`.
+- [x] 4. Ejecutar `openspec.cmd validate dian-terceros-clientes-proveedores-fe-3 --strict`.
+- [x] 5. Ejecutar `git diff --check`.
