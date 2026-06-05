@@ -14,6 +14,7 @@ import type {
   CashSession,
   CreatePaymentPayload,
   FinancePaymentStatus,
+  Payment,
   PaymentDirection,
   PaymentMethod,
   PaymentReferenceType,
@@ -25,6 +26,20 @@ type PaymentDraft = {
   amount: string;
   referenceNumber: string;
   notes: string;
+};
+
+export type DocumentPaymentSuccessContext = {
+  referenceId: string;
+  referenceType: PaymentReferenceType;
+  direction: PaymentDirection;
+  payments: Array<{
+    paymentMethodId: string;
+    methodName?: string | null;
+    methodType?: string | null;
+    cashSessionId?: string | null;
+    amount: number;
+  }>;
+  responses: Payment[];
 };
 
 type DocumentPaymentFormProps = {
@@ -45,7 +60,7 @@ type DocumentPaymentFormProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (context?: DocumentPaymentSuccessContext) => void;
   onError?: (error: unknown) => void;
 };
 
@@ -264,6 +279,9 @@ export const DocumentPaymentForm = ({
     setSubmitError(null);
 
     try {
+      const submittedPayments: DocumentPaymentSuccessContext["payments"] = [];
+      const responses: Payment[] = [];
+
       for (const payment of parsedPayments) {
         const payload: CreatePaymentPayload = {
           branchId,
@@ -285,10 +303,24 @@ export const DocumentPaymentForm = ({
           ],
         };
 
-        await createPayment(payload);
+        const response = await createPayment(payload);
+        responses.push(response);
+        submittedPayments.push({
+          paymentMethodId: payment.paymentMethodId,
+          methodName: payment.method?.nombre,
+          methodType: payment.method?.tipo,
+          cashSessionId: payload.cashSessionId ?? null,
+          amount: payment.numericAmount,
+        });
       }
 
-      onSuccess();
+      onSuccess({
+        referenceId,
+        referenceType,
+        direction,
+        payments: submittedPayments,
+        responses,
+      });
     } catch (error) {
       onError?.(error);
       setSubmitError("No se pudo registrar el pago.");

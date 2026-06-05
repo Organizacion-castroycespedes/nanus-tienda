@@ -22,8 +22,10 @@ import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { ChangeProductPriceDto } from "../dto/change-product-price.dto";
 import type {
+  ProductMeasurementUnit,
   ProductOperationalStatus,
   ProductRotationClass,
+  ProductSaleType,
 } from "../entities/product.entity";
 import { ProductService } from "../services/product.service";
 
@@ -54,6 +56,8 @@ type CreateProductBody = {
   requiresExpiration?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
+  saleType?: ProductSaleType;
+  measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
 };

@@ -21,6 +21,8 @@ type ProductRow = QueryResultRow & {
   requires_expiration: boolean;
   operational_status: ProductProps["operationalStatus"];
   rotation_class: ProductProps["rotationClass"];
+  sale_type: ProductProps["saleType"];
+  measurement_unit: ProductProps["measurementUnit"];
   min_stock: string | number | null;
   max_stock: string | number | null;
   created_at: Date | string;
@@ -63,6 +65,8 @@ type UpdateProductData = Partial<
     | "requiresExpiration"
     | "operationalStatus"
     | "rotationClass"
+    | "saleType"
+    | "measurementUnit"
     | "minStock"
     | "maxStock"
   >
@@ -129,6 +133,8 @@ export class ProductRepository {
     requires_expiration,
     operational_status,
     rotation_class,
+    sale_type,
+    measurement_unit,
     min_stock,
     max_stock,
     created_at,
@@ -156,6 +162,8 @@ export class ProductRepository {
       requiresExpiration: row.requires_expiration,
       operationalStatus: row.operational_status,
       rotationClass: row.rotation_class,
+      saleType: row.sale_type ?? "UNIT",
+      measurementUnit: row.measurement_unit ?? "UND",
       minStock: row.min_stock === null ? null : Number(row.min_stock),
       maxStock: row.max_stock === null ? null : Number(row.max_stock),
       createdAt: new Date(row.created_at),
@@ -207,6 +215,8 @@ export class ProductRepository {
         requires_expiration,
         operational_status,
         rotation_class,
+        sale_type,
+        measurement_unit,
         min_stock,
         max_stock,
         created_at,
@@ -214,7 +224,7 @@ export class ProductRepository {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
-        $20, $21
+        $20, $21, $22, $23
       )
       RETURNING
         ${this.selectColumns}
@@ -237,6 +247,8 @@ export class ProductRepository {
         product.requiresExpiration ?? false,
         product.operationalStatus ?? "ACTIVE",
         product.rotationClass ?? null,
+        product.saleType ?? "UNIT",
+        product.measurementUnit ?? "UND",
         product.minStock ?? null,
         product.maxStock ?? null,
         product.createdAt,
@@ -391,6 +403,12 @@ export class ProductRepository {
     }
     if (data.rotationClass !== undefined) {
       addUpdate("rotation_class", data.rotationClass);
+    }
+    if (data.saleType !== undefined && data.saleType !== null) {
+      addUpdate("sale_type", data.saleType);
+    }
+    if (data.measurementUnit !== undefined && data.measurementUnit !== null) {
+      addUpdate("measurement_unit", data.measurementUnit);
     }
     if (data.minStock !== undefined) {
       addUpdate("min_stock", data.minStock);

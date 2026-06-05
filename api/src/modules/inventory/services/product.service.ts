@@ -8,12 +8,18 @@ import crypto from "crypto";
 import { DatabaseService } from "../../../common/db/database.service";
 import {
   PRODUCT_OPERATIONAL_STATUSES,
+  PRODUCT_MEASUREMENT_UNITS,
   PRODUCT_ROTATION_CLASSES,
+  PRODUCT_SALE_TYPES,
   ProductEntity,
+  type ProductMeasurementUnit,
   type ProductOperationalStatus,
   type ProductProps,
   type ProductRotationClass,
+  type ProductSaleType,
 } from "../entities/product.entity";
+import type { ProductBarcodeEntity } from "../entities/product-barcode.entity";
+import { ProductBarcodeRepository } from "../repositories/product-barcode.repository";
 import { ProductRepository } from "../repositories/product.repository";
 import { StockMovementService } from "./stock-movement.service";
 
@@ -34,6 +40,8 @@ type CreateProductInput = {
   requiresExpiration?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
+  saleType?: ProductSaleType;
+  measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
 };
@@ -56,6 +64,8 @@ type UpdateProductInput = Partial<
     | "requiresExpiration"
     | "operationalStatus"
     | "rotationClass"
+    | "saleType"
+    | "measurementUnit"
     | "minStock"
     | "maxStock"
   >
@@ -73,6 +83,19 @@ type ProductOperationalRules = {
   maxStock: number | null;
 };
 
+type ProductSaleModelRules = {
+  saleType: ProductSaleType;
+  measurementUnit: ProductMeasurementUnit;
+};
+
+type PosProductBarcode = {
+  code: string;
+  barcode: string;
+  barcodeType: ProductBarcodeEntity["barcodeType"];
+  isPrimary: boolean;
+  isActive: boolean;
+};
+
 @Injectable()
 export class ProductService {
   constructor(
@@ -80,6 +103,8 @@ export class ProductService {
     private readonly productRepository: ProductRepository,
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
+    @Inject(ProductBarcodeRepository)
+    private readonly productBarcodeRepository: ProductBarcodeRepository,
     @Inject(DatabaseService)
     private readonly db: DatabaseService
   ) {}
@@ -163,6 +188,35 @@ export class ProductService {
     }
   }
 
+  private assertSaleType(value: ProductSaleType) {
+    if (!PRODUCT_SALE_TYPES.includes(value)) {
+      throw new BadRequestException("saleType is invalid");
+    }
+  }
+
+  private assertMeasurementUnit(value: ProductMeasurementUnit) {
+    if (!PRODUCT_MEASUREMENT_UNITS.includes(value)) {
+      throw new BadRequestException("measurementUnit is invalid");
+    }
+  }
+
+  private validateSaleModel(rules: ProductSaleModelRules) {
+    this.assertSaleType(rules.saleType);
+    this.assertMeasurementUnit(rules.measurementUnit);
+
+    if (rules.saleType === "UNIT" && rules.measurementUnit !== "UND") {
+      throw new BadRequestException(
+        "UNIT products must use UND measurementUnit"
+      );
+    }
+
+    if (rules.saleType !== "UNIT" && rules.measurementUnit === "UND") {
+      throw new BadRequestException(
+        "WEIGHT or BOTH products must use KG, LB, G or OZ measurementUnit"
+      );
+    }
+  }
+
   private validateOperationalRules(rules: ProductOperationalRules) {
     this.assertOperationalStatus(rules.operationalStatus);
     this.assertRotationClass(rules.rotationClass);
@@ -196,6 +250,41 @@ export class ProductService {
     }
   }
 
+  private groupActiveBarcodesByProduct(barcodes: ProductBarcodeEntity[]) {
+    return barcodes.reduce<Record<string, PosProductBarcode[]>>(
+      (acc, barcode) => {
+        if (!barcode.isActive) {
+          return acc;
+        }
+
+        const mapped = {
+          code: barcode.barcode,
+          barcode: barcode.barcode,
+          barcodeType: barcode.barcodeType,
+          isPrimary: barcode.isPrimary,
+          isActive: barcode.isActive,
+        };
+
+        acc[barcode.productId] = [...(acc[barcode.productId] ?? []), mapped];
+        return acc;
+      },
+      {}
+    );
+  }
+
+  private buildBarcodeCatalog(barcodes: PosProductBarcode[] = []) {
+    const primaryBarcode =
+      barcodes.find((barcode) => barcode.isPrimary)?.code ??
+      barcodes[0]?.code ??
+      null;
+
+    return {
+      primaryBarcode,
+      barcodeCodes: barcodes.map((barcode) => barcode.code),
+      barcodes,
+    };
+  }
+
   private buildCreateOperationalRules(
     product: CreateProductInput
   ): ProductOperationalRules {
@@ -207,6 +296,25 @@ export class ProductService {
       rotationClass: product.rotationClass ?? null,
       minStock: product.minStock ?? null,
       maxStock: product.maxStock ?? null,
+    };
+  }
+
+  private buildCreateSaleModel(
+    product: CreateProductInput
+  ): ProductSaleModelRules {
+    return {
+      saleType: product.saleType ?? "UNIT",
+      measurementUnit: product.measurementUnit ?? "UND",
+    };
+  }
+
+  private buildUpdateSaleModel(
+    current: ProductEntity,
+    data: UpdateProductInput
+  ): ProductSaleModelRules {
+    return {
+      saleType: data.saleType ?? current.saleType,
+      measurementUnit: data.measurementUnit ?? current.measurementUnit,
     };
   }
 
@@ -243,6 +351,8 @@ export class ProductService {
     );
     const operationalRules = this.buildCreateOperationalRules(product);
     this.validateOperationalRules(operationalRules);
+    const saleModel = this.buildCreateSaleModel(product);
+    this.validateSaleModel(saleModel);
 
     const normalizedSku = this.normalizeSku(product.sku);
     const existing = await this.productRepository.findBySku(
@@ -264,6 +374,7 @@ export class ProductService {
       name: product.name.trim(),
       priceWithTax,
       priceWithoutTax,
+      ...saleModel,
       ...operationalRules,
       createdAt: now,
       updatedAt: now,
@@ -289,6 +400,8 @@ export class ProductService {
       requiresExpiration: entity.requiresExpiration,
       operationalStatus: entity.operationalStatus,
       rotationClass: entity.rotationClass,
+      saleType: entity.saleType,
+      measurementUnit: entity.measurementUnit,
       minStock: entity.minStock,
       maxStock: entity.maxStock,
       createdAt: entity.createdAt,
@@ -298,6 +411,13 @@ export class ProductService {
 
   async listProducts(tenantId: string, branchId: string) {
     const products = await this.productRepository.findAllByTenant(tenantId);
+    const productIds = products.map((product) => product.id);
+    const barcodesByProduct = this.groupActiveBarcodesByProduct(
+      await this.productBarcodeRepository.findActiveByProductIds(
+        tenantId,
+        productIds
+      )
+    );
 
     return Promise.all(
       products.map(async (product) => {
@@ -310,6 +430,7 @@ export class ProductService {
         return {
           ...product,
           stock: stockResult.stock,
+          ...this.buildBarcodeCatalog(barcodesByProduct[product.id]),
         };
       })
     );
@@ -362,6 +483,8 @@ export class ProductService {
 
     const operationalRules = this.buildUpdateOperationalRules(current, data);
     this.validateOperationalRules(operationalRules);
+    const saleModel = this.buildUpdateSaleModel(current, data);
+    this.validateSaleModel(saleModel);
 
     if (data.sku !== undefined) {
       const normalizedSku = this.normalizeSku(data.sku);

@@ -14,6 +14,7 @@ import { FinanceModule } from "./finance/finance.module";
 import { SystemModule } from "./system/system.module";
 import { ElectronicInvoicingModule } from "./electronic-invoicing/electronic-invoicing.module";
 import { PricingModule } from "./pricing/pricing.module";
+import { PosTerminalsModule } from "./pos-terminals/pos-terminals.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PricingModule } from "./pricing/pricing.module";
     SystemModule,
     ElectronicInvoicingModule,
     PricingModule,
+    PosTerminalsModule,
   ],
 })
 export class AppModule {}

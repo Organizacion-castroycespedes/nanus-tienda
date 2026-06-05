@@ -13,6 +13,7 @@ import { getProducts } from "../services/product.service";
 import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
 import { useAppSelector } from "../../../store/hooks";
+import type { PurchasePeripheralContext } from "../../../domains/peripherals/purchase-integration";
 
 type PurchaseFormItem = {
   productId: string;
@@ -36,7 +37,10 @@ type PurchaseFormErrors = {
 
 type PurchaseFormProps = {
   onCancel: () => void;
-  onSuccess: (response?: PurchaseResponse) => void;
+  onSuccess: (
+    response?: PurchaseResponse,
+    peripheralContext?: PurchasePeripheralContext
+  ) => void;
   onError?: (error: unknown) => void;
   onDirtyChange?: (isDirty: boolean) => void;
 };
@@ -61,7 +65,8 @@ export const PurchaseForm = ({
   onDirtyChange,
 }: PurchaseFormProps) => {
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
-  const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
+  const authUser = useAppSelector((state) => state.auth.user);
+  const authBranchName = authUser?.branchName ?? null;
   const [values, setValues] = useState<PurchaseFormValues>({
     supplierId: "",
     branchId: currentBranch ?? "",
@@ -242,7 +247,47 @@ export const PurchaseForm = ({
         })),
       });
 
-      onSuccess(response);
+      const selectedSupplier = suppliers.find(
+        (supplier) => supplier.id === values.supplierId
+      );
+      const peripheralContext: PurchasePeripheralContext = {
+        purchaseId: response.id,
+        purchaseNumber: response.id,
+        documentNumber: response.id,
+        date: response.createdAt,
+        businessName: response.tenantName ?? authUser?.tenantName ?? "Manus POS",
+        branchName: response.branchName ?? selectedBranchName,
+        cashier: authUser?.name ?? authUser?.email ?? undefined,
+        supplierName: response.supplierName ?? selectedSupplier?.name ?? "Proveedor",
+        items: values.items.map((item, index) => {
+          const product = products.find((candidate) => candidate.id === item.productId);
+          const quantity = Number(item.quantity);
+          const cost = Number(item.cost);
+
+          return {
+            name: product?.name ?? item.productId,
+            quantity,
+            unitPrice: cost,
+            total: itemSubtotals[index] ?? 0,
+          };
+        }),
+        subtotal: total,
+        taxes: 0,
+        discounts: 0,
+        total: response.total ?? total,
+        payments:
+          response.type === "CASH" && Number(response.totalPaid) > 0
+            ? [
+                {
+                  methodName: "Efectivo",
+                  methodType: "CASH",
+                  amount: Number(response.totalPaid),
+                },
+              ]
+            : [],
+      };
+
+      onSuccess(response, peripheralContext);
       onDirtyChange?.(false);
     } catch (error) {
       onError?.(error);

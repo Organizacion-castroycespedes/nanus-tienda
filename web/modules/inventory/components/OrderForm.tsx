@@ -17,8 +17,10 @@ import {
   createOrder,
   updateOrder,
   type OrderDetailResponse,
+  type OrderResponse,
 } from "../services/order.service";
 import { getProducts } from "../services/product.service";
+import type { OrderPeripheralContext } from "../../../domains/peripherals/order-integration";
 
 type OrderFormItem = {
   productId: string;
@@ -44,7 +46,10 @@ type OrderFormProps = {
   mode?: "create" | "edit";
   order?: OrderDetailResponse | null;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (
+    response?: OrderResponse,
+    peripheralContext?: OrderPeripheralContext
+  ) => void;
 };
 
 const createEmptyItem = (): OrderFormItem => ({
@@ -88,8 +93,10 @@ export const OrderForm = ({
 }: OrderFormProps) => {
   const { currentBranch, currentTenant } = useInventoryScope();
   const confirm = useConfirm();
-  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? null);
-  const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
+  const authUser = useAppSelector((state) => state.auth.user);
+  const authRole = useAppSelector((state) => state.auth.role ?? null);
+  const role = authUser?.role ?? authRole;
+  const authBranchName = authUser?.branchName ?? null;
   const [values, setValues] = useState<OrderFormValues>(() =>
     mapOrderToValues(order, currentBranch ?? "")
   );
@@ -267,13 +274,44 @@ export const OrderForm = ({
         })),
       };
 
-      if (mode === "edit" && order) {
-        await updateOrder(order.id, payload);
-      } else {
-        await createOrder(payload);
-      }
+      const response =
+        mode === "edit" && order
+          ? await updateOrder(order.id, payload)
+          : await createOrder(payload);
+      const selectedCustomer = customers.find(
+        (customer) => customer.id === values.customerId
+      );
+      const peripheralContext: OrderPeripheralContext = {
+        orderId: response.id,
+        orderNumber: response.id,
+        documentNumber: response.id,
+        date: response.createdAt,
+        businessName: response.tenantName ?? authUser?.tenantName ?? "Manus POS",
+        branchName: response.branchName ?? selectedBranchName,
+        cashier: authUser?.name ?? authUser?.email ?? undefined,
+        customerName: response.customerName ?? selectedCustomer?.name ?? "Cliente",
+        status: response.status,
+        items: values.items.map((item, index) => {
+          const product = products.find((candidate) => candidate.id === item.productId);
+          const quantity = Number(item.quantity);
+          const price = Number(item.price);
 
-      onSuccess();
+          return {
+            name: product?.name ?? item.productId,
+            quantity,
+            unitPrice: price,
+            total: itemSubtotals[index] ?? 0,
+          };
+        }),
+        subtotal: total,
+        taxes: 0,
+        discounts: 0,
+        total: response.total ?? total,
+        balanceDue: response.balanceDue,
+        payments: [],
+      };
+
+      onSuccess(response, peripheralContext);
     } catch (error) {
       const fallback =
         mode === "edit" ? "No se pudo actualizar el pedido." : "No se pudo guardar el pedido.";
