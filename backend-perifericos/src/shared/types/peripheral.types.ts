@@ -1,0 +1,81 @@
+export enum DeviceType {
+  PRINTER = "PRINTER",
+  CASH_DRAWER = "CASH_DRAWER",
+  SCALE = "SCALE",
+  SCANNER = "SCANNER",
+  DISPLAY = "DISPLAY",
+  OTHER = "OTHER",
+}
+
+export enum DeviceStatus {
+  CONNECTED = "CONNECTED",
+  DISCONNECTED = "DISCONNECTED",
+  ERROR = "ERROR",
+  SIMULATED = "SIMULATED",
+}
+
+export enum ConnectionType {
+  MOCK = "MOCK",
+  USB = "USB",
+  SERIAL = "SERIAL",
+  HID = "HID",
+  NETWORK = "NETWORK",
+  BLUETOOTH = "BLUETOOTH",
+}
+
+export enum LogLevel {
+  INFO = "INFO",
+  WARN = "WARN",
+  ERROR = "ERROR",
+}
+
+export const PeripheralEventName = {
+  DeviceConnected: "device.connected",
+  DeviceDisconnected: "device.disconnected",
+  DeviceError: "device.error",
+  PrinterJobStarted: "printer.job.started",
+  PrinterJobCompleted: "printer.job.completed",
+  PrinterJobFailed: "printer.job.failed",
+  CashDrawerOpened: "cashdrawer.opened",
+  ScaleWeightChanged: "scale.weight.changed",
+  ScannerCodeRead: "scanner.code.read",
+  AgentHealthChanged: "agent.health.changed",
+} as const;
+
+export type PeripheralEventName =
+  (typeof PeripheralEventName)[keyof typeof PeripheralEventName];
+
+export type NetworkConnectionOptions = {
+  host: string;
+  port: number;
+  timeoutMs?: number;
+};
+
+export type PeripheralDevice = {
+  id: string;
+  type: DeviceType;
+  name: string;
+  status: DeviceStatus;
+  connectionType: ConnectionType;
+  terminalId: string;
+  profileId?: string;
+  network?: NetworkConnectionOptions;
+  metadata?: Record<string, unknown>;
+};
+
+export type PeripheralLog = {
+  id: string;
+  timestamp: string;
+  level: LogLevel;
+  source: string;
+  event: string;
+  message: string;
+  metadata: Record<string, unknown>;
+};
+
+export type PeripheralEventPayload = {
+  terminalId?: string;
+  deviceId?: string;
+  timestamp: string;
+  [key: string]: unknown;
+};

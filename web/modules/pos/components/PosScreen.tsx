@@ -7,6 +7,7 @@ import {
   Minus,
   Package,
   Plus,
+  Scale,
   Search,
   ShoppingCart,
   Trash2,
@@ -61,8 +62,80 @@ import {
   parsePaymentAmount,
   rebalanceCashPayment,
 } from "../../shared/payments/payment-allocation.helper";
+import {
+  buildSalePeripheralFeedbackMessage,
+  runSalePeripheralOperations,
+  type PosSalePeripheralContext,
+} from "../../../domains/peripherals/pos-sale-integration";
+import {
+  getPeripheralFeatureFlags,
+  readCurrentWeight,
+  simulateScannerRead,
+  subscribeScannerEvents,
+} from "../../../domains/peripherals/contracts";
+import type {
+  PeripheralOperationError,
+  ScannerReadResult,
+} from "../../../domains/peripherals/types";
 
 type CategoryKey = "all" | "available" | "low" | "out";
+type ScannerMockStatus = "disabled" | "connected" | "error";
+type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
+
+type ProductBarcodeCandidate =
+  | string
+  | {
+      barcode?: string | null;
+      codigo?: string | null;
+      codigoBarras?: string | null;
+      codigo_barras?: string | null;
+      code?: string | null;
+      value?: string | null;
+      isActive?: boolean;
+      active?: boolean;
+    };
+
+type ScannerProductCandidate = Omit<ProductResponse, "barcodes"> & {
+  primaryBarcode?: string | null;
+  barcodeCodes?: string[];
+  barcode?: string | null;
+  codigoBarras?: string | null;
+  codigo_barras?: string | null;
+  reference?: string | null;
+  referencia?: string | null;
+  code?: string | null;
+  codigo?: string | null;
+  barcodes?: ProductBarcodeCandidate[];
+};
+
+type ProductUnitCandidate =
+  | string
+  | {
+      code?: string | null;
+      name?: string | null;
+      symbol?: string | null;
+      abbreviation?: string | null;
+      codigo?: string | null;
+      nombre?: string | null;
+      abreviatura?: string | null;
+    };
+
+type WeighableProductCandidate = ProductResponse & {
+  saleType?: "UNIT" | "WEIGHT" | "BOTH" | null;
+  isWeighable?: boolean;
+  weighable?: boolean;
+  soldByWeight?: boolean;
+  measurementUnit?: ProductUnitCandidate | null;
+  unit?: ProductUnitCandidate | null;
+  unidad?: ProductUnitCandidate | null;
+  unitCode?: string | null;
+  unitName?: string | null;
+  unitSymbol?: string | null;
+  unitAbbreviation?: string | null;
+  productType?: string | null;
+  type?: string | null;
+  tipo?: string | null;
+};
 
 type PosItemTax = {
   id: string;
@@ -92,6 +165,180 @@ const normalizeText = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+
+const normalizeScannerCode = (value?: string | null) =>
+  typeof value === "string" ? normalizeText(value) : "";
+
+const collectProductScannerCodes = (product: ProductResponse) => {
+  const candidate = product as unknown as ScannerProductCandidate;
+  const directCodes = [
+    candidate.primaryBarcode,
+    candidate.barcode,
+    candidate.codigoBarras,
+    candidate.codigo_barras,
+    candidate.sku,
+    candidate.reference,
+    candidate.referencia,
+    candidate.code,
+    candidate.codigo,
+    candidate.id,
+  ];
+  const barcodeCodes = (candidate.barcodes ?? [])
+    .filter((barcode) =>
+      typeof barcode === "string"
+        ? true
+        : barcode.isActive !== false && barcode.active !== false
+    )
+    .flatMap((barcode) => {
+      if (typeof barcode === "string") {
+        return [barcode];
+      }
+
+      return [
+        barcode.barcode,
+        barcode.codigoBarras,
+        barcode.codigo_barras,
+        barcode.code,
+        barcode.codigo,
+        barcode.value,
+      ];
+    });
+
+  return [...directCodes, ...(candidate.barcodeCodes ?? []), ...barcodeCodes]
+    .map(normalizeScannerCode)
+    .filter(Boolean);
+};
+
+const findProductByScannerCode = (
+  code: string,
+  products: ProductResponse[]
+) => {
+  const normalizedCode = normalizeScannerCode(code);
+  if (!normalizedCode) {
+    return null;
+  }
+
+  return (
+    products.find((product) =>
+      collectProductScannerCodes(product).some(
+        (candidateCode) => candidateCode === normalizedCode
+      )
+    ) ?? null
+  );
+};
+
+const weighableUnitCodes = new Set([
+  "kg",
+  "lb",
+  "g",
+  "oz",
+  "kilo",
+  "kilos",
+  "kilogram",
+  "kilograms",
+  "kilogramo",
+  "kilogramos",
+  "libra",
+  "libras",
+  "gramo",
+  "gramos",
+  "onza",
+  "onzas",
+]);
+
+const weighableProductTypes = new Set([
+  "weighable",
+  "soldbyweight",
+  "byweight",
+  "pesable",
+  "porpeso",
+  "peso",
+]);
+
+const normalizeProductUnitValue = (value: unknown) =>
+  typeof value === "string" ? normalizeText(value).replace(/\s+/g, "") : "";
+
+const collectUnitCandidateValues = (unit: ProductUnitCandidate | null | undefined) => {
+  if (!unit) {
+    return [];
+  }
+
+  if (typeof unit === "string") {
+    return [unit];
+  }
+
+  return [
+    unit.code,
+    unit.name,
+    unit.symbol,
+    unit.abbreviation,
+    unit.codigo,
+    unit.nombre,
+    unit.abreviatura,
+  ].filter((value): value is string => typeof value === "string" && value.trim() !== "");
+};
+
+const isWeighableProduct = (product: ProductResponse) => {
+  const candidate = product as WeighableProductCandidate;
+
+  if (candidate.saleType === "WEIGHT" || candidate.saleType === "BOTH") {
+    return true;
+  }
+
+  if (candidate.saleType === "UNIT") {
+    return false;
+  }
+
+  if (
+    candidate.isWeighable === true ||
+    candidate.weighable === true ||
+    candidate.soldByWeight === true
+  ) {
+    return true;
+  }
+
+  const unitValues = [
+    candidate.measurementUnit,
+    candidate.unit,
+    candidate.unidad,
+  ].flatMap(collectUnitCandidateValues);
+  const directUnitValues = [
+    candidate.unitCode,
+    candidate.unitName,
+    candidate.unitSymbol,
+    candidate.unitAbbreviation,
+  ];
+  const typeValues = [candidate.productType, candidate.type, candidate.tipo];
+
+  return (
+    [...unitValues, ...directUnitValues]
+      .map(normalizeProductUnitValue)
+      .some((value) => weighableUnitCodes.has(value)) ||
+    typeValues
+      .map(normalizeProductUnitValue)
+      .some((value) => weighableProductTypes.has(value))
+  );
+};
+
+const formatScaleQuantity = (value: number) =>
+  value.toFixed(3).replace(/\.?0+$/, "");
+
+const getProductSaleType = (product: ProductResponse) =>
+  product.saleType ?? (isWeighableProduct(product) ? "WEIGHT" : "UNIT");
+
+const productSaleTypeLabels: Record<"UNIT" | "WEIGHT" | "BOTH", string> = {
+  UNIT: "Unidad",
+  WEIGHT: "Peso",
+  BOTH: "Unidad/peso",
+};
+
+const parseQuantityInput = (value: string) => {
+  const normalized = value.replace(",", ".").replace(/[^0-9.]/g, "");
+  const [whole, ...decimalParts] = normalized.split(".");
+  const quantity =
+    decimalParts.length > 0 ? `${whole}.${decimalParts.join("")}` : whole;
+  return Number(quantity || 0);
+};
 
 const round = (value: number) => Number(value.toFixed(2));
 
@@ -254,6 +501,7 @@ export const PosScreen = () => {
   const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const posTerminalId = useAppSelector((state) => state.pos.terminalId);
   const {
     items: cart,
     payments,
@@ -291,18 +539,42 @@ export const PosScreen = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
+  const [scannerMockCode, setScannerMockCode] = useState("46564567");
+  const [scannerMockStatus, setScannerMockStatus] =
+    useState<ScannerMockStatus>("disabled");
+  const [scannerLastCode, setScannerLastCode] = useState<string | null>(null);
+  const [scannerLastResult, setScannerLastResult] = useState<string | null>(null);
+  const [scannerSimulating, setScannerSimulating] = useState(false);
+  const [scaleMockStatus, setScaleMockStatus] =
+    useState<ScaleMockStatus>("disabled");
+  const [scaleLastWeight, setScaleLastWeight] = useState<string | null>(null);
+  const [scaleLastResult, setScaleLastResult] = useState<string | null>(null);
+  const [scaleReading, setScaleReading] = useState(false);
 
   // New state for cart drawer visibility
   const [isCartOpen, setIsCartOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
+  const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
+  const scannerMockEnabled =
+    peripheralFeatureFlags.peripheralsEnabled &&
+    peripheralFeatureFlags.scannerEnabled;
+  const scaleMockEnabled =
+    peripheralFeatureFlags.peripheralsEnabled &&
+    peripheralFeatureFlags.scaleEnabled;
   const cartRef = useRef(cart);
+  const productsRef = useRef(products);
+  const scannerErrorToastShownRef = useRef(false);
 
   useAutoClearState(toastMessage, setToastMessage);
 
   useEffect(() => {
     cartRef.current = cart;
   }, [cart]);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
 
   const setCartItemsAndRef = useCallback(
     (items: PosCartItem[]) => {
@@ -334,6 +606,18 @@ export const PosScreen = () => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  const handleSalePeripheralFeedback = useCallback(
+    async (context: PosSalePeripheralContext) => {
+      const feedback = await runSalePeripheralOperations(context);
+      const toast = buildSalePeripheralFeedbackMessage(feedback);
+
+      if (toast) {
+        showToast(toast.message, toast.variant);
+      }
+    },
+    [showToast]
+  );
 
   useEffect(() => {
     if (!activeBranchId) {
@@ -614,11 +898,22 @@ export const PosScreen = () => {
       }
 
       const haystack = normalizeText(
-        `${product.name} ${product.sku} ${product.description ?? ""}`
+        `${product.name} ${product.description ?? ""} ${collectProductScannerCodes(
+          product
+        ).join(" ")}`
       );
       return haystack.includes(normalizedQuery);
     });
   }, [activeCategory, products, query]);
+
+  const productById = useMemo(
+    () =>
+      products.reduce<Record<string, ProductResponse>>((acc, product) => {
+        acc[product.id] = product;
+        return acc;
+      }, {}),
+    [products]
+  );
 
   const cartWithDerivedValues = useMemo(() => {
     return cart.map((item) => {
@@ -677,6 +972,14 @@ export const PosScreen = () => {
       total: subtotal,
     };
   }, [cartWithDerivedValues]);
+
+  const firstWeighableCartProduct = useMemo(
+    () =>
+      cart
+        .map((item) => productById[item.productId])
+        .find((product) => product && isWeighableProduct(product)) ?? null,
+    [cart, productById]
+  );
 
   const rebalancePaymentsForTotal = useCallback(
     (nextPayments: PaymentDraft[]) => {
@@ -928,50 +1231,313 @@ export const PosScreen = () => {
     setCartItemsAndRef,
   ]);
 
-  const addToCart = (product: ProductResponse) => {
-    setSaleStatus("DRAFT");
-    setSubmitError(null);
+  const setProductQuantityInCart = useCallback(
+    (product: ProductResponse, quantity: number) => {
+      setSaleStatus("DRAFT");
+      setSubmitError(null);
 
-    const currentCart = cartRef.current;
-    const existing = currentCart.find((item) => item.productId === product.id);
-    const stock = Number(product.stock ?? 0);
+      const currentCart = cartRef.current;
+      const existing = currentCart.find((item) => item.productId === product.id);
+      const stock = Number(product.stock ?? 0);
 
-    if (stock <= 0) {
-      showToast("El producto no tiene stock disponible.", "warning");
-      return;
-    }
+      if (stock <= 0) {
+        showToast("El producto no tiene stock disponible.", "warning");
+        return false;
+      }
 
-    if (existing) {
-      if (existing.quantity >= stock) {
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        showToast("La cantidad debe ser mayor a cero.", "warning");
+        return false;
+      }
+
+      if (quantity > stock) {
         showToast("No puedes superar el stock disponible.", "warning");
+        return false;
+      }
+
+      if (existing) {
+        queueCartItemPricing(
+          currentCart.map((item) =>
+            item.productId === product.id ? { ...item, quantity } : item
+          ),
+          product.id,
+          quantity
+        );
+        return true;
+      }
+
+      const nextItem: PosCartItem = {
+        productId: product.id,
+        name: product.name,
+        sku: product.sku,
+        quantity,
+        price: Number(product.price),
+        stock,
+        taxId: product.taxId ?? null,
+        priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+        baseUnitPrice: Number(product.price),
+        basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+      };
+      queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
+      return true;
+    },
+    [queueCartItemPricing, setSaleStatus, showToast]
+  );
+
+  const addToCart = useCallback(
+    (product: ProductResponse) => {
+      const currentCart = cartRef.current;
+      const existing = currentCart.find((item) => item.productId === product.id);
+      const nextQuantity = existing ? existing.quantity + 1 : 1;
+      return setProductQuantityInCart(product, nextQuantity);
+    },
+    [setProductQuantityInCart]
+  );
+
+  const handleScannerCodeRead = useCallback(
+    (result: ScannerReadResult) => {
+      const code = result.code.trim();
+      if (!code) {
         return;
       }
 
-      const nextQuantity = existing.quantity + 1;
-      queueCartItemPricing(
-        currentCart.map((item) =>
-          item.productId === product.id ? { ...item, quantity: nextQuantity } : item
-        ),
-        product.id,
-        nextQuantity
-      );
+      setScannerMockStatus("connected");
+      setScannerLastCode(code);
+      const product = findProductByScannerCode(code, productsRef.current);
+
+      if (!product) {
+        const message = `Código no encontrado: ${code}`;
+        setScannerLastResult(message);
+        showToast(message, "warning");
+        return;
+      }
+
+      const added = addToCart(product);
+      if (!added) {
+        setScannerLastResult(`Producto no agregado por scanner: ${product.name}`);
+        return;
+      }
+
+      const message = `Producto agregado por scanner: ${code}`;
+      setScannerLastResult(message);
+      showToast(message, "success");
+    },
+    [addToCart, showToast]
+  );
+
+  const handleScannerConnectionError = useCallback(
+    (error: PeripheralOperationError) => {
+      setScannerMockStatus("error");
+      setScannerLastResult("Scanner MOCK desconectado");
+
+      if (!scannerErrorToastShownRef.current) {
+        scannerErrorToastShownRef.current = true;
+        showToast(error.message || "Scanner MOCK desconectado", "warning");
+      }
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    if (!scannerMockEnabled) {
+      setScannerMockStatus("disabled");
+      return undefined;
+    }
+
+    scannerErrorToastShownRef.current = false;
+    setScannerMockStatus("connected");
+    const unsubscribe = subscribeScannerEvents(
+      handleScannerCodeRead,
+      handleScannerConnectionError,
+      {
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId ?? undefined,
+        terminalId: posTerminalId ?? "local-terminal",
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [
+    activeBranchId,
+    authUser?.tenantId,
+    handleScannerCodeRead,
+    handleScannerConnectionError,
+    posTerminalId,
+    scannerMockEnabled,
+  ]);
+
+  const handleSimulateScannerRead = useCallback(async () => {
+    const code = scannerMockCode.trim();
+    if (!code) {
+      showToast("Ingresa un codigo para simular scanner MOCK.", "warning");
       return;
     }
 
-    const nextItem: PosCartItem = {
-      productId: product.id,
-      name: product.name,
-      sku: product.sku,
-      quantity: 1,
-      price: Number(product.price),
-      stock,
-      taxId: product.taxId ?? null,
-      priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
-      baseUnitPrice: Number(product.price),
-      basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
-    };
-    queueCartItemPricing([...currentCart, nextItem], product.id, 1);
-  };
+    if (!scannerMockEnabled) {
+      return;
+    }
+
+    setScannerSimulating(true);
+    try {
+      const result = await simulateScannerRead({
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId ?? undefined,
+        terminalId: posTerminalId ?? "local-terminal",
+        deviceId: "mock-scanner-001",
+        code,
+        format: "CODE128",
+      });
+
+      if (!result.success) {
+        const message =
+          result.error.code === "AGENT_OFFLINE"
+            ? "Scanner MOCK desconectado. El POS sigue funcionando."
+            : result.error.message;
+        if (result.error.code === "AGENT_OFFLINE") {
+          setScannerMockStatus("error");
+        }
+        setScannerLastResult(message);
+        showToast(message, "warning");
+        return;
+      }
+
+      setScannerLastCode(result.data.code);
+      setScannerLastResult("Scan MOCK enviado al agent");
+    } finally {
+      setScannerSimulating(false);
+    }
+  }, [
+    activeBranchId,
+    authUser?.tenantId,
+    posTerminalId,
+    scannerMockCode,
+    scannerMockEnabled,
+    showToast,
+  ]);
+
+  useEffect(() => {
+    if (!scaleMockEnabled) {
+      setScaleMockStatus("disabled");
+      return;
+    }
+
+    setScaleMockStatus((current) => (current === "disabled" ? "ready" : current));
+  }, [scaleMockEnabled]);
+
+  const handleReadScaleForProduct = useCallback(
+    async (product: ProductResponse) => {
+      if (!scaleMockEnabled) {
+        return;
+      }
+
+      if (!isWeighableProduct(product)) {
+        const message = "Selecciona un producto pesable antes de leer la balanza";
+        setScaleLastResult(message);
+        showToast(message, "warning");
+        return;
+      }
+
+      setScaleReading(true);
+      setScaleMockStatus("reading");
+      try {
+        const result = await readCurrentWeight({
+          tenantId: authUser?.tenantId,
+          branchId: activeBranchId ?? undefined,
+          terminalId: posTerminalId ?? "local-terminal",
+          deviceId: "mock-scale-001",
+        });
+
+        if (!result.success) {
+          const message =
+            result.error.code === "AGENT_OFFLINE"
+              ? "No se pudo leer la balanza MOCK"
+              : result.error.message;
+          setScaleMockStatus("error");
+          setScaleLastResult(message);
+          showToast(message, "warning");
+          return;
+        }
+
+        const weight = Number(result.data.weight);
+        const unit = result.data.unit || "kg";
+
+        if (!result.data.stable) {
+          const message = "Peso inestable, intenta nuevamente";
+          setScaleMockStatus("error");
+          setScaleLastResult(message);
+          showToast(message, "warning");
+          return;
+        }
+
+        if (!Number.isFinite(weight) || weight <= 0) {
+          const message = "Peso invalido, intenta nuevamente";
+          setScaleMockStatus("error");
+          setScaleLastResult(message);
+          showToast(message, "warning");
+          return;
+        }
+
+        const reading = `${formatScaleQuantity(weight)} ${unit}`;
+        setScaleLastWeight(reading);
+
+        const applied = setProductQuantityInCart(product, weight);
+        if (!applied) {
+          setScaleMockStatus("error");
+          setScaleLastResult(`Peso no aplicado: ${reading}`);
+          return;
+        }
+
+        const message = `Peso leído: ${reading}`;
+        setScaleMockStatus("ready");
+        setScaleLastResult(message);
+        showToast(message, "success");
+      } finally {
+        setScaleReading(false);
+      }
+    },
+    [
+      activeBranchId,
+      authUser?.tenantId,
+      posTerminalId,
+      scaleMockEnabled,
+      setProductQuantityInCart,
+      showToast,
+    ]
+  );
+
+  const handleReadScaleFromCart = useCallback(async () => {
+    if (!scaleMockEnabled) {
+      return;
+    }
+
+    if (!firstWeighableCartProduct) {
+      const message = "Selecciona un producto pesable antes de leer la balanza";
+      setScaleLastResult(message);
+      showToast(message, "warning");
+      return;
+    }
+
+    await handleReadScaleForProduct(firstWeighableCartProduct);
+  }, [
+    firstWeighableCartProduct,
+    handleReadScaleForProduct,
+    scaleMockEnabled,
+    showToast,
+  ]);
+
+  const handleProductCardAction = useCallback(
+    (product: ProductResponse) => {
+      if (getProductSaleType(product) === "WEIGHT") {
+        void handleReadScaleForProduct(product);
+        return;
+      }
+
+      addToCart(product);
+    },
+    [addToCart, handleReadScaleForProduct]
+  );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
     setSaleStatus("DRAFT");
@@ -1234,7 +1800,7 @@ export const PosScreen = () => {
     setSubmitError(null);
 
     try {
-      await createSale({
+      const sale = await createSale({
         customerId: selectedCustomerId!,
         type: saleType,
         items: cartWithDerivedValues.map((item) => ({
@@ -1258,6 +1824,41 @@ export const PosScreen = () => {
       setPaymentModalOpen(false);
       resetPayments();
       showToast("Venta confirmada correctamente.", "success");
+
+      const salePeripheralContext: PosSalePeripheralContext = {
+        saleId: sale.id,
+        saleNumber: sale.id,
+        documentNumber: sale.id,
+        date: sale.createdAt,
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId ?? undefined,
+        terminalId: posTerminalId ?? "local-terminal",
+        businessName: authUser?.tenantName ?? "Manus POS",
+        branchName: authUser?.branchName ?? undefined,
+        cashier: authUser?.name ?? authUser?.email ?? undefined,
+        customerName: selectedCustomer?.name ?? "Consumidor final",
+        items: cartWithDerivedValues.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.finalUnitPrice ?? item.price,
+          total: item.subtotal,
+        })),
+        subtotal: round(Math.max(summary.subtotal - summary.taxesTotal, 0)),
+        taxes: summary.taxesTotal,
+        discounts: summary.discountTotal,
+        total: sale.total ?? summary.total,
+        payments: effectivePayments.map((payment) => {
+          const method = paymentMethodById[payment.paymentMethodId];
+
+          return {
+            paymentMethodId: payment.paymentMethodId,
+            methodName: method?.nombre,
+            methodType: method?.tipo,
+            amount: payment.amount,
+          };
+        }),
+      };
+      void handleSalePeripheralFeedback(salePeripheralContext);
 
       try {
         if (!activeBranchId) {
@@ -1327,11 +1928,17 @@ export const PosScreen = () => {
           <>
             {/* Cart Items */}
             <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-              {cartWithDerivedValues.map((item) => (
-                <article
-                  key={item.productId}
-                  className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
-                >
+              {cartWithDerivedValues.map((item) => {
+                const product = productById[item.productId];
+                const isCartItemWeighable = Boolean(
+                  product && isWeighableProduct(product)
+                );
+
+                return (
+                  <article
+                    key={item.productId}
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
+                  >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-slate-950 dark:text-white">
@@ -1365,11 +1972,11 @@ export const PosScreen = () => {
                         onChange={(event) =>
                           updateQuantity(
                             item.productId,
-                            Number(event.target.value.replace(/[^\d]/g, "") || 0)
+                            parseQuantityInput(event.target.value)
                           )
                         }
                         className="w-14 border-x border-slate-200 bg-transparent px-2 py-2 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                        inputMode="numeric"
+                        inputMode={isCartItemWeighable ? "decimal" : "numeric"}
                         aria-label={`Cantidad de ${item.name}`}
                       />
                       <button
@@ -1397,6 +2004,21 @@ export const PosScreen = () => {
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         Stock disponible: {item.stock}
                       </p>
+                      {isCartItemWeighable && product ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleReadScaleForProduct(product)}
+                          disabled={!scaleMockEnabled || scaleReading}
+                          className="mt-2 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
+                        >
+                          {scaleReading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Scale className="h-3.5 w-3.5" />
+                          )}
+                          Leer balanza MOCK
+                        </button>
+                      ) : null}
                       {item.pricingStatus === "PENDING" ? (
                         <p className="mt-2 flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1475,8 +2097,9 @@ export const PosScreen = () => {
                       </div>
                     ) : null}
                   </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
 
             {/* Summary */}
@@ -1677,6 +2300,115 @@ export const PosScreen = () => {
                 <Search className="pointer-events-none absolute left-3 top-[38px] h-4 w-4 text-slate-400" />
               </div>
 
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Scanner MOCK/SIMULATOR
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                          scannerMockStatus === "connected"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+                            : scannerMockStatus === "error"
+                              ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                              : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                        }`}
+                      >
+                        {scannerMockEnabled
+                          ? scannerMockStatus === "error"
+                            ? "Desconectado"
+                            : "Escuchando scanner.code.read"
+                          : "Desactivado por feature flag"}
+                      </span>
+                    </div>
+                    <Input
+                      label="Código scanner MOCK"
+                      placeholder="SKU, codigo de barras o referencia"
+                      value={scannerMockCode}
+                      onChange={(event) => setScannerMockCode(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void handleSimulateScannerRead();
+                        }
+                      }}
+                      disabled={!scannerMockEnabled}
+                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    isLoading={scannerSimulating}
+                    disabled={!scannerMockEnabled || !scannerMockCode.trim()}
+                    onClick={() => void handleSimulateScannerRead()}
+                    className="xl:mb-0.5"
+                  >
+                    <Search className="h-4 w-4" />
+                    Simular scanner
+                  </Button>
+                </div>
+                {scannerLastCode || scannerLastResult ? (
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+                    {scannerLastCode ? <span>Ultimo codigo: {scannerLastCode}</span> : null}
+                    {scannerLastResult ? <span>{scannerLastResult}</span> : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        <Scale className="h-4 w-4" />
+                        Balanza MOCK
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                          scaleMockStatus === "ready"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+                            : scaleMockStatus === "reading"
+                              ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+                              : scaleMockStatus === "error"
+                                ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                                : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                        }`}
+                      >
+                        {scaleMockEnabled
+                          ? scaleMockStatus === "reading"
+                            ? "Leyendo"
+                            : scaleMockStatus === "error"
+                              ? "Error"
+                              : "Listo"
+                          : "Desactivado por feature flag"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+                      <span>
+                        Producto pesable:{" "}
+                        {firstWeighableCartProduct?.name ?? "ninguno en carrito"}
+                      </span>
+                      {scaleLastWeight ? <span>Ultimo peso: {scaleLastWeight}</span> : null}
+                      {scaleLastResult ? <span>{scaleLastResult}</span> : null}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    isLoading={scaleReading}
+                    disabled={!scaleMockEnabled || scaleReading}
+                    onClick={() => void handleReadScaleFromCart()}
+                    className="xl:mb-0.5"
+                  >
+                    <Scale className="h-4 w-4" />
+                    Leer balanza MOCK
+                  </Button>
+                </div>
+              </div>
+
               {/* Filter Chips */}
               <div className="flex flex-wrap gap-2">
                 {(Object.keys(categoryLabels) as CategoryKey[]).map((category) => {
@@ -1718,12 +2450,18 @@ export const PosScreen = () => {
                 <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                   {filteredProducts.map((product) => {
                     const stock = Number(product.stock ?? 0);
+                    const productSaleType = getProductSaleType(product);
+                    const requiresScale = productSaleType === "WEIGHT";
                     return (
                       <button
                         key={product.id}
                         type="button"
-                        onClick={() => addToCart(product)}
-                        disabled={stock <= 0 || !canCreate}
+                        onClick={() => handleProductCardAction(product)}
+                        disabled={
+                          stock <= 0 ||
+                          !canCreate ||
+                          (requiresScale && (!scaleMockEnabled || scaleReading))
+                        }
                         className="group overflow-hidden rounded-[26px] border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:scale-100 dark:border-slate-800 dark:bg-slate-900"
                       >
                         <div className="relative overflow-hidden border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_52%),linear-gradient(135deg,_#f8fafc,_#e2e8f0)] p-5 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.28),_transparent_50%),linear-gradient(135deg,_#111827,_#1f2937)]">
@@ -1743,6 +2481,16 @@ export const PosScreen = () => {
                                   : `Stock ${stock}`}
                             </span>
                           </div>
+                          <span
+                            className={`mt-4 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                              productSaleType === "UNIT"
+                                ? "border-slate-200 bg-white/80 text-slate-700 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200"
+                                : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+                            }`}
+                          >
+                            {productSaleTypeLabels[productSaleType]} /{" "}
+                            {product.measurementUnit ?? (productSaleType === "UNIT" ? "UND" : "KG")}
+                          </span>
                         </div>
                         <div className="space-y-3 p-5">
                           <div>
@@ -1763,7 +2511,7 @@ export const PosScreen = () => {
                               </p>
                             </div>
                             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition-colors group-hover:bg-slate-900 group-hover:text-white dark:bg-slate-800 dark:text-slate-200 dark:group-hover:bg-white dark:group-hover:text-slate-900">
-                              +1 al carrito
+                              {requiresScale ? "Leer balanza" : "+1 al carrito"}
                             </span>
                           </div>
                         </div>

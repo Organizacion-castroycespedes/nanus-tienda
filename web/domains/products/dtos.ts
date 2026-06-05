@@ -2,6 +2,10 @@ export type ProductOperationalStatus = "ACTIVE" | "INACTIVE" | "BLOCKED" | "DISC
 
 export type ProductRotationClass = "HIGH" | "MEDIUM" | "LOW" | "NO_MOVEMENT";
 
+export type ProductSaleType = "UNIT" | "WEIGHT" | "BOTH";
+
+export type ProductMeasurementUnit = "UND" | "KG" | "LB" | "G" | "OZ";
+
 export type ProductBarcodeType =
   | "UNIT"
   | "PACKAGE"
@@ -21,11 +25,28 @@ export type ProductBarcode = {
   updatedAt: string;
 };
 
+export type ProductBarcodeSummary = {
+  code: string;
+  barcode: string;
+  barcodeType: ProductBarcodeType;
+  isPrimary: boolean;
+  isActive: boolean;
+};
+
+export type ProductUnitSummary = {
+  id?: string;
+  code?: string | null;
+  name?: string | null;
+  symbol?: string | null;
+  abbreviation?: string | null;
+};
+
 export type ProductResponse = {
   id: string;
   tenantId: string;
   tenantName?: string;
   unitId: string;
+  unit?: ProductUnitSummary | string | null;
   taxId: string | null;
   name: string;
   description: string | null;
@@ -40,6 +61,8 @@ export type ProductResponse = {
   requiresExpiration?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass | null;
+  saleType?: ProductSaleType;
+  measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
   createdAt: string;
@@ -48,6 +71,18 @@ export type ProductResponse = {
   branchName?: string | null;
   terminalName?: string | null;
   stock?: number;
+  isWeighable?: boolean;
+  weighable?: boolean;
+  soldByWeight?: boolean;
+  unidad?: ProductUnitSummary | string | null;
+  unitCode?: string | null;
+  unitName?: string | null;
+  unitSymbol?: string | null;
+  unitAbbreviation?: string | null;
+  productType?: string | null;
+  primaryBarcode?: string | null;
+  barcodeCodes?: string[];
+  barcodes?: ProductBarcodeSummary[];
 };
 
 export type ProductPriceHistoryStatus =

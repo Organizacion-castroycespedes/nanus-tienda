@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
+import { ProductBarcodeEntity } from "../entities/product-barcode.entity";
 import { ProductEntity, type ProductProps } from "../entities/product.entity";
 import { ProductService } from "./product.service";
 
@@ -38,10 +39,38 @@ const buildProduct = (
     ...overrides,
   });
 
-const buildService = (currentProduct = buildProduct()) => {
+const buildBarcode = (
+  overrides: Partial<ConstructorParameters<typeof ProductBarcodeEntity>[0]> = {}
+) =>
+  ProductBarcodeEntity.create({
+    id: randomUUID(),
+    tenantId,
+    productId,
+    barcode: "46564567",
+    barcodeType: "UNIT",
+    isPrimary: false,
+    isActive: true,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  });
+
+type BuildServiceOptions = {
+  products?: ProductEntity[];
+  barcodes?: ProductBarcodeEntity[];
+  stockByProduct?: Record<string, number>;
+  barcodeProductIdCalls?: string[][];
+};
+
+const buildService = (
+  currentProduct = buildProduct(),
+  options: BuildServiceOptions = {}
+) => {
+  const products = options.products ?? [currentProduct];
   const repository = {
     findBySku: async () => null,
     create: async (product: ProductProps) => ProductEntity.create(product),
+    findAllByTenant: async () => products,
     findById: async () => currentProduct,
     update: async (
       id: string,
@@ -58,7 +87,19 @@ const buildService = (currentProduct = buildProduct()) => {
   };
 
   const stockMovementService = {
-    getStockByProduct: async () => ({ stock: 0 }),
+    getStockByProduct: async (requestedProductId: string) => ({
+      stock: options.stockByProduct?.[requestedProductId] ?? 0,
+    }),
+  };
+
+  const productBarcodeRepository = {
+    findActiveByProductIds: async (
+      _tenantId: string,
+      requestedProductIds: string[]
+    ) => {
+      options.barcodeProductIdCalls?.push(requestedProductIds);
+      return options.barcodes ?? [];
+    },
   };
 
   const db = {
@@ -71,6 +112,7 @@ const buildService = (currentProduct = buildProduct()) => {
   return new ProductService(
     repository as any,
     stockMovementService as any,
+    productBarcodeRepository as any,
     db as any
   );
 };
@@ -128,6 +170,9 @@ const buildPriceChangeService = (
   const stockMovementService = {
     getStockByProduct: async () => ({ stock: 0 }),
   };
+  const productBarcodeRepository = {
+    findActiveByProductIds: async () => [],
+  };
   const client = {
     query: async (sql: string) => {
       calls.push(sql);
@@ -143,6 +188,7 @@ const buildPriceChangeService = (
     service: new ProductService(
       repository as any,
       stockMovementService as any,
+      productBarcodeRepository as any,
       db as any
     ),
     calls,
@@ -162,8 +208,142 @@ describe("ProductService enriched product rules", () => {
     assert.equal(product.requiresExpiration, false);
     assert.equal(product.operationalStatus, "ACTIVE");
     assert.equal(product.rotationClass, null);
+    assert.equal(product.saleType, "UNIT");
+    assert.equal(product.measurementUnit, "UND");
     assert.equal(product.minStock, null);
     assert.equal(product.maxStock, null);
+  });
+
+  it("creates weighted products with explicit sale model", async () => {
+    const service = buildService();
+
+    const product = await service.createProduct({
+      ...baseCreateInput(),
+      saleType: "WEIGHT",
+      measurementUnit: "KG",
+    });
+
+    assert.equal(product.saleType, "WEIGHT");
+    assert.equal(product.measurementUnit, "KG");
+  });
+
+  it("creates mixed unit and weight products with explicit sale model", async () => {
+    const service = buildService();
+
+    const product = await service.createProduct({
+      ...baseCreateInput(),
+      saleType: "BOTH",
+      measurementUnit: "KG",
+    });
+
+    assert.equal(product.saleType, "BOTH");
+    assert.equal(product.measurementUnit, "KG");
+  });
+
+  it("returns product by id with formal sale model fields", async () => {
+    const current = buildProduct({ saleType: "WEIGHT", measurementUnit: "KG" });
+    const service = buildService(current);
+
+    const product = await service.getProductById(current.id, tenantId);
+
+    assert.equal(product.saleType, "WEIGHT");
+    assert.equal(product.measurementUnit, "KG");
+  });
+
+  it("lists products with formal sale model fields for POS catalog", async () => {
+    const current = buildProduct({ saleType: "BOTH", measurementUnit: "KG" });
+    const service = buildService(current);
+
+    const [listedProduct] = (await service.listProducts(
+      tenantId,
+      randomUUID()
+    )) as any[];
+
+    assert.equal(listedProduct.saleType, "BOTH");
+    assert.equal(listedProduct.measurementUnit, "KG");
+  });
+
+  it("lists products with active barcode data for POS scanner matching", async () => {
+    const product = buildProduct();
+    const service = buildService(product, {
+      stockByProduct: { [product.id]: 8 },
+      barcodes: [
+        buildBarcode({
+          productId: product.id,
+          barcode: "46564567",
+          isPrimary: true,
+        }),
+        buildBarcode({
+          productId: product.id,
+          barcode: "ALT-001",
+          barcodeType: "INTERNAL",
+        }),
+        buildBarcode({
+          productId: product.id,
+          barcode: "INACTIVE-001",
+          isActive: false,
+        }),
+      ],
+    });
+
+    const [listedProduct] = (await service.listProducts(
+      tenantId,
+      randomUUID()
+    )) as any[];
+
+    assert.equal(listedProduct.stock, 8);
+    assert.equal(listedProduct.primaryBarcode, "46564567");
+    assert.deepEqual(listedProduct.barcodeCodes, ["46564567", "ALT-001"]);
+    assert.deepEqual(
+      listedProduct.barcodes.map((barcode: { code: string }) => barcode.code),
+      ["46564567", "ALT-001"]
+    );
+    assert.equal(listedProduct.barcodes[0].isPrimary, true);
+  });
+
+  it("lists products without barcodes using empty barcode arrays", async () => {
+    const service = buildService(buildProduct(), { barcodes: [] });
+
+    const [listedProduct] = (await service.listProducts(
+      tenantId,
+      randomUUID()
+    )) as any[];
+
+    assert.equal(listedProduct.primaryBarcode, null);
+    assert.deepEqual(listedProduct.barcodeCodes, []);
+    assert.deepEqual(listedProduct.barcodes, []);
+  });
+
+  it("loads barcodes for all listed products with one repository call", async () => {
+    const firstProduct = buildProduct({ id: randomUUID(), sku: "SKU-ONE" });
+    const secondProduct = buildProduct({ id: randomUUID(), sku: "SKU-TWO" });
+    const barcodeProductIdCalls: string[][] = [];
+    const service = buildService(firstProduct, {
+      products: [firstProduct, secondProduct],
+      barcodes: [
+        buildBarcode({
+          productId: firstProduct.id,
+          barcode: "46564567",
+          isPrimary: true,
+        }),
+        buildBarcode({
+          productId: secondProduct.id,
+          barcode: "SECOND-001",
+          isPrimary: true,
+        }),
+      ],
+      barcodeProductIdCalls,
+    });
+
+    const result = (await service.listProducts(tenantId, randomUUID())) as any[];
+
+    assert.equal(barcodeProductIdCalls.length, 1);
+    assert.deepEqual(barcodeProductIdCalls[0], [
+      firstProduct.id,
+      secondProduct.id,
+    ]);
+    assert.equal(result[0].primaryBarcode, "46564567");
+    assert.equal(result[1].primaryBarcode, "SECOND-001");
   });
 
   it("rejects perishable products without lot or expiration control", async () => {
@@ -246,6 +426,60 @@ describe("ProductService enriched product rules", () => {
     );
   });
 
+  it("rejects invalid sale type", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          saleType: "PACK" as any,
+        }),
+      /saleType is invalid/
+    );
+  });
+
+  it("rejects invalid measurement unit", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          measurementUnit: "TON" as any,
+        }),
+      /measurementUnit is invalid/
+    );
+  });
+
+  it("rejects unit products with weight measurement unit", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          saleType: "UNIT",
+          measurementUnit: "KG",
+        }),
+      /UNIT products must use UND/
+    );
+  });
+
+  it("rejects weighted products without weight measurement unit", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          saleType: "WEIGHT",
+          measurementUnit: "UND",
+        }),
+      /WEIGHT or BOTH products must use KG, LB, G or OZ/
+    );
+  });
+
   it("rejects direct product price update through updateProduct", async () => {
     const service = buildService();
 
@@ -309,6 +543,19 @@ describe("ProductService enriched product rules", () => {
     assert.equal(updated.name, "Producto sin cambio de precio");
     assert.equal(updated.price, 100);
     assert.equal(updated.cost, 60);
+  });
+
+  it("updates formal sale model fields without touching price", async () => {
+    const service = buildService();
+
+    const updated = await service.updateProduct(productId, tenantId, {
+      saleType: "WEIGHT",
+      measurementUnit: "KG",
+    });
+
+    assert.equal(updated.saleType, "WEIGHT");
+    assert.equal(updated.measurementUnit, "KG");
+    assert.equal(updated.price, 100);
   });
 
   it("changes product price and stores applied history", async () => {

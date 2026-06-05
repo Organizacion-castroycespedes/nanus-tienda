@@ -5,9 +5,11 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import type {
+  ProductMeasurementUnit,
   ProductOperationalStatus,
   ProductResponse,
   ProductRotationClass,
+  ProductSaleType,
 } from "../../../domains/products/dtos";
 import {
   getTaxes,
@@ -50,6 +52,8 @@ type ProductFormValues = {
   requiresExpiration: boolean;
   operationalStatus: ProductOperationalStatus;
   rotationClass: "" | ProductRotationClass;
+  saleType: ProductSaleType;
+  measurementUnit: ProductMeasurementUnit;
   minStock: string;
   maxStock: string;
 };
@@ -78,6 +82,8 @@ const createInitialValues = (product?: ProductResponse | null): ProductFormValue
   requiresExpiration: product?.requiresExpiration ?? false,
   operationalStatus: product?.operationalStatus ?? "ACTIVE",
   rotationClass: product?.rotationClass ?? "",
+  saleType: product?.saleType ?? "UNIT",
+  measurementUnit: product?.measurementUnit ?? "UND",
   minStock:
     product?.minStock === null || product?.minStock === undefined ? "" : String(product.minStock),
   maxStock:
@@ -100,6 +106,23 @@ const rotationClassOptions: Array<{ value: ProductRotationClass; label: string }
   { value: "MEDIUM", label: "Media" },
   { value: "LOW", label: "Baja" },
   { value: "NO_MOVEMENT", label: "Sin movimiento" },
+];
+
+const saleTypeOptions: Array<{ value: ProductSaleType; label: string }> = [
+  { value: "UNIT", label: "Unidad" },
+  { value: "WEIGHT", label: "Peso" },
+  { value: "BOTH", label: "Unidad y peso" },
+];
+
+const measurementUnitOptions: Array<{
+  value: ProductMeasurementUnit;
+  label: string;
+}> = [
+  { value: "UND", label: "UND - Unidad" },
+  { value: "KG", label: "KG - Kilogramo" },
+  { value: "LB", label: "LB - Libra" },
+  { value: "G", label: "G - Gramo" },
+  { value: "OZ", label: "OZ - Onza" },
 ];
 
 export const ProductForm = ({
@@ -200,6 +223,36 @@ export const ProductForm = ({
     }));
   };
 
+  const setSaleModelValue = <K extends keyof ProductFormValues>(
+    field: K,
+    value: ProductFormValues[K]
+  ) => {
+    setValues((prev) => {
+      const next = { ...prev, [field]: value };
+
+      if (field === "saleType") {
+        if (value === "UNIT") {
+          next.measurementUnit = "UND";
+        }
+        if (
+          (value === "WEIGHT" || value === "BOTH") &&
+          next.measurementUnit === "UND"
+        ) {
+          next.measurementUnit = "KG";
+        }
+      }
+
+      return next;
+    });
+    setErrors((prev) => ({
+      ...prev,
+      [field]: undefined,
+      saleType: undefined,
+      measurementUnit: undefined,
+      submit: undefined,
+    }));
+  };
+
   const selectedTax = taxOptions.find((tax) => tax.id === values.taxId) ?? null;
 
   const validate = () => {
@@ -229,6 +282,19 @@ export const ProductForm = ({
     }
     if (values.isPerishable && !values.requiresLot && !values.requiresExpiration) {
       nextErrors.isPerishable = "Marca lote o vencimiento para productos perecederos.";
+    }
+    if (!values.saleType) {
+      nextErrors.saleType = "Debes seleccionar el modelo de venta.";
+    }
+    if (!values.measurementUnit) {
+      nextErrors.measurementUnit = "Debes seleccionar la unidad comercial.";
+    }
+    if (values.saleType === "UNIT" && values.measurementUnit !== "UND") {
+      nextErrors.measurementUnit = "Productos por unidad deben usar UND.";
+    }
+    if (values.saleType !== "UNIT" && values.measurementUnit === "UND") {
+      nextErrors.measurementUnit =
+        "Productos por peso deben usar KG, LB, G u OZ.";
     }
     if (!isOptionalNumber(values.minStock)) {
       nextErrors.minStock = "El stock minimo debe ser numerico.";
@@ -271,6 +337,8 @@ export const ProductForm = ({
       requiresExpiration: values.requiresExpiration,
       operationalStatus: values.operationalStatus,
       rotationClass: values.rotationClass || null,
+      saleType: values.saleType,
+      measurementUnit: values.measurementUnit,
       minStock: optionalNumber(values.minStock),
       maxStock: optionalNumber(values.maxStock),
     };
@@ -431,6 +499,62 @@ export const ProductForm = ({
                     : "El impuesto no esta incluido en el precio"}
                 </p>
               </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-1">
+            <Select
+              label="Modelo de venta"
+              required
+              value={values.saleType}
+              onChange={(event) =>
+                setSaleModelValue(
+                  "saleType",
+                  event.target.value as ProductSaleType
+                )
+              }
+              hint="Unidad no usa balanza. Peso usa balanza. Mixto permite ambos modos en POS."
+            >
+              {saleTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            {errors.saleType ? (
+              <p className="text-xs text-rose-600">{errors.saleType}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1">
+            <Select
+              label="Unidad comercial"
+              required
+              value={values.measurementUnit}
+              onChange={(event) =>
+                setSaleModelValue(
+                  "measurementUnit",
+                  event.target.value as ProductMeasurementUnit
+                )
+              }
+              hint="Para peso usa KG, LB, G u OZ."
+            >
+              {measurementUnitOptions.map((option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  disabled={
+                    values.saleType === "UNIT"
+                      ? option.value !== "UND"
+                      : option.value === "UND"
+                  }
+                >
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+            {errors.measurementUnit ? (
+              <p className="text-xs text-rose-600">{errors.measurementUnit}</p>
             ) : null}
           </div>
         </div>

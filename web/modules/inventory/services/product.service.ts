@@ -2,11 +2,13 @@ import { apiClient } from "../../../lib/http";
 import type {
   ProductBarcode,
   ProductBarcodeType,
+  ProductMeasurementUnit,
   ProductPriceChangeResponse,
   ProductPriceHistoryEntry,
   ProductOperationalStatus,
   ProductResponse,
   ProductRotationClass,
+  ProductSaleType,
 } from "../../../domains/products/dtos";
 
 export type GetProductsParams = {
@@ -37,6 +39,8 @@ export type CreateProductPayload = {
   requiresExpiration?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass | null;
+  saleType?: ProductSaleType;
+  measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
 };

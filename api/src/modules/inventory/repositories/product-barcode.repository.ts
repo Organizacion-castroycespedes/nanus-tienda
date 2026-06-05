@@ -90,6 +90,32 @@ export class ProductBarcodeRepository {
     return (result.rows ?? []).map((row) => this.mapRowToEntity(row));
   }
 
+  async findActiveByProductIds(
+    tenantId: string,
+    productIds: string[],
+    client?: PoolClient
+  ): Promise<ProductBarcodeEntity[]> {
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const result = await this.query<ProductBarcodeRow>(
+      `
+      SELECT
+        ${this.selectColumns}
+      FROM product_barcodes
+      WHERE tenant_id = $1
+        AND product_id = ANY($2::uuid[])
+        AND is_active = true
+      ORDER BY product_id, is_primary DESC, created_at DESC
+      `,
+      [tenantId, productIds],
+      client
+    );
+
+    return (result.rows ?? []).map((row) => this.mapRowToEntity(row));
+  }
+
   async findById(
     tenantId: string,
     barcodeId: string,

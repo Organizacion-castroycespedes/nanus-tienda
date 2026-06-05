@@ -26,11 +26,26 @@ export const PRODUCT_ROTATION_CLASSES = [
   "NO_MOVEMENT",
 ] as const;
 
+export const PRODUCT_SALE_TYPES = ["UNIT", "WEIGHT", "BOTH"] as const;
+
+export const PRODUCT_MEASUREMENT_UNITS = [
+  "UND",
+  "KG",
+  "LB",
+  "G",
+  "OZ",
+] as const;
+
 export type ProductOperationalStatus =
   (typeof PRODUCT_OPERATIONAL_STATUSES)[number];
 
 export type ProductRotationClass =
   (typeof PRODUCT_ROTATION_CLASSES)[number] | null;
+
+export type ProductSaleType = (typeof PRODUCT_SALE_TYPES)[number];
+
+export type ProductMeasurementUnit =
+  (typeof PRODUCT_MEASUREMENT_UNITS)[number];
 
 export type ProductProps = {
   id: string;
@@ -52,6 +67,8 @@ export type ProductProps = {
   requiresExpiration?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
+  saleType?: ProductSaleType;
+  measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
   createdAt: Date;
@@ -78,6 +95,8 @@ export class ProductEntity {
   readonly requiresExpiration: boolean;
   readonly operationalStatus: ProductOperationalStatus;
   readonly rotationClass: ProductRotationClass;
+  readonly saleType: ProductSaleType;
+  readonly measurementUnit: ProductMeasurementUnit;
   readonly minStock: number | null;
   readonly maxStock: number | null;
   readonly createdAt: Date;
@@ -127,6 +146,26 @@ export class ProductEntity {
       throw new Error("rotationClass is invalid");
     }
     if (
+      props.saleType !== undefined &&
+      !PRODUCT_SALE_TYPES.includes(props.saleType)
+    ) {
+      throw new Error("saleType is invalid");
+    }
+    if (
+      props.measurementUnit !== undefined &&
+      !PRODUCT_MEASUREMENT_UNITS.includes(props.measurementUnit)
+    ) {
+      throw new Error("measurementUnit is invalid");
+    }
+    const saleType = props.saleType ?? "UNIT";
+    const measurementUnit = props.measurementUnit ?? "UND";
+    if (saleType === "UNIT" && measurementUnit !== "UND") {
+      throw new Error("UNIT products must use UND measurementUnit");
+    }
+    if (saleType !== "UNIT" && measurementUnit === "UND") {
+      throw new Error("weighted products must use a weight measurementUnit");
+    }
+    if (
       props.minStock !== undefined &&
       props.minStock !== null &&
       props.maxStock !== undefined &&
@@ -167,6 +206,8 @@ export class ProductEntity {
     this.requiresExpiration = props.requiresExpiration ?? false;
     this.operationalStatus = props.operationalStatus ?? "ACTIVE";
     this.rotationClass = props.rotationClass ?? null;
+    this.saleType = saleType;
+    this.measurementUnit = measurementUnit;
     this.minStock = props.minStock ?? null;
     this.maxStock = props.maxStock ?? null;
     this.createdAt = props.createdAt;

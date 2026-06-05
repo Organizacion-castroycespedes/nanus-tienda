@@ -5,9 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Barcode, DollarSign, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { listProducts } from "../../../../domains/products/api";
 import type {
+  ProductMeasurementUnit,
   ProductOperationalStatus,
   ProductResponse,
   ProductRotationClass,
+  ProductSaleType,
 } from "../../../../domains/products/dtos";
 import { Button } from "../../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../../components/design-system/confirm-dialog";
@@ -88,9 +90,32 @@ const rotationLabels: Record<ProductRotationClass, string> = {
   NO_MOVEMENT: "Sin movimiento",
 };
 
+const saleTypeLabels: Record<ProductSaleType, string> = {
+  UNIT: "Unidad",
+  WEIGHT: "Peso",
+  BOTH: "Unidad/peso",
+};
+
+const measurementUnitLabels: Record<ProductMeasurementUnit, string> = {
+  UND: "UND",
+  KG: "KG",
+  LB: "LB",
+  G: "G",
+  OZ: "OZ",
+};
+
 const getProductBadges = (product: ProductResponse): ProductBadge[] => {
   const badges: ProductBadge[] = [];
   const operationalStatus = product.operationalStatus ?? (product.isActive ? "ACTIVE" : "INACTIVE");
+  const saleType = product.saleType ?? "UNIT";
+
+  badges.push({
+    label: saleTypeLabels[saleType],
+    className:
+      saleType === "UNIT"
+        ? "border-slate-200 bg-slate-100 text-slate-700"
+        : "border-sky-200 bg-sky-50 text-sky-700",
+  });
 
   if (!product.isActive || operationalStatus !== "ACTIVE") {
     badges.push({
@@ -130,7 +155,7 @@ const getProductBadges = (product: ProductResponse): ProductBadge[] => {
     });
   }
 
-  return badges.slice(0, 4);
+  return badges.slice(0, 5);
 };
 
 const ProductsPage = () => {
@@ -730,6 +755,7 @@ const ProductsPage = () => {
                 <th className="px-4 py-3 font-medium">SKU</th>
                 <th className="px-4 py-3 font-medium">Sucursal</th>
                 <th className="px-4 py-3 font-medium">Terminal</th>
+                <th className="px-4 py-3 font-medium">Venta</th>
                 <th className="px-4 py-3 font-medium">Precio</th>
                 <th className="px-4 py-3 font-medium">Stock</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
@@ -738,19 +764,19 @@ const ProductsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     Cargando productos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar productos.
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                     No hay productos para mostrar.
                   </td>
                 </tr>
@@ -780,6 +806,10 @@ const ProductsPage = () => {
                       <td className="px-4 py-3 text-slate-700">{product.sku}</td>
                       <td className="px-4 py-3 text-slate-700">{product.branchName ?? "-"}</td>
                       <td className="px-4 py-3 text-slate-700">{product.terminalName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {saleTypeLabels[product.saleType ?? "UNIT"]} /{" "}
+                        {measurementUnitLabels[product.measurementUnit ?? "UND"]}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">
                         {formatCurrency(product.price)}
                       </td>

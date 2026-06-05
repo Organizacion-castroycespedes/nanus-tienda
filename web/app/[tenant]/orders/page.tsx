@@ -23,7 +23,10 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { OrderDeliverForm } from "../../../modules/inventory/components/OrderDeliverForm";
 import { OrderForm } from "../../../modules/inventory/components/OrderForm";
 import { OrderInvoiceForm } from "../../../modules/inventory/components/OrderInvoiceForm";
-import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
+import {
+  DocumentPaymentForm,
+  type DocumentPaymentSuccessContext,
+} from "../../../modules/finance/components/DocumentPaymentForm";
 import {
   cancelOrder,
   getOrderById,
@@ -35,6 +38,13 @@ import { useAppSelector } from "../../../store/hooks";
 import { PdfPreviewModal } from "../../../modules/reporteria/components/PdfPreviewModal";
 import { getOrderSaleTicket as getOrderTicket } from "../../../modules/reporteria/services/reporting.service";
 import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
+import {
+  buildOrderPeripheralFeedbackMessage,
+  runOrderPeripheralOperations,
+  type OrderPeripheralContext,
+  type OrderPeripheralOperationOptions,
+  type OrderPeripheralPayment,
+} from "../../../domains/peripherals/order-integration";
 
 type OrderFilters = {
   query: string;
@@ -70,7 +80,9 @@ const formatDate = (value: string) =>
 
 const OrdersPage = () => {
   const confirm = useConfirm();
-  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? null);
+  const authUser = useAppSelector((state) => state.auth.user);
+  const authRole = useAppSelector((state) => state.auth.role ?? null);
+  const role = authUser?.role ?? authRole;
   const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(defaultFilters);
@@ -103,6 +115,58 @@ const OrdersPage = () => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  const buildOrderPeripheralContext = useCallback(
+    (
+      order: OrderResponse | OrderDetailResponse,
+      payments: OrderPeripheralPayment[] = []
+    ): OrderPeripheralContext => {
+      const detailItems = "items" in order ? order.items : [];
+      const total = Number(order.total);
+
+      return {
+        orderId: order.id,
+        orderNumber: order.id,
+        documentNumber: order.id,
+        date: order.createdAt,
+        businessName: order.tenantName ?? authUser?.tenantName ?? "Manus POS",
+        branchName: order.branchName ?? authUser?.branchName ?? undefined,
+        cashier: authUser?.name ?? authUser?.email ?? undefined,
+        customerName: order.customerName ?? "Cliente",
+        status: order.status,
+        items: detailItems.map((item) => ({
+          name: item.productName ?? item.productId,
+          quantity: Number(item.deliveredQuantity || item.orderedQuantity),
+          unitPrice: Number(item.price),
+          total: Number(item.subtotal),
+        })),
+        subtotal: total,
+        taxes: 0,
+        discounts: 0,
+        total,
+        balanceDue: Number(order.balanceDue),
+        payments,
+      };
+    },
+    [authUser]
+  );
+
+  const showOrderPeripheralFeedback = useCallback(
+    async (
+      context: OrderPeripheralContext,
+      options?: OrderPeripheralOperationOptions
+    ) => {
+      const feedback = await runOrderPeripheralOperations(context, options);
+      const message = buildOrderPeripheralFeedbackMessage(feedback);
+
+      if (!message) {
+        return;
+      }
+
+      showToast(message.message, message.variant === "warning" ? "warning" : "success");
+    },
+    [showToast]
+  );
 
   const closeForms = useCallback(() => {
     setFormMode(null);
@@ -213,9 +277,16 @@ const OrdersPage = () => {
     setPage(0);
   };
 
-  const refreshAfterMutation = async (message: string) => {
+  const refreshAfterMutation = async (
+    message: string,
+    peripheralContext?: OrderPeripheralContext,
+    peripheralOptions?: OrderPeripheralOperationOptions
+  ) => {
     closeForms();
     showToast(message, "success");
+    if (peripheralContext) {
+      void showOrderPeripheralFeedback(peripheralContext, peripheralOptions);
+    }
     if (hasSearched) {
       await loadOrders();
     }
@@ -408,7 +479,9 @@ const OrdersPage = () => {
         <OrderForm
           mode="create"
           onCancel={closeForms}
-          onSuccess={() => void refreshAfterMutation("Pedido creado correctamente.")}
+          onSuccess={(_response, peripheralContext) =>
+            void refreshAfterMutation("Pedido creado correctamente.", peripheralContext)
+          }
         />
       ) : null}
 
@@ -422,7 +495,9 @@ const OrdersPage = () => {
             mode="edit"
             order={selectedOrder}
             onCancel={closeForms}
-            onSuccess={() => void refreshAfterMutation("Pedido actualizado correctamente.")}
+            onSuccess={(_response, peripheralContext) =>
+              void refreshAfterMutation("Pedido actualizado correctamente.", peripheralContext)
+            }
           />
         ) : null
       ) : null}
@@ -431,8 +506,14 @@ const OrdersPage = () => {
         <OrderDeliverForm
           orderId={selectedOrderId}
           onCancel={closeForms}
-          onSuccess={() =>
+          onSuccess={(_response, peripheralContext) =>
             void (async () => {
+              if (peripheralContext) {
+                void showOrderPeripheralFeedback(peripheralContext, {
+                  printTicket: true,
+                  openCashDrawer: false,
+                });
+              }
               await showActionResult(
                 "Entrega registrada",
                 "La entrega del pedido fue guardada correctamente."
@@ -472,7 +553,39 @@ const OrdersPage = () => {
           balanceDue={selectedPaymentOrder.balanceDue}
           paymentStatus={selectedPaymentOrder.paymentStatus}
           onCancel={closeForms}
-          onSuccess={() => void refreshAfterMutation("Abono registrado correctamente.")}
+          onSuccess={(paymentContext?: DocumentPaymentSuccessContext) =>
+            void (async () => {
+              const paymentOrder = selectedPaymentOrder;
+              closeForms();
+              showToast("Abono registrado correctamente.", "success");
+
+              if (paymentContext && paymentOrder) {
+                const payments = paymentContext.payments.map((payment) => ({
+                  paymentMethodId: payment.paymentMethodId,
+                  methodName: payment.methodName,
+                  methodType: payment.methodType,
+                  amount: payment.amount,
+                }));
+                let orderForTicket: OrderResponse | OrderDetailResponse = paymentOrder;
+
+                try {
+                  orderForTicket = await getOrderById(paymentOrder.id);
+                } catch {
+                  // Keep payment flow non-blocking if detail reload fails.
+                }
+
+                const peripheralContext = buildOrderPeripheralContext(
+                  orderForTicket,
+                  payments
+                );
+                void showOrderPeripheralFeedback(peripheralContext);
+              }
+
+              if (hasSearched) {
+                await loadOrders();
+              }
+            })()
+          }
         />
       ) : null}
 

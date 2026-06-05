@@ -189,6 +189,20 @@ JOIN (
       '{}'::jsonb,
       '2026-02-21 07:13:01.113965-06'::timestamptz,
       '2026-02-21 07:19:35.830178-06'::timestamptz
+    ),
+    (
+      '2c58ef7e-958d-47b5-a83d-0cc76c679c7d'::uuid,
+      'POS_PERIPHERALS',
+      'peripherals',
+      'Perifericos POS',
+      '/{tenant}/admin/peripherals',
+      'Printer',
+      40,
+      true,
+      false,
+      '{"permission": "peripherals.manage"}'::jsonb,
+      '2026-06-04 00:00:00-05'::timestamptz,
+      '2026-06-04 00:00:00-05'::timestamptz
     )
 ) AS m(
   id,
