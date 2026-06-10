@@ -78,6 +78,7 @@ Confirmaciones de objetivo:
 - Migraciones obligatorias: `V053`, `V054`.
 - Seeds minimos: tenant/sucursal, roles, usuarios QA, menu, permisos/RBAC, consumidor final, metodos de pago, terminal POS y peripheral settings MOCK.
 - Fixture `migrations/20260505_reporting_pos_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
+- Patch legacy `migrations/20260505_sync_local_to_aws_reporting_and_sales.sql`: obligatorio, pero debe ser idempotente en DB limpia. Validar que sus `DROP FUNCTION` usen `IF EXISTS`.
 
 ## Validaciones previas
 

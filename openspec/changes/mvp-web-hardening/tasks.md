@@ -246,6 +246,24 @@ Estado: `QA_BOOTSTRAP_FIXTURE_CLASSIFIED`.
 - [x] 16. Ejecutar `git status --short`.
 - [x] 17. Confirmar que no se reintento bootstrap, no se ejecutaron migraciones, no se borro `manus_tienda_qa`, no se toco `manus_tienda`, no se toco PRD, no se desplego y no se reinicio servidor.
 
+## MVP-00.4.7B - Bootstrap Legacy Reporting Patch Fix
+
+Estado: `QA_BOOTSTRAP_LEGACY_PATCH_FIXED`.
+
+- [x] 1. Analizar `scripts/database/migrations/20260505_sync_local_to_aws_reporting_and_sales.sql`.
+- [x] 2. Confirmar fallo por `DROP FUNCTION` sin `IF EXISTS`.
+- [x] 3. Buscar otros `DROP FUNCTION` sin `IF EXISTS` en el mismo archivo.
+- [x] 4. Confirmar que solo existia un `DROP FUNCTION` en el archivo.
+- [x] 5. Cambiar `DROP FUNCTION` problematico a `DROP FUNCTION IF EXISTS`.
+- [x] 6. Documentar que `20260505_sync_local_to_aws_reporting_and_sales.sql` es patch legacy obligatorio pero debe ser idempotente.
+- [x] 7. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 8. Actualizar `docs/runbook-exec-bootstrap-manus-tienda-qa.md`.
+- [x] 9. Crear `docs/evidencia-qa-bootstrap-legacy-reporting-patch-fix-mvp-00-4-7B.md`.
+- [x] 10. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 11. Ejecutar `git diff --check`.
+- [x] 12. Ejecutar `git status --short`.
+- [x] 13. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco `manus_tienda`, no se borro `manus_tienda_qa`, no se desplego y no se reinicio servidor.
+
 ## MVP-01 - QA Operativo Integral
 
 - [ ] 1. Definir ambiente QA local/controlado y datos representativos.

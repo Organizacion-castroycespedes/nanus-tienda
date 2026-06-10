@@ -148,6 +148,10 @@ Confirmacion:
 
 1. `011_prd_default_customer.sql`
 
+### Nota de idempotencia legacy
+
+- `migrations/20260505_sync_local_to_aws_reporting_and_sales.sql` es un patch legacy de sincronizacion local -> AWS. Debe ser idempotente para bootstrap limpio. El `DROP FUNCTION` de `public.report_customer_orders_status(...)` usa `IF EXISTS` para no fallar cuando la funcion aun no existe.
+
 ### 9. Seeds adicionales identificados
 
 - `migrations/20260505_reporting_pos_fixtures.sql`: fixture QA de reporteria POS. Requiere usuario fijo `781912fe-5a32-483f-b99a-a931f9700913` y caja/sesion especifica. No es migracion estructural; solo debe ejecutarse con `APPLY_OPTIONAL_FIXTURES=YES` o `RUN_OPTIONAL_QA_FIXTURES=YES`.
