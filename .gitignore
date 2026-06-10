@@ -18,7 +18,10 @@ out/
 
 # Builds / coverage
 dist/
+dist-bin/
 build/
+!scripts/build/
+!scripts/build/*.sh
 coverage/
 
 # TypeScript

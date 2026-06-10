@@ -15,7 +15,6 @@
   "pkg": {
     "assets": [
       "dist/**/*",
-      ".env*",
       "node_modules/pdfmake/package.json",
       "node_modules/pdfmake/examples/fonts/**/*",
       "node_modules/@foliojs-fork/linebreak/src/**/*.trie",
