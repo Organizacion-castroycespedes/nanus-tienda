@@ -429,6 +429,25 @@ Estado: `QA_GITHUB_ACTIONS_DEPLOY_READY`.
 - [x] 10. Ejecutar validaciones locales permitidas y registrar resultado.
 - [x] 11. Confirmar que no se ejecuto deploy real, no se crearon secrets reales, no se toco AWS, no se reinicio PM2, no se subieron binarios y no se expusieron secretos.
 
+## MVP-00.7D-FIX1 - Fix backend-perifericos missing LogsService
+
+Estado: `QA_BACKEND_PERIFERICOS_LOGS_SERVICE_FIXED`.
+
+- [x] 1. Revisar `backend-perifericos/src/modules/logs`.
+- [x] 2. Confirmar que `LogsService`, `LogsModule` y `LogsController` existen localmente.
+- [x] 3. Identificar causa de fallo Linux/GitHub Actions: `.gitignore` ignoraba el directorio fuente `backend-perifericos/src/modules/logs/`.
+- [x] 4. Alinear versionado con casing exacto Linux para `../logs/logs.service`.
+- [x] 5. Verificar metodos usados por scanner/devices/scale/printer/cash-drawer/tests: `append`, `list`, `getLimit`.
+- [x] 6. Agregar excepcion segura en `.gitignore` para versionar `backend-perifericos/src/modules/logs/**` sin versionar logs runtime.
+- [x] 7. Ejecutar `npm run build` en `backend-perifericos`.
+- [x] 8. Ejecutar `npm run build:bin` en `backend-perifericos`.
+- [x] 9. Ejecutar `bash scripts/build/verify-backend-binaries.sh`.
+- [x] 10. Crear `docs/evidencia-fix-backend-perifericos-logs-service-mvp-00-7D-fix1.md`.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Ejecutar `git status --short`.
+- [x] 14. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secrets y no se reinicio PM2.
+
 ## MVP-00.7E - QA Runtime + GitHub Secrets Checklist
 
 Estado: `QA_RUNTIME_GITHUB_SECRETS_CHECKLIST_READY`.

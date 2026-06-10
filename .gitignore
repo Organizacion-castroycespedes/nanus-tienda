@@ -29,6 +29,8 @@ coverage/
 
 # Logs
 logs/
+!backend-perifericos/src/modules/logs/
+!backend-perifericos/src/modules/logs/**
 *.log
 
 # OS / editor
