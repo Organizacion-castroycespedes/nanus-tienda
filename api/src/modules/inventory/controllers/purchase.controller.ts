@@ -58,8 +58,21 @@ type UpdatePurchaseBody = Partial<CreatePurchaseBody> & {
 
 type ReceivePurchaseBody = {
   items: Array<{
-    product_id: string;
-    quantity: number;
+    product_id?: string;
+    productId?: string;
+    purchase_item_id?: string;
+    purchaseItemId?: string;
+    quantity?: number;
+    received_quantity?: number;
+    receivedQuantity?: number;
+    lot_code?: string | null;
+    lotCode?: string | null;
+    expiration_date?: string | null;
+    expirationDate?: string | null;
+    location_id?: string | null;
+    locationId?: string | null;
+    unit_cost?: number;
+    unitCost?: number;
   }>;
 };
 
@@ -175,8 +188,20 @@ export class PurchaseController {
       id,
       this.getTenantId(request),
       (body.items ?? []).map((item) => ({
-        productId: item.product_id,
-        quantity: Number(item.quantity),
+        productId: item.productId ?? item.product_id,
+        purchaseItemId: item.purchaseItemId ?? item.purchase_item_id,
+        quantity: Number(
+          item.receivedQuantity ?? item.received_quantity ?? item.quantity
+        ),
+        lotCode: item.lotCode ?? item.lot_code,
+        expirationDate: item.expirationDate ?? item.expiration_date,
+        locationId: item.locationId ?? item.location_id,
+        unitCost:
+          item.unitCost !== undefined
+            ? Number(item.unitCost)
+            : item.unit_cost !== undefined
+              ? Number(item.unit_cost)
+              : undefined,
       })),
       this.getInventoryContext(request),
       this.buildActor(request)

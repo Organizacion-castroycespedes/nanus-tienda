@@ -1,11 +1,17 @@
 import { ApiError } from "./request";
 import type { NoticeDialogVariant } from "../components/design-system/NoticeDialog";
+import type { ConfirmDialogProps } from "../components/design-system/confirm-dialog";
 
 export type ApiNoticeMessage = {
   title: string;
   message: string;
   variant: NoticeDialogVariant;
 };
+
+export type ApiConfirmMessage = Pick<
+  ConfirmDialogProps,
+  "title" | "description" | "variant"
+>;
 
 type ApiMessageInput = {
   status?: number;
@@ -89,6 +95,22 @@ const getMessage = (input: unknown, fallback: string): string => {
   );
 };
 
+const getErrorLabel = (input: unknown): string | null => {
+  const source =
+    input instanceof ApiError && isRecord(input.details)
+      ? input.details
+      : isRecord(input)
+        ? input
+        : null;
+
+  if (!source) {
+    return null;
+  }
+
+  const error = normalizeMessage(source.error);
+  return error;
+};
+
 export const getNoticeVariantFromStatus = (status?: number): NoticeDialogVariant => {
   if (!status) {
     return "error";
@@ -143,5 +165,41 @@ export const buildNoticeFromApiError = (
     title: fallbackTitle ?? getNoticeTitleFromVariant(variant),
     message: getMessage(error, fallbackMessage),
     variant,
+  };
+};
+
+const getConfirmVariantFromStatus = (
+  status?: number
+): NonNullable<ConfirmDialogProps["variant"]> => {
+  if (!status) {
+    return "danger";
+  }
+  if (status >= 200 && status < 300) {
+    return "default";
+  }
+  if (status === 400 || status === 404 || status === 409) {
+    return "warning";
+  }
+  return "danger";
+};
+
+export const buildConfirmFromApiError = (
+  error: unknown,
+  fallbackMessage: string,
+  fallbackTitle = "No se pudo completar la accion"
+): ApiConfirmMessage => {
+  const status = getStatus(error);
+  const message = getMessage(error, fallbackMessage);
+  const errorLabel = getErrorLabel(error);
+  const detailParts = [
+    errorLabel,
+    typeof status === "number" ? `Codigo ${status}` : null,
+  ].filter((part): part is string => Boolean(part));
+  const detail = detailParts.length > 0 ? `\n\n${detailParts.join(" · ")}` : "";
+
+  return {
+    title: fallbackTitle,
+    description: `${message}${detail}`,
+    variant: getConfirmVariantFromStatus(status),
   };
 };

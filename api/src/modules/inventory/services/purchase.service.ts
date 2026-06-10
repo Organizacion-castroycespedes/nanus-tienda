@@ -23,6 +23,9 @@ import {
   StockMovementService,
   type InventoryContext,
 } from "./stock-movement.service";
+import { InventoryLotBalanceService } from "./inventory-lot-balance.service";
+import { InventoryLotService } from "./inventory-lot.service";
+import { StockMovementLotService } from "./stock-movement-lot.service";
 import {
   canViewAllBranches,
   hasBranchScopedRole,
@@ -63,8 +66,14 @@ type UpdatePurchaseInput = Partial<{
 }>;
 
 type ReceivePurchaseItemInput = {
-  productId: string;
-  quantity: number;
+  productId?: string;
+  purchaseItemId?: string;
+  quantity?: number;
+  receivedQuantity?: number;
+  lotCode?: string | null;
+  expirationDate?: string | null;
+  locationId?: string | null;
+  unitCost?: number;
 };
 
 type CancelPurchaseInput = {
@@ -125,6 +134,10 @@ type PurchaseItemRow = {
   purchase_id: string;
   product_id: string;
   product_name?: string | null;
+  product_sku?: string | null;
+  is_perishable?: boolean | null;
+  requires_lot?: boolean | null;
+  requires_expiration?: boolean | null;
   quantity?: string | number | null;
   ordered_quantity?: string | number | null;
   received_quantity?: string | number | null;
@@ -137,6 +150,12 @@ type PurchaseItemRow = {
 
 type ProductRow = {
   id: string;
+};
+
+type ProductLotPolicyRow = {
+  id: string;
+  requires_lot: boolean;
+  requires_expiration: boolean;
 };
 
 type BranchRow = {
@@ -180,6 +199,12 @@ export class PurchaseService {
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
+    @Inject(InventoryLotService)
+    private readonly inventoryLotService: InventoryLotService,
+    @Inject(InventoryLotBalanceService)
+    private readonly inventoryLotBalanceService: InventoryLotBalanceService,
+    @Inject(StockMovementLotService)
+    private readonly stockMovementLotService: StockMovementLotService,
     @Inject(FinanceAccessRepository)
     private readonly financeAccessRepository: FinanceAccessRepository,
     @Inject(AuditService) private readonly auditService: AuditService
@@ -330,6 +355,10 @@ export class PurchaseService {
         return {
           ...item,
           productName: row.product_name ?? null,
+          productSku: row.product_sku ?? null,
+          isPerishable: row.is_perishable ?? false,
+          requiresLot: row.requires_lot ?? false,
+          requiresExpiration: row.requires_expiration ?? false,
           pendingQuantity:
             row.pending_quantity == null ? pendingQuantity : Number(row.pending_quantity),
           receivedSubtotal:
@@ -998,6 +1027,10 @@ export class PurchaseService {
           pi.purchase_id,
           pi.product_id,
           p.name AS product_name,
+          p.sku AS product_sku,
+          p.is_perishable,
+          p.requires_lot,
+          p.requires_expiration,
           pi.ordered_quantity,
           pi.received_quantity,
           pi.cost,
@@ -1054,6 +1087,114 @@ export class PurchaseService {
       branchName: purchaseAuditContext.branch_name,
       terminalName: purchaseAuditContext.terminal_name,
       statusHistory: historyResult.rows.map((row) => this.mapStatusHistory(row)),
+    };
+  }
+
+  private normalizeOptionalReceiveId(value: string | null | undefined) {
+    if (value === null) {
+      return null;
+    }
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
+  }
+
+  private hasLotReceiptData(item: ReceivePurchaseItemInput) {
+    return (
+      this.normalizeOptionalReceiveId(item.lotCode) !== undefined ||
+      this.normalizeOptionalReceiveId(item.expirationDate) !== undefined ||
+      this.normalizeOptionalReceiveId(item.locationId) !== undefined ||
+      item.unitCost !== undefined
+    );
+  }
+
+  private normalizeLotCodeForReceipt(value: string | null | undefined) {
+    const normalized = this.normalizeOptionalReceiveId(value);
+    if (!normalized) {
+      throw new BadRequestException("lotCode is required for this product");
+    }
+    return normalized.toUpperCase();
+  }
+
+  private async loadProductLotPolicies(
+    tenantId: string,
+    productIds: string[],
+    client: PoolClient
+  ) {
+    const uniqueProductIds = [...new Set(productIds)];
+    if (uniqueProductIds.length === 0) {
+      return new Map<string, ProductLotPolicyRow>();
+    }
+
+    const result = await client.query<ProductLotPolicyRow>(
+      `
+        SELECT id, requires_lot, requires_expiration
+        FROM products
+        WHERE tenant_id = $1
+          AND id = ANY($2::uuid[])
+      `,
+      [tenantId, uniqueProductIds]
+    );
+
+    return new Map(result.rows.map((row) => [row.id, row]));
+  }
+
+  private resolveReceiveItemProduct(
+    receiveItem: ReceivePurchaseItemInput,
+    itemsById: Map<string, PurchaseItemEntity>
+  ) {
+    const purchaseItemId = this.normalizeOptionalReceiveId(
+      receiveItem.purchaseItemId
+    );
+    const purchaseItem = purchaseItemId ? itemsById.get(purchaseItemId) : null;
+    if (purchaseItemId && !purchaseItem) {
+      throw new BadRequestException("purchase item not found");
+    }
+
+    const productId = receiveItem.productId?.trim() || purchaseItem?.productId;
+    if (!productId) {
+      throw new BadRequestException("productId is required");
+    }
+    if (purchaseItem && purchaseItem.productId !== productId) {
+      throw new BadRequestException("productId does not match purchaseItemId");
+    }
+
+    return { productId, purchaseItemId, purchaseItem };
+  }
+
+  private validateReceiveLotPayload(
+    receiveItem: ReceivePurchaseItemInput,
+    policy: ProductLotPolicyRow
+  ) {
+    if (!policy.requires_lot) {
+      if (this.hasLotReceiptData(receiveItem)) {
+        throw new BadRequestException(
+          "lot data is not allowed for products without lot control"
+        );
+      }
+      return null;
+    }
+
+    const lotCode = this.normalizeLotCodeForReceipt(receiveItem.lotCode);
+    const expirationDate = this.normalizeOptionalReceiveId(
+      receiveItem.expirationDate
+    );
+    if (policy.requires_expiration && !expirationDate) {
+      throw new BadRequestException(
+        "expirationDate is required for this product"
+      );
+    }
+
+    const unitCost =
+      receiveItem.unitCost !== undefined ? Number(receiveItem.unitCost) : undefined;
+    if (unitCost !== undefined && (!Number.isFinite(unitCost) || unitCost < 0)) {
+      throw new BadRequestException("unitCost must be non-negative");
+    }
+
+    return {
+      lotCode,
+      expirationDate,
+      locationId: this.normalizeOptionalReceiveId(receiveItem.locationId),
+      unitCost,
     };
   }
 
@@ -1145,29 +1286,47 @@ export class PurchaseService {
       }
 
       const itemsByProductId = new Map<string, PurchaseItemEntity[]>();
+      const itemsById = new Map<string, PurchaseItemEntity>();
       for (const item of items) {
         const currentItems = itemsByProductId.get(item.productId) ?? [];
         currentItems.push(item);
         itemsByProductId.set(item.productId, currentItems);
+        itemsById.set(item.id, item);
       }
 
+      const productPolicies = await this.loadProductLotPolicies(
+        tenantId,
+        items.map((item) => item.productId),
+        client
+      );
       const pendingByItemId = new Map(
         items.map((item) => [item.id, item.orderedQuantity - item.receivedQuantity])
       );
       const createdMovements: StockMovementEntity[] = [];
+      const receiptBranchId = purchaseAuditContext.branch_id ?? context?.branchId ?? null;
 
       for (const receiveItem of itemsToReceive) {
-        const productId = receiveItem.productId;
-        if (!productId) {
-          throw new BadRequestException("productId is required");
+        const { productId, purchaseItemId, purchaseItem } =
+          this.resolveReceiveItemProduct(receiveItem, itemsById);
+        const productPolicy = productPolicies.get(productId);
+        if (!productPolicy) {
+          throw new BadRequestException("product not found for tenant");
         }
+        const lotPayload = this.validateReceiveLotPayload(
+          receiveItem,
+          productPolicy
+        );
 
-        const quantity = Number(receiveItem.quantity);
+        const quantity = Number(
+          receiveItem.receivedQuantity ?? receiveItem.quantity
+        );
         if (!Number.isFinite(quantity) || quantity <= 0) {
           throw new BadRequestException("received quantity must be a positive number");
         }
 
-        const productItems = itemsByProductId.get(productId) ?? [];
+        const productItems = purchaseItem
+          ? [purchaseItem]
+          : itemsByProductId.get(productId) ?? [];
         if (productItems.length === 0) {
           throw new BadRequestException("purchase item not found for product");
         }
@@ -1191,7 +1350,7 @@ export class PurchaseService {
             quantity,
             referenceType: "PURCHASE",
             referenceId: id,
-            branchId: purchaseAuditContext.branch_id ?? context?.branchId ?? null,
+            branchId: receiptBranchId,
             terminalId:
               purchaseAuditContext.branch_id &&
               context?.branchId &&
@@ -1213,6 +1372,10 @@ export class PurchaseService {
         createdMovements.push(movement);
 
         let remainingQuantity = quantity;
+        const allocations: Array<{
+          item: PurchaseItemEntity;
+          quantity: number;
+        }> = [];
         for (const item of productItems) {
           if (remainingQuantity <= 0) {
             break;
@@ -1226,6 +1389,7 @@ export class PurchaseService {
           const receivedDelta = Math.min(remainingQuantity, itemPendingQuantity);
           pendingByItemId.set(item.id, itemPendingQuantity - receivedDelta);
           remainingQuantity -= receivedDelta;
+          allocations.push({ item, quantity: receivedDelta });
 
           await client.query(
             `
@@ -1234,6 +1398,57 @@ export class PurchaseService {
               WHERE id = $1
             `,
             [item.id, receivedDelta]
+          );
+        }
+
+        if (lotPayload) {
+          const branchId = movement.branchId ?? receiptBranchId;
+          if (!branchId) {
+            throw new BadRequestException(
+              "branchId is required for lot receipt"
+            );
+          }
+          const firstAllocation = allocations[0];
+          const lot = await this.inventoryLotService.findOrCreateForPurchase(
+            {
+              tenantId,
+              branchId,
+              productId,
+              supplierId: purchaseRow.supplier_id,
+              purchaseId: id,
+              purchaseItemId: purchaseItemId ?? firstAllocation?.item.id ?? null,
+              lotCode: lotPayload.lotCode,
+              expirationDate: lotPayload.expirationDate,
+              receivedAt: movement.createdAt,
+              unitCost: lotPayload.unitCost ?? firstAllocation?.item.cost ?? 0,
+              requiresExpiration: productPolicy.requires_expiration,
+            },
+            client
+          );
+
+          await this.inventoryLotBalanceService.incrementOnHand(
+            tenantId,
+            {
+              branchId,
+              productId,
+              lotId: lot.id,
+              locationId: lotPayload.locationId ?? null,
+              quantity,
+              lastMovementAt: movement.createdAt,
+            },
+            client
+          );
+
+          await this.stockMovementLotService.createLink(
+            {
+              tenantId,
+              stockMovementId: movement.id,
+              productId,
+              lotId: lot.id,
+              locationId: lotPayload.locationId ?? null,
+              quantity,
+            },
+            client
           );
         }
       }

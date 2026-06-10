@@ -7,14 +7,16 @@ import {
   Minus,
   Package,
   Plus,
+  Scale,
   Search,
   ShoppingCart,
   Trash2,
   UserRound,
+  UserPlus,
   Wallet,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
@@ -39,17 +41,101 @@ import {
   getPosCustomers,
   getPosProducts,
   getPosTaxes,
+  previewPosLinePrice,
+  type PosLinePricePreviewResponse,
   type PosSalePayload,
 } from "../services/pos.service";
 import {
   buildDefaultPayments,
   buildPaymentId,
+  type PaymentDraft,
+  type PosCartItem,
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import type { TaxResponse } from "../../inventory/services/tax.service";
+import { QuickFiscalCustomerModal } from "./QuickFiscalCustomerModal";
+import type { ElectronicInvoicingCustomer } from "../../electronic-invoicing/services/customer.service";
+import {
+  createDefaultCashPayment,
+  findCashPaymentMethod,
+  parsePaymentAmount,
+  rebalanceCashPayment,
+} from "../../shared/payments/payment-allocation.helper";
+import {
+  buildSalePeripheralFeedbackMessage,
+  runSalePeripheralOperations,
+  type PosSalePeripheralContext,
+} from "../../../domains/peripherals/pos-sale-integration";
+import {
+  getPeripheralFeatureFlags,
+  readCurrentWeight,
+  simulateScannerRead,
+  subscribeScannerEvents,
+} from "../../../domains/peripherals/contracts";
+import type {
+  PeripheralOperationError,
+  ScannerReadResult,
+} from "../../../domains/peripherals/types";
 
 type CategoryKey = "all" | "available" | "low" | "out";
+type ScannerMockStatus = "disabled" | "connected" | "error";
+type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
+
+type ProductBarcodeCandidate =
+  | string
+  | {
+      barcode?: string | null;
+      codigo?: string | null;
+      codigoBarras?: string | null;
+      codigo_barras?: string | null;
+      code?: string | null;
+      value?: string | null;
+      isActive?: boolean;
+      active?: boolean;
+    };
+
+type ScannerProductCandidate = Omit<ProductResponse, "barcodes"> & {
+  primaryBarcode?: string | null;
+  barcodeCodes?: string[];
+  barcode?: string | null;
+  codigoBarras?: string | null;
+  codigo_barras?: string | null;
+  reference?: string | null;
+  referencia?: string | null;
+  code?: string | null;
+  codigo?: string | null;
+  barcodes?: ProductBarcodeCandidate[];
+};
+
+type ProductUnitCandidate =
+  | string
+  | {
+      code?: string | null;
+      name?: string | null;
+      symbol?: string | null;
+      abbreviation?: string | null;
+      codigo?: string | null;
+      nombre?: string | null;
+      abreviatura?: string | null;
+    };
+
+type WeighableProductCandidate = ProductResponse & {
+  saleType?: "UNIT" | "WEIGHT" | "BOTH" | null;
+  isWeighable?: boolean;
+  weighable?: boolean;
+  soldByWeight?: boolean;
+  measurementUnit?: ProductUnitCandidate | null;
+  unit?: ProductUnitCandidate | null;
+  unidad?: ProductUnitCandidate | null;
+  unitCode?: string | null;
+  unitName?: string | null;
+  unitSymbol?: string | null;
+  unitAbbreviation?: string | null;
+  productType?: string | null;
+  type?: string | null;
+  tipo?: string | null;
+};
 
 type PosItemTax = {
   id: string;
@@ -80,13 +166,197 @@ const normalizeText = (value: string) =>
     .trim()
     .toLowerCase();
 
+const normalizeScannerCode = (value?: string | null) =>
+  typeof value === "string" ? normalizeText(value) : "";
+
+const collectProductScannerCodes = (product: ProductResponse) => {
+  const candidate = product as unknown as ScannerProductCandidate;
+  const directCodes = [
+    candidate.primaryBarcode,
+    candidate.barcode,
+    candidate.codigoBarras,
+    candidate.codigo_barras,
+    candidate.sku,
+    candidate.reference,
+    candidate.referencia,
+    candidate.code,
+    candidate.codigo,
+    candidate.id,
+  ];
+  const barcodeCodes = (candidate.barcodes ?? [])
+    .filter((barcode) =>
+      typeof barcode === "string"
+        ? true
+        : barcode.isActive !== false && barcode.active !== false
+    )
+    .flatMap((barcode) => {
+      if (typeof barcode === "string") {
+        return [barcode];
+      }
+
+      return [
+        barcode.barcode,
+        barcode.codigoBarras,
+        barcode.codigo_barras,
+        barcode.code,
+        barcode.codigo,
+        barcode.value,
+      ];
+    });
+
+  return [...directCodes, ...(candidate.barcodeCodes ?? []), ...barcodeCodes]
+    .map(normalizeScannerCode)
+    .filter(Boolean);
+};
+
+const findProductByScannerCode = (
+  code: string,
+  products: ProductResponse[]
+) => {
+  const normalizedCode = normalizeScannerCode(code);
+  if (!normalizedCode) {
+    return null;
+  }
+
+  return (
+    products.find((product) =>
+      collectProductScannerCodes(product).some(
+        (candidateCode) => candidateCode === normalizedCode
+      )
+    ) ?? null
+  );
+};
+
+const weighableUnitCodes = new Set([
+  "kg",
+  "lb",
+  "g",
+  "oz",
+  "kilo",
+  "kilos",
+  "kilogram",
+  "kilograms",
+  "kilogramo",
+  "kilogramos",
+  "libra",
+  "libras",
+  "gramo",
+  "gramos",
+  "onza",
+  "onzas",
+]);
+
+const weighableProductTypes = new Set([
+  "weighable",
+  "soldbyweight",
+  "byweight",
+  "pesable",
+  "porpeso",
+  "peso",
+]);
+
+const normalizeProductUnitValue = (value: unknown) =>
+  typeof value === "string" ? normalizeText(value).replace(/\s+/g, "") : "";
+
+const collectUnitCandidateValues = (unit: ProductUnitCandidate | null | undefined) => {
+  if (!unit) {
+    return [];
+  }
+
+  if (typeof unit === "string") {
+    return [unit];
+  }
+
+  return [
+    unit.code,
+    unit.name,
+    unit.symbol,
+    unit.abbreviation,
+    unit.codigo,
+    unit.nombre,
+    unit.abreviatura,
+  ].filter((value): value is string => typeof value === "string" && value.trim() !== "");
+};
+
+const isWeighableProduct = (product: ProductResponse) => {
+  const candidate = product as WeighableProductCandidate;
+
+  if (candidate.saleType === "WEIGHT" || candidate.saleType === "BOTH") {
+    return true;
+  }
+
+  if (candidate.saleType === "UNIT") {
+    return false;
+  }
+
+  if (
+    candidate.isWeighable === true ||
+    candidate.weighable === true ||
+    candidate.soldByWeight === true
+  ) {
+    return true;
+  }
+
+  const unitValues = [
+    candidate.measurementUnit,
+    candidate.unit,
+    candidate.unidad,
+  ].flatMap(collectUnitCandidateValues);
+  const directUnitValues = [
+    candidate.unitCode,
+    candidate.unitName,
+    candidate.unitSymbol,
+    candidate.unitAbbreviation,
+  ];
+  const typeValues = [candidate.productType, candidate.type, candidate.tipo];
+
+  return (
+    [...unitValues, ...directUnitValues]
+      .map(normalizeProductUnitValue)
+      .some((value) => weighableUnitCodes.has(value)) ||
+    typeValues
+      .map(normalizeProductUnitValue)
+      .some((value) => weighableProductTypes.has(value))
+  );
+};
+
+const formatScaleQuantity = (value: number) =>
+  value.toFixed(3).replace(/\.?0+$/, "");
+
+const getProductSaleType = (product: ProductResponse) =>
+  product.saleType ?? (isWeighableProduct(product) ? "WEIGHT" : "UNIT");
+
+const productSaleTypeLabels: Record<"UNIT" | "WEIGHT" | "BOTH", string> = {
+  UNIT: "Unidad",
+  WEIGHT: "Peso",
+  BOTH: "Unidad/peso",
+};
+
+const parseQuantityInput = (value: string) => {
+  const normalized = value.replace(",", ".").replace(/[^0-9.]/g, "");
+  const [whole, ...decimalParts] = normalized.split(".");
+  const quantity =
+    decimalParts.length > 0 ? `${whole}.${decimalParts.join("")}` : whole;
+  return Number(quantity || 0);
+};
+
 const round = (value: number) => Number(value.toFixed(2));
 
-const parseAmount = (value: string) => {
-  const sanitized = value.replace(",", ".").replace(/[^0-9.]/g, "");
-  const parsed = Number(sanitized);
-  return Number.isFinite(parsed) ? round(parsed) : 0;
-};
+const arePaymentsEqual = (
+  first: PaymentDraft[],
+  second: PaymentDraft[]
+) =>
+  first.length === second.length &&
+  first.every((payment, index) => {
+    const other = second[index];
+    return (
+      other &&
+      payment.id === other.id &&
+      payment.paymentMethodId === other.paymentMethodId &&
+      payment.amount === other.amount &&
+      payment.reference === other.reference
+    );
+  });
 
 const isLowStock = (stock: number) => stock > 0 && stock <= 5;
 
@@ -111,10 +381,127 @@ const buildImageLabel = (name: string) => {
   return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 };
 
+const buildPricingRequestKey = (
+  branchId: string,
+  customerId: string | null,
+  productId: string,
+  quantity: number
+) => `${branchId}:${customerId ?? "default"}:${productId}:${quantity}`;
+
+const mapFiscalCustomerToPosCustomer = (
+  customer: ElectronicInvoicingCustomer
+): CustomerResponse => ({
+  id: customer.id,
+  tenantId: customer.tenantId,
+  name: customer.name,
+  documentNumber:
+    customer.identificationNumber ??
+    customer.documentNumberNormalized ??
+    customer.documentNumber,
+  phone: customer.phone,
+  email: customer.fiscalEmail ?? customer.invoiceEmail,
+  address: customer.address,
+  departamentoId: null,
+  municipioId: null,
+  ciudad: customer.municipalityCode,
+  departamento: customer.departmentCode,
+  isActive: customer.isActive,
+  createdAt: customer.createdAt,
+  updatedAt: customer.updatedAt,
+});
+
+const upsertCustomer = (
+  current: CustomerResponse[],
+  customer: CustomerResponse
+) => {
+  const next = current.filter((item) => item.id !== customer.id);
+  return customer.isActive ? [customer, ...next] : next;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "No se pudo calcular precio/promocion.";
+};
+
+const markPricingPending = (
+  item: PosCartItem,
+  quantity: number,
+  pricingRequestKey: string
+): PosCartItem => ({
+  ...item,
+  quantity,
+  price: item.baseUnitPrice ?? item.price,
+  priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
+  pricingStatus: "PENDING",
+  pricingRequestKey,
+  pricingError: null,
+  finalUnitPrice: undefined,
+  discountAmount: 0,
+  discountPercent: 0,
+  appliedPromotionId: null,
+  appliedPromotionName: null,
+  taxBase: undefined,
+  taxAmount: undefined,
+  lineSubtotal: undefined,
+  lineTotal: undefined,
+});
+
+const applyPricingPreview = (
+  item: PosCartItem,
+  preview: PosLinePricePreviewResponse,
+  pricingRequestKey: string
+): PosCartItem => ({
+  ...item,
+  quantity: preview.quantity,
+  price: preview.finalUnitPrice,
+  priceWithoutTax:
+    preview.quantity > 0 ? round(preview.taxBase / preview.quantity) : item.priceWithoutTax,
+  taxId: preview.taxId,
+  pricingStatus: "READY",
+  pricingRequestKey,
+  pricingError: null,
+  baseUnitPrice: preview.baseUnitPrice,
+  finalUnitPrice: preview.finalUnitPrice,
+  discountAmount: preview.discountAmount,
+  discountPercent: preview.discountPercent,
+  appliedPromotionId: preview.appliedPromotionId,
+  appliedPromotionName: preview.appliedPromotionName,
+  taxRate: preview.taxRate,
+  taxBase: preview.taxBase,
+  taxAmount: preview.taxAmount,
+  lineSubtotal: preview.lineSubtotal,
+  lineTotal: preview.lineTotal,
+});
+
+const applyPricingError = (
+  item: PosCartItem,
+  pricingRequestKey: string,
+  pricingError: string
+): PosCartItem => ({
+  ...item,
+  price: item.baseUnitPrice ?? item.price,
+  priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
+  pricingStatus: "ERROR",
+  pricingRequestKey,
+  pricingError,
+  finalUnitPrice: undefined,
+  discountAmount: 0,
+  discountPercent: 0,
+  appliedPromotionId: null,
+  appliedPromotionName: null,
+  taxBase: undefined,
+  taxAmount: undefined,
+  lineSubtotal: undefined,
+  lineTotal: undefined,
+});
+
 export const PosScreen = () => {
   const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const posTerminalId = useAppSelector((state) => state.pos.terminalId);
   const {
     items: cart,
     payments,
@@ -138,6 +525,7 @@ export const PosScreen = () => {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -149,13 +537,52 @@ export const PosScreen = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
+  const [scannerMockCode, setScannerMockCode] = useState("46564567");
+  const [scannerMockStatus, setScannerMockStatus] =
+    useState<ScannerMockStatus>("disabled");
+  const [scannerLastCode, setScannerLastCode] = useState<string | null>(null);
+  const [scannerLastResult, setScannerLastResult] = useState<string | null>(null);
+  const [scannerSimulating, setScannerSimulating] = useState(false);
+  const [scaleMockStatus, setScaleMockStatus] =
+    useState<ScaleMockStatus>("disabled");
+  const [scaleLastWeight, setScaleLastWeight] = useState<string | null>(null);
+  const [scaleLastResult, setScaleLastResult] = useState<string | null>(null);
+  const [scaleReading, setScaleReading] = useState(false);
 
   // New state for cart drawer visibility
   const [isCartOpen, setIsCartOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
+  const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
+  const scannerMockEnabled =
+    peripheralFeatureFlags.peripheralsEnabled &&
+    peripheralFeatureFlags.scannerEnabled;
+  const scaleMockEnabled =
+    peripheralFeatureFlags.peripheralsEnabled &&
+    peripheralFeatureFlags.scaleEnabled;
+  const cartRef = useRef(cart);
+  const productsRef = useRef(products);
+  const scannerErrorToastShownRef = useRef(false);
 
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    cartRef.current = cart;
+  }, [cart]);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
+
+  const setCartItemsAndRef = useCallback(
+    (items: PosCartItem[]) => {
+      cartRef.current = items;
+      setCartItems(items);
+    },
+    [setCartItems]
+  );
 
   // Detect mobile/tablet viewport
   useEffect(() => {
@@ -180,8 +607,19 @@ export const PosScreen = () => {
     setToastVariant(variant);
   }, []);
 
+  const handleSalePeripheralFeedback = useCallback(
+    async (context: PosSalePeripheralContext) => {
+      const feedback = await runSalePeripheralOperations(context);
+      const toast = buildSalePeripheralFeedbackMessage(feedback);
+
+      if (toast) {
+        showToast(toast.message, toast.variant);
+      }
+    },
+    [showToast]
+  );
+
   useEffect(() => {
-    const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
     if (!activeBranchId) {
       setCatalogLoading(false);
       setCatalogError("No hay una sucursal POS activa para cargar inventario.");
@@ -264,7 +702,7 @@ export const PosScreen = () => {
     return () => {
       active = false;
     };
-  }, [authUser?.branchId, posBranchId]);
+  }, [activeBranchId]);
 
   useEffect(() => {
     const defaultCustomer =
@@ -339,30 +777,6 @@ export const PosScreen = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (paymentMethodsCatalog.length === 0) {
-      return;
-    }
-
-    const defaultPaymentMethodId = paymentMethodsCatalog[0]?.id ?? "";
-    if (!defaultPaymentMethodId) {
-      return;
-    }
-
-    const needsDefaultMethod = payments.some((payment) => !payment.paymentMethodId);
-    if (!needsDefaultMethod) {
-      return;
-    }
-
-    setPayments(
-      payments.map((payment, index) =>
-        index === 0 && !payment.paymentMethodId
-          ? { ...payment, paymentMethodId: defaultPaymentMethodId }
-          : payment
-      )
-    );
-  }, [paymentMethodsCatalog, payments, setPayments]);
-
   const taxById = useMemo(
     () =>
       taxes.reduce<Record<string, TaxResponse>>((acc, tax) => {
@@ -376,6 +790,48 @@ export const PosScreen = () => {
     () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
     [customers, selectedCustomerId]
   );
+  const finalConsumerCustomer = useMemo(
+    () =>
+      customers.find((customer) =>
+        normalizeText(customer.name).includes("consumidor final")
+      ) ?? null,
+    [customers]
+  );
+
+  const handleSelectPosCustomer = useCallback(
+    (customer: CustomerResponse) => {
+      setCustomers((current) => upsertCustomer(current, customer));
+      setSelectedCustomerId(customer.id);
+      setCustomerPickerOpen(false);
+      showToast("Cliente seleccionado.", "success");
+    },
+    [setSelectedCustomerId, showToast]
+  );
+
+  const handleFiscalCustomerSaved = useCallback(
+    async (customer: ElectronicInvoicingCustomer) => {
+      const mappedCustomer = mapFiscalCustomerToPosCustomer(customer);
+      try {
+        const refreshedCustomers = await getPosCustomers();
+        setCustomers(refreshedCustomers.filter((item) => item.isActive));
+      } catch {
+        setCustomers((current) => upsertCustomer(current, mappedCustomer));
+      }
+      setSelectedCustomerId(customer.id);
+      setCustomerPickerOpen(false);
+      showToast("Cliente fiscal listo.", "success");
+    },
+    [setSelectedCustomerId, showToast]
+  );
+
+  const handleUseFinalConsumer = useCallback(() => {
+    if (!finalConsumerCustomer) {
+      showToast("Consumidor Final no esta disponible.", "warning");
+      return;
+    }
+    setSelectedCustomerId(finalConsumerCustomer.id);
+    setCustomerPickerOpen(false);
+  }, [finalConsumerCustomer, setSelectedCustomerId, showToast]);
 
   const paymentMethodById = useMemo(
     () =>
@@ -393,6 +849,21 @@ export const PosScreen = () => {
         label: method.nombre,
       })),
     [paymentMethodsCatalog]
+  );
+
+  const cashPaymentMethod = useMemo(
+    () => findCashPaymentMethod(paymentMethodsCatalog),
+    [paymentMethodsCatalog]
+  );
+
+  const createPaymentDraft = useCallback(
+    (paymentMethodId: string, amount: string): PaymentDraft => ({
+      id: buildPaymentId(),
+      paymentMethodId,
+      amount,
+      reference: "",
+    }),
+    []
   );
 
   const categoryCounts = useMemo(() => {
@@ -427,36 +898,58 @@ export const PosScreen = () => {
       }
 
       const haystack = normalizeText(
-        `${product.name} ${product.sku} ${product.description ?? ""}`
+        `${product.name} ${product.description ?? ""} ${collectProductScannerCodes(
+          product
+        ).join(" ")}`
       );
       return haystack.includes(normalizedQuery);
     });
   }, [activeCategory, products, query]);
 
+  const productById = useMemo(
+    () =>
+      products.reduce<Record<string, ProductResponse>>((acc, product) => {
+        acc[product.id] = product;
+        return acc;
+      }, {}),
+    [products]
+  );
+
   const cartWithDerivedValues = useMemo(() => {
     return cart.map((item) => {
-      const subtotal = round(item.price * item.quantity);
+      const unitPrice = item.finalUnitPrice ?? item.price;
+      const subtotal =
+        typeof item.lineTotal === "number"
+          ? round(item.lineTotal)
+          : round(unitPrice * item.quantity);
       const tax = item.taxId ? taxById[item.taxId] : null;
-      const perUnitTaxAmount = round(item.price - item.priceWithoutTax);
-      const itemTaxes: PosItemTax[] = tax
+      const fallbackTaxAmount = round(
+        Math.max(unitPrice - item.priceWithoutTax, 0) * item.quantity
+      );
+      const previewTaxAmount =
+        typeof item.taxAmount === "number" ? round(item.taxAmount) : undefined;
+      const itemTaxes: PosItemTax[] = item.taxId
         ? [
             {
-              id: tax.id,
-              name: tax.name,
-              rate: tax.rate,
-              amount: round(perUnitTaxAmount * item.quantity),
-              isIncluded: tax.isIncluded,
+              id: item.taxId,
+              name: tax?.name ?? "Impuesto",
+              rate: tax?.rate ?? item.taxRate ?? 0,
+              amount: previewTaxAmount ?? fallbackTaxAmount,
+              isIncluded: tax?.isIncluded ?? true,
             },
           ]
         : [];
 
       const taxTotal = round(itemTaxes.reduce((sum, current) => sum + current.amount, 0));
+      const discountTotal = round((item.discountAmount ?? 0) * item.quantity);
 
       return {
         ...item,
+        unitPrice,
         subtotal,
         taxes: itemTaxes,
         taxTotal,
+        discountTotal,
       };
     });
   }, [cart, taxById]);
@@ -468,19 +961,45 @@ export const PosScreen = () => {
     const taxesTotal = round(
       cartWithDerivedValues.reduce((sum, item) => sum + item.taxTotal, 0)
     );
+    const discountTotal = round(
+      cartWithDerivedValues.reduce((sum, item) => sum + item.discountTotal, 0)
+    );
 
     return {
       subtotal,
       taxesTotal,
+      discountTotal,
       total: subtotal,
     };
   }, [cartWithDerivedValues]);
+
+  const firstWeighableCartProduct = useMemo(
+    () =>
+      cart
+        .map((item) => productById[item.productId])
+        .find((product) => product && isWeighableProduct(product)) ?? null,
+    [cart, productById]
+  );
+
+  const rebalancePaymentsForTotal = useCallback(
+    (nextPayments: PaymentDraft[]) => {
+      const result = rebalanceCashPayment(
+        summary.total,
+        nextPayments,
+        cashPaymentMethod,
+        createPaymentDraft
+      );
+      setPaymentWarning(result.error);
+      return result.payments;
+    },
+    [cashPaymentMethod, createPaymentDraft, summary.total]
+  );
 
   const parsedPayments = useMemo(
     () =>
       payments.map((payment) => ({
         ...payment,
-        numericAmount: parseAmount(payment.amount),
+        numericAmount: parsePaymentAmount(payment.amount),
         method: paymentMethodById[payment.paymentMethodId] ?? null,
       })),
     [paymentMethodById, payments]
@@ -525,76 +1044,537 @@ export const PosScreen = () => {
     };
   }, [summary.total, totalPaid, totalCashEntered]);
 
-  const canCharge = canRead && canCreate && cartWithDerivedValues.length > 0;
+  const hasPricingPending = cartWithDerivedValues.some(
+    (item) => item.pricingStatus === "PENDING"
+  );
+  const pricingErrorItem = cartWithDerivedValues.find(
+    (item) => item.pricingStatus === "ERROR"
+  );
+  const canCharge =
+    canRead &&
+    canCreate &&
+    cartWithDerivedValues.length > 0 &&
+    !hasPricingPending &&
+    !pricingErrorItem;
+
+  useEffect(() => {
+    if (!paymentModalOpen || paymentMethodsCatalog.length === 0) {
+      return;
+    }
+
+    const nextPayments = rebalancePaymentsForTotal(payments);
+    if (!arePaymentsEqual(payments, nextPayments)) {
+      setPayments(nextPayments);
+    }
+  }, [
+    paymentMethodsCatalog.length,
+    paymentModalOpen,
+    payments,
+    rebalancePaymentsForTotal,
+    setPayments,
+  ]);
 
   // Cart item count for floating button
   const cartItemCount = cartWithDerivedValues.reduce((sum, item) => sum + item.quantity, 0);
 
-  const addToCart = (product: ProductResponse) => {
-    setSaleStatus("DRAFT");
-    setSubmitError(null);
-
-    const existing = cart.find((item) => item.productId === product.id);
-    const stock = Number(product.stock ?? 0);
-
-    if (stock <= 0) {
-      showToast("El producto no tiene stock disponible.", "warning");
-      return;
-    }
-
-    if (existing) {
-      if (existing.quantity >= stock) {
-        showToast("No puedes superar el stock disponible.", "warning");
+  const refreshCartItemPricing = useCallback(
+    async (productId: string, quantity: number, pricingRequestKey: string) => {
+      if (!activeBranchId) {
         return;
       }
 
-      setCartItems(
-        cart.map((item) =>
-          item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        )
+      try {
+        const preview = await previewPosLinePrice({
+          branchId: activeBranchId,
+          productId,
+          quantity,
+          channel: "POS",
+          customerId: selectedCustomerId ?? undefined,
+        });
+        const currentCart = cartRef.current;
+        const target = currentCart.find(
+          (item) =>
+            item.productId === productId &&
+            item.quantity === quantity &&
+            item.pricingRequestKey === pricingRequestKey
+        );
+
+        if (!target) {
+          return;
+        }
+
+        setCartItemsAndRef(
+          currentCart.map((item) =>
+            item.productId === productId && item.pricingRequestKey === pricingRequestKey
+              ? applyPricingPreview(item, preview, pricingRequestKey)
+              : item
+          )
+        );
+      } catch (error) {
+        const currentCart = cartRef.current;
+        const target = currentCart.find(
+          (item) =>
+            item.productId === productId &&
+            item.quantity === quantity &&
+            item.pricingRequestKey === pricingRequestKey
+        );
+
+        if (!target) {
+          return;
+        }
+
+        const message = `No se pudo calcular precio/promocion para ${target.name}. ${getErrorMessage(
+          error
+        )}`;
+        setCartItemsAndRef(
+          currentCart.map((item) =>
+            item.productId === productId && item.pricingRequestKey === pricingRequestKey
+              ? applyPricingError(item, pricingRequestKey, message)
+              : item
+          )
+        );
+        showToast(message, "error");
+      }
+    },
+    [activeBranchId, selectedCustomerId, setCartItemsAndRef, showToast]
+  );
+
+  const queueCartItemPricing = useCallback(
+    (items: PosCartItem[], productId: string, quantity: number) => {
+      if (!activeBranchId) {
+        const message = "No hay una sucursal POS activa para calcular precio.";
+        setCartItemsAndRef(
+          items.map((item) =>
+            item.productId === productId
+              ? applyPricingError(item, "missing-branch", message)
+              : item
+          )
+        );
+        showToast(message, "error");
+        return;
+      }
+
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        productId,
+        quantity
       );
+      const nextItems = items.map((item) =>
+        item.productId === productId
+          ? markPricingPending(item, quantity, pricingRequestKey)
+          : item
+      );
+
+      setCartItemsAndRef(nextItems);
+      void refreshCartItemPricing(productId, quantity, pricingRequestKey);
+    },
+    [
+      activeBranchId,
+      refreshCartItemPricing,
+      selectedCustomerId,
+      setCartItemsAndRef,
+      showToast,
+    ]
+  );
+
+  useEffect(() => {
+    if (!activeBranchId || cartRef.current.length === 0) {
       return;
     }
 
-    setCartItems([
-      ...cart,
-      {
+    const currentCart = cartRef.current;
+    const staleItems = currentCart.filter((item) => {
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        item.productId,
+        item.quantity
+      );
+      return !item.pricingStatus || item.pricingRequestKey !== pricingRequestKey;
+    });
+
+    if (staleItems.length === 0) {
+      return;
+    }
+
+    const nextItems = currentCart.map((item) => {
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        item.productId,
+        item.quantity
+      );
+
+      if (item.pricingStatus && item.pricingRequestKey === pricingRequestKey) {
+        return item;
+      }
+
+      return markPricingPending(item, item.quantity, pricingRequestKey);
+    });
+
+    setCartItemsAndRef(nextItems);
+    staleItems.forEach((item) => {
+      const pricingRequestKey = buildPricingRequestKey(
+        activeBranchId,
+        selectedCustomerId,
+        item.productId,
+        item.quantity
+      );
+      void refreshCartItemPricing(item.productId, item.quantity, pricingRequestKey);
+    });
+  }, [
+    activeBranchId,
+    cart.length,
+    refreshCartItemPricing,
+    selectedCustomerId,
+    setCartItemsAndRef,
+  ]);
+
+  const setProductQuantityInCart = useCallback(
+    (product: ProductResponse, quantity: number) => {
+      setSaleStatus("DRAFT");
+      setSubmitError(null);
+
+      const currentCart = cartRef.current;
+      const existing = currentCart.find((item) => item.productId === product.id);
+      const stock = Number(product.stock ?? 0);
+
+      if (stock <= 0) {
+        showToast("El producto no tiene stock disponible.", "warning");
+        return false;
+      }
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        showToast("La cantidad debe ser mayor a cero.", "warning");
+        return false;
+      }
+
+      if (quantity > stock) {
+        showToast("No puedes superar el stock disponible.", "warning");
+        return false;
+      }
+
+      if (existing) {
+        queueCartItemPricing(
+          currentCart.map((item) =>
+            item.productId === product.id ? { ...item, quantity } : item
+          ),
+          product.id,
+          quantity
+        );
+        return true;
+      }
+
+      const nextItem: PosCartItem = {
         productId: product.id,
         name: product.name,
         sku: product.sku,
-        quantity: 1,
+        quantity,
         price: Number(product.price),
         stock,
         taxId: product.taxId ?? null,
         priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
-      },
-    ]);
-  };
+        baseUnitPrice: Number(product.price),
+        basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+      };
+      queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
+      return true;
+    },
+    [queueCartItemPricing, setSaleStatus, showToast]
+  );
+
+  const addToCart = useCallback(
+    (product: ProductResponse) => {
+      const currentCart = cartRef.current;
+      const existing = currentCart.find((item) => item.productId === product.id);
+      const nextQuantity = existing ? existing.quantity + 1 : 1;
+      return setProductQuantityInCart(product, nextQuantity);
+    },
+    [setProductQuantityInCart]
+  );
+
+  const handleScannerCodeRead = useCallback(
+    (result: ScannerReadResult) => {
+      const code = result.code.trim();
+      if (!code) {
+        return;
+      }
+
+      setScannerMockStatus("connected");
+      setScannerLastCode(code);
+      const product = findProductByScannerCode(code, productsRef.current);
+
+      if (!product) {
+        const message = `Código no encontrado: ${code}`;
+        setScannerLastResult(message);
+        showToast(message, "warning");
+        return;
+      }
+
+      const added = addToCart(product);
+      if (!added) {
+        setScannerLastResult(`Producto no agregado por scanner: ${product.name}`);
+        return;
+      }
+
+      const message = `Producto agregado por scanner: ${code}`;
+      setScannerLastResult(message);
+      showToast(message, "success");
+    },
+    [addToCart, showToast]
+  );
+
+  const handleScannerConnectionError = useCallback(
+    (error: PeripheralOperationError) => {
+      setScannerMockStatus("error");
+      setScannerLastResult("Scanner MOCK desconectado");
+
+      if (!scannerErrorToastShownRef.current) {
+        scannerErrorToastShownRef.current = true;
+        showToast(error.message || "Scanner MOCK desconectado", "warning");
+      }
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    if (!scannerMockEnabled) {
+      setScannerMockStatus("disabled");
+      return undefined;
+    }
+
+    scannerErrorToastShownRef.current = false;
+    setScannerMockStatus("connected");
+    const unsubscribe = subscribeScannerEvents(
+      handleScannerCodeRead,
+      handleScannerConnectionError,
+      {
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId ?? undefined,
+        terminalId: posTerminalId ?? "local-terminal",
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [
+    activeBranchId,
+    authUser?.tenantId,
+    handleScannerCodeRead,
+    handleScannerConnectionError,
+    posTerminalId,
+    scannerMockEnabled,
+  ]);
+
+  const handleSimulateScannerRead = useCallback(async () => {
+    const code = scannerMockCode.trim();
+    if (!code) {
+      showToast("Ingresa un codigo para simular scanner MOCK.", "warning");
+      return;
+    }
+
+    if (!scannerMockEnabled) {
+      return;
+    }
+
+    setScannerSimulating(true);
+    try {
+      const result = await simulateScannerRead({
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId ?? undefined,
+        terminalId: posTerminalId ?? "local-terminal",
+        deviceId: "mock-scanner-001",
+        code,
+        format: "CODE128",
+      });
+
+      if (!result.success) {
+        const message =
+          result.error.code === "AGENT_OFFLINE"
+            ? "Scanner MOCK desconectado. El POS sigue funcionando."
+            : result.error.message;
+        if (result.error.code === "AGENT_OFFLINE") {
+          setScannerMockStatus("error");
+        }
+        setScannerLastResult(message);
+        showToast(message, "warning");
+        return;
+      }
+
+      setScannerLastCode(result.data.code);
+      setScannerLastResult("Scan MOCK enviado al agent");
+    } finally {
+      setScannerSimulating(false);
+    }
+  }, [
+    activeBranchId,
+    authUser?.tenantId,
+    posTerminalId,
+    scannerMockCode,
+    scannerMockEnabled,
+    showToast,
+  ]);
+
+  useEffect(() => {
+    if (!scaleMockEnabled) {
+      setScaleMockStatus("disabled");
+      return;
+    }
+
+    setScaleMockStatus((current) => (current === "disabled" ? "ready" : current));
+  }, [scaleMockEnabled]);
+
+  const handleReadScaleForProduct = useCallback(
+    async (product: ProductResponse) => {
+      if (!scaleMockEnabled) {
+        return;
+      }
+
+      if (!isWeighableProduct(product)) {
+        const message = "Selecciona un producto pesable antes de leer la balanza";
+        setScaleLastResult(message);
+        showToast(message, "warning");
+        return;
+      }
+
+      setScaleReading(true);
+      setScaleMockStatus("reading");
+      try {
+        const result = await readCurrentWeight({
+          tenantId: authUser?.tenantId,
+          branchId: activeBranchId ?? undefined,
+          terminalId: posTerminalId ?? "local-terminal",
+          deviceId: "mock-scale-001",
+        });
+
+        if (!result.success) {
+          const message =
+            result.error.code === "AGENT_OFFLINE"
+              ? "No se pudo leer la balanza MOCK"
+              : result.error.message;
+          setScaleMockStatus("error");
+          setScaleLastResult(message);
+          showToast(message, "warning");
+          return;
+        }
+
+        const weight = Number(result.data.weight);
+        const unit = result.data.unit || "kg";
+
+        if (!result.data.stable) {
+          const message = "Peso inestable, intenta nuevamente";
+          setScaleMockStatus("error");
+          setScaleLastResult(message);
+          showToast(message, "warning");
+          return;
+        }
+
+        if (!Number.isFinite(weight) || weight <= 0) {
+          const message = "Peso invalido, intenta nuevamente";
+          setScaleMockStatus("error");
+          setScaleLastResult(message);
+          showToast(message, "warning");
+          return;
+        }
+
+        const reading = `${formatScaleQuantity(weight)} ${unit}`;
+        setScaleLastWeight(reading);
+
+        const applied = setProductQuantityInCart(product, weight);
+        if (!applied) {
+          setScaleMockStatus("error");
+          setScaleLastResult(`Peso no aplicado: ${reading}`);
+          return;
+        }
+
+        const message = `Peso leído: ${reading}`;
+        setScaleMockStatus("ready");
+        setScaleLastResult(message);
+        showToast(message, "success");
+      } finally {
+        setScaleReading(false);
+      }
+    },
+    [
+      activeBranchId,
+      authUser?.tenantId,
+      posTerminalId,
+      scaleMockEnabled,
+      setProductQuantityInCart,
+      showToast,
+    ]
+  );
+
+  const handleReadScaleFromCart = useCallback(async () => {
+    if (!scaleMockEnabled) {
+      return;
+    }
+
+    if (!firstWeighableCartProduct) {
+      const message = "Selecciona un producto pesable antes de leer la balanza";
+      setScaleLastResult(message);
+      showToast(message, "warning");
+      return;
+    }
+
+    await handleReadScaleForProduct(firstWeighableCartProduct);
+  }, [
+    firstWeighableCartProduct,
+    handleReadScaleForProduct,
+    scaleMockEnabled,
+    showToast,
+  ]);
+
+  const handleProductCardAction = useCallback(
+    (product: ProductResponse) => {
+      if (getProductSaleType(product) === "WEIGHT") {
+        void handleReadScaleForProduct(product);
+        return;
+      }
+
+      addToCart(product);
+    },
+    [addToCart, handleReadScaleForProduct]
+  );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
 
-    setCartItems(
-      cart.flatMap((item) => {
+    const currentCart = cartRef.current;
+    const target = currentCart.find((item) => item.productId === productId);
+    if (!target) {
+      return;
+    }
+
+    if (nextQuantity <= 0) {
+      setCartItemsAndRef(currentCart.filter((item) => item.productId !== productId));
+      return;
+    }
+
+    const safeQuantity = Math.min(nextQuantity, target.stock);
+    if (safeQuantity === target.quantity && target.pricingStatus !== "ERROR") {
+      return;
+    }
+
+    queueCartItemPricing(
+      currentCart.flatMap((item) => {
         if (item.productId !== productId) {
           return [item];
         }
-
-        if (nextQuantity <= 0) {
-          return [];
-        }
-
-        const safeQuantity = Math.min(nextQuantity, item.stock);
         return [{ ...item, quantity: safeQuantity }];
-      })
+      }),
+      productId,
+      safeQuantity
     );
   };
 
   const removeCartItem = (productId: string) => {
     setSaleStatus("DRAFT");
     setSubmitError(null);
-    setCartItems(cart.filter((item) => item.productId !== productId));
+    setCartItemsAndRef(cartRef.current.filter((item) => item.productId !== productId));
   };
 
   const toggleTaxBreakdown = (productId: string) => {
@@ -605,14 +1585,24 @@ export const PosScreen = () => {
   };
 
   const resetPayments = () => {
-    setPayments(buildDefaultPayments());
+    const result = createDefaultCashPayment(
+      summary.total,
+      paymentMethodsCatalog,
+      createPaymentDraft
+    );
+    setPaymentWarning(result.error);
+    setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
   };
 
   const openChargeModal = () => {
     setSubmitError(null);
-    if (payments.length === 0) {
-      resetPayments();
-    }
+    const result = createDefaultCashPayment(
+      summary.total,
+      paymentMethodsCatalog,
+      createPaymentDraft
+    );
+    setPaymentWarning(result.error);
+    setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
     setPaymentModalOpen(true);
   };
 
@@ -631,27 +1621,33 @@ export const PosScreen = () => {
   ) => {
     setSubmitError(null);
     setPayments(
-      payments.map((payment) =>
-        payment.id === id ? { ...payment, [field]: value } : payment
+      rebalancePaymentsForTotal(
+        payments.map((payment) =>
+          payment.id === id ? { ...payment, [field]: value } : payment
+        )
       )
     );
   };
 
   const addPaymentRow = () => {
-    setPayments([
-      ...payments,
-      {
-        id: buildPaymentId(),
-        paymentMethodId: paymentMethodsCatalog[0]?.id ?? "",
-        amount: "",
-        reference: "",
-      },
-    ]);
+    const firstNonCashMethod =
+      paymentMethodsCatalog.find((method) => method.id !== cashPaymentMethod?.id) ??
+      paymentMethodsCatalog[0] ??
+      null;
+    setSubmitError(null);
+    setPayments(
+      rebalancePaymentsForTotal([
+        ...payments,
+        createPaymentDraft(firstNonCashMethod?.id ?? "", ""),
+      ])
+    );
   };
 
   const removePaymentRow = (id: string) => {
     setPayments(
-      payments.length === 1 ? payments : payments.filter((payment) => payment.id !== id)
+      payments.length === 1
+        ? payments
+        : rebalancePaymentsForTotal(payments.filter((payment) => payment.id !== id))
     );
   };
 
@@ -714,12 +1710,27 @@ export const PosScreen = () => {
       return "Hay items que superan el stock disponible.";
     }
 
-    if (paymentDerivedState.overpayment > 0 && totalCashEntered <= 0) {
-      return "El cambio solo puede calcularse cuando existe un pago en efectivo.";
+    if (hasPricingPending) {
+      return "Espera el calculo de precio/promocion antes de vender.";
+    }
+
+    if (pricingErrorItem) {
+      return (
+        pricingErrorItem.pricingError ??
+        `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`
+      );
+    }
+
+    if (paymentWarning) {
+      return paymentWarning;
     }
 
     if (paymentDerivedState.overpayment > 0 && totalNonCashPaid > summary.total) {
       return "Los pagos no en efectivo no pueden exceder el total de la venta.";
+    }
+
+    if (paymentDerivedState.overpayment > 0 && totalCashEntered <= 0) {
+      return "El cambio solo puede calcularse cuando existe un pago en efectivo.";
     }
 
     const hasInvalidPayments = parsedPayments.some(
@@ -746,6 +1757,13 @@ export const PosScreen = () => {
       return "Los metodos que exigen referencia deben incluirla.";
     }
 
+    const duplicateMethods = parsedPayments
+      .filter((payment) => payment.numericAmount > 0 && payment.paymentMethodId)
+      .map((payment) => payment.paymentMethodId);
+    if (new Set(duplicateMethods).size !== duplicateMethods.length) {
+      return "No repitas el mismo metodo de pago en varias lineas.";
+    }
+
     const hasCashWithoutSession = parsedPayments.some(
       (payment) => payment.numericAmount > 0 && payment.method?.tipo === "CASH" && !currentCashSession
     );
@@ -755,6 +1773,10 @@ export const PosScreen = () => {
 
     if (paymentDerivedState.pending === 0 && totalPaid === 0) {
       return "Registra al menos un metodo de pago para una venta al contado.";
+    }
+
+    if (paymentDerivedState.pending > 0) {
+      return "El total pagado debe ser igual al total de la venta.";
     }
 
     return null;
@@ -778,13 +1800,13 @@ export const PosScreen = () => {
     setSubmitError(null);
 
     try {
-      await createSale({
+      const sale = await createSale({
         customerId: selectedCustomerId!,
         type: saleType,
         items: cartWithDerivedValues.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
-          price: item.price,
+          price: item.finalUnitPrice ?? item.price,
         })),
         payments: effectivePayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
@@ -797,14 +1819,48 @@ export const PosScreen = () => {
 
       setSaleStatus("CONFIRMED");
       // Successful checkout clears the persisted sale for this POS context.
-      setCartItems([]);
+      setCartItemsAndRef([]);
       setExpandedTaxItems({});
       setPaymentModalOpen(false);
       resetPayments();
       showToast("Venta confirmada correctamente.", "success");
 
+      const salePeripheralContext: PosSalePeripheralContext = {
+        saleId: sale.id,
+        saleNumber: sale.id,
+        documentNumber: sale.id,
+        date: sale.createdAt,
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId ?? undefined,
+        terminalId: posTerminalId ?? "local-terminal",
+        businessName: authUser?.tenantName ?? "Manus POS",
+        branchName: authUser?.branchName ?? undefined,
+        cashier: authUser?.name ?? authUser?.email ?? undefined,
+        customerName: selectedCustomer?.name ?? "Consumidor final",
+        items: cartWithDerivedValues.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.finalUnitPrice ?? item.price,
+          total: item.subtotal,
+        })),
+        subtotal: round(Math.max(summary.subtotal - summary.taxesTotal, 0)),
+        taxes: summary.taxesTotal,
+        discounts: summary.discountTotal,
+        total: sale.total ?? summary.total,
+        payments: effectivePayments.map((payment) => {
+          const method = paymentMethodById[payment.paymentMethodId];
+
+          return {
+            paymentMethodId: payment.paymentMethodId,
+            methodName: method?.nombre,
+            methodType: method?.tipo,
+            amount: payment.amount,
+          };
+        }),
+      };
+      void handleSalePeripheralFeedback(salePeripheralContext);
+
       try {
-        const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
         if (!activeBranchId) {
           throw new Error("missing branch");
         }
@@ -872,11 +1928,17 @@ export const PosScreen = () => {
           <>
             {/* Cart Items */}
             <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-              {cartWithDerivedValues.map((item) => (
-                <article
-                  key={item.productId}
-                  className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
-                >
+              {cartWithDerivedValues.map((item) => {
+                const product = productById[item.productId];
+                const isCartItemWeighable = Boolean(
+                  product && isWeighableProduct(product)
+                );
+
+                return (
+                  <article
+                    key={item.productId}
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
+                  >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-slate-950 dark:text-white">
@@ -910,11 +1972,11 @@ export const PosScreen = () => {
                         onChange={(event) =>
                           updateQuantity(
                             item.productId,
-                            Number(event.target.value.replace(/[^\d]/g, "") || 0)
+                            parseQuantityInput(event.target.value)
                           )
                         }
                         className="w-14 border-x border-slate-200 bg-transparent px-2 py-2 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                        inputMode="numeric"
+                        inputMode={isCartItemWeighable ? "decimal" : "numeric"}
                         aria-label={`Cantidad de ${item.name}`}
                       />
                       <button
@@ -927,15 +1989,63 @@ export const PosScreen = () => {
                     </div>
 
                     <div className="text-sm text-slate-600 dark:text-slate-300">
-                      <p>{formatCurrency(item.price)} c/u</p>
+                      {item.discountTotal > 0 ? (
+                        <p className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs line-through">
+                            {formatCurrency(item.baseUnitPrice ?? item.unitPrice)}
+                          </span>
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                            {formatCurrency(item.unitPrice)} c/u
+                          </span>
+                        </p>
+                      ) : (
+                        <p>{formatCurrency(item.unitPrice)} c/u</p>
+                      )}
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         Stock disponible: {item.stock}
                       </p>
+                      {isCartItemWeighable && product ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleReadScaleForProduct(product)}
+                          disabled={!scaleMockEnabled || scaleReading}
+                          className="mt-2 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
+                        >
+                          {scaleReading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Scale className="h-3.5 w-3.5" />
+                          )}
+                          Leer balanza MOCK
+                        </button>
+                      ) : null}
+                      {item.pricingStatus === "PENDING" ? (
+                        <p className="mt-2 flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Calculando precio/promocion...
+                        </p>
+                      ) : null}
+                      {item.pricingStatus === "ERROR" ? (
+                        <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+                          {item.pricingError}
+                        </p>
+                      ) : null}
+                      {item.appliedPromotionName ? (
+                        <p className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                          {item.appliedPromotionName}
+                        </p>
+                      ) : null}
+                      {item.discountTotal > 0 ? (
+                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                          Descuento {formatCurrency(item.discountTotal)}
+                          {item.discountPercent ? ` (${item.discountPercent}%)` : ""}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="text-right">
                       <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Subtotal
+                        Total linea
                       </p>
                       <p className="mt-1 text-base font-semibold text-slate-950 dark:text-white">
                         {formatCurrency(item.subtotal)}
@@ -987,8 +2097,9 @@ export const PosScreen = () => {
                       </div>
                     ) : null}
                   </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
 
             {/* Summary */}
@@ -1001,6 +2112,12 @@ export const PosScreen = () => {
                 <span>Impuestos</span>
                 <span>{formatCurrency(summary.taxesTotal)}</span>
               </div>
+              {summary.discountTotal > 0 ? (
+                <div className="flex items-center justify-between text-sm text-emerald-700 dark:text-emerald-300">
+                  <span>Descuentos aplicados</span>
+                  <span>{formatCurrency(summary.discountTotal)}</span>
+                </div>
+              ) : null}
               {/* Inline tax summary */}
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Incluye impuestos: {formatCurrency(summary.taxesTotal)}
@@ -1010,6 +2127,19 @@ export const PosScreen = () => {
                 <span>{formatCurrency(summary.total)}</span>
               </div>
             </div>
+
+            {hasPricingPending ? (
+              <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+                Calculando precio/promocion antes de cobrar.
+              </div>
+            ) : null}
+
+            {pricingErrorItem ? (
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                {pricingErrorItem.pricingError ??
+                  `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
+              </div>
+            ) : null}
 
             {/* Charge Button */}
             <div className="mt-4">
@@ -1117,6 +2247,25 @@ export const PosScreen = () => {
                 </option>
               ))}
             </Select>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFiscalCustomerOpen(true)}
+              >
+                <UserPlus className="h-4 w-4" />
+                Cliente fiscal
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleUseFinalConsumer}
+                disabled={!finalConsumerCustomer}
+              >
+                <UserRound className="h-4 w-4" />
+                Consumidor Final
+              </Button>
+            </div>
           </div>
         ) : null}
       </section>
@@ -1149,6 +2298,115 @@ export const PosScreen = () => {
                   className="pl-10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
                 <Search className="pointer-events-none absolute left-3 top-[38px] h-4 w-4 text-slate-400" />
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Scanner MOCK/SIMULATOR
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                          scannerMockStatus === "connected"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+                            : scannerMockStatus === "error"
+                              ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                              : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                        }`}
+                      >
+                        {scannerMockEnabled
+                          ? scannerMockStatus === "error"
+                            ? "Desconectado"
+                            : "Escuchando scanner.code.read"
+                          : "Desactivado por feature flag"}
+                      </span>
+                    </div>
+                    <Input
+                      label="Código scanner MOCK"
+                      placeholder="SKU, codigo de barras o referencia"
+                      value={scannerMockCode}
+                      onChange={(event) => setScannerMockCode(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void handleSimulateScannerRead();
+                        }
+                      }}
+                      disabled={!scannerMockEnabled}
+                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    isLoading={scannerSimulating}
+                    disabled={!scannerMockEnabled || !scannerMockCode.trim()}
+                    onClick={() => void handleSimulateScannerRead()}
+                    className="xl:mb-0.5"
+                  >
+                    <Search className="h-4 w-4" />
+                    Simular scanner
+                  </Button>
+                </div>
+                {scannerLastCode || scannerLastResult ? (
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+                    {scannerLastCode ? <span>Ultimo codigo: {scannerLastCode}</span> : null}
+                    {scannerLastResult ? <span>{scannerLastResult}</span> : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        <Scale className="h-4 w-4" />
+                        Balanza MOCK
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                          scaleMockStatus === "ready"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
+                            : scaleMockStatus === "reading"
+                              ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+                              : scaleMockStatus === "error"
+                                ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                                : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                        }`}
+                      >
+                        {scaleMockEnabled
+                          ? scaleMockStatus === "reading"
+                            ? "Leyendo"
+                            : scaleMockStatus === "error"
+                              ? "Error"
+                              : "Listo"
+                          : "Desactivado por feature flag"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
+                      <span>
+                        Producto pesable:{" "}
+                        {firstWeighableCartProduct?.name ?? "ninguno en carrito"}
+                      </span>
+                      {scaleLastWeight ? <span>Ultimo peso: {scaleLastWeight}</span> : null}
+                      {scaleLastResult ? <span>{scaleLastResult}</span> : null}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    isLoading={scaleReading}
+                    disabled={!scaleMockEnabled || scaleReading}
+                    onClick={() => void handleReadScaleFromCart()}
+                    className="xl:mb-0.5"
+                  >
+                    <Scale className="h-4 w-4" />
+                    Leer balanza MOCK
+                  </Button>
+                </div>
               </div>
 
               {/* Filter Chips */}
@@ -1192,12 +2450,18 @@ export const PosScreen = () => {
                 <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                   {filteredProducts.map((product) => {
                     const stock = Number(product.stock ?? 0);
+                    const productSaleType = getProductSaleType(product);
+                    const requiresScale = productSaleType === "WEIGHT";
                     return (
                       <button
                         key={product.id}
                         type="button"
-                        onClick={() => addToCart(product)}
-                        disabled={stock <= 0 || !canCreate}
+                        onClick={() => handleProductCardAction(product)}
+                        disabled={
+                          stock <= 0 ||
+                          !canCreate ||
+                          (requiresScale && (!scaleMockEnabled || scaleReading))
+                        }
                         className="group overflow-hidden rounded-[26px] border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:scale-100 dark:border-slate-800 dark:bg-slate-900"
                       >
                         <div className="relative overflow-hidden border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_52%),linear-gradient(135deg,_#f8fafc,_#e2e8f0)] p-5 dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.28),_transparent_50%),linear-gradient(135deg,_#111827,_#1f2937)]">
@@ -1217,6 +2481,16 @@ export const PosScreen = () => {
                                   : `Stock ${stock}`}
                             </span>
                           </div>
+                          <span
+                            className={`mt-4 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                              productSaleType === "UNIT"
+                                ? "border-slate-200 bg-white/80 text-slate-700 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200"
+                                : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+                            }`}
+                          >
+                            {productSaleTypeLabels[productSaleType]} /{" "}
+                            {product.measurementUnit ?? (productSaleType === "UNIT" ? "UND" : "KG")}
+                          </span>
                         </div>
                         <div className="space-y-3 p-5">
                           <div>
@@ -1237,7 +2511,7 @@ export const PosScreen = () => {
                               </p>
                             </div>
                             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition-colors group-hover:bg-slate-900 group-hover:text-white dark:bg-slate-800 dark:text-slate-200 dark:group-hover:bg-white dark:group-hover:text-slate-900">
-                              +1 al carrito
+                              {requiresScale ? "Leer balanza" : "+1 al carrito"}
                             </span>
                           </div>
                         </div>
@@ -1297,11 +2571,23 @@ export const PosScreen = () => {
         </button>
       ) : null}
 
+      {quickFiscalCustomerOpen ? (
+        <QuickFiscalCustomerModal
+          customers={customers}
+          selectedCustomerId={selectedCustomerId}
+          onClose={() => setQuickFiscalCustomerOpen(false)}
+          onCustomerSelected={handleSelectPosCustomer}
+          onCustomerSaved={handleFiscalCustomerSaved}
+        />
+      ) : null}
+
       {/* Payment Modal */}
       {paymentModalOpen ? (
         <Modal
           title="Cobrar venta"
-          className="max-w-3xl dark:bg-slate-950"
+          size="lg"
+          onClose={closeChargeModal}
+          className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
         >
           <div className="space-y-5">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -1430,6 +2716,12 @@ export const PosScreen = () => {
                 </p>
               )}
             </div>
+
+            {paymentWarning ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                {paymentWarning}
+              </div>
+            ) : null}
 
             {submitError ? (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">

@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./modules/app.module";
 import process from "node:process";
-import * as dotenv from "dotenv";
-import * as path from "path";
+import { assertAuthEnv } from "./common/config/auth-env";
+import { loadApiEnv } from "./common/config/env";
 
 
 /**
@@ -74,11 +73,11 @@ const isOriginAllowed = (
  */
 
 const bootstrap = async () => {
-  dotenv.config({
-    path: path.resolve(process.cwd(), ".env"),
-  });
+  loadApiEnv();
+  assertAuthEnv();
 
   const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+  const { AppModule } = await import("./modules/app.module");
 
   const app = await NestFactory.create(AppModule);
 

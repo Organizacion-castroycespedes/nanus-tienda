@@ -7,8 +7,7 @@ import {
 } from "@nestjs/common";
 import jwt from "jsonwebtoken";
 import { DatabaseService } from "../db/database.service";
-
-const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
+import { resolveJwtSecret } from "../config/auth-env";
 
 type TokenPayload = {
   sub?: string;
@@ -36,7 +35,7 @@ export class JwtAuthGuard implements CanActivate {
 
     let payload: TokenPayload;
     try {
-      const decoded = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, resolveJwtSecret());
       if (typeof decoded === "string") {
         throw new UnauthorizedException("Token inválido");
       }

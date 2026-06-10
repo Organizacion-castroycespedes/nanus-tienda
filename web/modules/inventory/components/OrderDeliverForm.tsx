@@ -11,7 +11,11 @@ import {
   deliverOrder,
   getOrderById,
   type OrderDetailResponse,
+  type OrderResponse,
 } from "../services/order.service";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
+import { useAppSelector } from "../../../store/hooks";
+import type { OrderPeripheralContext } from "../../../domains/peripherals/order-integration";
 
 type DeliverItemValue = {
   productId: string;
@@ -26,7 +30,10 @@ type DeliverFormErrors = {
 type OrderDeliverFormProps = {
   orderId: string;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (
+    response?: OrderResponse,
+    peripheralContext?: OrderPeripheralContext
+  ) => void;
 };
 
 const formatCurrency = (value: number) =>
@@ -42,6 +49,7 @@ export const OrderDeliverForm = ({
   onSuccess,
 }: OrderDeliverFormProps) => {
   const confirm = useConfirm();
+  const authUser = useAppSelector((state) => state.auth.user);
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
   const [values, setValues] = useState<DeliverItemValue[]>([]);
   const [loading, setLoading] = useState(false);
@@ -164,15 +172,50 @@ export const OrderDeliverForm = ({
         variant: "warning",
       });
 
-      await deliverOrder(orderId, payload);
-      onSuccess();
+      const response = await deliverOrder(orderId, payload);
+      const peripheralContext: OrderPeripheralContext | undefined = order
+        ? {
+            orderId: response.id,
+            orderNumber: response.id,
+            documentNumber: response.id,
+            date: response.createdAt,
+            businessName: response.tenantName ?? authUser?.tenantName ?? "Manus POS",
+            branchName: response.branchName ?? order.branchName ?? undefined,
+            cashier: authUser?.name ?? authUser?.email ?? undefined,
+            customerName: response.customerName ?? order.customerName ?? "Cliente",
+            status: response.status,
+            items: order.items.map((item) => ({
+              name: item.productName ?? item.productId,
+              quantity: item.orderedQuantity,
+              unitPrice: Number(item.price),
+              total: Number(item.subtotal),
+            })),
+            subtotal: Number(response.total),
+            taxes: 0,
+            discounts: 0,
+            total: Number(response.total),
+            balanceDue: response.balanceDue,
+            payments: [],
+          }
+        : undefined;
+
+      onSuccess(response, peripheralContext);
     } catch (error) {
       if (isConfirmCancelledError(error)) {
         return;
       }
 
+      const dialog = buildConfirmFromApiError(
+        error,
+        "No se pudo registrar la entrega."
+      );
       setErrors({
-        submit: "No se pudo registrar la entrega.",
+        submit: dialog.description ?? "No se pudo registrar la entrega.",
+      });
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
       });
     } finally {
       setIsSubmitting(false);

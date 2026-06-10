@@ -9,6 +9,8 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+scripts/database/config/*.env
+!scripts/database/config/*.env.example
 
 # Next.js
 .next/

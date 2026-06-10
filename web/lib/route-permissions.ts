@@ -26,6 +26,10 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.CONFIG_MENU, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/admin\/peripherals\/?$/i,
+    requirement: { module: "peripherals", action: "manage" },
+  },
+  {
     pattern: /^\/[^/]+\/roles\/?$/i,
     requirement: { module: MENU_KEYS.CONFIG_ROLES, action: "read" },
   },
@@ -42,7 +46,19 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: "inventory", action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/inventory\/promotions\/?$/i,
+    requirement: { module: MENU_KEYS.INVENTORY_PROMOTIONS, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/inventory\/units\/?$/i,
+    requirement: { module: "inventory", action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/inventory\/locations\/?$/i,
+    requirement: { module: "inventory", action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/inventory\/lots\/?$/i,
     requirement: { module: "inventory", action: "read" },
   },
   {

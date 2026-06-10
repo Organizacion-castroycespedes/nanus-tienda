@@ -8,6 +8,10 @@ import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { CustomerForm } from "../../../modules/inventory/components/CustomerForm";
 import {
+  listElectronicInvoicingCustomers,
+  type ElectronicInvoicingCustomer,
+} from "../../../modules/electronic-invoicing/services/customer.service";
+import {
   deleteCustomer,
   getCustomers,
   type CustomerResponse,
@@ -26,6 +30,63 @@ const defaultFilters: CustomerFilters = {
 
 const pageSizeOptions = [10, 25, 50];
 
+const mergeFiscalCustomers = (
+  baseCustomers: CustomerResponse[],
+  fiscalCustomers: ElectronicInvoicingCustomer[]
+): CustomerResponse[] => {
+  const fiscalById = new Map(
+    fiscalCustomers.map((customer) => [customer.id, customer])
+  );
+
+  return baseCustomers.map((customer) => {
+    const fiscal = fiscalById.get(customer.id);
+    if (!fiscal) {
+      return customer;
+    }
+
+    return {
+      ...customer,
+      ...fiscal,
+      email: customer.email ?? fiscal.invoiceEmail ?? fiscal.fiscalEmail ?? null,
+      departamentoId: customer.departamentoId,
+      municipioId: customer.municipioId,
+      ciudad: customer.ciudad,
+      departamento: customer.departamento,
+    };
+  });
+};
+
+const resolveFiscalBadge = (customer: CustomerResponse) => {
+  if (customer.isFinalConsumer || customer.fiscalStatus === "NOT_REQUIRED") {
+    return {
+      label: "Consumidor Final",
+      className: "border-slate-200 bg-slate-100 text-slate-700",
+    };
+  }
+  if (customer.isDianValidated || customer.fiscalStatus === "VALIDATED") {
+    return {
+      label: "Validado DIAN",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (customer.fiscalDataSource === "MANUAL") {
+    return {
+      label: "Manual",
+      className: "border-blue-200 bg-blue-50 text-blue-700",
+    };
+  }
+  return {
+    label: "Pendiente",
+    className: "border-amber-200 bg-amber-50 text-amber-800",
+  };
+};
+
+const getCustomerDocument = (customer: CustomerResponse) =>
+  customer.identificationNumber ??
+  customer.documentNumberNormalized ??
+  customer.documentNumber ??
+  "-";
+
 const CustomersPage = () => {
   const confirm = useConfirm();
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
@@ -37,6 +98,7 @@ const CustomersPage = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fiscalWarning, setFiscalWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResponse | null>(null);
@@ -55,9 +117,25 @@ const CustomersPage = () => {
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     setErrorMessage(null);
+    setFiscalWarning(null);
     try {
-      const result = await getCustomers();
-      setCustomers(result);
+      const [baseResult, fiscalResult] = await Promise.allSettled([
+        getCustomers(),
+        listElectronicInvoicingCustomers(),
+      ]);
+
+      if (baseResult.status === "rejected") {
+        throw baseResult.reason;
+      }
+
+      if (fiscalResult.status === "fulfilled") {
+        setCustomers(mergeFiscalCustomers(baseResult.value, fiscalResult.value));
+      } else {
+        setCustomers(baseResult.value);
+        setFiscalWarning(
+          "No se pudieron cargar datos fiscales. Se muestra catalogo basico."
+        );
+      }
       setHasSearched(true);
     } catch {
       setErrorMessage("No se pudieron cargar los clientes.");
@@ -75,10 +153,17 @@ const CustomersPage = () => {
 
     return customers.filter((customer) => {
       const name = customer.name.toLowerCase();
-      const documentNumber = (customer.documentNumber ?? "").toLowerCase();
-      const email = (customer.email ?? "").toLowerCase();
+      const legalName = (customer.legalName ?? "").toLowerCase();
+      const documentNumber = getCustomerDocument(customer).toLowerCase();
+      const email = (
+        customer.invoiceEmail ??
+        customer.fiscalEmail ??
+        customer.email ??
+        ""
+      ).toLowerCase();
       return (
         name.includes(query) ||
+        legalName.includes(query) ||
         documentNumber.includes(query) ||
         email.includes(query)
       );
@@ -123,6 +208,11 @@ const CustomersPage = () => {
   };
 
   const handleDelete = async (customer: CustomerResponse) => {
+    if (customer.isFinalConsumer) {
+      showToast("Consumidor Final esta protegido.", "warning");
+      return;
+    }
+
     try {
       await confirm({
         title: "Confirmar eliminacion",
@@ -226,6 +316,12 @@ const CustomersPage = () => {
         </section>
       ) : null}
 
+      {fiscalWarning ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
+          {fiscalWarning}
+        </section>
+      ) : null}
+
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -235,6 +331,7 @@ const CustomersPage = () => {
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Documento</th>
+                <th className="px-4 py-3 font-medium">Estado fiscal</th>
                 <th className="px-4 py-3 font-medium">Telefono</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Ubicacion</th>
@@ -244,63 +341,92 @@ const CustomersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Cargando clientes...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar clientes.
                   </td>
                 </tr>
               ) : paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     No hay clientes para mostrar.
                   </td>
                 </tr>
               ) : (
-                paginatedCustomers.map((customer) => (
-                  <tr key={customer.id}>
-                    <td className="px-4 py-3 text-slate-900">{customer.name}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {customer.documentNumber || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{customer.phone || "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">{customer.email || "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {[customer.ciudad, customer.departamento].filter(Boolean).join(", ") || "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {canEdit ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedCustomer(customer);
-                              setFormMode("edit");
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
+                paginatedCustomers.map((customer) => {
+                  const fiscalBadge = resolveFiscalBadge(customer);
+                  return (
+                    <tr key={customer.id}>
+                      <td className="px-4 py-3 text-slate-900">
+                        <div className="font-medium">{customer.name}</div>
+                        {customer.legalName && customer.legalName !== customer.name ? (
+                          <div className="text-xs text-slate-500">{customer.legalName}</div>
                         ) : null}
-                        {canDelete ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleDelete(customer)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Eliminar
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {getCustomerDocument(customer)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${fiscalBadge.className}`}
+                        >
+                          {fiscalBadge.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {customer.phone || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {customer.invoiceEmail || customer.fiscalEmail || customer.email || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {[customer.ciudad, customer.departamento].filter(Boolean).join(", ") ||
+                          [customer.municipalityCode, customer.departmentCode]
+                            .filter(Boolean)
+                            .join(", ") ||
+                          "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {canEdit ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCustomer(customer);
+                                setFormMode("edit");
+                              }}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Editar
+                            </Button>
+                          ) : null}
+                          {canDelete ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={customer.isFinalConsumer}
+                              title={
+                                customer.isFinalConsumer
+                                  ? "Consumidor Final protegido"
+                                  : undefined
+                              }
+                              onClick={() => void handleDelete(customer)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Eliminar
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

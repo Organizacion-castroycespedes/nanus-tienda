@@ -13,6 +13,7 @@ import { getProducts } from "../services/product.service";
 import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
 import { useAppSelector } from "../../../store/hooks";
+import type { PurchasePeripheralContext } from "../../../domains/peripherals/purchase-integration";
 
 type PurchaseFormItem = {
   productId: string;
@@ -36,7 +37,10 @@ type PurchaseFormErrors = {
 
 type PurchaseFormProps = {
   onCancel: () => void;
-  onSuccess: (response?: PurchaseResponse) => void;
+  onSuccess: (
+    response?: PurchaseResponse,
+    peripheralContext?: PurchasePeripheralContext
+  ) => void;
   onError?: (error: unknown) => void;
   onDirtyChange?: (isDirty: boolean) => void;
 };
@@ -61,7 +65,8 @@ export const PurchaseForm = ({
   onDirtyChange,
 }: PurchaseFormProps) => {
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
-  const authBranchName = useAppSelector((state) => state.auth.user?.branchName ?? null);
+  const authUser = useAppSelector((state) => state.auth.user);
+  const authBranchName = authUser?.branchName ?? null;
   const [values, setValues] = useState<PurchaseFormValues>({
     supplierId: "",
     branchId: currentBranch ?? "",
@@ -199,7 +204,20 @@ export const PurchaseForm = ({
     setValues((prev) => ({
       ...prev,
       items: prev.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
+        itemIndex === index
+          ? {
+              ...item,
+              [field]: value,
+              ...(field === "productId"
+                ? {
+                    cost:
+                      value && Number(products.find((product) => product.id === value)?.cost) > 0
+                        ? String(products.find((product) => product.id === value)?.cost)
+                        : "",
+                  }
+                : {}),
+            }
+          : item
       ),
     }));
     setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
@@ -229,7 +247,47 @@ export const PurchaseForm = ({
         })),
       });
 
-      onSuccess(response);
+      const selectedSupplier = suppliers.find(
+        (supplier) => supplier.id === values.supplierId
+      );
+      const peripheralContext: PurchasePeripheralContext = {
+        purchaseId: response.id,
+        purchaseNumber: response.id,
+        documentNumber: response.id,
+        date: response.createdAt,
+        businessName: response.tenantName ?? authUser?.tenantName ?? "Manus POS",
+        branchName: response.branchName ?? selectedBranchName,
+        cashier: authUser?.name ?? authUser?.email ?? undefined,
+        supplierName: response.supplierName ?? selectedSupplier?.name ?? "Proveedor",
+        items: values.items.map((item, index) => {
+          const product = products.find((candidate) => candidate.id === item.productId);
+          const quantity = Number(item.quantity);
+          const cost = Number(item.cost);
+
+          return {
+            name: product?.name ?? item.productId,
+            quantity,
+            unitPrice: cost,
+            total: itemSubtotals[index] ?? 0,
+          };
+        }),
+        subtotal: total,
+        taxes: 0,
+        discounts: 0,
+        total: response.total ?? total,
+        payments:
+          response.type === "CASH" && Number(response.totalPaid) > 0
+            ? [
+                {
+                  methodName: "Efectivo",
+                  methodType: "CASH",
+                  amount: Number(response.totalPaid),
+                },
+              ]
+            : [],
+      };
+
+      onSuccess(response, peripheralContext);
       onDirtyChange?.(false);
     } catch (error) {
       onError?.(error);
@@ -355,7 +413,13 @@ export const PurchaseForm = ({
           </div>
 
           <div className="grid gap-4">
-            {values.items.map((item, index) => (
+            {values.items.map((item, index) => {
+              const selectedProduct = products.find(
+                (product) => product.id === item.productId
+              );
+              const productCost = Number(selectedProduct?.cost ?? 0);
+
+              return (
               <div
                 key={`${index}-${item.productId}`}
                 className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_auto]"
@@ -398,6 +462,12 @@ export const PurchaseForm = ({
                   onChange={(event) => handleItemChange(index, "cost", event.target.value)}
                 />
 
+                {selectedProduct && productCost <= 0 ? (
+                  <p className="text-xs text-amber-700 md:col-start-3">
+                    Este producto no tiene costo registrado. Ingresa el costo de compra.
+                  </p>
+                ) : null}
+
                 <div className="flex items-end gap-2">
                   <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -425,7 +495,8 @@ export const PurchaseForm = ({
                   </Button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {errors.items ? <p className="mt-3 text-xs text-rose-600">{errors.items}</p> : null}

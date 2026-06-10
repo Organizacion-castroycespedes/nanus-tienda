@@ -1,0 +1,135 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import "reflect-metadata";
+import { MENU_KEYS } from "../../../common/constants/menu-keys";
+import { PERMISSION_KEY } from "../../../common/decorators/require-permission.decorator";
+import { ElectronicInvoicingSuppliersController } from "./electronic-invoicing-suppliers.controller";
+
+const request = {
+  user: {
+    tenantId: "tenant-1",
+  },
+} as never;
+
+describe("ElectronicInvoicingSuppliersController", () => {
+  it("uses the suppliers electronic invoicing permission key", () => {
+    const listPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.list
+    );
+    const createPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.create
+    );
+    const updatePermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.update
+    );
+    const lookupPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.lookup
+    );
+    const applyLookupPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.applyLookup
+    );
+    const getByIdPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      ElectronicInvoicingSuppliersController.prototype.getById
+    );
+
+    assert.deepEqual(listPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "READ",
+    });
+    assert.deepEqual(createPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(updatePermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(lookupPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "READ",
+    });
+    assert.deepEqual(applyLookupPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    });
+    assert.deepEqual(getByIdPermission, {
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "READ",
+    });
+  });
+
+  it("routes list to service with tenant context", async () => {
+    const service = {
+      listSuppliers: async (tenantId: string, query: unknown) => ({
+        tenantId,
+        query,
+      }),
+    };
+    const controller = new ElectronicInvoicingSuppliersController(
+      service as never
+    );
+
+    const result = await controller.list({ search: "Proveedor" }, request);
+
+    assert.deepEqual(result, {
+      tenantId: "tenant-1",
+      query: { search: "Proveedor" },
+    });
+  });
+
+  it("routes create, detail and update to service", async () => {
+    const calls: string[] = [];
+    const service = {
+      createSupplier: async () => {
+        calls.push("create");
+        return { id: "supplier-1" };
+      },
+      getSupplier: async () => {
+        calls.push("detail");
+        return { id: "supplier-1" };
+      },
+      updateSupplier: async () => {
+        calls.push("update");
+        return { id: "supplier-1" };
+      },
+      lookupSupplierFiscalData: async () => {
+        calls.push("lookup");
+        return { lookupStatus: "FOUND" };
+      },
+      applySupplierLookup: async () => {
+        calls.push("apply-lookup");
+        return { id: "supplier-1" };
+      },
+    };
+    const controller = new ElectronicInvoicingSuppliersController(
+      service as never
+    );
+
+    await controller.create({ name: "Proveedor" }, request);
+    await controller.getById("supplier-1", request);
+    await controller.update("supplier-1", { legalName: "Proveedor SAS" }, request);
+    await controller.lookup(
+      { documentTypeCode: "31", documentNumber: "900123456" },
+      request
+    );
+    await controller.applyLookup(
+      "supplier-1",
+      { documentTypeCode: "31", documentNumber: "900123456" },
+      request
+    );
+
+    assert.deepEqual(calls, [
+      "create",
+      "detail",
+      "update",
+      "lookup",
+      "apply-lookup",
+    ]);
+  });
+});

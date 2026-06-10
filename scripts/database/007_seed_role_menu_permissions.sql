@@ -19,12 +19,14 @@ WITH role_targets AS (
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'CONFIGURACION_TENANT_CONFIGURACION',
+          'POS_PERIPHERALS',
           'INVENTORY',
           'INVENTORY_PRODUCTS',
           'INVENTORY_UNITS',
           'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
+          'INVENTORY_PROMOTIONS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -56,6 +58,8 @@ WITH role_targets AS (
         THEN CASE
           WHEN mi.key = 'INVENTORY_PURCHASES'
             THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true, "settle_partial": true}'::jsonb
+          WHEN mi.key = 'POS_PERIPHERALS'
+            THEN '{"read": true, "manage": true}'::jsonb
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'SUPER_USER'
@@ -65,18 +69,22 @@ WITH role_targets AS (
             THEN '{"read": true}'::jsonb
           WHEN mi.key = 'INVENTORY_PURCHASES'
             THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true, "settle_partial": true}'::jsonb
+          WHEN mi.key = 'POS_PERIPHERALS'
+            THEN '{"read": true, "manage": true}'::jsonb
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'ADMIN'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'CONFIGURACION_TENANT_CONFIGURACION',
+          'POS_PERIPHERALS',
           'INVENTORY',
           'INVENTORY_PRODUCTS',
           'INVENTORY_UNITS',
           'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
+          'INVENTORY_PROMOTIONS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -86,6 +94,8 @@ WITH role_targets AS (
             THEN '{"read": true}'::jsonb
           WHEN mi.key = 'INVENTORY_PURCHASES'
             THEN '{"read": true, "create": true, "update": true, "delete": true, "cancel": true, "settle_partial": true}'::jsonb
+          WHEN mi.key = 'POS_PERIPHERALS'
+            THEN '{"read": true, "manage": true}'::jsonb
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'USER'
@@ -154,12 +164,14 @@ WITH allowed_permissions AS (
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'CONFIGURACION_TENANT_CONFIGURACION',
+          'POS_PERIPHERALS',
           'INVENTORY',
           'INVENTORY_PRODUCTS',
           'INVENTORY_UNITS',
           'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
+          'INVENTORY_PROMOTIONS',
           'CUSTOMERS',
           'ORDERS',
           'POS'

@@ -112,6 +112,10 @@ export class CustomerService {
       this.validateName(data.name);
     }
 
+    if (current.isFinalConsumer && data.isActive === false) {
+      throw new BadRequestException("final consumer cannot be deleted");
+    }
+
     const updated = await this.customerRepository.update(id, tenantId, {
       name: data.name?.trim(),
       documentNumber: data.documentNumber,
@@ -136,6 +140,9 @@ export class CustomerService {
     const current = await this.customerRepository.findById(id, tenantId);
     if (!current) {
       throw new NotFoundException("customer not found");
+    }
+    if (current.isFinalConsumer) {
+      throw new BadRequestException("final consumer cannot be deleted");
     }
 
     const deleted = await this.customerRepository.softDelete(id, tenantId);

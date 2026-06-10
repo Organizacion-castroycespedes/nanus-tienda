@@ -2913,7 +2913,8 @@ BEGIN
   RETURN v_payload;
 END;
 $$;
-DROP FUNCTION public.report_customer_orders_status(uuid, text, uuid, uuid, uuid, uuid, timestamptz, timestamptz);
+-- Legacy sync patch must be safe on clean QA databases where this function may not exist yet.
+DROP FUNCTION IF EXISTS public.report_customer_orders_status(uuid, text, uuid, uuid, uuid, uuid, timestamptz, timestamptz);
 CREATE OR REPLACE FUNCTION public.report_customer_orders_status(
   p_actor_user_id UUID,
   p_actor_role TEXT,

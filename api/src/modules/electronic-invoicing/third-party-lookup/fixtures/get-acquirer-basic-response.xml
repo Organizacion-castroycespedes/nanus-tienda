@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope
+  xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+  xmlns:wsa="http://www.w3.org/2005/08/addressing"
+  xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+  xmlns:dian="http://wcf.dian.colombia"
+  xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+>
+  <soap:Header>
+    <wsa:Action>http://wcf.dian.colombia/IWcfDianCustomerServices/GetAcquirer</wsa:Action>
+    <wsa:MessageID>urn:uuid:00000000-0000-4000-8000-000000000001</wsa:MessageID>
+  </soap:Header>
+  <soap:Body wsu:Id="Body-1">
+    <dian:GetAcquirerResponse>
+      <dian:GetAcquirerResult>
+        <dian:StatusCode>DIAN_OK</dian:StatusCode>
+        <cac:AccountingCustomerParty>
+          <cac:PartyIdentification>
+            <cbc:ID schemeName="31">900123456</cbc:ID>
+          </cac:PartyIdentification>
+          <cac:Contact>
+            <cbc:Name>Fixture Acquirer SAS</cbc:Name>
+            <cbc:ElectronicMail>facturacion.fixture@example.test</cbc:ElectronicMail>
+          </cac:Contact>
+        </cac:AccountingCustomerParty>
+        <cac:TaxRepresentativeParty>
+          <cac:PartyIdentification>
+            <cbc:ID>900123456</cbc:ID>
+          </cac:PartyIdentification>
+        </cac:TaxRepresentativeParty>
+      </dian:GetAcquirerResult>
+    </dian:GetAcquirerResponse>
+  </soap:Body>
+</soap:Envelope>

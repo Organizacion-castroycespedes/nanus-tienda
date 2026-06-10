@@ -10,6 +10,8 @@ import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { AuditService } from "../../../common/services/audit.service";
 import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
+import { PricingService } from "../../pricing/pricing.service";
+import type { LinePricePreview } from "../../pricing/pricing.types";
 import { OrderItemEntity } from "../entities/order-item.entity";
 import { OrderEntity, type OrderStatus, type OrderType } from "../entities/order.entity";
 import { SaleService } from "./sale.service";
@@ -87,6 +89,20 @@ type OrderItemRow = {
   billed_quantity?: string | number | null;
   price: string | number;
   subtotal: string | number;
+  base_unit_price?: string | number | null;
+  final_unit_price?: string | number | null;
+  discount_amount?: string | number | null;
+  discount_percent?: string | number | null;
+  discount_total?: string | number | null;
+  applied_promotion_id?: string | null;
+  applied_promotion_name?: string | null;
+  tax_id?: string | null;
+  tax_rate?: string | number | null;
+  tax_base?: string | number | null;
+  tax_amount?: string | number | null;
+  line_total?: string | number | null;
+  pricing_snapshot?: Record<string, unknown> | string | null;
+  pricing_calculated_at?: string | Date | null;
 };
 
 type OrderPaymentRow = {
@@ -132,8 +148,34 @@ export class OrderService {
     private readonly financeAccessRepository: FinanceAccessRepository,
     @Inject(SaleService) private readonly saleService: SaleService,
     @Inject(StockMovementService)
-    private readonly stockMovementService: StockMovementService
+    private readonly stockMovementService: StockMovementService,
+    @Inject(PricingService)
+    private readonly pricingService: PricingService
   ) {}
+
+  private toNullableNumber(value: string | number | null | undefined) {
+    return value === null || value === undefined ? null : Number(value);
+  }
+
+  private toNullableDate(value: string | Date | null | undefined) {
+    return value === null || value === undefined ? null : new Date(value);
+  }
+
+  private toPricingSnapshot(
+    value: Record<string, unknown> | string | null | undefined
+  ) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value === "string") {
+      return JSON.parse(value) as Record<string, unknown>;
+    }
+    return value;
+  }
+
+  private roundCurrency(value: number) {
+    return Math.round((value + 1e-9) * 100) / 100;
+  }
 
   private mapOrder(row: OrderRow) {
     return OrderEntity.create({
@@ -160,6 +202,20 @@ export class OrderService {
       billedQuantity: Number(row.billed_quantity ?? 0),
       price: Number(row.price),
       subtotal: Number(row.subtotal),
+      baseUnitPrice: this.toNullableNumber(row.base_unit_price),
+      finalUnitPrice: this.toNullableNumber(row.final_unit_price),
+      discountAmount: this.toNullableNumber(row.discount_amount),
+      discountPercent: this.toNullableNumber(row.discount_percent),
+      discountTotal: this.toNullableNumber(row.discount_total),
+      appliedPromotionId: row.applied_promotion_id ?? null,
+      appliedPromotionName: row.applied_promotion_name ?? null,
+      taxId: row.tax_id ?? null,
+      taxRate: this.toNullableNumber(row.tax_rate),
+      taxBase: this.toNullableNumber(row.tax_base),
+      taxAmount: this.toNullableNumber(row.tax_amount),
+      lineTotal: this.toNullableNumber(row.line_total),
+      pricingSnapshot: this.toPricingSnapshot(row.pricing_snapshot),
+      pricingCalculatedAt: this.toNullableDate(row.pricing_calculated_at),
     });
   }
 
@@ -266,17 +322,89 @@ export class OrderService {
     }
   }
 
-  private normalizeItems(items: CreateOrderItemInput[], orderId: string) {
-    return items.map((item) =>
-      OrderItemEntity.create({
-        id: item.id ?? crypto.randomUUID(),
-        orderId,
+  private buildPricingSnapshot(input: {
+    tenantId: string;
+    branchId: string;
+    customerId: string;
+    pricingCalculatedAt: Date;
+    preview: LinePricePreview;
+  }) {
+    return {
+      channel: "ORDER",
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      customerId: input.customerId,
+      calculatedAt: input.pricingCalculatedAt.toISOString(),
+      productId: input.preview.productId,
+      quantity: input.preview.quantity,
+      result: input.preview,
+    };
+  }
+
+  private async calculatePricedItems(input: {
+    tenantId: string;
+    branchId: string;
+    customerId: string;
+    orderId: string;
+    items: CreateOrderItemInput[];
+    pricingCalculatedAt: Date;
+  }) {
+    const pricingDate = input.pricingCalculatedAt.toISOString();
+    const items: OrderItemEntity[] = [];
+
+    for (const item of input.items) {
+      const quantity = item.orderedQuantity ?? item.quantity ?? 0;
+      const preview = await this.pricingService.calculateLinePrice({
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        customerId: input.customerId,
         productId: item.productId,
-        orderedQuantity: item.orderedQuantity ?? item.quantity ?? 0,
-        deliveredQuantity: item.deliveredQuantity ?? 0,
-        price: item.price,
-        subtotal: item.subtotal,
-      })
+        quantity,
+        channel: "ORDER",
+        date: pricingDate,
+      });
+
+      items.push(
+        OrderItemEntity.create({
+          id: item.id ?? crypto.randomUUID(),
+          orderId: input.orderId,
+          productId: item.productId,
+          orderedQuantity: preview.quantity,
+          deliveredQuantity: item.deliveredQuantity ?? 0,
+          price: preview.finalUnitPrice,
+          subtotal: preview.lineTotal,
+          baseUnitPrice: preview.baseUnitPrice,
+          finalUnitPrice: preview.finalUnitPrice,
+          discountAmount: preview.discountAmount,
+          discountPercent: preview.discountPercent,
+          discountTotal: this.roundCurrency(
+            preview.discountAmount * preview.quantity
+          ),
+          appliedPromotionId: preview.appliedPromotionId,
+          appliedPromotionName: preview.appliedPromotionName,
+          taxId: preview.taxId,
+          taxRate: preview.taxRate,
+          taxBase: preview.taxBase,
+          taxAmount: preview.taxAmount,
+          lineTotal: preview.lineTotal,
+          pricingSnapshot: this.buildPricingSnapshot({
+            tenantId: input.tenantId,
+            branchId: input.branchId,
+            customerId: input.customerId,
+            pricingCalculatedAt: input.pricingCalculatedAt,
+            preview,
+          }),
+          pricingCalculatedAt: input.pricingCalculatedAt,
+        })
+      );
+    }
+
+    return items;
+  }
+
+  private calculateOrderTotal(items: OrderItemEntity[]) {
+    return this.roundCurrency(
+      items.reduce((sum, item) => sum + (item.lineTotal ?? item.subtotal), 0)
     );
   }
 
@@ -443,9 +571,25 @@ export class OrderService {
             ordered_quantity,
             delivered_quantity,
             price,
-            subtotal
+            subtotal,
+            base_unit_price,
+            final_unit_price,
+            discount_amount,
+            discount_percent,
+            discount_total,
+            applied_promotion_id,
+            applied_promotion_name,
+            tax_id,
+            tax_rate,
+            tax_base,
+            tax_amount,
+            line_total,
+            pricing_snapshot,
+            pricing_calculated_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10, $11, $12, $13, $14,
+            $15, $16, $17, $18, $19, $20::jsonb, $21
           )
         `,
         [
@@ -456,6 +600,20 @@ export class OrderService {
           item.deliveredQuantity,
           item.price,
           item.subtotal,
+          item.baseUnitPrice,
+          item.finalUnitPrice,
+          item.discountAmount,
+          item.discountPercent,
+          item.discountTotal,
+          item.appliedPromotionId,
+          item.appliedPromotionName,
+          item.taxId,
+          item.taxRate,
+          item.taxBase,
+          item.taxAmount,
+          item.lineTotal,
+          item.pricingSnapshot ? JSON.stringify(item.pricingSnapshot) : null,
+          item.pricingCalculatedAt,
         ]
       );
     }
@@ -472,27 +630,37 @@ export class OrderService {
       throw new BadRequestException("branch is required");
     }
 
-    const order = OrderEntity.create({
-      id: crypto.randomUUID(),
-      tenantId: data.tenantId,
-      customerId: data.customerId,
-      type: data.type ?? "CASH",
-      status: "DRAFT",
-      total: data.total,
-      totalPaid: 0,
-      balanceDue: data.total,
-      paymentStatus: "PENDING",
-      createdAt: new Date(),
-    });
-
-    const items = this.normalizeItems(data.items, order.id);
+    const orderId = crypto.randomUUID();
+    const createdAt = new Date();
 
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
-      await this.ensureCustomerBelongsToTenant(order.customerId, order.tenantId, client);
-      await this.ensureProductsBelongToTenant(data.items, order.tenantId, client);
-      await this.ensureBranchBelongsToTenant(orderBranchId, order.tenantId, client);
+      await this.ensureCustomerBelongsToTenant(data.customerId, data.tenantId, client);
+      await this.ensureProductsBelongToTenant(data.items, data.tenantId, client);
+      await this.ensureBranchBelongsToTenant(orderBranchId, data.tenantId, client);
+
+      const items = await this.calculatePricedItems({
+        tenantId: data.tenantId,
+        branchId: orderBranchId,
+        customerId: data.customerId,
+        orderId,
+        items: data.items,
+        pricingCalculatedAt: createdAt,
+      });
+      const total = this.calculateOrderTotal(items);
+      const order = OrderEntity.create({
+        id: orderId,
+        tenantId: data.tenantId,
+        customerId: data.customerId,
+        type: data.type ?? "CASH",
+        status: "DRAFT",
+        total,
+        totalPaid: 0,
+        balanceDue: total,
+        paymentStatus: "PENDING",
+        createdAt,
+      });
 
       const orderResult = await client.query<OrderRow>(
         `
@@ -624,8 +792,24 @@ export class OrderService {
         await this.ensureProductsBelongToTenant(data.items, tenantId, client);
       }
 
+      const nextCustomerId = data.customerId ?? current.customer_id;
+      const pricedItems = data.items
+        ? await this.calculatePricedItems({
+            tenantId,
+            branchId: nextBranchId,
+            customerId: nextCustomerId,
+            orderId: id,
+            items: data.items,
+            pricingCalculatedAt: new Date(),
+          })
+        : null;
+
       const nextType = data.type ?? current.type;
-      const nextTotal = data.total !== undefined ? data.total : Number(current.total);
+      const nextTotal = pricedItems
+        ? this.calculateOrderTotal(pricedItems)
+        : data.total !== undefined
+          ? data.total
+          : Number(current.total);
       const nextTotalPaid = Number(current.total_paid ?? 0);
       const nextBalanceDue = Math.max(nextTotal - nextTotalPaid, 0);
       const nextPaymentStatus =
@@ -675,8 +859,8 @@ export class OrderService {
       );
 
       let items: OrderItemEntity[] = [];
-      if (data.items) {
-        items = this.normalizeItems(data.items, id);
+      if (pricedItems) {
+        items = pricedItems;
         await this.replaceItems(id, items, client);
       } else {
         const itemsResult = await client.query<OrderItemRow>(
@@ -689,7 +873,21 @@ export class OrderService {
               delivered_quantity,
               COALESCE(billed_quantity, 0) AS billed_quantity,
               price,
-              subtotal
+              subtotal,
+              base_unit_price,
+              final_unit_price,
+              discount_amount,
+              discount_percent,
+              discount_total,
+              applied_promotion_id,
+              applied_promotion_name,
+              tax_id,
+              tax_rate,
+              tax_base,
+              tax_amount,
+              line_total,
+              pricing_snapshot,
+              pricing_calculated_at
             FROM order_items
             WHERE order_id = $1
             ORDER BY id
@@ -906,7 +1104,21 @@ export class OrderService {
           oi.delivered_quantity,
           COALESCE(oi.billed_quantity, 0) AS billed_quantity,
           oi.price,
-          oi.subtotal
+          oi.subtotal,
+          oi.base_unit_price,
+          oi.final_unit_price,
+          oi.discount_amount,
+          oi.discount_percent,
+          oi.discount_total,
+          oi.applied_promotion_id,
+          oi.applied_promotion_name,
+          oi.tax_id,
+          oi.tax_rate,
+          oi.tax_base,
+          oi.tax_amount,
+          oi.line_total,
+          oi.pricing_snapshot,
+          oi.pricing_calculated_at
         FROM order_items oi
         INNER JOIN products p
           ON p.id = oi.product_id
@@ -1043,7 +1255,21 @@ export class OrderService {
             delivered_quantity,
             COALESCE(billed_quantity, 0) AS billed_quantity,
             price,
-            subtotal
+            subtotal,
+            base_unit_price,
+            final_unit_price,
+            discount_amount,
+            discount_percent,
+            discount_total,
+            applied_promotion_id,
+            applied_promotion_name,
+            tax_id,
+            tax_rate,
+            tax_base,
+            tax_amount,
+            line_total,
+            pricing_snapshot,
+            pricing_calculated_at
           FROM order_items
           WHERE order_id = $1
           ORDER BY id
@@ -1170,7 +1396,21 @@ export class OrderService {
             delivered_quantity,
             COALESCE(billed_quantity, 0) AS billed_quantity,
             price,
-            subtotal
+            subtotal,
+            base_unit_price,
+            final_unit_price,
+            discount_amount,
+            discount_percent,
+            discount_total,
+            applied_promotion_id,
+            applied_promotion_name,
+            tax_id,
+            tax_rate,
+            tax_base,
+            tax_amount,
+            line_total,
+            pricing_snapshot,
+            pricing_calculated_at
           FROM order_items
           WHERE order_id = $1
           ORDER BY id

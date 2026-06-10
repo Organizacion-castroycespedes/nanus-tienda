@@ -8,6 +8,10 @@ import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { SupplierForm } from "../../../modules/inventory/components/SupplierForm";
 import {
+  listElectronicInvoicingSuppliers,
+  type ElectronicInvoicingSupplier,
+} from "../../../modules/electronic-invoicing/services/supplier.service";
+import {
   deleteSupplier,
   getSuppliers,
   type SupplierResponse,
@@ -26,6 +30,63 @@ const defaultFilters: SupplierFilters = {
 
 const pageSizeOptions = [10, 25, 50];
 
+const mergeFiscalSuppliers = (
+  baseSuppliers: SupplierResponse[],
+  fiscalSuppliers: ElectronicInvoicingSupplier[]
+): SupplierResponse[] => {
+  const fiscalById = new Map(
+    fiscalSuppliers.map((supplier) => [supplier.id, supplier])
+  );
+
+  return baseSuppliers.map((supplier) => {
+    const fiscal = fiscalById.get(supplier.id);
+    if (!fiscal) {
+      return supplier;
+    }
+
+    return {
+      ...supplier,
+      ...fiscal,
+      email: supplier.email ?? fiscal.invoiceEmail ?? fiscal.fiscalEmail ?? null,
+      departamentoId: supplier.departamentoId,
+      municipioId: supplier.municipioId,
+      ciudad: supplier.ciudad,
+      departamento: supplier.departamento,
+    };
+  });
+};
+
+const resolveFiscalBadge = (supplier: SupplierResponse) => {
+  if (supplier.isDianValidated || supplier.fiscalStatus === "VALIDATED") {
+    return {
+      label: "Validado fiscal",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (supplier.fiscalStatus === "FAILED") {
+    return {
+      label: "Fallido",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+  if (supplier.fiscalDataSource === "MANUAL") {
+    return {
+      label: "Manual",
+      className: "border-blue-200 bg-blue-50 text-blue-700",
+    };
+  }
+  return {
+    label: "Pendiente",
+    className: "border-amber-200 bg-amber-50 text-amber-800",
+  };
+};
+
+const getSupplierDocument = (supplier: SupplierResponse) =>
+  supplier.identificationNumber ??
+  supplier.documentNumberNormalized ??
+  supplier.documentNumber ??
+  "-";
+
 const SuppliersPage = () => {
   const confirm = useConfirm();
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
@@ -37,6 +98,7 @@ const SuppliersPage = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fiscalWarning, setFiscalWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierResponse | null>(null);
@@ -55,9 +117,25 @@ const SuppliersPage = () => {
   const loadSuppliers = useCallback(async () => {
     setLoading(true);
     setErrorMessage(null);
+    setFiscalWarning(null);
     try {
-      const result = await getSuppliers();
-      setSuppliers(result);
+      const [baseResult, fiscalResult] = await Promise.allSettled([
+        getSuppliers(),
+        listElectronicInvoicingSuppliers(),
+      ]);
+
+      if (baseResult.status === "rejected") {
+        throw baseResult.reason;
+      }
+
+      if (fiscalResult.status === "fulfilled") {
+        setSuppliers(mergeFiscalSuppliers(baseResult.value, fiscalResult.value));
+      } else {
+        setSuppliers(baseResult.value);
+        setFiscalWarning(
+          "No se pudieron cargar datos fiscales. Se muestra catalogo basico."
+        );
+      }
       setHasSearched(true);
     } catch {
       setErrorMessage("No se pudieron cargar los proveedores.");
@@ -75,10 +153,17 @@ const SuppliersPage = () => {
 
     return suppliers.filter((supplier) => {
       const name = supplier.name.toLowerCase();
-      const documentNumber = (supplier.documentNumber ?? "").toLowerCase();
-      const email = (supplier.email ?? "").toLowerCase();
+      const legalName = (supplier.legalName ?? "").toLowerCase();
+      const documentNumber = getSupplierDocument(supplier).toLowerCase();
+      const email = (
+        supplier.invoiceEmail ??
+        supplier.fiscalEmail ??
+        supplier.email ??
+        ""
+      ).toLowerCase();
       return (
         name.includes(query) ||
+        legalName.includes(query) ||
         documentNumber.includes(query) ||
         email.includes(query)
       );
@@ -226,6 +311,12 @@ const SuppliersPage = () => {
         </section>
       ) : null}
 
+      {fiscalWarning ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
+          {fiscalWarning}
+        </section>
+      ) : null}
+
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -235,6 +326,7 @@ const SuppliersPage = () => {
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Documento</th>
+                <th className="px-4 py-3 font-medium">Estado fiscal</th>
                 <th className="px-4 py-3 font-medium">Telefono</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Ubicacion</th>
@@ -244,63 +336,86 @@ const SuppliersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Cargando proveedores...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar proveedores.
                   </td>
                 </tr>
               ) : paginatedSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     No hay proveedores para mostrar.
                   </td>
                 </tr>
               ) : (
-                paginatedSuppliers.map((supplier) => (
-                  <tr key={supplier.id}>
-                    <td className="px-4 py-3 text-slate-900">{supplier.name}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {supplier.documentNumber || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">{supplier.phone || "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">{supplier.email || "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {[supplier.ciudad, supplier.departamento].filter(Boolean).join(", ") || "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {canEdit ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedSupplier(supplier);
-                              setFormMode("edit");
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
+                paginatedSuppliers.map((supplier) => {
+                  const fiscalBadge = resolveFiscalBadge(supplier);
+                  return (
+                    <tr key={supplier.id}>
+                      <td className="px-4 py-3 text-slate-900">
+                        <div className="font-medium">{supplier.name}</div>
+                        {supplier.legalName && supplier.legalName !== supplier.name ? (
+                          <div className="text-xs text-slate-500">{supplier.legalName}</div>
                         ) : null}
-                        {canDelete ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleDelete(supplier)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Eliminar
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {getSupplierDocument(supplier)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${fiscalBadge.className}`}
+                        >
+                          {fiscalBadge.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {supplier.phone || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {supplier.invoiceEmail || supplier.fiscalEmail || supplier.email || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {[supplier.ciudad, supplier.departamento].filter(Boolean).join(", ") ||
+                          [supplier.municipalityCode, supplier.departmentCode]
+                            .filter(Boolean)
+                            .join(", ") ||
+                          "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {canEdit ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSupplier(supplier);
+                                setFormMode("edit");
+                              }}
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Editar
+                            </Button>
+                          ) : null}
+                          {canDelete ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => void handleDelete(supplier)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Eliminar
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
