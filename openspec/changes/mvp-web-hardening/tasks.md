@@ -301,6 +301,66 @@ Estado: `QA_FORWARD_RUNNER_EXCLUDES_ROLLBACK`.
 - [x] 12. Ejecutar `git status --short`.
 - [x] 13. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco `manus_tienda`, no se modifico `manus_tienda_qa`, no se borraron datos, no se desplego y no se reinicio servidor.
 
+## MVP-00.5 - Database Drift Analysis
+
+Estado: `QA_SCHEMA_DRIFT_CLASSIFIED`.
+
+- [x] 1. Analizar compare report `D:/compare-manus_tienda_qa-manus_tienda_prd-report.html`.
+- [x] 2. Clasificar missing columns.
+- [x] 3. Clasificar missing indexes.
+- [x] 4. Clasificar missing constraints.
+- [x] 5. Clasificar missing foreign keys.
+- [x] 6. Clasificar missing triggers.
+- [x] 7. Clasificar missing functions.
+- [x] 8. Clasificar function source differences.
+- [x] 9. Clasificar SQL no versionados.
+- [x] 10. Clasificar cambios manuales o drift de entorno DB.
+- [x] 11. Crear `docs/evidencia-database-drift-analysis-mvp-00-5.md`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Ejecutar `git status --short`.
+- [x] 15. Confirmar que no se ejecutaron migraciones, no se toco QA, no se toco PRD, no se modificaron datos y no se hizo deploy.
+
+## MVP-00.5A - Database Drift Remediation Plan
+
+Estado: `QA_SCHEMA_DRIFT_REMEDIATION_PLANNED`.
+
+- [x] 1. Revisar `docs/evidencia-database-drift-analysis-mvp-00-5.md`.
+- [x] 2. Identificar SQL existente `scripts/database/finance/migrations/20260503_2030_finance_cash_payment_traceability.sql`.
+- [x] 3. Explicar que no entra al bootstrap porque `migrate_prd.sh` no lo incluye y el wrapper QA no ejecuta `finance/run_finance_migrations.sh`.
+- [x] 4. Proponer migracion versionada para `purchases.total_original`.
+- [x] 5. Proponer migracion versionada para `idx_auditoria_eventos_purchase_liquidated`.
+- [x] 6. Analizar overwrite de `report_purchase_ticket` por `V047`.
+- [x] 7. Definir orden de correccion.
+- [x] 8. Crear `docs/evidencia-database-drift-remediation-plan-mvp-00-5A.md`.
+- [x] 9. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 10. Ejecutar `git diff --check`.
+- [x] 11. Ejecutar `git status --short`.
+- [x] 12. Confirmar que no se ejecutaron migraciones, no se toco QA, no se toco PRD, no se modificaron datos y no se crearon migraciones ejecutables.
+
+## MVP-00.5B - Database Drift Remediation Implementation
+
+Estado: `QA_SCHEMA_DRIFT_REMEDIATION_IMPLEMENTED`.
+
+- [x] 1. Revisar `docs/evidencia-database-drift-analysis-mvp-00-5.md`.
+- [x] 2. Revisar `docs/evidencia-database-drift-remediation-plan-mvp-00-5A.md`.
+- [x] 3. Ajustar `scripts/database/migrate_prd.sh` para incluir `finance/migrations/20260503_2030_finance_cash_payment_traceability.sql` en el flujo forward.
+- [x] 4. Crear `scripts/database/migrations/V055__purchases_total_original_drift_fix.sql`.
+- [x] 5. Confirmar que `V055` agrega `purchases.total_original` si no existe, usa tipo compatible y hace backfill seguro desde `total`.
+- [x] 6. Crear `scripts/database/migrations/V056__purchase_liquidation_audit_index_drift_fix.sql`.
+- [x] 7. Confirmar que `V056` crea `idx_auditoria_eventos_purchase_liquidated` si no existe y no depende de datos.
+- [x] 8. Crear `scripts/database/migrations/V057__restore_report_purchase_ticket_after_v047.sql`.
+- [x] 9. Confirmar que `V057` restaura `report_purchase_ticket(uuid, text, uuid, uuid, uuid)` con `CREATE OR REPLACE FUNCTION`.
+- [x] 10. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 11. Actualizar `docs/runbook-exec-bootstrap-manus-tienda-qa.md`.
+- [x] 12. Actualizar evidencia drift remediation con referencia a implementacion.
+- [x] 13. Crear `docs/evidencia-database-drift-remediation-implementation-mvp-00-5B.md`.
+- [x] 14. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 15. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 16. Ejecutar `git diff --check`.
+- [x] 17. Ejecutar `git status --short`.
+- [x] 18. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco QA, no se toco PRD y no se modificaron datos reales.
+
 ## MVP-01 - QA Operativo Integral
 
 - [ ] 1. Definir ambiente QA local/controlado y datos representativos.

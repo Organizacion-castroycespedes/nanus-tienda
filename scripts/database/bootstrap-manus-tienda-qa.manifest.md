@@ -6,9 +6,9 @@ Objetivo: documentar el orden logico y el runner real para crear una base QA lim
 
 ## Resultado de inventario
 
-- SQL versionados encontrados en `scripts/database/`: 113.
-- SQL candidatos para bootstrap/control QA: 90.
-- SQL obligatorios default para bootstrap limpio: 89.
+- SQL versionados encontrados en `scripts/database/`: 116.
+- SQL candidatos para bootstrap/control QA: 94.
+- SQL obligatorios default para bootstrap limpio: 93.
 - SQL fixtures opcionales: 1.
 - SQL excluidos del bootstrap limpio: 23.
 
@@ -96,13 +96,14 @@ Nota: si en el futuro se separa extension/base schema, conservar compatibilidad 
 39. `finance/patches/20260430_1956_finance_payment_integration.sql`
 40. `finance/patches/20260502_1135_finance_menu_access.sql`
 41. `finance/patches/20260502_1840_finance_cash_movements_reference_text.sql`
+42. `finance/migrations/20260503_2030_finance_cash_payment_traceability.sql`
 
 ### 6. Funciones y vistas
 
-42. `sale/006_create_sale_function.sql`
-43. `sale/009_cancel_sale_function.sql`
-44. `sale/012_sale_financial_sync_and_pos_function.sql`
-45. `products/2026_05_01_inventory_dashboard.sql`
+43. `sale/006_create_sale_function.sql`
+44. `sale/009_cancel_sale_function.sql`
+45. `sale/012_sale_financial_sync_and_pos_function.sql`
+46. `products/2026_05_01_inventory_dashboard.sql`
 
 ### 7. Migraciones incrementales
 
@@ -145,11 +146,17 @@ Incluidas para forward bootstrap:
 33. `V052__electronic_invoicing_third_party_fiscal_fields_fe_3_2.sql`
 34. `V053__products_sale_model_phase_11_1.sql`
 35. `V054__pos_terminal_peripheral_settings_phase_12.sql`
+36. `V055__purchases_total_original_drift_fix.sql`
+37. `V056__purchase_liquidation_audit_index_drift_fix.sql`
+38. `V057__restore_report_purchase_ticket_after_v047.sql`
 
 Confirmacion:
 
 - `V053__products_sale_model_phase_11_1.sql` incluida.
 - `V054__pos_terminal_peripheral_settings_phase_12.sql` incluida.
+- `V055__purchases_total_original_drift_fix.sql` incluida para versionar `purchases.total_original`.
+- `V056__purchase_liquidation_audit_index_drift_fix.sql` incluida para versionar `idx_auditoria_eventos_purchase_liquidated`.
+- `V057__restore_report_purchase_ticket_after_v047.sql` incluida para restaurar `report_purchase_ticket` despues de `V047`.
 - Rollback SQL excluidos del forward bootstrap:
   - `20260601_inventory_products_lots_phase_1_rollback.sql`
   - `20260602_inventory_create_sale_v2_rollback.sql`
@@ -165,6 +172,10 @@ Confirmacion:
 ### Nota de idempotencia legacy
 
 - `migrations/20260505_sync_local_to_aws_reporting_and_sales.sql` es un patch legacy de sincronizacion local -> AWS. Debe ser idempotente para bootstrap limpio. El `DROP FUNCTION` de `public.report_customer_orders_status(...)` usa `IF EXISTS` para no fallar cuando la funcion aun no existe.
+- `finance/migrations/20260503_2030_finance_cash_payment_traceability.sql` entra al flujo forward principal para crear `cash_movements.payment_id`, FK e indices sin depender del runner finance separado.
+- `migrations/V055__purchases_total_original_drift_fix.sql` es idempotente y hace backfill seguro desde `purchases.total`.
+- `migrations/V056__purchase_liquidation_audit_index_drift_fix.sql` es idempotente y no depende de datos.
+- `migrations/V057__restore_report_purchase_ticket_after_v047.sql` usa `CREATE OR REPLACE FUNCTION` para que el bootstrap limpio conserve la version con liquidacion parcial despues de `V047`.
 
 ### 9. Seeds adicionales identificados
 
