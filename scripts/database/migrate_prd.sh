@@ -17,6 +17,8 @@ if [[ -f "$ENV_FILE" ]]; then
   source "$ENV_FILE"
 fi
 
+RUN_OPTIONAL_QA_FIXTURES="${RUN_OPTIONAL_QA_FIXTURES:-${APPLY_OPTIONAL_FIXTURES:-NO}}"
+
 required_vars=(DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD)
 for var_name in "${required_vars[@]}"; do
   if [[ -z "${!var_name:-}" ]]; then
@@ -24,6 +26,11 @@ for var_name in "${required_vars[@]}"; do
     exit 1
   fi
 done
+
+if [[ "$RUN_OPTIONAL_QA_FIXTURES" != "NO" && "$RUN_OPTIONAL_QA_FIXTURES" != "YES" ]]; then
+  echo "[prd] RUN_OPTIONAL_QA_FIXTURES/APPLY_OPTIONAL_FIXTURES must be YES or NO." >&2
+  exit 1
+fi
 
 export PGPASSWORD="$DB_PASSWORD"
 export PGCLIENTENCODING="${PGCLIENTENCODING:-UTF8}"
@@ -308,6 +315,22 @@ readarray -t incremental_migration_files < <(
       done
 )
 
+optional_fixture_migration_files=(
+  "20260505_reporting_pos_fixtures.sql"
+)
+
+is_optional_fixture_migration() {
+  local version="$1"
+
+  for optional_fixture in "${optional_fixture_migration_files[@]}"; do
+    if [[ "$version" == "$optional_fixture" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 minimal_seed_files=(
   "011_prd_default_customer.sql"
 )
@@ -350,6 +373,11 @@ found_pending_incremental="false"
 for sql_file in "${incremental_migration_files[@]}"; do
   validate_incremental_migration_name "$sql_file"
 
+  if is_optional_fixture_migration "$sql_file"; then
+    echo "[prd] Skipping optional QA fixture by default: migrations/${sql_file}"
+    continue
+  fi
+
   file_path="${MIGRATIONS_DIR}/${sql_file}"
   checksum="$(checksum_for_file "$file_path")"
 
@@ -365,6 +393,15 @@ for sql_file in "${incremental_migration_files[@]}"; do
   found_pending_incremental="true"
   apply_sql_file "migrations/${sql_file}"
 done
+
+if [[ "$RUN_OPTIONAL_QA_FIXTURES" == "YES" ]]; then
+  echo "Running optional QA fixtures..."
+  for sql_file in "${optional_fixture_migration_files[@]}"; do
+    apply_sql_file "migrations/${sql_file}"
+  done
+else
+  echo "[prd] Optional QA fixtures skipped."
+fi
 
 echo "Running minimal seed (consumer)..."
 for sql_file in "${minimal_seed_files[@]}"; do

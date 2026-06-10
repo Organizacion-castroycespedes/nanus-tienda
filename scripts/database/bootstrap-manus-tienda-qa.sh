@@ -131,8 +131,10 @@ log "[bootstrap-qa] RUN_SMOKE_SQL=$RUN_SMOKE_SQL"
 log "[bootstrap-qa] Log file: $LOG_FILE"
 log "[bootstrap-qa] SQL manifest: $MANIFEST_FILE"
 log "[bootstrap-qa] Manifest is documentation for review. Execution order remains controlled by migrate_prd.sh."
+log "[bootstrap-qa] Optional SQL fixtures run only when RUN_OPTIONAL_QA_FIXTURES=YES."
 
 log "[bootstrap-qa] Running full schema/migration bootstrap via migrate_prd.sh."
+export RUN_OPTIONAL_QA_FIXTURES
 bash "${SCRIPT_DIR}/migrate_prd.sh" "$ENV_FILE" 2>&1 | tee -a "$LOG_FILE"
 
 if [[ "${RUN_OPTIONAL_QA_FIXTURES:-NO}" == "YES" ]]; then

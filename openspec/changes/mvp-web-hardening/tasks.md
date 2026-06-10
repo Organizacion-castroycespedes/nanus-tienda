@@ -224,6 +224,28 @@ Estado: `PLAN_READY_NO_EXECUTION`.
 - [x] 17. Ejecutar `git diff --check`.
 - [x] 18. Confirmar que no se ejecuto bootstrap, no se creo `manus_tienda_qa`, no se migró y no se desplego.
 
+## MVP-00.4.7A - Bootstrap Failure Analysis
+
+Estado: `QA_BOOTSTRAP_FIXTURE_CLASSIFIED`.
+
+- [x] 1. Analizar `scripts/database/migrations/20260505_reporting_pos_fixtures.sql`.
+- [x] 2. Analizar `scripts/database/migrate_prd.sh`.
+- [x] 3. Analizar `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 4. Analizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 5. Determinar que el fixture se ejecuto porque estaba en `scripts/database/migrations/` y el runner ejecutaba todos los `*.sql`.
+- [x] 6. Determinar que `20260505_reporting_pos_fixtures.sql` es fixture/demo opcional y no migracion estructural obligatoria.
+- [x] 7. Ajustar `migrate_prd.sh` para saltar el fixture por defecto.
+- [x] 8. Ajustar `migrate_prd.sh` para ejecutarlo solo con `RUN_OPTIONAL_QA_FIXTURES=YES` o `APPLY_OPTIONAL_FIXTURES=YES`.
+- [x] 9. Ajustar `bootstrap-manus-tienda-qa.sh` para exportar `RUN_OPTIONAL_QA_FIXTURES` y documentar en log el comportamiento.
+- [x] 10. Mantener `APPLY_OPTIONAL_FIXTURES=NO` como default seguro.
+- [x] 11. Actualizar `bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 12. Actualizar `docs/runbook-exec-bootstrap-manus-tienda-qa.md`.
+- [x] 13. Crear `docs/evidencia-qa-bootstrap-failure-analysis-mvp-00-4-7A.md`.
+- [x] 14. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 15. Ejecutar `git diff --check`.
+- [x] 16. Ejecutar `git status --short`.
+- [x] 17. Confirmar que no se reintento bootstrap, no se ejecutaron migraciones, no se borro `manus_tienda_qa`, no se toco `manus_tienda`, no se toco PRD, no se desplego y no se reinicio servidor.
+
 ## MVP-01 - QA Operativo Integral
 
 - [ ] 1. Definir ambiente QA local/controlado y datos representativos.

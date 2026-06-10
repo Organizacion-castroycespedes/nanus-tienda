@@ -41,6 +41,7 @@ Preparar la ejecucion real del bootstrap de la base QA aislada `manus_tienda_qa`
 - `scripts/database/config/bootstrap-manus-tienda-qa.env` existe fuera de git.
 - `git check-ignore` confirma que el env real no se versiona.
 - El env real conserva `CONFIRM_CREATE_QA_DB=NO` antes de iniciar la ventana.
+- El env real conserva `APPLY_OPTIONAL_FIXTURES=NO` salvo aprobacion explicita para fixtures demo.
 - No hay deploy simultaneo.
 - No hay migracion simultanea.
 
@@ -76,6 +77,7 @@ Confirmaciones de objetivo:
 - Historial: `public.migrations_history`.
 - Migraciones obligatorias: `V053`, `V054`.
 - Seeds minimos: tenant/sucursal, roles, usuarios QA, menu, permisos/RBAC, consumidor final, metodos de pago, terminal POS y peripheral settings MOCK.
+- Fixture `migrations/20260505_reporting_pos_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
 
 ## Validaciones previas
 
@@ -156,6 +158,7 @@ Confirmar manualmente:
 - `DB_NAME=manus_tienda_qa`
 - `DB_OWNER=manus_qa_user`
 - `CONFIRM_CREATE_QA_DB=YES`
+- `APPLY_OPTIONAL_FIXTURES=NO`
 
 ## Comando exacto de bootstrap
 
@@ -175,6 +178,7 @@ El script debe:
 - rechazar `manus_tienda`;
 - llamar `scripts/database/migrate_prd.sh`;
 - aplicar schema/base, funciones, migraciones y seeds minimos;
+- saltar fixtures QA opcionales por defecto;
 - ejecutar smoke SQL si `RUN_SMOKE_SQL=YES`;
 - escribir log en `LOG_DIR`.
 
