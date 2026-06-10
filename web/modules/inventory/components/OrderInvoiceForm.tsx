@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Wallet, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
@@ -19,6 +19,13 @@ import {
   invoiceOrder,
   type OrderDetailResponse,
 } from "../services/order.service";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
+import {
+  createDefaultCashPayment,
+  findCashPaymentMethod,
+  parsePaymentAmount,
+  rebalanceCashPayment,
+} from "../../shared/payments/payment-allocation.helper";
 
 type OrderInvoiceFormProps = {
   orderId: string;
@@ -53,12 +60,6 @@ const createEmptyDraft = (paymentMethodId = ""): PaymentDraft => ({
   referenceNumber: "",
   notes: "",
 });
-
-const parseAmount = (value: string) => {
-  const sanitized = value.replace(",", ".").replace(/[^0-9.]/g, "");
-  const parsed = Number(sanitized);
-  return Number.isFinite(parsed) ? round(parsed) : 0;
-};
 
 export const OrderInvoiceForm = ({
   orderId,
@@ -96,9 +97,7 @@ export const OrderInvoiceForm = ({
         setOrder(result);
         setPaymentMethods(activeMethods);
         setCashSession(currentSession);
-        setPayments(
-          activeMethods.length > 0 ? [createEmptyDraft(activeMethods[0]?.id ?? "")] : []
-        );
+        setPayments([]);
       } catch {
         if (mounted) {
           setLoadError("No se pudo cargar el detalle del pedido o los metodos de pago.");
@@ -170,11 +169,16 @@ export const OrderInvoiceForm = ({
     [paymentMethods]
   );
 
+  const cashPaymentMethod = useMemo(
+    () => findCashPaymentMethod(paymentMethods),
+    [paymentMethods]
+  );
+
   const parsedPayments = useMemo(
     () =>
       payments.map((payment) => ({
         ...payment,
-        numericAmount: parseAmount(payment.amount),
+        numericAmount: parsePaymentAmount(payment.amount),
         method: paymentMethodById[payment.paymentMethodId] ?? null,
       })),
     [paymentMethodById, payments]
@@ -196,22 +200,97 @@ export const OrderInvoiceForm = ({
   );
   const cashSessionMatchesBranch = !cashSession || cashSession.branchId === order?.branchId;
 
+  const createInvoicePaymentDraft = useCallback(
+    (paymentMethodId: string, amount: string): PaymentDraft => ({
+      ...createEmptyDraft(paymentMethodId),
+      amount,
+    }),
+    []
+  );
+
+  useEffect(() => {
+    if (!order || paymentMethods.length === 0) {
+      return;
+    }
+
+    if (payments.length === 0) {
+      const result = createDefaultCashPayment(
+        remainingToCover,
+        paymentMethods,
+        createInvoicePaymentDraft
+      );
+      setPayments(result.payments);
+      setSubmitError(result.error);
+      return;
+    }
+
+    const result = rebalanceCashPayment(
+      remainingToCover,
+      payments,
+      cashPaymentMethod,
+      createInvoicePaymentDraft
+    );
+    const changed =
+      result.payments.length !== payments.length ||
+      result.payments.some((payment, index) => {
+        const current = payments[index];
+        return (
+          !current ||
+          payment.paymentMethodId !== current.paymentMethodId ||
+          payment.amount !== current.amount ||
+          payment.referenceNumber !== current.referenceNumber ||
+          payment.notes !== current.notes
+        );
+      });
+
+    if (changed) {
+      setPayments(result.payments);
+    }
+  }, [
+    cashPaymentMethod,
+    createInvoicePaymentDraft,
+    order,
+    paymentMethods,
+    payments,
+    remainingToCover,
+  ]);
+
   const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
     setSubmitError(null);
     setPayments((current) =>
-      current.map((payment) => (payment.id === id ? { ...payment, [field]: value } : payment))
+      rebalanceCashPayment(
+        remainingToCover,
+        current.map((payment) => (payment.id === id ? { ...payment, [field]: value } : payment)),
+        cashPaymentMethod,
+        createInvoicePaymentDraft
+      ).payments
     );
   };
 
   const addPaymentRow = () => {
-    setPayments((current) => [
-      ...current,
-      createEmptyDraft(paymentMethods[0]?.id ?? ""),
-    ]);
+    const firstNonCash =
+      paymentMethods.find((method) => method.id !== cashPaymentMethod?.id) ??
+      paymentMethods[0] ??
+      null;
+    setPayments((current) =>
+      rebalanceCashPayment(
+        remainingToCover,
+        [...current, createEmptyDraft(firstNonCash?.id ?? "")],
+        cashPaymentMethod,
+        createInvoicePaymentDraft
+      ).payments
+    );
   };
 
   const removePaymentRow = (id: string) => {
-    setPayments((current) => current.filter((payment) => payment.id !== id));
+    setPayments((current) =>
+      rebalanceCashPayment(
+        remainingToCover,
+        current.filter((payment) => payment.id !== id),
+        cashPaymentMethod,
+        createInvoicePaymentDraft
+      ).payments
+    );
   };
 
   const validate = () => {
@@ -269,6 +348,13 @@ export const OrderInvoiceForm = ({
       return "Los pagos nuevos no pueden superar el saldo restante tras aplicar los abonos heredados.";
     }
 
+    const duplicateMethods = parsedPayments
+      .filter((payment) => payment.numericAmount > 0 && payment.paymentMethodId)
+      .map((payment) => payment.paymentMethodId);
+    if (new Set(duplicateMethods).size !== duplicateMethods.length) {
+      return "No repitas el mismo metodo de pago en varias lineas.";
+    }
+
     if (type === "CASH" && round(enteredTotal) !== round(remainingToCover)) {
       return "Las ventas CASH deben quedar cubiertas totalmente entre abonos heredados y pagos nuevos.";
     }
@@ -315,7 +401,16 @@ export const OrderInvoiceForm = ({
       if (isConfirmCancelledError(error)) {
         return;
       }
-      setSubmitError("No se pudo crear la venta desde la orden.");
+      const dialog = buildConfirmFromApiError(
+        error,
+        "No se pudo crear la venta desde la orden."
+      );
+      setSubmitError(dialog.description ?? "No se pudo crear la venta desde la orden.");
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
+      });
     } finally {
       setIsSubmitting(false);
     }

@@ -39,6 +39,8 @@ test("UsersService: createUser uses transaction and returns user", async () => {
     { rows: [{ id: "branch-1" }] },
     { rows: [{ id: "persona-1" }] },
     { rows: [{ id: "user-1" }] },
+    { rows: [] },
+    { rows: [] },
     {
       rows: [
         {

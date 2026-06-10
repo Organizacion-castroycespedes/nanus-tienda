@@ -28,6 +28,7 @@ import {
   MessageCircle,
   Monitor,
   Package,
+  Printer,
   Ruler,
   Settings,
   ShieldCheck,
@@ -80,6 +81,7 @@ const iconByName: Record<string, LucideIcon> = {
   building: Building,
   store: Store,
   package: Package,
+  printer: Printer,
   grid3x3: Grid3X3,
   tags: Tags,
   calculator: Calculator,
@@ -1008,7 +1010,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     {sidebarCompanyName}
                   </p>
                   <p className="truncate text-xs text-[var(--brand-sidebar-muted)]">
-                    FlexiBuild Core
+                    Manus POS
                   </p>
                 </div>
               ) : null}

@@ -1,15 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
   Boxes,
   CreditCard,
+  MapPinned,
+  PackageCheck,
   PackageX,
   RefreshCw,
+  ShieldAlert,
   ShoppingBag,
   Store,
+  Tags,
   TrendingUp,
 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
@@ -22,6 +28,16 @@ import {
   type InventoryDashboardFilterOption,
   type InventoryDashboardResponse,
 } from "../services/dashboard.service";
+import {
+  getLotReconciliationDiscrepancies,
+  getLotReconciliationSummary,
+  listInventoryLotBalances,
+  listInventoryLots,
+  type InventoryLotBalanceResponse,
+  type InventoryLotDiscrepancy,
+  type InventoryLotReconciliationSummary,
+  type InventoryLotResponse,
+} from "../services/inventory-lot.service";
 
 type DashboardFilters = {
   tenantId: string;
@@ -33,6 +49,26 @@ type DashboardFilters = {
 };
 
 const today = new Date().toISOString().slice(0, 10);
+
+const toDateOnly = (value: string | null | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const daysUntil = (value: string | null | undefined) => {
+  const target = toDateOnly(value);
+  if (!target) {
+    return null;
+  }
+
+  const current = new Date();
+  current.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - current.getTime()) / 86_400_000);
+};
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -122,6 +158,31 @@ const KpiCard = ({
   );
 };
 
+const InventoryAlertCard = ({
+  title,
+  value,
+  description,
+  icon: Icon,
+  tone,
+}: {
+  title: string;
+  value: string;
+  description: string;
+  icon: typeof Boxes;
+  tone: string;
+}) => (
+  <article className={`rounded-2xl border px-4 py-4 shadow-sm ${tone}`}>
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-xs uppercase tracking-wide opacity-75">{title}</p>
+        <p className="mt-2 text-2xl font-semibold">{value}</p>
+        <p className="mt-1 text-xs opacity-75">{description}</p>
+      </div>
+      <Icon className="h-5 w-5 opacity-70" />
+    </div>
+  </article>
+);
+
 const ChartCard = ({
   title,
   subtitle,
@@ -187,6 +248,56 @@ export const InventoryDashboard = () => {
   const [dashboard, setDashboard] = useState<InventoryDashboardResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [alertLots, setAlertLots] = useState<InventoryLotResponse[]>([]);
+  const [alertBalances, setAlertBalances] = useState<InventoryLotBalanceResponse[]>([]);
+  const [alertSummary, setAlertSummary] =
+    useState<InventoryLotReconciliationSummary | null>(null);
+  const [alertDiscrepancies, setAlertDiscrepancies] = useState<InventoryLotDiscrepancy[]>([]);
+  const [alertLoading, setAlertLoading] = useState(false);
+  const [alertErrorMessage, setAlertErrorMessage] = useState<string | null>(null);
+
+  const loadInventoryAlerts = useCallback(
+    async (nextFilters: Pick<DashboardFilters, "branchId">) => {
+      const branchId =
+        nextFilters.branchId || (authRole === "USER" ? authUser?.branchId ?? "" : "");
+
+      setAlertLoading(true);
+      setAlertErrorMessage(null);
+
+      try {
+        const [nextLots, nextBalances] = await Promise.all([
+          listInventoryLots({ branchId: branchId || undefined }),
+          listInventoryLotBalances({ branchId: branchId || undefined }),
+        ]);
+
+        setAlertLots(nextLots);
+        setAlertBalances(nextBalances);
+
+        const reconciliationParams = { branchId: branchId || undefined };
+        const [nextSummary, nextDiscrepancies] = await Promise.all([
+          getLotReconciliationSummary(reconciliationParams).catch(() => null),
+          getLotReconciliationDiscrepancies({
+            ...reconciliationParams,
+            onlyDiscrepancies: true,
+          }).catch(() => [] as InventoryLotDiscrepancy[]),
+        ]);
+
+        setAlertSummary(nextSummary);
+        setAlertDiscrepancies(nextDiscrepancies);
+      } catch {
+        setAlertLots([]);
+        setAlertBalances([]);
+        setAlertSummary(null);
+        setAlertDiscrepancies([]);
+        setAlertErrorMessage(
+          "No se pudieron cargar alertas loteadas. El dashboard operativo sigue disponible."
+        );
+      } finally {
+        setAlertLoading(false);
+      }
+    },
+    [authRole, authUser?.branchId]
+  );
 
   const loadDashboard = useCallback(
     async (nextFilters: DashboardFilters) => {
@@ -213,13 +324,16 @@ export const InventoryDashboard = () => {
           startDate: response.scope.startDate,
           endDate: response.scope.endDate,
         }));
+        void loadInventoryAlerts({
+          branchId: response.scope.branchId ?? nextFilters.branchId,
+        });
       } catch {
         setErrorMessage("No se pudo cargar el dashboard operativo de inventory.");
       } finally {
         setLoading(false);
       }
     },
-    []
+    [loadInventoryAlerts]
   );
 
   useEffect(() => {
@@ -280,6 +394,113 @@ export const InventoryDashboard = () => {
     const values = dashboard?.charts.topProducts.map((item) => item.quantity) ?? [];
     return Math.max(...values, 1);
   }, [dashboard?.charts.topProducts]);
+
+  const tenantSlug = authUser?.tenantId ?? "default";
+
+  const inventoryAlertStats = useMemo(() => {
+    const availableByLot = new Map<string, number>();
+    alertBalances.forEach((balance) => {
+      availableByLot.set(
+        balance.lotId,
+        (availableByLot.get(balance.lotId) ?? 0) + Number(balance.quantityAvailable ?? 0)
+      );
+    });
+
+    const expiredLots = alertLots.filter((lot) => {
+      const days = daysUntil(lot.expirationDate);
+      return lot.status === "EXPIRED" || (days !== null && days < 0);
+    }).length;
+    const expiringLots = alertLots.filter((lot) => {
+      const days = daysUntil(lot.expirationDate);
+      return days !== null && days >= 0 && days <= 30;
+    }).length;
+    const blockedOrCancelledWithStock = alertLots.filter((lot) => {
+      const available = availableByLot.get(lot.id) ?? 0;
+      return ["BLOCKED", "CANCELLED"].includes(lot.status) && available > 0;
+    }).length;
+    const availableStock = alertBalances.reduce(
+      (sum, balance) => sum + Number(balance.quantityAvailable ?? 0),
+      0
+    );
+    const criticalCount =
+      alertSummary?.criticalCount ??
+      alertDiscrepancies.filter((item) => item.severity === "CRITICAL").length;
+    const highCount =
+      alertSummary?.highCount ??
+      alertDiscrepancies.filter((item) => item.severity === "HIGH").length;
+    const warningCount =
+      alertSummary?.warningCount ??
+      alertDiscrepancies.filter((item) => item.severity === "WARNING").length;
+    const discrepancyCount = alertSummary?.discrepancyCount ?? alertDiscrepancies.length;
+
+    return {
+      expiredLots,
+      expiringLots,
+      blockedOrCancelledWithStock,
+      availableStock,
+      criticalCount,
+      highCount,
+      warningCount,
+      discrepancyCount,
+    };
+  }, [alertBalances, alertDiscrepancies, alertLots, alertSummary]);
+
+  const reconciliationStatus = inventoryAlertStats.criticalCount
+    ? {
+        label: "Critico",
+        className: "border-rose-200 bg-rose-50 text-rose-800",
+        description: "Revisar antes de operar loteado.",
+      }
+    : inventoryAlertStats.highCount
+      ? {
+          label: "Con altas",
+          className: "border-amber-200 bg-amber-50 text-amber-800",
+          description: "Hay diferencias altas por validar.",
+        }
+      : inventoryAlertStats.warningCount
+        ? {
+            label: "Advertencias",
+            className: "border-yellow-200 bg-yellow-50 text-yellow-800",
+            description: "Hay hallazgos no bloqueantes.",
+          }
+        : {
+            label: "Sin discrepancias",
+            className: "border-emerald-200 bg-emerald-50 text-emerald-800",
+            description: "No hay critical/high en el alcance.",
+          };
+
+  const quickLinks = [
+    {
+      label: "Ver inventario por lote",
+      description: "Lotes, saldos, vencimientos y discrepancias.",
+      href: `/${tenantSlug}/inventory/lots`,
+      icon: Boxes,
+    },
+    {
+      label: "Ver ubicaciones fisicas",
+      description: "Bodegas, vitrinas, estantes y mostradores.",
+      href: `/${tenantSlug}/inventory/locations`,
+      icon: MapPinned,
+    },
+    {
+      label: "Ver productos loteados",
+      description: "Catalogo con badges de lote y vencimiento.",
+      href: `/${tenantSlug}/inventory/products`,
+      icon: PackageCheck,
+    },
+    {
+      label: "Administrar promociones",
+      description: "Descuentos por producto y alcance por sucursal.",
+      href: `/${tenantSlug}/inventory/promotions`,
+      icon: Tags,
+    },
+    {
+      label: "Ver discrepancias",
+      description: "Revision read-only desde inventario por lote.",
+      href: `/${tenantSlug}/inventory/lots`,
+      icon: ShieldAlert,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -535,6 +756,168 @@ export const InventoryDashboard = () => {
               icon={Activity}
               tone="slate"
             />
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Alertas de inventario
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Lectura rapida de vencimientos, disponibilidad loteada y reconciliacion.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => void loadInventoryAlerts(filters)}
+                isLoading={alertLoading}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refrescar alertas
+              </Button>
+            </div>
+
+            {alertErrorMessage ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {alertErrorMessage}
+              </div>
+            ) : null}
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <InventoryAlertCard
+                title="Lotes vencidos"
+                value={formatNumber(inventoryAlertStats.expiredLots)}
+                description="No aptos para venta FEFO."
+                icon={AlertTriangle}
+                tone="border-rose-200 bg-rose-50 text-rose-800"
+              />
+              <InventoryAlertCard
+                title="Proximos a vencer"
+                value={formatNumber(inventoryAlertStats.expiringLots)}
+                description="Vencen en 30 dias o menos."
+                icon={AlertTriangle}
+                tone="border-amber-200 bg-amber-50 text-amber-800"
+              />
+              <InventoryAlertCard
+                title="Bloq/cancel con saldo"
+                value={formatNumber(inventoryAlertStats.blockedOrCancelledWithStock)}
+                description="Saldo disponible en lotes no vendibles."
+                icon={PackageX}
+                tone="border-slate-200 bg-slate-100 text-slate-800"
+              />
+              <InventoryAlertCard
+                title="Discrep. criticas"
+                value={formatNumber(inventoryAlertStats.criticalCount)}
+                description="Reconciliacion loteada."
+                icon={ShieldAlert}
+                tone="border-rose-200 bg-white text-rose-800"
+              />
+              <InventoryAlertCard
+                title="Discrep. altas"
+                value={formatNumber(inventoryAlertStats.highCount)}
+                description="Diferencias por revisar."
+                icon={ShieldAlert}
+                tone="border-amber-200 bg-white text-amber-800"
+              />
+              <InventoryAlertCard
+                title="Stock loteado disp."
+                value={formatNumber(inventoryAlertStats.availableStock)}
+                description="Suma de quantity_available."
+                icon={Boxes}
+                tone="border-blue-200 bg-blue-50 text-blue-800"
+              />
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-slate-900">Accesos rapidos</h3>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {quickLinks.map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm transition hover:border-blue-200 hover:bg-blue-50"
+                      >
+                        <span className="flex items-center gap-3">
+                          <span className="rounded-xl bg-slate-100 p-2 text-slate-700 group-hover:bg-white group-hover:text-blue-700">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span>
+                            <span className="block font-semibold text-slate-900">
+                              {item.label}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-slate-500">
+                              {item.description}
+                            </span>
+                          </span>
+                        </span>
+                        <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-700" />
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section
+                className={`rounded-2xl border p-5 shadow-sm ${reconciliationStatus.className}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide opacity-75">
+                      Reconciliacion
+                    </p>
+                    <h3 className="mt-2 text-2xl font-semibold">
+                      {reconciliationStatus.label}
+                    </h3>
+                    <p className="mt-1 text-sm opacity-80">
+                      {reconciliationStatus.description}
+                    </p>
+                  </div>
+                  <ShieldAlert className="h-6 w-6 opacity-70" />
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl bg-white/70 px-3 py-2">
+                    <p className="text-xs opacity-70">Total</p>
+                    <p className="font-semibold">
+                      {formatNumber(inventoryAlertStats.discrepancyCount)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/70 px-3 py-2">
+                    <p className="text-xs opacity-70">Warning</p>
+                    <p className="font-semibold">
+                      {formatNumber(inventoryAlertStats.warningCount)}
+                    </p>
+                  </div>
+                </div>
+                {alertDiscrepancies.length > 0 ? (
+                  <div className="mt-4 space-y-2 text-xs">
+                    {alertDiscrepancies.slice(0, 3).map((item, index) => (
+                      <p
+                        key={[
+                          item.discrepancyType,
+                          item.severity,
+                          item.productId ?? "no-product",
+                          item.lotId ?? "no-lot",
+                          item.balanceId ?? "no-balance",
+                          item.stockMovementId ?? "no-movement",
+                          item.stockMovementLotId ?? "no-link",
+                          item.branchId ?? "no-branch",
+                          item.detectedAt,
+                          index,
+                        ].join(":")}
+                        className="rounded-xl bg-white/70 px-3 py-2"
+                      >
+                        {item.severity} - {item.discrepancyType}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            </div>
           </section>
 
           <section className="grid gap-4 xl:grid-cols-2">

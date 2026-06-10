@@ -17,6 +17,8 @@ import {
   type PaymentRecord,
 } from "../../finance/payments/payments.repository";
 import { PaymentsService } from "../../finance/payments/payments.service";
+import { PricingService } from "../../pricing/pricing.service";
+import type { LinePricePreview } from "../../pricing/pricing.types";
 import { AuditService } from "../../../common/services/audit.service";
 import { SaleEntity, type SaleType } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
@@ -66,6 +68,8 @@ type SaleItemRow = {
   price_without_tax: string | number;
   tax_total: string | number;
   subtotal: string | number;
+  line_total: string | number | null;
+  pricing_source: string | null;
   created_at: Date;
 };
 
@@ -125,6 +129,26 @@ type SaleStockMovementRow = {
   user_id: string | null;
 };
 
+type SaleStockMovementLotRow = {
+  id: string;
+  product_id: string;
+  lot_id: string | null;
+  location_id: string | null;
+  quantity: string | number;
+};
+
+type SaleLotRow = {
+  id: string;
+  status: string;
+  branch_id: string;
+  product_id: string;
+};
+
+type ProductLotRequirementRow = {
+  id: string;
+  requires_lot: boolean;
+};
+
 type InheritableOrderPayment = {
   payment: PaymentRecord;
   availableAmount: number;
@@ -141,6 +165,8 @@ type InheritedOrderPaymentResult = {
   inheritedPayments: CreatedPaymentSnapshot[];
 };
 
+const POS_PRICING_SOURCE = "POS_PRICING_SERVICE";
+
 @Injectable()
 export class SaleService {
   constructor(
@@ -154,7 +180,9 @@ export class SaleService {
     @Inject(PaymentsRepository)
     private readonly paymentsRepository: PaymentsRepository,
     @Inject(PaymentsService)
-    private readonly paymentsService: PaymentsService
+    private readonly paymentsService: PaymentsService,
+    @Inject(PricingService)
+    private readonly pricingService: PricingService
   ) {}
 
   private toNumber(value: string | number) {
@@ -206,6 +234,8 @@ export class SaleService {
       priceWithoutTax: this.toNumber(row.price_without_tax),
       taxTotal: this.toNumber(row.tax_total),
       subtotal: this.toNumber(row.subtotal),
+      lineTotal: row.line_total == null ? null : this.toNumber(row.line_total),
+      pricingSource: row.pricing_source,
       createdAt: new Date(row.created_at),
     });
   }
@@ -255,6 +285,8 @@ export class SaleService {
         branchId: context.branchId,
         terminalId: context.terminalId,
         posSessionId: context.posSessionId,
+        sessionId: context.sessionId,
+        roles: Array.isArray(context.roles) ? context.roles : [],
       };
     }
 
@@ -273,6 +305,8 @@ export class SaleService {
       branchId: currentPosContext.branch_id,
       terminalId: currentPosContext.terminal_id,
       posSessionId: currentPosContext.pos_session_id,
+      sessionId: context.sessionId,
+      roles: Array.isArray(context.roles) ? context.roles : [],
     };
   }
 
@@ -333,6 +367,113 @@ export class SaleService {
         reference: payment.referenceNumber ?? payment.notes ?? null,
       };
     });
+  }
+
+  private buildPosPricingSnapshot(input: {
+    tenantId: string;
+    branchId: string;
+    customerId: string;
+    pricingCalculatedAt: Date;
+    preview: LinePricePreview;
+  }) {
+    return {
+      channel: "POS",
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      customerId: input.customerId,
+      calculatedAt: input.pricingCalculatedAt.toISOString(),
+      productId: input.preview.productId,
+      quantity: input.preview.quantity,
+      result: input.preview,
+    };
+  }
+
+  private async calculatePricedPosItems(input: {
+    tenantId: string;
+    branchId: string;
+    customerId: string;
+    items: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">["items"];
+    pricingCalculatedAt: Date;
+  }) {
+    const pricingDate = input.pricingCalculatedAt.toISOString();
+    const items: CreateSaleInput["items"] = [];
+
+    for (const item of input.items) {
+      const preview = await this.pricingService.calculateLinePrice({
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        customerId: input.customerId,
+        productId: item.productId,
+        quantity: item.quantity,
+        channel: "POS",
+        date: pricingDate,
+      });
+      const discountTotal = this.roundCurrency(
+        preview.discountAmount * preview.quantity
+      );
+      const priceWithoutTax =
+        preview.quantity > 0
+          ? this.roundCurrency(preview.taxBase / preview.quantity)
+          : 0;
+
+      items.push({
+        productId: item.productId,
+        quantity: preview.quantity,
+        price: preview.finalUnitPrice,
+        orderItemId: item.orderItemId ?? null,
+        subtotal: preview.lineTotal,
+        priceWithoutTax,
+        taxTotal: preview.taxAmount,
+        baseUnitPrice: preview.baseUnitPrice,
+        finalUnitPrice: preview.finalUnitPrice,
+        discountAmount: preview.discountAmount,
+        discountPercent: preview.discountPercent,
+        discountTotal,
+        appliedPromotionId: preview.appliedPromotionId,
+        appliedPromotionName: preview.appliedPromotionName,
+        taxId: preview.taxId,
+        taxRate: preview.taxRate,
+        taxBase: preview.taxBase,
+        taxAmount: preview.taxAmount,
+        lineTotal: preview.lineTotal,
+        pricingSnapshot: this.buildPosPricingSnapshot({
+          tenantId: input.tenantId,
+          branchId: input.branchId,
+          customerId: input.customerId,
+          pricingCalculatedAt: input.pricingCalculatedAt,
+          preview,
+        }),
+        pricingCalculatedAt: input.pricingCalculatedAt,
+        pricingSource: POS_PRICING_SOURCE,
+      });
+    }
+
+    return items;
+  }
+
+  private calculateBackendSaleTotal(items: CreateSaleInput["items"]) {
+    return this.roundCurrency(
+      items.reduce((sum, item) => sum + (item.lineTotal ?? item.subtotal ?? 0), 0)
+    );
+  }
+
+  private ensureCashPaymentsMatchBackendTotal(
+    type: SaleType,
+    payments: ReturnType<SaleService["normalizePayments"]>,
+    backendTotal: number
+  ) {
+    if (type !== "CASH") {
+      return;
+    }
+
+    const paymentTotal = this.roundCurrency(
+      payments.reduce((sum, payment) => sum + payment.amount, 0)
+    );
+    if (paymentTotal !== backendTotal) {
+      throw new BadRequestException(
+        "Payment total does not match backend calculated sale total"
+      );
+    }
   }
 
   private buildFinanceActor(context: SaleContext) {
@@ -680,6 +821,193 @@ export class SaleService {
     );
   }
 
+  private async productRequiresLot(
+    tenantId: string,
+    productId: string,
+    client: PoolClient
+  ) {
+    const result = await client.query<ProductLotRequirementRow>(
+      `
+        SELECT id, requires_lot
+        FROM products
+        WHERE id = $1
+          AND tenant_id = $2
+        LIMIT 1
+      `,
+      [productId, tenantId]
+    );
+
+    const product = result.rows[0];
+    if (!product) {
+      throw new BadRequestException("product not found for tenant");
+    }
+
+    return product.requires_lot;
+  }
+
+  private async assertCanSkipLottedReversal(
+    tenantId: string,
+    productId: string,
+    client: PoolClient
+  ) {
+    const requiresLot = await this.productRequiresLot(tenantId, productId, client);
+    if (requiresLot) {
+      throw new BadRequestException(
+        "lotted sale movement is missing stock_movement_lots for reversal"
+      );
+    }
+  }
+
+  private async reverseLottedStockMovement(
+    tenantId: string,
+    originalMovement: SaleStockMovementRow,
+    reverseMovementId: string,
+    client: PoolClient
+  ) {
+    const lotLinksResult = await client.query<SaleStockMovementLotRow>(
+      `
+        SELECT
+          sml.id,
+          sml.product_id,
+          sml.lot_id,
+          sml.location_id,
+          sml.quantity
+        FROM stock_movement_lots AS sml
+        WHERE sml.tenant_id = $1
+          AND sml.stock_movement_id = $2
+        ORDER BY sml.created_at ASC, sml.id ASC
+      `,
+      [tenantId, originalMovement.id]
+    );
+
+    if (lotLinksResult.rows.length === 0) {
+      await this.assertCanSkipLottedReversal(
+        tenantId,
+        originalMovement.product_id,
+        client
+      );
+      return;
+    }
+
+    if (!originalMovement.branch_id) {
+      throw new BadRequestException(
+        "lotted sale movement is missing branch for reversal"
+      );
+    }
+
+    const movementQuantity = this.toNumber(originalMovement.quantity);
+    const linkedQuantity = lotLinksResult.rows.reduce(
+      (sum, link) => sum + this.toNumber(link.quantity),
+      0
+    );
+
+    if (Math.abs(linkedQuantity - movementQuantity) > 0.0001) {
+      throw new BadRequestException(
+        "lotted sale movement link quantity does not match stock movement"
+      );
+    }
+
+    for (const link of lotLinksResult.rows) {
+      const quantity = this.toNumber(link.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new BadRequestException("stock_movement_lots quantity is invalid");
+      }
+      if (!link.lot_id) {
+        throw new BadRequestException("stock_movement_lots lot is invalid");
+      }
+
+      const lotResult = await client.query<SaleLotRow>(
+        `
+          SELECT id, status, branch_id, product_id
+          FROM inventory_lots
+          WHERE tenant_id = $1
+            AND id = $2
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [tenantId, link.lot_id]
+      );
+      const lot = lotResult.rows[0];
+
+      if (!lot) {
+        throw new BadRequestException("stock_movement_lots lot is invalid");
+      }
+      if (lot.status === "CANCELLED") {
+        throw new BadRequestException(
+          "CANCELLED lot cannot be reversed automatically"
+        );
+      }
+      if (lot.branch_id !== originalMovement.branch_id) {
+        throw new BadRequestException("stock_movement_lots lot branch mismatch");
+      }
+      if (
+        link.product_id !== originalMovement.product_id ||
+        lot.product_id !== originalMovement.product_id
+      ) {
+        throw new BadRequestException("stock_movement_lots product mismatch");
+      }
+
+      const balanceResult = await client.query<{ id: string }>(
+        `
+          UPDATE inventory_lot_balances AS balance
+          SET
+            quantity_on_hand = balance.quantity_on_hand + $5,
+            last_movement_at = NOW(),
+            updated_at = NOW()
+          WHERE balance.tenant_id = $1
+            AND balance.branch_id = $2
+            AND balance.product_id = $3
+            AND balance.lot_id = $4
+            AND (
+              ($6::uuid IS NULL AND balance.location_id IS NULL)
+              OR balance.location_id = $6::uuid
+            )
+          RETURNING balance.id
+        `,
+        [
+          tenantId,
+          originalMovement.branch_id,
+          originalMovement.product_id,
+          link.lot_id,
+          quantity,
+          link.location_id,
+        ]
+      );
+
+      if (!balanceResult.rows[0]) {
+        throw new BadRequestException(
+          "inventory lot balance not found for reversal"
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO stock_movement_lots (
+            id,
+            tenant_id,
+            stock_movement_id,
+            product_id,
+            lot_id,
+            location_id,
+            quantity,
+            created_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, NOW()
+          )
+        `,
+        [
+          crypto.randomUUID(),
+          tenantId,
+          reverseMovementId,
+          originalMovement.product_id,
+          link.lot_id,
+          link.location_id,
+          quantity,
+        ]
+      );
+    }
+  }
+
   private async validateInvoiceableOrder(
     tenantId: string,
     orderId: string,
@@ -887,6 +1215,17 @@ export class SaleService {
       }
 
       const payments = this.normalizePayments(data.payments);
+      const pricingCalculatedAt = new Date();
+      const pricedItems = await this.calculatePricedPosItems({
+        tenantId: saleContext.tenantId,
+        branchId: saleContext.branchId,
+        customerId: data.customerId,
+        items: data.items,
+        pricingCalculatedAt,
+      });
+      const backendTotal = this.calculateBackendSaleTotal(pricedItems);
+      this.ensureCashPaymentsMatchBackendTotal(data.type, payments, backendTotal);
+
       const legacyPaymentMethods = await this.buildLegacySalePaymentMethods(
         saleContext.tenantId,
         payments,
@@ -896,6 +1235,7 @@ export class SaleService {
       const saleRow = await this.repository.createSaleWithFunction(
         {
           ...data,
+          items: pricedItems,
           ...saleContext,
         },
         legacyPaymentMethods,
@@ -1118,6 +1458,8 @@ export class SaleService {
             price_without_tax,
             tax_total,
             subtotal,
+            line_total,
+            pricing_source,
             created_at
           FROM sale_items
           WHERE sale_id = $1
@@ -1227,7 +1569,7 @@ export class SaleService {
           WHERE s.id = $1
             AND s.tenant_id = $2
           LIMIT 1
-          FOR UPDATE
+          FOR UPDATE OF s
         `,
         [id, actor.tenantId]
       );
@@ -1306,13 +1648,13 @@ export class SaleService {
         const originalMovement = originalMovements.shift();
 
         if (originalMovement) {
-          await this.stockMovementService.createMovement(
+          const reverseMovement = await this.stockMovementService.createMovement(
             {
               id: crypto.randomUUID(),
               tenantId: sale.tenant_id,
               productId: item.product_id,
               type: "IN",
-              quantity: this.toNumber(item.quantity),
+              quantity: this.toNumber(originalMovement.quantity),
               referenceType: "SALE",
               referenceId: id,
               branchId: originalMovement.branch_id,
@@ -1322,6 +1664,19 @@ export class SaleService {
               referenceTable: "sales",
               createdAt: new Date(),
             },
+            client
+          );
+
+          await this.reverseLottedStockMovement(
+            sale.tenant_id,
+            originalMovement,
+            reverseMovement.id,
+            client
+          );
+        } else {
+          await this.assertCanSkipLottedReversal(
+            sale.tenant_id,
+            item.product_id,
             client
           );
         }

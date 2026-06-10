@@ -41,11 +41,17 @@ export class PermissionsGuard implements CanActivate {
     if (user.roles?.includes("SUPER_ADMIN")) {
       return true;
     }
+    const requiredMenuKeys = Array.isArray(requiredPermission.menuKey)
+      ? requiredPermission.menuKey
+      : [requiredPermission.menuKey];
     if (
       user.roles?.includes("SUPER_USER") &&
-      (requiredPermission.menuKey === MENU_KEYS.CONFIG_GENERAL ||
-        requiredPermission.menuKey === MENU_KEYS.CONFIG_USUARIOS ||
-        requiredPermission.menuKey === MENU_KEYS.CONFIG_ROLES)
+      requiredMenuKeys.some(
+        (menuKey) =>
+          menuKey === MENU_KEYS.CONFIG_GENERAL ||
+          menuKey === MENU_KEYS.CONFIG_USUARIOS ||
+          menuKey === MENU_KEYS.CONFIG_ROLES
+      )
     ) {
       return true;
     }
@@ -55,17 +61,19 @@ export class PermissionsGuard implements CanActivate {
       user.id,
       user.tenantId
     );
-    const permission = this.accessControlService.findPermission(
-      permissions,
-      requiredPermission.menuKey
-    );
-    const allowed = requiredPermission.action
-      ? this.accessControlService.isActionAllowed(
-          permission,
-          requiredPermission.level,
-          requiredPermission.action
-        )
-      : this.accessControlService.isAccessAllowed(permission, requiredPermission.level);
+    const allowed = requiredMenuKeys.some((menuKey) => {
+      const permission = this.accessControlService.findPermission(
+        permissions,
+        menuKey
+      );
+      return requiredPermission.action
+        ? this.accessControlService.isActionAllowed(
+            permission,
+            requiredPermission.level,
+            requiredPermission.action
+          )
+        : this.accessControlService.isAccessAllowed(permission, requiredPermission.level);
+    });
 
     if (!allowed) {
       throw new ForbiddenException("Permisos insuficientes");

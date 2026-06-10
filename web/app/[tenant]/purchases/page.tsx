@@ -9,13 +9,18 @@ import { NoticeDialog } from "../../../components/design-system/NoticeDialog";
 import { Select } from "../../../components/design-system/Select";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
+import { buildConfirmFromApiError } from "../../../lib/api-messages";
+import { useConfirm } from "../../../hooks/use-confirm";
 import { useNoticeDialog } from "../../../hooks/useNoticeDialog";
 import { useAppSelector } from "../../../store/hooks";
 import {
   CancelPurchaseForm,
   validateCancelPurchaseReason,
 } from "../../../modules/inventory/components/CancelPurchaseForm";
-import { DocumentPaymentForm } from "../../../modules/finance/components/DocumentPaymentForm";
+import {
+  DocumentPaymentForm,
+  type DocumentPaymentSuccessContext,
+} from "../../../modules/finance/components/DocumentPaymentForm";
 import { PurchaseActionHeader } from "../../../modules/inventory/components/PurchaseActionHeader";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
 import {
@@ -30,6 +35,11 @@ import type { PurchaseResponse } from "../../../modules/inventory/services/purch
 import { isPurchaseCancelable } from "../../../modules/inventory/utils/purchase-cancellation";
 import { getPurchaseTicket } from "../../../modules/reporteria/services/reporting.service";
 import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
+import {
+  buildPurchasePeripheralFeedbackMessage,
+  runPurchasePeripheralOperations,
+  type PurchasePeripheralContext,
+} from "../../../domains/peripherals/purchase-integration";
 
 type PurchaseFilters = {
   query: string;
@@ -195,6 +205,7 @@ const PurchasesPage = () => {
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
+  const confirm = useConfirm();
   const ticketFrameRef = useRef<HTMLIFrameElement | null>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -211,7 +222,9 @@ const PurchasesPage = () => {
     : activeAction;
   const isActionMode = activeViewMode !== null;
   const { currentTenant } = useInventoryScope();
-  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
+  const authUser = useAppSelector((state) => state.auth.user);
+  const authRole = useAppSelector((state) => state.auth.role ?? "");
+  const role = authUser?.role ?? authRole;
   const canViewAllTenants = role === "SUPER_ADMIN";
 
   const isAdminLikeRole =
@@ -220,6 +233,40 @@ const PurchasesPage = () => {
   const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
   const canCancel = hasPermission("inventory.cancel");
   const canSettlePartial = hasPermission("inventory.settle_partial");
+
+  const showApiConfirmError = useCallback(
+    async (error: unknown, fallbackMessage: string) => {
+      const dialog = buildConfirmFromApiError(error, fallbackMessage);
+      await confirm({
+        ...dialog,
+        confirmText: "Entendido",
+        hideCancel: true,
+      });
+    },
+    [confirm]
+  );
+
+  const showPurchasePeripheralFeedback = useCallback(
+    async (
+      context: PurchasePeripheralContext,
+      options?: Parameters<typeof runPurchasePeripheralOperations>[1]
+    ) => {
+      const feedback = await runPurchasePeripheralOperations(context, options);
+      const message = buildPurchasePeripheralFeedbackMessage(feedback);
+
+      if (!message) {
+        return;
+      }
+
+      if (message.variant === "warning") {
+        notice.showWarning("Perifericos POS", message.message);
+        return;
+      }
+
+      notice.showSuccess("Perifericos POS", message.message);
+    },
+    [notice]
+  );
 
   const openPurchasePanel = useCallback(
     (action: PurchasePanelAction, purchaseId: string) => {
@@ -480,9 +527,15 @@ const PurchasesPage = () => {
     handleBackToList();
   };
 
-  const handleCreateSuccess = async (response?: unknown) => {
+  const handleCreateSuccess = async (
+    response?: unknown,
+    peripheralContext?: PurchasePeripheralContext
+  ) => {
     handleBackToList();
     notice.showFromApiResponse(response, "Compra creada correctamente.", "Operacion exitosa");
+    if (peripheralContext) {
+      void showPurchasePeripheralFeedback(peripheralContext);
+    }
     if (hasSearched) {
       await loadPurchases();
     }
@@ -758,7 +811,7 @@ const PurchasesPage = () => {
           onCancel={handleBackToList}
           onSuccess={(response) => void handleReceiveSuccess(response)}
           onError={(error) =>
-            notice.showFromApiError(error, "No se pudo registrar la recepcion.")
+            void showApiConfirmError(error, "No se pudo registrar la recepcion.")
           }
         />
       ) : null}
@@ -789,9 +842,52 @@ const PurchasesPage = () => {
           confirmLabel="Confirmar pago"
           cancelLabel="Volver"
           onCancel={handleBackToList}
-          onSuccess={async () => {
+          onSuccess={async (paymentContext?: DocumentPaymentSuccessContext) => {
             handleBackToList();
             notice.showSuccess("Operacion exitosa", "Pago registrado correctamente.");
+            if (paymentContext) {
+              const detailItems =
+                purchaseDetail?.id === activePurchase.id ? purchaseDetail.items : [];
+              const peripheralContext: PurchasePeripheralContext = {
+                purchaseId: activePurchase.id,
+                purchaseNumber: activePurchase.id,
+                documentNumber: activePurchase.id,
+                date: activePurchase.createdAt,
+                businessName: activePurchase.tenantName ?? authUser?.tenantName ?? "Manus POS",
+                branchName: activePurchase.branchName ?? authUser?.branchName ?? undefined,
+                cashier: authUser?.name ?? authUser?.email ?? undefined,
+                supplierName: activePurchase.supplierName ?? "Proveedor",
+                items: detailItems.map((item) => ({
+                  name: item.productName ?? item.productId,
+                  quantity: Number(item.receivedQuantity || item.orderedQuantity),
+                  unitPrice: Number(item.cost),
+                  total: Number(item.receivedSubtotal ?? item.subtotal),
+                })),
+                subtotal: Number(
+                  activePurchase.totalRecibido ??
+                    activePurchase.totalLiquidado ??
+                    activePurchase.total
+                ),
+                taxes: 0,
+                discounts: 0,
+                total: Number(
+                  activePurchase.totalRecibido ??
+                    activePurchase.totalLiquidado ??
+                    activePurchase.total
+                ),
+                payments: paymentContext.payments.map((payment) => ({
+                  paymentMethodId: payment.paymentMethodId,
+                  methodName: payment.methodName,
+                  methodType: payment.methodType,
+                  amount: payment.amount,
+                })),
+              };
+
+              void showPurchasePeripheralFeedback(peripheralContext, {
+                printTicket: false,
+                openCashDrawer: true,
+              });
+            }
             if (hasSearched) {
               await loadPurchases();
             }
@@ -1011,8 +1107,12 @@ const PurchasesPage = () => {
       {activeViewMode === "create" ? (
         <PurchaseForm
           onCancel={requestBackToList}
-          onSuccess={(response) => void handleCreateSuccess(response)}
-          onError={(error) => notice.showFromApiError(error, "No se pudo guardar la compra.")}
+          onSuccess={(response, peripheralContext) =>
+            void handleCreateSuccess(response, peripheralContext)
+          }
+          onError={(error) =>
+            void showApiConfirmError(error, "No se pudo guardar la compra.")
+          }
           onDirtyChange={setCreateHasUnsavedChanges}
         />
       ) : null}

@@ -14,6 +14,10 @@ const ids = {
   supplier: "20000000-0000-0000-0000-000000000001",
   branch: "30000000-0000-0000-0000-000000000001",
   user: "40000000-0000-0000-0000-000000000001",
+  purchaseItem: "50000000-0000-0000-0000-000000000001",
+  product: "60000000-0000-0000-0000-000000000001",
+  lot: "70000000-0000-0000-0000-000000000001",
+  location: "80000000-0000-0000-0000-000000000001",
 };
 
 type Scenario = {
@@ -25,6 +29,11 @@ type Scenario = {
   tenantMatches?: boolean;
   itemReceivedQuantity?: number;
   itemCost?: number;
+  productRequiresLot?: boolean;
+  productRequiresExpiration?: boolean;
+  existingLotStatus?: "ACTIVE" | "BLOCKED" | "CANCELLED";
+  existingLotExpirationDate?: string | null;
+  locationBelongsToBranch?: boolean;
 };
 
 const buildPurchaseRow = (scenario: Scenario = {}) => ({
@@ -83,13 +92,24 @@ class FakeClient {
     if (trimmed.includes("SELECT received_quantity") && trimmed.includes("FROM purchase_items")) {
       return { rows: [{ received_quantity: this.scenario.receivedQuantity ?? 0 }] };
     }
+    if (trimmed.includes("requires_lot") && trimmed.includes("FROM products")) {
+      return {
+        rows: [
+          {
+            id: ids.product,
+            requires_lot: this.scenario.productRequiresLot ?? false,
+            requires_expiration: this.scenario.productRequiresExpiration ?? false,
+          },
+        ],
+      };
+    }
     if (trimmed.includes("FROM purchase_items")) {
       return {
         rows: [
           {
-            id: "50000000-0000-0000-0000-000000000001",
+            id: ids.purchaseItem,
             purchase_id: ids.purchase,
-            product_id: "60000000-0000-0000-0000-000000000001",
+            product_id: ids.product,
             ordered_quantity: 10,
             received_quantity: this.scenario.itemReceivedQuantity ?? 7,
             cost: this.scenario.itemCost ?? 10000,
@@ -135,10 +155,29 @@ class FakeClient {
       return {
         rows: [
           {
-            ...buildPurchaseRow({ ...this.scenario, status: "CANCELLED" }),
-            motivo_cancelacion: params[2],
-            cancelado_por: params[3],
-            cancelado_en: params[4],
+            ...buildPurchaseRow({
+              ...this.scenario,
+              status:
+                typeof params[2] === "string" &&
+                ["PARTIAL", "RECEIVED"].includes(params[2])
+                  ? (params[2] as "PARTIAL" | "RECEIVED")
+                  : "CANCELLED",
+            }),
+            motivo_cancelacion:
+              typeof params[2] === "string" &&
+              ["PARTIAL", "RECEIVED"].includes(params[2])
+                ? null
+                : params[2],
+            cancelado_por:
+              typeof params[2] === "string" &&
+              ["PARTIAL", "RECEIVED"].includes(params[2])
+                ? null
+                : params[3],
+            cancelado_en:
+              typeof params[2] === "string" &&
+              ["PARTIAL", "RECEIVED"].includes(params[2])
+                ? null
+                : params[4],
           },
         ],
       };
@@ -174,15 +213,123 @@ class FakeDatabaseService {
   }
 }
 
+class FakeStockMovementService {
+  readonly movements: unknown[] = [];
+  readonly audits: unknown[] = [];
+
+  async createMovement(data: any) {
+    const movement = {
+      ...data,
+      stockBefore: 0,
+      stockAfter: Number(data.quantity),
+    };
+    this.movements.push(movement);
+    return movement;
+  }
+
+  logMovementAuditEvent(movement: unknown) {
+    this.audits.push(movement);
+  }
+}
+
+class FakeInventoryLotService {
+  readonly calls: unknown[] = [];
+  createdCount = 0;
+  reusedCount = 0;
+
+  constructor(private readonly scenario: Scenario = {}) {}
+
+  async findOrCreateForPurchase(input: any) {
+    this.calls.push(input);
+
+    const expirationDate = input.expirationDate ?? null;
+    if (input.requiresExpiration && !expirationDate && !this.scenario.existingLotExpirationDate) {
+      throw new BadRequestException("expirationDate is required for this product");
+    }
+    if (expirationDate && expirationDate < "2000-01-01") {
+      throw new BadRequestException("expirationDate cannot be before 2000-01-01");
+    }
+    if (expirationDate && expirationDate < new Date().toISOString().slice(0, 10)) {
+      throw new BadRequestException("ACTIVE lot cannot be expired");
+    }
+    if (
+      this.scenario.existingLotStatus === "BLOCKED" ||
+      this.scenario.existingLotStatus === "CANCELLED"
+    ) {
+      throw new BadRequestException("inventory lot cannot receive stock");
+    }
+    if (
+      this.scenario.existingLotExpirationDate &&
+      expirationDate &&
+      this.scenario.existingLotExpirationDate !== expirationDate
+    ) {
+      throw new BadRequestException("expirationDate does not match existing lot");
+    }
+
+    if (this.scenario.existingLotStatus) {
+      this.reusedCount += 1;
+    } else {
+      this.createdCount += 1;
+    }
+    return {
+      id: ids.lot,
+      tenantId: input.tenantId,
+      branchId: input.branchId,
+      productId: input.productId,
+      lotCode: input.lotCode,
+      expirationDate:
+        this.scenario.existingLotExpirationDate ?? input.expirationDate ?? null,
+      status: this.scenario.existingLotStatus ?? "ACTIVE",
+    };
+  }
+}
+
+class FakeInventoryLotBalanceService {
+  readonly increments: unknown[] = [];
+
+  constructor(private readonly scenario: Scenario = {}) {}
+
+  async incrementOnHand(_tenantId: string, input: any) {
+    if (this.scenario.locationBelongsToBranch === false) {
+      throw new BadRequestException("locationId is invalid");
+    }
+    this.increments.push(input);
+    return { id: "balance-1", ...input };
+  }
+}
+
+class FakeStockMovementLotService {
+  readonly links: unknown[] = [];
+
+  async createLink(input: any) {
+    this.links.push(input);
+    return { id: "movement-lot-1", ...input };
+  }
+}
+
 const buildService = (scenario: Scenario = {}) => {
   const db = new FakeDatabaseService(scenario);
+  const stockMovementService = new FakeStockMovementService();
+  const inventoryLotService = new FakeInventoryLotService(scenario);
+  const inventoryLotBalanceService = new FakeInventoryLotBalanceService(scenario);
+  const stockMovementLotService = new FakeStockMovementLotService();
   const service = new PurchaseService(
     db as never,
-    {} as never,
+    stockMovementService as never,
+    inventoryLotService as never,
+    inventoryLotBalanceService as never,
+    stockMovementLotService as never,
     { findAccessibleBranchIds: async () => [] } as never,
     { isModuleEnabled: () => true, logEvent: () => undefined } as never
   );
-  return { service, db };
+  return {
+    service,
+    db,
+    stockMovementService,
+    inventoryLotService,
+    inventoryLotBalanceService,
+    stockMovementLotService,
+  };
 };
 
 test("PurchaseService.cancelPurchase: cancela compra en estado permitido y registra historial", async () => {
@@ -484,4 +631,365 @@ test("PurchaseService.settlePartialPurchase: respeta tenant_id", async () => {
       }),
     NotFoundException
   );
+});
+
+test("PurchaseService.receivePurchase: producto no loteado recibe compra como antes", async () => {
+  const { service, stockMovementService, inventoryLotService } = buildService({
+    status: "PENDING",
+  });
+
+  const result = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2 }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(result.status, "PARTIAL");
+  assert.equal(stockMovementService.movements.length, 1);
+  assert.equal(inventoryLotService.calls.length, 0);
+});
+
+test("PurchaseService.receivePurchase: producto no loteado rechaza datos de lote", async () => {
+  const { service } = buildService({ status: "PENDING" });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2, lotCode: "L-1" }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /lot data is not allowed/
+  );
+});
+
+test("PurchaseService.receivePurchase: producto loteado exige lotCode", async () => {
+  const { service } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2 }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /lotCode is required/
+  );
+});
+
+test("PurchaseService.receivePurchase: producto con vencimiento exige expirationDate", async () => {
+  const { service } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+    productRequiresExpiration: true,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2, lotCode: "L-1" }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /expirationDate is required/
+  );
+});
+
+test("PurchaseService.receivePurchase: producto loteado crea inventory_lot nuevo", async () => {
+  const { service, inventoryLotService } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2, lotCode: " l-2026-001 " }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(inventoryLotService.createdCount, 1);
+  assert.equal((inventoryLotService.calls[0] as any).lotCode, "L-2026-001");
+});
+
+test("PurchaseService.receivePurchase: producto loteado reutiliza inventory_lot existente valido", async () => {
+  const { service, inventoryLotService } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+    existingLotStatus: "ACTIVE",
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2, lotCode: "L-2026-001" }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(inventoryLotService.reusedCount, 1);
+  assert.equal(inventoryLotService.createdCount, 0);
+});
+
+test("PurchaseService.receivePurchase: producto loteado rechaza lote bloqueado o cancelado", async () => {
+  for (const existingLotStatus of ["BLOCKED", "CANCELLED"] as const) {
+    const { service } = buildService({
+      status: "PENDING",
+      productRequiresLot: true,
+      existingLotStatus,
+    });
+
+    await assert.rejects(
+      () =>
+        service.receivePurchase(
+          ids.purchase,
+          ids.tenant,
+          [{ productId: ids.product, quantity: 2, lotCode: "L-2026-001" }],
+          { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+          actor
+        ),
+      /inventory lot cannot receive stock/
+    );
+  }
+});
+
+test("PurchaseService.receivePurchase: producto con vencimiento rechaza expirationDate vencida", async () => {
+  const { service } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+    productRequiresExpiration: true,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [
+          {
+            productId: ids.product,
+            quantity: 2,
+            lotCode: "L-2026-001",
+            expirationDate: "2000-01-02",
+          },
+        ],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /ACTIVE lot cannot be expired/
+  );
+});
+
+test("PurchaseService.receivePurchase: producto con vencimiento rechaza expirationDate distinta para lote existente", async () => {
+  const { service } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+    productRequiresExpiration: true,
+    existingLotStatus: "ACTIVE",
+    existingLotExpirationDate: "2026-12-31",
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [
+          {
+            productId: ids.product,
+            quantity: 2,
+            lotCode: "L-2026-001",
+            expirationDate: "2027-01-31",
+          },
+        ],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /expirationDate does not match existing lot/
+  );
+});
+
+test("PurchaseService.receivePurchase: recepcion loteada incrementa balances", async () => {
+  const { service, inventoryLotBalanceService } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      {
+        productId: ids.product,
+        quantity: 2,
+        lotCode: "L-2026-001",
+        locationId: ids.location,
+      },
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(inventoryLotBalanceService.increments.length, 1);
+  assert.equal((inventoryLotBalanceService.increments[0] as any).quantity, 2);
+  assert.equal(
+    (inventoryLotBalanceService.increments[0] as any).locationId,
+    ids.location
+  );
+});
+
+test("PurchaseService.receivePurchase: recepcion loteada crea stock_movement_lots con movementId correcto", async () => {
+  const { service, stockMovementService, stockMovementLotService } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2, lotCode: "L-2026-001" }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(stockMovementLotService.links.length, 1);
+  assert.equal(
+    (stockMovementLotService.links[0] as any).stockMovementId,
+    (stockMovementService.movements[0] as any).id
+  );
+  assert.equal((stockMovementLotService.links[0] as any).quantity, 2);
+});
+
+test("PurchaseService.receivePurchase: compra parcial crea lote y balance solo por cantidad recibida", async () => {
+  const { service, inventoryLotBalanceService } = buildService({
+    status: "PENDING",
+    itemReceivedQuantity: 0,
+    productRequiresLot: true,
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      {
+        purchaseItemId: ids.purchaseItem,
+        receivedQuantity: 4,
+        quantity: 4,
+        lotCode: "L-PARCIAL",
+      } as any,
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(inventoryLotBalanceService.increments.length, 1);
+  assert.equal((inventoryLotBalanceService.increments[0] as any).quantity, 4);
+});
+
+test("PurchaseService.receivePurchase: locationId de otra sucursal se rechaza", async () => {
+  const { service } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+    locationBelongsToBranch: false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [
+          {
+            productId: ids.product,
+            quantity: 2,
+            lotCode: "L-2026-001",
+            locationId: ids.location,
+          },
+        ],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /locationId is invalid/
+  );
+});
+
+test("PurchaseService.receivePurchase: no crea stock_movement_lots para producto no loteado", async () => {
+  const { service, stockMovementLotService } = buildService({
+    status: "PENDING",
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2 }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(stockMovementLotService.links.length, 0);
+});
+
+test("PurchaseService.receivePurchase: no toca flujo de pagos o caja", async () => {
+  const { service, db } = buildService({
+    status: "PENDING",
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2 }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(
+    db.client.queries.some((query) => query.includes("payment_allocations")),
+    false
+  );
+});
+
+test("PurchaseService.getPurchaseById mapping: expone flags operativos del producto", () => {
+  const service = new PurchaseService(
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any
+  );
+
+  const detail = (service as any).mapPurchaseWithItems(buildPurchaseRow(), [
+    {
+      id: ids.purchaseItem,
+      purchase_id: ids.purchase,
+      product_id: ids.product,
+      product_name: "Producto loteado",
+      product_sku: "LOT-001",
+      is_perishable: true,
+      requires_lot: true,
+      requires_expiration: true,
+      ordered_quantity: 10,
+      received_quantity: 0,
+      cost: 1000,
+      subtotal: 10000,
+    },
+  ]);
+
+  assert.equal(detail.items[0].productSku, "LOT-001");
+  assert.equal(detail.items[0].isPerishable, true);
+  assert.equal(detail.items[0].requiresLot, true);
+  assert.equal(detail.items[0].requiresExpiration, true);
 });

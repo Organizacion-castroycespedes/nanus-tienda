@@ -15,6 +15,7 @@ type CustomerRow = QueryResultRow & {
   municipio_id: string | null;
   ciudad: string | null;
   departamento: string | null;
+  is_final_consumer: boolean;
   is_active: boolean;
   created_at: string | Date;
   updated_at: string | Date;
@@ -69,6 +70,7 @@ export class CustomerRepository {
       municipioId: row.municipio_id,
       ciudad: row.ciudad,
       departamento: row.departamento,
+      isFinalConsumer: row.is_final_consumer,
       isActive: row.is_active,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
@@ -114,6 +116,7 @@ export class CustomerRepository {
           municipio_id,
           ciudad,
           departamento,
+          is_final_consumer,
           is_active,
           created_at,
           updated_at
@@ -158,6 +161,7 @@ export class CustomerRepository {
           municipio_id,
           ciudad,
           departamento,
+          is_final_consumer,
           is_active,
           created_at,
           updated_at
@@ -191,6 +195,7 @@ export class CustomerRepository {
           municipio_id,
           ciudad,
           departamento,
+          is_final_consumer,
           is_active,
           created_at,
           updated_at
@@ -239,6 +244,7 @@ export class CustomerRepository {
           municipio_id,
           ciudad,
           departamento,
+          is_final_consumer,
           is_active,
           created_at,
           updated_at
@@ -287,6 +293,7 @@ export class CustomerRepository {
           municipio_id,
           ciudad,
           departamento,
+          is_final_consumer,
           is_active,
           created_at,
           updated_at

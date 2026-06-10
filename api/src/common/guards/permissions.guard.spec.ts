@@ -112,6 +112,42 @@ test("PermissionsGuard: allows WRITE when permission is WRITE", async () => {
   assert.equal(allowed, true);
 });
 
+test("PermissionsGuard: allows when any declared menu key matches", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: ["ELECTRONIC_INVOICING_CUSTOMERS", "POS"],
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () =>
+      new Map([
+        [
+          "POS",
+          {
+            key: "POS",
+            module: "pos",
+            route: "/pos",
+            accessLevel: "WRITE",
+            actions: {},
+          },
+        ],
+      ]),
+    findPermission: (permissions: Map<string, unknown>, menuKey: string) =>
+      permissions.get(menuKey),
+    isAccessAllowed: (permission: any, required: any) => {
+      if (required === "READ") {
+        return permission?.accessLevel === "READ" || permission?.accessLevel === "WRITE";
+      }
+      return permission?.accessLevel === "WRITE";
+    },
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(buildContext({ id: "user", tenantId: "tenant" }));
+  assert.equal(allowed, true);
+});
+
 test("PermissionsGuard: resolves legacy key alias from service", async () => {
   const reflector = {
     getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "READ" }),

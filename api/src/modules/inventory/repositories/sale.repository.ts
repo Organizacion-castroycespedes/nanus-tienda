@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import type { SaleType } from "../entities/sale.entity";
@@ -35,6 +35,24 @@ export type CreateSaleItemInput = {
   quantity: number;
   price: number;
   orderItemId?: string | null;
+  subtotal?: number;
+  priceWithoutTax?: number;
+  taxTotal?: number;
+  baseUnitPrice?: number;
+  finalUnitPrice?: number;
+  discountAmount?: number;
+  discountPercent?: number;
+  discountTotal?: number;
+  appliedPromotionId?: string | null;
+  appliedPromotionName?: string | null;
+  taxId?: string | null;
+  taxRate?: number;
+  taxBase?: number;
+  taxAmount?: number;
+  lineTotal?: number;
+  pricingSnapshot?: Record<string, unknown> | null;
+  pricingCalculatedAt?: Date | string | null;
+  pricingSource?: string | null;
 };
 
 export type CreateSalePaymentInput = {
@@ -99,11 +117,89 @@ type PaymentMethodLookupRow = {
   tipo: string;
 };
 
+const CREATE_SALE_FUNCTION_NAMES = {
+  legacy: "inventory_create_sale",
+  primary: "inventory_create_sale_v2",
+} as const;
+
+type CreateSaleFunctionName =
+  (typeof CREATE_SALE_FUNCTION_NAMES)[keyof typeof CREATE_SALE_FUNCTION_NAMES];
+
 @Injectable()
 export class SaleRepository {
+  private readonly logger = new Logger(SaleRepository.name);
+
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService
   ) {}
+
+  private resolveCreateSaleFunctionName(): CreateSaleFunctionName {
+    return CREATE_SALE_FUNCTION_NAMES.primary;
+  }
+
+  private serializeTimestamp(value: Date | string | null | undefined) {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    return value instanceof Date ? value.toISOString() : value;
+  }
+
+  private serializeCreateSaleItem(item: CreateSaleItemInput) {
+    const serializedItem: Record<string, unknown> = {
+      product_id: item.productId,
+      quantity: item.quantity,
+      price: item.price,
+      order_item_id: item.orderItemId ?? null,
+    };
+
+    if (item.subtotal !== undefined) serializedItem.subtotal = item.subtotal;
+    if (item.priceWithoutTax !== undefined) {
+      serializedItem.price_without_tax = item.priceWithoutTax;
+    }
+    if (item.taxTotal !== undefined) serializedItem.tax_total = item.taxTotal;
+    if (item.baseUnitPrice !== undefined) {
+      serializedItem.base_unit_price = item.baseUnitPrice;
+    }
+    if (item.finalUnitPrice !== undefined) {
+      serializedItem.final_unit_price = item.finalUnitPrice;
+    }
+    if (item.discountAmount !== undefined) {
+      serializedItem.discount_amount = item.discountAmount;
+    }
+    if (item.discountPercent !== undefined) {
+      serializedItem.discount_percent = item.discountPercent;
+    }
+    if (item.discountTotal !== undefined) {
+      serializedItem.discount_total = item.discountTotal;
+    }
+    if (item.appliedPromotionId !== undefined) {
+      serializedItem.applied_promotion_id = item.appliedPromotionId;
+    }
+    if (item.appliedPromotionName !== undefined) {
+      serializedItem.applied_promotion_name = item.appliedPromotionName;
+    }
+    if (item.taxId !== undefined) serializedItem.tax_id = item.taxId;
+    if (item.taxRate !== undefined) serializedItem.tax_rate = item.taxRate;
+    if (item.taxBase !== undefined) serializedItem.tax_base = item.taxBase;
+    if (item.taxAmount !== undefined) serializedItem.tax_amount = item.taxAmount;
+    if (item.lineTotal !== undefined) serializedItem.line_total = item.lineTotal;
+    if (item.pricingSnapshot !== undefined) {
+      serializedItem.pricing_snapshot = item.pricingSnapshot;
+    }
+    if (item.pricingCalculatedAt !== undefined) {
+      serializedItem.pricing_calculated_at = this.serializeTimestamp(
+        item.pricingCalculatedAt
+      );
+    }
+    if (item.pricingSource !== undefined) {
+      serializedItem.pricing_source = item.pricingSource;
+    }
+
+    return serializedItem;
+  }
 
   private async query<T extends QueryResultRow>(
     text: string,
@@ -367,17 +463,17 @@ export class SaleRepository {
     }>,
     client: PoolClient
   ): Promise<InventoryCreateSaleFunctionRow | null> {
-    const functionItems = (data.items ?? []).map((item) => ({
-      product_id: item.productId,
-      quantity: item.quantity,
-      price: item.price,
-      order_item_id: item.orderItemId ?? null,
-    }));
+    const functionItems = (data.items ?? []).map((item) =>
+      this.serializeCreateSaleItem(item)
+    );
     const functionPaymentMethods = (paymentMethods ?? []).map((payment) => ({
       payment_method: payment.paymentMethod,
       amount: payment.amount,
       reference: payment.reference ?? null,
     }));
+    const createSaleFunctionName = this.resolveCreateSaleFunctionName();
+
+    this.logger.debug(`Using ${createSaleFunctionName} for POS sale creation`);
 
     const result = await this.query<InventoryCreateSaleFunctionRow>(
       `SELECT
@@ -390,7 +486,7 @@ export class SaleRepository {
         total,
         balance,
         created_at
-      FROM inventory_create_sale(
+      FROM ${createSaleFunctionName}(
         $1::uuid,
         $2::uuid,
         $3::uuid,

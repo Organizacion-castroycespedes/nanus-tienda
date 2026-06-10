@@ -39,6 +39,33 @@ export type SaleResponse = {
   createdAt: string;
 };
 
+export type PosLinePricePreviewPayload = {
+  branchId: string;
+  productId: string;
+  quantity: number;
+  channel: "POS";
+  customerId?: string;
+  date?: string;
+};
+
+export type PosLinePricePreviewResponse = {
+  productId: string;
+  quantity: number;
+  baseUnitPrice: number;
+  finalUnitPrice: number;
+  discountAmount: number;
+  discountPercent: number;
+  appliedPromotionId: string | null;
+  appliedPromotionName: string | null;
+  taxId: string | null;
+  taxRate: number;
+  taxBase: number;
+  taxAmount: number;
+  lineSubtotal: number;
+  lineTotal: number;
+  explanation: string;
+};
+
 export const getPosProducts = (branchId: string, headers?: HeadersInit) =>
   apiClient<ProductResponse[]>(`/products?branchId=${encodeURIComponent(branchId)}`, {
     headers,
@@ -52,6 +79,16 @@ export const getPosTaxes = (headers?: HeadersInit) =>
 
 export const createSale = (payload: PosSalePayload, headers?: HeadersInit) =>
   apiClient<SaleResponse>("/sales", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const previewPosLinePrice = (
+  payload: PosLinePricePreviewPayload,
+  headers?: HeadersInit
+) =>
+  apiClient<PosLinePricePreviewResponse>("/pricing/preview-line", {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
