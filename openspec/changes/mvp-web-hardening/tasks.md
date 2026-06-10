@@ -264,6 +264,43 @@ Estado: `QA_BOOTSTRAP_LEGACY_PATCH_FIXED`.
 - [x] 12. Ejecutar `git status --short`.
 - [x] 13. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco `manus_tienda`, no se borro `manus_tienda_qa`, no se desplego y no se reinicio servidor.
 
+## MVP-00.4.7C - Migration Dependency Analysis
+
+Estado: `QA_MIGRATION_DEPENDENCY_CLASSIFIED`.
+
+- [x] 1. Revisar `scripts/database/migrations/V052__electronic_invoicing_third_party_fiscal_fields_fe_3_2.sql`.
+- [x] 2. Identificar tablas afectadas: `public.customers` y `public.suppliers`.
+- [x] 3. Identificar que `document_type_code` es dependencia previa, no columna creada por V052.
+- [x] 4. Confirmar que `20260603_electronic_invoicing_customers_phase_1.sql` crea `customers.document_type_code`.
+- [x] 5. Confirmar que `20260604_electronic_invoicing_suppliers_phase_1.sql` crea `suppliers.document_type_code`.
+- [x] 6. Confirmar que rollbacks `20260603_*_rollback.sql` y `20260604_*_rollback.sql` eliminan `document_type_code`.
+- [x] 7. Analizar `scripts/database/migrate_prd.sh` y detectar que el listado forward incluye todos los `*.sql` sin excluir `*_rollback.sql`.
+- [x] 8. Clasificar el fallo como bug de runner/clasificacion de migraciones, no como columna renombrada.
+- [x] 9. Proponer fix seguro: excluir `*_rollback.sql` del flujo forward y mantener rollbacks solo para ejecucion manual controlada.
+- [x] 10. Crear `docs/evidencia-qa-migration-dependency-analysis-v052.md`.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Ejecutar `git status --short`.
+- [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco `manus_tienda`, no se modifico `manus_tienda_qa`, no se desplego y no se reinicio servidor.
+
+## MVP-00.4.7D - Excluir rollback scripts del forward migration runner
+
+Estado: `QA_FORWARD_RUNNER_EXCLUDES_ROLLBACK`.
+
+- [x] 1. Revisar como `scripts/database/migrate_prd.sh` selecciona archivos SQL.
+- [x] 2. Agregar deteccion de rollback SQL para `*_rollback.sql` y `*rollback*.sql`.
+- [x] 3. Excluir rollback SQL del flujo forward antes de validar/aplicar migraciones.
+- [x] 4. Registrar en logs cada rollback omitido con `Skipping rollback SQL in forward migration runner`.
+- [x] 5. Mantener rollback scripts disponibles solo para rollback manual documentado.
+- [x] 6. Actualizar `scripts/database/bootstrap-manus-tienda-qa.sh` para documentar en log que rollback SQL queda excluido por el runner.
+- [x] 7. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 8. Actualizar `docs/runbook-exec-bootstrap-manus-tienda-qa.md`.
+- [x] 9. Crear `docs/evidencia-qa-forward-runner-excludes-rollback-mvp-00-4-7D.md`.
+- [x] 10. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 11. Ejecutar `git diff --check`.
+- [x] 12. Ejecutar `git status --short`.
+- [x] 13. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco `manus_tienda`, no se modifico `manus_tienda_qa`, no se borraron datos, no se desplego y no se reinicio servidor.
+
 ## MVP-01 - QA Operativo Integral
 
 - [ ] 1. Definir ambiente QA local/controlado y datos representativos.

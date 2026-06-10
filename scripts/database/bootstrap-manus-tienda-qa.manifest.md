@@ -28,6 +28,13 @@ El bootstrap QA debe usar `scripts/database/bootstrap-manus-tienda-qa.sh`, que a
 
 `migrate_prd.sh` mantiene un nombre historico. Para QA solo puede reutilizarse de forma controlada si el runbook lo autoriza, el env apunta a `DB_NAME=manus_tienda_qa`, existe backup/snapshot y `CONFIRM_CREATE_QA_DB=YES` fue aprobado.
 
+Reglas del runner forward:
+
+- `*_rollback.sql` y cualquier `*rollback*.sql` se omiten siempre en el flujo forward.
+- Cada rollback omitido debe quedar registrado en logs con `Skipping rollback SQL in forward migration runner`.
+- Los rollback SQL permanecen disponibles solo para rollback manual documentado y aprobado.
+- Los fixtures QA opcionales siguen fuera del flujo default y solo corren con `RUN_OPTIONAL_QA_FIXTURES=YES`.
+
 ## Orden cronologico propuesto
 
 ### 1. Base schema y extensiones
@@ -143,6 +150,13 @@ Confirmacion:
 
 - `V053__products_sale_model_phase_11_1.sql` incluida.
 - `V054__pos_terminal_peripheral_settings_phase_12.sql` incluida.
+- Rollback SQL excluidos del forward bootstrap:
+  - `20260601_inventory_products_lots_phase_1_rollback.sql`
+  - `20260602_inventory_create_sale_v2_rollback.sql`
+  - `20260603_electronic_invoicing_customers_phase_1_rollback.sql`
+  - `20260604_electronic_invoicing_suppliers_phase_1_rollback.sql`
+  - `20260605_pricing_promotions_phase_1_rollback.sql`
+  - `20260607_orders_pricing_snapshot_phase_6_7_1_rollback.sql`
 
 ### 8. Seed minimo final
 
@@ -178,7 +192,7 @@ Confirmacion:
 ## Relacion con scripts y runbooks
 
 - `scripts/database/bootstrap-manus-tienda-qa.sh`: wrapper seguro para QA. Requiere env externo, `CONFIRM_CREATE_QA_DB=YES`, `DB_NAME=manus_tienda_qa`, `LOG_DIR`, y valida este manifiesto antes de delegar.
-- `scripts/database/migrate_prd.sh`: runner historico de schema completo. Nombre historico; usar para QA solo si este runbook lo permite y el env apunta a `manus_tienda_qa`.
+- `scripts/database/migrate_prd.sh`: runner historico de schema completo. Nombre historico; usar para QA solo si este runbook lo permite y el env apunta a `manus_tienda_qa`. El runner excluye rollback SQL del flujo forward.
 - `scripts/database/seed.sh`: runner local/legado para seeds posteriores. No es el runner principal del bootstrap QA limpio.
 - `docs/database-runbook.md`: runbook general DB. Este manifiesto lo complementa con el caso QA aislado.
 - `docs/runbook-bootstrap-manus-tienda-qa.md`: runbook operativo especifico para `manus_tienda_qa`.

@@ -79,6 +79,7 @@ Confirmaciones de objetivo:
 - Seeds minimos: tenant/sucursal, roles, usuarios QA, menu, permisos/RBAC, consumidor final, metodos de pago, terminal POS y peripheral settings MOCK.
 - Fixture `migrations/20260505_reporting_pos_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
 - Patch legacy `migrations/20260505_sync_local_to_aws_reporting_and_sales.sql`: obligatorio, pero debe ser idempotente en DB limpia. Validar que sus `DROP FUNCTION` usen `IF EXISTS`.
+- Rollback SQL `*_rollback.sql` y `*rollback*.sql`: no forman parte del forward bootstrap. El runner debe omitirlos y dejar log `Skipping rollback SQL in forward migration runner`.
 
 ## Validaciones previas
 
@@ -179,6 +180,7 @@ El script debe:
 - rechazar `manus_tienda`;
 - llamar `scripts/database/migrate_prd.sh`;
 - aplicar schema/base, funciones, migraciones y seeds minimos;
+- saltar rollback SQL siempre en el flujo forward;
 - saltar fixtures QA opcionales por defecto;
 - ejecutar smoke SQL si `RUN_SMOKE_SQL=YES`;
 - escribir log en `LOG_DIR`.
@@ -222,6 +224,18 @@ ORDER BY version;
 ```
 
 Resultado esperado: dos filas con `success = true`.
+
+Validar que ningun rollback fue registrado como migracion forward:
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT version
+FROM public.migrations_history
+WHERE version ILIKE '%rollback%';
+"
+```
+
+Resultado esperado: sin filas.
 
 ## Smoke SQL
 
@@ -316,6 +330,7 @@ Declarar `QA_DB_BOOTSTRAP_READY` solo si:
 - `manus_qa_user` puede conectar a `manus_tienda_qa`.
 - `public.migrations_history` existe.
 - No hay migraciones con `success=false`.
+- No hay versiones con `rollback` registradas en `public.migrations_history`.
 - `V053__products_sale_model_phase_11_1.sql` aparece con `success=true`.
 - `V054__pos_terminal_peripheral_settings_phase_12.sql` aparece con `success=true`.
 - Tablas core existen.

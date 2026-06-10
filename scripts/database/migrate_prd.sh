@@ -331,6 +331,16 @@ is_optional_fixture_migration() {
   return 1
 }
 
+is_rollback_migration() {
+  local version="$1"
+
+  if [[ "$version" == *_rollback.sql || "$version" == *rollback*.sql ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
 minimal_seed_files=(
   "011_prd_default_customer.sql"
 )
@@ -371,6 +381,11 @@ done
 echo "Running incremental migrations..."
 found_pending_incremental="false"
 for sql_file in "${incremental_migration_files[@]}"; do
+  if is_rollback_migration "$sql_file"; then
+    echo "[prd] Skipping rollback SQL in forward migration runner: migrations/${sql_file}"
+    continue
+  fi
+
   validate_incremental_migration_name "$sql_file"
 
   if is_optional_fixture_migration "$sql_file"; then

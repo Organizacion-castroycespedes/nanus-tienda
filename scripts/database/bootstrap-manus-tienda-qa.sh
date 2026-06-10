@@ -132,6 +132,7 @@ log "[bootstrap-qa] Log file: $LOG_FILE"
 log "[bootstrap-qa] SQL manifest: $MANIFEST_FILE"
 log "[bootstrap-qa] Manifest is documentation for review. Execution order remains controlled by migrate_prd.sh."
 log "[bootstrap-qa] Optional SQL fixtures run only when RUN_OPTIONAL_QA_FIXTURES=YES."
+log "[bootstrap-qa] Rollback SQL files are excluded from forward bootstrap by migrate_prd.sh."
 
 log "[bootstrap-qa] Running full schema/migration bootstrap via migrate_prd.sh."
 export RUN_OPTIONAL_QA_FIXTURES
