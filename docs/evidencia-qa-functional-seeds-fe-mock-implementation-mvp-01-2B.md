@@ -86,7 +86,7 @@ Resultado: `QA_FUNCTIONAL_SEED_CONFIG_IMPLEMENTED`
 - balance con `quantity_on_hand=25.00`;
 - movimiento de inventario `ADJUSTMENT` para trazabilidad.
 
-El fixture queda registrado en `optional_fixture_migration_files` y no corre por defecto.
+El fixture queda registrado en `functional_qa_fixture_migration_files` y no corre por defecto. Se ejecuta con `RUN_OPTIONAL_QA_FIXTURES=YES` o `APPLY_OPTIONAL_FIXTURES=YES`, separado del fixture reporting legacy.
 
 ## FE lookup MOCK
 

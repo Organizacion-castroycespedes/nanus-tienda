@@ -1,12 +1,22 @@
 # Evidencia QA operativo integral MVP-01.2
 
-Fecha: 2026-06-10 America/Bogota. Ventana UTC: 2026-06-11 01:55-02:02.
+Fecha rerun: 2026-06-11 America/Bogota.
 
 Cambio OpenSpec: `mvp-web-hardening`
 
-Resultado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`
+Resultado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500`
 
-Motivo: Clientes FE, Proveedores FE, Productos, Impuestos y Promociones fueron ejercitados por API QA con datos controlados. El flujo queda bloqueado porque el cliente consumidor final no se puede resolver/asegurar y el lookup fiscal de terceros esta deshabilitado en QA.
+Motivo: despues de bootstrap exitoso reportado para `manus_tienda_qa`, la API publica responde health/version, pero el login QA devuelve HTTP 500. Sin token valido no se pueden re-ejecutar endpoints protegidos de Clientes FE, Proveedores FE, Productos, Units, Taxes, Promociones ni Inventario loteado.
+
+## Contexto declarado
+
+- `manus_tienda_qa` fue recreada.
+- Bootstrap termino correctamente.
+- `V058__qa_required_catalog_seed.sql`: aplicado.
+- `20260611_mvp_01_2b_functional_qa_fixtures.sql`: aplicado.
+- `011_prd_default_customer.sql`: aplicado.
+- Functional QA fixtures: aplicados.
+- Reporting fixtures: omitidos.
 
 ## Ambiente
 
@@ -15,175 +25,74 @@ Motivo: Clientes FE, Proveedores FE, Productos, Impuestos y Promociones fueron e
 | API QA | `https://api.apptiendamanus.space/api` |
 | DB esperada | `manus_tienda_qa` |
 | Rama/release esperado | `release/evolutivo/0.0.1` |
-| Actor QA | `SUPER_ADMIN` |
-| Tenant | `Tenant Principal` |
-| Sucursal | `Sucursal Principal` |
+| Actor QA intentado | `SUPER_ADMIN` y usuarios demo versionados |
 
 No se imprimieron tokens, refresh tokens, passwords ni `.env`.
 
-## Resumen
+## Health publico
+
+| Check | Estado | Resultado |
+| --- | --- | --- |
+| `GET /api/system/version` | PASS | HTTP 200, `version=0.0.1`. |
+| `GET /api/reports/health` | PASS | HTTP 200, `status=ok`, `service=backend-reporteria`. |
+
+## Auth
+
+| Check | Estado | Resultado |
+| --- | --- | --- |
+| `POST /api/auth/login` con credenciales QA locales no impresas | FAIL | HTTP 500, `Internal server error`. |
+| `POST /api/auth/login/force` con credenciales QA locales no impresas | FAIL | HTTP 500, `Internal server error`. |
+| `POST /api/auth/login/force` con `super.user+default@manustienda.local` | FAIL | HTTP 500, `Internal server error`. |
+| `POST /api/auth/login/force` con `admin+default@manustienda.local` | FAIL | HTTP 500, `Internal server error`. |
+| `POST /api/auth/login/force` con `user+default@manustienda.local` | FAIL | HTTP 500, `Internal server error`. |
+
+Notas:
+
+- Los usuarios demo y la clave demo usada vienen de `scripts/database/009_seed_demo_operational_users.sql`.
+- El token no se pudo obtener.
+- No se intento leer logs PM2 ni tocar servidor por restriccion de no PM2/no deploy/no AWS.
+
+## QA funcional protegido
 
 | Bloque | Estado | Evidencia |
 | --- | --- | --- |
-| Auth/contexto | PASS/WARN | Login `SUPER_ADMIN` OK. `SESSION_ACTIVE` observado y resuelto con `/auth/login/force`. |
-| Clientes FE | FAIL | Listado, creacion, edicion, consulta por id y persistencia PASS. Consumidor final FAIL. |
-| Lookup Clientes FE | WARN | Endpoint responde, pero provider `NONE`, mode `disabled`, status `SKIPPED`. |
-| Proveedores FE | PASS | Listado, creacion, edicion, consulta por id y persistencia PASS. |
-| Lookup Proveedores FE | WARN | Endpoint responde, pero provider `NONE`, mode `disabled`, status `SKIPPED`. |
-| Productos | PASS/WARN | Producto, SKU, barcode principal, barcode alterno, unidad, impuesto y activo PASS. Unidades base activas WARN: `0`. |
-| Inventario loteado | WARN | Endpoint responde HTTP 200, pero no hay lotes disponibles sin crear inventario. |
-| Impuestos | PASS/WARN | Listado PASS, base activa WARN: `0`; impuesto QA controlado creado/asociado/limpiado PASS. |
-| Promociones | PASS/WARN | Listado, creacion API y preview pricing PASS; UI no ejercitada. |
-| Limpieza QA | PASS | Datos QA creados fueron desactivados o soft-deleted por API. |
+| Clientes FE | BLOCKED | Requiere token. No se pudo validar `GET /api/electronic-invoicing/customers/default`. |
+| Consumidor final ensure | BLOCKED | Requiere token. No se pudo validar `POST /api/electronic-invoicing/customers/default/ensure`. |
+| Proveedores FE | BLOCKED | Requiere token. |
+| Productos | BLOCKED | Requiere token. No se pudo validar `QA-BASE-LOT-001`. |
+| Units | BLOCKED | Requiere token. No se pudo validar `units > 0`. |
+| Taxes | BLOCKED | Requiere token. No se pudo validar `taxes > 0`. |
+| Promociones | BLOCKED | Requiere token. |
+| Inventario loteado | BLOCKED | Requiere token. No se pudo validar `QA-LOT-MVP-01-2B-001`. |
 
-## Auth y contexto
+## Checks esperados no ejecutables por bloqueo auth
 
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `POST /api/auth/login` | WARN | `SESSION_ACTIVE` observado. |
-| `POST /api/auth/login/force` | PASS | Sesion QA autenticada sin exponer token/password. |
-| `GET /api/auth/context` | PASS | Tenant y sucursal resueltos. |
-
-## Clientes FE
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `GET /api/electronic-invoicing/customers?isActive=true` | PASS | HTTP 200, listado visible. |
-| `GET /api/electronic-invoicing/customers/default` | FAIL | HTTP 404. |
-| `POST /api/electronic-invoicing/customers/default/ensure` | FAIL | HTTP 409. |
-| `POST /api/electronic-invoicing/customers` | PASS | Cliente FE completo creado con datos QA. |
-| `GET /api/electronic-invoicing/customers/:id` | PASS | Consulta por id validada en follow-up GET. |
-| `PATCH /api/electronic-invoicing/customers/:id` | PASS | Persistio `phone` y `taxResponsibilities`. |
-
-Campos validados:
-
-| Campo requerido | Campo API observado | Estado |
-| --- | --- | --- |
-| `documentTypeCode` | `31` | PASS |
-| `documentNumber` | QA generado | PASS |
-| `dv` | `verificationDigit` | PASS |
-| `taxResponsibilities` | `R-99-PN`, `O-13` | PASS |
-| `municipalityCode` | `11001` | PASS |
-| `departmentCode` | `11` | PASS |
-| `countryCode` | `CO` | PASS |
-| `email` | `fiscalEmail` / `invoiceEmail` QA | PASS |
-| `phone` | QA editado | PASS |
-
-Bloqueo exacto: no se pudo validar consumidor final activo. `GET /default` devuelve 404 y `POST /default/ensure` devuelve 409.
-
-## Lookup Clientes FE
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| Documento valido | WARN | `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`. |
-| Documento inexistente | WARN | `provider=NONE`, `lookupStatus=SKIPPED`; no se obtiene `NOT_FOUND`. |
-| Timeout/provider error mock | WARN | El adapter `MOCK_LOCAL` versionado no tiene trigger de timeout/error; en QA ademas esta `disabled`. |
-| Apply lookup | PASS | Persistio `dianLastLookupStatus=SKIPPED` y `dianLastLookupAt`. |
-
-Bloqueo: QA no permite validar escenarios `FOUND`/`NOT_FOUND` porque el lookup fiscal esta deshabilitado.
-
-## Proveedores FE
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `GET /api/electronic-invoicing/suppliers?isActive=true` | PASS | HTTP 200. |
-| `POST /api/electronic-invoicing/suppliers` | PASS | Proveedor FE completo creado con datos QA. |
-| `GET /api/electronic-invoicing/suppliers/:id` | PASS | Consulta por id validada en follow-up GET. |
-| `PATCH /api/electronic-invoicing/suppliers/:id` | PASS | Persistio `phone` y `taxResponsibilities`. |
-
-Campos validados:
-
-| Campo requerido | Campo API observado | Estado |
-| --- | --- | --- |
-| `documentTypeCode` | `31` | PASS |
-| `documentNumber` | QA generado | PASS |
-| `dv` | `verificationDigit` | PASS |
-| `taxResponsibilities` | `R-99-PN`, `O-13` | PASS |
-| `municipalityCode` | `05001` | PASS |
-| `departmentCode` | `05` | PASS |
-| `countryCode` | `CO` | PASS |
-| `email` | `fiscalEmail` / `invoiceEmail` QA | PASS |
-| `phone` | QA editado | PASS |
-
-## Lookup Proveedores FE
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| Documento valido | WARN | `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`. |
-| Documento inexistente | WARN | `provider=NONE`, `lookupStatus=SKIPPED`; no se obtiene `NOT_FOUND`. |
-| Timeout/provider error mock | WARN | El adapter `MOCK_LOCAL` versionado no tiene trigger de timeout/error; en QA ademas esta `disabled`. |
-| Apply lookup | PASS | Persistio `fiscalLastLookupStatus=SKIPPED` y `fiscalLastLookupAt`. |
-
-## Productos
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `GET /api/units` | WARN | Base QA tenia `0` unidades activas antes del setup controlado. |
-| Setup unidad QA por API | PASS | Unidad QA creada y luego soft-deleted. |
-| `GET /api/products?branchId=:branchId` | PASS | HTTP 200. |
-| `POST /api/products` | PASS | SKU `QA-MVP012-MVP012P20260610210210` creado. |
-| Barcode principal | PASS | `barcode=7700610210215`, `isPrimary=true`. |
-| Barcode alterno | PASS | `barcode=QAALTMVP012P20260610210210`, `isPrimary=false`. |
-| `GET /api/products/:id/barcodes` | PASS | Principal y alterno visibles. |
-| `GET /api/products/:id` | PASS | SKU, unidad, impuesto y `isActive=true` validados. |
-| `PUT /api/products/:id` | PASS | Persistio nombre, descripcion, `minStock=2`, `maxStock=120`. |
-
-## Inventario loteado
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `GET /api/inventory/lot-balances?branchId=:branchId&onlyAvailable=true&onlyActiveLots=true` | WARN | HTTP 200, pero no hay lotes disponibles para inspeccionar sin alterar inventario. |
-| No alterar inventario real | PASS | Solo se ejecuto `GET`; no se crearon lotes ni movimientos. |
-
-No se pudo validar visualmente `lotes`, `fecha vencimiento`, `cantidad disponible` y `trazabilidad` con registros reales porque el endpoint no devolvio lotes.
-
-## Impuestos
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `GET /api/taxes` | PASS/WARN | HTTP 200; base QA tenia `0` impuestos activos antes del setup controlado. |
-| Setup impuesto QA por API | PASS | Impuesto activo QA creado y luego soft-deleted. |
-| Asociacion producto-impuesto | PASS | Producto creado con `taxId` del impuesto QA activo. |
-
-## Promociones
-
-| Check | Estado | Resultado |
-| --- | --- | --- |
-| `GET /api/pricing/promotions?isActive=true` | PASS | HTTP 200, sin promociones activas base. |
-| Creacion UI | WARN | No se ejercito UI en esta corrida; se valido creacion controlada por API. |
-| `PERCENTAGE` | PASS | Creacion PASS; preview `finalUnitPrice=11110.5`, `discountAmount=1234.5`. |
-| `FIXED_AMOUNT` | PASS | Creacion PASS; preview `finalUnitPrice=11345`, `discountAmount=1000`. |
-| `SPECIAL_PRICE` | PASS | Creacion PASS; preview `finalUnitPrice=9999`, `discountAmount=2346`. |
-
-Endpoint preview validado:
-
-```text
-POST /api/pricing/preview-line
-```
-
-## Limpieza
-
-| Objeto QA | Estado |
-| --- | --- |
-| Clientes QA | PASS: desactivados por API |
-| Proveedores QA | PASS: desactivados por API |
-| Promociones QA | PASS: desactivadas por API |
-| Barcodes QA | PASS: desactivados por API |
-| Producto QA | PASS: soft-deleted por API |
-| Impuesto QA | PASS: soft-deleted por API |
-| Unidad QA | PASS: soft-deleted por API |
+- `GET /api/electronic-invoicing/customers/default` debe devolver HTTP 200.
+- `POST /api/electronic-invoicing/customers/default/ensure` debe ser idempotente.
+- `GET /api/units` debe devolver unidades activas base.
+- `GET /api/taxes` debe devolver impuestos activos base.
+- `GET /api/products?branchId=...` debe incluir `QA-BASE-LOT-001`.
+- `GET /api/inventory/lot-balances?...` debe incluir `QA-LOT-MVP-01-2B-001`.
 
 ## Restricciones cumplidas
 
 - No se modifico codigo.
 - No se ejecutaron migraciones.
-- No se toco PM2.
 - No se hizo deploy.
-- No se tocaron datos productivos.
-- No se ejecutaron escrituras manuales en DB.
-- No se altero inventario real.
-- Solo se hicieron operaciones QA controladas por API.
+- No se reinicio PM2.
+- No se hicieron escrituras directas en DB.
+- Solo se hicieron requests QA HTTP y evidencia.
 - No se expusieron secretos.
+
+## Diagnostico
+
+El bloqueo actual no es V058 ni fixture funcional. El bootstrap puede haber terminado, pero API runtime no permite autenticar contra el estado actual de `manus_tienda_qa`.
+
+Para continuar el rerun funcional se requiere una de estas evidencias:
+
+- credenciales QA validas para `manus_tienda_qa`;
+- o logs sanitizados de API alrededor de `POST /api/auth/login/force`;
+- o confirmacion de que el backend API esta apuntando a `manus_tienda_qa` y que `auth_sessions`, `auth_refresh_tokens`, `users`, `roles`, `user_roles`, `personas` y `persona_tenant_branches` quedaron consistentes.
 
 ## Decision
 
@@ -192,12 +101,5 @@ No se emite `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
 Estado emitido:
 
 ```text
-QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED
+QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500
 ```
-
-Bloqueos exactos:
-
-1. Cliente consumidor final: `GET /api/electronic-invoicing/customers/default` devuelve HTTP 404 y `POST /api/electronic-invoicing/customers/default/ensure` devuelve HTTP 409.
-2. Lookup terceros FE en QA: `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`; no se pueden validar escenarios `FOUND` ni `NOT_FOUND`.
-3. Datos base QA incompletos: `GET /api/units` y `GET /api/taxes` no tienen activos base; productos/promociones se validaron con setup QA controlado y cleanup.
-4. Inventario loteado: `GET /api/inventory/lot-balances` responde HTTP 200, pero no hay lotes disponibles para validar vencimiento/cantidad/trazabilidad sin crear inventario.
