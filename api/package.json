@@ -14,8 +14,7 @@
   },
   "pkg": {
     "assets": [
-      "dist/**/*",
-      ".env*"
+      "dist/**/*"
     ],
     "targets": [
       "node18-linux-x64",

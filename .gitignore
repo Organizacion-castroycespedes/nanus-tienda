@@ -18,7 +18,10 @@ out/
 
 # Builds / coverage
 dist/
+dist-bin/
 build/
+!scripts/build/
+!scripts/build/*.sh
 coverage/
 
 # TypeScript
@@ -26,6 +29,8 @@ coverage/
 
 # Logs
 logs/
+!backend-perifericos/src/modules/logs/
+!backend-perifericos/src/modules/logs/**
 *.log
 
 # OS / editor

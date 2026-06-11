@@ -361,6 +361,148 @@ Estado: `QA_SCHEMA_DRIFT_REMEDIATION_IMPLEMENTED`.
 - [x] 17. Ejecutar `git status --short`.
 - [x] 18. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco QA, no se toco PRD y no se modificaron datos reales.
 
+## MVP-00.7A - Deploy Automation + Missing Backends Discovery
+
+Estado: `QA_DEPLOY_AUTOMATION_DISCOVERY_READY`.
+
+- [x] 1. Inventariar estructura actual del repo: `api`, `backend-reporteria`, `backend-facturacion-electronica`, `backend-perifericos`, `web`.
+- [x] 2. Inventariar `package.json` relevantes y scripts de build existentes.
+- [x] 3. Confirmar que `backend-facturacion-electronica` existe como servicio NestJS y no debe crearse desde cero.
+- [x] 4. Confirmar que `backend-perifericos` existe como servicio NestJS MOCK y no debe crearse desde cero.
+- [x] 5. Clasificar gap de `backend-facturacion-electronica`: falta `build:bin`/`pkg` si QA exige binario.
+- [x] 6. Clasificar gap de `backend-perifericos`: falta `build:bin`/`pkg` si QA exige binario.
+- [x] 7. Definir arquitectura QA AWS objetivo: `api-linux:4020`, `backend-reporteria-linux:4021`, `backend-facturacion-electronica-linux:4022`, `backend-perifericos-linux:4023`.
+- [x] 8. Disenar estructura runtime `/home/ubuntu/manustienda/build*` por servicio.
+- [x] 9. Disenar PM2 objetivo con procesos, cwd, script, estrategia restart y logs.
+- [x] 10. Disenar GitHub Actions para trigger `push` a `release/evolutivo/0.0.1`.
+- [x] 11. Definir estrategia de build, upload SSH/SCP, backup, reemplazo atomico, `chmod +x`, PM2 restart y smoke.
+- [x] 12. Definir GitHub Secrets requeridos sin crear secrets reales.
+- [x] 13. Definir smoke tests para API, reporteria, facturacion electronica y perifericos.
+- [x] 14. Crear `docs/evidencia-deploy-automation-missing-backends-discovery-mvp-00-7A.md`.
+- [x] 15. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 16. Ejecutar `git diff --check`.
+- [x] 17. Ejecutar `git status --short`.
+- [x] 18. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secretos, no se crearon GitHub secrets reales, no se compilo y no se reinicio PM2.
+
+## MVP-00.7B - Binarios unificados
+
+Estado: `QA_BACKEND_BINARIES_STANDARDIZED`.
+
+- [x] 1. Revisar `package.json` de `api`, `backend-reporteria`, `backend-facturacion-electronica` y `backend-perifericos`.
+- [x] 2. Documentar por servicio script `build`, script `build:bin`, configuracion `pkg`, targets, outputPath, binarios esperados, assets y riesgo de secretos.
+- [x] 3. Normalizar `backend-facturacion-electronica` con `build:bin`, `pkg`, targets `node18-linux-x64`/`node18-win-x64`, outputPath `dist-bin` y binarios esperados.
+- [x] 4. Normalizar `backend-perifericos` con `build:bin`, `pkg`, targets `node18-linux-x64`/`node18-win-x64`, outputPath `dist-bin` y binarios esperados.
+- [x] 5. Revisar `api` y `backend-reporteria`; confirmar cumplimiento y remover `.env*` de `pkg.assets` como ajuste minimo de seguridad.
+- [x] 6. Documentar convencion segura de `.env.example`, `.env` real fuera de git y runtime env fuera del binario o junto al binario segun diseno actual.
+- [x] 7. Crear scripts opcionales `scripts/build/build-all-backends.sh` y `scripts/build/verify-backend-binaries.sh` sin deploy ni AWS.
+- [x] 8. Crear `docs/evidencia-binarios-unificados-mvp-00-7B.md`.
+- [x] 9. Ejecutar validaciones locales permitidas y registrar resultado.
+- [x] 10. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secretos, no se reinicio PM2, no se subieron binarios, no se cambiaron endpoints y no se toco base de datos.
+
+## MVP-00.7C - PM2 ecosystem unificado
+
+Estado: `QA_PM2_ECOSYSTEM_READY`.
+
+- [x] 1. Usar `docs/evidencia-binarios-unificados-mvp-00-7B.md` como base de binarios esperados.
+- [x] 2. Crear archivo versionado `scripts/pm2/ecosystem.qa.config.js`.
+- [x] 3. Definir apps PM2 `api-linux`, `backend-reporteria-linux`, `backend-facturacion-electronica-linux` y `backend-perifericos-linux`.
+- [x] 4. Definir por app `cwd`, script binario Linux, `interpreter: "none"`, `exec_mode: "fork"`, `instances: 1`, `autorestart`, `max_restarts`, `restart_delay`, logs separados, `merge_logs: false` y env QA con puerto correspondiente.
+- [x] 5. Confirmar que el ecosystem no incluye secretos DB/JWT/tokens y que los secretos deben vivir en `.env` runtime por carpeta `build-*`.
+- [x] 6. Crear `docs/evidencia-pm2-ecosystem-unificado-mvp-00-7C.md`.
+- [x] 7. Documentar comandos manuales para `pm2 start`, reload, restart por servicio, `pm2 save`, logs y rollback.
+- [x] 8. Ejecutar validaciones locales permitidas y registrar resultado.
+- [x] 9. Confirmar que no se ejecuto PM2, no se toco AWS, no se hizo deploy, no se modificaron secretos, no se subieron binarios y no se reiniciaron procesos.
+
+## MVP-00.7D - GitHub Actions Deploy QA
+
+Estado: `QA_GITHUB_ACTIONS_DEPLOY_READY`.
+
+- [x] 1. Revisar endpoints health reales de `backend-facturacion-electronica` y `backend-perifericos`.
+- [x] 2. Confirmar endpoints smoke reales: `backend-facturacion-electronica` usa `GET /health` en `4022`; `backend-perifericos` usa `GET /health` en `4023` y escucha local.
+- [x] 3. Crear workflow `.github/workflows/deploy-qa-backends.yml` con trigger `push` a `release/evolutivo/0.0.1` y `workflow_dispatch`.
+- [x] 4. Definir job `build` con checkout, Node 20, `npm ci`, `npm run build:bin` por backend, verificacion de binarios Linux, empaquetado y upload artifact.
+- [x] 5. Definir job `deploy` dependiente de `build`, condicionado a rama QA o `workflow_dispatch`, con secrets requeridos sin valores reales.
+- [x] 6. Crear script remoto `scripts/deploy/qa-deploy-backends.sh` para staging, backup, reemplazo seguro, `chmod +x`, PM2 startOrReload controlado y smoke local opcional sin tocar `.env`.
+- [x] 7. Documentar smoke publico y local: API/reporteria publicos, facturacion/perifericos locales por SSH con endpoint real detectado.
+- [x] 8. Documentar rollback manual no automatico destructivo.
+- [x] 9. Crear `docs/evidencia-github-actions-deploy-qa-mvp-00-7D.md`.
+- [x] 10. Ejecutar validaciones locales permitidas y registrar resultado.
+- [x] 11. Confirmar que no se ejecuto deploy real, no se crearon secrets reales, no se toco AWS, no se reinicio PM2, no se subieron binarios y no se expusieron secretos.
+
+## MVP-00.7D-FIX1 - Fix backend-perifericos missing LogsService
+
+Estado: `QA_BACKEND_PERIFERICOS_LOGS_SERVICE_FIXED`.
+
+- [x] 1. Revisar `backend-perifericos/src/modules/logs`.
+- [x] 2. Confirmar que `LogsService`, `LogsModule` y `LogsController` existen localmente.
+- [x] 3. Identificar causa de fallo Linux/GitHub Actions: `.gitignore` ignoraba el directorio fuente `backend-perifericos/src/modules/logs/`.
+- [x] 4. Alinear versionado con casing exacto Linux para `../logs/logs.service`.
+- [x] 5. Verificar metodos usados por scanner/devices/scale/printer/cash-drawer/tests: `append`, `list`, `getLimit`.
+- [x] 6. Agregar excepcion segura en `.gitignore` para versionar `backend-perifericos/src/modules/logs/**` sin versionar logs runtime.
+- [x] 7. Ejecutar `npm run build` en `backend-perifericos`.
+- [x] 8. Ejecutar `npm run build:bin` en `backend-perifericos`.
+- [x] 9. Ejecutar `bash scripts/build/verify-backend-binaries.sh`.
+- [x] 10. Crear `docs/evidencia-fix-backend-perifericos-logs-service-mvp-00-7D-fix1.md`.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Ejecutar `git status --short`.
+- [x] 14. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secrets y no se reinicio PM2.
+
+## MVP-00.7D-FIX2 - Add deploy smoke retry
+
+Estado: `QA_DEPLOY_SMOKE_RETRY_READY`.
+
+- [x] 1. Revisar fallo de smoke inmediato posterior a `pm2 startOrReload`.
+- [x] 2. Agregar funcion `wait_for_http` en `scripts/deploy/qa-deploy-backends.sh`.
+- [x] 3. Definir retry/backoff con 30 intentos y 2 segundos entre intentos.
+- [x] 4. Usar `curl -fsS`, imprimir intento actual y fallar solo despues del ultimo intento.
+- [x] 5. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4020/api/system/version`.
+- [x] 6. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4021/api/reports/health`.
+- [x] 7. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4022/health`.
+- [x] 8. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4023/health`.
+- [x] 9. Mantener `RUN_LOCAL_SMOKE=YES/NO`.
+- [x] 10. Ejecutar `bash -n scripts/deploy/qa-deploy-backends.sh`.
+- [x] 11. Crear `docs/evidencia-deploy-smoke-retry-mvp-00-7D-fix2.md`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Ejecutar `git status --short`.
+- [x] 15. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secrets y no se tocaron binarios.
+
+## MVP-00.7E - QA Runtime + GitHub Secrets Checklist
+
+Estado: `QA_RUNTIME_GITHUB_SECRETS_CHECKLIST_READY`.
+
+- [x] 1. Crear checklist de GitHub Secrets requeridos: `QA_SSH_HOST`, `QA_SSH_USER`, `QA_SSH_PRIVATE_KEY`, `QA_DEPLOY_BASE_PATH`, `QA_API_BASE_URL`.
+- [x] 2. Documentar valores esperados sin secretos: `QA_DEPLOY_BASE_PATH=/home/ubuntu/manustienda`, `QA_API_BASE_URL=https://api.apptiendamanus.space`, `QA_SSH_USER=ubuntu`, `QA_SSH_HOST=<host o ip QA>`.
+- [x] 3. Crear checklist runtime AWS para carpetas `build`, `build-reporteria`, `build-facturacion-electronica`, `build-perifericos`, logs por servicio y backups por deploy.
+- [x] 4. Crear checklist `.env` runtime para API, reportería, facturación electrónica y periféricos sin versionar ni sobrescribir `.env` reales.
+- [x] 5. Documentar que API y reportería deben apuntar a `manus_tienda_qa`.
+- [x] 6. Crear checklist PM2 con `ecosystem.qa.config.js` y procesos esperados.
+- [x] 7. Crear checklist puertos `4020`, `4021`, `4022`, `4023` y nota de FE/perifericos solo localhost si Nginx no expone.
+- [x] 8. Crear checklist smoke para `/api/system/version`, `/api/reports/health`, `http://127.0.0.1:4022/health` y `http://127.0.0.1:4023/health`.
+- [x] 9. Crear `docs/checklist-qa-runtime-github-secrets-mvp-00-7E.md`.
+- [x] 10. Crear `docs/evidencia-qa-runtime-github-secrets-checklist-mvp-00-7E.md`.
+- [x] 11. Ejecutar validaciones locales permitidas y registrar resultado.
+- [x] 12. Confirmar que no se ejecuto deploy, no se toco AWS, no se crearon secrets reales, no se imprimieron secretos, no se reinicio PM2, no se modificaron binarios y no se modificaron `.env` reales.
+
+## MVP-00.7F - Controlled QA Deploy Runbook
+
+Estado: `QA_CONTROLLED_DEPLOY_RUNBOOK_READY`.
+
+- [x] 1. Crear runbook para primer deploy QA controlado via `workflow_dispatch`.
+- [x] 2. Incluir checklist pre-merge.
+- [x] 3. Documentar merge de feature branch a `develop` sin ejecutarlo.
+- [x] 4. Documentar merge de `develop` a `release/evolutivo/0.0.1` sin ejecutarlo.
+- [x] 5. Documentar creacion/verificacion de GitHub secrets sin crear secrets reales.
+- [x] 6. Documentar preparacion runtime AWS sin tocar AWS.
+- [x] 7. Documentar validacion `.env` sin leer ni modificar `.env` reales.
+- [x] 8. Documentar ejecucion manual de `workflow_dispatch`.
+- [x] 9. Documentar validacion de GitHub Actions, PM2, smoke tests y rollback manual.
+- [x] 10. Crear `docs/runbook-controlled-qa-deploy-mvp-00-7F.md`.
+- [x] 11. Crear evidencia `docs/evidencia-controlled-qa-deploy-runbook-mvp-00-7F.md`.
+- [x] 12. Ejecutar validaciones locales permitidas y registrar resultado.
+- [x] 13. Confirmar que no se ejecuto deploy, no se toco AWS y no se crearon secrets reales.
+
 ## MVP-01 - QA Operativo Integral
 
 - [ ] 1. Definir ambiente QA local/controlado y datos representativos.
