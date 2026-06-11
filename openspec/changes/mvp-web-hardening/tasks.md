@@ -638,6 +638,26 @@ Estado: `QA_V058_SQL_FIXED`.
 - [x] 13. Ejecutar `git status --short`.
 - [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco DB, no se hizo deploy y no se toco PM2.
 
+## MVP-01.2B-FIX2 - Separate functional QA fixtures from legacy reporting fixtures
+
+Estado: `QA_FUNCTIONAL_FIXTURES_ISOLATED`.
+
+- [x] 1. Revisar `scripts/database/migrate_prd.sh`.
+- [x] 2. Confirmar que `20260505_reporting_pos_fixtures.sql` y `20260611_mvp_01_2b_functional_qa_fixtures.sql` compartian la misma bandera opcional.
+- [x] 3. Mantener `20260505_reporting_pos_fixtures.sql` fuera del flujo QA funcional.
+- [x] 4. Crear bandera separada `RUN_REPORTING_QA_FIXTURES`.
+- [x] 5. Mantener `RUN_OPTIONAL_QA_FIXTURES` para fixtures funcionales MVP-01.2.
+- [x] 6. Mantener `APPLY_OPTIONAL_FIXTURES` como alias legacy de fixtures funcionales.
+- [x] 7. Actualizar `scripts/database/bootstrap-manus-tienda-qa.sh` para validar, exportar y loguear `RUN_REPORTING_QA_FIXTURES`.
+- [x] 8. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 9. Actualizar runbooks de bootstrap QA.
+- [x] 10. Actualizar `scripts/database/config/bootstrap-manus-tienda-qa.env.example`.
+- [x] 11. Crear `docs/evidencia-fix-separate-functional-vs-reporting-fixtures-mvp-01-2B-fix2.md`.
+- [x] 12. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 13. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 14. Ejecutar `git diff --check`.
+- [x] 15. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco DB, no se hizo deploy y no se toco PM2.
+
 ## MVP-01.2C - Apply QA functional seeds and rerun QA
 
 Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.

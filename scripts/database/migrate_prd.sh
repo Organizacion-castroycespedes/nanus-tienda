@@ -18,6 +18,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 RUN_OPTIONAL_QA_FIXTURES="${RUN_OPTIONAL_QA_FIXTURES:-${APPLY_OPTIONAL_FIXTURES:-NO}}"
+RUN_REPORTING_QA_FIXTURES="${RUN_REPORTING_QA_FIXTURES:-NO}"
 
 required_vars=(DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD)
 for var_name in "${required_vars[@]}"; do
@@ -29,6 +30,11 @@ done
 
 if [[ "$RUN_OPTIONAL_QA_FIXTURES" != "NO" && "$RUN_OPTIONAL_QA_FIXTURES" != "YES" ]]; then
   echo "[prd] RUN_OPTIONAL_QA_FIXTURES/APPLY_OPTIONAL_FIXTURES must be YES or NO." >&2
+  exit 1
+fi
+
+if [[ "$RUN_REPORTING_QA_FIXTURES" != "NO" && "$RUN_REPORTING_QA_FIXTURES" != "YES" ]]; then
+  echo "[prd] RUN_REPORTING_QA_FIXTURES must be YES or NO." >&2
   exit 1
 fi
 
@@ -318,15 +324,18 @@ readarray -t incremental_migration_files < <(
       done
 )
 
-optional_fixture_migration_files=(
-  "20260505_reporting_pos_fixtures.sql"
+functional_qa_fixture_migration_files=(
   "20260611_mvp_01_2b_functional_qa_fixtures.sql"
 )
 
-is_optional_fixture_migration() {
+reporting_qa_fixture_migration_files=(
+  "20260505_reporting_pos_fixtures.sql"
+)
+
+is_fixture_migration() {
   local version="$1"
 
-  for optional_fixture in "${optional_fixture_migration_files[@]}"; do
+  for optional_fixture in "${functional_qa_fixture_migration_files[@]}" "${reporting_qa_fixture_migration_files[@]}"; do
     if [[ "$version" == "$optional_fixture" ]]; then
       return 0
     fi
@@ -392,8 +401,8 @@ for sql_file in "${incremental_migration_files[@]}"; do
 
   validate_incremental_migration_name "$sql_file"
 
-  if is_optional_fixture_migration "$sql_file"; then
-    echo "[prd] Skipping optional QA fixture by default: migrations/${sql_file}"
+  if is_fixture_migration "$sql_file"; then
+    echo "[prd] Skipping QA fixture in forward migration runner: migrations/${sql_file}"
     continue
   fi
 
@@ -414,12 +423,21 @@ for sql_file in "${incremental_migration_files[@]}"; do
 done
 
 if [[ "$RUN_OPTIONAL_QA_FIXTURES" == "YES" ]]; then
-  echo "Running optional QA fixtures..."
-  for sql_file in "${optional_fixture_migration_files[@]}"; do
+  echo "Running functional QA fixtures..."
+  for sql_file in "${functional_qa_fixture_migration_files[@]}"; do
     apply_sql_file "migrations/${sql_file}"
   done
 else
-  echo "[prd] Optional QA fixtures skipped."
+  echo "[prd] Functional QA fixtures skipped."
+fi
+
+if [[ "$RUN_REPORTING_QA_FIXTURES" == "YES" ]]; then
+  echo "Running reporting QA fixtures..."
+  for sql_file in "${reporting_qa_fixture_migration_files[@]}"; do
+    apply_sql_file "migrations/${sql_file}"
+  done
+else
+  echo "[prd] Reporting QA fixtures skipped."
 fi
 
 echo "Running minimal seed (consumer)..."
