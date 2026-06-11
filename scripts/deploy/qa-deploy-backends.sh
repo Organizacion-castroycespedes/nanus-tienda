@@ -27,6 +27,29 @@ if [[ ! -f "${ECOSYSTEM_SOURCE}" ]]; then
   exit 66
 fi
 
+wait_for_http() {
+  local url="$1"
+  local max_attempts="${2:-30}"
+  local sleep_seconds="${3:-2}"
+  local attempt=1
+
+  while (( attempt <= max_attempts )); do
+    echo "Smoke attempt ${attempt}/${max_attempts}: ${url}"
+    if curl -fsS "${url}" >/dev/null; then
+      echo "Smoke OK ${url}"
+      return 0
+    fi
+
+    if (( attempt == max_attempts )); then
+      echo "Smoke FAILED ${url} after ${max_attempts} attempts" >&2
+      return 1
+    fi
+
+    sleep "${sleep_seconds}"
+    attempt=$((attempt + 1))
+  done
+}
+
 SERVICES=(
   "api-linux|build|api-linux|4020|/api/system/version"
   "backend-reporteria-linux|build-reporteria|backend-reporteria-linux|4021|/api/reports/health"
@@ -73,8 +96,9 @@ if [[ "${RUN_LOCAL_SMOKE}" == "YES" ]]; then
   echo "Running local smoke checks"
   for service_entry in "${SERVICES[@]}"; do
     IFS="|" read -r service_name runtime_dir binary_name port health_path <<< "${service_entry}"
-    curl -fsS "http://127.0.0.1:${port}${health_path}" >/dev/null
-    echo "Smoke OK ${service_name} http://127.0.0.1:${port}${health_path}"
+    smoke_url="http://127.0.0.1:${port}${health_path}"
+    wait_for_http "${smoke_url}" 30 2
+    echo "Smoke OK ${service_name} ${smoke_url}"
   done
 else
   echo "Skipping local smoke checks"

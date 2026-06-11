@@ -448,6 +448,26 @@ Estado: `QA_BACKEND_PERIFERICOS_LOGS_SERVICE_FIXED`.
 - [x] 13. Ejecutar `git status --short`.
 - [x] 14. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secrets y no se reinicio PM2.
 
+## MVP-00.7D-FIX2 - Add deploy smoke retry
+
+Estado: `QA_DEPLOY_SMOKE_RETRY_READY`.
+
+- [x] 1. Revisar fallo de smoke inmediato posterior a `pm2 startOrReload`.
+- [x] 2. Agregar funcion `wait_for_http` en `scripts/deploy/qa-deploy-backends.sh`.
+- [x] 3. Definir retry/backoff con 30 intentos y 2 segundos entre intentos.
+- [x] 4. Usar `curl -fsS`, imprimir intento actual y fallar solo despues del ultimo intento.
+- [x] 5. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4020/api/system/version`.
+- [x] 6. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4021/api/reports/health`.
+- [x] 7. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4022/health`.
+- [x] 8. Reemplazar smoke directo por `wait_for_http` para `http://127.0.0.1:4023/health`.
+- [x] 9. Mantener `RUN_LOCAL_SMOKE=YES/NO`.
+- [x] 10. Ejecutar `bash -n scripts/deploy/qa-deploy-backends.sh`.
+- [x] 11. Crear `docs/evidencia-deploy-smoke-retry-mvp-00-7D-fix2.md`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Ejecutar `git status --short`.
+- [x] 15. Confirmar que no se ejecuto deploy, no se toco AWS, no se modificaron secrets y no se tocaron binarios.
+
 ## MVP-00.7E - QA Runtime + GitHub Secrets Checklist
 
 Estado: `QA_RUNTIME_GITHUB_SECRETS_CHECKLIST_READY`.
