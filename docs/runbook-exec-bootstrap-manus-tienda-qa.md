@@ -75,14 +75,16 @@ Confirmaciones de objetivo:
 - Usuario app/owner objetivo: `manus_qa_user`.
 - Base objetivo: `manus_tienda_qa`.
 - Historial: `public.migrations_history`.
-- Migraciones obligatorias: `V053`, `V054`, `V055`, `V056`, `V057`.
-- Seeds minimos: tenant/sucursal, roles, usuarios QA, menu, permisos/RBAC, consumidor final, metodos de pago, terminal POS y peripheral settings MOCK.
+- Migraciones obligatorias: `V053`, `V054`, `V055`, `V056`, `V057`, `V058`.
+- Seeds minimos: tenant/sucursal, roles, usuarios QA, menu, permisos/RBAC, consumidor final FE/default, unidades, impuestos, metodos de pago si aplica, terminal POS y peripheral settings MOCK.
 - Fixture `migrations/20260505_reporting_pos_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
+- Fixture `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
 - Patch legacy `migrations/20260505_sync_local_to_aws_reporting_and_sales.sql`: obligatorio, pero debe ser idempotente en DB limpia. Validar que sus `DROP FUNCTION` usen `IF EXISTS`.
 - Finance traceability `finance/migrations/20260503_2030_finance_cash_payment_traceability.sql`: obligatorio. Debe crear `cash_movements.payment_id`, FK e indices en el flujo principal.
 - Drift fix `migrations/V055__purchases_total_original_drift_fix.sql`: obligatorio. Debe crear `purchases.total_original` y hacer backfill seguro desde `total`.
 - Drift fix `migrations/V056__purchase_liquidation_audit_index_drift_fix.sql`: obligatorio. Debe crear `idx_auditoria_eventos_purchase_liquidated`.
 - Drift fix `migrations/V057__restore_report_purchase_ticket_after_v047.sql`: obligatorio. Debe restaurar `report_purchase_ticket(uuid, text, uuid, uuid, uuid)` despues de `V047`.
+- Required catalog seed `migrations/V058__qa_required_catalog_seed.sql`: obligatorio. Debe normalizar consumidor final FE/default y asegurar unidades/impuestos base.
 - Rollback SQL `*_rollback.sql` y `*rollback*.sql`: no forman parte del forward bootstrap. El runner debe omitirlos y dejar log `Skipping rollback SQL in forward migration runner`.
 
 ## Validaciones previas
@@ -166,6 +168,32 @@ Confirmar manualmente:
 - `CONFIRM_CREATE_QA_DB=YES`
 - `APPLY_OPTIONAL_FIXTURES=NO`
 
+Si se aprueban fixtures funcionales QA para MVP-01.2B, cambiar solo la copia temporal:
+
+```bash
+sed -i 's/^APPLY_OPTIONAL_FIXTURES=.*/APPLY_OPTIONAL_FIXTURES=YES/' "$RUN_ENV"
+grep '^APPLY_OPTIONAL_FIXTURES=' "$RUN_ENV"
+```
+
+Con `APPLY_OPTIONAL_FIXTURES=YES`, el runner aplica:
+
+- `migrations/20260505_reporting_pos_fixtures.sql`
+- `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`
+
+Mantener `APPLY_OPTIONAL_FIXTURES=NO` si el objetivo es DB limpia minima.
+
+## Config FE lookup MOCK runtime
+
+Esta config no se aplica por el bootstrap DB. Debe quedar en el `.env` runtime de API QA antes de validar lookup FE mock, sin exponer secretos:
+
+```env
+DIAN_THIRD_PARTY_LOOKUP_ENABLED=true
+DIAN_THIRD_PARTY_LOOKUP_MODE=mock
+DIAN_GET_ACQUIRER_HTTP_ENABLED=false
+```
+
+No activar `DIAN_THIRD_PARTY_LOOKUP_MODE=real` ni `DIAN_GET_ACQUIRER_HTTP_ENABLED=true` sin aprobacion FE explicita.
+
 ## Comando exacto de bootstrap
 
 Ejecutar solo con aprobacion humana explicita.
@@ -213,7 +241,7 @@ WHERE success IS NOT TRUE;
 
 Resultado esperado: `0`.
 
-Validar `V053`, `V054`, `V055`, `V056` y `V057`:
+Validar `V053`, `V054`, `V055`, `V056`, `V057` y `V058`:
 
 ```bash
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
@@ -224,13 +252,14 @@ WHERE version IN (
   'migrations/V054__pos_terminal_peripheral_settings_phase_12.sql',
   'migrations/V055__purchases_total_original_drift_fix.sql',
   'migrations/V056__purchase_liquidation_audit_index_drift_fix.sql',
-  'migrations/V057__restore_report_purchase_ticket_after_v047.sql'
+  'migrations/V057__restore_report_purchase_ticket_after_v047.sql',
+  'migrations/V058__qa_required_catalog_seed.sql'
 )
 ORDER BY version;
 "
 ```
 
-Resultado esperado: cinco filas con `success = true`.
+Resultado esperado: seis filas con `success = true`.
 
 Validar drift DB corregido:
 
@@ -310,10 +339,69 @@ UNION ALL SELECT 'roles', COUNT(*) FROM public.roles
 UNION ALL SELECT 'menu_items', COUNT(*) FROM public.menu_items
 UNION ALL SELECT 'role_menu_permissions', COUNT(*) FROM public.role_menu_permissions
 UNION ALL SELECT 'users', COUNT(*) FROM public.users
+UNION ALL SELECT 'units', COUNT(*) FROM public.units WHERE is_active = true
+UNION ALL SELECT 'taxes', COUNT(*) FROM public.taxes WHERE is_active = true
 UNION ALL SELECT 'pos_terminals', COUNT(*) FROM public.pos_terminals
 UNION ALL SELECT 'pos_terminal_peripheral_settings', COUNT(*) FROM public.pos_terminal_peripheral_settings;
 "
 ```
+
+Validar consumidor final FE/default:
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT tenant_id, COUNT(*) AS active_final_consumers
+FROM public.customers
+WHERE is_final_consumer = true
+  AND is_active = true
+GROUP BY tenant_id;
+"
+```
+
+Resultado esperado: una fila por tenant activo, con `active_final_consumers = 1`.
+
+Validar unidades e impuestos base:
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT abbreviation, is_active
+FROM public.units
+WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND abbreviation IN ('UND', 'KG', 'LT', 'CJ')
+ORDER BY abbreviation;
+"
+
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT name, rate, is_active
+FROM public.taxes
+WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND name IN ('IVA 19%', 'Exento')
+ORDER BY name;
+"
+```
+
+Resultado esperado: cuatro unidades activas y dos impuestos activos.
+
+Si `APPLY_OPTIONAL_FIXTURES=YES`, validar fixture funcional:
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT sku, is_active, requires_lot, requires_expiration
+FROM public.products
+WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND sku = 'QA-BASE-LOT-001';
+"
+
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT lot.lot_code, lot.expiration_date, balance.quantity_available
+FROM public.inventory_lot_balances balance
+JOIN public.inventory_lots lot ON lot.id = balance.lot_id
+WHERE balance.tenant_id = '00000000-0000-0000-0000-000000000001'
+  AND lot.lot_code = 'QA-LOT-MVP-01-2B-001';
+"
+```
+
+Resultado esperado: producto QA activo, lote QA activo y cantidad disponible `25.00`.
 
 Validar modelo de productos pesables:
 
