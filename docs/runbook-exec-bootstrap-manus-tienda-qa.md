@@ -41,7 +41,8 @@ Preparar la ejecucion real del bootstrap de la base QA aislada `manus_tienda_qa`
 - `scripts/database/config/bootstrap-manus-tienda-qa.env` existe fuera de git.
 - `git check-ignore` confirma que el env real no se versiona.
 - El env real conserva `CONFIRM_CREATE_QA_DB=NO` antes de iniciar la ventana.
-- El env real conserva `APPLY_OPTIONAL_FIXTURES=NO` salvo aprobacion explicita para fixtures demo.
+- El env real conserva `APPLY_OPTIONAL_FIXTURES=NO` salvo aprobacion explicita para fixtures funcionales MVP-01.2.
+- El env real conserva `RUN_REPORTING_QA_FIXTURES=NO` salvo aprobacion explicita para fixtures reporting legacy.
 - No hay deploy simultaneo.
 - No hay migracion simultanea.
 
@@ -56,6 +57,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=manus_tienda_qa
 DB_OWNER=manus_qa_user
+DB_RUNTIME_USER=manus_user
 DB_ADMIN_USER=postgres
 DB_ADMIN_PASSWORD=<secret-outside-repo>
 DB_APP_PASSWORD=<secret-outside-repo>
@@ -66,6 +68,7 @@ SEED_SUPER_ADMIN_FIRST_NAME=<qa-value>
 SEED_SUPER_ADMIN_LAST_NAME=<qa-value>
 CONFIRM_CREATE_QA_DB=NO
 APPLY_OPTIONAL_FIXTURES=NO
+RUN_REPORTING_QA_FIXTURES=NO
 RUN_SMOKE_SQL=YES
 LOG_DIR=./logs
 ```
@@ -73,12 +76,13 @@ LOG_DIR=./logs
 Confirmaciones de objetivo:
 
 - Usuario app/owner objetivo: `manus_qa_user`.
+- Usuario runtime API objetivo: `manus_user`.
 - Base objetivo: `manus_tienda_qa`.
 - Historial: `public.migrations_history`.
 - Migraciones obligatorias: `V053`, `V054`, `V055`, `V056`, `V057`, `V058`.
 - Seeds minimos: tenant/sucursal, roles, usuarios QA, menu, permisos/RBAC, consumidor final FE/default, unidades, impuestos, metodos de pago si aplica, terminal POS y peripheral settings MOCK.
-- Fixture `migrations/20260505_reporting_pos_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
-- Fixture `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`: opcional. No corre con `APPLY_OPTIONAL_FIXTURES=NO`.
+- Fixture funcional `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`: opcional. Corre con `APPLY_OPTIONAL_FIXTURES=YES` o `RUN_OPTIONAL_QA_FIXTURES=YES`.
+- Fixture reporting legacy `migrations/20260505_reporting_pos_fixtures.sql`: opcional separado. Solo corre con `RUN_REPORTING_QA_FIXTURES=YES`.
 - Patch legacy `migrations/20260505_sync_local_to_aws_reporting_and_sales.sql`: obligatorio, pero debe ser idempotente en DB limpia. Validar que sus `DROP FUNCTION` usen `IF EXISTS`.
 - Finance traceability `finance/migrations/20260503_2030_finance_cash_payment_traceability.sql`: obligatorio. Debe crear `cash_movements.payment_id`, FK e indices en el flujo principal.
 - Drift fix `migrations/V055__purchases_total_original_drift_fix.sql`: obligatorio. Debe crear `purchases.total_original` y hacer backfill seguro desde `total`.
@@ -107,10 +111,12 @@ grep '^DB_HOST=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_PORT=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_NAME=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_OWNER=' scripts/database/config/bootstrap-manus-tienda-qa.env
+grep '^DB_RUNTIME_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_ADMIN_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^ENVIRONMENT=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^CONFIRM_CREATE_QA_DB=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^APPLY_OPTIONAL_FIXTURES=' scripts/database/config/bootstrap-manus-tienda-qa.env
+grep '^RUN_REPORTING_QA_FIXTURES=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^RUN_SMOKE_SQL=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^LOG_DIR=' scripts/database/config/bootstrap-manus-tienda-qa.env
 ```
@@ -120,6 +126,7 @@ Validar target exacto:
 ```bash
 test "$(grep '^DB_NAME=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_tienda_qa"
 test "$(grep '^DB_OWNER=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_qa_user"
+test "$(grep '^DB_RUNTIME_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_user"
 test "$(grep '^CONFIRM_CREATE_QA_DB=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "NO"
 ```
 
@@ -158,6 +165,7 @@ chmod 600 "$RUN_ENV"
 sed -i 's/^CONFIRM_CREATE_QA_DB=.*/CONFIRM_CREATE_QA_DB=YES/' "$RUN_ENV"
 grep '^DB_NAME=' "$RUN_ENV"
 grep '^DB_OWNER=' "$RUN_ENV"
+grep '^DB_RUNTIME_USER=' "$RUN_ENV"
 grep '^CONFIRM_CREATE_QA_DB=' "$RUN_ENV"
 ```
 
@@ -165,20 +173,31 @@ Confirmar manualmente:
 
 - `DB_NAME=manus_tienda_qa`
 - `DB_OWNER=manus_qa_user`
+- `DB_RUNTIME_USER=manus_user`
 - `CONFIRM_CREATE_QA_DB=YES`
 - `APPLY_OPTIONAL_FIXTURES=NO`
+- `RUN_REPORTING_QA_FIXTURES=NO`
 
 Si se aprueban fixtures funcionales QA para MVP-01.2B, cambiar solo la copia temporal:
 
 ```bash
 sed -i 's/^APPLY_OPTIONAL_FIXTURES=.*/APPLY_OPTIONAL_FIXTURES=YES/' "$RUN_ENV"
 grep '^APPLY_OPTIONAL_FIXTURES=' "$RUN_ENV"
+grep '^RUN_REPORTING_QA_FIXTURES=' "$RUN_ENV"
 ```
 
-Con `APPLY_OPTIONAL_FIXTURES=YES`, el runner aplica:
+Con `APPLY_OPTIONAL_FIXTURES=YES`, el runner aplica solo fixtures funcionales MVP-01.2:
 
-- `migrations/20260505_reporting_pos_fixtures.sql`
 - `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`
+
+Mantener `RUN_REPORTING_QA_FIXTURES=NO` para no ejecutar `migrations/20260505_reporting_pos_fixtures.sql`, que depende del usuario legacy `781912fe-5a32-483f-b99a-a931f9700913`.
+
+Si se aprueban fixtures reporting legacy, activar solo la bandera separada:
+
+```bash
+sed -i 's/^RUN_REPORTING_QA_FIXTURES=.*/RUN_REPORTING_QA_FIXTURES=YES/' "$RUN_ENV"
+grep '^RUN_REPORTING_QA_FIXTURES=' "$RUN_ENV"
+```
 
 Mantener `APPLY_OPTIONAL_FIXTURES=NO` si el objetivo es DB limpia minima.
 
@@ -213,7 +232,10 @@ El script debe:
 - llamar `scripts/database/migrate_prd.sh`;
 - aplicar schema/base, funciones, migraciones y seeds minimos;
 - saltar rollback SQL siempre en el flujo forward;
-- saltar fixtures QA opcionales por defecto;
+- saltar fixtures QA funcionales por defecto;
+- ejecutar fixture funcional MVP-01.2 solo con `RUN_OPTIONAL_QA_FIXTURES=YES` o `APPLY_OPTIONAL_FIXTURES=YES`;
+- ejecutar fixture reporting legacy solo con `RUN_REPORTING_QA_FIXTURES=YES`;
+- aplicar grants runtime con `012_runtime_db_grants.sql` al final;
 - ejecutar smoke SQL si `RUN_SMOKE_SQL=YES`;
 - escribir log en `LOG_DIR`.
 
@@ -241,7 +263,7 @@ WHERE success IS NOT TRUE;
 
 Resultado esperado: `0`.
 
-Validar `V053`, `V054`, `V055`, `V056`, `V057` y `V058`:
+Validar `V053`, `V054`, `V055`, `V056`, `V057`, `V058` y grants runtime:
 
 ```bash
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
@@ -253,13 +275,29 @@ WHERE version IN (
   'migrations/V055__purchases_total_original_drift_fix.sql',
   'migrations/V056__purchase_liquidation_audit_index_drift_fix.sql',
   'migrations/V057__restore_report_purchase_ticket_after_v047.sql',
-  'migrations/V058__qa_required_catalog_seed.sql'
+  'migrations/V058__qa_required_catalog_seed.sql',
+  '012_runtime_db_grants.sql'
 )
 ORDER BY version;
 "
 ```
 
-Resultado esperado: seis filas con `success = true`.
+Resultado esperado: siete filas con `success = true`.
+
+Validar grants runtime sin imprimir secretos:
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+SELECT
+  has_database_privilege('$DB_RUNTIME_USER', current_database(), 'CONNECT') AS runtime_can_connect,
+  has_schema_privilege('$DB_RUNTIME_USER', 'public', 'USAGE') AS runtime_can_use_public,
+  has_table_privilege('$DB_RUNTIME_USER', 'public.users', 'SELECT') AS runtime_can_select_users,
+  has_table_privilege('$DB_RUNTIME_USER', 'public.users', 'INSERT') AS runtime_can_insert_users,
+  has_sequence_privilege('$DB_RUNTIME_USER', 'public.migrations_history_id_seq', 'USAGE') AS runtime_can_use_sequence;
+"
+```
+
+Resultado esperado: todos `true`.
 
 Validar drift DB corregido:
 
@@ -468,6 +506,7 @@ Declarar `QA_DB_BOOTSTRAP_READY` solo si:
 - Tablas core existen.
 - Seeds minimos tienen filas.
 - Terminal POS default y peripheral settings MOCK existen.
+- `DB_RUNTIME_USER` tiene grants sobre DB, schema, tablas, secuencias y funciones.
 - El log de bootstrap queda guardado.
 - `manus_tienda` no fue modificada.
 - No se hizo deploy.
@@ -484,6 +523,8 @@ Registrar salidas sanitizadas:
 - Resultado `current_database(), current_user`.
 - Resultado `failed_migrations = 0`.
 - Resultado V053/V054.
+- Resultado `012_runtime_db_grants.sql`.
+- Resultado de `has_database_privilege`, `has_schema_privilege`, `has_table_privilege` y `has_sequence_privilege` para `DB_RUNTIME_USER`.
 - Smoke SQL de tablas core.
 - Conteos de seeds minimos.
 - Confirmacion de no deploy, no reinicio, no PRD.

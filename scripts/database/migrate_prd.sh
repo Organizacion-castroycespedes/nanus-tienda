@@ -28,6 +28,13 @@ for var_name in "${required_vars[@]}"; do
   fi
 done
 
+DB_RUNTIME_USER="${DB_RUNTIME_USER:-${APP_DB_USER:-$DB_USER}}"
+
+if [[ -z "$DB_RUNTIME_USER" ]]; then
+  echo "[prd] Missing runtime DB user. Set DB_RUNTIME_USER, APP_DB_USER, or DB_USER." >&2
+  exit 1
+fi
+
 if [[ "$RUN_OPTIONAL_QA_FIXTURES" != "NO" && "$RUN_OPTIONAL_QA_FIXTURES" != "YES" ]]; then
   echo "[prd] RUN_OPTIONAL_QA_FIXTURES/APPLY_OPTIONAL_FIXTURES must be YES or NO." >&2
   exit 1
@@ -358,6 +365,10 @@ minimal_seed_files=(
   "011_prd_default_customer.sql"
 )
 
+runtime_grant_files=(
+  "012_runtime_db_grants.sql"
+)
+
 echo "Running schema..."
 for sql_file in "${schema_files[@]}"; do
   if [[ "$sql_file" == "004_seed_super_admin.sql" ]]; then
@@ -443,6 +454,11 @@ fi
 echo "Running minimal seed (consumer)..."
 for sql_file in "${minimal_seed_files[@]}"; do
   apply_sql_file "$sql_file"
+done
+
+echo "Running runtime DB grants..."
+for sql_file in "${runtime_grant_files[@]}"; do
+  apply_sql_file_with_args "$sql_file" -v "runtime_user=${DB_RUNTIME_USER}"
 done
 
 echo "[prd] Production migration completed successfully."

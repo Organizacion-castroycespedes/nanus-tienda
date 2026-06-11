@@ -546,7 +546,7 @@ Estado: `QA_OPERATIVO_AUTH_RBAC_TERMINALES_BLOCKED_LOCAL_HEALTH`.
 
 ## MVP-01.2 - QA Clientes FE, Proveedores FE y Productos
 
-Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500`.
 
 - [x] 1. Validar login/contexto QA con `SUPER_ADMIN` sin exponer token ni password.
 - [x] 2. Validar Clientes FE: listado, creacion, edicion, consulta por id, campos FE y persistencia.
@@ -574,6 +574,14 @@ Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.
 - [x] 18. Ejecutar `git diff --check`.
 - [x] 19. Ejecutar `git status --short`.
 - [x] 20. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se toco PM2, no se hizo deploy, no se tocaron datos productivos y no se expusieron secretos.
+- [x] 21. Re-ejecutar QA funcional MVP-01.2 post-bootstrap contra API QA publica.
+  - BLOCKED: `POST /api/auth/login` y `POST /api/auth/login/force` devuelven HTTP 500.
+- [ ] 22. Validar `GET /api/electronic-invoicing/customers/default`.
+  - Bloqueado: requiere token valido.
+- [ ] 23. Validar `POST /api/electronic-invoicing/customers/default/ensure`.
+  - Bloqueado: requiere token valido.
+- [ ] 24. Validar `units > 0`, `taxes > 0`, producto demo, lote demo, promociones, Clientes FE y Proveedores FE.
+  - Bloqueado: requiere token valido.
 
 ## MVP-01.2A - QA Functional Seed & Config Remediation Plan
 
@@ -695,6 +703,29 @@ Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.
 - [x] 16. Crear `docs/evidencia-qa-functional-seeds-apply-rerun-mvp-01-2C.md`.
 - [x] 17. Ejecutar `openspec validate`, `git diff --check` y `git status --short`.
 - [x] 18. Confirmar que no se toco `manus_tienda`, no se toco PRD, no se ejecuto sin backup previo, no se expusieron secretos y no se modificaron datos fuera de `manus_tienda_qa`.
+
+## MVP-01.2C-FIX1 - Version app runtime DB grants for QA bootstrap
+
+Estado: `QA_RUNTIME_DB_GRANTS_VERSIONED`.
+
+- [x] 1. Revisar `scripts/database/migrate_prd.sh`.
+- [x] 2. Revisar `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 3. Identificar variable runtime user con prioridad `DB_RUNTIME_USER`, luego `APP_DB_USER`, luego fallback `DB_USER`.
+- [x] 4. Crear `scripts/database/012_runtime_db_grants.sql`.
+- [x] 5. Versionar `GRANT CONNECT ON DATABASE`.
+- [x] 6. Versionar `GRANT USAGE ON SCHEMA public`.
+- [x] 7. Versionar grants sobre tablas, secuencias y funciones existentes.
+- [x] 8. Versionar `ALTER DEFAULT PRIVILEGES` para tablas, secuencias y funciones futuras.
+- [x] 9. Incluir grants runtime al final de `scripts/database/migrate_prd.sh`.
+- [x] 10. Exportar y loguear `DB_RUNTIME_USER` desde `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 11. Documentar `DB_RUNTIME_USER=manus_user` en env example.
+- [x] 12. Actualizar runbooks y manifest.
+- [x] 13. Crear `docs/evidencia-runtime-db-grants-bootstrap-mvp-01-2C-fix1.md`.
+- [x] 14. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 15. Ejecutar `bash -n scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 16. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 17. Ejecutar `git diff --check`.
+- [x] 18. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se modifico DB, no se hizo deploy y no se tocaron secretos.
 
 ## MVP-02 - Facturacion Electronica Hardening
 
