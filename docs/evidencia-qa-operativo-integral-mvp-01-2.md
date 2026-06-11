@@ -4,19 +4,18 @@ Fecha rerun: 2026-06-11 America/Bogota.
 
 Cambio OpenSpec: `mvp-web-hardening`
 
-Resultado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500`
+Resultado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`
 
-Motivo: despues de bootstrap exitoso reportado para `manus_tienda_qa`, la API publica responde health/version, pero el login QA devuelve HTTP 500. Sin token valido no se pueden re-ejecutar endpoints protegidos de Clientes FE, Proveedores FE, Productos, Units, Taxes, Promociones ni Inventario loteado.
+## Contexto
 
-## Contexto declarado
+El bloqueo previo `AUTH_500` fue resuelto.
 
-- `manus_tienda_qa` fue recreada.
-- Bootstrap termino correctamente.
-- `V058__qa_required_catalog_seed.sql`: aplicado.
-- `20260611_mvp_01_2b_functional_qa_fixtures.sql`: aplicado.
-- `011_prd_default_customer.sql`: aplicado.
-- Functional QA fixtures: aplicados.
-- Reporting fixtures: omitidos.
+Confirmaciones recibidas:
+
+- `manus_user` ya puede consultar `users` en `manus_tienda_qa`.
+- API QA fue reiniciada.
+- Bootstrap QA termino correctamente.
+- Grants runtime quedaron aplicados al usuario correcto.
 
 ## Ambiente
 
@@ -24,82 +23,90 @@ Motivo: despues de bootstrap exitoso reportado para `manus_tienda_qa`, la API pu
 | --- | --- |
 | API QA | `https://api.apptiendamanus.space/api` |
 | DB esperada | `manus_tienda_qa` |
-| Rama/release esperado | `release/evolutivo/0.0.1` |
-| Actor QA intentado | `SUPER_ADMIN` y usuarios demo versionados |
+| Tenant | `default` |
+| Actor QA | `SUPER_ADMIN` seed desde env local ignorado |
 
-No se imprimieron tokens, refresh tokens, passwords ni `.env`.
+No se imprimieron tokens, refresh tokens, passwords ni contenido de `.env`.
 
-## Health publico
+## Health y auth
 
 | Check | Estado | Resultado |
 | --- | --- | --- |
 | `GET /api/system/version` | PASS | HTTP 200, `version=0.0.1`. |
 | `GET /api/reports/health` | PASS | HTTP 200, `status=ok`, `service=backend-reporteria`. |
+| `POST /api/auth/login/force` | PASS | HTTP 201, token recibido y no impreso. |
+| `GET /api/auth/me` | PASS | HTTP 200, rol `SUPER_ADMIN`, tenant `default`. |
+| `GET /api/auth/context` | PASS | HTTP 200, branch resuelta. |
+| `GET /api/auth/menu` | PASS | HTTP 200. |
 
-## Auth
+Nota: los usuarios demo `ADMIN`, `SUPER_USER` y `USER` autentican, pero no tienen permisos FE para `ELECTRONIC_INVOICING_CUSTOMERS` ni `ELECTRONIC_INVOICING_SUPPLIERS`. Para validar FE se uso `SUPER_ADMIN`, que bypassa `PermissionsGuard` como define el codigo.
+
+## Clientes FE
 
 | Check | Estado | Resultado |
 | --- | --- | --- |
-| `POST /api/auth/login` con credenciales QA locales no impresas | FAIL | HTTP 500, `Internal server error`. |
-| `POST /api/auth/login/force` con credenciales QA locales no impresas | FAIL | HTTP 500, `Internal server error`. |
-| `POST /api/auth/login/force` con `super.user+default@manustienda.local` | FAIL | HTTP 500, `Internal server error`. |
-| `POST /api/auth/login/force` con `admin+default@manustienda.local` | FAIL | HTTP 500, `Internal server error`. |
-| `POST /api/auth/login/force` con `user+default@manustienda.local` | FAIL | HTTP 500, `Internal server error`. |
+| `GET /api/electronic-invoicing/customers/default` | PASS | HTTP 200, `isFinalConsumer=true`. |
+| `POST /api/electronic-invoicing/customers/default/ensure` | PASS | HTTP 201, idempotente. |
+| `GET /api/electronic-invoicing/customers?search=QA Cliente FE Base` | PASS | HTTP 200, fixture encontrado. |
+| `GET /api/electronic-invoicing/customers/:id` | PASS | HTTP 200. |
+| `POST /api/electronic-invoicing/customers/lookup` | WARN | HTTP 201, `provider=NONE`, `lookupStatus=SKIPPED`. |
 
-Notas:
+## Proveedores FE
 
-- Los usuarios demo y la clave demo usada vienen de `scripts/database/009_seed_demo_operational_users.sql`.
-- El token no se pudo obtener.
-- No se intento leer logs PM2 ni tocar servidor por restriccion de no PM2/no deploy/no AWS.
-
-## QA funcional protegido
-
-| Bloque | Estado | Evidencia |
+| Check | Estado | Resultado |
 | --- | --- | --- |
-| Clientes FE | BLOCKED | Requiere token. No se pudo validar `GET /api/electronic-invoicing/customers/default`. |
-| Consumidor final ensure | BLOCKED | Requiere token. No se pudo validar `POST /api/electronic-invoicing/customers/default/ensure`. |
-| Proveedores FE | BLOCKED | Requiere token. |
-| Productos | BLOCKED | Requiere token. No se pudo validar `QA-BASE-LOT-001`. |
-| Units | BLOCKED | Requiere token. No se pudo validar `units > 0`. |
-| Taxes | BLOCKED | Requiere token. No se pudo validar `taxes > 0`. |
-| Promociones | BLOCKED | Requiere token. |
-| Inventario loteado | BLOCKED | Requiere token. No se pudo validar `QA-LOT-MVP-01-2B-001`. |
+| `GET /api/electronic-invoicing/suppliers?search=QA Proveedor FE Base` | PASS | HTTP 200, fixture encontrado. |
+| `GET /api/electronic-invoicing/suppliers/:id` | PASS | HTTP 200. |
+| `POST /api/electronic-invoicing/suppliers/lookup` | WARN | HTTP 201, `provider=NONE`, `lookupStatus=SKIPPED`. |
 
-## Checks esperados no ejecutables por bloqueo auth
+## Productos, units, taxes, promociones e inventario loteado
 
-- `GET /api/electronic-invoicing/customers/default` debe devolver HTTP 200.
-- `POST /api/electronic-invoicing/customers/default/ensure` debe ser idempotente.
-- `GET /api/units` debe devolver unidades activas base.
-- `GET /api/taxes` debe devolver impuestos activos base.
-- `GET /api/products?branchId=...` debe incluir `QA-BASE-LOT-001`.
-- `GET /api/inventory/lot-balances?...` debe incluir `QA-LOT-MVP-01-2B-001`.
+| Check | Estado | Resultado |
+| --- | --- | --- |
+| `GET /api/units` | PASS | HTTP 200, 4 unidades: `UND`, `KG`, `LT`, `CJ`. |
+| `GET /api/taxes` | PASS | HTTP 200, 2 impuestos: `IVA 19%`, `Exento`. |
+| `GET /api/products?branchId=<branch>` | PASS | HTTP 200, 6 productos, fixture `QA-BASE-LOT-001` encontrado. |
+| `GET /api/products/:id` | PASS | HTTP 200, producto fixture requiere lote y vencimiento. |
+| `GET /api/pricing/promotions` | PASS | HTTP 200, endpoint operativo. |
+| `POST /api/pricing/preview-line` | PASS | HTTP 201, preview pricing operativo para producto QA. |
+| `GET /api/inventory/lot-balances?branchId=<branch>&onlyAvailable=true&onlyActiveLots=true` | PASS | HTTP 200, fixture de lote encontrado. |
+| `GET /api/inventory/lot-balances/:id` | PASS | HTTP 200, `quantityAvailable=25`. |
+
+Fixtures validados:
+
+- Producto: `QA-BASE-LOT-001`.
+- Lote: `QA-LOT-MVP-01-2B-001`.
+- Cantidad disponible: `25`.
+
+## Resultado QA
+
+Los bloqueos que motivaron el rerun quedaron resueltos:
+
+- `GET /customers/default`: PASS.
+- `POST /customers/default/ensure`: PASS.
+- `units > 0`: PASS.
+- `taxes > 0`: PASS.
+- producto demo fixture: PASS.
+- lote demo fixture: PASS.
+- Clientes FE y Proveedores FE por endpoints protegidos: PASS con `SUPER_ADMIN`.
+- Promociones/pricing: PASS.
+
+Advertencia no bloqueante:
+
+- Lookup FE responde, pero runtime esta en `provider=NONE`, `lookupStatus=SKIPPED`. No se validaron escenarios `FOUND`/`NOT_FOUND` de provider mock en este rerun.
 
 ## Restricciones cumplidas
 
 - No se modifico codigo.
 - No se ejecutaron migraciones.
+- No se ejecuto bootstrap.
 - No se hizo deploy.
 - No se reinicio PM2.
 - No se hicieron escrituras directas en DB.
-- Solo se hicieron requests QA HTTP y evidencia.
-- No se expusieron secretos.
-
-## Diagnostico
-
-El bloqueo actual no es V058 ni fixture funcional. El bootstrap puede haber terminado, pero API runtime no permite autenticar contra el estado actual de `manus_tienda_qa`.
-
-Para continuar el rerun funcional se requiere una de estas evidencias:
-
-- credenciales QA validas para `manus_tienda_qa`;
-- o logs sanitizados de API alrededor de `POST /api/auth/login/force`;
-- o confirmacion de que el backend API esta apuntando a `manus_tienda_qa` y que `auth_sessions`, `auth_refresh_tokens`, `users`, `roles`, `user_roles`, `personas` y `persona_tenant_branches` quedaron consistentes.
+- No se imprimieron secretos ni tokens.
 
 ## Decision
 
-No se emite `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
-
-Estado emitido:
-
 ```text
-QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500
+QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY
 ```

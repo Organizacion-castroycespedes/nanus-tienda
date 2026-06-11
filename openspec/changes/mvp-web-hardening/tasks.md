@@ -546,12 +546,12 @@ Estado: `QA_OPERATIVO_AUTH_RBAC_TERMINALES_BLOCKED_LOCAL_HEALTH`.
 
 ## MVP-01.2 - QA Clientes FE, Proveedores FE y Productos
 
-Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500`.
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
 
 - [x] 1. Validar login/contexto QA con `SUPER_ADMIN` sin exponer token ni password.
 - [x] 2. Validar Clientes FE: listado, creacion, edicion, consulta por id, campos FE y persistencia.
-- [ ] 3. Validar cliente consumidor final activo.
-  - Bloqueado: `GET /api/electronic-invoicing/customers/default` devolvio HTTP 404 y `POST /api/electronic-invoicing/customers/default/ensure` devolvio HTTP 409.
+- [x] 3. Validar cliente consumidor final activo.
+  - Rerun 2026-06-11: `GET /api/electronic-invoicing/customers/default` HTTP 200 y `POST /api/electronic-invoicing/customers/default/ensure` HTTP 201.
 - [x] 4. Validar Lookup Clientes FE endpoint y apply lookup con persistencia de `dianLastLookupStatus`/`dianLastLookupAt`.
 - [ ] 5. Validar Lookup Clientes FE escenarios `FOUND` y `NOT_FOUND`.
   - Bloqueado: QA responde `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
@@ -561,11 +561,11 @@ Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500`.
   - Bloqueado: QA responde `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
 - [x] 9. Validar Productos: listado, creacion, edicion, consulta, SKU, barcode principal, barcode alterno, unidad, impuesto y activo con setup QA controlado.
 - [x] 10. Validar Inventario loteado en modo solo lectura con `GET /api/inventory/lot-balances`.
-- [ ] 11. Validar lotes reales con fecha vencimiento, cantidad disponible y trazabilidad.
-  - Bloqueado: endpoint responde HTTP 200 pero no devuelve lotes disponibles sin crear inventario.
+- [x] 11. Validar lotes reales con fecha vencimiento, cantidad disponible y trazabilidad.
+  - Rerun 2026-06-11: `QA-LOT-MVP-01-2B-001` visible via `GET /api/inventory/lot-balances`, `quantityAvailable=25`.
 - [x] 12. Validar Impuestos: listado, setup QA controlado y asociacion producto.
-- [ ] 13. Validar impuestos activos base existentes.
-  - Bloqueado/WARN: `GET /api/taxes` devolvio 0 impuestos activos antes del setup QA controlado.
+- [x] 13. Validar impuestos activos base existentes.
+  - Rerun 2026-06-11: `GET /api/taxes` devolvio `IVA 19%` y `Exento`.
 - [x] 14. Validar Promociones: listado, creacion API controlada y preview pricing para porcentaje, monto fijo y precio especial.
 - [ ] 15. Validar creacion de promociones desde UI.
   - No ejercitado en esta corrida; se valido API porque el alcance permitia creacion si UI disponible.
@@ -575,13 +575,13 @@ Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED_AUTH_500`.
 - [x] 19. Ejecutar `git status --short`.
 - [x] 20. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se toco PM2, no se hizo deploy, no se tocaron datos productivos y no se expusieron secretos.
 - [x] 21. Re-ejecutar QA funcional MVP-01.2 post-bootstrap contra API QA publica.
-  - BLOCKED: `POST /api/auth/login` y `POST /api/auth/login/force` devuelven HTTP 500.
-- [ ] 22. Validar `GET /api/electronic-invoicing/customers/default`.
-  - Bloqueado: requiere token valido.
-- [ ] 23. Validar `POST /api/electronic-invoicing/customers/default/ensure`.
-  - Bloqueado: requiere token valido.
-- [ ] 24. Validar `units > 0`, `taxes > 0`, producto demo, lote demo, promociones, Clientes FE y Proveedores FE.
-  - Bloqueado: requiere token valido.
+  - Rerun 2026-06-11: PASS con `SUPER_ADMIN` seed, token no impreso.
+- [x] 22. Validar `GET /api/electronic-invoicing/customers/default`.
+  - Rerun 2026-06-11: HTTP 200, `isFinalConsumer=true`.
+- [x] 23. Validar `POST /api/electronic-invoicing/customers/default/ensure`.
+  - Rerun 2026-06-11: HTTP 201.
+- [x] 24. Validar `units > 0`, `taxes > 0`, producto demo, lote demo, promociones, Clientes FE y Proveedores FE.
+  - Rerun 2026-06-11: PASS. `units=4`, `taxes=2`, `QA-BASE-LOT-001` visible, `QA-LOT-MVP-01-2B-001` visible con `quantityAvailable=25`, promociones/pricing HTTP 200/201, Clientes FE y Proveedores FE HTTP 200.
 
 ## MVP-01.2A - QA Functional Seed & Config Remediation Plan
 
@@ -745,6 +745,26 @@ Estado: `QA_RUNTIME_GRANTS_TARGET_USER_FIXED`.
 - [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
 - [x] 13. Ejecutar `git diff --check`.
 - [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se modifico DB y no se hizo deploy.
+
+## MVP-01.2C-RERUN - QA Clientes FE, Proveedores FE y Productos
+
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
+
+- [x] 1. Re-ejecutar `GET /api/system/version`.
+- [x] 2. Re-ejecutar `GET /api/reports/health`.
+- [x] 3. Validar login QA con `SUPER_ADMIN` seed sin imprimir token ni secretos.
+- [x] 4. Validar `GET /api/auth/me`, `GET /api/auth/context` y branch resuelta.
+- [x] 5. Validar `GET /api/electronic-invoicing/customers/default`.
+- [x] 6. Validar `POST /api/electronic-invoicing/customers/default/ensure`.
+- [x] 7. Validar cliente FE fixture `QA Cliente FE Base`.
+- [x] 8. Validar proveedor FE fixture `QA Proveedor FE Base`.
+- [x] 9. Validar `GET /api/units` con `UND`, `KG`, `LT`, `CJ`.
+- [x] 10. Validar `GET /api/taxes` con `IVA 19%` y `Exento`.
+- [x] 11. Validar producto fixture `QA-BASE-LOT-001`.
+- [x] 12. Validar promociones/pricing con `GET /api/pricing/promotions` y `POST /api/pricing/preview-line`.
+- [x] 13. Validar lote fixture `QA-LOT-MVP-01-2B-001` y `quantityAvailable=25`.
+- [x] 14. Actualizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 15. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se ejecuto bootstrap, no se hizo deploy, no se reinicio PM2 y no se imprimieron secretos.
 
 ## MVP-02 - Facturacion Electronica Hardening
 
