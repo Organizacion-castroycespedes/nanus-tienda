@@ -271,6 +271,8 @@ schema_files=(
   "010_seed_demo_user_roles.sql"
   "products/2026_04_25_inventory_products.sql"
   "products/2026_04_26_inventory_units_taxes_is_active.sql"
+  "products/2026_04_25_seed_inventory_units.sql"
+  "products/2026_04_25_seed_inventory_taxes.sql"
   "products/2026_04_26_inventory_suppliers.sql"
   "products/2026_04_26_inventory_customers.sql"
   "products/2026_04_26_inventory_customers_location.sql"
@@ -318,6 +320,7 @@ readarray -t incremental_migration_files < <(
 
 optional_fixture_migration_files=(
   "20260505_reporting_pos_fixtures.sql"
+  "20260611_mvp_01_2b_functional_qa_fixtures.sql"
 )
 
 is_optional_fixture_migration() {

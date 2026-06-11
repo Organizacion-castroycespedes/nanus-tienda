@@ -63,15 +63,17 @@ Reglas:
 5. Crear DB `manus_tienda_qa` si no existe.
 6. Crear `public.migrations_history`.
 7. Aplicar schema base y modulos historicos con `migrate_prd.sh`.
-8. Aplicar migraciones incrementales en `scripts/database/migrations/`, incluyendo `V053` y `V054`.
-9. Aplicar seed minimo de consumidor final.
+8. Aplicar migraciones incrementales en `scripts/database/migrations/`, incluyendo `V053`, `V054`, `V055`, `V056`, `V057` y `V058`.
+9. Aplicar seed minimo de consumidor final legacy idempotente.
 10. Validar `migrations_history`.
 11. Validar tenant/sucursal.
 12. Validar roles.
 13. Validar menu y permisos.
 14. Validar usuarios QA.
-15. Validar terminal POS default y settings MOCK.
-16. Ejecutar smoke SQL.
+15. Validar consumidor final FE/default.
+16. Validar unidades e impuestos base.
+17. Validar terminal POS default y settings MOCK.
+18. Ejecutar smoke SQL.
 
 ## Script orquestador seguro
 
@@ -107,20 +109,38 @@ El script:
 - usuario `SUPER_ADMIN` configurado por env
 - usuarios demo operativos si el script base los mantiene
 - cliente `CONSUMIDOR FINAL`
+- normalizacion FE/default con `migrations/V058__qa_required_catalog_seed.sql`
+- unidades base `UND`, `KG`, `LT`, `CJ`
+- impuestos base `IVA 19%` y `Exento`
 - ventas/pagos/caja base
 - modulos productos/compras/pedidos/finanzas
 - migraciones incrementales
 - `V053` modelo formal de productos pesables
 - `V054` terminal POS y settings MOCK
+- `V058` catalogo funcional requerido y consumidor final FE/default
 
 ## Seeds opcionales
 
 Para QA funcional con POS y catalogo demo, evaluar aparte:
 
 - `scripts/database/products/run_all.sh`
+- `migrations/20260505_reporting_pos_fixtures.sql`
+- `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`
 - `RUN_OPTIONAL_QA_FIXTURES=YES`
 
 No usar fixtures opcionales si el objetivo es DB limpia minima.
+
+## Config FE lookup MOCK QA
+
+El bootstrap DB no modifica `.env` runtime. Para desbloquear lookup FE mock en QA, configurar en API QA sin exponer secretos:
+
+```env
+DIAN_THIRD_PARTY_LOOKUP_ENABLED=true
+DIAN_THIRD_PARTY_LOOKUP_MODE=mock
+DIAN_GET_ACQUIRER_HTTP_ENABLED=false
+```
+
+No activar modo `real` ni HTTP externo sin aprobacion FE explicita.
 
 ## Validaciones SQL
 
@@ -140,10 +160,24 @@ SELECT COUNT(*) FROM public.roles;
 SELECT COUNT(*) FROM public.menu_items;
 SELECT COUNT(*) FROM public.role_menu_permissions;
 SELECT COUNT(*) FROM public.users;
+SELECT COUNT(*) FROM public.units WHERE is_active = true;
+SELECT COUNT(*) FROM public.taxes WHERE is_active = true;
 
 SELECT to_regclass('public.pos_terminals');
 SELECT to_regclass('public.pos_terminal_peripheral_settings');
 ```
+
+Validar consumidor final FE/default:
+
+```sql
+SELECT tenant_id, COUNT(*) AS active_final_consumers
+FROM public.customers
+WHERE is_final_consumer = true
+  AND is_active = true
+GROUP BY tenant_id;
+```
+
+Resultado esperado: `active_final_consumers = 1` por tenant activo.
 
 Validar usuario QA:
 

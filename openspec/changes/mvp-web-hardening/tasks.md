@@ -502,6 +502,103 @@ Estado: `QA_CONTROLLED_DEPLOY_RUNBOOK_READY`.
 - [ ] 15. Crear `docs/evidencia-qa-operativo-integral-mvp-01.md`.
 - [ ] 16. Ejecutar build/test/OpenSpec/git checks.
 
+## MVP-01.1 - QA Autenticacion, Roles, Menus y Terminales
+
+Estado: `QA_OPERATIVO_AUTH_RBAC_TERMINALES_BLOCKED_LOCAL_HEALTH`.
+
+- [x] 1. Crear plan QA para `SUPER_ADMIN`, `SUPER_USER`, `ADMIN` y `USER`.
+- [x] 2. Validar `GET /api/system/version` en QA AWS.
+- [x] 3. Validar `GET /api/reports/health` en QA AWS.
+- [ ] 4. Validar `GET http://127.0.0.1:4022/health` en QA AWS.
+- [ ] 5. Validar `GET http://127.0.0.1:4023/health` en QA AWS.
+- [x] 6. Validar login por rol sin exponer tokens ni credenciales.
+- [x] 7. Validar menu visible por rol.
+- [x] 8. Validar permisos base por rol: `SUPER_ADMIN` global, `SUPER_USER` tenant, `ADMIN` sucursal y `USER` operativo.
+- [x] 9. Validar terminal POS con `GET /api/pos-terminals/resolve-current`, `GET /api/pos-terminals` y `GET /api/pos-terminals/:id/peripherals`.
+- [x] 10. Validar configuracion de terminal/perifericos en `MOCK` por API.
+- [ ] 11. Validar `backend-perifericos` health directo `mode=MOCK`.
+- [ ] 12. Validar PM2 health actual.
+- [x] 13. Crear `docs/evidencia-qa-operativo-integral-mvp-01-1.md`.
+- [x] 14. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 15. Ejecutar `git diff --check`.
+- [x] 16. Ejecutar `git status --short`.
+- [x] 17. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2 y no se expusieron secretos.
+
+## MVP-01.2 - QA Clientes FE, Proveedores FE y Productos
+
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.
+
+- [x] 1. Validar login/contexto QA con `SUPER_ADMIN` sin exponer token ni password.
+- [x] 2. Validar Clientes FE: listado, creacion, edicion, consulta por id, campos FE y persistencia.
+- [ ] 3. Validar cliente consumidor final activo.
+  - Bloqueado: `GET /api/electronic-invoicing/customers/default` devolvio HTTP 404 y `POST /api/electronic-invoicing/customers/default/ensure` devolvio HTTP 409.
+- [x] 4. Validar Lookup Clientes FE endpoint y apply lookup con persistencia de `dianLastLookupStatus`/`dianLastLookupAt`.
+- [ ] 5. Validar Lookup Clientes FE escenarios `FOUND` y `NOT_FOUND`.
+  - Bloqueado: QA responde `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
+- [x] 6. Validar Proveedores FE: listado, creacion, edicion, consulta por id, campos FE y persistencia.
+- [x] 7. Validar Lookup Proveedores FE endpoint y apply lookup con persistencia de `fiscalLastLookupStatus`/`fiscalLastLookupAt`.
+- [ ] 8. Validar Lookup Proveedores FE escenarios `FOUND` y `NOT_FOUND`.
+  - Bloqueado: QA responde `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
+- [x] 9. Validar Productos: listado, creacion, edicion, consulta, SKU, barcode principal, barcode alterno, unidad, impuesto y activo con setup QA controlado.
+- [x] 10. Validar Inventario loteado en modo solo lectura con `GET /api/inventory/lot-balances`.
+- [ ] 11. Validar lotes reales con fecha vencimiento, cantidad disponible y trazabilidad.
+  - Bloqueado: endpoint responde HTTP 200 pero no devuelve lotes disponibles sin crear inventario.
+- [x] 12. Validar Impuestos: listado, setup QA controlado y asociacion producto.
+- [ ] 13. Validar impuestos activos base existentes.
+  - Bloqueado/WARN: `GET /api/taxes` devolvio 0 impuestos activos antes del setup QA controlado.
+- [x] 14. Validar Promociones: listado, creacion API controlada y preview pricing para porcentaje, monto fijo y precio especial.
+- [ ] 15. Validar creacion de promociones desde UI.
+  - No ejercitado en esta corrida; se valido API porque el alcance permitia creacion si UI disponible.
+- [x] 16. Crear `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 17. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 18. Ejecutar `git diff --check`.
+- [x] 19. Ejecutar `git status --short`.
+- [x] 20. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se toco PM2, no se hizo deploy, no se tocaron datos productivos y no se expusieron secretos.
+
+## MVP-01.2A - QA Functional Seed & Config Remediation Plan
+
+Estado: `QA_FUNCTIONAL_SEED_CONFIG_REMEDIATION_PLANNED`.
+
+- [x] 1. Analizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 2. Analizar por que `GET /api/electronic-invoicing/customers/default` devuelve HTTP 404 y `POST /api/electronic-invoicing/customers/default/ensure` devuelve HTTP 409.
+- [x] 3. Determinar que el bloqueo de consumidor final es mismatch entre seed legacy `is_default` y endpoint FE `is_final_consumer`, no solo ausencia simple de seed.
+- [x] 4. Analizar por que lookup FE queda `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
+- [x] 5. Determinar config/env necesaria para lookup MOCK en QA: `DIAN_THIRD_PARTY_LOOKUP_ENABLED=true`, `DIAN_THIRD_PARTY_LOOKUP_MODE=mock`, `DIAN_GET_ACQUIRER_HTTP_ENABLED=false`.
+- [x] 6. Analizar por que `units=0` y `taxes=0` en `manus_tienda_qa`.
+- [x] 7. Determinar que seeds de unidades/impuestos existen pero no estan incluidos en `scripts/database/migrate_prd.sh`.
+- [x] 8. Definir seed QA minimo para unidades, impuestos, consumidor final, producto base, proveedor base, cliente FE base y lote demo controlado.
+- [x] 9. Definir datos bootstrap obligatorios vs fixtures QA opcionales.
+- [x] 10. Proponer migraciones/seeds versionados, idempotentes y seguros sin implementarlos.
+- [x] 11. Crear `docs/evidencia-qa-functional-seed-config-remediation-plan-mvp-01-2A.md`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Ejecutar `git status --short`.
+- [x] 15. Confirmar que no se ejecutaron migraciones, no se toco AWS, no se modifico DB, no se hizo deploy y no se corrigio codigo.
+
+## MVP-01.2B - Implement QA Functional Seeds + FE Mock Config
+
+Estado: `QA_FUNCTIONAL_SEED_CONFIG_IMPLEMENTED`.
+
+- [x] 1. Analizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 2. Analizar `docs/evidencia-qa-functional-seed-config-remediation-plan-mvp-01-2A.md`.
+- [x] 3. Crear `scripts/database/migrations/V058__qa_required_catalog_seed.sql` para normalizar consumidor final FE/default.
+- [x] 4. Garantizar idempotencia de consumidor final sin romper `ux_customers_tenant_default`.
+- [x] 5. Incluir `products/2026_04_25_seed_inventory_units.sql` en `scripts/database/migrate_prd.sh`.
+- [x] 6. Incluir `products/2026_04_25_seed_inventory_taxes.sql` en `scripts/database/migrate_prd.sh`.
+- [x] 7. Confirmar que payment methods ya aplican por `sale/004_sale_payment_methods.sql` y no requieren catalogo adicional.
+- [x] 8. Crear `scripts/database/migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql` para producto demo, proveedor demo, cliente FE demo y lote demo.
+- [x] 9. Registrar fixture QA funcional como opcional y gated por `RUN_OPTIONAL_QA_FIXTURES=YES` / `APPLY_OPTIONAL_FIXTURES=YES`.
+- [x] 10. Documentar lookup MOCK en `api/.env.example` sin modificar `.env` real.
+- [x] 11. Documentar lookup MOCK en `backend-facturacion-electronica/.env.example` sin modificar `.env` real.
+- [x] 12. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 13. Actualizar runbooks de bootstrap QA.
+- [x] 14. Crear `docs/evidencia-qa-functional-seeds-fe-mock-implementation-mvp-01-2B.md`.
+- [x] 15. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 16. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 17. Ejecutar `git diff --check`.
+- [x] 18. Ejecutar `git status --short`.
+- [x] 19. Confirmar que no se ejecuto bootstrap, no se migró, no se toco AWS, no se modifico DB real, no se hizo deploy, no se reinicio PM2 y no se agregaron secretos.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.
