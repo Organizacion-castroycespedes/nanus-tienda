@@ -619,6 +619,63 @@ Estado: `QA_FUNCTIONAL_SEED_CONFIG_IMPLEMENTED`.
 - [x] 18. Ejecutar `git status --short`.
 - [x] 19. Confirmar que no se ejecuto bootstrap, no se migró, no se toco AWS, no se modifico DB real, no se hizo deploy, no se reinicio PM2 y no se agregaron secretos.
 
+## MVP-01.2B-FIX1 - Repair V058 SQL syntax
+
+Estado: `QA_V058_SQL_FIXED`.
+
+- [x] 1. Revisar `scripts/database/migrations/V058__qa_required_catalog_seed.sql`.
+- [x] 2. Encontrar error exacto alrededor de la linea reportada.
+- [x] 3. Confirmar que el `CREATE TEMP TABLE ... AS WITH candidates AS (...)` no consumia el CTE con `SELECT`.
+- [x] 4. Corregir V058 para PostgreSQL 16 agregando `SELECT * FROM candidates`.
+- [x] 5. Validar `INSERT` de consumidor final, units y taxes por revision estatica.
+- [x] 6. Validar CTE, parentesis y cierre del statement por revision estatica.
+- [x] 7. Validar que V058 no usa `ON CONFLICT` y mantiene idempotencia con `NOT EXISTS`.
+- [x] 8. Validar `DO` blocks por revision estatica.
+- [x] 9. Validar columnas `units.is_active`, `taxes.is_active` y `customers.is_default`.
+- [x] 10. Crear `docs/evidencia-fix-v058-bootstrap-syntax-mvp-01-2B-fix1.md`.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Ejecutar `git status --short`.
+- [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco DB, no se hizo deploy y no se toco PM2.
+
+## MVP-01.2C - Apply QA functional seeds and rerun QA
+
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.
+
+- [x] 1. Verificar que cambios de MVP-01.2B esten en branch feature `feat/develop/mvp-qa-operativo-integral`.
+- [x] 2. Commit/push de cambios MVP-01.2B.
+  - Commit: `0586656 feat: add QA functional seeds for MVP 01.2`.
+- [x] 3. Merge feature -> `develop`.
+  - `develop` actualizado a `0586656`.
+- [x] 4. Merge `develop` -> `release/evolutivo/0.0.1`.
+  - Merge commit: `e104bb0 Merge develop into release/evolutivo/0.0.1 for MVP 01.2C`.
+- [x] 5. Confirmar GitHub Actions deploy success.
+  - Run `27324821209`, workflow `Deploy QA Backends`, conclusion `success`.
+- [x] 6. Validar endpoints publicos post-deploy.
+  - `GET /api/system/version`: PASS.
+  - `GET /api/reports/health`: PASS.
+- [ ] 7. Validar release actualizada por SSH/runtime AWS.
+  - Bloqueado: `ssh ubuntu@api.apptiendamanus.space` devuelve `Permission denied (publickey)`.
+- [ ] 8. Crear backup previo de `manus_tienda_qa`: dump custom, PM2 list y runtime `.env` sin secretos.
+  - Bloqueado: requiere SSH AWS valido.
+- [ ] 9. Recrear solo `manus_tienda_qa`.
+  - No ejecutado: prohibido sin backup previo.
+- [ ] 10. Ajustar env bootstrap temporalmente con `CONFIRM_CREATE_QA_DB=YES` y `RUN_OPTIONAL_QA_FIXTURES=YES`.
+  - No ejecutado: requiere shell AWS y backup previo.
+- [ ] 11. Ejecutar `bash scripts/database/bootstrap-manus-tienda-qa.sh scripts/database/config/bootstrap-manus-tienda-qa.env`.
+  - No ejecutado: requiere recreacion controlada de `manus_tienda_qa`.
+- [ ] 12. Revertir confirmacion de env bootstrap.
+  - No ejecutado: env remoto no fue modificado.
+- [ ] 13. Validar SQL post-bootstrap: `units`, `taxes`, consumidor final unico/default, producto demo, lote demo y `migrations_history` con `V058`.
+  - Bloqueado: requiere DB bootstrap aplicada.
+- [ ] 14. Validar FE mock env runtime.
+  - Bloqueado: requiere SSH AWS o evidencia runtime sanitizada.
+- [ ] 15. Re-ejecutar QA MVP-01.2 completo.
+  - Bloqueado: no se aplicaron seeds por falta de backup/SSH.
+- [x] 16. Crear `docs/evidencia-qa-functional-seeds-apply-rerun-mvp-01-2C.md`.
+- [x] 17. Ejecutar `openspec validate`, `git diff --check` y `git status --short`.
+- [x] 18. Confirmar que no se toco `manus_tienda`, no se toco PRD, no se ejecuto sin backup previo, no se expusieron secretos y no se modificaron datos fuera de `manus_tienda_qa`.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.

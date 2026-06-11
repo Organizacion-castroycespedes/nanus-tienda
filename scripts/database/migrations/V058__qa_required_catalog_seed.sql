@@ -64,7 +64,9 @@ WITH candidates AS (
   WHERE c.is_default = true
      OR (c.is_final_consumer = true AND c.is_active = true)
      OR upper(btrim(c.name)) IN ('CONSUMIDOR FINAL', 'CONSUMIDOR FINAL FE')
-);
+)
+SELECT *
+FROM candidates;
 
 UPDATE public.customers c
 SET
