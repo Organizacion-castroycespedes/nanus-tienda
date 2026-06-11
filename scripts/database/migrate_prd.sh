@@ -28,10 +28,21 @@ for var_name in "${required_vars[@]}"; do
   fi
 done
 
-DB_RUNTIME_USER="${DB_RUNTIME_USER:-${APP_DB_USER:-$DB_USER}}"
+if [[ -n "${APP_DB_USER:-}" ]]; then
+  DB_RUNTIME_USER="$APP_DB_USER"
+  DB_RUNTIME_USER_SOURCE="APP_DB_USER"
+elif [[ -n "${DB_RUNTIME_USER:-}" ]]; then
+  DB_RUNTIME_USER_SOURCE="DB_RUNTIME_USER"
+elif [[ -n "${MANUS_RUNTIME_DB_USER:-}" ]]; then
+  DB_RUNTIME_USER="$MANUS_RUNTIME_DB_USER"
+  DB_RUNTIME_USER_SOURCE="MANUS_RUNTIME_DB_USER"
+else
+  DB_RUNTIME_USER="manus_user"
+  DB_RUNTIME_USER_SOURCE="default:manus_user"
+fi
 
 if [[ -z "$DB_RUNTIME_USER" ]]; then
-  echo "[prd] Missing runtime DB user. Set DB_RUNTIME_USER, APP_DB_USER, or DB_USER." >&2
+  echo "[prd] Missing runtime DB user. Set APP_DB_USER, DB_RUNTIME_USER, or MANUS_RUNTIME_DB_USER." >&2
   exit 1
 fi
 

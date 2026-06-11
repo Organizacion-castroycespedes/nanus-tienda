@@ -37,7 +37,8 @@ Reglas del runner forward:
 - Los rollback SQL permanecen disponibles solo para rollback manual documentado y aprobado.
 - Los fixtures QA funcionales siguen fuera del flujo default y solo corren con `RUN_OPTIONAL_QA_FIXTURES=YES`.
 - El fixture reporting legacy sigue separado y solo corre con `RUN_REPORTING_QA_FIXTURES=YES`.
-- Los grants runtime corren al final con `DB_RUNTIME_USER`, `APP_DB_USER` o fallback seguro a `DB_USER`.
+- Los grants runtime corren al final con prioridad `APP_DB_USER`, `DB_RUNTIME_USER`, `MANUS_RUNTIME_DB_USER` y fallback seguro a `manus_user`.
+- El runner QA no usa `DB_USER` como fallback runtime para grants.
 
 ## Orden cronologico propuesto
 
@@ -226,7 +227,7 @@ Este script concede al usuario runtime:
 - Impuestos/unidades: `products/2026_04_25_seed_inventory_units.sql`, `products/2026_04_25_seed_inventory_taxes.sql` y refuerzo idempotente en `migrations/V058__qa_required_catalog_seed.sql`.
 - Terminal POS default: `008_pos_terminals_and_sessions.sql`, y ajuste final `V054__pos_terminal_peripheral_settings_phase_12.sql`.
 - Peripheral settings MOCK: `V054__pos_terminal_peripheral_settings_phase_12.sql`.
-- Grants runtime API: `012_runtime_db_grants.sql` con `DB_RUNTIME_USER=manus_user` en QA.
+- Grants runtime API: `012_runtime_db_grants.sql` con `APP_DB_USER=manus_user` en QA.
 
 ## Relacion con scripts y runbooks
 
@@ -242,7 +243,7 @@ Este script concede al usuario runtime:
 - `20260611_mvp_01_2b_functional_qa_fixtures.sql` es fixture funcional opcional y no corre por defecto.
 - `20260505_reporting_pos_fixtures.sql` es fixture reporting legacy opcional y no corre por defecto ni con `RUN_OPTIONAL_QA_FIXTURES=YES`.
 - `012_seed_electronic_invoicing_suppliers_menu_permissions.sql` esta inventariado pero no incluido hoy por el runner completo.
-- Si `DB_RUNTIME_USER` apunta a un rol inexistente, `012_runtime_db_grants.sql` debe fallar con error claro para no dejar login roto silenciosamente.
+- Si el usuario runtime resuelto apunta a un rol inexistente, `012_runtime_db_grants.sql` debe fallar con error claro para no dejar login roto silenciosamente.
 - Seeds de unidades/impuestos base ya forman parte del bootstrap limpio actual.
 - Si falta un SQL del orden anterior, el bootstrap debe bloquearse antes de tocar QA.
 - No ejecutar contra `manus_tienda`.

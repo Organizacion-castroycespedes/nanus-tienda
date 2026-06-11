@@ -710,7 +710,7 @@ Estado: `QA_RUNTIME_DB_GRANTS_VERSIONED`.
 
 - [x] 1. Revisar `scripts/database/migrate_prd.sh`.
 - [x] 2. Revisar `scripts/database/bootstrap-manus-tienda-qa.sh`.
-- [x] 3. Identificar variable runtime user con prioridad `DB_RUNTIME_USER`, luego `APP_DB_USER`, luego fallback `DB_USER`.
+- [x] 3. Identificar variable runtime user inicial con fallback `DB_USER`; corregido en `MVP-01.2C-FIX2`.
 - [x] 4. Crear `scripts/database/012_runtime_db_grants.sql`.
 - [x] 5. Versionar `GRANT CONNECT ON DATABASE`.
 - [x] 6. Versionar `GRANT USAGE ON SCHEMA public`.
@@ -726,6 +726,25 @@ Estado: `QA_RUNTIME_DB_GRANTS_VERSIONED`.
 - [x] 16. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
 - [x] 17. Ejecutar `git diff --check`.
 - [x] 18. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se modifico DB, no se hizo deploy y no se tocaron secretos.
+
+## MVP-01.2C-FIX2 - Runtime grants target wrong user
+
+Estado: `QA_RUNTIME_GRANTS_TARGET_USER_FIXED`.
+
+- [x] 1. Revisar `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 2. Revisar `scripts/database/migrate_prd.sh`.
+- [x] 3. Revisar `scripts/database/012_runtime_db_grants.sql`.
+- [x] 4. Determinar que `DB_RUNTIME_USER` resolvia a `manus_qa_user` por fallback a `DB_USER`, derivado de `DB_OWNER`.
+- [x] 5. Cambiar prioridad a `APP_DB_USER`, `DB_RUNTIME_USER`, `MANUS_RUNTIME_DB_USER`, fallback literal `manus_user`.
+- [x] 6. Eliminar `DB_USER` como fallback runtime para grants QA.
+- [x] 7. Loguear `DB_RUNTIME_USER_SOURCE` para diagnostico.
+- [x] 8. Actualizar runbooks y env example.
+- [x] 9. Crear `docs/evidencia-fix-runtime-grants-target-user-mvp-01-2C-fix2.md`.
+- [x] 10. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 11. Ejecutar `bash -n scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se modifico DB y no se hizo deploy.
 
 ## MVP-02 - Facturacion Electronica Hardening
 

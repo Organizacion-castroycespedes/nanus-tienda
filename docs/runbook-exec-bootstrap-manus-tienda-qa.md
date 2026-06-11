@@ -57,7 +57,10 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=manus_tienda_qa
 DB_OWNER=manus_qa_user
-DB_RUNTIME_USER=manus_user
+APP_DB_USER=manus_user
+# Opcionales si no se usa APP_DB_USER:
+# DB_RUNTIME_USER=manus_user
+# MANUS_RUNTIME_DB_USER=manus_user
 DB_ADMIN_USER=postgres
 DB_ADMIN_PASSWORD=<secret-outside-repo>
 DB_APP_PASSWORD=<secret-outside-repo>
@@ -76,7 +79,7 @@ LOG_DIR=./logs
 Confirmaciones de objetivo:
 
 - Usuario app/owner objetivo: `manus_qa_user`.
-- Usuario runtime API objetivo: `manus_user`.
+- Usuario runtime API objetivo: `manus_user` via `APP_DB_USER`.
 - Base objetivo: `manus_tienda_qa`.
 - Historial: `public.migrations_history`.
 - Migraciones obligatorias: `V053`, `V054`, `V055`, `V056`, `V057`, `V058`.
@@ -111,7 +114,7 @@ grep '^DB_HOST=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_PORT=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_NAME=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_OWNER=' scripts/database/config/bootstrap-manus-tienda-qa.env
-grep '^DB_RUNTIME_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env
+grep '^APP_DB_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^DB_ADMIN_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^ENVIRONMENT=' scripts/database/config/bootstrap-manus-tienda-qa.env
 grep '^CONFIRM_CREATE_QA_DB=' scripts/database/config/bootstrap-manus-tienda-qa.env
@@ -126,7 +129,7 @@ Validar target exacto:
 ```bash
 test "$(grep '^DB_NAME=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_tienda_qa"
 test "$(grep '^DB_OWNER=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_qa_user"
-test "$(grep '^DB_RUNTIME_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_user"
+test "$(grep '^APP_DB_USER=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "manus_user"
 test "$(grep '^CONFIRM_CREATE_QA_DB=' scripts/database/config/bootstrap-manus-tienda-qa.env | cut -d= -f2-)" = "NO"
 ```
 
@@ -165,7 +168,7 @@ chmod 600 "$RUN_ENV"
 sed -i 's/^CONFIRM_CREATE_QA_DB=.*/CONFIRM_CREATE_QA_DB=YES/' "$RUN_ENV"
 grep '^DB_NAME=' "$RUN_ENV"
 grep '^DB_OWNER=' "$RUN_ENV"
-grep '^DB_RUNTIME_USER=' "$RUN_ENV"
+grep '^APP_DB_USER=' "$RUN_ENV"
 grep '^CONFIRM_CREATE_QA_DB=' "$RUN_ENV"
 ```
 
@@ -173,7 +176,7 @@ Confirmar manualmente:
 
 - `DB_NAME=manus_tienda_qa`
 - `DB_OWNER=manus_qa_user`
-- `DB_RUNTIME_USER=manus_user`
+- `APP_DB_USER=manus_user`
 - `CONFIRM_CREATE_QA_DB=YES`
 - `APPLY_OPTIONAL_FIXTURES=NO`
 - `RUN_REPORTING_QA_FIXTURES=NO`
@@ -236,6 +239,7 @@ El script debe:
 - ejecutar fixture funcional MVP-01.2 solo con `RUN_OPTIONAL_QA_FIXTURES=YES` o `APPLY_OPTIONAL_FIXTURES=YES`;
 - ejecutar fixture reporting legacy solo con `RUN_REPORTING_QA_FIXTURES=YES`;
 - aplicar grants runtime con `012_runtime_db_grants.sql` al final;
+- resolver runtime grants con prioridad `APP_DB_USER`, `DB_RUNTIME_USER`, `MANUS_RUNTIME_DB_USER`, fallback `manus_user`, nunca `DB_USER`;
 - ejecutar smoke SQL si `RUN_SMOKE_SQL=YES`;
 - escribir log en `LOG_DIR`.
 
@@ -248,6 +252,7 @@ Conectar como usuario app:
 ```bash
 source "$RUN_ENV"
 export PGPASSWORD="$DB_APP_PASSWORD"
+RUNTIME_DB_USER="${APP_DB_USER:-${DB_RUNTIME_USER:-${MANUS_RUNTIME_DB_USER:-manus_user}}}"
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "SELECT current_database(), current_user;"
 ```
 
@@ -287,13 +292,14 @@ Resultado esperado: siete filas con `success = true`.
 Validar grants runtime sin imprimir secretos:
 
 ```bash
+RUNTIME_DB_USER="${APP_DB_USER:-${DB_RUNTIME_USER:-${MANUS_RUNTIME_DB_USER:-manus_user}}}"
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_OWNER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
 SELECT
-  has_database_privilege('$DB_RUNTIME_USER', current_database(), 'CONNECT') AS runtime_can_connect,
-  has_schema_privilege('$DB_RUNTIME_USER', 'public', 'USAGE') AS runtime_can_use_public,
-  has_table_privilege('$DB_RUNTIME_USER', 'public.users', 'SELECT') AS runtime_can_select_users,
-  has_table_privilege('$DB_RUNTIME_USER', 'public.users', 'INSERT') AS runtime_can_insert_users,
-  has_sequence_privilege('$DB_RUNTIME_USER', 'public.migrations_history_id_seq', 'USAGE') AS runtime_can_use_sequence;
+  has_database_privilege('$RUNTIME_DB_USER', current_database(), 'CONNECT') AS runtime_can_connect,
+  has_schema_privilege('$RUNTIME_DB_USER', 'public', 'USAGE') AS runtime_can_use_public,
+  has_table_privilege('$RUNTIME_DB_USER', 'public.users', 'SELECT') AS runtime_can_select_users,
+  has_table_privilege('$RUNTIME_DB_USER', 'public.users', 'INSERT') AS runtime_can_insert_users,
+  has_sequence_privilege('$RUNTIME_DB_USER', 'public.migrations_history_id_seq', 'USAGE') AS runtime_can_use_sequence;
 "
 ```
 
@@ -506,7 +512,7 @@ Declarar `QA_DB_BOOTSTRAP_READY` solo si:
 - Tablas core existen.
 - Seeds minimos tienen filas.
 - Terminal POS default y peripheral settings MOCK existen.
-- `DB_RUNTIME_USER` tiene grants sobre DB, schema, tablas, secuencias y funciones.
+- El usuario runtime resuelto tiene grants sobre DB, schema, tablas, secuencias y funciones.
 - El log de bootstrap queda guardado.
 - `manus_tienda` no fue modificada.
 - No se hizo deploy.
@@ -524,7 +530,7 @@ Registrar salidas sanitizadas:
 - Resultado `failed_migrations = 0`.
 - Resultado V053/V054.
 - Resultado `012_runtime_db_grants.sql`.
-- Resultado de `has_database_privilege`, `has_schema_privilege`, `has_table_privilege` y `has_sequence_privilege` para `DB_RUNTIME_USER`.
+- Resultado de `has_database_privilege`, `has_schema_privilege`, `has_table_privilege` y `has_sequence_privilege` para el usuario runtime resuelto.
 - Smoke SQL de tablas core.
 - Conteos de seeds minimos.
 - Confirmacion de no deploy, no reinicio, no PRD.

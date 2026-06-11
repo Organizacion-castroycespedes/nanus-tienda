@@ -36,7 +36,10 @@ DB_PORT=5432
 DB_NAME=manus_tienda_qa
 DB_USER=manus_qa_user
 DB_PASSWORD=
-DB_RUNTIME_USER=manus_user
+APP_DB_USER=manus_user
+# Opcionales si no se usa APP_DB_USER:
+# DB_RUNTIME_USER=manus_user
+# MANUS_RUNTIME_DB_USER=manus_user
 DB_ADMIN_USER=
 DB_ADMIN_PASSWORD=
 ENVIRONMENT=qa
@@ -67,7 +70,7 @@ Reglas:
 7. Aplicar schema base y modulos historicos con `migrate_prd.sh`.
 8. Aplicar migraciones incrementales en `scripts/database/migrations/`, incluyendo `V053`, `V054`, `V055`, `V056`, `V057` y `V058`.
 9. Aplicar seed minimo de consumidor final legacy idempotente.
-10. Aplicar grants versionados para el usuario runtime `DB_RUNTIME_USER`.
+10. Aplicar grants versionados para el usuario runtime resuelto.
 11. Validar `migrations_history`.
 12. Validar tenant/sucursal.
 13. Validar roles.
@@ -99,7 +102,8 @@ El script:
 - registra logs en `scripts/database/logs/`;
 - permite fixtures funcionales MVP-01.2 solo con `RUN_OPTIONAL_QA_FIXTURES=YES`.
 - permite fixtures reporting legacy solo con `RUN_REPORTING_QA_FIXTURES=YES`.
-- aplica grants runtime al final con `DB_RUNTIME_USER`, `APP_DB_USER` o fallback `DB_USER`.
+- aplica grants runtime al final con prioridad `APP_DB_USER`, `DB_RUNTIME_USER`, `MANUS_RUNTIME_DB_USER`, y fallback `manus_user`.
+- nunca usa `DB_USER` como fallback runtime para grants QA.
 
 ## Seeds minimos
 
@@ -178,9 +182,9 @@ Validar grants runtime:
 
 ```sql
 SELECT
-  has_database_privilege('<DB_RUNTIME_USER>', current_database(), 'CONNECT') AS runtime_can_connect,
-  has_schema_privilege('<DB_RUNTIME_USER>', 'public', 'USAGE') AS runtime_can_use_public,
-  has_table_privilege('<DB_RUNTIME_USER>', 'public.users', 'SELECT') AS runtime_can_select_users;
+  has_database_privilege('<RUNTIME_DB_USER>', current_database(), 'CONNECT') AS runtime_can_connect,
+  has_schema_privilege('<RUNTIME_DB_USER>', 'public', 'USAGE') AS runtime_can_use_public,
+  has_table_privilege('<RUNTIME_DB_USER>', 'public.users', 'SELECT') AS runtime_can_select_users;
 ```
 
 Resultado esperado: todos `true`.
