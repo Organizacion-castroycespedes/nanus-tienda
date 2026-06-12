@@ -162,7 +162,11 @@ export type PeripheralOperationError = {
   code:
     | "PERIPHERALS_DISABLED"
     | "OPERATION_DISABLED"
+    | "MISSING_CONFIG"
+    | "INVALID_CONFIG"
     | "AGENT_OFFLINE"
+    | "NETWORK_ERROR"
+    | "HTTP_ERROR"
     | "AGENT_ERROR"
     | "UNSUPPORTED_RUNTIME";
   message: string;

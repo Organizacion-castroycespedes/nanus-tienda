@@ -2,6 +2,8 @@ import {
   fetchCurrentWeight,
   fetchPeripheralDevices,
   fetchPeripheralHealth,
+  getPeripheralAgentConfig,
+  isPeripheralAgentRequestError,
   openCashDrawerCommand,
   printTicket,
   simulateScannerCommand,
@@ -110,6 +112,10 @@ const normalizeOperationError = (
   operation: string,
   error: unknown
 ): PeripheralOperationError => {
+  if (isPeripheralAgentRequestError(error)) {
+    return buildOperationError(operation, error.code, error.message);
+  }
+
   const message = getErrorMessage(error);
   const code = message.includes("agente local de perifericos no esta disponible")
     ? "AGENT_OFFLINE"
@@ -409,10 +415,19 @@ export const subscribePeripheralEvents = (
   }
 
   try {
-    const socket = new WebSocket(
-      process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL ??
-        "ws://localhost:4050/peripherals"
-    );
+    const config = getPeripheralAgentConfig();
+
+    if (!config.isConfigured) {
+      emitSubscriptionError(
+        callback,
+        "subscribePeripheralEvents",
+        config.errorCode ?? "INVALID_CONFIG",
+        config.message ?? "Configuracion de backend-perifericos invalida."
+      );
+      return () => undefined;
+    }
+
+    const socket = new WebSocket(config.wsUrl);
 
     socket.onmessage = (event) => {
       callback(parseSocketEvent(event));
@@ -422,8 +437,8 @@ export const subscribePeripheralEvents = (
       emitSubscriptionError(
         callback,
         "subscribePeripheralEvents",
-        "AGENT_OFFLINE",
-        "No se pudo conectar al WebSocket local de perifericos."
+        "NETWORK_ERROR",
+        "No se pudo conectar al WebSocket de perifericos. Verifique disponibilidad, CORS y URL WS."
       );
     };
 

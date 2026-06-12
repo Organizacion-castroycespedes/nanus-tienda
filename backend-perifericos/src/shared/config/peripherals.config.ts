@@ -65,6 +65,31 @@ export const isOriginAllowed = (
   return allowedOrigins.includes(origin);
 };
 
+export const getCorsAllowedOrigin = (
+  origin: string | undefined,
+  allowedOrigins: string[]
+): boolean | string => {
+  if (!origin) {
+    return true;
+  }
+
+  return isOriginAllowed(origin, allowedOrigins) ? origin : false;
+};
+
+export const buildPeripheralsCorsOptions = (allowedOrigins: string[]) => ({
+  origin: (
+    origin: string | undefined,
+    callback: (error: Error | null, allow?: boolean | string) => void
+  ) => {
+    callback(null, getCorsAllowedOrigin(origin, allowedOrigins));
+  },
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+  methods: ["GET", "POST", "PATCH", "OPTIONS"],
+  optionsSuccessStatus: 204,
+  preflightContinue: false,
+});
+
 export const getPeripheralsConfig = (): PeripheralsConfig => ({
   port: parsePort(process.env.PERIPHERALS_PORT),
   mode: parseMode(process.env.PERIPHERALS_MODE),
