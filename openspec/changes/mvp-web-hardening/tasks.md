@@ -839,6 +839,50 @@ Estado: `QA_P0_P1_BLOCKERS_FIXED`.
 - [x] 17. Ejecutar `git status --short`.
 - [x] 18. Confirmar que no se toco AWS, no se hizo deploy, no se ejecutaron migraciones contra QA, no se reinicio PM2, no se versionaron secretos y no se hicieron escrituras directas en DB.
 
+## MVP-01.3X-RERUN - QA Operativo Integral End-to-End RERUN
+
+Estado: `QA_OPERATIVO_END_TO_END_BLOCKED`.
+
+- [x] 1. Confirmar contexto de fixes desplegados: `settle-partial`, `backend-reporteria` auth guard, `REPORTS_ALLOW_MOCK_AUTH=true`, runtime grants y `manus_tienda_qa` operativa.
+- [x] 2. Re-ejecutar health Web/API/reporteria sin documentar secretos.
+- [x] 3. Re-ejecutar login QA con rol `SUPER_ADMIN` sin imprimir token.
+- [x] 4. Confirmar units, taxes, producto demo, lote demo, cliente FE, proveedor FE y consumidor final.
+- [x] 5. Validar metodos de pago, caja, apertura, movimientos, summary y cierre por API QA.
+- [x] 6. Validar terminal POS, POS session y perifericos MOCK por settings de `posTerminalId`.
+- [x] 7. Validar compra total, recepcion total, pago parcial y pago completo.
+- [x] 8. Validar compra parcial y revalidar bloqueo `PATCH /api/purchases/:id/settle-partial` con HTTP 500.
+- [x] 9. Validar cancelacion de compra draft.
+- [x] 10. Validar pedidos: crear, confirmar, entregar e invoice.
+- [x] 11. Validar POS sale directa, listado y detalle de ventas.
+- [x] 12. Validar pricing preview y promociones.
+- [x] 13. Validar reporteria auth fallback con Bearer invalido: `GET /api/reports/health` y `GET /api/reports/demo` PASS.
+- [x] 14. Revalidar reportes de compras, compra ticket, cash closings, cash closing ticket, ventas POS, venta ticket, pedidos, pedido ticket y clientes.
+- [x] 15. Confirmar que reporteria de negocio sigue bloqueada con HTTP 500.
+- [x] 16. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 17. Clasificar backlog P0/P1/P2 actualizado.
+- [x] 18. Confirmar que no se corrigio codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB, no se toco `manus_tienda` y no se documentaron secretos.
+- [x] 19. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 20. Ejecutar `git diff --check`.
+- [x] 21. Ejecutar `git status --short`.
+
+## MVP-01.4Z - Fix final P0/P1 blockers
+
+Estado: `QA_FINAL_P0_P1_BLOCKERS_FIXED`.
+
+- [x] 1. Revisar RCA `docs/evidencia-root-cause-p0-p1-mvp-01-4y.md`.
+- [x] 2. Crear migracion idempotente para normalizar constraint de `purchases.status` e incluir `CERRADA_PARCIAL`.
+- [x] 3. Corregir `backend-reporteria` mock actor para usar UUID estable valido.
+- [x] 4. Revisar `report_pos_sales` adapter/function y comparar firma esperada.
+- [x] 5. Crear migracion para restaurar `report_pos_sales` y validar firma con `pg_get_function_arguments`.
+- [x] 6. Agregar tests minimos para migraciones, mock actor y adapter `report_pos_sales`.
+- [x] 7. Actualizar manifest bootstrap QA con `V059` y `V060`.
+- [x] 8. Crear `docs/evidencia-fix-final-p0-p1-blockers-mvp-01-4z.md`.
+- [x] 9. Ejecutar build en `api` y `backend-reporteria`.
+- [x] 10. Ejecutar tests nuevos/afectados.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Confirmar que no se toco AWS, no se hizo deploy, no se ejecuto bootstrap, no se ejecutaron migraciones, no se reinicio PM2 y no se hicieron escrituras directas en DB.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.

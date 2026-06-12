@@ -157,6 +157,8 @@ Incluidas para forward bootstrap:
 37. `V056__purchase_liquidation_audit_index_drift_fix.sql`
 38. `V057__restore_report_purchase_ticket_after_v047.sql`
 39. `V058__qa_required_catalog_seed.sql`
+40. `V059__purchase_status_constraint_partial_liquidation_drift_fix.sql`
+41. `V060__restore_report_pos_sales_signature.sql`
 
 Confirmacion:
 
@@ -166,6 +168,8 @@ Confirmacion:
 - `V056__purchase_liquidation_audit_index_drift_fix.sql` incluida para versionar `idx_auditoria_eventos_purchase_liquidated`.
 - `V057__restore_report_purchase_ticket_after_v047.sql` incluida para restaurar `report_purchase_ticket` despues de `V047`.
 - `V058__qa_required_catalog_seed.sql` incluida para normalizar consumidor final FE y asegurar unidades/impuestos base.
+- `V059__purchase_status_constraint_partial_liquidation_drift_fix.sql` incluida para eliminar constraints legacy de `purchases.status` y permitir `CERRADA_PARCIAL`.
+- `V060__restore_report_pos_sales_signature.sql` incluida para restaurar `report_pos_sales` con la firma esperada por `backend-reporteria`.
 - Fixtures QA excluidos del forward bootstrap por defecto:
   - `20260611_mvp_01_2b_functional_qa_fixtures.sql`: funcional MVP-01.2, solo con `RUN_OPTIONAL_QA_FIXTURES=YES`.
   - `20260505_reporting_pos_fixtures.sql`: reporting legacy, solo con `RUN_REPORTING_QA_FIXTURES=YES`.
@@ -202,6 +206,8 @@ Este script concede al usuario runtime:
 - `migrations/V056__purchase_liquidation_audit_index_drift_fix.sql` es idempotente y no depende de datos.
 - `migrations/V057__restore_report_purchase_ticket_after_v047.sql` usa `CREATE OR REPLACE FUNCTION` para que el bootstrap limpio conserve la version con liquidacion parcial despues de `V047`.
 - `migrations/V058__qa_required_catalog_seed.sql` normaliza `is_default` vs `is_final_consumer`, crea un consumidor final activo por tenant si falta y asegura unidades/impuestos base.
+- `migrations/V059__purchase_status_constraint_partial_liquidation_drift_fix.sql` es idempotente y normaliza los constraints `purchases_status_check` y `chk_purchases_status`.
+- `migrations/V060__restore_report_pos_sales_signature.sql` restaura `report_pos_sales(uuid,text,uuid,uuid,uuid,uuid,timestamptz,timestamptz)` y valida la firma con `pg_get_function_arguments`.
 - `012_runtime_db_grants.sql` es idempotente. Reaplicar `GRANT` y `ALTER DEFAULT PRIVILEGES` no duplica permisos.
 
 ### 9. Seeds adicionales identificados

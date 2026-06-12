@@ -67,7 +67,6 @@ test("JwtAuthGuard: usa actor mock cuando Bearer es invalido y mock auth esta pe
     const request: TestRequest = {
       headers: {
         authorization: "Bearer not-a-valid-jwt",
-        "x-report-user-id": "report-user",
         "x-report-role": "SUPER_ADMIN",
       },
     };
@@ -75,8 +74,60 @@ test("JwtAuthGuard: usa actor mock cuando Bearer es invalido y mock auth esta pe
     const allowed = new JwtAuthGuard().canActivate(buildContext(request));
 
     assert.equal(allowed, true);
-    assert.equal(request.user?.id, "report-user");
+    assert.equal(request.user?.id, "40000000-0000-0000-0000-000000000001");
     assert.deepEqual(request.user?.roles, ["SUPER_ADMIN"]);
+  } finally {
+    restoreEnv("JWT_SECRET", previousSecret);
+    restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+  }
+});
+
+test("JwtAuthGuard: conserva x-report-user-id UUID en actor mock", () => {
+  const previousSecret = process.env.JWT_SECRET;
+  const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+  process.env.JWT_SECRET = "report-test-secret";
+  delete process.env.REPORTS_ALLOW_MOCK_AUTH;
+
+  try {
+    const request: TestRequest = {
+      headers: {
+        authorization: "Bearer not-a-valid-jwt",
+        "x-report-user-id": "50000000-0000-0000-0000-000000000001",
+        "x-report-branch-id": "30000000-0000-0000-0000-000000000001",
+      },
+    };
+
+    const allowed = new JwtAuthGuard().canActivate(buildContext(request));
+
+    assert.equal(allowed, true);
+    assert.equal(request.user?.id, "50000000-0000-0000-0000-000000000001");
+    assert.equal(request.user?.branchId, "30000000-0000-0000-0000-000000000001");
+  } finally {
+    restoreEnv("JWT_SECRET", previousSecret);
+    restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+  }
+});
+
+test("JwtAuthGuard: ignora x-report-user-id no UUID para evitar 22P02", () => {
+  const previousSecret = process.env.JWT_SECRET;
+  const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+  process.env.JWT_SECRET = "report-test-secret";
+  delete process.env.REPORTS_ALLOW_MOCK_AUTH;
+
+  try {
+    const request: TestRequest = {
+      headers: {
+        authorization: "Bearer not-a-valid-jwt",
+        "x-report-user-id": "report-demo-user",
+        "x-report-branch-id": "not-a-uuid",
+      },
+    };
+
+    const allowed = new JwtAuthGuard().canActivate(buildContext(request));
+
+    assert.equal(allowed, true);
+    assert.equal(request.user?.id, "40000000-0000-0000-0000-000000000001");
+    assert.equal(request.user?.branchId, null);
   } finally {
     restoreEnv("JWT_SECRET", previousSecret);
     restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);

@@ -1,6 +1,6 @@
-# Evidencia QA operativo integral end-to-end MVP-01.3X
+# Evidencia QA operativo integral end-to-end MVP-01.3X RERUN
 
-Fecha QA: 2026-06-11 America/Bogota.
+Fecha rerun: 2026-06-11 America/Bogota.
 
 Cambio OpenSpec: `mvp-web-hardening`
 
@@ -8,14 +8,15 @@ Resultado: `QA_OPERATIVO_END_TO_END_BLOCKED`
 
 ## Contexto
 
-MVP-01.1 quedo `READY`.
-MVP-01.2 quedo `READY`.
-MVP-01.3 quedo `BLOCKED` por:
+Se recibio confirmacion de deploy y configuracion QA:
 
-- `PATCH /api/purchases/:id/settle-partial` con HTTP 500 y body vacio.
-- Reportes de compras/caja con HTTP 500 y body vacio.
+- `settle-partial` fix aplicado.
+- `backend-reporteria` auth guard fix aplicado.
+- `REPORTS_ALLOW_MOCK_AUTH=true` en QA.
+- Runtime DB grants corregidos.
+- `manus_tienda_qa` operativa.
 
-Esta corrida continuo aunque hubiera errores. No se detuvo en el primer fallo.
+Esta corrida re-ejecuto QA E2E por API/Web QA publica. No se corrigio codigo y no se detuvo en el primer error.
 
 ## Ambiente
 
@@ -28,149 +29,152 @@ Esta corrida continuo aunque hubiera errores. No se detuvo en el primer fallo.
 | Branch | `ab41d3da-6686-4de3-9191-875a5a7da5a5` |
 | Terminal API | `693921eb-d28d-4c1b-af17-087b589c6467` |
 | POS terminal resuelto | `e186b5bd-4873-49bb-9450-f141570cce80` |
-| Actor QA | `SUPER_ADMIN` seed desde env local ignorado |
+| Actor QA | `SUPER_ADMIN` seed |
+| Run | `MVP013X-RERUN-20260611202132` |
+| Rango reportes | `2026-06-11` a `2026-06-12` |
 
-No se versionaron ni documentaron tokens, refresh tokens, passwords ni contenido de `.env`.
+No se documentaron tokens, refresh tokens, passwords ni contenido de `.env`.
 
 ## Datos creados o usados
 
-| Recurso | ID |
+| Recurso | ID / valor |
 | --- | --- |
-| Run | `MVP013X-20260611180418` |
 | Cliente QA | `92020000-0000-0000-0000-000000000001` |
 | Producto QA loteado | `92030000-0000-0000-0000-000000000001` |
+| Lote balance fixture | `92060000-0000-0000-0000-000000000001` |
 | Proveedor QA | `92010000-0000-0000-0000-000000000001` |
 | Metodo pago CASH | `d08ecde7-0466-4f09-b874-2759cb8d8003` |
-| Caja | `c2256618-3b35-4e58-a33a-04ecab49aa8b` |
-| Sesion caja | `ebc115b5-2396-4654-90ef-c551e35cc147` |
-| POS session | `3ef53edc-1e3c-4d92-8c86-3bbc6bf4fe4c` |
-| Compra total pagada | `055360eb-e4ea-4fea-81cf-b90ec9b014ca` |
-| Compra parcial bloqueada | `946ae1f9-c013-4973-b1cd-fb443588e388` |
-| Pedido | `27043282-c270-4210-a40c-1de3db4e7f72` |
-| Venta desde pedido | `e697a769-52f0-43b6-b022-14985a7a2642` |
-| Venta POS directa | `baf18a9b-0c4c-4b8f-ac9e-a505151e5617` |
+| Caja QA creada | `9004fa5f-58e8-4ad9-aeda-8be689047e32` |
+| Sesion caja | `270a66c1-c7a9-4029-b444-15b3fc765c3f` |
+| POS session | `7b666a3f-906d-462a-b732-5fe1d85b7deb` |
+| Compra total pagada | `76f5f670-b842-4c13-8d6f-35da0b8093fa` |
+| Compra parcial bloqueada | `ab57bd27-19ce-4dc1-ae99-67855c092f52` |
+| Compra draft cancelada | `29be5a15-f7b1-4b9f-ad55-2331d82910f6` |
+| Pedido | `9e5b1fb0-a463-4ccf-b40f-78cacbc1c456` |
+| Venta desde pedido | `7a3ef413-fbe2-41c6-9722-29cfddcd0089` |
+| Venta POS directa | `72778304-c252-4ce7-8be0-6b67c3e6bdd8` |
 
 Cleanup ejecutado:
 
-- La sesion de caja `ebc115b5-2396-4654-90ef-c551e35cc147` fue cerrada por API con `closingAmount=116000` y diferencia `0`.
+- La sesion de caja `270a66c1-c7a9-4029-b444-15b3fc765c3f` fue cerrada por API con `closingAmount=116000` y `differenceAmount=0`.
 - No existe endpoint de cierre para `POST /api/pos/session`; se deja `posSessionId` documentado.
+
+## Resumen
+
+| Tipo | Total |
+| --- | ---: |
+| Checks ejecutados | 60 |
+| PASS | 50 |
+| FAIL/BLOCKED | 10 |
+| P0 bloqueantes | 1 |
+| P1 bloqueantes | 9 |
+| P2 fallidos | 0 |
 
 ## Matriz QA
 
 | modulo | endpoint/flujo | resultado | evidencia | prioridad | recomendacion |
 | --- | --- | --- | --- | --- | --- |
-| Auth | `POST /auth/login/force` | PASS | HTTP 201, token recibido y no documentado. | P0 | Mantener uso solo QA controlado. |
-| Auth | `GET /auth/me` | PASS | HTTP 200, rol `SUPER_ADMIN`. | P0 | Sin accion. |
-| Auth | `GET /auth/context` | PASS | HTTP 200, tenant, branch y terminal disponibles. | P0 | Sin accion. |
-| Auth/RBAC | `GET /auth/menu` | PASS | HTTP 200, menu cargado. | P1 | Revisar solo si UI no muestra menu. |
-| Web | `GET https://www.apptiendamanus.space` | PASS | HTTP 200. | P1 | Sin accion. |
-| Web | `GET /login` | PASS | HTTP 200. | P1 | Sin accion. |
-| Health | `GET /system/version` | PASS | HTTP 200, `version=0.0.1`. | P1 | Agregar build/release en MVP-05. |
-| Health/Reporteria | `GET /reports/health` | FAIL | HTTP 500, body vacio. | P1 | Revisar runtime `backend-reporteria` y guard/adapter health. |
-| Clientes | `GET /customers` | PASS | HTTP 200, `count=7`. | P0 | Mantener fixture cliente operativo. |
-| Productos | `GET /products?branchId=<branch>` | PASS | HTTP 200, producto `QA-BASE-LOT-001` disponible. | P0 | Mantener producto/lote QA. |
-| Promociones | `POST /pricing/preview-line` | PASS | HTTP 201, `lineTotal=12500`, sin promocion aplicada. | P1 | Mantener preview como contrato de precio POS. |
-| Promociones | `GET /pricing/promotions` | WARN | HTTP 200, `count=0`. | P2 | Crear fixture de promocion si el MVP exige promo activa. |
-| Pagos | `GET /finance/payment-methods?active=true` | PASS | HTTP 200, CASH activo `QA-CASH-MVP013-20260611161548`. | P0 | Convertir a seed QA minimo si no debe depender de QA previa. |
-| Caja | `GET /finance/cash-registers?activo=true` | PASS | HTTP 200, caja activa `QA-CJA-MVP013-20260611161548`. | P0 | Convertir a seed QA minimo si no debe depender de QA previa. |
-| Caja | `GET /finance/cash-sessions/current` | PASS | HTTP 200, sin sesion actual antes de abrir. | P0 | Abrir caja cuando no exista sesion. |
-| Caja | `POST /finance/cash-sessions/open` | PASS | HTTP 201, apertura `100000`. | P0 | Sin accion. |
-| Caja | `GET /finance/cash-sessions/:id/summary` | PASS | HTTP 200, `expectedAmount=100000`, `movementCount=1`. | P0 | Sin accion. |
-| POS | `GET /pos-terminals/resolve-current` | PASS | HTTP 200, `posTerminalId=e186b5bd-4873-49bb-9450-f141570cce80`. | P0 | Usar `posTerminalId` en endpoints de perifericos. |
-| Perifericos MOCK | `GET /pos-terminals/:posTerminalId/peripherals` | PASS | HTTP 200, devices MOCK `mock-printer-001`, `mock-cashdrawer-001`, `mock-scale-001`, `mock-scanner-001`. | P1 | Sin accion. |
-| POS | `POST /pos/session` | PASS | HTTP 201, `posSessionId=3ef53edc-1e3c-4d92-8c86-3bbc6bf4fe4c`. | P0 | Agregar cierre o expiracion operativa si aplica. |
-| Compras | `POST /purchases` compra total | PASS | HTTP 201, compra `055360eb-e4ea-4fea-81cf-b90ec9b014ca`. | P0 | Sin accion. |
-| Compras | `POST /purchases/:id/receive` total | PASS | HTTP 201, `status=RECEIVED`. | P0 | Sin accion. |
-| Pagos | `POST /finance/payments` compra parcial | PASS | HTTP 201, pago `3000`. | P0 | Sin accion. |
-| Pagos | `POST /finance/payments` compra completa | PASS | HTTP 201, pago `6000`. | P0 | Sin accion. |
-| Compras | `GET /purchases/:id` post-pagos | PASS | HTTP 200, `paymentStatus=PAID`, `totalPaid=9000`, `balanceDue=0`. | P0 | Sin accion. |
-| Compras | `POST /purchases` parcial | PASS | HTTP 201, compra `946ae1f9-c013-4973-b1cd-fb443588e388`. | P0 | Sin accion. |
-| Compras | `POST /purchases/:id/receive` parcial | PASS | HTTP 201, `status=PARTIAL`. | P0 | Sin accion. |
-| Compras | `PATCH /purchases/:id/settle-partial` | BLOCKED | HTTP 500, body vacio. | P0 | Corregir 500; debe liquidar parcial o responder error controlado. |
-| Compras | `PATCH /purchases/:id/cancel` | PASS | HTTP 200, compra draft cancelada. | P1 | Sin accion. |
-| Pedidos | `POST /orders` | PASS | HTTP 201, `status=DRAFT`. | P0 | Sin accion. |
-| Pedidos | `POST /orders/:id/confirm` | PASS | HTTP 201, `status=CONFIRMED`. | P0 | Sin accion. |
-| Pedidos | `POST /orders/:id/deliver` | PASS | HTTP 201, `status=COMPLETED`. | P0 | Sin accion. |
-| Pedidos/Ventas | `POST /orders/:id/invoice` | PASS | HTTP 201, venta `e697a769-52f0-43b6-b022-14985a7a2642`. | P0 | Sin accion. |
-| POS/Ventas | `POST /sales` | PASS | HTTP 201, venta `baf18a9b-0c4c-4b8f-ac9e-a505151e5617`, `paymentStatus=PAID`. | P0 | Sin accion. |
-| Ventas | `GET /sales` | PASS | HTTP 200, `count=2`. | P1 | Sin accion. |
-| Ventas | `GET /sales/:id` | PASS | HTTP 200. | P1 | Sin accion. |
-| Caja | `GET /finance/cash-movements?includeSummary=true` | PASS | HTTP 200, `movementCount=5`, `totalIn=125000`, `totalOut=9000`. | P0 | Sin accion. |
-| Caja | `GET /finance/cash-sessions/:id/summary` post-flujos | PASS | HTTP 200, `expectedAmount=116000`, `salesPayments=25000`, `purchasePayments=9000`. | P0 | Sin accion. |
-| FE | `GET /electronic-invoicing/customers/default` | PASS | HTTP 200, `isFinalConsumer=true`. | P0 | Sin accion. |
-| FE | `POST /electronic-invoicing/customers/default/ensure` | PASS | HTTP 201, idempotente. | P0 | Sin accion. |
-| FE | `GET /electronic-invoicing/customers?search=QA` | PASS | HTTP 200, fixture QA encontrado. | P1 | Sin accion. |
-| FE | `GET /electronic-invoicing/suppliers?search=QA` | PASS | HTTP 200, fixture QA encontrado. | P1 | Sin accion. |
-| FE | `POST /electronic-invoicing/customers/lookup` | WARN | HTTP 201, `provider=NONE`, `lookupStatus=SKIPPED`. | P2 | Configurar `MOCK_LOCAL` si se requiere respuesta `FOUND`. |
-| FE | `POST /electronic-invoicing/suppliers/lookup` | WARN | HTTP 201, `provider=NONE`, `lookupStatus=SKIPPED`. | P2 | Configurar `MOCK_LOCAL` si se requiere respuesta `FOUND`. |
-| Reporteria | `GET /reports/purchases` | FAIL | HTTP 500, body vacio. | P1 | Corregir adapter/function de compras. |
-| Reporteria | `GET /reports/purchases/:purchaseId/ticket` | FAIL | HTTP 500, body vacio. | P1 | Corregir ticket compra. |
-| Reporteria | `GET /reports/cash-closings` | FAIL | HTTP 500, body vacio. | P1 | Corregir reporte cierre caja. |
-| Reporteria | `GET /reports/pos-sales` | FAIL | HTTP 500, body vacio. | P1 | Corregir reporte ventas POS. |
-| Reporteria | `GET /reports/pos-sales/:saleId/ticket` | FAIL | HTTP 500, body vacio. | P1 | Corregir ticket venta. |
-| Reporteria | `GET /reports/order-sales` | FAIL | HTTP 500, body vacio. | P1 | Corregir reporte pedidos. |
-| Reporteria | `GET /reports/order-sales/:orderId/ticket` | FAIL | HTTP 500, body vacio. | P1 | Corregir ticket pedido. |
-| Reporteria | `GET /reports/customers/orders-status` | FAIL | HTTP 500, body vacio. | P1 | Corregir reporte clientes/pedidos. |
-| Perifericos MOCK | `GET http://api.apptiendamanus.space:4023/health` | WARN | Sin conexion publica. | P2 | Esperado si el servicio es local-only; validar por SSH o evidencia humana. |
-| Perifericos MOCK | `ssh ubuntu@api.apptiendamanus.space curl http://127.0.0.1:4023/health` | WARN | `Permission denied (publickey)`. | P2 | Proveer SSH QA o salida sanitaria para validar health local. |
-| Caja | `POST /finance/cash-sessions/:id/close` | PASS | HTTP 201, `closingAmount=116000`, diferencia `0`. | P0 | Sin accion. |
-| Caja | `GET /finance/cash-sessions/current` post-cleanup | PASS | HTTP 200, sin sesion abierta. | P2 | Sin accion. |
+| Web | `GET https://www.apptiendamanus.space` | PASS | HTTP 200, `text/html`. | P1 | Sin accion. |
+| Web | `GET https://www.apptiendamanus.space/login` | PASS | HTTP 200, `text/html`. | P1 | Sin accion. |
+| Health | `GET /api/system/version` | PASS | HTTP 200, `version=0.0.1`. | P1 | Agregar build/commit en MVP-05. |
+| Health/Reporteria | `GET /api/reports/health` | PASS | HTTP 200, `status=ok`, `service=backend-reporteria`. | P1 | Sin accion. |
+| Auth | `POST /api/auth/login/force` | PASS | HTTP 201, token recibido y no documentado. | P0 | Sin accion. |
+| Auth | `GET /api/auth/me` | PASS | HTTP 200, rol `SUPER_ADMIN`, tenant `default`. | P0 | Sin accion. |
+| Auth | `GET /api/auth/context` | PASS | HTTP 200, tenant, branch y terminal disponibles. | P0 | Sin accion. |
+| Auth/RBAC | `GET /api/auth/menu` | PASS | HTTP 200, `menuCount=9`. | P1 | Sin accion. |
+| Units | `GET /api/units` | PASS | HTTP 200, `count=4`, `UND` presente. | P0 | Sin accion. |
+| Taxes | `GET /api/taxes` | PASS | HTTP 200, `count=2`, IVA presente. | P0 | Sin accion. |
+| Productos | `GET /api/products?branchId=<branch>` | PASS | HTTP 200, `count=6`, fixture `QA-BASE-LOT-001` encontrado. | P0 | Sin accion. |
+| Productos | `GET /api/products/:id` | PASS | HTTP 200, `sku=QA-BASE-LOT-001`, `requiresLot=true`. | P0 | Sin accion. |
+| Inventario loteado | `GET /api/inventory/lot-balances?...` | PASS | HTTP 200, fixture encontrado, `quantityAvailable=24`. | P0 | Sin accion. |
+| FE | `GET /api/electronic-invoicing/customers/default` | PASS | HTTP 200, `isFinalConsumer=true`. | P0 | Sin accion. |
+| FE | `POST /api/electronic-invoicing/customers/default/ensure` | PASS | HTTP 201, idempotente. | P0 | Sin accion. |
+| FE | `GET /api/electronic-invoicing/customers?search=QA Cliente FE Base` | PASS | HTTP 200, fixture encontrado. | P1 | Sin accion. |
+| FE | `GET /api/electronic-invoicing/suppliers?search=QA Proveedor FE Base` | PASS | HTTP 200, fixture encontrado. | P1 | Sin accion. |
+| FE | `POST /api/electronic-invoicing/customers/lookup` | PASS/WARN | HTTP 201, `provider=NONE`, `lookupStatus=SKIPPED`. | P2 | Configurar mock fiscal si se requiere `FOUND`. |
+| FE | `POST /api/electronic-invoicing/suppliers/lookup` | PASS/WARN | HTTP 201, `provider=NONE`, `lookupStatus=SKIPPED`. | P2 | Configurar mock fiscal si se requiere `FOUND`. |
+| Promociones | `GET /api/pricing/promotions?branchId=<branch>` | PASS/WARN | HTTP 200, `count=0`. | P2 | Crear fixture de promocion si MVP exige promo activa. |
+| Pricing | `POST /api/pricing/preview-line` | PASS | HTTP 201, `lineTotal=12500`, sin promocion aplicada. | P1 | Sin accion. |
+| Pagos | `GET /api/finance/payment-methods?active=true` | PASS | HTTP 200, metodo CASH activo. | P0 | Sin accion. |
+| Caja | `GET /api/finance/cash-sessions/current` antes de abrir | PASS | HTTP 200, sin sesion actual. | P0 | Sin accion. |
+| Caja | `POST /api/finance/cash-registers` | PASS | HTTP 201, caja QA creada. | P0 | Sin accion. |
+| Caja | `POST /api/finance/cash-sessions/open` | PASS | HTTP 201, apertura `100000`. | P0 | Sin accion. |
+| Caja | `GET /api/finance/cash-sessions/:id/summary` inicial | PASS | HTTP 200. | P0 | Sin accion. |
+| POS | `GET /api/pos-terminals/resolve-current` | PASS | HTTP 200, `posTerminalId=e186b5bd-4873-49bb-9450-f141570cce80`, `mode=MOCK`. | P0 | Sin accion. |
+| Perifericos MOCK | `GET /api/pos-terminals/:posTerminalId/peripherals` | PASS | HTTP 200, settings MOCK disponibles. | P1 | Sin accion. |
+| POS | `POST /api/pos/session` | PASS | HTTP 201, `posSessionId=7b666a3f-906d-462a-b732-5fe1d85b7deb`. | P0 | Sin endpoint de cierre documentado. |
+| Compras | `POST /api/purchases` compra total | PASS | HTTP 201, compra `76f5f670-b842-4c13-8d6f-35da0b8093fa`. | P0 | Sin accion. |
+| Compras | `POST /api/purchases/:id/receive` total | PASS | HTTP 201, `status=RECEIVED`. | P0 | Sin accion. |
+| Pagos | `POST /api/finance/payments` compra parcial | PASS | HTTP 201, pago `3000`. | P0 | Sin accion. |
+| Pagos | `POST /api/finance/payments` compra completo | PASS | HTTP 201, pago `6000`. | P0 | Sin accion. |
+| Compras | `GET /api/purchases/:id` post-pagos | PASS | HTTP 200, `status=RECEIVED`, `paymentStatus=PAID`, `balanceDue=0`. | P0 | Sin accion. |
+| Compras | `POST /api/purchases` compra parcial | PASS | HTTP 201, compra `ab57bd27-19ce-4dc1-ae99-67855c092f52`. | P0 | Sin accion. |
+| Compras | `POST /api/purchases/:id/receive` parcial | PASS | HTTP 201, `status=PARTIAL`, recibido `1`. | P0 | Sin accion. |
+| Compras | `PATCH /api/purchases/:id/settle-partial` | BLOCKED | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P0 | Fix no fue efectivo en QA o queda otra causa runtime. Requiere logs API QA o nuevo fix. |
+| Compras | `GET /api/purchases/:id` post-fallo settle | PASS | HTTP 200, `status=PARTIAL`, `paymentStatus=PENDING`, `total=18000`, `balanceDue=18000`, `received=1`, `pending=1`, `totalLiquidado=null`. | P0 | Usar como estado base para diagnostico. |
+| Compras | `PATCH /api/purchases/:id/cancel` draft | PASS | HTTP 200, compra draft cancelada. | P1 | Sin accion. |
+| Pedidos | `POST /api/orders` | PASS | HTTP 201, `status=DRAFT`. | P0 | Sin accion. |
+| Pedidos | `POST /api/orders/:id/confirm` | PASS | HTTP 201, `status=CONFIRMED`. | P0 | Sin accion. |
+| Pedidos | `POST /api/orders/:id/deliver` | PASS | HTTP 201, `status=COMPLETED`. | P0 | Sin accion. |
+| Pedidos/Invoice | `POST /api/orders/:id/invoice` | PASS | HTTP 201, venta `7a3ef413-fbe2-41c6-9722-29cfddcd0089`, `paymentStatus=PAID`. | P0 | Sin accion. |
+| POS/Ventas | `POST /api/sales` | PASS | HTTP 201, venta `72778304-c252-4ce7-8be0-6b67c3e6bdd8`, `paymentStatus=PAID`. | P0 | Sin accion. |
+| Ventas | `GET /api/sales` | PASS | HTTP 200, `count=4`. | P1 | Sin accion. |
+| Ventas | `GET /api/sales/:id` | PASS | HTTP 200, total `12500`. | P1 | Sin accion. |
+| Caja | `GET /api/finance/cash-movements?includeSummary=true` | PASS | HTTP 200, `movementCount=5`, `totalIn=125000`, `totalOut=9000`. | P0 | Sin accion. |
+| Caja | `GET /api/finance/cash-sessions/:id/summary` post-flujos | PASS | HTTP 200, `salesPayments=25000`, `purchasePayments=9000`. | P0 | Sin accion. |
+| Caja | `POST /api/finance/cash-sessions/:id/close` | PASS | HTTP 201, `status=CLOSED`, `closingAmount=116000`, `difference=0`. | P0 | Sin accion. |
+| Caja | `GET /api/finance/cash-sessions/current` post-cierre | PASS | HTTP 200, sin sesion abierta. | P2 | Sin accion. |
+| Reporteria/Auth | `GET /api/reports/health` con Bearer invalido | PASS | HTTP 200. Confirma fallback `REPORTS_ALLOW_MOCK_AUTH=true`. | P1 | Auth guard fix esta activo. |
+| Reporteria/Auth | `GET /api/reports/demo` con Bearer invalido | PASS | HTTP 200. Confirma actor mock autorizado. | P1 | El 500 no parece ser auth guard. |
+| Reporteria | `GET /api/reports/purchases` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}` en corrida principal; aislamiento con Bearer invalido devolvio HTTP 500 body vacio. | P1 | Revisar adapter/SQL/function/grants de reporte compras. |
+| Reporteria | `GET /api/reports/purchases/:purchaseId/ticket` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Revisar ticket compra y funcion asociada. |
+| Reporteria | `GET /api/reports/cash-closings` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Revisar adapter/SQL/function/grants de cierre caja. |
+| Reporteria | `GET /api/reports/cash-closings/:cashSessionId/ticket` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Revisar ticket cierre caja. |
+| Reporteria | `GET /api/reports/pos-sales` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Endpoint funcional real para ventas POS; revisar adapter/SQL/function. |
+| Reporteria | `GET /api/reports/pos-sales/:saleId/ticket` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Revisar ticket venta POS. |
+| Reporteria | `GET /api/reports/order-sales` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Endpoint funcional real para pedidos; revisar adapter/SQL/function. |
+| Reporteria | `GET /api/reports/order-sales/:orderId/ticket` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Revisar ticket pedido. |
+| Reporteria | `GET /api/reports/customers/orders-status` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Endpoint funcional real para clientes; revisar adapter/SQL/function. |
+
+Nota sobre endpoints de reporteria:
+
+- La Web actual usa `pos-sales`, `order-sales` y `customers/orders-status`.
+- Los nombres solicitados `reports/sales`, `reports/orders` y `reports/customers` se validaron como flujos funcionales mediante sus rutas reales.
 
 ## Backlog priorizado
 
 ### P0
 
-1. `Compras - PATCH /purchases/:id/settle-partial` devuelve HTTP 500 con body vacio.
-   Impacto: bloquea liquidacion parcial de compras. La operacion no puede cerrar diferencias entre pedido y recibido.
-   Recomendacion: corregir excepcion interna; devolver 200 con cierre parcial o 4xx controlado con mensaje funcional.
+1. `Compras - PATCH /api/purchases/:id/settle-partial` sigue devolviendo HTTP 500.
+   Impacto: bloquea liquidacion parcial de compras.
+   Evidencia: compra `ab57bd27-19ce-4dc1-ae99-67855c092f52` queda `PARTIAL`, `balanceDue=18000`, `totalLiquidado=null`.
+   Recomendacion: revisar logs API QA del request y confirmar si el binario desplegado contiene el fix; si si, diagnosticar nueva excepcion runtime.
 
 ### P1
 
-1. `GET /reports/health` devuelve HTTP 500.
-   Impacto: health de reporteria no permite diagnostico operativo.
-   Recomendacion: revisar runtime/guard/adapter de `backend-reporteria`.
+1. `GET /api/reports/purchases` devuelve HTTP 500.
+2. `GET /api/reports/purchases/:purchaseId/ticket` devuelve HTTP 500.
+3. `GET /api/reports/cash-closings` devuelve HTTP 500.
+4. `GET /api/reports/cash-closings/:cashSessionId/ticket` devuelve HTTP 500.
+5. `GET /api/reports/pos-sales` devuelve HTTP 500.
+6. `GET /api/reports/pos-sales/:saleId/ticket` devuelve HTTP 500.
+7. `GET /api/reports/order-sales` devuelve HTTP 500.
+8. `GET /api/reports/order-sales/:orderId/ticket` devuelve HTTP 500.
+9. `GET /api/reports/customers/orders-status` devuelve HTTP 500.
 
-2. `GET /reports/purchases` devuelve HTTP 500.
-   Impacto: compras operan, pero reporte de compras queda inutilizable.
-   Recomendacion: revisar funcion `report_purchases` y adapter.
+Diagnostico acotado:
 
-3. `GET /reports/purchases/:purchaseId/ticket` devuelve HTTP 500.
-   Impacto: no se puede emitir ticket de compra.
-   Recomendacion: revisar funcion `report_purchase_ticket` y plantilla PDF.
-
-4. `GET /reports/cash-closings` devuelve HTTP 500.
-   Impacto: cierre de caja opera, pero reporte de cierres no.
-   Recomendacion: revisar funcion `report_cash_closings` y adapter.
-
-5. `GET /reports/pos-sales` y `GET /reports/pos-sales/:saleId/ticket` devuelven HTTP 500.
-   Impacto: ventas operan, pero reporte/ticket POS no.
-   Recomendacion: revisar funciones de reporte POS y trazabilidad de pagos/caja.
-
-6. `GET /reports/order-sales` y `GET /reports/order-sales/:orderId/ticket` devuelven HTTP 500.
-   Impacto: pedidos operan y facturan, pero reporte/ticket de pedido no.
-   Recomendacion: revisar funciones de reporte pedidos.
-
-7. `GET /reports/customers/orders-status` devuelve HTTP 500.
-   Impacto: reporte cliente/pedidos no disponible.
-   Recomendacion: revisar adapter de clientes en `backend-reporteria`.
+- `GET /api/reports/health` PASS.
+- `GET /api/reports/demo` con Bearer invalido PASS.
+- `REPORTS_ALLOW_MOCK_AUTH=true` parece activo.
+- Por tanto, el bloqueo P1 no parece ser el auth guard. Queda en adapter, SQL/function, DB grants runtime de reporteria, drift de queries, o dependencia PDF/datos.
 
 ### P2
 
-1. FE lookup responde `provider=NONE`, `lookupStatus=SKIPPED`.
-   Impacto: FE basico opera, pero no se valida escenario `FOUND`/`NOT_FOUND`.
-   Recomendacion: habilitar `MOCK_LOCAL` en QA si se requiere lookup fiscal simulado.
-
-2. `GET /pricing/promotions` responde `count=0`.
-   Impacto: pricing preview opera, pero no hay promocion activa para validar descuento real.
-   Recomendacion: agregar fixture de promocion si el MVP necesita demo de promociones.
-
-3. `backend-perifericos` local `4023` no es publico y SSH QA falla por public key.
-   Impacto: API de terminales tiene settings MOCK, pero health local del agente no pudo validarse desde esta sesion.
-   Recomendacion: proveer SSH QA o salida sanitaria de `curl -fsS http://127.0.0.1:4023/health`.
-
-4. `GET /system/version` solo devuelve `version=0.0.1`.
-   Impacto: soporte no ve release/build/commit.
-   Recomendacion: completar MVP-05 versionamiento.
+1. FE lookup sigue en `provider=NONE`, `lookupStatus=SKIPPED`.
+2. `GET /api/pricing/promotions` responde `count=0`.
+3. No existe endpoint publico de cierre de `pos/session`; se deja `posSessionId` documentado.
+4. `GET /api/system/version` solo devuelve `version=0.0.1`.
 
 ## Restricciones cumplidas
 
@@ -189,18 +193,26 @@ Cleanup ejecutado:
 QA_OPERATIVO_END_TO_END_BLOCKED
 ```
 
-Motivo:
+Bloqueo exacto P0:
 
 ```text
-P0: PATCH /api/purchases/:id/settle-partial => HTTP 500, body vacio
+PATCH /api/purchases/ab57bd27-19ce-4dc1-ae99-67855c092f52/settle-partial
+=> HTTP 500
+=> {"statusCode":500,"message":"Internal server error"}
 ```
 
-Core operativo que si paso:
+Bloqueos P1:
 
-- Compra total, recepcion total y pagos parcial/completo.
-- Caja, movimientos, summary y cierre.
-- Pedido, confirmacion, entrega e invoice.
-- POS session y venta POS directa.
-- FE consumidor final, fixtures de clientes/proveedores y ensure.
-- Pricing preview.
-- Perifericos MOCK configurados por `posTerminalId`.
+```text
+GET /api/reports/purchases
+GET /api/reports/purchases/:purchaseId/ticket
+GET /api/reports/cash-closings
+GET /api/reports/cash-closings/:cashSessionId/ticket
+GET /api/reports/pos-sales
+GET /api/reports/pos-sales/:saleId/ticket
+GET /api/reports/order-sales
+GET /api/reports/order-sales/:orderId/ticket
+GET /api/reports/customers/orders-status
+=> HTTP 500
+=> {"statusCode":500,"message":"Internal server error"}
+```
