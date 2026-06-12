@@ -1,14 +1,16 @@
-# Evidencia QA operativo integral end-to-end MVP-01.3X FINAL RERUN
+# Evidencia QA operativo integral end-to-end MVP-01.3X FINAL CONFIRMATION
 
 Fecha ejecucion: 2026-06-12 UTC / 2026-06-11 America/Bogota.
 
 Cambio OpenSpec: `mvp-web-hardening`
 
-Resultado: `QA_OPERATIVO_END_TO_END_BLOCKED`
+Resultado: `QA_OPERATIVO_END_TO_END_READY`
 
 ## Contexto
 
 Se re-ejecuto QA E2E final sobre QA AWS despues de los fixes P0/P1.
+La confirmacion final se ejecuto despues de aplicar `V061` en QA y reiniciar `backend-reporteria`.
+Primero se valido `GET /api/reports/pos-sales`; luego se ejecuto smoke E2E corto con llamadas GET autenticadas sobre datos QA existentes.
 
 Restricciones cumplidas:
 
@@ -17,7 +19,8 @@ Restricciones cumplidas:
 - No se hizo deploy.
 - No se reinicio PM2.
 - No se hicieron escrituras directas en DB.
-- Las escrituras fueron solo por API QA.
+- Las escrituras del rerun base fueron solo por API QA.
+- La confirmacion final no hizo escrituras; solo uso API QA autenticada.
 - No se toco `manus_tienda`.
 - No se documentaron tokens, refresh tokens, passwords ni contenido de `.env`.
 
@@ -33,7 +36,8 @@ Restricciones cumplidas:
 | Terminal API | `693921eb-d28d-4c1b-af17-087b589c6467` |
 | POS terminal resuelto | `e186b5bd-4873-49bb-9450-f141570cce80` |
 | Actor QA | `SUPER_ADMIN` seed |
-| Run | `MVP013X-FINAL-20260612024947` |
+| Run base | `MVP013X-FINAL-20260612024947` |
+| Run confirmacion | `MVP013X-FINAL-CONFIRM-20260612033347` |
 | Rango reportes | `2026-06-11` a `2026-06-13` |
 
 ## Datos creados o usados
@@ -61,12 +65,34 @@ Cleanup ejecutado:
 
 | Tipo | Total |
 | --- | ---: |
-| Checks ejecutados | 52 |
-| PASS | 51 |
-| FAIL/BLOCKED | 1 |
+| Checks ejecutados base | 52 |
+| PASS acumulado | 52 |
+| FAIL/BLOCKED | 0 |
 | P0 bloqueantes | 0 |
-| P1 bloqueantes | 1 |
+| P1 bloqueantes | 0 |
 | P2 fallidos | 0 |
+| Smoke confirmacion V061 | 14/14 PASS |
+| Confirmaciones totales | 15/15 PASS |
+
+## Confirmacion final V061
+
+| Validacion | Resultado | Evidencia |
+| --- | --- | --- |
+| `GET /api/reports/pos-sales` primero | PASS | HTTP 200 JSON, `rows=8`, `summaryCount=8`. |
+| `GET /api/purchases/e6bf7ebb-4c4c-40bf-a73a-ee9dc6154630` | PASS | HTTP 200, `status=CERRADA_PARCIAL`, `paymentStatus=PAID`, `balanceDue=0`. |
+| `GET /api/reports/purchases` | PASS | HTTP 200 JSON, `rows=9`, `summaryCount=9`. |
+| `GET /api/reports/cash-closings` | PASS | HTTP 200 JSON, `rows=5`, `summaryCount=5`. |
+| `GET /api/reports/pos-sales` smoke | PASS | HTTP 200 JSON, `rows=8`, `summaryCount=8`. |
+| `GET /api/reports/order-sales` | PASS | HTTP 200 JSON, `rows=4`, `summaryCount=4`. |
+| `GET /api/reports/customers/orders-status` | PASS | HTTP 200 JSON, `rows=1`, `summaryCount=1`. |
+| `GET /api/reports/purchases/102f0b60-06e2-4b59-a982-233154bf9c95/ticket` | PASS | HTTP 200 PDF, `bytes=3007`. |
+| `GET /api/reports/cash-closings/043329b0-c125-400b-b5e6-0a9273360963/ticket` | PASS | HTTP 200 PDF, `bytes=3214`. |
+| `GET /api/reports/pos-sales/6b6dab84-7d8f-4b8f-8d36-0ce81a0f5ea1/ticket` | PASS | HTTP 200 PDF, `bytes=3140`. |
+| `GET /api/reports/order-sales/01512703-2f9f-46a8-988a-f6e0e5861fec/ticket` | PASS | HTTP 200 PDF, `bytes=3021`. |
+| `GET /api/sales/6b6dab84-7d8f-4b8f-8d36-0ce81a0f5ea1` | PASS | HTTP 200, `status=CONFIRMED`, `paymentStatus=PAID`, `total=12500`. |
+| `GET /api/orders/01512703-2f9f-46a8-988a-f6e0e5861fec` | PASS | HTTP 200, `status=COMPLETED`, `paymentStatus=PAID`, `total=12500`. |
+| `GET /api/finance/cash-sessions/043329b0-c125-400b-b5e6-0a9273360963/summary` | PASS | HTTP 200, `status=CLOSED`. |
+| `GET /api/finance/cash-movements?cashSessionId=043329b0-c125-400b-b5e6-0a9273360963&includeSummary=true` | PASS | HTTP 200 JSON, `items=7`. |
 
 ## Matriz QA
 
@@ -119,7 +145,7 @@ Cleanup ejecutado:
 | Reporteria | `GET /api/reports/purchases/:purchaseId/ticket` | PASS | HTTP 200 PDF, `bytes=3007`. | P1 | Sin accion. |
 | Reporteria | `GET /api/reports/cash-closings` | PASS | HTTP 200 JSON. | P1 | Sin accion. |
 | Reporteria | `GET /api/reports/cash-closings/:cashSessionId/ticket` | PASS | HTTP 200 PDF, `bytes=3214`. | P1 | Sin accion. |
-| Reporteria | `GET /api/reports/pos-sales` | FAIL | HTTP 500, body `{"statusCode":500,"message":"Internal server error"}`. | P1 | Revisar `V060` / `report_pos_sales`; el endpoint de lista sigue con drift o la migracion no esta aplicada en QA. |
+| Reporteria | `GET /api/reports/pos-sales` | PASS | HTTP 200 JSON, `rows=8`, `summaryCount=8`, despues de `V061`. | P1 | Sin accion. |
 | Reporteria | `GET /api/reports/pos-sales/:saleId/ticket` | PASS | HTTP 200 PDF, `bytes=3140`. | P1 | Sin accion. |
 | Reporteria | `GET /api/reports/order-sales` | PASS | HTTP 200 JSON. | P1 | Sin accion. |
 | Reporteria | `GET /api/reports/order-sales/:orderId/ticket` | PASS | HTTP 200 PDF, `bytes=3021`. | P1 | Sin accion. |
@@ -132,7 +158,7 @@ Cleanup ejecutado:
 | `PATCH /api/purchases/:id/settle-partial` | PASS |
 | Purchases reports | PASS |
 | Cash closings | PASS |
-| POS sales | FAIL, lista HTTP 500; ticket PASS |
+| POS sales | PASS, lista HTTP 200; ticket PASS |
 | Order sales | PASS |
 | Customer reports | PASS |
 | Compras | PASS |
@@ -153,12 +179,7 @@ No quedan P0 en esta corrida.
 
 ### P1
 
-1. `GET /api/reports/pos-sales?tenantId=00000000-0000-0000-0000-000000000001&branchId=ab41d3da-6686-4de3-9191-875a5a7da5a5&dateFrom=2026-06-11&dateTo=2026-06-13`
-   - Resultado: HTTP 500.
-   - Body: `{"statusCode":500,"message":"Internal server error"}`.
-   - Impacto: reporte listado de ventas POS degradado.
-   - Nota: `GET /api/reports/pos-sales/:saleId/ticket` si pasa con HTTP 200 PDF.
-   - Recomendacion: confirmar que `V060__restore_report_pos_sales_signature.sql` fue aplicada en QA y revisar logs/stacktrace de `report_pos_sales`.
+No quedan P1 en esta corrida. `GET /api/reports/pos-sales` quedo confirmado con HTTP 200 despues de `V061`.
 
 ### P2
 
@@ -169,13 +190,5 @@ No quedan P0 en esta corrida.
 ## Decision
 
 ```text
-QA_OPERATIVO_END_TO_END_BLOCKED
-```
-
-Bloqueo exacto:
-
-```text
-GET /api/reports/pos-sales?tenantId=00000000-0000-0000-0000-000000000001&branchId=ab41d3da-6686-4de3-9191-875a5a7da5a5&dateFrom=2026-06-11&dateTo=2026-06-13
-=> HTTP 500
-=> {"statusCode":500,"message":"Internal server error"}
+QA_OPERATIVO_END_TO_END_READY
 ```

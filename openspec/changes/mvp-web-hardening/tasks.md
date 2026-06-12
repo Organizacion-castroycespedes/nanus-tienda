@@ -919,6 +919,19 @@ Estado: `QA_POS_SALES_REPORT_FIXED`.
 - [x] 13. Ejecutar `git diff --check`.
 - [x] 14. Confirmar que no se toco AWS, no se hizo deploy, no se ejecuto bootstrap, no se ejecutaron migraciones contra QA, no se reinicio PM2 y no se hicieron escrituras directas en DB.
 
+## MVP-01.3X-FINAL-CONFIRMATION - QA Operativo Integral End-to-End
+
+Estado: `QA_OPERATIVO_END_TO_END_READY`.
+
+- [x] 1. Confirmar contexto: deploy OK, `V061` aplicada en QA y `backend-reporteria` reiniciado.
+- [x] 2. Validar primero `GET /api/reports/pos-sales`; resultado PASS con HTTP 200, `rows=8`, `summaryCount=8`.
+- [x] 3. Confirmar `settle-partial` con compra `e6bf7ebb-4c4c-40bf-a73a-ee9dc6154630` en `status=CERRADA_PARCIAL`, `paymentStatus=PAID`.
+- [x] 4. Confirmar purchases reports, cash closings, pos sales, order sales y customer reports; todos PASS con HTTP 200.
+- [x] 5. Confirmar tickets PDF de compra, cierre de caja, POS y pedido; todos PASS con HTTP 200 PDF.
+- [x] 6. Confirmar POS sale, pedido, caja summary y movimientos; todos PASS con HTTP 200.
+- [x] 7. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 8. Confirmar que la validacion no corrigio codigo, no ejecuto migraciones, no hizo deploy, no reinicio PM2, no hizo escrituras directas en DB y no documento secretos.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.
