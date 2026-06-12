@@ -21,6 +21,9 @@ type AuthenticatedRequest = Request & {
   user?: ReportUser;
 };
 
+const isMockAuthAllowed = () =>
+  (process.env.REPORTS_ALLOW_MOCK_AUTH ?? "true").toLowerCase() !== "false";
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private buildMockUser(request: Request): ReportUser {
@@ -68,8 +71,23 @@ export class JwtAuthGuard implements CanActivate {
     const authorization = request.headers.authorization;
 
     if (authorization?.startsWith("Bearer ")) {
-      request.user = this.decodeJwt(authorization.slice("Bearer ".length));
-      return true;
+      try {
+        request.user = this.decodeJwt(authorization.slice("Bearer ".length));
+        return true;
+      } catch (error) {
+        if (!isMockAuthAllowed()) {
+          throw error instanceof UnauthorizedException
+            ? error
+            : new UnauthorizedException("Invalid JWT");
+        }
+
+        request.user = this.buildMockUser(request);
+        return true;
+      }
+    }
+
+    if (!isMockAuthAllowed()) {
+      throw new UnauthorizedException("JWT is required");
     }
 
     request.user = this.buildMockUser(request);

@@ -766,6 +766,79 @@ Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
 - [x] 14. Actualizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
 - [x] 15. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se ejecuto bootstrap, no se hizo deploy, no se reinicio PM2 y no se imprimieron secretos.
 
+## MVP-01.3 - QA Compras, Pagos y Caja
+
+Estado: `QA_OPERATIVO_COMPRAS_PAGOS_CAJA_BLOCKED`.
+
+- [x] 1. Login QA con rol autorizado `SUPER_ADMIN` sin imprimir token ni secretos.
+- [x] 2. Validar metodos de pago activos; no habia metodos activos, se creo por API `QA-CASH-MVP013-20260611161548`.
+- [x] 3. Validar caja activa; no habia caja activa, se creo por API `QA-CJA-MVP013-20260611161548`.
+- [x] 4. Validar sesion actual; no habia sesion abierta, se abrio sesion QA `d41b8a9b-c9f6-441e-ad44-fc6baa551e28`.
+- [x] 5. Validar summary de caja abierta con `expectedAmount=100000`.
+- [x] 6. Crear compra QA controlada `e822426b-19c7-4605-99bb-7336d0e4159a` con proveedor fixture `QA Proveedor FE Base`.
+- [x] 7. Agregar item con producto/lote fixture `QA-BASE-LOT-001`.
+- [x] 8. Validar recepcion parcial: compra quedo `PARTIAL`, `receivedQuantity=1`, `pendingQuantity=1`.
+- [ ] 9. Validar liquidacion parcial: bloqueado por `PATCH /api/purchases/:id/settle-partial` con HTTP 500 y body vacio.
+- [ ] 10. Validar pagos parcial y completo: no ejecutado para evitar pagos sobre compra no liquidada.
+- [ ] 11. Validar recepcion total: no ejecutado despues del bloqueo principal.
+- [x] 12. Validar movimientos de caja de apertura y cierre; sesion cerrada con diferencia `0`.
+- [ ] 13. Validar movimientos de caja por pagos de compra: bloqueado por liquidacion parcial.
+- [ ] 14. Validar cancelacion si esta permitida en QA: no ejecutado despues del bloqueo principal.
+- [ ] 15. Validar reportes `cash closings`, `purchases report` y `purchase ticket`: bloqueados con HTTP 500 y body vacio.
+- [x] 16. Cleanup permitido: cierre de sesion QA `d41b8a9b-c9f6-441e-ad44-fc6baa551e28`.
+- [x] 17. Crear `docs/evidencia-qa-operativo-integral-mvp-01-3.md`.
+- [x] 18. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB y no se imprimieron secretos.
+
+## MVP-01.3X - QA Operativo Integral End-to-End
+
+Estado: `QA_OPERATIVO_END_TO_END_BLOCKED`.
+
+- [x] 1. Ejecutar QA autenticado con rol `SUPER_ADMIN` sin documentar tokens ni secretos.
+- [x] 2. Validar Web QA publica y login route.
+- [x] 3. Validar health/version API.
+- [x] 4. Validar metodos de pago y caja.
+- [x] 5. Abrir sesion de caja QA si no existe.
+- [x] 6. Validar compra total, recepcion total, pago parcial y pago completo.
+- [x] 7. Validar compra parcial y confirmar bloqueo en liquidacion parcial.
+- [x] 8. Validar cancelacion de compra draft.
+- [x] 9. Validar pedido, confirmacion, entrega e invoice.
+- [x] 10. Validar POS session y venta POS directa.
+- [x] 11. Validar promociones/pricing.
+- [x] 12. Validar Facturacion Electronica: consumidor final, ensure, clientes, proveedores y lookup degradado.
+- [x] 13. Validar caja: movimientos, summary y cierre.
+- [x] 14. Validar perifericos MOCK por settings de `posTerminalId`.
+- [x] 15. Intentar health publico/local de `backend-perifericos` sin PM2 ni deploy.
+- [x] 16. Validar reporteria de compras, caja, ventas, pedidos y clientes.
+- [x] 17. Clasificar hallazgos P0/P1/P2.
+- [x] 18. Crear `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 19. Confirmar que no se corrigio codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB, no se toco `manus_tienda` y no se documentaron secretos.
+- [x] 20. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 21. Ejecutar `git diff --check`.
+- [x] 22. Ejecutar `git status --short`.
+
+## MVP-01.4X - Fix P0/P1 QA blockers batch
+
+Estado: `QA_P0_P1_BLOCKERS_FIXED`.
+
+- [x] 1. Revisar evidencias `docs/evidencia-qa-operativo-integral-mvp-01-3.md` y `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 2. Reproducir por test local el riesgo de `settle-partial` con audit context no UUID.
+- [x] 3. Identificar causa P0 probable: cast directo de `auditoria_eventos.datos_despues->>'terminalId'` / `branchId` a UUID.
+- [x] 4. Corregir `PurchaseService` para castear audit context a UUID solo si cumple patron UUID.
+- [x] 5. Agregar regresion `PurchaseService.settlePartialPurchase: tolera audit context con terminalId no UUID`.
+- [x] 6. Diagnosticar P1 de reporteria: Bearer JWT invalido podia escapar como error crudo y producir HTTP 500 incluso en health.
+- [x] 7. Corregir `backend-reporteria` para capturar errores de `jwt.verify`.
+- [x] 8. Mantener modo QA/demo con actor mock controlado por `REPORTS_ALLOW_MOCK_AUTH`.
+- [x] 9. Documentar `REPORTS_ALLOW_MOCK_AUTH=true` en `backend-reporteria/.env.example`.
+- [x] 10. Agregar regresiones de `JwtAuthGuard` para JWT valido, Bearer invalido con mock permitido y Bearer invalido con mock deshabilitado.
+- [x] 11. Confirmar que no se requirio migracion SQL nueva.
+- [x] 12. Crear `docs/evidencia-fix-p0-p1-end-to-end-mvp-01-4x.md`.
+- [x] 13. Ejecutar build en backends afectados.
+- [x] 14. Ejecutar tests afectados.
+- [x] 15. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 16. Ejecutar `git diff --check`.
+- [x] 17. Ejecutar `git status --short`.
+- [x] 18. Confirmar que no se toco AWS, no se hizo deploy, no se ejecutaron migraciones contra QA, no se reinicio PM2, no se versionaron secretos y no se hicieron escrituras directas en DB.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.
