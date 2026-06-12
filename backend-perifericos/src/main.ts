@@ -3,8 +3,8 @@ import { NestFactory } from "@nestjs/core";
 import { config as loadEnv } from "dotenv";
 import { AppModule } from "./app.module";
 import {
+  buildPeripheralsCorsOptions,
   getPeripheralsConfig,
-  isOriginAllowed,
 } from "./shared/config/peripherals.config";
 import { SanitizedHttpExceptionFilter } from "./shared/filters/sanitized-http-exception.filter";
 import { EventsService } from "./modules/events/events.service";
@@ -16,15 +16,7 @@ async function bootstrap() {
   const config = getPeripheralsConfig();
 
   app.useGlobalFilters(new SanitizedHttpExceptionFilter());
-  app.enableCors({
-    origin: (origin, callback) => {
-      callback(null, isOriginAllowed(origin, config.allowedOrigins));
-    },
-    credentials: true,
-    allowedHeaders: "*",
-    methods: ["GET", "POST", "PATCH", "OPTIONS"],
-    optionsSuccessStatus: 204,
-  });
+  app.enableCors(buildPeripheralsCorsOptions(config.allowedOrigins));
 
   const eventsService = app.get(EventsService);
   eventsService.attach(app.getHttpServer(), config.allowedOrigins);

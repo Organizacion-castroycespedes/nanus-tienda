@@ -25,18 +25,19 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import {
-  PERIPHERALS_AGENT_HTTP_URL,
-  PERIPHERALS_AGENT_WS_URL,
   createDevice,
   discoverPeripheralDevices,
   fetchCurrentWeight,
   fetchPeripheralDevices,
   fetchPeripheralHealth,
   fetchPeripheralLogs,
+  getPeripheralAgentConfig,
+  isPeripheralAgentRequestError,
   openCashDrawer,
   printMockTicket,
   simulateScanner,
   testPrint,
+  type PeripheralAgentConfig,
 } from "../api";
 import {
   createPosTerminal,
@@ -61,7 +62,14 @@ import type {
   PosTerminalResponse,
 } from "../types";
 
-type ConnectionState = "loading" | "connected" | "disconnected" | "error";
+type ConnectionState =
+  | "loading"
+  | "connected"
+  | "disconnected"
+  | "error"
+  | "missing-config"
+  | "invalid-config"
+  | "network-error";
 
 type ActionState = {
   message: string;
@@ -174,6 +182,9 @@ const socketTone: Record<ConnectionState, string> = {
   connected: "border-emerald-200 bg-emerald-50 text-emerald-700",
   disconnected: "border-slate-200 bg-slate-100 text-slate-600",
   error: "border-rose-200 bg-rose-50 text-rose-700",
+  "missing-config": "border-amber-200 bg-amber-50 text-amber-700",
+  "invalid-config": "border-rose-200 bg-rose-50 text-rose-700",
+  "network-error": "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 const connectionTone: Record<string, string> = {
@@ -231,6 +242,46 @@ const normalizeSocketEvent = (raw: MessageEvent<string>): PeripheralSocketEvent 
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "No se pudo completar la accion.";
+
+const getAgentStateFromError = (error: unknown): ConnectionState => {
+  if (!isPeripheralAgentRequestError(error)) {
+    return "error";
+  }
+
+  if (error.code === "MISSING_CONFIG") {
+    return "missing-config";
+  }
+
+  if (error.code === "INVALID_CONFIG") {
+    return "invalid-config";
+  }
+
+  if (error.code === "NETWORK_ERROR") {
+    return "network-error";
+  }
+
+  if (error.code === "AGENT_OFFLINE") {
+    return "disconnected";
+  }
+
+  return "error";
+};
+
+const getErrorDetail = (error: unknown) => {
+  if (!isPeripheralAgentRequestError(error)) {
+    return undefined;
+  }
+
+  return [
+    error.code,
+    error.status ? `HTTP ${error.status}` : null,
+    error.endpoint,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+};
+
+const getEndpointLabel = (value: string) => value || "Sin configurar";
 
 const pickDevice = (devices: PeripheralDevice[], type: PeripheralDevice["type"]) =>
   devices.find((device) => device.type === type);
@@ -408,15 +459,50 @@ const PeripheralAgentStatusCard = ({
   state,
   error,
   loading,
+  config,
   onRetry,
 }: {
   health: PeripheralAgentHealth | null;
   state: ConnectionState;
   error: string | null;
   loading: boolean;
+  config: PeripheralAgentConfig;
   onRetry: () => void;
 }) => {
   const isConnected = state === "connected";
+  const isWarning = state === "missing-config" || state === "loading";
+  const statusLabel =
+    state === "connected"
+      ? "Conectado"
+      : state === "missing-config"
+        ? "Configuracion faltante"
+        : state === "invalid-config"
+          ? "Configuracion invalida"
+          : state === "network-error"
+            ? "Error de red/CORS"
+            : state === "loading"
+              ? "Validando"
+              : "No disponible";
+  const containerTone = isConnected
+    ? "border-emerald-200 bg-emerald-50"
+    : isWarning
+      ? "border-amber-200 bg-amber-50"
+      : "border-rose-200 bg-rose-50";
+  const iconTone = isConnected
+    ? "text-emerald-600"
+    : isWarning
+      ? "text-amber-600"
+      : "text-rose-600";
+  const textTone = isConnected
+    ? "text-emerald-800"
+    : isWarning
+      ? "text-amber-800"
+      : "text-rose-800";
+  const detailTone = isConnected
+    ? "text-emerald-700"
+    : isWarning
+      ? "text-amber-700"
+      : "text-rose-700";
 
   return (
     <SectionCard
@@ -430,21 +516,21 @@ const PeripheralAgentStatusCard = ({
       }
     >
       <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
-        <div className={`rounded-xl border p-4 ${isConnected ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
+        <div className={`rounded-xl border p-4 ${containerTone}`}>
           <div className="flex items-center gap-3">
             {isConnected ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className={`h-5 w-5 ${iconTone}`} />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-rose-600" />
+              <AlertTriangle className={`h-5 w-5 ${iconTone}`} />
             )}
             <div>
-              <p className={`text-sm font-semibold ${isConnected ? "text-emerald-800" : "text-rose-800"}`}>
-                {isConnected ? "Conectado" : "No disponible"}
+              <p className={`text-sm font-semibold ${textTone}`}>
+                {statusLabel}
               </p>
-              <p className={`mt-1 text-sm ${isConnected ? "text-emerald-700" : "text-rose-700"}`}>
+              <p className={`mt-1 text-sm ${detailTone}`}>
                 {isConnected
-                  ? `${health?.agent ?? "agent"} en ${PERIPHERALS_AGENT_HTTP_URL}`
-                  : error ?? "El agente local de perifericos no esta disponible en localhost:4050."}
+                  ? `${health?.agent ?? "agent"} en ${getEndpointLabel(config.httpUrl)}`
+                  : error ?? config.message ?? "Backend de perifericos no disponible."}
               </p>
             </div>
           </div>
@@ -455,6 +541,8 @@ const PeripheralAgentStatusCard = ({
           <InfoField label="mode" value={health?.mode ?? "-"} />
           <InfoField label="version" value={health?.version ?? "-"} />
           <InfoField label="uptime" value={health ? `${health.uptimeSeconds}s` : "-"} />
+          <InfoField label="http" value={getEndpointLabel(config.httpUrl)} />
+          <InfoField label="ws" value={getEndpointLabel(config.wsUrl)} />
         </div>
       </div>
     </SectionCard>
@@ -1559,10 +1647,12 @@ const PeripheralLogsPanel = ({
 const PeripheralEventsPanel = ({
   state,
   events,
+  wsUrl,
   onReconnect,
 }: {
   state: ConnectionState;
   events: PeripheralSocketEvent[];
+  wsUrl: string;
   onReconnect: () => void;
 }) => (
   <SectionCard
@@ -1579,7 +1669,7 @@ const PeripheralEventsPanel = ({
         {state === "connected" ? <Wifi className="mr-1 h-3.5 w-3.5" /> : <WifiOff className="mr-1 h-3.5 w-3.5" />}
         {state}
       </Badge>
-      <span className="break-all text-sm text-slate-500">{PERIPHERALS_AGENT_WS_URL}</span>
+      <span className="break-all text-sm text-slate-500">{getEndpointLabel(wsUrl)}</span>
     </div>
     <div className="space-y-3">
       {events.length === 0 ? (
@@ -1614,6 +1704,7 @@ const PeripheralEventsPanel = ({
 const PeripheralsPage = () => {
   const params = useParams<{ tenant?: string }>();
   const tenantIdParam = typeof params?.tenant === "string" ? params.tenant : null;
+  const agentConfig = useMemo(() => getPeripheralAgentConfig(), []);
   const [health, setHealth] = useState<PeripheralAgentHealth | null>(null);
   const [devices, setDevices] = useState<PeripheralDevice[]>([]);
   const [logs, setLogs] = useState<PeripheralLog[]>([]);
@@ -1660,7 +1751,7 @@ const PeripheralsPage = () => {
     try {
       setLogs(await fetchPeripheralLogs());
     } catch (error) {
-      showToast(getErrorMessage(error), "error");
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
     } finally {
       setLoading((prev) => ({ ...prev, logs: false }));
     }
@@ -1669,6 +1760,20 @@ const PeripheralsPage = () => {
   const loadSnapshot = useCallback(async () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     setAgentError(null);
+
+    if (!agentConfig.isConfigured) {
+      setHealth(null);
+      setDevices([]);
+      setLogs([]);
+      setAgentState(
+        agentConfig.status === "missing" ? "missing-config" : "invalid-config"
+      );
+      setAgentError(
+        agentConfig.message ?? "Configuracion de backend-perifericos invalida."
+      );
+      setLoading((prev) => ({ ...prev, snapshot: false }));
+      return;
+    }
 
     const [healthResult, devicesResult, logsResult] = await Promise.allSettled([
       fetchPeripheralHealth(),
@@ -1681,14 +1786,14 @@ const PeripheralsPage = () => {
       setAgentState("connected");
     } else {
       setHealth(null);
-      setAgentState("error");
+      setAgentState(getAgentStateFromError(healthResult.reason));
       setAgentError(getErrorMessage(healthResult.reason));
     }
 
     setDevices(devicesResult.status === "fulfilled" ? devicesResult.value : []);
     setLogs(logsResult.status === "fulfilled" ? logsResult.value : []);
     setLoading((prev) => ({ ...prev, snapshot: false }));
-  }, []);
+  }, [agentConfig]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -1698,9 +1803,16 @@ const PeripheralsPage = () => {
     let socket: WebSocket | null = null;
     let closedByEffect = false;
 
+    if (!agentConfig.isConfigured) {
+      setSocketState(
+        agentConfig.status === "missing" ? "missing-config" : "invalid-config"
+      );
+      return () => undefined;
+    }
+
     try {
       setSocketState("loading");
-      socket = new WebSocket(PERIPHERALS_AGENT_WS_URL);
+      socket = new WebSocket(agentConfig.wsUrl);
 
       socket.onopen = () => {
         setSocketState("connected");
@@ -1728,14 +1840,14 @@ const PeripheralsPage = () => {
       closedByEffect = true;
       socket?.close();
     };
-  }, [socketAttempt]);
+  }, [agentConfig, socketAttempt]);
 
   const refreshDevices = useCallback(async () => {
     setLoading((prev) => ({ ...prev, devices: true }));
     try {
       setDevices(await fetchPeripheralDevices());
     } catch (error) {
-      showToast(getErrorMessage(error), "error");
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
     } finally {
       setLoading((prev) => ({ ...prev, devices: false }));
     }
@@ -1749,7 +1861,7 @@ const PeripheralsPage = () => {
       await loadLogs();
       showToast("Busqueda simulada completada.", "success");
     } catch (error) {
-      showToast(getErrorMessage(error), "error");
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
     } finally {
       setLoading((prev) => ({ ...prev, devices: false }));
     }
@@ -1812,6 +1924,7 @@ const PeripheralsPage = () => {
         await loadLogs();
       } catch (error) {
         const message = getErrorMessage(error);
+        const errorDetail = getErrorDetail(error);
         const disabledDetail = isRealAdapterDisabledError(message)
           ? realAdaptersDisabledUiDetail
           : undefined;
@@ -1824,10 +1937,12 @@ const PeripheralsPage = () => {
             status: "error",
             title,
             message,
-            detail: [disabledDetail, previewDetail].filter(Boolean).join(" "),
+            detail: [disabledDetail, errorDetail, previewDetail]
+              .filter(Boolean)
+              .join(" "),
           };
         });
-        showToast(message, "error", disabledDetail);
+        showToast(message, "error", [disabledDetail, errorDetail].filter(Boolean).join(" "));
       } finally {
         setLoading((prev) => ({ ...prev, action: false }));
       }
@@ -1843,7 +1958,7 @@ const PeripheralsPage = () => {
       showToast(`Peso simulado: ${weight.weight} ${weight.unit}`, "success");
       await loadLogs();
     } catch (error) {
-      showToast(getErrorMessage(error), "error");
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
     } finally {
       setLoading((prev) => ({ ...prev, scale: false }));
     }
@@ -1872,7 +1987,7 @@ const PeripheralsPage = () => {
         showToast(`Lectura simulada: ${result.code}`, "success");
         await loadLogs();
       } catch (error) {
-        showToast(getErrorMessage(error), "error");
+        showToast(getErrorMessage(error), "error", getErrorDetail(error));
       } finally {
         setLoading((prev) => ({ ...prev, scanner: false }));
       }
@@ -1959,6 +2074,7 @@ const PeripheralsPage = () => {
         state={agentState}
         error={agentError}
         loading={loading.snapshot}
+        config={agentConfig}
         onRetry={() => void loadSnapshot()}
       />
 
@@ -2092,6 +2208,7 @@ const PeripheralsPage = () => {
           <PeripheralEventsPanel
             state={socketState}
             events={events}
+            wsUrl={agentConfig.wsUrl}
             onReconnect={handleReconnectSocket}
           />
         </div>
@@ -2100,8 +2217,8 @@ const PeripheralsPage = () => {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <Terminal className="h-4 w-4 text-slate-500" />
-          <span className="break-all">HTTP {PERIPHERALS_AGENT_HTTP_URL}</span>
-          <span className="break-all">WS {PERIPHERALS_AGENT_WS_URL}</span>
+          <span className="break-all">HTTP {getEndpointLabel(agentConfig.httpUrl)}</span>
+          <span className="break-all">WS {getEndpointLabel(agentConfig.wsUrl)}</span>
         </div>
       </div>
     </div>

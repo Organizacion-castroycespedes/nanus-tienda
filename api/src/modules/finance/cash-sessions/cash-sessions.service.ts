@@ -144,6 +144,14 @@ export class CashSessionsService {
     );
   }
 
+  private normalizeExpectedAmount(value: number | null | undefined) {
+    const amount = Number(value ?? 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return 0;
+    }
+    return Number(amount.toFixed(2));
+  }
+
   async open(payload: OpenCashSessionDto, actor: FinanceActor) {
     if (!this.canOpenCash(actor)) {
       throw new ForbiddenException("No autorizado");
@@ -264,7 +272,9 @@ export class CashSessionsService {
       throw new NotFoundException("No se pudo resumir la sesion de caja");
     }
 
-    const expectedAmount = Number(summary.totals.expectedAmount ?? 0);
+    const expectedAmount = this.normalizeExpectedAmount(
+      summary.totals.expectedAmount
+    );
     const differenceAmount = Number(
       (payload.closingAmount - expectedAmount).toFixed(2)
     );
@@ -298,16 +308,18 @@ export class CashSessionsService {
         notes: payload.description?.trim() || null,
       });
 
-      await this.cashMovementsRepository.create(client, {
-        tenantId,
-        branchId: current.branch_id,
-        cashSessionId,
-        movementType: "CLOSING",
-        direction: "OUT",
-        amount: payload.closingAmount,
-        description: payload.description?.trim() || "Cierre de caja",
-        createdBy: actor.userId,
-      });
+      if (payload.closingAmount > 0) {
+        await this.cashMovementsRepository.create(client, {
+          tenantId,
+          branchId: current.branch_id,
+          cashSessionId,
+          movementType: "CLOSING",
+          direction: "OUT",
+          amount: payload.closingAmount,
+          description: payload.description?.trim() || "Cierre de caja",
+          createdBy: actor.userId,
+        });
+      }
 
       await client.query("COMMIT");
 
