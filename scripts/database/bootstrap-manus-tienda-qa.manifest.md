@@ -159,6 +159,7 @@ Incluidas para forward bootstrap:
 39. `V058__qa_required_catalog_seed.sql`
 40. `V059__purchase_status_constraint_partial_liquidation_drift_fix.sql`
 41. `V060__restore_report_pos_sales_signature.sql`
+42. `V061__drop_legacy_report_pos_sales_overload.sql`
 
 Confirmacion:
 
@@ -170,6 +171,7 @@ Confirmacion:
 - `V058__qa_required_catalog_seed.sql` incluida para normalizar consumidor final FE y asegurar unidades/impuestos base.
 - `V059__purchase_status_constraint_partial_liquidation_drift_fix.sql` incluida para eliminar constraints legacy de `purchases.status` y permitir `CERRADA_PARCIAL`.
 - `V060__restore_report_pos_sales_signature.sql` incluida para restaurar `report_pos_sales` con la firma esperada por `backend-reporteria`.
+- `V061__drop_legacy_report_pos_sales_overload.sql` incluida para eliminar el overload legacy de `report_pos_sales` con filtros de cliente y dejar una sola firma de 8 parametros.
 - Fixtures QA excluidos del forward bootstrap por defecto:
   - `20260611_mvp_01_2b_functional_qa_fixtures.sql`: funcional MVP-01.2, solo con `RUN_OPTIONAL_QA_FIXTURES=YES`.
   - `20260505_reporting_pos_fixtures.sql`: reporting legacy, solo con `RUN_REPORTING_QA_FIXTURES=YES`.
@@ -208,6 +210,7 @@ Este script concede al usuario runtime:
 - `migrations/V058__qa_required_catalog_seed.sql` normaliza `is_default` vs `is_final_consumer`, crea un consumidor final activo por tenant si falta y asegura unidades/impuestos base.
 - `migrations/V059__purchase_status_constraint_partial_liquidation_drift_fix.sql` es idempotente y normaliza los constraints `purchases_status_check` y `chk_purchases_status`.
 - `migrations/V060__restore_report_pos_sales_signature.sql` restaura `report_pos_sales(uuid,text,uuid,uuid,uuid,uuid,timestamptz,timestamptz)` y valida la firma con `pg_get_function_arguments`.
+- `migrations/V061__drop_legacy_report_pos_sales_overload.sql` elimina el overload `report_pos_sales(uuid,text,uuid,uuid,uuid,uuid,timestamptz,timestamptz,text,text)` y valida que queda un solo overload.
 - `012_runtime_db_grants.sql` es idempotente. Reaplicar `GRANT` y `ALTER DEFAULT PRIVILEGES` no duplica permisos.
 
 ### 9. Seeds adicionales identificados

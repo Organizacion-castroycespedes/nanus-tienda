@@ -883,6 +883,55 @@ Estado: `QA_FINAL_P0_P1_BLOCKERS_FIXED`.
 - [x] 12. Ejecutar `git diff --check`.
 - [x] 13. Confirmar que no se toco AWS, no se hizo deploy, no se ejecuto bootstrap, no se ejecutaron migraciones, no se reinicio PM2 y no se hicieron escrituras directas en DB.
 
+## MVP-01.3X-FINAL-RERUN - QA Operativo Integral End-to-End FINAL RERUN
+
+Estado: `QA_OPERATIVO_END_TO_END_BLOCKED`.
+
+- [x] 1. Re-ejecutar QA autenticado con actor `SUPER_ADMIN` seed sin documentar tokens ni secretos.
+- [x] 2. Validar `settle-partial`; resultado PASS con HTTP 200 y compra final `CERRADA_PARCIAL`.
+- [x] 3. Validar reportes de compras y ticket de compra; resultado PASS.
+- [x] 4. Validar reportes de cash closings y ticket de cierre; resultado PASS.
+- [x] 5. Validar reporteria POS sales; `GET /api/reports/pos-sales` sigue con HTTP 500.
+- [x] 6. Validar POS sale ticket; resultado PASS.
+- [x] 7. Validar order sales y ticket de pedido; resultado PASS.
+- [x] 8. Validar customer reports; resultado PASS.
+- [x] 9. Confirmar que siguen pasando compras, pagos, caja, pedidos, POS, ventas, FE base y perifericos MOCK.
+- [x] 10. Confirmar promociones/pricing: endpoint PASS, sin promocion activa aplicada (`count=0`).
+- [x] 11. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 12. Confirmar que no se corrigio codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB, no se toco `manus_tienda` y no se documentaron secretos.
+
+## MVP-01.4Z-FIX1 - Fix POS Sales Report endpoint
+
+Estado: `QA_POS_SALES_REPORT_FIXED`.
+
+- [x] 1. Revisar `backend-reporteria/src/modules/reports/sql-adapters/sales-report.adapter.ts`.
+- [x] 2. Revisar stacktrace/RCA disponible en `docs/evidencia-root-cause-p0-p1-mvp-01-4y.md`.
+- [x] 3. Confirmar que el adapter llama `report_pos_sales` con 8 parametros.
+- [x] 4. Comparar firma esperada contra overload legacy `report_pos_sales(..., text, text)`.
+- [x] 5. Crear `scripts/database/migrations/V061__drop_legacy_report_pos_sales_overload.sql`.
+- [x] 6. Validar que V061 elimina el overload legacy de 10 parametros y deja una sola firma de 8 parametros.
+- [x] 7. Agregar test enfocado en adapter y migracion V061.
+- [x] 8. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 9. Crear `docs/evidencia-fix-pos-sales-report-mvp-01-4z-fix1.md`.
+- [x] 10. Ejecutar focused tests de `backend-reporteria`.
+- [x] 11. Ejecutar build de `backend-reporteria`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Confirmar que no se toco AWS, no se hizo deploy, no se ejecuto bootstrap, no se ejecutaron migraciones contra QA, no se reinicio PM2 y no se hicieron escrituras directas en DB.
+
+## MVP-01.3X-FINAL-CONFIRMATION - QA Operativo Integral End-to-End
+
+Estado: `QA_OPERATIVO_END_TO_END_READY`.
+
+- [x] 1. Confirmar contexto: deploy OK, `V061` aplicada en QA y `backend-reporteria` reiniciado.
+- [x] 2. Validar primero `GET /api/reports/pos-sales`; resultado PASS con HTTP 200, `rows=8`, `summaryCount=8`.
+- [x] 3. Confirmar `settle-partial` con compra `e6bf7ebb-4c4c-40bf-a73a-ee9dc6154630` en `status=CERRADA_PARCIAL`, `paymentStatus=PAID`.
+- [x] 4. Confirmar purchases reports, cash closings, pos sales, order sales y customer reports; todos PASS con HTTP 200.
+- [x] 5. Confirmar tickets PDF de compra, cierre de caja, POS y pedido; todos PASS con HTTP 200 PDF.
+- [x] 6. Confirmar POS sale, pedido, caja summary y movimientos; todos PASS con HTTP 200.
+- [x] 7. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 8. Confirmar que la validacion no corrigio codigo, no ejecuto migraciones, no hizo deploy, no reinicio PM2, no hizo escrituras directas en DB y no documento secretos.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.
