@@ -8,8 +8,10 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import { StockAdjustmentService } from "../services/stock-adjustment.service";
 
@@ -41,8 +43,8 @@ type CreateStockAdjustmentBody = {
 };
 
 @Controller("stock-adjustments")
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER")
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
 export class StockAdjustmentController {
   constructor(
     @Inject(StockAdjustmentService)
@@ -58,6 +60,7 @@ export class StockAdjustmentController {
   }
 
   @Post()
+  @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   create(@Body() body: CreateStockAdjustmentBody, @Req() request: AuthRequest) {
     return this.stockAdjustmentService.create({
       tenantId: this.getTenantId(request),

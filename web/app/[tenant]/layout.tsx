@@ -48,7 +48,7 @@ import { fetchPermissions } from "../../domains/menu/api";
 import { persistMenuCache, readMenuCache } from "../../domains/auth/menu-cache";
 import { MENU_KEYS } from "../../domains/menu/constants";
 import { getRoutePermissionRequirement } from "../../lib/route-permissions";
-import { hasPermission } from "../../lib/permissions";
+import { getAllowedMenuItems, hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
 import { setBranding } from "../../store/brandingSlice";
 import { setCompanyDetails } from "../../store/companySlice";
@@ -479,7 +479,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [authUser?.role, menuItems, tenantSlug]);
 
   const { menuSections, mainMenuSections } = useMemo(() => {
-    const rootItems = menuItemsWithTerminalShortcut.filter(
+    const allowedItems = getAllowedMenuItems(menuItemsWithTerminalShortcut);
+    const rootItems = allowedItems.filter(
       (item) => item.visible && !isDashboardItem(item.label, item.route)
     );
     const groupByModule = (items: MenuItem[]) =>
@@ -815,6 +816,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     if (!pathname || authStatus !== "authenticated" || !permissionsLoaded) {
       return;
     }
+    if (
+      authUser?.tenantId &&
+      tenantSlug !== authUser.tenantId &&
+      authUser.role !== "SUPER_ADMIN"
+    ) {
+      router.replace(`/${authUser.tenantId}/unauthorized`);
+      return;
+    }
 
     const requirement = getRoutePermissionRequirement(pathname);
     if (!requirement) {
@@ -826,7 +835,15 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     if (!allowed && pathname !== unauthorizedPath) {
       router.replace(unauthorizedPath);
     }
-  }, [authStatus, pathname, permissionsLoaded, router, tenantSlug]);
+  }, [
+    authStatus,
+    authUser?.role,
+    authUser?.tenantId,
+    pathname,
+    permissionsLoaded,
+    router,
+    tenantSlug,
+  ]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
@@ -919,6 +936,15 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }
 
   const routeRequirement = pathname ? getRoutePermissionRequirement(pathname) : null;
+  const tenantMismatch =
+    authStatus === "authenticated" &&
+    Boolean(authUser?.tenantId) &&
+    tenantSlug !== authUser?.tenantId &&
+    authUser?.role !== "SUPER_ADMIN";
+  if (tenantMismatch) {
+    return null;
+  }
+
   if (
     authStatus === "authenticated" &&
     permissionsLoaded &&

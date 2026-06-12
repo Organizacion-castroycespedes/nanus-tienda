@@ -86,6 +86,46 @@ export class BranchesRepository {
     return result.rows ?? [];
   }
 
+  async listByIds(
+    tenantId: string,
+    branchIds: string[]
+  ): Promise<BranchResponseDto[]> {
+    if (branchIds.length === 0) {
+      return [];
+    }
+    const result = await this.query<BranchResponseDto>(
+      `SELECT
+        tb.id,
+        tb.tenant_id,
+        tb.codigo,
+        tb.nombre,
+        tb.descripcion,
+        tb.es_principal,
+        tb.direccion,
+        tb.pais_id,
+        tb.departamento_id,
+        tb.municipio_id,
+        m.nombre AS ciudad,
+        d.nombre AS departamento,
+        p.nombre AS pais,
+        tb.telefono,
+        tb.email,
+        tb.estado,
+        tb.metadata,
+        tb.created_at,
+        tb.updated_at
+      FROM tenant_branches tb
+      LEFT JOIN paises p ON p.id = tb.pais_id
+      LEFT JOIN departamentos d ON d.id = tb.departamento_id
+      LEFT JOIN municipios m ON m.id = tb.municipio_id
+      WHERE tb.tenant_id = $1
+        AND tb.id = ANY($2::uuid[])
+      ORDER BY tb.es_principal DESC, tb.nombre ASC`,
+      [tenantId, branchIds]
+    );
+    return result.rows ?? [];
+  }
+
   async findById(
     branchId: string,
     tenantId?: string

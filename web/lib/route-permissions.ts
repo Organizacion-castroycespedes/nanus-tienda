@@ -43,7 +43,7 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/inventory\/products\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_PRODUCTS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/promotions\/?$/i,
@@ -67,31 +67,43 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/inventory\/purchases\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_PURCHASES, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/suppliers\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_SUPPLIERS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/pos\/?$/i,
     requirement: { module: "pos", action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/pos\/select-context\/?$/i,
+    requirement: { module: "pos", action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/suppliers\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_SUPPLIERS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/customers\/?$/i,
-    requirement: { module: "customers", action: "read" },
+    requirement: { module: MENU_KEYS.CUSTOMERS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/orders\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.ORDERS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/purchases\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_PURCHASES, action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/finance(?:\/.*)?$/i,
+    requirement: { module: "finance", action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/reporteria(?:\/.*)?$/i,
+    requirement: { module: "reporteria", action: "read" },
   },
 ];
 

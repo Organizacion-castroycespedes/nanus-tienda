@@ -4,6 +4,12 @@ import { getMenuKeyCandidates } from "../constants/menu-keys";
 
 export type PermissionAccessLevel = "READ" | "WRITE";
 
+export type AccessActor = {
+  id?: string;
+  tenantId?: string;
+  roles?: string[];
+};
+
 export type PermissionSummary = {
   key: string;
   module: string;
@@ -155,5 +161,112 @@ export class AccessControlService {
     return Object.entries(permission?.actions ?? {}).some(
       ([key, allowed]) => key.trim().toLowerCase() === normalizedAction && Boolean(allowed)
     );
+  }
+
+  isSuperAdmin(actor: AccessActor) {
+    return actor.roles?.includes("SUPER_ADMIN") ?? false;
+  }
+
+  isSuperUser(actor: AccessActor) {
+    return actor.roles?.includes("SUPER_USER") ?? false;
+  }
+
+  isTenantScoped(actor: AccessActor) {
+    return !this.isSuperAdmin(actor);
+  }
+
+  canAccessTenant(actor: AccessActor, tenantId?: string | null) {
+    if (this.isSuperAdmin(actor)) {
+      return true;
+    }
+    return Boolean(actor.tenantId && tenantId && actor.tenantId === tenantId);
+  }
+
+  resolveTenantId(actor: AccessActor, requestedTenantId?: string | null) {
+    const requested = requestedTenantId?.trim();
+    if (this.isSuperAdmin(actor)) {
+      return requested || actor.tenantId || null;
+    }
+    return actor.tenantId ?? null;
+  }
+
+  async getAccessibleBranchIds(
+    actor: AccessActor,
+    tenantId: string
+  ): Promise<string[]> {
+    if (!actor.id) {
+      return [];
+    }
+    if (this.isSuperAdmin(actor) || this.isSuperUser(actor)) {
+      const result = await this.db.query<{ id: string }>(
+        `SELECT id
+        FROM tenant_branches
+        WHERE tenant_id = $1 AND estado = 'ACTIVE'
+        ORDER BY nombre`,
+        [tenantId]
+      );
+      return result.rows.map((row) => row.id);
+    }
+
+    const result = await this.db.query<{ branch_id: string }>(
+      `SELECT DISTINCT tb.id AS branch_id
+      FROM users AS u
+      INNER JOIN personas AS p
+        ON p.id = u.persona_id
+      INNER JOIN persona_tenant_branches AS ptb
+        ON ptb.persona_id = p.id
+       AND ptb.tenant_id = u.tenant_id
+      INNER JOIN tenant_branches AS tb
+        ON tb.id = ptb.tenant_branch_id
+       AND tb.tenant_id = ptb.tenant_id
+      WHERE u.id = $1
+        AND u.tenant_id = $2
+        AND u.estado = 'ACTIVE'
+        AND tb.estado = 'ACTIVE'`,
+      [actor.id, tenantId]
+    );
+    return result.rows.map((row) => row.branch_id);
+  }
+
+  async canAccessBranch(
+    actor: AccessActor,
+    tenantId: string,
+    branchId?: string | null
+  ) {
+    if (!branchId) {
+      return true;
+    }
+    if (!this.canAccessTenant(actor, tenantId)) {
+      return false;
+    }
+    if (this.isSuperAdmin(actor) || this.isSuperUser(actor)) {
+      const result = await this.db.query(
+        `SELECT 1
+        FROM tenant_branches
+        WHERE id = $1 AND tenant_id = $2 AND estado = 'ACTIVE'
+        LIMIT 1`,
+        [branchId, tenantId]
+      );
+      return (result.rows?.length ?? 0) > 0;
+    }
+    if (!actor.id) {
+      return false;
+    }
+    const result = await this.db.query(
+      `SELECT 1
+      FROM users AS u
+      INNER JOIN personas AS p
+        ON p.id = u.persona_id
+      INNER JOIN persona_tenant_branches AS ptb
+        ON ptb.persona_id = p.id
+       AND ptb.tenant_id = u.tenant_id
+      WHERE u.id = $1
+        AND u.tenant_id = $2
+        AND u.estado = 'ACTIVE'
+        AND ptb.tenant_branch_id = $3
+      LIMIT 1`,
+      [actor.id, tenantId, branchId]
+    );
+    return (result.rows?.length ?? 0) > 0;
   }
 }

@@ -61,7 +61,7 @@ test("JwtAuthGuard: usa actor mock cuando Bearer es invalido y mock auth esta pe
   const previousSecret = process.env.JWT_SECRET;
   const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
   process.env.JWT_SECRET = "report-test-secret";
-  delete process.env.REPORTS_ALLOW_MOCK_AUTH;
+  process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
 
   try {
     const request: TestRequest = {
@@ -86,7 +86,7 @@ test("JwtAuthGuard: conserva x-report-user-id UUID en actor mock", () => {
   const previousSecret = process.env.JWT_SECRET;
   const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
   process.env.JWT_SECRET = "report-test-secret";
-  delete process.env.REPORTS_ALLOW_MOCK_AUTH;
+  process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
 
   try {
     const request: TestRequest = {
@@ -112,7 +112,7 @@ test("JwtAuthGuard: ignora x-report-user-id no UUID para evitar 22P02", () => {
   const previousSecret = process.env.JWT_SECRET;
   const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
   process.env.JWT_SECRET = "report-test-secret";
-  delete process.env.REPORTS_ALLOW_MOCK_AUTH;
+  process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
 
   try {
     const request: TestRequest = {
@@ -143,6 +143,27 @@ test("JwtAuthGuard: devuelve UnauthorizedException cuando Bearer es invalido y m
   try {
     const request: TestRequest = {
       headers: { authorization: "Bearer not-a-valid-jwt" },
+    };
+
+    assert.throws(
+      () => new JwtAuthGuard().canActivate(buildContext(request)),
+      UnauthorizedException
+    );
+  } finally {
+    restoreEnv("JWT_SECRET", previousSecret);
+    restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+  }
+});
+
+test("JwtAuthGuard: requiere JWT cuando mock auth no esta configurado", () => {
+  const previousSecret = process.env.JWT_SECRET;
+  const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+  process.env.JWT_SECRET = "report-test-secret";
+  delete process.env.REPORTS_ALLOW_MOCK_AUTH;
+
+  try {
+    const request: TestRequest = {
+      headers: {},
     };
 
     assert.throws(

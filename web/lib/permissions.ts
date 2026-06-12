@@ -1,5 +1,5 @@
 import { store } from "../store";
-import type { AccessLevel, PermissionSummary } from "../domains/menu/types";
+import type { AccessLevel, MenuItem, PermissionSummary } from "../domains/menu/types";
 import { getMenuKeyCandidates } from "../domains/menu/constants";
 
 type PermissionIdentifier = string | [module: string, action: string];
@@ -13,8 +13,7 @@ const getAuthRole = () => {
 
 const getAuthPermissions = () => store.getState().auth.permissions;
 
-const isPrivilegedRole = (role: string) =>
-  role === "SUPER_ADMIN" || role === "ADMIN";
+const isPrivilegedRole = (role: string) => role === "SUPER_ADMIN";
 
 const isScopedSuperUserPermission = (role: string, moduleName: string) =>
   role === "SUPER_USER" &&
@@ -104,6 +103,30 @@ export const hasPermission = (
 };
 
 export const isPermissionsReady = () => store.getState().auth.permissionsLoaded;
+
+export const canPerformAction = (
+  moduleCode: string,
+  action: string
+) => hasPermission(moduleCode, action);
+
+export const canAccessModule = (moduleCode: string) =>
+  canPerformAction(moduleCode, "read");
+
+const menuItemAllowed = (item: MenuItem) =>
+  hasMenuAccess(item.key, "READ") || canAccessModule(item.module);
+
+export const getAllowedMenuItems = (items: MenuItem[]): MenuItem[] =>
+  items.reduce<MenuItem[]>((allowed, item) => {
+      const children = item.children ? getAllowedMenuItems(item.children) : [];
+      if (!menuItemAllowed(item) && children.length === 0) {
+      return allowed;
+      }
+    allowed.push({
+        ...item,
+        children,
+    });
+    return allowed;
+  }, []);
 
 export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
   const state = store.getState();
