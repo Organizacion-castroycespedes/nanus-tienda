@@ -41,7 +41,20 @@ source "$ENV_FILE"
 
 DB_USER="${DB_USER:-${DB_OWNER:-}}"
 DB_PASSWORD="${DB_PASSWORD:-${DB_APP_PASSWORD:-}}"
+if [[ -n "${APP_DB_USER:-}" ]]; then
+  DB_RUNTIME_USER="$APP_DB_USER"
+  DB_RUNTIME_USER_SOURCE="APP_DB_USER"
+elif [[ -n "${DB_RUNTIME_USER:-}" ]]; then
+  DB_RUNTIME_USER_SOURCE="DB_RUNTIME_USER"
+elif [[ -n "${MANUS_RUNTIME_DB_USER:-}" ]]; then
+  DB_RUNTIME_USER="$MANUS_RUNTIME_DB_USER"
+  DB_RUNTIME_USER_SOURCE="MANUS_RUNTIME_DB_USER"
+else
+  DB_RUNTIME_USER="manus_user"
+  DB_RUNTIME_USER_SOURCE="default:manus_user"
+fi
 RUN_OPTIONAL_QA_FIXTURES="${RUN_OPTIONAL_QA_FIXTURES:-${APPLY_OPTIONAL_FIXTURES:-NO}}"
+RUN_REPORTING_QA_FIXTURES="${RUN_REPORTING_QA_FIXTURES:-NO}"
 RUN_SMOKE_SQL="${RUN_SMOKE_SQL:-YES}"
 LOG_DIR="${LOG_DIR:-${SCRIPT_DIR}/logs}"
 
@@ -60,6 +73,7 @@ required_vars=(
   DB_NAME
   DB_USER
   DB_PASSWORD
+  DB_RUNTIME_USER
   DB_ADMIN_USER
   DB_ADMIN_PASSWORD
   ENVIRONMENT
@@ -110,6 +124,11 @@ if [[ "${RUN_OPTIONAL_QA_FIXTURES:-NO}" != "NO" && "${RUN_OPTIONAL_QA_FIXTURES:-
   exit 1
 fi
 
+if [[ "$RUN_REPORTING_QA_FIXTURES" != "NO" && "$RUN_REPORTING_QA_FIXTURES" != "YES" ]]; then
+  echo "[bootstrap-qa] RUN_REPORTING_QA_FIXTURES must be YES or NO." >&2
+  exit 1
+fi
+
 if [[ "$RUN_SMOKE_SQL" != "NO" && "$RUN_SMOKE_SQL" != "YES" ]]; then
   echo "[bootstrap-qa] RUN_SMOKE_SQL must be YES or NO." >&2
   exit 1
@@ -125,17 +144,24 @@ log() {
 log "[bootstrap-qa] Starting QA bootstrap plan."
 log "[bootstrap-qa] DB_NAME=$DB_NAME"
 log "[bootstrap-qa] DB_USER=$DB_USER"
+log "[bootstrap-qa] DB_RUNTIME_USER=$DB_RUNTIME_USER"
+log "[bootstrap-qa] DB_RUNTIME_USER_SOURCE=$DB_RUNTIME_USER_SOURCE"
 log "[bootstrap-qa] ENVIRONMENT=$ENVIRONMENT"
 log "[bootstrap-qa] RUN_OPTIONAL_QA_FIXTURES=${RUN_OPTIONAL_QA_FIXTURES:-NO}"
+log "[bootstrap-qa] RUN_REPORTING_QA_FIXTURES=$RUN_REPORTING_QA_FIXTURES"
 log "[bootstrap-qa] RUN_SMOKE_SQL=$RUN_SMOKE_SQL"
 log "[bootstrap-qa] Log file: $LOG_FILE"
 log "[bootstrap-qa] SQL manifest: $MANIFEST_FILE"
 log "[bootstrap-qa] Manifest is documentation for review. Execution order remains controlled by migrate_prd.sh."
-log "[bootstrap-qa] Optional SQL fixtures run only when RUN_OPTIONAL_QA_FIXTURES=YES."
+log "[bootstrap-qa] Functional QA SQL fixtures run only when RUN_OPTIONAL_QA_FIXTURES=YES."
+log "[bootstrap-qa] Legacy reporting QA SQL fixtures run only when RUN_REPORTING_QA_FIXTURES=YES."
+log "[bootstrap-qa] Runtime DB grants run at the end of migrate_prd.sh."
 log "[bootstrap-qa] Rollback SQL files are excluded from forward bootstrap by migrate_prd.sh."
 
 log "[bootstrap-qa] Running full schema/migration bootstrap via migrate_prd.sh."
 export RUN_OPTIONAL_QA_FIXTURES
+export RUN_REPORTING_QA_FIXTURES
+export DB_RUNTIME_USER
 bash "${SCRIPT_DIR}/migrate_prd.sh" "$ENV_FILE" 2>&1 | tee -a "$LOG_FILE"
 
 if [[ "${RUN_OPTIONAL_QA_FIXTURES:-NO}" == "YES" ]]; then

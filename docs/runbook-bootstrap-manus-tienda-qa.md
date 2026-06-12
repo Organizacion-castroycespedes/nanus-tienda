@@ -36,6 +36,10 @@ DB_PORT=5432
 DB_NAME=manus_tienda_qa
 DB_USER=manus_qa_user
 DB_PASSWORD=
+APP_DB_USER=manus_user
+# Opcionales si no se usa APP_DB_USER:
+# DB_RUNTIME_USER=manus_user
+# MANUS_RUNTIME_DB_USER=manus_user
 DB_ADMIN_USER=
 DB_ADMIN_PASSWORD=
 ENVIRONMENT=qa
@@ -44,6 +48,7 @@ SEED_SUPER_ADMIN_PASSWORD=
 SEED_SUPER_ADMIN_FIRST_NAME=
 SEED_SUPER_ADMIN_LAST_NAME=
 RUN_OPTIONAL_QA_FIXTURES=NO
+RUN_REPORTING_QA_FIXTURES=NO
 ```
 
 Reglas:
@@ -63,15 +68,18 @@ Reglas:
 5. Crear DB `manus_tienda_qa` si no existe.
 6. Crear `public.migrations_history`.
 7. Aplicar schema base y modulos historicos con `migrate_prd.sh`.
-8. Aplicar migraciones incrementales en `scripts/database/migrations/`, incluyendo `V053` y `V054`.
-9. Aplicar seed minimo de consumidor final.
-10. Validar `migrations_history`.
-11. Validar tenant/sucursal.
-12. Validar roles.
-13. Validar menu y permisos.
-14. Validar usuarios QA.
-15. Validar terminal POS default y settings MOCK.
-16. Ejecutar smoke SQL.
+8. Aplicar migraciones incrementales en `scripts/database/migrations/`, incluyendo `V053`, `V054`, `V055`, `V056`, `V057` y `V058`.
+9. Aplicar seed minimo de consumidor final legacy idempotente.
+10. Aplicar grants versionados para el usuario runtime resuelto.
+11. Validar `migrations_history`.
+12. Validar tenant/sucursal.
+13. Validar roles.
+14. Validar menu y permisos.
+15. Validar usuarios QA.
+16. Validar consumidor final FE/default.
+17. Validar unidades e impuestos base.
+18. Validar terminal POS default y settings MOCK.
+19. Ejecutar smoke SQL.
 
 ## Script orquestador seguro
 
@@ -92,7 +100,10 @@ El script:
 - no toca `manus_tienda`;
 - llama `migrate_prd.sh` para schema/migraciones/seeds minimos;
 - registra logs en `scripts/database/logs/`;
-- permite fixtures opcionales solo con `RUN_OPTIONAL_QA_FIXTURES=YES`.
+- permite fixtures funcionales MVP-01.2 solo con `RUN_OPTIONAL_QA_FIXTURES=YES`.
+- permite fixtures reporting legacy solo con `RUN_REPORTING_QA_FIXTURES=YES`.
+- aplica grants runtime al final con prioridad `APP_DB_USER`, `DB_RUNTIME_USER`, `MANUS_RUNTIME_DB_USER`, y fallback `manus_user`.
+- nunca usa `DB_USER` como fallback runtime para grants QA.
 
 ## Seeds minimos
 
@@ -107,20 +118,40 @@ El script:
 - usuario `SUPER_ADMIN` configurado por env
 - usuarios demo operativos si el script base los mantiene
 - cliente `CONSUMIDOR FINAL`
+- normalizacion FE/default con `migrations/V058__qa_required_catalog_seed.sql`
+- unidades base `UND`, `KG`, `LT`, `CJ`
+- impuestos base `IVA 19%` y `Exento`
 - ventas/pagos/caja base
 - modulos productos/compras/pedidos/finanzas
 - migraciones incrementales
 - `V053` modelo formal de productos pesables
 - `V054` terminal POS y settings MOCK
+- `V058` catalogo funcional requerido y consumidor final FE/default
+- grants runtime versionados con `012_runtime_db_grants.sql`
 
 ## Seeds opcionales
 
 Para QA funcional con POS y catalogo demo, evaluar aparte:
 
 - `scripts/database/products/run_all.sh`
+- `migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql`
 - `RUN_OPTIONAL_QA_FIXTURES=YES`
 
+El fixture reporting legacy `migrations/20260505_reporting_pos_fixtures.sql` queda separado. Solo corre con `RUN_REPORTING_QA_FIXTURES=YES`.
+
 No usar fixtures opcionales si el objetivo es DB limpia minima.
+
+## Config FE lookup MOCK QA
+
+El bootstrap DB no modifica `.env` runtime. Para desbloquear lookup FE mock en QA, configurar en API QA sin exponer secretos:
+
+```env
+DIAN_THIRD_PARTY_LOOKUP_ENABLED=true
+DIAN_THIRD_PARTY_LOOKUP_MODE=mock
+DIAN_GET_ACQUIRER_HTTP_ENABLED=false
+```
+
+No activar modo `real` ni HTTP externo sin aprobacion FE explicita.
 
 ## Validaciones SQL
 
@@ -140,10 +171,35 @@ SELECT COUNT(*) FROM public.roles;
 SELECT COUNT(*) FROM public.menu_items;
 SELECT COUNT(*) FROM public.role_menu_permissions;
 SELECT COUNT(*) FROM public.users;
+SELECT COUNT(*) FROM public.units WHERE is_active = true;
+SELECT COUNT(*) FROM public.taxes WHERE is_active = true;
 
 SELECT to_regclass('public.pos_terminals');
 SELECT to_regclass('public.pos_terminal_peripheral_settings');
 ```
+
+Validar grants runtime:
+
+```sql
+SELECT
+  has_database_privilege('<RUNTIME_DB_USER>', current_database(), 'CONNECT') AS runtime_can_connect,
+  has_schema_privilege('<RUNTIME_DB_USER>', 'public', 'USAGE') AS runtime_can_use_public,
+  has_table_privilege('<RUNTIME_DB_USER>', 'public.users', 'SELECT') AS runtime_can_select_users;
+```
+
+Resultado esperado: todos `true`.
+
+Validar consumidor final FE/default:
+
+```sql
+SELECT tenant_id, COUNT(*) AS active_final_consumers
+FROM public.customers
+WHERE is_final_consumer = true
+  AND is_active = true
+GROUP BY tenant_id;
+```
+
+Resultado esperado: `active_final_consumers = 1` por tenant activo.
 
 Validar usuario QA:
 

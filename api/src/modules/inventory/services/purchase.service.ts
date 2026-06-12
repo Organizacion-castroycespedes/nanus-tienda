@@ -479,8 +479,16 @@ export class PurchaseService {
         FROM purchases p
         LEFT JOIN LATERAL (
           SELECT
-            NULLIF(ae.datos_despues->>'branchId', '')::uuid AS branch_id,
-            NULLIF(ae.datos_despues->>'terminalId', '')::uuid AS terminal_id
+            CASE
+              WHEN NULLIF(ae.datos_despues->>'branchId', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (ae.datos_despues->>'branchId')::uuid
+              ELSE NULL
+            END AS branch_id,
+            CASE
+              WHEN NULLIF(ae.datos_despues->>'terminalId', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (ae.datos_despues->>'terminalId')::uuid
+              ELSE NULL
+            END AS terminal_id
           FROM auditoria_eventos ae
           WHERE ae.tenant_id = p.tenant_id
             AND ae.entidad = 'purchases'
@@ -920,8 +928,16 @@ export class PurchaseService {
          AND liquid_person.tenant_id = liquid_user.tenant_id
         LEFT JOIN LATERAL (
           SELECT
-            NULLIF(ae.datos_despues->>'branchId', '')::uuid AS branch_id,
-            NULLIF(ae.datos_despues->>'terminalId', '')::uuid AS terminal_id
+            CASE
+              WHEN NULLIF(ae.datos_despues->>'branchId', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (ae.datos_despues->>'branchId')::uuid
+              ELSE NULL
+            END AS branch_id,
+            CASE
+              WHEN NULLIF(ae.datos_despues->>'terminalId', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (ae.datos_despues->>'terminalId')::uuid
+              ELSE NULL
+            END AS terminal_id
           FROM auditoria_eventos ae
           WHERE ae.tenant_id = p.tenant_id
             AND ae.entidad = 'purchases'

@@ -21,17 +21,43 @@ type AuthenticatedRequest = Request & {
   user?: ReportUser;
 };
 
+const DEFAULT_MOCK_REPORT_USER_ID = "40000000-0000-0000-0000-000000000001";
+const DEFAULT_MOCK_REPORT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isMockAuthAllowed = () =>
+  (process.env.REPORTS_ALLOW_MOCK_AUTH ?? "true").toLowerCase() !== "false";
+
+const firstHeaderValue = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
+const resolveUuidHeader = (
+  value: string | string[] | undefined,
+  fallback: string
+) => {
+  const resolved = firstHeaderValue(value)?.trim();
+  return resolved && UUID_PATTERN.test(resolved) ? resolved : fallback;
+};
+
+const resolveOptionalUuidHeader = (value: string | string[] | undefined) => {
+  const resolved = firstHeaderValue(value)?.trim();
+  return resolved && UUID_PATTERN.test(resolved) ? resolved : null;
+};
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private buildMockUser(request: Request): ReportUser {
     return {
-      id: String(request.headers["x-report-user-id"] ?? "report-demo-user"),
-      tenantId: String(
-        request.headers["x-report-tenant-id"] ?? "00000000-0000-0000-0000-000000000001"
+      id: resolveUuidHeader(
+        request.headers["x-report-user-id"],
+        DEFAULT_MOCK_REPORT_USER_ID
       ),
-      branchId: request.headers["x-report-branch-id"]
-        ? String(request.headers["x-report-branch-id"])
-        : null,
+      tenantId: resolveUuidHeader(
+        request.headers["x-report-tenant-id"],
+        DEFAULT_MOCK_REPORT_TENANT_ID
+      ),
+      branchId: resolveOptionalUuidHeader(request.headers["x-report-branch-id"]),
       roles: String(request.headers["x-report-role"] ?? "SUPER_ADMIN")
         .split(",")
         .map((role) => role.trim())
@@ -68,8 +94,23 @@ export class JwtAuthGuard implements CanActivate {
     const authorization = request.headers.authorization;
 
     if (authorization?.startsWith("Bearer ")) {
-      request.user = this.decodeJwt(authorization.slice("Bearer ".length));
-      return true;
+      try {
+        request.user = this.decodeJwt(authorization.slice("Bearer ".length));
+        return true;
+      } catch (error) {
+        if (!isMockAuthAllowed()) {
+          throw error instanceof UnauthorizedException
+            ? error
+            : new UnauthorizedException("Invalid JWT");
+        }
+
+        request.user = this.buildMockUser(request);
+        return true;
+      }
+    }
+
+    if (!isMockAuthAllowed()) {
+      throw new UnauthorizedException("JWT is required");
     }
 
     request.user = this.buildMockUser(request);

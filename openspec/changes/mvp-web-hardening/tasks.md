@@ -522,6 +522,416 @@ Estado: `QA_CONTROLLED_DEPLOY_RUNBOOK_READY`.
 - [ ] 15. Crear `docs/evidencia-qa-operativo-integral-mvp-01.md`.
 - [ ] 16. Ejecutar build/test/OpenSpec/git checks.
 
+## MVP-01.1 - QA Autenticacion, Roles, Menus y Terminales
+
+Estado: `QA_OPERATIVO_AUTH_RBAC_TERMINALES_BLOCKED_LOCAL_HEALTH`.
+
+- [x] 1. Crear plan QA para `SUPER_ADMIN`, `SUPER_USER`, `ADMIN` y `USER`.
+- [x] 2. Validar `GET /api/system/version` en QA AWS.
+- [x] 3. Validar `GET /api/reports/health` en QA AWS.
+- [ ] 4. Validar `GET http://127.0.0.1:4022/health` en QA AWS.
+- [ ] 5. Validar `GET http://127.0.0.1:4023/health` en QA AWS.
+- [x] 6. Validar login por rol sin exponer tokens ni credenciales.
+- [x] 7. Validar menu visible por rol.
+- [x] 8. Validar permisos base por rol: `SUPER_ADMIN` global, `SUPER_USER` tenant, `ADMIN` sucursal y `USER` operativo.
+- [x] 9. Validar terminal POS con `GET /api/pos-terminals/resolve-current`, `GET /api/pos-terminals` y `GET /api/pos-terminals/:id/peripherals`.
+- [x] 10. Validar configuracion de terminal/perifericos en `MOCK` por API.
+- [ ] 11. Validar `backend-perifericos` health directo `mode=MOCK`.
+- [ ] 12. Validar PM2 health actual.
+- [x] 13. Crear `docs/evidencia-qa-operativo-integral-mvp-01-1.md`.
+- [x] 14. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 15. Ejecutar `git diff --check`.
+- [x] 16. Ejecutar `git status --short`.
+- [x] 17. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2 y no se expusieron secretos.
+
+## MVP-01.2 - QA Clientes FE, Proveedores FE y Productos
+
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
+
+- [x] 1. Validar login/contexto QA con `SUPER_ADMIN` sin exponer token ni password.
+- [x] 2. Validar Clientes FE: listado, creacion, edicion, consulta por id, campos FE y persistencia.
+- [x] 3. Validar cliente consumidor final activo.
+  - Rerun 2026-06-11: `GET /api/electronic-invoicing/customers/default` HTTP 200 y `POST /api/electronic-invoicing/customers/default/ensure` HTTP 201.
+- [x] 4. Validar Lookup Clientes FE endpoint y apply lookup con persistencia de `dianLastLookupStatus`/`dianLastLookupAt`.
+- [ ] 5. Validar Lookup Clientes FE escenarios `FOUND` y `NOT_FOUND`.
+  - Bloqueado: QA responde `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
+- [x] 6. Validar Proveedores FE: listado, creacion, edicion, consulta por id, campos FE y persistencia.
+- [x] 7. Validar Lookup Proveedores FE endpoint y apply lookup con persistencia de `fiscalLastLookupStatus`/`fiscalLastLookupAt`.
+- [ ] 8. Validar Lookup Proveedores FE escenarios `FOUND` y `NOT_FOUND`.
+  - Bloqueado: QA responde `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
+- [x] 9. Validar Productos: listado, creacion, edicion, consulta, SKU, barcode principal, barcode alterno, unidad, impuesto y activo con setup QA controlado.
+- [x] 10. Validar Inventario loteado en modo solo lectura con `GET /api/inventory/lot-balances`.
+- [x] 11. Validar lotes reales con fecha vencimiento, cantidad disponible y trazabilidad.
+  - Rerun 2026-06-11: `QA-LOT-MVP-01-2B-001` visible via `GET /api/inventory/lot-balances`, `quantityAvailable=25`.
+- [x] 12. Validar Impuestos: listado, setup QA controlado y asociacion producto.
+- [x] 13. Validar impuestos activos base existentes.
+  - Rerun 2026-06-11: `GET /api/taxes` devolvio `IVA 19%` y `Exento`.
+- [x] 14. Validar Promociones: listado, creacion API controlada y preview pricing para porcentaje, monto fijo y precio especial.
+- [ ] 15. Validar creacion de promociones desde UI.
+  - No ejercitado en esta corrida; se valido API porque el alcance permitia creacion si UI disponible.
+- [x] 16. Crear `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 17. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 18. Ejecutar `git diff --check`.
+- [x] 19. Ejecutar `git status --short`.
+- [x] 20. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se toco PM2, no se hizo deploy, no se tocaron datos productivos y no se expusieron secretos.
+- [x] 21. Re-ejecutar QA funcional MVP-01.2 post-bootstrap contra API QA publica.
+  - Rerun 2026-06-11: PASS con `SUPER_ADMIN` seed, token no impreso.
+- [x] 22. Validar `GET /api/electronic-invoicing/customers/default`.
+  - Rerun 2026-06-11: HTTP 200, `isFinalConsumer=true`.
+- [x] 23. Validar `POST /api/electronic-invoicing/customers/default/ensure`.
+  - Rerun 2026-06-11: HTTP 201.
+- [x] 24. Validar `units > 0`, `taxes > 0`, producto demo, lote demo, promociones, Clientes FE y Proveedores FE.
+  - Rerun 2026-06-11: PASS. `units=4`, `taxes=2`, `QA-BASE-LOT-001` visible, `QA-LOT-MVP-01-2B-001` visible con `quantityAvailable=25`, promociones/pricing HTTP 200/201, Clientes FE y Proveedores FE HTTP 200.
+
+## MVP-01.2A - QA Functional Seed & Config Remediation Plan
+
+Estado: `QA_FUNCTIONAL_SEED_CONFIG_REMEDIATION_PLANNED`.
+
+- [x] 1. Analizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 2. Analizar por que `GET /api/electronic-invoicing/customers/default` devuelve HTTP 404 y `POST /api/electronic-invoicing/customers/default/ensure` devuelve HTTP 409.
+- [x] 3. Determinar que el bloqueo de consumidor final es mismatch entre seed legacy `is_default` y endpoint FE `is_final_consumer`, no solo ausencia simple de seed.
+- [x] 4. Analizar por que lookup FE queda `provider=NONE`, `mode=disabled`, `lookupStatus=SKIPPED`.
+- [x] 5. Determinar config/env necesaria para lookup MOCK en QA: `DIAN_THIRD_PARTY_LOOKUP_ENABLED=true`, `DIAN_THIRD_PARTY_LOOKUP_MODE=mock`, `DIAN_GET_ACQUIRER_HTTP_ENABLED=false`.
+- [x] 6. Analizar por que `units=0` y `taxes=0` en `manus_tienda_qa`.
+- [x] 7. Determinar que seeds de unidades/impuestos existen pero no estan incluidos en `scripts/database/migrate_prd.sh`.
+- [x] 8. Definir seed QA minimo para unidades, impuestos, consumidor final, producto base, proveedor base, cliente FE base y lote demo controlado.
+- [x] 9. Definir datos bootstrap obligatorios vs fixtures QA opcionales.
+- [x] 10. Proponer migraciones/seeds versionados, idempotentes y seguros sin implementarlos.
+- [x] 11. Crear `docs/evidencia-qa-functional-seed-config-remediation-plan-mvp-01-2A.md`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Ejecutar `git status --short`.
+- [x] 15. Confirmar que no se ejecutaron migraciones, no se toco AWS, no se modifico DB, no se hizo deploy y no se corrigio codigo.
+
+## MVP-01.2B - Implement QA Functional Seeds + FE Mock Config
+
+Estado: `QA_FUNCTIONAL_SEED_CONFIG_IMPLEMENTED`.
+
+- [x] 1. Analizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 2. Analizar `docs/evidencia-qa-functional-seed-config-remediation-plan-mvp-01-2A.md`.
+- [x] 3. Crear `scripts/database/migrations/V058__qa_required_catalog_seed.sql` para normalizar consumidor final FE/default.
+- [x] 4. Garantizar idempotencia de consumidor final sin romper `ux_customers_tenant_default`.
+- [x] 5. Incluir `products/2026_04_25_seed_inventory_units.sql` en `scripts/database/migrate_prd.sh`.
+- [x] 6. Incluir `products/2026_04_25_seed_inventory_taxes.sql` en `scripts/database/migrate_prd.sh`.
+- [x] 7. Confirmar que payment methods ya aplican por `sale/004_sale_payment_methods.sql` y no requieren catalogo adicional.
+- [x] 8. Crear `scripts/database/migrations/20260611_mvp_01_2b_functional_qa_fixtures.sql` para producto demo, proveedor demo, cliente FE demo y lote demo.
+- [x] 9. Registrar fixture QA funcional como opcional y gated por `RUN_OPTIONAL_QA_FIXTURES=YES` / `APPLY_OPTIONAL_FIXTURES=YES`.
+- [x] 10. Documentar lookup MOCK en `api/.env.example` sin modificar `.env` real.
+- [x] 11. Documentar lookup MOCK en `backend-facturacion-electronica/.env.example` sin modificar `.env` real.
+- [x] 12. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 13. Actualizar runbooks de bootstrap QA.
+- [x] 14. Crear `docs/evidencia-qa-functional-seeds-fe-mock-implementation-mvp-01-2B.md`.
+- [x] 15. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 16. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 17. Ejecutar `git diff --check`.
+- [x] 18. Ejecutar `git status --short`.
+- [x] 19. Confirmar que no se ejecuto bootstrap, no se migró, no se toco AWS, no se modifico DB real, no se hizo deploy, no se reinicio PM2 y no se agregaron secretos.
+
+## MVP-01.2B-FIX1 - Repair V058 SQL syntax
+
+Estado: `QA_V058_SQL_FIXED`.
+
+- [x] 1. Revisar `scripts/database/migrations/V058__qa_required_catalog_seed.sql`.
+- [x] 2. Encontrar error exacto alrededor de la linea reportada.
+- [x] 3. Confirmar que el `CREATE TEMP TABLE ... AS WITH candidates AS (...)` no consumia el CTE con `SELECT`.
+- [x] 4. Corregir V058 para PostgreSQL 16 agregando `SELECT * FROM candidates`.
+- [x] 5. Validar `INSERT` de consumidor final, units y taxes por revision estatica.
+- [x] 6. Validar CTE, parentesis y cierre del statement por revision estatica.
+- [x] 7. Validar que V058 no usa `ON CONFLICT` y mantiene idempotencia con `NOT EXISTS`.
+- [x] 8. Validar `DO` blocks por revision estatica.
+- [x] 9. Validar columnas `units.is_active`, `taxes.is_active` y `customers.is_default`.
+- [x] 10. Crear `docs/evidencia-fix-v058-bootstrap-syntax-mvp-01-2B-fix1.md`.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Ejecutar `git status --short`.
+- [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco DB, no se hizo deploy y no se toco PM2.
+
+## MVP-01.2B-FIX2 - Separate functional QA fixtures from legacy reporting fixtures
+
+Estado: `QA_FUNCTIONAL_FIXTURES_ISOLATED`.
+
+- [x] 1. Revisar `scripts/database/migrate_prd.sh`.
+- [x] 2. Confirmar que `20260505_reporting_pos_fixtures.sql` y `20260611_mvp_01_2b_functional_qa_fixtures.sql` compartian la misma bandera opcional.
+- [x] 3. Mantener `20260505_reporting_pos_fixtures.sql` fuera del flujo QA funcional.
+- [x] 4. Crear bandera separada `RUN_REPORTING_QA_FIXTURES`.
+- [x] 5. Mantener `RUN_OPTIONAL_QA_FIXTURES` para fixtures funcionales MVP-01.2.
+- [x] 6. Mantener `APPLY_OPTIONAL_FIXTURES` como alias legacy de fixtures funcionales.
+- [x] 7. Actualizar `scripts/database/bootstrap-manus-tienda-qa.sh` para validar, exportar y loguear `RUN_REPORTING_QA_FIXTURES`.
+- [x] 8. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 9. Actualizar runbooks de bootstrap QA.
+- [x] 10. Actualizar `scripts/database/config/bootstrap-manus-tienda-qa.env.example`.
+- [x] 11. Crear `docs/evidencia-fix-separate-functional-vs-reporting-fixtures-mvp-01-2B-fix2.md`.
+- [x] 12. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 13. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 14. Ejecutar `git diff --check`.
+- [x] 15. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se toco DB, no se hizo deploy y no se toco PM2.
+
+## MVP-01.2C - Apply QA functional seeds and rerun QA
+
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_BLOCKED`.
+
+- [x] 1. Verificar que cambios de MVP-01.2B esten en branch feature `feat/develop/mvp-qa-operativo-integral`.
+- [x] 2. Commit/push de cambios MVP-01.2B.
+  - Commit: `0586656 feat: add QA functional seeds for MVP 01.2`.
+- [x] 3. Merge feature -> `develop`.
+  - `develop` actualizado a `0586656`.
+- [x] 4. Merge `develop` -> `release/evolutivo/0.0.1`.
+  - Merge commit: `e104bb0 Merge develop into release/evolutivo/0.0.1 for MVP 01.2C`.
+- [x] 5. Confirmar GitHub Actions deploy success.
+  - Run `27324821209`, workflow `Deploy QA Backends`, conclusion `success`.
+- [x] 6. Validar endpoints publicos post-deploy.
+  - `GET /api/system/version`: PASS.
+  - `GET /api/reports/health`: PASS.
+- [ ] 7. Validar release actualizada por SSH/runtime AWS.
+  - Bloqueado: `ssh ubuntu@api.apptiendamanus.space` devuelve `Permission denied (publickey)`.
+- [ ] 8. Crear backup previo de `manus_tienda_qa`: dump custom, PM2 list y runtime `.env` sin secretos.
+  - Bloqueado: requiere SSH AWS valido.
+- [ ] 9. Recrear solo `manus_tienda_qa`.
+  - No ejecutado: prohibido sin backup previo.
+- [ ] 10. Ajustar env bootstrap temporalmente con `CONFIRM_CREATE_QA_DB=YES` y `RUN_OPTIONAL_QA_FIXTURES=YES`.
+  - No ejecutado: requiere shell AWS y backup previo.
+- [ ] 11. Ejecutar `bash scripts/database/bootstrap-manus-tienda-qa.sh scripts/database/config/bootstrap-manus-tienda-qa.env`.
+  - No ejecutado: requiere recreacion controlada de `manus_tienda_qa`.
+- [ ] 12. Revertir confirmacion de env bootstrap.
+  - No ejecutado: env remoto no fue modificado.
+- [ ] 13. Validar SQL post-bootstrap: `units`, `taxes`, consumidor final unico/default, producto demo, lote demo y `migrations_history` con `V058`.
+  - Bloqueado: requiere DB bootstrap aplicada.
+- [ ] 14. Validar FE mock env runtime.
+  - Bloqueado: requiere SSH AWS o evidencia runtime sanitizada.
+- [ ] 15. Re-ejecutar QA MVP-01.2 completo.
+  - Bloqueado: no se aplicaron seeds por falta de backup/SSH.
+- [x] 16. Crear `docs/evidencia-qa-functional-seeds-apply-rerun-mvp-01-2C.md`.
+- [x] 17. Ejecutar `openspec validate`, `git diff --check` y `git status --short`.
+- [x] 18. Confirmar que no se toco `manus_tienda`, no se toco PRD, no se ejecuto sin backup previo, no se expusieron secretos y no se modificaron datos fuera de `manus_tienda_qa`.
+
+## MVP-01.2C-FIX1 - Version app runtime DB grants for QA bootstrap
+
+Estado: `QA_RUNTIME_DB_GRANTS_VERSIONED`.
+
+- [x] 1. Revisar `scripts/database/migrate_prd.sh`.
+- [x] 2. Revisar `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 3. Identificar variable runtime user inicial con fallback `DB_USER`; corregido en `MVP-01.2C-FIX2`.
+- [x] 4. Crear `scripts/database/012_runtime_db_grants.sql`.
+- [x] 5. Versionar `GRANT CONNECT ON DATABASE`.
+- [x] 6. Versionar `GRANT USAGE ON SCHEMA public`.
+- [x] 7. Versionar grants sobre tablas, secuencias y funciones existentes.
+- [x] 8. Versionar `ALTER DEFAULT PRIVILEGES` para tablas, secuencias y funciones futuras.
+- [x] 9. Incluir grants runtime al final de `scripts/database/migrate_prd.sh`.
+- [x] 10. Exportar y loguear `DB_RUNTIME_USER` desde `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 11. Documentar `DB_RUNTIME_USER=manus_user` en env example.
+- [x] 12. Actualizar runbooks y manifest.
+- [x] 13. Crear `docs/evidencia-runtime-db-grants-bootstrap-mvp-01-2C-fix1.md`.
+- [x] 14. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 15. Ejecutar `bash -n scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 16. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 17. Ejecutar `git diff --check`.
+- [x] 18. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se modifico DB, no se hizo deploy y no se tocaron secretos.
+
+## MVP-01.2C-FIX2 - Runtime grants target wrong user
+
+Estado: `QA_RUNTIME_GRANTS_TARGET_USER_FIXED`.
+
+- [x] 1. Revisar `scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 2. Revisar `scripts/database/migrate_prd.sh`.
+- [x] 3. Revisar `scripts/database/012_runtime_db_grants.sql`.
+- [x] 4. Determinar que `DB_RUNTIME_USER` resolvia a `manus_qa_user` por fallback a `DB_USER`, derivado de `DB_OWNER`.
+- [x] 5. Cambiar prioridad a `APP_DB_USER`, `DB_RUNTIME_USER`, `MANUS_RUNTIME_DB_USER`, fallback literal `manus_user`.
+- [x] 6. Eliminar `DB_USER` como fallback runtime para grants QA.
+- [x] 7. Loguear `DB_RUNTIME_USER_SOURCE` para diagnostico.
+- [x] 8. Actualizar runbooks y env example.
+- [x] 9. Crear `docs/evidencia-fix-runtime-grants-target-user-mvp-01-2C-fix2.md`.
+- [x] 10. Ejecutar `bash -n scripts/database/migrate_prd.sh`.
+- [x] 11. Ejecutar `bash -n scripts/database/bootstrap-manus-tienda-qa.sh`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Confirmar que no se ejecuto bootstrap, no se ejecutaron migraciones, no se toco AWS, no se modifico DB y no se hizo deploy.
+
+## MVP-01.2C-RERUN - QA Clientes FE, Proveedores FE y Productos
+
+Estado: `QA_OPERATIVO_CLIENTES_PROVEEDORES_PRODUCTOS_READY`.
+
+- [x] 1. Re-ejecutar `GET /api/system/version`.
+- [x] 2. Re-ejecutar `GET /api/reports/health`.
+- [x] 3. Validar login QA con `SUPER_ADMIN` seed sin imprimir token ni secretos.
+- [x] 4. Validar `GET /api/auth/me`, `GET /api/auth/context` y branch resuelta.
+- [x] 5. Validar `GET /api/electronic-invoicing/customers/default`.
+- [x] 6. Validar `POST /api/electronic-invoicing/customers/default/ensure`.
+- [x] 7. Validar cliente FE fixture `QA Cliente FE Base`.
+- [x] 8. Validar proveedor FE fixture `QA Proveedor FE Base`.
+- [x] 9. Validar `GET /api/units` con `UND`, `KG`, `LT`, `CJ`.
+- [x] 10. Validar `GET /api/taxes` con `IVA 19%` y `Exento`.
+- [x] 11. Validar producto fixture `QA-BASE-LOT-001`.
+- [x] 12. Validar promociones/pricing con `GET /api/pricing/promotions` y `POST /api/pricing/preview-line`.
+- [x] 13. Validar lote fixture `QA-LOT-MVP-01-2B-001` y `quantityAvailable=25`.
+- [x] 14. Actualizar `docs/evidencia-qa-operativo-integral-mvp-01-2.md`.
+- [x] 15. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se ejecuto bootstrap, no se hizo deploy, no se reinicio PM2 y no se imprimieron secretos.
+
+## MVP-01.3 - QA Compras, Pagos y Caja
+
+Estado: `QA_OPERATIVO_COMPRAS_PAGOS_CAJA_BLOCKED`.
+
+- [x] 1. Login QA con rol autorizado `SUPER_ADMIN` sin imprimir token ni secretos.
+- [x] 2. Validar metodos de pago activos; no habia metodos activos, se creo por API `QA-CASH-MVP013-20260611161548`.
+- [x] 3. Validar caja activa; no habia caja activa, se creo por API `QA-CJA-MVP013-20260611161548`.
+- [x] 4. Validar sesion actual; no habia sesion abierta, se abrio sesion QA `d41b8a9b-c9f6-441e-ad44-fc6baa551e28`.
+- [x] 5. Validar summary de caja abierta con `expectedAmount=100000`.
+- [x] 6. Crear compra QA controlada `e822426b-19c7-4605-99bb-7336d0e4159a` con proveedor fixture `QA Proveedor FE Base`.
+- [x] 7. Agregar item con producto/lote fixture `QA-BASE-LOT-001`.
+- [x] 8. Validar recepcion parcial: compra quedo `PARTIAL`, `receivedQuantity=1`, `pendingQuantity=1`.
+- [ ] 9. Validar liquidacion parcial: bloqueado por `PATCH /api/purchases/:id/settle-partial` con HTTP 500 y body vacio.
+- [ ] 10. Validar pagos parcial y completo: no ejecutado para evitar pagos sobre compra no liquidada.
+- [ ] 11. Validar recepcion total: no ejecutado despues del bloqueo principal.
+- [x] 12. Validar movimientos de caja de apertura y cierre; sesion cerrada con diferencia `0`.
+- [ ] 13. Validar movimientos de caja por pagos de compra: bloqueado por liquidacion parcial.
+- [ ] 14. Validar cancelacion si esta permitida en QA: no ejecutado despues del bloqueo principal.
+- [ ] 15. Validar reportes `cash closings`, `purchases report` y `purchase ticket`: bloqueados con HTTP 500 y body vacio.
+- [x] 16. Cleanup permitido: cierre de sesion QA `d41b8a9b-c9f6-441e-ad44-fc6baa551e28`.
+- [x] 17. Crear `docs/evidencia-qa-operativo-integral-mvp-01-3.md`.
+- [x] 18. Confirmar que no se modifico codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB y no se imprimieron secretos.
+
+## MVP-01.3X - QA Operativo Integral End-to-End
+
+Estado: `QA_OPERATIVO_END_TO_END_BLOCKED`.
+
+- [x] 1. Ejecutar QA autenticado con rol `SUPER_ADMIN` sin documentar tokens ni secretos.
+- [x] 2. Validar Web QA publica y login route.
+- [x] 3. Validar health/version API.
+- [x] 4. Validar metodos de pago y caja.
+- [x] 5. Abrir sesion de caja QA si no existe.
+- [x] 6. Validar compra total, recepcion total, pago parcial y pago completo.
+- [x] 7. Validar compra parcial y confirmar bloqueo en liquidacion parcial.
+- [x] 8. Validar cancelacion de compra draft.
+- [x] 9. Validar pedido, confirmacion, entrega e invoice.
+- [x] 10. Validar POS session y venta POS directa.
+- [x] 11. Validar promociones/pricing.
+- [x] 12. Validar Facturacion Electronica: consumidor final, ensure, clientes, proveedores y lookup degradado.
+- [x] 13. Validar caja: movimientos, summary y cierre.
+- [x] 14. Validar perifericos MOCK por settings de `posTerminalId`.
+- [x] 15. Intentar health publico/local de `backend-perifericos` sin PM2 ni deploy.
+- [x] 16. Validar reporteria de compras, caja, ventas, pedidos y clientes.
+- [x] 17. Clasificar hallazgos P0/P1/P2.
+- [x] 18. Crear `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 19. Confirmar que no se corrigio codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB, no se toco `manus_tienda` y no se documentaron secretos.
+- [x] 20. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 21. Ejecutar `git diff --check`.
+- [x] 22. Ejecutar `git status --short`.
+
+## MVP-01.4X - Fix P0/P1 QA blockers batch
+
+Estado: `QA_P0_P1_BLOCKERS_FIXED`.
+
+- [x] 1. Revisar evidencias `docs/evidencia-qa-operativo-integral-mvp-01-3.md` y `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 2. Reproducir por test local el riesgo de `settle-partial` con audit context no UUID.
+- [x] 3. Identificar causa P0 probable: cast directo de `auditoria_eventos.datos_despues->>'terminalId'` / `branchId` a UUID.
+- [x] 4. Corregir `PurchaseService` para castear audit context a UUID solo si cumple patron UUID.
+- [x] 5. Agregar regresion `PurchaseService.settlePartialPurchase: tolera audit context con terminalId no UUID`.
+- [x] 6. Diagnosticar P1 de reporteria: Bearer JWT invalido podia escapar como error crudo y producir HTTP 500 incluso en health.
+- [x] 7. Corregir `backend-reporteria` para capturar errores de `jwt.verify`.
+- [x] 8. Mantener modo QA/demo con actor mock controlado por `REPORTS_ALLOW_MOCK_AUTH`.
+- [x] 9. Documentar `REPORTS_ALLOW_MOCK_AUTH=true` en `backend-reporteria/.env.example`.
+- [x] 10. Agregar regresiones de `JwtAuthGuard` para JWT valido, Bearer invalido con mock permitido y Bearer invalido con mock deshabilitado.
+- [x] 11. Confirmar que no se requirio migracion SQL nueva.
+- [x] 12. Crear `docs/evidencia-fix-p0-p1-end-to-end-mvp-01-4x.md`.
+- [x] 13. Ejecutar build en backends afectados.
+- [x] 14. Ejecutar tests afectados.
+- [x] 15. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 16. Ejecutar `git diff --check`.
+- [x] 17. Ejecutar `git status --short`.
+- [x] 18. Confirmar que no se toco AWS, no se hizo deploy, no se ejecutaron migraciones contra QA, no se reinicio PM2, no se versionaron secretos y no se hicieron escrituras directas en DB.
+
+## MVP-01.3X-RERUN - QA Operativo Integral End-to-End RERUN
+
+Estado: `QA_OPERATIVO_END_TO_END_BLOCKED`.
+
+- [x] 1. Confirmar contexto de fixes desplegados: `settle-partial`, `backend-reporteria` auth guard, `REPORTS_ALLOW_MOCK_AUTH=true`, runtime grants y `manus_tienda_qa` operativa.
+- [x] 2. Re-ejecutar health Web/API/reporteria sin documentar secretos.
+- [x] 3. Re-ejecutar login QA con rol `SUPER_ADMIN` sin imprimir token.
+- [x] 4. Confirmar units, taxes, producto demo, lote demo, cliente FE, proveedor FE y consumidor final.
+- [x] 5. Validar metodos de pago, caja, apertura, movimientos, summary y cierre por API QA.
+- [x] 6. Validar terminal POS, POS session y perifericos MOCK por settings de `posTerminalId`.
+- [x] 7. Validar compra total, recepcion total, pago parcial y pago completo.
+- [x] 8. Validar compra parcial y revalidar bloqueo `PATCH /api/purchases/:id/settle-partial` con HTTP 500.
+- [x] 9. Validar cancelacion de compra draft.
+- [x] 10. Validar pedidos: crear, confirmar, entregar e invoice.
+- [x] 11. Validar POS sale directa, listado y detalle de ventas.
+- [x] 12. Validar pricing preview y promociones.
+- [x] 13. Validar reporteria auth fallback con Bearer invalido: `GET /api/reports/health` y `GET /api/reports/demo` PASS.
+- [x] 14. Revalidar reportes de compras, compra ticket, cash closings, cash closing ticket, ventas POS, venta ticket, pedidos, pedido ticket y clientes.
+- [x] 15. Confirmar que reporteria de negocio sigue bloqueada con HTTP 500.
+- [x] 16. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 17. Clasificar backlog P0/P1/P2 actualizado.
+- [x] 18. Confirmar que no se corrigio codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB, no se toco `manus_tienda` y no se documentaron secretos.
+- [x] 19. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 20. Ejecutar `git diff --check`.
+- [x] 21. Ejecutar `git status --short`.
+
+## MVP-01.4Z - Fix final P0/P1 blockers
+
+Estado: `QA_FINAL_P0_P1_BLOCKERS_FIXED`.
+
+- [x] 1. Revisar RCA `docs/evidencia-root-cause-p0-p1-mvp-01-4y.md`.
+- [x] 2. Crear migracion idempotente para normalizar constraint de `purchases.status` e incluir `CERRADA_PARCIAL`.
+- [x] 3. Corregir `backend-reporteria` mock actor para usar UUID estable valido.
+- [x] 4. Revisar `report_pos_sales` adapter/function y comparar firma esperada.
+- [x] 5. Crear migracion para restaurar `report_pos_sales` y validar firma con `pg_get_function_arguments`.
+- [x] 6. Agregar tests minimos para migraciones, mock actor y adapter `report_pos_sales`.
+- [x] 7. Actualizar manifest bootstrap QA con `V059` y `V060`.
+- [x] 8. Crear `docs/evidencia-fix-final-p0-p1-blockers-mvp-01-4z.md`.
+- [x] 9. Ejecutar build en `api` y `backend-reporteria`.
+- [x] 10. Ejecutar tests nuevos/afectados.
+- [x] 11. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 12. Ejecutar `git diff --check`.
+- [x] 13. Confirmar que no se toco AWS, no se hizo deploy, no se ejecuto bootstrap, no se ejecutaron migraciones, no se reinicio PM2 y no se hicieron escrituras directas en DB.
+
+## MVP-01.3X-FINAL-RERUN - QA Operativo Integral End-to-End FINAL RERUN
+
+Estado: `QA_OPERATIVO_END_TO_END_BLOCKED`.
+
+- [x] 1. Re-ejecutar QA autenticado con actor `SUPER_ADMIN` seed sin documentar tokens ni secretos.
+- [x] 2. Validar `settle-partial`; resultado PASS con HTTP 200 y compra final `CERRADA_PARCIAL`.
+- [x] 3. Validar reportes de compras y ticket de compra; resultado PASS.
+- [x] 4. Validar reportes de cash closings y ticket de cierre; resultado PASS.
+- [x] 5. Validar reporteria POS sales; `GET /api/reports/pos-sales` sigue con HTTP 500.
+- [x] 6. Validar POS sale ticket; resultado PASS.
+- [x] 7. Validar order sales y ticket de pedido; resultado PASS.
+- [x] 8. Validar customer reports; resultado PASS.
+- [x] 9. Confirmar que siguen pasando compras, pagos, caja, pedidos, POS, ventas, FE base y perifericos MOCK.
+- [x] 10. Confirmar promociones/pricing: endpoint PASS, sin promocion activa aplicada (`count=0`).
+- [x] 11. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 12. Confirmar que no se corrigio codigo, no se ejecutaron migraciones, no se hizo deploy, no se reinicio PM2, no se hicieron escrituras directas en DB, no se toco `manus_tienda` y no se documentaron secretos.
+
+## MVP-01.4Z-FIX1 - Fix POS Sales Report endpoint
+
+Estado: `QA_POS_SALES_REPORT_FIXED`.
+
+- [x] 1. Revisar `backend-reporteria/src/modules/reports/sql-adapters/sales-report.adapter.ts`.
+- [x] 2. Revisar stacktrace/RCA disponible en `docs/evidencia-root-cause-p0-p1-mvp-01-4y.md`.
+- [x] 3. Confirmar que el adapter llama `report_pos_sales` con 8 parametros.
+- [x] 4. Comparar firma esperada contra overload legacy `report_pos_sales(..., text, text)`.
+- [x] 5. Crear `scripts/database/migrations/V061__drop_legacy_report_pos_sales_overload.sql`.
+- [x] 6. Validar que V061 elimina el overload legacy de 10 parametros y deja una sola firma de 8 parametros.
+- [x] 7. Agregar test enfocado en adapter y migracion V061.
+- [x] 8. Actualizar `scripts/database/bootstrap-manus-tienda-qa.manifest.md`.
+- [x] 9. Crear `docs/evidencia-fix-pos-sales-report-mvp-01-4z-fix1.md`.
+- [x] 10. Ejecutar focused tests de `backend-reporteria`.
+- [x] 11. Ejecutar build de `backend-reporteria`.
+- [x] 12. Ejecutar `openspec.cmd validate mvp-web-hardening --type change --strict`.
+- [x] 13. Ejecutar `git diff --check`.
+- [x] 14. Confirmar que no se toco AWS, no se hizo deploy, no se ejecuto bootstrap, no se ejecutaron migraciones contra QA, no se reinicio PM2 y no se hicieron escrituras directas en DB.
+
+## MVP-01.3X-FINAL-CONFIRMATION - QA Operativo Integral End-to-End
+
+Estado: `QA_OPERATIVO_END_TO_END_READY`.
+
+- [x] 1. Confirmar contexto: deploy OK, `V061` aplicada en QA y `backend-reporteria` reiniciado.
+- [x] 2. Validar primero `GET /api/reports/pos-sales`; resultado PASS con HTTP 200, `rows=8`, `summaryCount=8`.
+- [x] 3. Confirmar `settle-partial` con compra `e6bf7ebb-4c4c-40bf-a73a-ee9dc6154630` en `status=CERRADA_PARCIAL`, `paymentStatus=PAID`.
+- [x] 4. Confirmar purchases reports, cash closings, pos sales, order sales y customer reports; todos PASS con HTTP 200.
+- [x] 5. Confirmar tickets PDF de compra, cierre de caja, POS y pedido; todos PASS con HTTP 200 PDF.
+- [x] 6. Confirmar POS sale, pedido, caja summary y movimientos; todos PASS con HTTP 200.
+- [x] 7. Actualizar `docs/evidencia-qa-operativo-integral-end-to-end-mvp-01-3x.md`.
+- [x] 8. Confirmar que la validacion no corrigio codigo, no ejecuto migraciones, no hizo deploy, no reinicio PM2, no hizo escrituras directas en DB y no documento secretos.
+
 ## MVP-02 - Facturacion Electronica Hardening
 
 - [ ] 1. Revisar estado actual de clientes FE.

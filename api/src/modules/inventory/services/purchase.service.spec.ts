@@ -34,6 +34,7 @@ type Scenario = {
   existingLotStatus?: "ACTIVE" | "BLOCKED" | "CANCELLED";
   existingLotExpirationDate?: string | null;
   locationBelongsToBranch?: boolean;
+  invalidAuditContextUuid?: boolean;
 };
 
 const buildPurchaseRow = (scenario: Scenario = {}) => ({
@@ -78,11 +79,21 @@ class FakeClient {
       return { rows: [buildPurchaseRow(this.scenario)] };
     }
     if (trimmed.includes("FROM auditoria_eventos") && trimmed.includes("PURCHASE_CREATED")) {
+      if (
+        this.scenario.invalidAuditContextUuid &&
+        (trimmed.includes("NULLIF(ae.datos_despues->>'branchId', '')::uuid") ||
+          trimmed.includes("NULLIF(ae.datos_despues->>'terminalId', '')::uuid"))
+      ) {
+        const error = new Error("invalid input syntax for type uuid: \"local-terminal\"");
+        (error as Error & { code?: string }).code = "22P02";
+        throw error;
+      }
+
       return {
         rows: [
           {
-            branch_id: ids.branch,
-            branch_name: "Principal",
+            branch_id: this.scenario.invalidAuditContextUuid ? null : ids.branch,
+            branch_name: this.scenario.invalidAuditContextUuid ? null : "Principal",
             terminal_id: null,
             terminal_name: null,
           },
@@ -468,6 +479,30 @@ test("PurchaseService.settlePartialPurchase: liquida compra parcial pendiente de
   assert.ok(db.client.params.some((params) => params.includes("PURCHASE_PARTIAL_CLOSED")));
   assert.equal(
     db.client.queries.some((query) => query.startsWith("INSERT INTO stock_movements")),
+    false
+  );
+});
+
+test("PurchaseService.settlePartialPurchase: tolera audit context con terminalId no UUID", async () => {
+  const { service, db } = buildService({
+    status: "PARTIAL",
+    itemReceivedQuantity: 1,
+    itemCost: 9000,
+    invalidAuditContextUuid: true,
+  });
+
+  const result = await service.settlePartialPurchase(ids.purchase, ids.tenant, ids.user, {
+    motivoLiquidacion: "Proveedor no enviara saldo",
+    actor,
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.data.estado, "CERRADA_PARCIAL");
+  assert.equal(result.data.totalLiquidado, 9000);
+  assert.equal(
+    db.client.queries.some((query) =>
+      query.includes("NULLIF(ae.datos_despues->>'terminalId', '')::uuid")
+    ),
     false
   );
 });
