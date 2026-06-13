@@ -83,7 +83,7 @@ export class CashSessionsService {
     if (branch.estado !== "ACTIVE") {
       throw new BadRequestException("Sucursal inactiva");
     }
-    if (this.canAdminCash(actor)) {
+    if (this.canManageTenant(actor)) {
       return;
     }
 
@@ -98,7 +98,7 @@ export class CashSessionsService {
   }
 
   private async resolveAllowedBranchIds(actor: FinanceActor, tenantId: string) {
-    if (this.canAdminCash(actor)) {
+    if (this.canManageTenant(actor)) {
       return undefined;
     }
 
@@ -206,16 +206,18 @@ export class CashSessionsService {
         throw new BadRequestException("No se pudo abrir la sesion de caja");
       }
 
-      await this.cashMovementsRepository.create(client, {
-        tenantId,
-        branchId: payload.branchId,
-        cashSessionId: created.id,
-        movementType: "OPENING",
-        direction: "IN",
-        amount: payload.openingAmount,
-        description: "Apertura de caja",
-        createdBy: actor.userId,
-      });
+      if (payload.openingAmount > 0) {
+        await this.cashMovementsRepository.create(client, {
+          tenantId,
+          branchId: payload.branchId,
+          cashSessionId: created.id,
+          movementType: "OPENING",
+          direction: "IN",
+          amount: payload.openingAmount,
+          description: "Apertura de caja",
+          createdBy: actor.userId,
+        });
+      }
 
       await client.query("COMMIT");
 

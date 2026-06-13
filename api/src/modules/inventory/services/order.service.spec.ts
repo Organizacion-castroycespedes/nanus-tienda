@@ -18,6 +18,7 @@ const ids = {
   product: "10000000-0000-0000-0000-000000000007",
   promotion: "10000000-0000-0000-0000-000000000008",
   tax: "10000000-0000-0000-0000-000000000009",
+  otherBranch: "10000000-0000-0000-0000-000000000010",
 };
 
 type RecordedQuery = {
@@ -493,6 +494,41 @@ test("OrderService.updateOrder rejects non-draft orders before pricing", async (
 
   assert.equal(pricingService.calls.length, 0);
   assert.equal(client.insertedItems.length, 0);
+  assert.equal(client.rolledBack, true);
+});
+
+test("OrderService.updateOrder rejects USER branch outside scope before pricing", async () => {
+  const { service, client, pricingService } = buildService([makePreview()]);
+  const scopedActor = {
+    roles: ["USER"],
+    tenantId: ids.tenant,
+    userId: ids.user,
+    branchId: ids.branch,
+  };
+
+  await assert.rejects(
+    () =>
+      service.updateOrder(
+        ids.order,
+        ids.tenant,
+        {
+          branchId: ids.otherBranch,
+          items: [
+            {
+              productId: ids.product,
+              quantity: 1,
+              price: 1,
+              subtotal: 1,
+            },
+          ],
+        },
+        scopedActor
+      ),
+    /No autorizado para otra sucursal/
+  );
+
+  assert.equal(pricingService.calls.length, 0);
+  assert.equal(client.updatedOrder, null);
   assert.equal(client.rolledBack, true);
 });
 

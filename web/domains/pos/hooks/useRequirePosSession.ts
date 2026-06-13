@@ -8,7 +8,7 @@ import { useAppSelector } from "../../../store/hooks";
 export const useRequirePosSession = () => {
   const router = useRouter();
   const pathname = usePathname();
-  const { posSessionId } = usePosContext();
+  const { branchId, posSessionId, terminalId } = usePosContext();
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
   const tenantId = useAppSelector((state) => state.auth.tenantId);
@@ -17,7 +17,7 @@ export const useRequirePosSession = () => {
     if (!bootstrapped || authStatus !== "authenticated") {
       return;
     }
-    if (posSessionId) {
+    if (posSessionId && branchId && terminalId) {
       return;
     }
     if (pathname?.includes("/pos/select-context")) {
@@ -25,7 +25,7 @@ export const useRequirePosSession = () => {
     }
     const targetTenant = tenantId ?? "default";
     router.replace(`/${targetTenant}/pos/select-context`);
-  }, [authStatus, bootstrapped, pathname, posSessionId, router, tenantId]);
+  }, [authStatus, bootstrapped, branchId, pathname, posSessionId, router, tenantId, terminalId]);
 
-  return { hasSession: Boolean(posSessionId) };
+  return { hasSession: Boolean(posSessionId && branchId && terminalId) };
 };

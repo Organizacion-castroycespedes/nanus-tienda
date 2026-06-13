@@ -44,7 +44,7 @@ type CreateStockAdjustmentBody = {
 
 @Controller("stock-adjustments")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+@Roles("SUPER_ADMIN", "SUPER_USER")
 export class StockAdjustmentController {
   constructor(
     @Inject(StockAdjustmentService)

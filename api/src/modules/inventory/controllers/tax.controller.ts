@@ -58,7 +58,7 @@ export class TaxController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   create(@Body() body: CreateTaxBody, @Req() request: AuthRequest) {
     return this.taxService.createTax({
@@ -71,7 +71,7 @@ export class TaxController {
   }
 
   @Put(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -87,7 +87,7 @@ export class TaxController {
   }
 
   @Delete(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.taxService.deleteTax(id, this.getTenantId(request));

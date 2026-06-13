@@ -58,7 +58,7 @@ export class SupplierController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "WRITE" })
   create(@Body() body: CreateSupplierBody, @Req() request: AuthRequest) {
     return this.supplierService.createSupplier({
@@ -89,7 +89,7 @@ export class SupplierController {
   }
 
   @Put(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -104,7 +104,7 @@ export class SupplierController {
   }
 
   @Delete(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.supplierService.softDeleteSupplier(id, this.getTenantId(request));

@@ -9,6 +9,7 @@ import type {
 
 const tenantId = randomUUID();
 const branchId = randomUUID();
+const otherBranchId = randomUUID();
 const terminalId = randomUUID();
 
 const actor = {
@@ -59,6 +60,7 @@ const buildService = (
     terminals?: PosTerminalRecord[];
     settings?: PosTerminalPeripheralSettingsRecord | null;
     branchExists?: boolean;
+    allowedBranchIds?: string[];
   } = {}
 ) => {
   const terminals = options.terminals ?? [buildTerminal()];
@@ -130,9 +132,18 @@ const buildService = (
       return settings;
     },
   };
+  const allowedBranchIds = options.allowedBranchIds ?? [branchId];
+  const accessControl = {
+    getAccessibleBranchIds: async () => allowedBranchIds,
+    canAccessBranch: async (
+      _actor: unknown,
+      _tenantId: string,
+      requestedBranchId: string
+    ) => allowedBranchIds.includes(requestedBranchId),
+  };
 
   return {
-    service: new PosTerminalsService(repository as any),
+    service: new PosTerminalsService(repository as any, accessControl as any),
     calls,
   };
 };
@@ -181,6 +192,33 @@ describe("PosTerminalsService", () => {
 
     assert.equal(result.length, 1);
     assert.equal(result[0].code, "local-terminal");
+  });
+
+  it("filters terminals to branches assigned to branch-scoped roles", async () => {
+    const { service } = buildService({
+      terminals: [
+        buildTerminal(),
+        buildTerminal({ id: randomUUID(), branch_id: otherBranchId }),
+      ],
+      allowedBranchIds: [branchId],
+    });
+
+    const result = await service.listTerminals({ tenantId }, actor);
+
+    assert.equal(result.length, 1);
+    assert.equal(result[0].branchId, branchId);
+  });
+
+  it("rejects a requested branch outside the actor scope", async () => {
+    const { service } = buildService({
+      terminals: [buildTerminal({ branch_id: otherBranchId })],
+      allowedBranchIds: [branchId],
+    });
+
+    await assert.rejects(
+      () => service.listTerminals({ tenantId, branchId: otherBranchId }, actor),
+      /Branch scope mismatch/
+    );
   });
 
   it("gets a terminal by id", async () => {

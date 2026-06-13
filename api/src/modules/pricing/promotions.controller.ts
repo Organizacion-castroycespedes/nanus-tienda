@@ -100,7 +100,7 @@ export class PromotionsController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "WRITE" })
   create(@Body() body: CreatePromotionBody, @Req() request: AuthRequest) {
     return this.promotionsService.createPromotion({
@@ -112,7 +112,7 @@ export class PromotionsController {
   }
 
   @Patch(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -130,7 +130,7 @@ export class PromotionsController {
   }
 
   @Patch(":id/deactivate")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "WRITE" })
   deactivate(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.promotionsService.deactivatePromotion(

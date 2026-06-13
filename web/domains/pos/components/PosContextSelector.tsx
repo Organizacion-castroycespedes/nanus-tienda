@@ -18,6 +18,7 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
   const router = useRouter();
   const authTenantId = useAppSelector((state) => state.auth.user?.tenantId ?? null);
   const authTenantName = useAppSelector((state) => state.auth.user?.tenantName ?? null);
+  const authRole = useAppSelector((state) => state.auth.user?.role ?? null);
   const pos = usePosContext();
   const {
     tenantId,
@@ -68,15 +69,17 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     };
   }, [setError, setLoading]);
 
+  const canSelectTenant = authRole === "SUPER_ADMIN";
+
   const availableTenants = useMemo(() => {
-    if (!authTenantId) {
+    if (canSelectTenant || !authTenantId) {
       return tenants;
     }
     return tenants.filter((tenant) => tenant.id === authTenantId);
-  }, [authTenantId, tenants]);
+  }, [authTenantId, canSelectTenant, tenants]);
 
   useEffect(() => {
-    if (!authTenantId) {
+    if (canSelectTenant || !authTenantId) {
       return;
     }
     if (tenantId !== authTenantId) {
@@ -86,11 +89,25 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
         terminalId: null,
       });
     }
-  }, [authTenantId, setContext, tenantId]);
+  }, [authTenantId, canSelectTenant, setContext, tenantId]);
+
+  useEffect(() => {
+    if (!canSelectTenant || tenantId || availableTenants.length !== 1) {
+      return;
+    }
+    setContext({
+      tenantId: availableTenants[0].id,
+      branchId: null,
+      terminalId: null,
+    });
+  }, [availableTenants, canSelectTenant, setContext, tenantId]);
 
   const selectedTenant = useMemo(
-    () => availableTenants.find((tenant) => tenant.id === (authTenantId ?? tenantId)) ?? null,
-    [authTenantId, availableTenants, tenantId]
+    () =>
+      availableTenants.find(
+        (tenant) => tenant.id === (canSelectTenant ? tenantId : authTenantId ?? tenantId)
+      ) ?? null,
+    [authTenantId, availableTenants, canSelectTenant, tenantId]
   );
 
   const availableBranches = useMemo(
@@ -107,6 +124,14 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     () => selectedBranch?.terminals ?? [],
     [selectedBranch]
   );
+
+  const handleTenantChange = (tenantId: string) => {
+    setContext({
+      tenantId: tenantId || null,
+      branchId: null,
+      terminalId: null,
+    });
+  };
 
   useEffect(() => {
     if (availableBranches.length === 1 && !branchId) {
@@ -181,7 +206,7 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
         </h1>
         {selectedTenant ? (
           <p className="mt-3 text-sm text-slate-600">
-            Empresa activa: <span className="font-medium text-slate-900">{authTenantName ?? selectedTenant.name}</span>
+            Empresa activa: <span className="font-medium text-slate-900">{canSelectTenant ? selectedTenant.name : authTenantName ?? selectedTenant.name}</span>
           </p>
         ) : null}
       </div>
@@ -193,6 +218,22 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
         </div>
       ) : (
         <div className="space-y-5">
+          {canSelectTenant ? (
+            <Select
+              label="Empresa"
+              value={tenantId ?? ""}
+              onChange={(event) => handleTenantChange(event.target.value)}
+              disabled={availableTenants.length === 0}
+            >
+              <option value="">Selecciona una empresa</option>
+              {availableTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </Select>
+          ) : null}
+
           <Select
             label="Sucursal"
             value={branchId ?? ""}

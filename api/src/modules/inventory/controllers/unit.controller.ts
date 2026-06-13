@@ -57,7 +57,7 @@ export class UnitController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   create(@Body() body: CreateUnitBody, @Req() request: AuthRequest) {
     return this.unitService.createUnit({
@@ -69,7 +69,7 @@ export class UnitController {
   }
 
   @Put(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -80,7 +80,7 @@ export class UnitController {
   }
 
   @Delete(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.unitService.deleteUnit(id, this.getTenantId(request));

@@ -76,7 +76,7 @@ export class ProductBarcodeController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   create(
     @Param("productId") productId: string,
@@ -92,7 +92,7 @@ export class ProductBarcodeController {
   }
 
   @Put(":barcodeId")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   update(
     @Param("productId") productId: string,
@@ -111,7 +111,7 @@ export class ProductBarcodeController {
   }
 
   @Patch(":barcodeId/deactivate")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   deactivate(
     @Param("productId") productId: string,
@@ -128,7 +128,7 @@ export class ProductBarcodeController {
   }
 
   @Patch(":barcodeId/set-primary")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   setPrimary(
     @Param("productId") productId: string,

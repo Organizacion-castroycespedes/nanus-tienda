@@ -57,11 +57,12 @@ export class RolesController {
     if (this.isSuperAdmin(actor)) {
       return roles;
     }
-    return roles.filter((role) => role.nombre !== "SUPER_ADMIN");
+    const restricted = new Set(["SUPER_ADMIN", "SUPER_USER"]);
+    return roles.filter((role) => !restricted.has(role.nombre));
   }
 
   @Get()
-  @Roles("SUPER_ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_ROLES, level: "READ" })
   async list(@Req() request: AuthRequest) {
     const actor = this.buildActor(request);

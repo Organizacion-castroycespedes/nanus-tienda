@@ -227,10 +227,9 @@ const PurchasesPage = () => {
   const role = authUser?.role ?? authRole;
   const canViewAllTenants = role === "SUPER_ADMIN";
 
-  const isAdminLikeRole =
-    role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
-  const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
-  const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
+  const canManagePurchases = role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canCreate = hasPermission("inventory.create") || canManagePurchases;
+  const canReceive = hasPermission("inventory.update") || canManagePurchases;
   const canCancel = hasPermission("inventory.cancel");
   const canSettlePartial = hasPermission("inventory.settle_partial");
 

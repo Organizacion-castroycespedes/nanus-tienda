@@ -134,7 +134,11 @@ export class AuthController {
     if (!actor.userId) {
       throw new UnauthorizedException("Usuario requerido");
     }
-    return this.authService.getUserContext(actor.userId);
+    return this.authService.getUserContext({
+      userId: actor.userId,
+      tenantId: actor.tenantId,
+      roles: actor.roles,
+    });
   }
 
   private buildRefreshMetadata(request: Request) {

@@ -65,7 +65,7 @@ export class PosTerminalsController {
   }
 
   @Get()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.POS_PERIPHERALS, level: "READ" })
   list(
     @Query("tenantId") tenantId: string | undefined,
@@ -79,21 +79,21 @@ export class PosTerminalsController {
   }
 
   @Get(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.POS_PERIPHERALS, level: "READ" })
   get(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.service.getTerminal(id, this.buildActor(request));
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.POS_PERIPHERALS, level: "WRITE" })
   create(@Body() payload: CreatePosTerminalDto, @Req() request: AuthRequest) {
     return this.service.createTerminal(payload, this.buildActor(request));
   }
 
   @Patch(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.POS_PERIPHERALS, level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -104,14 +104,14 @@ export class PosTerminalsController {
   }
 
   @Get(":id/peripherals")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.POS_PERIPHERALS, level: "READ" })
   getPeripheralSettings(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.service.getPeripheralSettings(id, this.buildActor(request));
   }
 
   @Put(":id/peripherals")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: MENU_KEYS.POS_PERIPHERALS, level: "WRITE" })
   savePeripheralSettings(
     @Param("id") id: string,

@@ -42,8 +42,12 @@ export class TerminalsService {
     );
   }
 
+  private canManageAllTenants(actor: ActorContext) {
+    return actor.roles.includes("SUPER_ADMIN");
+  }
+
   private resolveTenantId(actor: ActorContext, tenantId?: string) {
-    if (this.canManageTerminals(actor)) {
+    if (this.canManageAllTenants(actor)) {
       if (tenantId) {
         return tenantId;
       }
@@ -51,6 +55,16 @@ export class TerminalsService {
         return actor.tenantId;
       }
       throw new BadRequestException("Tenant requerido");
+    }
+
+    if (actor.roles.includes("SUPER_USER")) {
+      if (!actor.tenantId) {
+        throw new ForbiddenException("Tenant requerido");
+      }
+      if (tenantId && tenantId !== actor.tenantId) {
+        throw new ForbiddenException("No autorizado para este tenant");
+      }
+      return actor.tenantId;
     }
 
     throw new ForbiddenException("No autorizado");

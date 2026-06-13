@@ -18,6 +18,7 @@ import {
 } from "../../../modules/inventory/services/customer.service";
 import { useConfirm, isConfirmCancelledError } from "../../../hooks/use-confirm";
 import { hasPermission } from "../../../lib/permissions";
+import { MENU_KEYS } from "../../../domains/menu/constants";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 
 type CustomerFilters = {
@@ -103,8 +104,8 @@ const CustomersPage = () => {
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResponse | null>(null);
 
-  const canCreate = hasPermission("customers.create");
-  const canEdit = hasPermission("customers.update");
+  const canCreate = hasPermission(MENU_KEYS.CUSTOMERS, "write");
+  const canEdit = hasPermission(MENU_KEYS.CUSTOMERS, "write");
   const canDelete = hasPermission("customers.delete");
 
   useAutoClearState(toastMessage, setToastMessage);

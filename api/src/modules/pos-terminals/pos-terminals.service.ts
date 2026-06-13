@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { AccessControlService } from "../../common/services/access-control.service";
 import {
   PosTerminalsRepository,
   type PosTerminalMode,
@@ -70,14 +71,13 @@ const fallbackSettings: UpsertPeripheralSettingsInput = {
 export class PosTerminalsService {
   constructor(
     @Inject(PosTerminalsRepository)
-    private readonly repository: PosTerminalsRepository
+    private readonly repository: PosTerminalsRepository,
+    @Inject(AccessControlService)
+    private readonly accessControl: AccessControlService
   ) {}
 
   private canManageAllTenants(actor: ActorContext) {
-    return (
-      actor.roles.includes("SUPER_ADMIN") ||
-      actor.roles.includes("SUPER_USER")
-    );
+    return actor.roles.includes("SUPER_ADMIN");
   }
 
   private resolveTenantId(actor: ActorContext, requestedTenantId?: string) {
@@ -95,6 +95,35 @@ export class PosTerminalsService {
       throw new ForbiddenException("Tenant scope mismatch");
     }
     return actor.tenantId;
+  }
+
+  private async getAllowedBranchIds(actor: ActorContext, tenantId: string) {
+    if (actor.roles.includes("SUPER_ADMIN") || actor.roles.includes("SUPER_USER")) {
+      return null;
+    }
+    const branchIds = await this.accessControl.getAccessibleBranchIds(
+      { id: actor.userId, tenantId: actor.tenantId, roles: actor.roles },
+      tenantId
+    );
+    if (branchIds.length === 0) {
+      throw new ForbiddenException("No assigned branches available");
+    }
+    return branchIds;
+  }
+
+  private async assertBranchAccess(
+    actor: ActorContext,
+    tenantId: string,
+    branchId: string
+  ) {
+    const allowed = await this.accessControl.canAccessBranch(
+      { id: actor.userId, tenantId: actor.tenantId, roles: actor.roles },
+      tenantId,
+      branchId
+    );
+    if (!allowed) {
+      throw new ForbiddenException("Branch scope mismatch");
+    }
   }
 
   private normalizeRequiredText(value: string | undefined, message: string) {
@@ -276,11 +305,17 @@ export class PosTerminalsService {
   ) {
     const tenantId = this.resolveTenantId(actor, filters.tenantId);
     const branchId = this.normalizeOptionalText(filters.branchId) ?? undefined;
+    const allowedBranchIds = await this.getAllowedBranchIds(actor, tenantId);
     if (branchId) {
       await this.assertBranchBelongsToTenant(tenantId, branchId);
+      await this.assertBranchAccess(actor, tenantId, branchId);
     }
     const terminals = await this.repository.findAll(tenantId, branchId);
-    return terminals.map((terminal) => this.mapTerminal(terminal));
+    return terminals
+      .filter((terminal) =>
+        allowedBranchIds ? allowedBranchIds.includes(terminal.branch_id) : true
+      )
+      .map((terminal) => this.mapTerminal(terminal));
   }
 
   async getTerminal(id: string, actor: ActorContext) {
@@ -395,14 +430,18 @@ export class PosTerminalsService {
   ) {
     const tenantId = this.resolveTenantId(actor, filters.tenantId);
     const requestedBranchId = this.normalizeOptionalText(filters.branchId);
+    const allowedBranchIds = await this.getAllowedBranchIds(actor, tenantId);
     const branch =
       requestedBranchId === null
-        ? await this.repository.findPrincipalBranch(tenantId)
+        ? allowedBranchIds
+          ? null
+          : await this.repository.findPrincipalBranch(tenantId)
         : null;
-    const branchId = requestedBranchId ?? branch?.id ?? null;
+    const branchId = requestedBranchId ?? branch?.id ?? allowedBranchIds?.[0] ?? null;
 
     if (branchId) {
       await this.assertBranchBelongsToTenant(tenantId, branchId);
+      await this.assertBranchAccess(actor, tenantId, branchId);
     }
 
     if (!branchId) {
