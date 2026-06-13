@@ -61,7 +61,14 @@ export class TenantsService {
    @Inject(DatabaseService) private readonly db: DatabaseService
   ) {}
 
-  async listTenants() {
+  async listTenants(tenantId?: string) {
+    if (tenantId) {
+      const result = await this.db.query(
+        "SELECT id, slug, nombre, activo, created_at FROM tenants WHERE id = $1 ORDER BY created_at DESC",
+        [tenantId]
+      );
+      return result.rows ?? [];
+    }
     const result = await this.db.query(
       "SELECT id, slug, nombre, activo, created_at FROM tenants ORDER BY created_at DESC"
     );

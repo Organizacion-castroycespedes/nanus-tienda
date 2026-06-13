@@ -280,6 +280,29 @@ Recomendación adicional:
 
 ## 11. Comandos útiles
 
+### Auditoria de accesos
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f scripts/database/audit/access-control-audit.sql
+```
+
+### Permisos base por rol/modulo
+
+Ejecutar primero en local o QA. No ejecutar directo en PRD sin backup y aprobacion.
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f scripts/database/security/20260612_0039_access_roles_modules_permissions.sql
+```
+
+### Mejora de perfiles y contexto operativo
+
+Script idempotente para alinear permisos operativos de `USER`, `ADMIN` y `SUPER_USER`.
+Ejecutar primero en local o QA. No ejecutar directo en PRD sin backup y aprobacion.
+
+```bash
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f scripts/database/security/20260612_1930_mejora_perfiles_contexto_operativo.sql
+```
+
 ### Ver historial
 
 ```bash

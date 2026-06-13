@@ -8,7 +8,11 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../common/decorators/require-permission.decorator";
+import { Roles } from "../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../common/guards/permissions.guard";
+import { RolesGuard } from "../../common/guards/roles.guard";
 import { PosUserSessionsService } from "./pos-user-sessions.service";
 import type { CreatePosSessionDto } from "./dto/create-pos-session.dto";
 
@@ -22,7 +26,8 @@ type AuthRequest = Request & {
 };
 
 @Controller("pos/session")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class PosUserSessionsController {
   constructor(
     @Inject(PosUserSessionsService)
@@ -39,6 +44,7 @@ export class PosUserSessionsController {
   }
 
   @Post()
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
   async create(@Body() payload: CreatePosSessionDto, @Req() request: AuthRequest) {
     const posSession = await this.posUserSessionsService.createPosSession(
       payload,
@@ -53,6 +59,7 @@ export class PosUserSessionsController {
   }
 
   @Get("current")
+  @RequirePermission({ menuKey: "POS", level: "READ" })
   getCurrent(@Req() request: AuthRequest) {
     return this.posUserSessionsService.getCurrentSession(this.buildActor(request));
   }

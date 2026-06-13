@@ -143,7 +143,7 @@ export class InventoryLocationController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   create(@Body() body: CreateInventoryLocationBody, @Req() request: AuthRequest) {
     this.assertUuid(body.branchId, "branchId");
@@ -157,7 +157,7 @@ export class InventoryLocationController {
   }
 
   @Put(":locationId")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   update(
     @Param("locationId") locationId: string,
@@ -180,7 +180,7 @@ export class InventoryLocationController {
   }
 
   @Patch(":locationId/deactivate")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   deactivate(
     @Param("locationId") locationId: string,

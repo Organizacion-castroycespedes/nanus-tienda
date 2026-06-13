@@ -27,7 +27,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isMockAuthAllowed = () =>
-  (process.env.REPORTS_ALLOW_MOCK_AUTH ?? "true").toLowerCase() !== "false";
+  (process.env.REPORTS_ALLOW_MOCK_AUTH ?? "false").toLowerCase() === "true";
 
 const firstHeaderValue = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;

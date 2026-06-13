@@ -2,24 +2,23 @@ import {
   Controller,
   Get,
   Headers,
-  UnauthorizedException,
   Inject,
+  Req,
+  UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
-import jwt from "jsonwebtoken";
-import { MenuService } from "./menu.service";
-import { resolveJwtSecret } from "../../common/config/auth-env";
+import type { Request } from "express";
+import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { AccessControlService } from "../../common/services/access-control.service";
-
-type TokenPayload = {
-  sub?: string;
-  tenant_id?: string;
-};
+import { MenuService } from "./menu.service";
 
 @Controller("me")
+@UseGuards(JwtAuthGuard)
 export class MenuController {
   constructor(
-     @Inject(MenuService) private readonly menuService: MenuService,
-     @Inject(AccessControlService) private readonly accessControlService: AccessControlService
+    @Inject(MenuService) private readonly menuService: MenuService,
+    @Inject(AccessControlService)
+    private readonly accessControlService: AccessControlService
   ) {}
 
   @Get("menu")
@@ -34,35 +33,18 @@ export class MenuController {
   }
 
   @Get("permissions")
-  async permissions(@Headers("authorization") authorization?: string) {
-    const token = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length).trim()
-      : null;
-    if (!token) {
-      throw new UnauthorizedException("Token requerido");
-    }
-    const payload = this.decodeAccessToken(token);
-    if (!payload?.sub || !payload?.tenant_id) {
-      throw new UnauthorizedException("Token inválido");
+  async permissions(
+    @Req() request: Request & { user?: { id?: string; tenantId?: string } }
+  ) {
+    if (!request.user?.id || !request.user?.tenantId) {
+      throw new UnauthorizedException("Token invalido");
     }
     const permissions = await this.accessControlService.fetchPermissions(
-      payload.sub,
-      payload.tenant_id
+      request.user.id,
+      request.user.tenantId
     );
     return {
       items: Array.from(permissions.values()),
     };
-  }
-
-  private decodeAccessToken(token: string): TokenPayload {
-    try {
-      const decoded = jwt.verify(token, resolveJwtSecret());
-      if (typeof decoded === "string") {
-        return {};
-      }
-      return decoded as TokenPayload;
-    } catch {
-      throw new UnauthorizedException("Token inválido");
-    }
   }
 }

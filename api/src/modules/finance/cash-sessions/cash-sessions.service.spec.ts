@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ForbiddenException } from "@nestjs/common";
 import { CashSessionsService } from "./cash-sessions.service";
 
 const tenantId = "00000000-0000-0000-0000-000000000001";
@@ -75,10 +76,14 @@ const buildSummary = (expectedAmount: number) => ({
   lastCount: null,
 });
 
-const buildHarness = (expectedAmount: number) => {
+const buildHarness = (
+  expectedAmount: number,
+  options: { branchAccess?: boolean } = {}
+) => {
   const queries: string[] = [];
   let released = false;
   let closeInput: Record<string, unknown> | null = null;
+  let openInput: Record<string, unknown> | null = null;
   let cashCountInput: Record<string, unknown> | null = null;
   let movementInput: Record<string, unknown> | null = null;
 
@@ -93,7 +98,20 @@ const buildHarness = (expectedAmount: number) => {
   };
 
   const repository = {
+    findOpenByRegister: async () => null,
+    findCurrentByUser: async () => null,
     findById: async () => buildRecord(),
+    create: async (
+      _client: unknown,
+      data: Record<string, unknown>
+    ) => {
+      openInput = data;
+      return buildRecord({
+        branch_id: data.branchId,
+        cash_register_id: data.cashRegisterId,
+        opening_amount: String(data.openingAmount),
+      });
+    },
     getSummary: async () => buildSummary(expectedAmount),
     close: async (
       _client: unknown,
@@ -121,6 +139,17 @@ const buildHarness = (expectedAmount: number) => {
     },
   };
 
+  const cashRegistersRepository = {
+    findById: async () => ({
+      id: "register-001",
+      tenant_id: tenantId,
+      branch_id: branchId,
+      codigo: "CAJA-1",
+      nombre: "Caja 1",
+      activo: true,
+    }),
+  };
+
   const accessRepository = {
     findUserById: async () => ({
       id: userId,
@@ -135,6 +164,7 @@ const buildHarness = (expectedAmount: number) => {
       codigo: "P",
       estado: "ACTIVE",
     }),
+    userHasBranchAccess: async () => options.branchAccess ?? true,
   };
 
   const db = {
@@ -147,7 +177,7 @@ const buildHarness = (expectedAmount: number) => {
 
   const service = new CashSessionsService(
     repository as never,
-    {} as never,
+    cashRegistersRepository as never,
     cashMovementsRepository as never,
     accessRepository as never,
     db as never,
@@ -156,6 +186,7 @@ const buildHarness = (expectedAmount: number) => {
 
   return {
     service,
+    getOpenInput: () => openInput,
     getCloseInput: () => closeInput,
     getCashCountInput: () => cashCountInput,
     getMovementInput: () => movementInput,
@@ -231,4 +262,47 @@ test("close with zero amount skips invalid closing cash movement insert", async 
   assert.equal(response.closingAmount, 0);
   assert.equal(response.expectedAmount, 0);
   assert.equal(response.differenceAmount, 0);
+});
+
+test("open with zero amount skips invalid opening cash movement insert", async () => {
+  const harness = buildHarness(0);
+
+  const response = await harness.service.open(
+    {
+      branchId,
+      cashRegisterId: "register-001",
+      openingAmount: 0,
+    },
+    actor
+  );
+
+  assert.equal(harness.getOpenInput()?.openingAmount, 0);
+  assert.equal(harness.getMovementInput(), null);
+  assert.deepEqual(harness.getQueries(), ["BEGIN", "COMMIT"]);
+  assert.equal(harness.wasReleased(), true);
+  assert.equal(response.openingAmount, 0);
+});
+
+test("close rejects USER when cash session branch is outside scope", async () => {
+  const harness = buildHarness(100000, { branchAccess: false });
+
+  await assert.rejects(
+    () =>
+      harness.service.close(
+        cashSessionId,
+        {
+          closingAmount: 100000,
+          description: "Cierre",
+        },
+        {
+          userId,
+          tenantId,
+          roles: ["USER"],
+        }
+      ),
+    ForbiddenException
+  );
+
+  assert.equal(harness.getCloseInput(), null);
+  assert.deepEqual(harness.getQueries(), []);
 });

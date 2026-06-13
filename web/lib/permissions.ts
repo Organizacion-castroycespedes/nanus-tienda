@@ -1,6 +1,6 @@
 import { store } from "../store";
-import type { AccessLevel, PermissionSummary } from "../domains/menu/types";
-import { getMenuKeyCandidates } from "../domains/menu/constants";
+import type { AccessLevel, MenuItem, PermissionSummary } from "../domains/menu/types";
+import { MENU_KEYS, getMenuKeyCandidates } from "../domains/menu/constants";
 
 type PermissionIdentifier = string | [module: string, action: string];
 
@@ -13,8 +13,19 @@ const getAuthRole = () => {
 
 const getAuthPermissions = () => store.getState().auth.permissions;
 
-const isPrivilegedRole = (role: string) =>
-  role === "SUPER_ADMIN" || role === "ADMIN";
+const isPrivilegedRole = (role: string) => role === "SUPER_ADMIN";
+
+const isRestrictedForRole = (role: string, moduleName: string) => {
+  if (role !== "ADMIN") {
+    return false;
+  }
+  return new Set([
+    normalizeValue(MENU_KEYS.CONFIG_GENERAL),
+    normalizeValue("CONFIGURACION_TENANT_CONFIGURACION"),
+    normalizeValue(MENU_KEYS.POS_PERIPHERALS),
+    normalizeValue("peripherals"),
+  ]).has(moduleName);
+};
 
 const isScopedSuperUserPermission = (role: string, moduleName: string) =>
   role === "SUPER_USER" &&
@@ -94,6 +105,9 @@ export const hasPermission = (
   if (!module || !resolvedAction) {
     return false;
   }
+  if (isRestrictedForRole(role, module)) {
+    return false;
+  }
   if (isPrivilegedRole(role) || isScopedSuperUserPermission(role, module)) {
     return true;
   }
@@ -104,6 +118,30 @@ export const hasPermission = (
 };
 
 export const isPermissionsReady = () => store.getState().auth.permissionsLoaded;
+
+export const canPerformAction = (
+  moduleCode: string,
+  action: string
+) => hasPermission(moduleCode, action);
+
+export const canAccessModule = (moduleCode: string) =>
+  canPerformAction(moduleCode, "read");
+
+const menuItemAllowed = (item: MenuItem) =>
+  hasMenuAccess(item.key, "READ") || canAccessModule(item.module);
+
+export const getAllowedMenuItems = (items: MenuItem[]): MenuItem[] =>
+  items.reduce<MenuItem[]>((allowed, item) => {
+      const children = item.children ? getAllowedMenuItems(item.children) : [];
+      if (!menuItemAllowed(item) && children.length === 0) {
+      return allowed;
+      }
+    allowed.push({
+        ...item,
+        children,
+    });
+    return allowed;
+  }, []);
 
 export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
   const state = store.getState();
@@ -116,6 +154,15 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
 
   const candidates = getMenuKeyCandidates(menuKey);
   const normalizedCandidates = candidates.map((candidate) => normalizeValue(candidate));
+
+  if (
+    role === "ADMIN" &&
+    (normalizedCandidates.includes(normalizeValue(MENU_KEYS.CONFIG_GENERAL)) ||
+      normalizedCandidates.includes(normalizeValue("CONFIGURACION_TENANT_CONFIGURACION")) ||
+      normalizedCandidates.includes(normalizeValue(MENU_KEYS.POS_PERIPHERALS)))
+  ) {
+    return false;
+  }
 
   if (
     role === "SUPER_USER" &&

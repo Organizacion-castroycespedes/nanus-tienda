@@ -11,6 +11,8 @@ type AuthenticatedRequest = Request & {
   user?: ReportUser;
 };
 
+const REPORT_ROLES = new Set(["SUPER_ADMIN", "SUPER_USER", "ADMIN"]);
+
 @Injectable()
 export class ReportAuthzGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -19,6 +21,10 @@ export class ReportAuthzGuard implements CanActivate {
 
     if (!user?.id || !user.tenantId || user.roles.length === 0) {
       throw new ForbiddenException("Report actor is not authorized");
+    }
+
+    if (!user.roles.some((role) => REPORT_ROLES.has(role))) {
+      throw new ForbiddenException("Report role is not authorized");
     }
 
     return true;

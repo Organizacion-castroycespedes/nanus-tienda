@@ -39,6 +39,12 @@ type RefreshTokenMetadata = {
   ipAddress?: string;
 };
 
+type AuthContextActor = {
+  userId: string;
+  tenantId?: string;
+  roles: string[];
+};
+
 type RefreshTokenRecord = {
   id: string;
   user_id: string;
@@ -92,8 +98,11 @@ export class AuthService {
     @Inject(AuthRepository) private readonly authRepository: AuthRepository
   ) {}
 
-  async getUserContext(userId: string): Promise<AuthContextResponseDto> {
-    const rows = await this.authRepository.getUserContextRows(userId);
+  async getUserContext(actor: AuthContextActor): Promise<AuthContextResponseDto> {
+    const rows = await this.authRepository.getUserContextRows(actor.userId, {
+      tenantId: actor.tenantId,
+      roles: actor.roles,
+    });
     const tenants = new Map<
       string,
       {

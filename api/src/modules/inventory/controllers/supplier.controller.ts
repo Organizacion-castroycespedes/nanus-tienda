@@ -12,7 +12,11 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
+import { RolesGuard } from "../../../common/guards/roles.guard";
 import { SupplierService } from "../services/supplier.service";
 
 type AuthRequest = Request & {
@@ -37,7 +41,8 @@ type CreateSupplierBody = {
 type UpdateSupplierBody = Partial<CreateSupplierBody>;
 
 @Controller("suppliers")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class SupplierController {
   constructor(
     @Inject(SupplierService)
@@ -53,6 +58,8 @@ export class SupplierController {
   }
 
   @Post()
+  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "WRITE" })
   create(@Body() body: CreateSupplierBody, @Req() request: AuthRequest) {
     return this.supplierService.createSupplier({
       tenantId: this.getTenantId(request),
@@ -70,16 +77,20 @@ export class SupplierController {
   }
 
   @Get()
+  @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "READ" })
   list(@Req() request: AuthRequest) {
     return this.supplierService.listSuppliers(this.getTenantId(request));
   }
 
   @Get(":id")
+  @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.supplierService.getSupplierById(id, this.getTenantId(request));
   }
 
   @Put(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "WRITE" })
   update(
     @Param("id") id: string,
     @Body() body: UpdateSupplierBody,
@@ -93,6 +104,8 @@ export class SupplierController {
   }
 
   @Delete(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @RequirePermission({ menuKey: "INVENTORY_SUPPLIERS", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.supplierService.softDeleteSupplier(id, this.getTenantId(request));
   }

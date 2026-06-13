@@ -1,29 +1,35 @@
-# Spec: productos
+# productos Specification
 
-## Proposito
+## Purpose
 
 Definir el comportamiento esperado para productos enriquecidos en MANUS-TIENDA, manteniendo compatibilidad con el producto actual basado en `products`.
 
-SUPUESTO: Los nombres fisicos finales de tablas/columnas nuevas se definiran en Fase 2. Esta spec describe comportamiento, no migracion.
+Supuesto heredado: los nombres fisicos finales de tablas o columnas nuevas se definiran en una fase de implementacion. Esta spec describe comportamiento, no migracion.
 
+Preguntas abiertas heredadas:
+
+- El codigo de barras puede requerir definicion de unicidad por tenant o multiples codigos por producto.
+- Los estados adicionales requeridos pueden incluir `DISCONTINUED`, `BLOCKED`, `DRAFT` u otros.
+- La clasificacion puede requerir definicion manual, automatica o mixta.
+
+Riesgos heredados:
+
+- Cambiar el contrato de `ProductResponse` sin campos opcionales puede romper POS, compras y listados.
+- Usar `sku` como barcode puede mezclar responsabilidades y dificultar inventarios reales.
 ## Requirements
-
 ### Requirement: Producto enriquecido
 
 El sistema SHALL permitir que un producto tenga informacion operativa adicional sin romper los campos actuales (`name`, `sku`, `price`, `cost`, `unitId`, `taxId`, `isActive`).
 
 #### Scenario: Producto existente sin campos nuevos
 
-- GIVEN un producto creado antes del cambio
-- WHEN se consulta desde `api` o `web`
-- THEN el producto SHALL seguir siendo valido
-- AND los campos nuevos SHALL tener defaults compatibles o valores nulos permitidos.
+- **WHEN** se consulta desde `api` o `web` un producto creado antes del cambio
+- **THEN** el producto SHALL seguir siendo valido y los campos nuevos SHALL tener defaults compatibles o valores nulos permitidos.
 
 #### Scenario: Producto nuevo con configuracion operativa
 
-- GIVEN un usuario autorizado crea o edita un producto
-- WHEN define atributos operativos
-- THEN el sistema SHALL guardar si el producto es perecedero, si requiere lote, si requiere vencimiento, su clasificacion operativa y su estado.
+- **WHEN** un usuario autorizado crea o edita un producto con atributos operativos
+- **THEN** el sistema SHALL guardar si el producto es perecedero, si requiere lote, si requiere vencimiento, su clasificacion operativa y su estado.
 
 ### Requirement: Producto perecedero/no perecedero
 
@@ -31,17 +37,13 @@ El sistema SHALL distinguir productos perecederos de no perecederos.
 
 #### Scenario: Producto perecedero
 
-- GIVEN un producto marcado como perecedero
-- WHEN se reciba inventario
-- THEN el sistema SHALL exigir vencimiento si el producto tambien requiere vencimiento
-- AND SHALL evaluar alertas de vencimiento para ese producto.
+- **WHEN** se recibe inventario de un producto marcado como perecedero que tambien requiere vencimiento
+- **THEN** el sistema SHALL exigir vencimiento y evaluar alertas de vencimiento para ese producto.
 
 #### Scenario: Producto no perecedero
 
-- GIVEN un producto no perecedero
-- WHEN se reciba o venda inventario
-- THEN el sistema SHALL permitir operar sin fecha de vencimiento
-- AND no SHALL generar alertas de vencimiento.
+- **WHEN** se recibe o vende inventario de un producto no perecedero
+- **THEN** el sistema SHALL permitir operar sin fecha de vencimiento y SHALL NOT generar alertas de vencimiento.
 
 ### Requirement: Producto con lote obligatorio
 
@@ -49,15 +51,13 @@ El sistema SHALL permitir configurar que un producto requiera lote para entradas
 
 #### Scenario: Entrada sin lote para producto que requiere lote
 
-- GIVEN un producto configurado con lote obligatorio
-- WHEN un usuario intenta recibir compra o ajustar inventario sin lote
-- THEN el sistema SHALL rechazar la operacion.
+- **WHEN** un usuario intenta recibir compra o ajustar inventario sin lote para un producto configurado con lote obligatorio
+- **THEN** el sistema SHALL rechazar la operacion.
 
 #### Scenario: Producto sin lote obligatorio
 
-- GIVEN un producto que no requiere lote
-- WHEN se recibe compra o se vende
-- THEN el sistema SHALL permitir el flujo actual sin lote.
+- **WHEN** se recibe compra o se vende un producto que no requiere lote
+- **THEN** el sistema SHALL permitir el flujo actual sin lote.
 
 ### Requirement: Producto con vencimiento obligatorio
 
@@ -65,16 +65,13 @@ El sistema SHALL permitir configurar que un producto requiera vencimiento.
 
 #### Scenario: Lote sin vencimiento
 
-- GIVEN un producto con vencimiento obligatorio
-- WHEN se registra un lote sin fecha de vencimiento
-- THEN el sistema SHALL rechazar la operacion.
+- **WHEN** se registra un lote sin fecha de vencimiento para un producto con vencimiento obligatorio
+- **THEN** el sistema SHALL rechazar la operacion.
 
 #### Scenario: Vencimiento solo para productos aplicables
 
-- GIVEN un producto sin vencimiento obligatorio
-- WHEN se registra inventario
-- THEN el sistema MAY permitir vencimiento opcional
-- AND SHALL NOT exigirlo.
+- **WHEN** se registra inventario de un producto sin vencimiento obligatorio
+- **THEN** el sistema SHALL permitir vencimiento opcional y SHALL NOT exigirlo.
 
 ### Requirement: Codigo de barras
 
@@ -82,11 +79,8 @@ El sistema SHALL soportar codigo de barras como identificador operativo separado
 
 #### Scenario: Buscar por codigo de barras
 
-- GIVEN un producto con codigo de barras
-- WHEN el usuario busca o escanea ese codigo
-- THEN el sistema SHALL resolver el producto del tenant correspondiente.
-
-PREGUNTA ABIERTA: El codigo de barras debe ser unico por tenant o permitir multiples codigos por producto?
+- **WHEN** el usuario busca o escanea un codigo de barras asociado a un producto
+- **THEN** el sistema SHALL resolver el producto del tenant correspondiente.
 
 ### Requirement: Estado del producto
 
@@ -94,17 +88,13 @@ El sistema SHALL mantener estado operativo del producto sin perder compatibilida
 
 #### Scenario: Producto inactivo
 
-- GIVEN un producto inactivo
-- WHEN se consulta catalogo POS
-- THEN el producto SHALL NOT estar disponible para venta.
+- **WHEN** se consulta catalogo POS y el producto esta inactivo
+- **THEN** el producto SHALL NOT estar disponible para venta.
 
 #### Scenario: Estado operativo adicional
 
-- GIVEN un producto con estado operativo distinto a activo/inactivo
-- WHEN se usa en compras, ventas o reportes
-- THEN las reglas SHALL respetar ese estado segun configuracion aprobada.
-
-PREGUNTA ABIERTA: Estados adicionales requeridos: `DISCONTINUED`, `BLOCKED`, `DRAFT`, otros?
+- **WHEN** se usa en compras, ventas o reportes un producto con estado operativo distinto a activo o inactivo
+- **THEN** las reglas SHALL respetar ese estado segun configuracion aprobada.
 
 ### Requirement: Clasificacion operativa
 
@@ -112,21 +102,11 @@ El sistema SHALL permitir clasificar productos para operacion y analisis.
 
 #### Scenario: Clasificacion manual
 
-- GIVEN un usuario autorizado edita un producto
-- WHEN asigna clasificacion operativa
-- THEN el sistema SHALL guardar la clasificacion y mostrarla en listados/reportes.
+- **WHEN** un usuario autorizado asigna clasificacion operativa al editar un producto
+- **THEN** el sistema SHALL guardar la clasificacion y mostrarla en listados o reportes.
 
 #### Scenario: Clasificacion calculada
 
-- GIVEN el sistema analiza ventas y movimientos
-- WHEN se calcule rotacion
-- THEN el sistema MAY proponer una clasificacion automatica.
-
-PREGUNTA ABIERTA: La clasificacion sera manual, automatica o mixta?
-
-## Riesgos
-
-RIESGO: Cambiar el contrato de `ProductResponse` sin campos opcionales puede romper POS, compras y listados.
-
-RIESGO: Usar `sku` como barcode puede mezclar responsabilidades y dificultar inventarios reales.
+- **WHEN** el sistema analiza ventas y movimientos para calcular rotacion
+- **THEN** el sistema SHALL poder proponer una clasificacion automatica cuando la regla este aprobada.
 

@@ -786,6 +786,7 @@ export class OrderService {
       if (!nextBranchId) {
         throw new BadRequestException("branch is required");
       }
+      await this.resolveOrderScope(actor, { tenantId, branchId: nextBranchId });
       await this.ensureBranchBelongsToTenant(nextBranchId, tenantId, client);
       if (data.items) {
         this.assertItems(data.items);

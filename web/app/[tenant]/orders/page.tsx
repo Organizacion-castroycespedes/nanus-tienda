@@ -19,6 +19,7 @@ import { Toast, type ToastVariant } from "../../../components/design-system/Toas
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { hasPermission } from "../../../lib/permissions";
+import { MENU_KEYS } from "../../../domains/menu/constants";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { OrderDeliverForm } from "../../../modules/inventory/components/OrderDeliverForm";
 import { OrderForm } from "../../../modules/inventory/components/OrderForm";
@@ -105,8 +106,8 @@ const OrdersPage = () => {
 
   const isAdminLikeRole =
     role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
-  const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
-  const canUpdate = hasPermission("inventory.update") || isAdminLikeRole;
+  const canCreate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
+  const canUpdate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const isGlobalRole = role === "SUPER_ADMIN";
 
   useAutoClearState(toastMessage, setToastMessage);

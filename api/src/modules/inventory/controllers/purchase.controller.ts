@@ -113,6 +113,7 @@ export class PurchaseController {
   }
 
   @Post()
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   create(@Body() body: CreatePurchaseBody, @Req() request: AuthRequest) {
     return this.purchaseService.createPurchase({
@@ -129,6 +130,7 @@ export class PurchaseController {
   }
 
   @Put(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -178,6 +180,7 @@ export class PurchaseController {
   }
 
   @Post(":id/receive")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   receive(
     @Param("id") id: string,
@@ -209,6 +212,7 @@ export class PurchaseController {
   }
 
   @Patch(":id/cancel")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "cancel" })
   cancel(
     @Param("id") id: string,
@@ -227,6 +231,7 @@ export class PurchaseController {
   }
 
   @Patch(":id/settle-partial")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "settle_partial" })
   settlePartial(
     @Param("id") id: string,

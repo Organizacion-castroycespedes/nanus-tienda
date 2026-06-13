@@ -12,6 +12,7 @@ import {
   Put,
   Req,
   BadRequestException,
+  ForbiddenException,
   ValidationPipe,
 } from "@nestjs/common";
 import type { Request } from "express";
@@ -20,6 +21,7 @@ import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { AccessControlService } from "../../../common/services/access-control.service";
 import { ChangeProductPriceDto } from "../dto/change-product-price.dto";
 import type {
   ProductMeasurementUnit,
@@ -79,7 +81,9 @@ const changeProductPriceValidationPipe = new ValidationPipe({
 export class ProductController {
   constructor(
     @Inject(ProductService)
-    private readonly productService: ProductService
+    private readonly productService: ProductService,
+    @Inject(AccessControlService)
+    private readonly accessControl: AccessControlService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -106,8 +110,31 @@ export class ProductController {
     return resolvedBranchId;
   }
 
+  private buildActor(request: AuthRequest) {
+    return {
+      id: request.user?.id,
+      tenantId: request.user?.tenantId,
+      roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
+    };
+  }
+
+  private async ensureBranchScope(
+    request: AuthRequest,
+    tenantId: string,
+    branchId: string
+  ) {
+    const allowed = await this.accessControl.canAccessBranch(
+      this.buildActor(request),
+      tenantId,
+      branchId
+    );
+    if (!allowed) {
+      throw new ForbiddenException("Sucursal no autorizada");
+    }
+  }
+
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   create(@Body() body: CreateProductBody, @Req() request: AuthRequest) {
     const tenantId = this.getTenantId(request);
@@ -120,13 +147,16 @@ export class ProductController {
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
-  list(
+  async list(
     @Query("branchId") branchId: string | undefined,
     @Req() request: AuthRequest
   ) {
+    const tenantId = this.getTenantId(request);
+    const resolvedBranchId = this.getBranchId(request, branchId);
+    await this.ensureBranchScope(request, tenantId, resolvedBranchId);
     return this.productService.listProducts(
-      this.getTenantId(request),
-      this.getBranchId(request, branchId)
+      tenantId,
+      resolvedBranchId
     );
   }
 
@@ -145,7 +175,7 @@ export class ProductController {
   }
 
   @Post(":id/change-price")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   changePrice(
     @Param("id") id: string,
@@ -161,7 +191,7 @@ export class ProductController {
   }
 
   @Put(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -176,7 +206,7 @@ export class ProductController {
   }
 
   @Delete(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.softDeleteProduct(id, this.getTenantId(request));

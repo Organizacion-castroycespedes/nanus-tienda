@@ -223,7 +223,6 @@ const ConfiguracionPage = () => {
   const currentTenantId = authUser?.tenantId ?? "";
   const isSuperAdmin = authUser?.role === "SUPER_ADMIN";
   const isSuperUser = authUser?.role === "SUPER_USER";
-  const isAdmin = authUser?.role === "ADMIN";
   const isCurrentTenant =
     Boolean(selectedTenantId) && selectedTenantId === currentTenantId;
   const setStatusMessage = (message: string, variant: ToastVariant) => {
@@ -1969,14 +1968,14 @@ const ConfiguracionPage = () => {
     });
   }, [branchSearch, branches]);
 
-  if (!isSuperAdmin && !isSuperUser && !isAdmin) {
+  if (!isSuperAdmin && !isSuperUser) {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">
           Acceso restringido
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Solo los usuarios con rol SUPER_ADMIN, SUPER_USER o ADMIN pueden acceder a la
+          Solo los usuarios con rol SUPER_ADMIN o SUPER_USER pueden acceder a la
           configuración.
         </p>
       </section>
