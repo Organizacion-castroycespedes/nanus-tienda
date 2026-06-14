@@ -2,14 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ForbiddenException, type ExecutionContext } from "@nestjs/common";
 import { ReportAuthzGuard } from "./report-authz.guard";
+import { ReportRoles } from "./report-roles.decorator";
 import type { ReportUser } from "./report-auth.types";
 
 type TestRequest = {
   user?: ReportUser;
 };
 
-const buildContext = (request: TestRequest) =>
+const defaultHandler = () => undefined;
+class DefaultController {}
+
+const buildContext = (
+  request: TestRequest,
+  handler: () => undefined = defaultHandler,
+  controller: object = DefaultController
+) =>
   ({
+    getHandler: () => handler,
+    getClass: () => controller,
     switchToHttp: () => ({
       getRequest: () => request,
     }),
@@ -43,6 +53,19 @@ test("ReportAuthzGuard: bloquea USER en reportes", () => {
     () => new ReportAuthzGuard().canActivate(buildContext(request)),
     ForbiddenException
   );
+});
+
+test("ReportAuthzGuard: permite USER cuando la ruta lo declara", () => {
+  const handler = () => undefined;
+  ReportRoles("USER")(handler);
+  const request: TestRequest = {
+    user: {
+      ...baseUser,
+      roles: ["USER"],
+    },
+  };
+
+  assert.equal(new ReportAuthzGuard().canActivate(buildContext(request, handler)), true);
 });
 
 test("ReportAuthzGuard: bloquea actor sin tenant", () => {

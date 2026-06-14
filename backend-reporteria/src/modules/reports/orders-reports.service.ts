@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
 import { buildOrderSalesReportLayout } from "../pdf/templates/reports/order-sales-report.template";
@@ -197,7 +203,14 @@ export class OrdersReportsService {
 
   async getOrderSaleTicket(orderId: string, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    console.log("actor:", actor);
+    console.log("orderId:", orderId);
     const payload = await this.ordersReportAdapter.getOrderSaleTicket(actor, orderId);
+    console.log("payload:", payload);
+    if (!payload && (await this.ordersReportAdapter.orderSaleExists(orderId))) {
+      throw new ForbiddenException("order ticket is not authorized");
+    }
+
     return this.normalizeOrderSaleTicketDataset(payload);
   }
 
