@@ -51,7 +51,7 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/inventory\/units\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_UNITS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/locations\/?$/i,
@@ -63,7 +63,7 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/inventory\/taxes\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_TAXES, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/purchases\/?$/i,

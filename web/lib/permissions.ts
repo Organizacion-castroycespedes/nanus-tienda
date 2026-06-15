@@ -8,12 +8,60 @@ const normalizeValue = (value: string) => value.trim().toLowerCase();
 
 const getAuthRole = () => {
   const state = store.getState();
-  return state.auth.role ?? state.auth.user?.role ?? "";
+  return (state.auth.role ?? state.auth.user?.role ?? "").trim().toUpperCase();
 };
 
 const getAuthPermissions = () => store.getState().auth.permissions;
 
 const isPrivilegedRole = (role: string) => role === "SUPER_ADMIN";
+
+const operationalAdminMenuKeys = new Set(
+  [
+    MENU_KEYS.INVENTORY_PURCHASES,
+    MENU_KEYS.INVENTORY_PRODUCTS,
+    MENU_KEYS.INVENTORY_UNITS,
+    MENU_KEYS.INVENTORY_TAXES,
+    MENU_KEYS.INVENTORY_SUPPLIERS,
+    MENU_KEYS.INVENTORY_PROMOTIONS,
+  ].map(normalizeValue)
+);
+
+const operationalInventoryActions = new Set([
+  "read",
+  "write",
+  "create",
+  "update",
+  "delete",
+  "cancel",
+  "settle_partial",
+]);
+
+const isOperationalAdminRole = (role: string) =>
+  role === "ADMIN" || role === "SUPER_USER";
+
+const isOperationalAdminModule = (moduleName: string) =>
+  operationalAdminMenuKeys.has(moduleName);
+
+const isOperationalInventoryAction = (moduleName: string, actionName: string) =>
+  moduleName === "inventory" && operationalInventoryActions.has(actionName);
+
+const hasOperationalAdminFallback = (
+  role: string,
+  moduleName: string,
+  actionName: string
+) =>
+  isOperationalAdminRole(role) &&
+  (isOperationalAdminModule(moduleName) ||
+    isOperationalInventoryAction(moduleName, actionName));
+
+const isUserBlockedFromAdminModule = (
+  role: string,
+  moduleName: string,
+  actionName: string
+) =>
+  role === "USER" &&
+  (isOperationalAdminModule(moduleName) ||
+    isOperationalInventoryAction(moduleName, actionName));
 
 const isRestrictedForRole = (role: string, moduleName: string) => {
   if (role !== "ADMIN") {
@@ -108,7 +156,13 @@ export const hasPermission = (
   if (isRestrictedForRole(role, module)) {
     return false;
   }
+  if (isUserBlockedFromAdminModule(role, module, resolvedAction)) {
+    return false;
+  }
   if (isPrivilegedRole(role) || isScopedSuperUserPermission(role, module)) {
+    return true;
+  }
+  if (hasOperationalAdminFallback(role, module, resolvedAction)) {
     return true;
   }
 
@@ -128,7 +182,7 @@ export const canAccessModule = (moduleCode: string) =>
   canPerformAction(moduleCode, "read");
 
 const menuItemAllowed = (item: MenuItem) =>
-  hasMenuAccess(item.key, "READ") || canAccessModule(item.module);
+  Boolean(item.inherited) || hasMenuAccess(item.key, "READ");
 
 export const getAllowedMenuItems = (items: MenuItem[]): MenuItem[] =>
   items.reduce<MenuItem[]>((allowed, item) => {
@@ -170,6 +224,22 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
       normalizedCandidates.includes(normalizeValue("CONFIGURACION_TENANT_CONFIGURACION")) ||
       normalizedCandidates.includes(normalizeValue("CONFIG_USUARIOS")) ||
       normalizedCandidates.includes(normalizeValue("USUARIOS_TENANT_USUARIOS")))
+  ) {
+    return true;
+  }
+  if (
+    role === "USER" &&
+    normalizedCandidates.some((candidate) =>
+      operationalAdminMenuKeys.has(candidate)
+    )
+  ) {
+    return false;
+  }
+  if (
+    isOperationalAdminRole(role) &&
+    normalizedCandidates.some((candidate) =>
+      operationalAdminMenuKeys.has(candidate)
+    )
   ) {
     return true;
   }

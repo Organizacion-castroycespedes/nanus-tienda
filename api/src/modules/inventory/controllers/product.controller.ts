@@ -134,7 +134,7 @@ export class ProductController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   create(@Body() body: CreateProductBody, @Req() request: AuthRequest) {
     const tenantId = this.getTenantId(request);
@@ -175,7 +175,7 @@ export class ProductController {
   }
 
   @Post(":id/change-price")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   changePrice(
     @Param("id") id: string,
@@ -191,7 +191,7 @@ export class ProductController {
   }
 
   @Put(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -206,7 +206,7 @@ export class ProductController {
   }
 
   @Delete(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.softDeleteProduct(id, this.getTenantId(request));

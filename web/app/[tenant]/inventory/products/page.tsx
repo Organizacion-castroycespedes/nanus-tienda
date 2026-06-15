@@ -192,7 +192,7 @@ const ProductsPage = () => {
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
   const canManageProducts =
-    role === "SUPER_ADMIN" || role === "SUPER_USER";
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
   const canCreate = canManageProducts && hasPermission("inventory.create");
   const canEdit = canManageProducts && hasPermission("inventory.update");
   const canDelete = canManageProducts && hasPermission("inventory.delete");
@@ -627,6 +627,7 @@ const ProductsPage = () => {
               <ProductBarcodePanel
                 productId={barcodeProduct.id}
                 productName={barcodeProduct.name}
+                canWrite={canEdit}
               />
             ) : null}
 

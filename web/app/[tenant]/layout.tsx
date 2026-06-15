@@ -62,6 +62,8 @@ import { isConfirmCancelledError, useConfirm } from "../../hooks/use-confirm";
 import { useTenantTheme } from "../../hooks/useTenantTheme";
 import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
+import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
+import type { CashSession } from "../../modules/finance/types";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -107,6 +109,45 @@ const iconByName: Record<string, LucideIcon> = {
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "flexibuild.sidebar.collapsed";
 const SIDEBAR_MENU_STATE_STORAGE_KEY = "sidebar_open_menu_items";
+const OPERATIONAL_MENU_ROLES = new Set(["ADMIN", "SUPER_USER", "SUPER_ADMIN"]);
+const OPERATIONAL_INVENTORY_SHORTCUTS = [
+  {
+    key: MENU_KEYS.INVENTORY_PURCHASES,
+    label: "Compras",
+    route: "purchases",
+    icon: "ShoppingCart",
+  },
+  {
+    key: MENU_KEYS.INVENTORY_PRODUCTS,
+    label: "Productos",
+    route: "inventory/products",
+    icon: "Package",
+  },
+  {
+    key: MENU_KEYS.INVENTORY_UNITS,
+    label: "Unidades",
+    route: "inventory/units",
+    icon: "Ruler",
+  },
+  {
+    key: MENU_KEYS.INVENTORY_TAXES,
+    label: "Impuestos",
+    route: "inventory/taxes",
+    icon: "Calculator",
+  },
+  {
+    key: MENU_KEYS.INVENTORY_SUPPLIERS,
+    label: "Proveedores",
+    route: "inventory/suppliers",
+    icon: "Store",
+  },
+  {
+    key: MENU_KEYS.INVENTORY_PROMOTIONS,
+    label: "Promociones",
+    route: "inventory/promotions",
+    icon: "Tags",
+  },
+];
 
 const TenantLayout = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
@@ -123,6 +164,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [layoutCashSession, setLayoutCashSession] = useState<CashSession | null>(null);
+  const [cashSessionChecked, setCashSessionChecked] = useState(false);
   const [profileForm, setProfileForm] = useState({
     nombres: "",
     apellidos: "",
@@ -423,6 +466,54 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     return targetLabel.includes("dashboard") || targetRoute.includes("/dashboard");
   }, []);
 
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      setLayoutCashSession(null);
+      setCashSessionChecked(false);
+      return;
+    }
+
+    let active = true;
+
+    const loadCashSession = async () => {
+      setCashSessionChecked(false);
+      try {
+        const session = await getCurrentCashSession();
+        if (active) {
+          setLayoutCashSession(session);
+        }
+      } catch {
+        if (active) {
+          setLayoutCashSession(null);
+        }
+      } finally {
+        if (active) {
+          setCashSessionChecked(true);
+        }
+      }
+    };
+
+    void loadCashSession();
+    window.addEventListener("manus:cash-session-changed", loadCashSession);
+
+    return () => {
+      active = false;
+      window.removeEventListener("manus:cash-session-changed", loadCashSession);
+    };
+  }, [authStatus, authUser?.id, tenantSlug]);
+
+  const isPosMenuItem = useCallback((item: MenuItem) => {
+    const normalizedRoute = item.route.toLowerCase();
+    const normalizedKey = item.key.toLowerCase();
+    const normalizedLabel = item.label.toLowerCase();
+
+    return (
+      normalizedKey === "pos" ||
+      normalizedLabel === "pos" ||
+      normalizedRoute.endsWith("/pos")
+    );
+  }, []);
+
   const menuItemsWithTerminalShortcut = useMemo(() => {
     const isSuperRole =
       authUser?.role === "SUPER_ADMIN" || authUser?.role === "SUPER_USER";
@@ -478,8 +569,131 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     return appendShortcut(menuItems);
   }, [authUser?.role, menuItems, tenantSlug]);
 
+  const menuItemsWithOperationalShortcuts = useMemo(() => {
+    const role = (authUser?.role ?? "").trim().toUpperCase();
+    if (!OPERATIONAL_MENU_ROLES.has(role)) {
+      return menuItemsWithTerminalShortcut;
+    }
+
+    const shortcuts = OPERATIONAL_INVENTORY_SHORTCUTS;
+    if (shortcuts.length === 0) {
+      return menuItemsWithTerminalShortcut;
+    }
+
+    const fullRoute = (route: string) => `/${tenantSlug}/${route}`;
+    const routeExists = (
+      items: MenuItem[],
+      route: string,
+      ancestorsVisible = true
+    ): boolean =>
+      items.some((item) => {
+        const currentVisible = ancestorsVisible && item.visible;
+        return (
+          (currentVisible && item.route === route) ||
+          routeExists(item.children ?? [], route, currentVisible)
+        );
+      });
+    const missingShortcuts = shortcuts.filter(
+      (shortcut) => !routeExists(menuItemsWithTerminalShortcut, fullRoute(shortcut.route))
+    );
+    if (missingShortcuts.length === 0) {
+      return menuItemsWithTerminalShortcut;
+    }
+
+    const inventoryRoute = `/${tenantSlug}/inventory`;
+    let appendedToInventory = false;
+    const buildShortcut = (
+      shortcut: (typeof OPERATIONAL_INVENTORY_SHORTCUTS)[number],
+      parent: MenuItem | null,
+      index: number
+    ): MenuItem => ({
+      id: `local-${shortcut.key.toLowerCase()}`,
+      key: shortcut.key,
+      module: parent?.module ?? "Inventario",
+      label: shortcut.label,
+      route: fullRoute(shortcut.route),
+      icon: shortcut.icon,
+      parentId: parent?.id ?? null,
+      sortOrder: Number(parent?.sortOrder ?? 0) + 200 + index,
+      visible: true,
+      belowMainMenu: parent?.belowMainMenu ?? false,
+      metadata: {},
+      accessLevel: "READ",
+      inherited: true,
+      children: [],
+    });
+
+    const appendToInventory = (items: MenuItem[]): MenuItem[] =>
+      items.map((item) => {
+        const nextChildren = appendToInventory(item.children ?? []);
+        const isInventoryParent =
+          item.key === "INVENTORY" || item.route === inventoryRoute;
+        if (!isInventoryParent) {
+          return nextChildren === item.children
+            ? item
+            : { ...item, children: nextChildren };
+        }
+        appendedToInventory = true;
+        return {
+          ...item,
+          visible: true,
+          children: [
+            ...nextChildren,
+            ...missingShortcuts.map((shortcut, index) =>
+              buildShortcut(shortcut, item, index)
+            ),
+          ],
+        };
+      });
+
+    const nextItems = appendToInventory(menuItemsWithTerminalShortcut);
+    if (appendedToInventory) {
+      return nextItems;
+    }
+
+    return [
+      ...nextItems,
+      ...missingShortcuts.map((shortcut, index) =>
+        buildShortcut(shortcut, null, index)
+      ),
+    ];
+  }, [authUser?.role, menuItemsWithTerminalShortcut, tenantSlug]);
+
   const { menuSections, mainMenuSections } = useMemo(() => {
-    const allowedItems = getAllowedMenuItems(menuItemsWithTerminalShortcut);
+    const allowedBaseItems = getAllowedMenuItems(menuItemsWithOperationalShortcuts);
+    const role = (authUser?.role ?? "").trim().toUpperCase();
+    const fullRoute = (route: string) => `/${tenantSlug}/${route}`;
+    const routeExists = (items: MenuItem[], route: string): boolean =>
+      items.some(
+        (item) => item.route === route || routeExists(item.children ?? [], route)
+      );
+    const shouldShowOperationalMenu =
+      OPERATIONAL_MENU_ROLES.has(role) ||
+      hasPermission("inventory", "create") ||
+      OPERATIONAL_INVENTORY_SHORTCUTS.some((shortcut) =>
+        hasPermission(shortcut.key, "read")
+      );
+    const operationalRootItems = shouldShowOperationalMenu
+      ? OPERATIONAL_INVENTORY_SHORTCUTS.filter(
+          (shortcut) => !routeExists(allowedBaseItems, fullRoute(shortcut.route))
+        ).map((shortcut, index): MenuItem => ({
+          id: `local-root-${shortcut.key.toLowerCase()}`,
+          key: shortcut.key,
+          module: "Inventario",
+          label: shortcut.label,
+          route: fullRoute(shortcut.route),
+          icon: shortcut.icon,
+          parentId: null,
+          sortOrder: 200 + index,
+          visible: true,
+          belowMainMenu: false,
+          metadata: {},
+          accessLevel: "READ",
+          inherited: true,
+          children: [],
+        }))
+      : [];
+    const allowedItems = [...allowedBaseItems, ...operationalRootItems];
     const rootItems = allowedItems.filter(
       (item) => item.visible && !isDashboardItem(item.label, item.route)
     );
@@ -498,7 +712,36 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       menuSections: groupByModule(primaryItems),
       mainMenuSections: groupByModule(mainMenuItems),
     };
-  }, [isDashboardItem, menuItemsWithTerminalShortcut]);
+  }, [authUser?.role, isDashboardItem, menuItemsWithOperationalShortcuts, tenantSlug]);
+
+  const operationalSidebarItems = useMemo<MenuItem[]>(() => {
+    const role = (authUser?.role ?? "").trim().toUpperCase();
+    const shouldShowOperationalMenu =
+      OPERATIONAL_MENU_ROLES.has(role) ||
+      hasPermission("inventory", "create") ||
+      OPERATIONAL_INVENTORY_SHORTCUTS.some((shortcut) =>
+        hasPermission(shortcut.key, "read")
+      );
+    if (!shouldShowOperationalMenu) {
+      return [];
+    }
+    return OPERATIONAL_INVENTORY_SHORTCUTS.map((shortcut, index) => ({
+      id: `local-sidebar-${shortcut.key.toLowerCase()}`,
+      key: shortcut.key,
+      module: "Inventario",
+      label: shortcut.label,
+      route: `/${tenantSlug}/${shortcut.route}`,
+      icon: shortcut.icon,
+      parentId: null,
+      sortOrder: 300 + index,
+      visible: true,
+      belowMainMenu: false,
+      metadata: {},
+      accessLevel: "READ",
+      inherited: true,
+      children: [],
+    }));
+  }, [authUser?.role, tenantSlug]);
 
   const getMenuIcon = (label: string, module: string, iconName?: string | null) => {
     if (iconName?.trim()) {
@@ -561,6 +804,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         const isActive = pathname === item.route;
         const hasChildren = Array.isArray(item.children) && item.children.length > 0;
         const isExpanded = openMenuItems[item.id] ?? false;
+        const posRequiresCash =
+          isPosMenuItem(item) && cashSessionChecked && !layoutCashSession;
+        const effectiveRoute = posRequiresCash
+          ? `/${tenantSlug}/pos/select-context`
+          : item.route;
         const activeChildChain = hasChildren
           ? getActiveMenuChain(item.children ?? [], pathname ?? "")
           : [];
@@ -611,7 +859,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }`}
               />
               <Link
-                href={item.route}
+                href={effectiveRoute}
                 aria-current={isDirectActive ? "page" : undefined}
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-active)] ${
                   depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
@@ -619,7 +867,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   sidebarCollapsed ? "justify-center" : ""
                 }`}
                 onClick={() => setSidebarOpen(false)}
-                aria-label={sidebarCollapsed ? item.label : undefined}
+                aria-label={
+                  posRequiresCash
+                    ? "POS requiere caja abierta"
+                    : sidebarCollapsed
+                      ? item.label
+                      : undefined
+                }
               >
                 {depth > 0 ? (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
@@ -641,7 +895,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   </span>
                 )}
                 {!sidebarCollapsed ? (
-                  <span className="flex-1 truncate leading-5">{item.label}</span>
+                  <span className="flex min-w-0 flex-1 flex-col leading-5">
+                    <span className="truncate">{item.label}</span>
+                    {posRequiresCash ? (
+                      <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] opacity-75">
+                        Requiere caja
+                      </span>
+                    ) : null}
+                  </span>
                 ) : null}
               </Link>
               {hasChildren ? (
@@ -737,7 +998,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     if (!pathname || menuItems.length === 0) {
       return;
     }
-    const activeChain = getActiveMenuChain(menuItems, pathname);
+    const activeChain = getActiveMenuChain(menuItemsWithOperationalShortcuts, pathname);
     if (activeChain.length === 0) {
       return;
     }
@@ -748,7 +1009,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       });
       return next;
     });
-  }, [getActiveMenuChain, menuItems, pathname]);
+  }, [getActiveMenuChain, menuItemsWithOperationalShortcuts, pathname]);
 
   useEffect(() => {
     if (authStatus !== "authenticated" || !authToken) {
@@ -1066,6 +1327,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           </div>
           <nav className="mt-4 flex-1 pb-2" aria-label="Navegacion principal">
             {renderMenuSections(menuSections, "primary")}
+            {operationalSidebarItems.length > 0 ? (
+              <div className="mt-2 border-t border-white/7 pt-2">
+                {!sidebarCollapsed ? (
+                  <p className="mb-2 mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--brand-sidebar-muted)] opacity-70">
+                    Inventario
+                  </p>
+                ) : null}
+                {renderMenuItems(operationalSidebarItems)}
+              </div>
+            ) : null}
             {Object.keys(mainMenuSections).length > 0 ? (
               <>
                 <div className="mt-4 px-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--brand-sidebar-muted)]">
