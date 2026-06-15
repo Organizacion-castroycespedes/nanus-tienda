@@ -81,6 +81,7 @@ export const createSale = (payload: PosSalePayload, headers?: HeadersInit) =>
   apiClient<SaleResponse>("/sales", {
     method: "POST",
     headers,
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 

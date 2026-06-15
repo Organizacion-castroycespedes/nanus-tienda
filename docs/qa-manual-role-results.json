@@ -1,0 +1,1532 @@
+{
+  "baseUrl": "http://localhost:3001",
+  "apiBaseUrl": "http://localhost:4020/api",
+  "tenantId": "00000000-0000-0000-0000-000000000001",
+  "results": [
+    {
+      "role": "USER",
+      "email": "***+default@manustienda.local",
+      "status": "PASS_CON_OBSERVACIONES",
+      "checks": {
+        "login": {
+          "landed": true,
+          "beforeText": "“Manus nos cambio la vida. Antes tardabamos horas en cuadrar caja. Ahora lo hacemos en minutos.” MG Maria Gonzalez Duena de minimarket 500+ Negocios 1.2M+ Ventas 99.9% Uptime Bienvenido de vuelta Ingresa tus credenciales para acceder a tu cuenta. Email Contrasena Olvidaste tu contrasena? Recordarme No soy un robot Ingresar O continua con Continuar con Google Continuar con Facebook No tienes cuenta? Crear cuenta gratis",
+          "beforeState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              false
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$zhhrzb6uir",
+              "__reactProps$zhhrzb6uir"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$zhhrzb6uir",
+              "__reactProps$zhhrzb6uir"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781486969818",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781486969818"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          },
+          "readyState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              true
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$zhhrzb6uir",
+              "__reactProps$zhhrzb6uir"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$zhhrzb6uir",
+              "__reactProps$zhhrzb6uir"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781486969818",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781486969818"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          }
+        },
+        "loginRedirectDashboard": true,
+        "currentUrlAfterLogin": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+        "loginTextAfterSubmit": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User PANEL PRINCIPAL Dashboard Bienvenido, Pos User. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL USER Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Pos User EMAIL user+default@manustienda.local DOCUMENTO CC US-DEFAULT CARGO USER TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL USER Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "browserLogs": [
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/me/permissions"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/not-found.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/dashboard/page.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/layout.js"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          }
+        ],
+        "menuText": "MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance Caja ORDERS Pedidos POS POS REQUIERE CAJA",
+        "menuLinks": [
+          {
+            "text": "CRM",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/crm/customers"
+          },
+          {
+            "text": "Clientes",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/customers"
+          },
+          {
+            "text": "Finance",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance"
+          },
+          {
+            "text": "Caja",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions"
+          },
+          {
+            "text": "Pedidos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/orders"
+          },
+          {
+            "text": "POS REQUIERE CAJA",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context"
+          },
+          {
+            "text": "Ir al dashboard",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard"
+          }
+        ],
+        "storage": {
+          "localStorageKeys": [
+            "pos-context",
+            "flexibuild.sidebar.collapsed",
+            "sidebar_open_menu_items"
+          ],
+          "sessionStorageKeys": [
+            "smg_refresh_token",
+            "smg_menu_cache_v1:00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "authStoragePresent": true,
+        "currentCashStatus": 401,
+        "currentCashBodyStart": "{\"message\":\"Token requerido\",\"error\":\"Unauthorized\",\"statusCode\":401}",
+        "hasCurrentCash": false,
+        "dashboardRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/dashboard",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User PANEL PRINCIPAL Dashboard Bienvenido, Pos User. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL USER Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Pos User EMAIL user+default@manustienda.local DOCUMENTO CC US-DEFAULT CARGO USER TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL USER Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User POS REQUIERE CAJA Selecciona contexto operativo Antes de vender debes seleccionar sucursal, terminal y abrir una caja autorizada. Seleccionar contexto y abrir caja Volver al dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashBlocked": true,
+        "contextRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Sucursal Sucursal Principal Sucursal Principal Terminal Selecciona una terminal Terminal 1 (TERM-001) Tu rol usa la sucursal asignada. No puedes abrir caja en otra sucursal. Caja asociada: CAJA 1 TERM 001 Se abrira una caja en este contexto antes de entrar al POS. Monto de apertura Abrir caja y entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "contextSelects": [
+          {
+            "label": "Sucursal\nSucursal Principal\nSucursal Principal",
+            "disabled": true,
+            "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+            "options": [
+              {
+                "value": "",
+                "text": "Sucursal Principal",
+                "disabled": false
+              },
+              {
+                "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+                "text": "Sucursal Principal",
+                "disabled": false
+              }
+            ]
+          },
+          {
+            "label": "Terminal\nSelecciona una terminal\nTerminal 1 (TERM-001)",
+            "disabled": false,
+            "value": "66d539c2-1934-4a6f-956d-46fae26cb044",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una terminal",
+                "disabled": false
+              },
+              {
+                "value": "66d539c2-1934-4a6f-956d-46fae26cb044",
+                "text": "Terminal 1 (TERM-001)",
+                "disabled": false
+              }
+            ]
+          }
+        ],
+        "cashSessionsRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance Caja ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 0 SESIONES CERRADAS 4 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "cashTurnoText": true,
+        "adminRoutes": {
+          "/00000000-0000-0000-0000-000000000001/purchases": {
+            "path": "/00000000-0000-0000-0000-000000000001/purchases",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/unauthorized",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User UNAUTHORIZED No tienes permiso para acceder a esta ruta. Tu sesion sigue activa, pero este recurso no esta habilitado para tu rol o permisos actuales. Volver al Dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/products": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/products",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/unauthorized",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User UNAUTHORIZED No tienes permiso para acceder a esta ruta. Tu sesion sigue activa, pero este recurso no esta habilitado para tu rol o permisos actuales. Volver al Dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/units": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/units",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/unauthorized",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User UNAUTHORIZED No tienes permiso para acceder a esta ruta. Tu sesion sigue activa, pero este recurso no esta habilitado para tu rol o permisos actuales. Volver al Dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/taxes": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/unauthorized",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User UNAUTHORIZED No tienes permiso para acceder a esta ruta. Tu sesion sigue activa, pero este recurso no esta habilitado para tu rol o permisos actuales. Volver al Dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/suppliers": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/unauthorized",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User UNAUTHORIZED No tienes permiso para acceder a esta ruta. Tu sesion sigue activa, pero este recurso no esta habilitado para tu rol o permisos actuales. Volver al Dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/promotions": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/unauthorized",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA SISTEMA Panel de control Pos User UNAUTHORIZED No tienes permiso para acceder a esta ruta. Tu sesion sigue activa, pero este recurso no esta habilitado para tu rol o permisos actuales. Volver al Dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          }
+        },
+        "menuHas": {
+          "dashboard": true,
+          "pos": true,
+          "purchases": false,
+          "products": false,
+          "units": false,
+          "taxes": false,
+          "suppliers": false,
+          "promotions": false,
+          "requiresCash": true
+        }
+      },
+      "bugs": [],
+      "observations": [],
+      "evidence": [
+        "docs/evidencia-user-qa-caja-roles-menu.png"
+      ]
+    },
+    {
+      "role": "ADMIN",
+      "email": "***+default@manustienda.local",
+      "status": "PASS_CON_OBSERVACIONES",
+      "checks": {
+        "login": {
+          "landed": true,
+          "beforeText": "“Manus nos cambio la vida. Antes tardabamos horas en cuadrar caja. Ahora lo hacemos en minutos.” MG Maria Gonzalez Duena de minimarket 500+ Negocios 1.2M+ Ventas 99.9% Uptime Bienvenido de vuelta Ingresa tus credenciales para acceder a tu cuenta. Email Contrasena Olvidaste tu contrasena? Recordarme No soy un robot Ingresar O continua con Continuar con Google Continuar con Facebook No tienes cuenta? Crear cuenta gratis",
+          "beforeState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              false
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$38rvuu2abdn",
+              "__reactProps$38rvuu2abdn"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$38rvuu2abdn",
+              "__reactProps$38rvuu2abdn"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781486999242",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781486999242"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          },
+          "readyState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              true
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$38rvuu2abdn",
+              "__reactProps$38rvuu2abdn"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$38rvuu2abdn",
+              "__reactProps$38rvuu2abdn"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781486999242",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781486999242"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          }
+        },
+        "loginRedirectDashboard": true,
+        "currentUrlAfterLogin": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+        "loginTextAfterSubmit": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin PANEL PRINCIPAL Dashboard Bienvenido, Tenant Admin. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL ADMIN Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Tenant Admin EMAIL admin+default@manustienda.local DOCUMENTO CC AD-DEFAULT CARGO ADMIN TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL ADMIN Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "browserLogs": [
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/not-found.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/dashboard/page.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/layout.js"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          }
+        ],
+        "menuText": "MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance Caja ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones",
+        "menuLinks": [
+          {
+            "text": "CRM",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/crm/customers"
+          },
+          {
+            "text": "Clientes",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/customers"
+          },
+          {
+            "text": "Finance",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance"
+          },
+          {
+            "text": "Caja",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions"
+          },
+          {
+            "text": "Pedidos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/orders"
+          },
+          {
+            "text": "POS REQUIERE CAJA",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context"
+          },
+          {
+            "text": "Compras",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/purchases"
+          },
+          {
+            "text": "Productos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/products"
+          },
+          {
+            "text": "Unidades",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/units"
+          },
+          {
+            "text": "Impuestos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/taxes"
+          },
+          {
+            "text": "Proveedores",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/suppliers"
+          },
+          {
+            "text": "Promociones",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/promotions"
+          },
+          {
+            "text": "Ir al dashboard",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard"
+          }
+        ],
+        "storage": {
+          "localStorageKeys": [
+            "pos-context",
+            "flexibuild.sidebar.collapsed",
+            "sidebar_open_menu_items"
+          ],
+          "sessionStorageKeys": [
+            "smg_refresh_token",
+            "smg_menu_cache_v1:00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "authStoragePresent": true,
+        "currentCashStatus": 401,
+        "currentCashBodyStart": "{\"message\":\"Token requerido\",\"error\":\"Unauthorized\",\"statusCode\":401}",
+        "hasCurrentCash": false,
+        "dashboardRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/dashboard",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin PANEL PRINCIPAL Dashboard Bienvenido, Tenant Admin. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL ADMIN Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Tenant Admin EMAIL admin+default@manustienda.local DOCUMENTO CC AD-DEFAULT CARGO ADMIN TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL ADMIN Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin POS REQUIERE CAJA Selecciona contexto operativo Antes de vender debes seleccionar sucursal, terminal y abrir una caja autorizada. Seleccionar contexto y abrir caja Volver al dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashBlocked": true,
+        "contextRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Sucursal Sucursal Principal Sucursal Principal Terminal Selecciona una terminal Terminal 1 (TERM-001) Tu rol usa la sucursal asignada. No puedes abrir caja en otra sucursal. Caja asociada: CAJA 1 TERM 001 Se abrira una caja en este contexto antes de entrar al POS. Monto de apertura Abrir caja y entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "contextSelects": [
+          {
+            "label": "Sucursal\nSucursal Principal\nSucursal Principal",
+            "disabled": true,
+            "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+            "options": [
+              {
+                "value": "",
+                "text": "Sucursal Principal",
+                "disabled": false
+              },
+              {
+                "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+                "text": "Sucursal Principal",
+                "disabled": false
+              }
+            ]
+          },
+          {
+            "label": "Terminal\nSelecciona una terminal\nTerminal 1 (TERM-001)",
+            "disabled": false,
+            "value": "66d539c2-1934-4a6f-956d-46fae26cb044",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una terminal",
+                "disabled": false
+              },
+              {
+                "value": "66d539c2-1934-4a6f-956d-46fae26cb044",
+                "text": "Terminal 1 (TERM-001)",
+                "disabled": false
+              }
+            ]
+          }
+        ],
+        "cashSessionsRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance Caja ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 1 SESIONES CERRADAS 11 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. OPEN APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 El ticket de cierre estara disponible cuando la caja quede cerrada. CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "cashTurnoText": true,
+        "adminRoutes": {
+          "/00000000-0000-0000-0000-000000000001/purchases": {
+            "path": "/00000000-0000-0000-0000-000000000001/purchases",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/purchases",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin PURCHASES Compras Consulta compras registradas por proveedor, tipo y estado. Actualizar Crear compra Buscar Desde Hasta Estado Todos DRAFT PENDING PARTIAL RECEIVED CERRADA_PARCIAL CANCELLED Filas por pagina 10 25 50 Buscar Limpiar Proveedor Sucursal Terminal Total Pagado Saldo Tipo Estado Pago Fecha Acciones Usa el boton Buscar para consultar compras. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/products": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/products",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/products",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin INVENTORY Productos Consulta el catalogo de productos y su stock actual. Actualizar Crear producto Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre SKU Sucursal Terminal Venta Precio Stock Acciones Usa el boton Buscar para consultar productos. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/units": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/units",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/units",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin INVENTORY Unidades Administra las unidades de medida disponibles para los productos. Actualizar Crear unidad Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Abreviacion Estado Acciones Usa el boton Buscar para consultar unidades. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/taxes": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin INVENTORY Impuestos Configura los impuestos disponibles para el catalogo de productos. Actualizar Crear impuesto Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Porcentaje Incluido Estado Acciones Usa el boton Buscar para consultar impuestos. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/suppliers": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin SUPPLIERS Proveedores Administra proveedores, contactos y ubicacion comercial. Actualizar Crear proveedor Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Documento Estado fiscal Telefono Email Ubicacion Acciones Usa el boton Buscar para consultar proveedores. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/promotions": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Tenant Admin INVENTORY Promociones Administra descuentos de productos. Menor priority gana. Tenant ruta: 00000000-0000-0000-0000-000000000001 Actualizar Crear promocion Buscar Estado Activas Inactivas Todas Buscar Limpiar Menor priority gana PROMOCION DESCUENTO VIGENCIA PRIORITY ALCANCE ESTADO ACCIONES 10 PORCIENTO PRUEBA 10% Porcentaje Desde 2/06/2026, 4:21 p. m. Hasta 9/06/2026, 4:21 p. m. 100 Menor gana Cafe (678624254445), Arroz (PROD-ARROZ-001), Azúcar (PROD-AZUCAR-001) +3 Sucursal Principal (PRINCIPAL), dc1b81e0 Activa Editar Inactivar Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          }
+        },
+        "menuHas": {
+          "dashboard": true,
+          "pos": true,
+          "purchases": true,
+          "products": true,
+          "units": true,
+          "taxes": true,
+          "suppliers": true,
+          "promotions": true,
+          "requiresCash": true
+        }
+      },
+      "bugs": [],
+      "observations": [],
+      "evidence": [
+        "docs/evidencia-admin-qa-caja-roles-menu.png"
+      ]
+    },
+    {
+      "role": "SUPER_USER",
+      "email": "***+default@manustienda.local",
+      "status": "PASS_CON_OBSERVACIONES",
+      "checks": {
+        "login": {
+          "landed": true,
+          "beforeText": "“Manus nos cambio la vida. Antes tardabamos horas en cuadrar caja. Ahora lo hacemos en minutos.” MG Maria Gonzalez Duena de minimarket 500+ Negocios 1.2M+ Ventas 99.9% Uptime Bienvenido de vuelta Ingresa tus credenciales para acceder a tu cuenta. Email Contrasena Olvidaste tu contrasena? Recordarme No soy un robot Ingresar O continua con Continuar con Google Continuar con Facebook No tienes cuenta? Crear cuenta gratis",
+          "beforeState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              false
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$p9y2o5b0ong",
+              "__reactProps$p9y2o5b0ong"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$p9y2o5b0ong",
+              "__reactProps$p9y2o5b0ong"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781487028493",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781487028493"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          },
+          "readyState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              true
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$p9y2o5b0ong",
+              "__reactProps$p9y2o5b0ong"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$p9y2o5b0ong",
+              "__reactProps$p9y2o5b0ong"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781487028493",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781487028493"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          }
+        },
+        "loginRedirectDashboard": true,
+        "currentUrlAfterLogin": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+        "loginTextAfterSubmit": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User PANEL PRINCIPAL Dashboard Bienvenido, Super User. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL SUPER_USER Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Super User EMAIL super.user+default@manustienda.local DOCUMENTO CC SU-DEFAULT CARGO SUPER_USER TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL SUPER_USER Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "browserLogs": [
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/auth/me"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/me/permissions"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/me/permissions"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/not-found.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/dashboard/page.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/layout.js"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          }
+        ],
+        "menuText": "MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion Usuarios Perifericos POS CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REPORTERIA Reporteria Ventas POS Caja Compras Pedidos Clientes INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones",
+        "menuLinks": [
+          {
+            "text": "Configuracion",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/configuracion"
+          },
+          {
+            "text": "Usuarios",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/usuarios"
+          },
+          {
+            "text": "Perifericos POS",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/admin/peripherals"
+          },
+          {
+            "text": "CRM",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/crm/customers"
+          },
+          {
+            "text": "Clientes",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/customers"
+          },
+          {
+            "text": "Finance",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance"
+          },
+          {
+            "text": "Caja",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions"
+          },
+          {
+            "text": "Movimientos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-movements"
+          },
+          {
+            "text": "Cajas",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-registers"
+          },
+          {
+            "text": "Metodos de pago",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/payment-methods"
+          },
+          {
+            "text": "Pedidos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/orders"
+          },
+          {
+            "text": "POS",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos"
+          },
+          {
+            "text": "Reporteria",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria"
+          },
+          {
+            "text": "Ventas POS",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/pos"
+          },
+          {
+            "text": "Caja",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/caja"
+          },
+          {
+            "text": "Compras",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/compras"
+          },
+          {
+            "text": "Pedidos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/pedidos"
+          },
+          {
+            "text": "Clientes",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/clientes"
+          },
+          {
+            "text": "Compras",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/purchases"
+          },
+          {
+            "text": "Productos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/products"
+          },
+          {
+            "text": "Unidades",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/units"
+          },
+          {
+            "text": "Impuestos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/taxes"
+          },
+          {
+            "text": "Proveedores",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/suppliers"
+          },
+          {
+            "text": "Promociones",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/promotions"
+          },
+          {
+            "text": "Ir al dashboard",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard"
+          }
+        ],
+        "storage": {
+          "localStorageKeys": [
+            "pos-context",
+            "flexibuild.sidebar.collapsed",
+            "sidebar_open_menu_items"
+          ],
+          "sessionStorageKeys": [
+            "smg_refresh_token",
+            "smg_menu_cache_v1:00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "authStoragePresent": true,
+        "currentCashStatus": 401,
+        "currentCashBodyStart": "{\"message\":\"Token requerido\",\"error\":\"Unauthorized\",\"statusCode\":401}",
+        "hasCurrentCash": false,
+        "dashboardRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/dashboard",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User PANEL PRINCIPAL Dashboard Bienvenido, Super User. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL SUPER_USER Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Super User EMAIL super.user+default@manustienda.local DOCUMENTO CC SU-DEFAULT CARGO SUPER_USER TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL SUPER_USER Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User POS REQUIERE CAJA Selecciona contexto operativo Antes de vender debes seleccionar sucursal, terminal y abrir una caja autorizada. Seleccionar contexto y abrir caja Volver al dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashBlocked": true,
+        "contextRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Sucursal Selecciona una sucursal Adelita de Char Sucursal Principal Terminal Selecciona una terminal Entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "contextSelects": [
+          {
+            "label": "Sucursal\nSelecciona una sucursal\nAdelita de Char\nSucursal Principal",
+            "disabled": false,
+            "value": "",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una sucursal",
+                "disabled": false
+              },
+              {
+                "value": "dc1b81e0-5ea9-4972-839c-2eb158112e40",
+                "text": "Adelita de Char",
+                "disabled": false
+              },
+              {
+                "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+                "text": "Sucursal Principal",
+                "disabled": false
+              }
+            ]
+          },
+          {
+            "label": "Terminal\nSelecciona una terminal",
+            "disabled": true,
+            "value": "",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una terminal",
+                "disabled": false
+              }
+            ]
+          }
+        ],
+        "cashSessionsRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL CAJA 1 TERM 001 MONTO DE APERTURA $ 500.000 SESIONES ABIERTAS 1 SESIONES CERRADAS 15 ESTADO ACTUAL Tu caja en este momento OPEN CAJA CAJA 1 TERM 001 001 ABIERTA 13/06/2026, 01:30 p. m. super.user+default@manustienda.local APERTURA $ 500.000 ESPERADO $ 658.100 ACCION Cerrar caja INGRESOS $ 183.100 EGRESOS $ 25.000 VENTAS COBRADAS $ 48.100 ULTIMO ARQUEO Sin arqueo GESTION DEL TURNO Caja abierta actual Ver movimientos VENTAS POS $ 48.100 PEDIDOS $ 135.000 COMPRAS $ 0 MOVIMIENTOS 6 ARQUEO Sin arqueo TICKETS Ticket al cerrar ULTIMOS MOVIMIENTOS Pago sale $ 24.200 Pago sale $ 8.900 Pago sale $ 15.000 Gastos de aseo -$ 25.000 Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. OPEN APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 El ticket de cierre estara disponible cuando la caja quede cerrada. CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "cashTurnoText": true,
+        "adminRoutes": {
+          "/00000000-0000-0000-0000-000000000001/purchases": {
+            "path": "/00000000-0000-0000-0000-000000000001/purchases",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/purchases",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User PURCHASES Compras Consulta compras registradas por proveedor, tipo y estado. Actualizar Crear compra Buscar Desde Hasta Estado Todos DRAFT PENDING PARTIAL RECEIVED CERRADA_PARCIAL CANCELLED Filas por pagina 10 25 50 Buscar Limpiar Proveedor Sucursal Terminal Total Pagado Saldo Tipo Estado Pago Fecha Acciones Usa el boton Buscar para consultar compras. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/products": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/products",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/products",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User INVENTORY Productos Consulta el catalogo de productos y su stock actual. Actualizar Crear producto Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre SKU Sucursal Terminal Venta Precio Stock Acciones Usa el boton Buscar para consultar productos. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/units": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/units",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/units",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User INVENTORY Unidades Administra las unidades de medida disponibles para los productos. Actualizar Crear unidad Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Abreviacion Estado Acciones Usa el boton Buscar para consultar unidades. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/taxes": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User INVENTORY Impuestos Configura los impuestos disponibles para el catalogo de productos. Actualizar Crear impuesto Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Porcentaje Incluido Estado Acciones Usa el boton Buscar para consultar impuestos. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/suppliers": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User SUPPLIERS Proveedores Administra proveedores, contactos y ubicacion comercial. Actualizar Crear proveedor Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Documento Estado fiscal Telefono Email Ubicacion Acciones Usa el boton Buscar para consultar proveedores. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/promotions": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User INVENTORY Promociones Administra descuentos de productos. Menor priority gana. Tenant ruta: 00000000-0000-0000-0000-000000000001 Actualizar Crear promocion Buscar Estado Activas Inactivas Todas Buscar Limpiar Menor priority gana PROMOCION DESCUENTO VIGENCIA PRIORITY ALCANCE ESTADO ACCIONES 10 PORCIENTO PRUEBA 10% Porcentaje Desde 2/06/2026, 4:21 p. m. Hasta 9/06/2026, 4:21 p. m. 100 Menor gana Cafe (678624254445), Arroz (PROD-ARROZ-001), Azúcar (PROD-AZUCAR-001) +3 Sucursal Principal (PRINCIPAL), Adelita de Char (SECUNDARIA) Activa Editar Inactivar Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          }
+        },
+        "menuHas": {
+          "dashboard": true,
+          "pos": true,
+          "purchases": true,
+          "products": true,
+          "units": true,
+          "taxes": true,
+          "suppliers": true,
+          "promotions": true,
+          "requiresCash": false
+        }
+      },
+      "bugs": [],
+      "observations": [],
+      "evidence": [
+        "docs/evidencia-super_user-qa-caja-roles-menu.png"
+      ]
+    },
+    {
+      "role": "SUPER_ADMIN",
+      "email": "***@hotmail.com",
+      "status": "PASS_CON_OBSERVACIONES",
+      "checks": {
+        "login": {
+          "landed": true,
+          "beforeText": "“Manus nos cambio la vida. Antes tardabamos horas en cuadrar caja. Ahora lo hacemos en minutos.” MG Maria Gonzalez Duena de minimarket 500+ Negocios 1.2M+ Ventas 99.9% Uptime Bienvenido de vuelta Ingresa tus credenciales para acceder a tu cuenta. Email Contrasena Olvidaste tu contrasena? Recordarme No soy un robot Ingresar O continua con Continuar con Google Continuar con Facebook No tienes cuenta? Crear cuenta gratis",
+          "beforeState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              false
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$3v2a80xo3hg",
+              "__reactProps$3v2a80xo3hg"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$3v2a80xo3hg",
+              "__reactProps$3v2a80xo3hg"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781487059147",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781487059147"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          },
+          "readyState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "checkboxStates": [
+              true,
+              true
+            ],
+            "submitText": "Ingresar",
+            "submitDisabled": false,
+            "formReactKeys": [
+              "__reactFiber$3v2a80xo3hg",
+              "__reactProps$3v2a80xo3hg"
+            ],
+            "submitReactKeys": [
+              "__reactFiber$3v2a80xo3hg",
+              "__reactProps$3v2a80xo3hg"
+            ],
+            "scriptCount": 11,
+            "nextScripts": [
+              "http://localhost:3001/_next/static/chunks/main-app.js?v=1781487059147",
+              "http://localhost:3001/_next/static/chunks/app-pages-internals.js",
+              "http://localhost:3001/_next/static/chunks/app/login/page.js",
+              "http://localhost:3001/_next/static/chunks/app/layout.js",
+              "http://localhost:3001/_next/static/chunks/polyfills.js",
+              "http://localhost:3001/_next/static/chunks/webpack.js?v=1781487059147"
+            ],
+            "nextDataPresent": false,
+            "nextGlobals": {
+              "next": "object",
+              "webpackChunk": "object"
+            }
+          }
+        },
+        "loginRedirectDashboard": true,
+        "currentUrlAfterLogin": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+        "loginTextAfterSubmit": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ PANEL PRINCIPAL Dashboard Bienvenido, IVAN JESUS CASTRO RUIZ. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL SUPER_ADMIN Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE IVAN JESUS CASTRO RUIZ EMAIL icastror@hotmail.com DOCUMENTO CC 72009461 CARGO SUPER ADMINISTRADOR TELÉFONO 3003162985 DIRECCIÓN CALLE 18B # 17F-24 Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL SUPER_ADMIN Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "browserLogs": [
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/not-found.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/dashboard/page.js"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:3001/_next/static/chunks/app/%5Btenant%5D/layout.js"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "url": "http://localhost:4020/api/system/version"
+          }
+        ],
+        "menuText": "MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion Menu Roles Usuarios Perifericos POS Terminales CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria Ventas POS REQUIERE CAJA Caja Compras Pedidos Clientes INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones",
+        "menuLinks": [
+          {
+            "text": "Configuracion",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/configuracion"
+          },
+          {
+            "text": "Menu",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/configuracion/menu"
+          },
+          {
+            "text": "Roles",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/roles"
+          },
+          {
+            "text": "Usuarios",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/usuarios"
+          },
+          {
+            "text": "Perifericos POS",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/admin/peripherals"
+          },
+          {
+            "text": "Terminales",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/config/terminals"
+          },
+          {
+            "text": "CRM",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/crm/customers"
+          },
+          {
+            "text": "Clientes",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/customers"
+          },
+          {
+            "text": "Finance",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance"
+          },
+          {
+            "text": "Caja",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions"
+          },
+          {
+            "text": "Movimientos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-movements"
+          },
+          {
+            "text": "Cajas",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-registers"
+          },
+          {
+            "text": "Metodos de pago",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/payment-methods"
+          },
+          {
+            "text": "Pedidos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/orders"
+          },
+          {
+            "text": "POS REQUIERE CAJA",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context"
+          },
+          {
+            "text": "Reporteria",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria"
+          },
+          {
+            "text": "Ventas POS REQUIERE CAJA",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context"
+          },
+          {
+            "text": "Caja",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/caja"
+          },
+          {
+            "text": "Compras",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/compras"
+          },
+          {
+            "text": "Pedidos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/pedidos"
+          },
+          {
+            "text": "Clientes",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/reporteria/clientes"
+          },
+          {
+            "text": "Compras",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/purchases"
+          },
+          {
+            "text": "Productos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/products"
+          },
+          {
+            "text": "Unidades",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/units"
+          },
+          {
+            "text": "Impuestos",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/taxes"
+          },
+          {
+            "text": "Proveedores",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/suppliers"
+          },
+          {
+            "text": "Promociones",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/promotions"
+          },
+          {
+            "text": "Ir al dashboard",
+            "href": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard"
+          }
+        ],
+        "storage": {
+          "localStorageKeys": [
+            "pos-context",
+            "flexibuild.sidebar.collapsed",
+            "sidebar_open_menu_items"
+          ],
+          "sessionStorageKeys": [
+            "smg_refresh_token",
+            "smg_menu_cache_v1:00000000-0000-0000-0000-000000000001"
+          ]
+        },
+        "authStoragePresent": true,
+        "currentCashStatus": 401,
+        "currentCashBodyStart": "{\"message\":\"Token requerido\",\"error\":\"Unauthorized\",\"statusCode\":401}",
+        "hasCurrentCash": false,
+        "dashboardRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/dashboard",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ PANEL PRINCIPAL Dashboard Bienvenido, IVAN JESUS CASTRO RUIZ. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL SUPER_ADMIN Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE IVAN JESUS CASTRO RUIZ EMAIL icastror@hotmail.com DOCUMENTO CC 72009461 CARGO SUPER ADMINISTRADOR TELÉFONO 3003162985 DIRECCIÓN CALLE 18B # 17F-24 Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL SUPER_ADMIN Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ POS REQUIERE CAJA Selecciona contexto operativo Antes de vender debes seleccionar sucursal, terminal y abrir una caja autorizada. Seleccionar contexto y abrir caja Volver al dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posNoCashBlocked": true,
+        "contextRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos/select-context",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Empresa Selecciona una empresa Tenant Principal Sucursal Selecciona una sucursal Adelita de Char Sucursal Principal Terminal Selecciona una terminal Entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "contextSelects": [
+          {
+            "label": "Empresa\nSelecciona una empresa\nTenant Principal",
+            "disabled": false,
+            "value": "00000000-0000-0000-0000-000000000001",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una empresa",
+                "disabled": false
+              },
+              {
+                "value": "00000000-0000-0000-0000-000000000001",
+                "text": "Tenant Principal",
+                "disabled": false
+              }
+            ]
+          },
+          {
+            "label": "Sucursal\nSelecciona una sucursal\nAdelita de Char\nSucursal Principal",
+            "disabled": false,
+            "value": "",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una sucursal",
+                "disabled": false
+              },
+              {
+                "value": "dc1b81e0-5ea9-4972-839c-2eb158112e40",
+                "text": "Adelita de Char",
+                "disabled": false
+              },
+              {
+                "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+                "text": "Sucursal Principal",
+                "disabled": false
+              }
+            ]
+          },
+          {
+            "label": "Terminal\nSelecciona una terminal",
+            "disabled": true,
+            "value": "",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una terminal",
+                "disabled": false
+              }
+            ]
+          }
+        ],
+        "cashSessionsRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 1 SESIONES CERRADAS 15 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. OPEN APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 El ticket de cierre estara disponible cuando la caja quede cerrada. CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "cashTurnoText": true,
+        "adminRoutes": {
+          "/00000000-0000-0000-0000-000000000001/purchases": {
+            "path": "/00000000-0000-0000-0000-000000000001/purchases",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/purchases",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ PURCHASES Compras Consulta compras registradas por proveedor, tipo y estado. Actualizar Crear compra Buscar Tenant Todos Sucursal Todas Desde Hasta Estado Todos DRAFT PENDING PARTIAL RECEIVED CERRADA_PARCIAL CANCELLED Filas por pagina 10 25 50 Buscar Limpiar Proveedor Sucursal Terminal Total Pagado Saldo Tipo Estado Pago Fecha Acciones Usa el boton Buscar para consultar compras. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/products": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/products",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/products",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ INVENTORY Productos Consulta el catalogo de productos y su stock actual. Actualizar Crear producto Buscar Tenant Todos Sucursal Todas Buscar Limpiar Filas por pagina 10 25 50 Nombre SKU Sucursal Terminal Venta Precio Stock Acciones Usa el boton Buscar para consultar productos. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/units": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/units",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/units",
+            "text": ""
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/taxes": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/taxes",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ INVENTORY Impuestos Configura los impuestos disponibles para el catalogo de productos. Actualizar Crear impuesto Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Porcentaje Incluido Estado Acciones Usa el boton Buscar para consultar impuestos. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/suppliers": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/suppliers",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ SUPPLIERS Proveedores Administra proveedores, contactos y ubicacion comercial. Actualizar Crear proveedor Buscar Buscar Limpiar Filas por pagina 10 25 50 Nombre Documento Estado fiscal Telefono Email Ubicacion Acciones Usa el boton Buscar para consultar proveedores. Pagina 1 de 1 Anterior Siguiente Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          },
+          "/00000000-0000-0000-0000-000000000001/inventory/promotions": {
+            "path": "/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/inventory/promotions",
+            "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control IVAN JESUS CASTRO RUIZ INVENTORY Promociones Administra descuentos de productos. Menor priority gana. Tenant ruta: 00000000-0000-0000-0000-000000000001 Actualizar Crear promocion Buscar Estado Activas Inactivas Todas Buscar Limpiar Menor priority gana PROMOCION DESCUENTO VIGENCIA PRIORITY ALCANCE ESTADO ACCIONES 10 PORCIENTO PRUEBA 10% Porcentaje Desde 2/06/2026, 4:21 p. m. Hasta 9/06/2026, 4:21 p. m. 100 Menor gana Cafe (678624254445), Arroz (PROD-ARROZ-001), Azúcar (PROD-AZUCAR-001) +3 Sucursal Principal (PRINCIPAL), Adelita de Char (SECUNDARIA) Activa Editar Inactivar Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+          }
+        },
+        "menuHas": {
+          "dashboard": true,
+          "pos": true,
+          "purchases": true,
+          "products": true,
+          "units": true,
+          "taxes": true,
+          "suppliers": true,
+          "promotions": true,
+          "requiresCash": true
+        }
+      },
+      "bugs": [],
+      "observations": [],
+      "evidence": [
+        "docs/evidencia-super_admin-qa-caja-roles-menu.png"
+      ]
+    }
+  ]
+}

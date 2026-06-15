@@ -19,6 +19,7 @@ const ids = {
   promotion: "10000000-0000-0000-0000-000000000008",
   tax: "10000000-0000-0000-0000-000000000009",
   otherBranch: "10000000-0000-0000-0000-000000000010",
+  terminal: "10000000-0000-0000-0000-000000000011",
 };
 
 type RecordedQuery = {
@@ -111,6 +112,7 @@ class FakeOrderClient {
       currentTotal?: number;
       currentTotalPaid?: number;
       auditBranchId?: string | null;
+      terminalBranchId?: string | null;
     } = {}
   ) {}
 
@@ -140,6 +142,18 @@ class FakeOrderClient {
 
     if (sql.includes("FROM tenant_branches")) {
       return { rows: [{ id: params[0] }] as T[] };
+    }
+
+    if (sql.includes("FROM terminals")) {
+      const terminalBranchId = this.options.terminalBranchId ?? ids.branch;
+      if (
+        params[0] === ids.terminal &&
+        params[1] === ids.tenant &&
+        params[2] === terminalBranchId
+      ) {
+        return { rows: [{ id: ids.terminal, name: "Terminal QA" }] as T[] };
+      }
+      return { rows: [] as T[] };
     }
 
     if (sql.includes("auditoria_eventos")) {
@@ -427,6 +441,50 @@ test("OrderService.createOrder persists snapshot with promotion", async () => {
       .appliedPromotionId,
     ids.promotion
   );
+});
+
+test("OrderService.createOrder persists terminal context in audit payload and response", async () => {
+  const { service, auditEvents } = buildService([makePreview()]);
+
+  const result = await service.createOrder({
+    ...createPayload(),
+    context: {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      terminalId: ids.terminal,
+      userId: ids.user,
+    },
+  });
+
+  assert.equal(result.branchId, ids.branch);
+  assert.equal(result.terminalId, ids.terminal);
+  assert.equal(result.terminalName, "Terminal QA");
+  assert.equal((auditEvents[0] as any).after.terminalId, ids.terminal);
+  assert.equal((auditEvents[0] as any).after.branchId, ids.branch);
+});
+
+test("OrderService.createOrder rejects terminal outside tenant branch", async () => {
+  const { service, client, pricingService } = buildService([makePreview()], {
+    terminalBranchId: ids.otherBranch,
+  });
+
+  await assert.rejects(
+    () =>
+      service.createOrder({
+        ...createPayload(),
+        context: {
+          tenantId: ids.tenant,
+          branchId: ids.branch,
+          terminalId: ids.terminal,
+          userId: ids.user,
+        },
+      }),
+    BadRequestException
+  );
+
+  assert.equal(pricingService.calls.length, 0);
+  assert.equal(client.insertedOrder, null);
+  assert.equal(client.rolledBack, true);
 });
 
 test("OrderService.updateOrder recalculates draft items, replaces them, and updates total", async () => {

@@ -227,6 +227,51 @@ test("PermissionsGuard: allows ADMIN operational catalog WRITE without DB permis
   assert.equal(allowed, true);
 });
 
+test("PermissionsGuard: allows ADMIN electronic invoicing suppliers WRITE through inventory suppliers alias", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for ADMIN suppliers alias shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["ADMIN"] })
+  );
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks USER electronic invoicing suppliers WRITE without permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["USER"] })
+      ),
+    /Permisos insuficientes/
+  );
+});
+
 test("PermissionsGuard: allows SUPER_USER operational promotions WRITE without DB permission", async () => {
   const reflector = {
     getAllAndOverride: () => ({

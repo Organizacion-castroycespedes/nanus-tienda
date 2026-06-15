@@ -1,0 +1,482 @@
+{
+  "baseUrl": "http://localhost:3001",
+  "apiBaseUrl": "http://localhost:4020/api",
+  "tenantId": "00000000-0000-0000-0000-000000000001",
+  "executedAt": "2026-06-15T02:12:44.197Z",
+  "results": [
+    {
+      "role": "SUPER_USER",
+      "email": "***+default@manustienda.local",
+      "status": "FAIL",
+      "checks": {
+        "login": {
+          "landed": true,
+          "readyState": {
+            "hasForm": true,
+            "hasEmail": true,
+            "hasPassword": true,
+            "submitDisabled": false
+          }
+        },
+        "loginRedirectDashboard": true,
+        "currentUrlAfterLogin": "http://localhost:3001/00000000-0000-0000-0000-000000000001/dashboard",
+        "dashboardText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User PANEL PRINCIPAL Dashboard Bienvenido, Super User. Contexto activo Tenant: Manus Tienda Platform S.A.S Sucursal: Sucursal Principal Version: 0.0.1 COMPAÑÍA Manus Tienda Platform S.A.S NIT 901234567 SUCURSAL ACTIVA Sucursal Principal Asignación principal ROL SUPER_USER Accesos gestionados por permisos Perfil del usuario Información básica de la cuenta autenticada. NOMBRE Super User EMAIL super.user+default@manustienda.local DOCUMENTO CC SU-DEFAULT CARGO SUPER_USER TELÉFONO Sin teléfono DIRECCIÓN Sin dirección Contexto de trabajo Datos clave del entorno activo. TENANT Manus Tienda Platform S.A.S ID: 00000000-0000-0000-0000-000000000001 SUCURSAL ACTIVA Sucursal Principal ID: ab41d3da-6686-4de3-9191-875a5a7da5a5 ROL ACTUAL SUPER_USER Acceso gestionado por permisos configurados Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "posInitialRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/pos",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/pos",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User POS REQUIERE CAJA Selecciona contexto operativo Antes de vender debes seleccionar sucursal, terminal y abrir una caja autorizada. Seleccionar contexto y abrir caja Volver al dashboard Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "posInitiallyBlocked": true,
+        "posAlreadyOperative": false,
+        "contextSelects": [
+          {
+            "label": "Sucursal Selecciona una sucursal Adelita de Char Sucursal Principal",
+            "disabled": false,
+            "value": "dc1b81e0-5ea9-4972-839c-2eb158112e40",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una sucursal",
+                "disabled": false
+              },
+              {
+                "value": "dc1b81e0-5ea9-4972-839c-2eb158112e40",
+                "text": "Adelita de Char",
+                "disabled": false
+              },
+              {
+                "value": "ab41d3da-6686-4de3-9191-875a5a7da5a5",
+                "text": "Sucursal Principal",
+                "disabled": false
+              }
+            ]
+          },
+          {
+            "label": "Terminal Selecciona una terminal Terminal 1 Adelita (TERM-002) Terminal 2 Adelita (TERM-003)",
+            "disabled": false,
+            "value": "da6f6369-c770-4051-82b8-f9b2ebc85b46",
+            "options": [
+              {
+                "value": "",
+                "text": "Selecciona una terminal",
+                "disabled": false
+              },
+              {
+                "value": "da6f6369-c770-4051-82b8-f9b2ebc85b46",
+                "text": "Terminal 1 Adelita (TERM-002)",
+                "disabled": false
+              },
+              {
+                "value": "ef586339-60d3-49ff-84a9-fcf35d7db1fa",
+                "text": "Terminal 2 Adelita (TERM-003)",
+                "disabled": false
+              }
+            ]
+          }
+        ],
+        "contextText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Sucursal Selecciona una sucursal Adelita de Char Sucursal Principal Terminal Selecciona una terminal Terminal 1 Adelita (TERM-002) Terminal 2 Adelita (TERM-003) Ya tienes una caja abierta en otra sucursal o caja. Cierra esa caja antes de cambiar de contexto. Caja asociada: Adelita de char Se abrira una caja en este contexto antes de entrar al POS. Entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "cashAlreadyOpenHandled": true,
+        "openCashClick": false,
+        "cashOpened": true,
+        "posAfterOpenText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Sucursal Selecciona una sucursal Adelita de Char Sucursal Principal Terminal Selecciona una terminal Terminal 1 Adelita (TERM-002) Terminal 2 Adelita (TERM-003) Ya tienes una caja abierta en otra sucursal o caja. Cierra esa caja antes de cambiar de contexto. Caja asociada: Adelita de char Se abrira una caja en este contexto antes de entrar al POS. Entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "posOperative": false,
+        "productClick": {
+          "clicked": false,
+          "count": 0
+        },
+        "posSaleText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User CONTEXTO POS Selecciona sucursal y terminal Empresa activa: Tenant Principal Sucursal Selecciona una sucursal Adelita de Char Sucursal Principal Terminal Selecciona una terminal Terminal 1 Adelita (TERM-002) Terminal 2 Adelita (TERM-003) Ya tienes una caja abierta en otra sucursal o caja. Cierra esa caja antes de cambiar de contexto. Caja asociada: Adelita de char Se abrira una caja en este contexto antes de entrar al POS. Entrar al POS Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "posSaleDone": false,
+        "cashSessionsRoute": {
+          "path": "/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "url": "http://localhost:3001/00000000-0000-0000-0000-000000000001/finance/cash-sessions",
+          "text": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL CAJA 1 TERM 001 MONTO DE APERTURA $ 500.000 SESIONES ABIERTAS 1 SESIONES CERRADAS 15 ESTADO ACTUAL Tu caja en este momento OPEN CAJA CAJA 1 TERM 001 001 ABIERTA 13/06/2026, 01:30 p. m. super.user+default@manustienda.local APERTURA $ 500.000 ESPERADO $ 658.100 ACCION Cerrar caja INGRESOS $ 183.100 EGRESOS $ 25.000 VENTAS COBRADAS $ 48.100 ULTIMO ARQUEO Sin arqueo GESTION DEL TURNO Caja abierta actual Ver movimientos VENTAS POS $ 48.100 PEDIDOS $ 135.000 COMPRAS $ 0 MOVIMIENTOS 6 ARQUEO Sin arqueo TICKETS Ticket al cerrar ULTIMOS MOVIMIENTOS Pago sale $ 24.200 Pago sale $ 8.900 Pago sale $ 15.000 Gastos de aseo -$ 25.000 Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. OPEN APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 El ticket de cierre estara disponible cuando la caja quede cerrada. CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567"
+        },
+        "shiftVisible": true,
+        "openSessionVisible": true,
+        "closeButtonClick": true,
+        "closeResultText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 0 SESIONES CERRADAS 16 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA -$ 658.100 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Failed to fetch Caja cerrada Caja cerrada correctamente MONTO APERTURA $ 500.000 ENTRADAS $ 183.100 SALIDAS $ 25.000 ESPERADO $ 658.100 REAL $ 0 DIFERENCIA -$ 658.100 FECHA/HORA CIERRE 14/06/2026, 09:12 p. m. Ver ticket Descargar PDF Imprimir Cerrar Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "noticeDialogSuccess": true,
+        "noticeDialogError": false,
+        "ticketActionsInNotice": true,
+        "closedSessionIdFromUi": null,
+        "noticeVerTicketClick": true,
+        "noticeTicketModalText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 0 SESIONES CERRADAS 16 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA -$ 658.100 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Failed to fetch Ticket de cierre 77ab1b6c Vista previa del ticket generado por el backend. Failed to fetch Cerrar Descargar Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "noticeVerTicket": true,
+        "noticeTicketResponses": [
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          }
+        ],
+        "noticeDownloadClick": true,
+        "noticeDownloadResponses": [],
+        "noticePrintClick": true,
+        "noticePrintResponses": [],
+        "cashSessionsAfterCloseText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 0 SESIONES CERRADAS 16 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA -$ 658.100 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "cashSessionsClosedActions": true,
+        "cashSessionsOpenNoTicketText": false,
+        "historyVerTicketClick": true,
+        "historyTicketModalText": "Saltar al contenido principal MT Manus Tienda Platform S.A.S Manus POS CONFIGURACION Configuracion CRM CRM CUSTOMERS Clientes FINANCE Finance Caja Movimientos Cajas Metodos de pago ORDERS Pedidos POS POS REQUIERE CAJA REPORTERIA Reporteria INVENTARIO Compras Productos Unidades Impuestos Proveedores Promociones SISTEMA Panel de control Super User FINANCE / CAJA Sesiones de caja Abre, monitorea y cierra cajas con una lectura inmediata del estado actual y del historial reciente. Actualizar Abrir caja desde contexto Resumen Pulso operativo de la capa financiera Metodos de pago Catalogo, estado y reglas de cobro Cajas Puntos de recaudo por sucursal Sesiones Aperturas, cierres y arqueo Movimientos Entradas, salidas y balance rapido CAJA ACTUAL Sin sesion MONTO DE APERTURA $ 0 SESIONES ABIERTAS 0 SESIONES CERRADAS 16 ESTADO ACTUAL Tu caja en este momento No tienes una sesion abierta en este momento. Caja Todas Adelita de char CAJA 1 TERM 001 Estado Todos Abiertas Cerradas Canceladas CAJA 1 TERM 001 Apertura 13/06/2026, 01:30 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA -$ 658.100 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 13/06/2026, 12:50 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 1.081.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 11:34 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 643.478 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:33 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:31 p. m. CLOSED APERTURA $ 0 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 0 DIFERENCIA -$ 1.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 2.000 CIERRE $ 2.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 08:09 p. m. CLOSED APERTURA $ 1.000 CIERRE $ 1.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 12/06/2026, 12:10 a. m. CLOSED APERTURA $ 1.000.000 CIERRE $ 0 DIFERENCIA -$ 1.000.000 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 28/05/2026, 10:13 p. m. CLOSED APERTURA $ 500.000 CIERRE $ 0 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 05/05/2026, 10:45 p. m. CLOSED APERTURA $ 150.000 CIERRE $ 204.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 10:48 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 50.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir Adelita de char Apertura 04/05/2026, 02:00 p. m. CLOSED APERTURA $ 50.000 CIERRE $ 56.000 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:53 p. m. CLOSED APERTURA $ 100.000 CIERRE $ 423.360,15 DIFERENCIA $ 0 Ver ticket Descargar PDF Imprimir CAJA 1 TERM 001 Apertura 03/05/2026, 10:29 p. m. CLOSED APERTURA $ 1 CIERRE $ 39.000 DIFERENCIA -$ 1 Ver ticket Descargar PDF Imprimir Ticket de cierre 77ab1b6c Vista previa del ticket generado por el backend. Failed to fetch Cerrar Descargar Imprimir Manus Tienda Platform S.A.S NIT 901234567-1 info@softmetalglass.com https://softmetalglass.com +57 300 123 4567",
+        "historyVerTicket": true,
+        "historyDownloadClick": true,
+        "historyPrintClick": true,
+        "browserLogs": [
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/history?limit=50"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/history?limit=50"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/77ab1b6c-c868-4902-84a3-ce418ec12c7b/summary"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-registers"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/77ab1b6c-c868-4902-84a3-ce418ec12c7b/summary"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/77ab1b6c-c868-4902-84a3-ce418ec12c7b/close"
+          },
+          {
+            "type": "network-response",
+            "status": 201,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/77ab1b6c-c868-4902-84a3-ce418ec12c7b/close"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/history?limit=50"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/auth/refresh"
+          },
+          {
+            "type": "network-response",
+            "status": 201,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/auth/refresh"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/auth/me"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/auth/me"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/me/permissions"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/auth/me"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/config"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/tenants/00000000-0000-0000-0000-000000000001/details"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/me/permissions"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/auth/me"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/me/menu"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/me/permissions"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/history?limit=50"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-registers"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-registers"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-registers"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/history?limit=50"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "",
+            "url": "http://localhost:4020/api/finance/cash-sessions/current"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_ABORTED"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-sessions/history?limit=50"
+          },
+          {
+            "type": "network-response",
+            "status": 200,
+            "mimeType": "application/json",
+            "url": "http://localhost:4020/api/finance/cash-registers"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          },
+          {
+            "type": "network-response",
+            "status": 204,
+            "mimeType": "",
+            "url": "http://localhost:4021/api/reports/cash-closings/77ab1b6c-c868-4902-84a3-ce418ec12c7b/ticket"
+          },
+          {
+            "type": "network-failed",
+            "errorText": "net::ERR_FAILED"
+          }
+        ],
+        "downloads": [],
+        "popups": []
+      },
+      "bugs": [
+        "No se pudo abrir caja o continuar con caja existente",
+        "POS siguio bloqueado o no operativo con caja abierta",
+        "No se pudo agregar producto POS",
+        "No se pudo confirmar venta POS real",
+        "Ticket real de cierre no obtuvo respuesta PDF 200"
+      ],
+      "observations": [],
+      "evidence": [
+        "docs/evidencia-super_user-qa-caja-operativa-notice.png",
+        "docs/evidencia-super_user-qa-caja-operativa-final.png"
+      ]
+    }
+  ]
+}

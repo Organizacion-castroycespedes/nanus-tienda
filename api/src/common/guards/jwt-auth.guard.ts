@@ -6,9 +6,11 @@ import {
   UnauthorizedException,
   Inject,
 } from "@nestjs/common";
+import "reflect-metadata";
 import jwt from "jsonwebtoken";
 import { DatabaseService } from "../db/database.service";
 import { resolveJwtSecret } from "../config/auth-env";
+import { REQUIRE_POS_SESSION_KEY } from "../decorators/require-pos-session.decorator";
 
 type TokenPayload = {
   sub?: string;
@@ -25,6 +27,9 @@ type PosSessionContextRow = {
   user_id: string;
 };
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
@@ -33,6 +38,10 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    const requiresPosSession = Boolean(
+      Reflect.getMetadata(REQUIRE_POS_SESSION_KEY, context.getHandler()) ??
+        Reflect.getMetadata(REQUIRE_POS_SESSION_KEY, context.getClass())
+    );
     const authorization = request.headers["authorization"];
     const token =
       typeof authorization === "string" && authorization.startsWith("Bearer ")
@@ -84,6 +93,13 @@ export class JwtAuthGuard implements CanActivate {
         ? posSessionIdHeader.trim()
         : "";
 
+    if (posSessionId && !UUID_PATTERN.test(posSessionId)) {
+      if (requiresPosSession) {
+        throw new ForbiddenException("Sesion POS invalida");
+      }
+      return true;
+    }
+
     if (posSessionId) {
       const posSession = await this.db.query<PosSessionContextRow>(
         `
@@ -114,7 +130,10 @@ export class JwtAuthGuard implements CanActivate {
 
       const contextRow = posSession.rows?.[0];
       if (!contextRow) {
-        throw new ForbiddenException("Sesion POS invalida");
+        if (requiresPosSession) {
+          throw new ForbiddenException("Sesion POS invalida");
+        }
+        return true;
       }
 
       request.context = {
@@ -124,6 +143,8 @@ export class JwtAuthGuard implements CanActivate {
         posSessionId: contextRow.id,
         userId: contextRow.user_id,
       };
+    } else if (requiresPosSession) {
+      throw new ForbiddenException("Sesion POS requerida");
     }
 
     return true;

@@ -31,6 +31,7 @@ type PurchaseFormValues = {
 type PurchaseFormErrors = {
   supplierId?: string;
   branchId?: string;
+  terminalId?: string;
   items?: string;
   submit?: string;
 };
@@ -66,6 +67,8 @@ export const PurchaseForm = ({
 }: PurchaseFormProps) => {
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
   const authUser = useAppSelector((state) => state.auth.user);
+  const currentPosBranchId = useAppSelector((state) => state.pos.branchId);
+  const currentPosTerminalId = useAppSelector((state) => state.pos.terminalId);
   const authBranchName = authUser?.branchName ?? null;
   const [values, setValues] = useState<PurchaseFormValues>({
     supplierId: "",
@@ -174,6 +177,19 @@ export const PurchaseForm = ({
       nextErrors.branchId = "Debes seleccionar una sucursal.";
     }
 
+    if (!currentPosTerminalId) {
+      nextErrors.terminalId = "No hay terminal activa para registrar la compra.";
+    }
+
+    if (
+      currentPosBranchId &&
+      values.branchId &&
+      currentPosBranchId !== values.branchId
+    ) {
+      nextErrors.terminalId =
+        "La terminal activa no pertenece a la sucursal de la compra.";
+    }
+
     const hasInvalidItems = values.items.some((item) => {
       const quantity = Number(item.quantity);
       const cost = Number(item.cost);
@@ -237,6 +253,7 @@ export const PurchaseForm = ({
       const response = await createPurchase({
         supplierId: values.supplierId,
         branchId: values.branchId,
+        terminalId: currentPosTerminalId ?? "",
         type: values.type,
         total,
         items: values.items.map((item, index) => ({
@@ -353,7 +370,12 @@ export const PurchaseForm = ({
                 onChange={(event) => {
                   markDirty();
                   setValues((prev) => ({ ...prev, branchId: event.target.value }));
-                  setErrors((prev) => ({ ...prev, branchId: undefined, submit: undefined }));
+                  setErrors((prev) => ({
+                    ...prev,
+                    branchId: undefined,
+                    terminalId: undefined,
+                    submit: undefined,
+                  }));
                 }}
               >
                 <option value="">
@@ -366,9 +388,17 @@ export const PurchaseForm = ({
                 ))}
               </Select>
               {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
+              {errors.terminalId ? (
+                <p className="text-xs text-rose-600">{errors.terminalId}</p>
+              ) : null}
             </div>
           ) : (
-            <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
+            <div className="space-y-1">
+              <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
+              {errors.terminalId ? (
+                <p className="text-xs text-rose-600">{errors.terminalId}</p>
+              ) : null}
+            </div>
           )}
         </div>
 

@@ -8,6 +8,7 @@ export type OrderResponse = {
   customerName?: string | null;
   branchId?: string | null;
   branchName?: string | null;
+  terminalId?: string | null;
   terminalName?: string | null;
   billingStatus?: "UNBILLED" | "PARTIAL" | "INVOICED";
   type: "CASH" | "CREDIT";
@@ -58,6 +59,7 @@ export type GetOrdersParams = {
 export type CreateOrderPayload = {
   customerId: string;
   branchId?: string;
+  terminalId?: string;
   type: "CASH" | "CREDIT";
   items: Array<{
     productId: string;
@@ -161,6 +163,7 @@ export const invoiceOrder = (
   apiClient<{ id: string }>(`/orders/${orderId}/invoice`, {
     method: "POST",
     headers,
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 

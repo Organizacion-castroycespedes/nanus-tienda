@@ -8,7 +8,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { PERMISSION_KEY, type RequiredPermission } from "../decorators/require-permission.decorator";
 import { AccessControlService } from "../services/access-control.service";
-import { MENU_KEYS } from "../constants/menu-keys";
+import { MENU_KEYS, getMenuKeyCandidates } from "../constants/menu-keys";
 
 const OPERATIONAL_ADMIN_MENU_KEYS = new Set<string>([
   MENU_KEYS.INVENTORY_PURCHASES,
@@ -56,9 +56,12 @@ export class PermissionsGuard implements CanActivate {
     const requiredMenuKeys = Array.isArray(requiredPermission.menuKey)
       ? requiredPermission.menuKey
       : [requiredPermission.menuKey];
+    const expandedRequiredMenuKeys = new Set(
+      requiredMenuKeys.flatMap((menuKey) => getMenuKeyCandidates(menuKey))
+    );
     if (
       user.roles?.includes("SUPER_USER") &&
-      requiredMenuKeys.some(
+      Array.from(expandedRequiredMenuKeys).some(
         (menuKey) =>
           menuKey === MENU_KEYS.CONFIG_GENERAL ||
           menuKey === MENU_KEYS.CONFIG_USUARIOS ||
@@ -69,7 +72,9 @@ export class PermissionsGuard implements CanActivate {
     }
     if (
       hasOperationalAdminRole(user.roles) &&
-      requiredMenuKeys.some((menuKey) => OPERATIONAL_ADMIN_MENU_KEYS.has(menuKey))
+      Array.from(expandedRequiredMenuKeys).some((menuKey) =>
+        OPERATIONAL_ADMIN_MENU_KEYS.has(menuKey)
+      )
     ) {
       return true;
     }
