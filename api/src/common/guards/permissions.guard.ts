@@ -62,14 +62,16 @@ export class PermissionsGuard implements CanActivate {
     const expandedRequiredMenuKeys = new Set(
       requiredMenuKeys.flatMap((menuKey) => getMenuKeyCandidates(menuKey))
     );
+    if (expandedRequiredMenuKeys.has(MENU_KEYS.CONFIG_ROLES)) {
+      throw new ForbiddenException("Permisos insuficientes");
+    }
     if (
       user.roles?.includes("SUPER_USER") &&
       Array.from(expandedRequiredMenuKeys).some(
         (menuKey) =>
           menuKey === MENU_KEYS.CONFIG_GENERAL ||
           menuKey === MENU_KEYS.CONFIG_TERMINALS ||
-          menuKey === MENU_KEYS.CONFIG_USUARIOS ||
-          menuKey === MENU_KEYS.CONFIG_ROLES
+          menuKey === MENU_KEYS.CONFIG_USUARIOS
       )
     ) {
       return true;

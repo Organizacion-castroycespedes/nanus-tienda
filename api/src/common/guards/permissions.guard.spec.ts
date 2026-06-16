@@ -14,17 +14,17 @@ const buildContext = (user: { id?: string; tenantId?: string; roles?: string[] }
 
 test("PermissionsGuard: allows READ when permission is READ", async () => {
   const reflector = {
-    getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "READ" }),
+    getAllAndOverride: () => ({ menuKey: "CUSTOMERS", level: "READ" }),
   } as any;
   const accessControlService = {
     getPermissionsForRequest: async () =>
       new Map([
         [
-          "CONFIG_ROLES",
+          "CUSTOMERS",
           {
-            key: "CONFIG_ROLES",
-            module: "roles",
-            route: "/roles",
+            key: "CUSTOMERS",
+            module: "customers",
+            route: "/customers",
             accessLevel: "READ",
             actions: {},
           },
@@ -47,17 +47,17 @@ test("PermissionsGuard: allows READ when permission is READ", async () => {
 
 test("PermissionsGuard: blocks WRITE when permission is READ", async () => {
   const reflector = {
-    getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "WRITE" }),
+    getAllAndOverride: () => ({ menuKey: "CUSTOMERS", level: "WRITE" }),
   } as any;
   const accessControlService = {
     getPermissionsForRequest: async () =>
       new Map([
         [
-          "CONFIG_ROLES",
+          "CUSTOMERS",
           {
-            key: "CONFIG_ROLES",
-            module: "roles",
-            route: "/roles",
+            key: "CUSTOMERS",
+            module: "customers",
+            route: "/customers",
             accessLevel: "READ",
             actions: {},
           },
@@ -82,17 +82,17 @@ test("PermissionsGuard: blocks WRITE when permission is READ", async () => {
 
 test("PermissionsGuard: allows WRITE when permission is WRITE", async () => {
   const reflector = {
-    getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "WRITE" }),
+    getAllAndOverride: () => ({ menuKey: "CUSTOMERS", level: "WRITE" }),
   } as any;
   const accessControlService = {
     getPermissionsForRequest: async () =>
       new Map([
         [
-          "CONFIG_ROLES",
+          "CUSTOMERS",
           {
-            key: "CONFIG_ROLES",
-            module: "roles",
-            route: "/roles",
+            key: "CUSTOMERS",
+            module: "customers",
+            route: "/customers",
             accessLevel: "WRITE",
             actions: {},
           },
@@ -149,7 +149,7 @@ test("PermissionsGuard: allows when any declared menu key matches", async () => 
   assert.equal(allowed, true);
 });
 
-test("PermissionsGuard: resolves legacy key alias from service", async () => {
+test("PermissionsGuard: blocks CONFIG_ROLES for non-SUPER_ADMIN even with DB grant", async () => {
   const reflector = {
     getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "READ" }),
   } as any;
@@ -182,17 +182,24 @@ test("PermissionsGuard: resolves legacy key alias from service", async () => {
   } as any;
 
   const guard = new PermissionsGuard(reflector, accessControlService);
-  const allowed = await guard.canActivate(buildContext({ id: "user", tenantId: "tenant" }));
-  assert.equal(allowed, true);
+  for (const role of ["SUPER_USER", "ADMIN", "USER"]) {
+    await assert.rejects(
+      () =>
+        guard.canActivate(
+          buildContext({ id: "user", tenantId: "tenant", roles: [role] })
+        ),
+      /Permisos insuficientes/
+    );
+  }
 });
 
-test("PermissionsGuard: allows SUPER_USER to read CONFIG_ROLES", async () => {
+test("PermissionsGuard: allows SUPER_ADMIN CONFIG_ROLES", async () => {
   const reflector = {
     getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "READ" }),
   } as any;
   const accessControlService = {
     getPermissionsForRequest: async () => {
-      throw new Error("should not fetch permissions for SUPER_USER role shortcut");
+      throw new Error("should not fetch permissions for SUPER_ADMIN");
     },
     findPermission: () => undefined,
     isAccessAllowed: () => false,
@@ -200,9 +207,49 @@ test("PermissionsGuard: allows SUPER_USER to read CONFIG_ROLES", async () => {
 
   const guard = new PermissionsGuard(reflector, accessControlService);
   const allowed = await guard.canActivate(
-    buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] } as any)
+    buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_ADMIN"] })
   );
   assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks legacy ROLES_TENANT_ROLES for SUPER_USER", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({ menuKey: "ROLES_TENANT_ROLES", level: "READ" }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] })
+      ),
+    /Permisos insuficientes/
+  );
+});
+
+test("PermissionsGuard: blocks SUPER_USER CONFIG_ROLES shortcut", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({ menuKey: "CONFIG_ROLES", level: "READ" }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] } as any)
+      ),
+    /Permisos insuficientes/
+  );
 });
 
 test("PermissionsGuard: allows SUPER_USER to read CONFIG_TERMINALS", async () => {
