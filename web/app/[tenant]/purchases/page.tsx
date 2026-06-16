@@ -227,12 +227,13 @@ const PurchasesPage = () => {
   const role = authUser?.role ?? authRole;
   const canViewAllTenants = role === "SUPER_ADMIN";
 
-  const isAdminLikeRole =
-    role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
-  const canCreate = hasPermission("inventory.create") || isAdminLikeRole;
-  const canReceive = hasPermission("inventory.update") || isAdminLikeRole;
-  const canCancel = hasPermission("inventory.cancel");
-  const canSettlePartial = hasPermission("inventory.settle_partial");
+  const canManagePurchases =
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
+  const canCreate = canManagePurchases && hasPermission("inventory.create");
+  const canReceive = canManagePurchases && hasPermission("inventory.update");
+  const canCancel = canManagePurchases && hasPermission("inventory.cancel");
+  const canSettlePartial =
+    canManagePurchases && hasPermission("inventory.settle_partial");
 
   const showApiConfirmError = useCallback(
     async (error: unknown, fallbackMessage: string) => {

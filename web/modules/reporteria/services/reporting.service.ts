@@ -5,6 +5,8 @@ import {
 import type {
   CashAuditListDataset,
   CashClosingListDataset,
+  CurrentShiftFilters,
+  CurrentShiftResponse,
   CustomerOrdersStatusDataset,
   OrderSalesListDataset,
   PosSalesListDataset,
@@ -33,6 +35,25 @@ const buildQuery = (filters: ReportFilters) => {
     }
   });
 
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
+};
+
+const buildCurrentShiftQuery = (filters: CurrentShiftFilters) => {
+  const searchParams = new URLSearchParams();
+  Object.entries({
+    tenantId: filters.tenantId,
+    branchId: filters.branchId,
+    cashSessionId: filters.cashSessionId,
+    tab: filters.tab,
+    page: filters.page ? String(filters.page) : undefined,
+    pageSize: filters.pageSize ? String(filters.pageSize) : undefined,
+    search: filters.search,
+  }).forEach(([key, value]) => {
+    if (value) {
+      searchParams.set(key, value);
+    }
+  });
   const query = searchParams.toString();
   return query ? `?${query}` : "";
 };
@@ -98,4 +119,10 @@ export const getCustomerOrdersStatusReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CustomerOrdersStatusDataset>(
     reportsBaseUrl,
     `/reports/customers/orders-status${buildQuery(filters)}`
+  );
+
+export const getCurrentShiftReport = (filters: CurrentShiftFilters) =>
+  apiClientWithBaseUrl<CurrentShiftResponse>(
+    reportsBaseUrl,
+    `/reports/current-shift${buildCurrentShiftQuery(filters)}`
   );

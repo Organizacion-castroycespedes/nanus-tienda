@@ -17,6 +17,12 @@ import {
   listInventoryLocations,
   type InventoryLocationResponse,
 } from "../services/inventory-location.service";
+import {
+  getPendingReceiveRows,
+  getReceiveQuantity,
+  getRowsWithReceivableQuantity,
+  hasAnyPositiveReceiveQuantity,
+} from "./purchase-receive-lines";
 
 type ReceiveItemValue = {
   productId: string;
@@ -67,10 +73,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
   return fallback;
 };
-
-const isReceivePayloadItem = (
-  item: ReceivePurchasePayload["items"][number] | null
-): item is ReceivePurchasePayload["items"][number] => item !== null;
 
 export const PurchaseReceiveForm = ({
   purchaseId,
@@ -173,14 +175,7 @@ export const PurchaseReceiveForm = ({
       return [];
     }
 
-    return purchase.items.map((item, index) => {
-      const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
-      return {
-        item,
-        index,
-        pending,
-      };
-    });
+    return getPendingReceiveRows(purchase.items);
   }, [purchase]);
 
   const isBlockedStatus =
@@ -197,15 +192,18 @@ export const PurchaseReceiveForm = ({
       return false;
     }
 
-    const hasAnyQuantity = values.some((value) => {
-      const quantity = Number(value.quantity);
-      return Number.isFinite(quantity) && quantity > 0;
-    });
+    if (rows.length === 0) {
+      nextErrors.items = "Esta compra no tiene productos pendientes por recibir.";
+      setErrors(nextErrors);
+      return false;
+    }
+
+    const hasAnyQuantity = hasAnyPositiveReceiveQuantity(rows, values);
 
     const itemErrors: string[] = [];
 
-    const hasInvalidQuantity = rows.some(({ item, pending }, index) => {
-      const quantity = Number(values[index]?.quantity ?? "");
+    const hasInvalidQuantity = rows.some(({ item, index, pending }) => {
+      const quantity = getReceiveQuantity(values[index]);
       if (!Number.isFinite(quantity) || quantity === 0) {
         return false;
       }
@@ -245,11 +243,11 @@ export const PurchaseReceiveForm = ({
       return quantity < 0 || quantity > pending;
     });
 
-    if (!hasAnyQuantity) {
-      nextErrors.items = "Debes ingresar al menos una cantidad a recibir.";
-    } else if (hasInvalidQuantity) {
+    if (hasInvalidQuantity) {
       nextErrors.items =
         "Las cantidades a recibir deben ser mayores a 0 y no pueden exceder el pendiente.";
+    } else if (!hasAnyQuantity) {
+      nextErrors.items = "Debes ingresar al menos una cantidad a recibir.";
     } else if (itemErrors.length > 0) {
       nextErrors.items = itemErrors.join(" ");
     }
@@ -270,37 +268,31 @@ export const PurchaseReceiveForm = ({
 
     try {
       const payload = {
-        items: rows
-          .map(({ item, index, pending }) => {
-            const quantity = Number(values[index]?.quantity ?? "");
-            if (!Number.isFinite(quantity) || quantity <= 0 || quantity > pending) {
-              return null;
-            }
+        items: getRowsWithReceivableQuantity(rows, values).map(({ item, index }) => {
+          const quantity = getReceiveQuantity(values[index]);
+          const product = productById.get(item.productId);
+          const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
+          const value = values[index];
+          const payloadItem: ReceivePurchasePayload["items"][number] = {
+            product_id: item.productId,
+            productId: item.productId,
+            purchaseItemId: item.id,
+            quantity,
+            receivedQuantity: quantity,
+          };
 
-            const product = productById.get(item.productId);
-            const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
-            const value = values[index];
-            const payloadItem: ReceivePurchasePayload["items"][number] = {
-              product_id: item.productId,
-              productId: item.productId,
-              purchaseItemId: item.id,
-              quantity,
-              receivedQuantity: quantity,
-            };
+          if (!requiresLot) {
+            return payloadItem;
+          }
 
-            if (!requiresLot) {
-              return payloadItem;
-            }
-
-            return {
-              ...payloadItem,
-              lotCode: value.lotCode.trim().toUpperCase(),
-              expirationDate: value.expirationDate || undefined,
-              locationId: value.locationId || undefined,
-              unitCost: value.unitCost ? Number(value.unitCost) : undefined,
-            };
-          })
-          .filter(isReceivePayloadItem),
+          return {
+            ...payloadItem,
+            lotCode: value.lotCode.trim().toUpperCase(),
+            expirationDate: value.expirationDate || undefined,
+            locationId: value.locationId || undefined,
+            unitCost: value.unitCost ? Number(value.unitCost) : undefined,
+          };
+        }),
       };
 
       const response = await receivePurchase(purchaseId, payload);
@@ -316,16 +308,21 @@ export const PurchaseReceiveForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
           <h2 className="text-xl font-semibold text-slate-900">Recibir compra</h2>
           <p className="mt-2 text-sm text-slate-600">
             Registra las cantidades realmente recibidas por producto.
           </p>
         </div>
-        <Button variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
+        <Button
+          variant="ghost"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          className="w-full shrink-0 sm:w-auto"
+        >
           Volver
         </Button>
       </div>
@@ -339,38 +336,42 @@ export const PurchaseReceiveForm = ({
           {loadError}
         </div>
       ) : purchase ? (
-        <form className="grid gap-5" onSubmit={handleSubmit}>
-          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <div className="grid gap-3 md:grid-cols-4">
-              <div>
+        <form className="grid w-full min-w-0 gap-5" onSubmit={handleSubmit}>
+          <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Proveedor</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="mt-1 break-words text-sm font-medium text-slate-900">
                   {purchase.supplierName || purchase.supplierId}
                 </p>
               </div>
-              <div>
+              <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="mt-1 break-words text-sm font-medium text-slate-900">
                   {purchase.branchName || purchase.branchId || "-"}
                 </p>
               </div>
-              <div>
+              <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{purchase.status}</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                  {purchase.status}
+                </p>
               </div>
-              <div>
+              <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Tipo</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{purchase.type}</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                  {purchase.type}
+                </p>
               </div>
-              <div>
+              <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Terminal</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="mt-1 break-words text-sm font-medium text-slate-900">
                   {purchase.terminalName || "-"}
                 </p>
               </div>
-              <div>
+              <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="mt-1 break-words text-sm font-medium text-slate-900">
                   {formatCurrency(Number(purchase.total))}
                 </p>
               </div>
@@ -383,16 +384,18 @@ export const PurchaseReceiveForm = ({
             </div>
           ) : null}
 
-          <section className="rounded-2xl border border-slate-200 bg-white">
-            <div className="overflow-x-auto">
-              <table className="min-w-[920px] divide-y divide-slate-200 text-sm">
+          {rows.length > 0 ? (
+          <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain">
+              <div className="min-w-[1040px]">
+              <table className="w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Producto</th>
-                    <th className="px-4 py-3 font-medium">Pedido</th>
-                    <th className="px-4 py-3 font-medium">Recibido acumulado</th>
-                    <th className="px-4 py-3 font-medium">Pendiente</th>
-                    <th className="px-4 py-3 font-medium">Recibir ahora</th>
+                    <th className="w-[320px] px-4 py-3 font-medium">Producto</th>
+                    <th className="w-[120px] px-4 py-3 font-medium">Pedido</th>
+                    <th className="w-[170px] px-4 py-3 font-medium">Recibido acumulado</th>
+                    <th className="w-[120px] px-4 py-3 font-medium">Pendiente</th>
+                    <th className="w-[180px] px-4 py-3 font-medium">Recibir ahora</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -404,6 +407,8 @@ export const PurchaseReceiveForm = ({
                     );
                     const isPerishable = Boolean(product?.isPerishable ?? item.isPerishable);
                     const value = values[index];
+                    const quantity = getReceiveQuantity(value);
+                    const showLotFields = requiresLot && quantity > 0;
 
                     return (
                       <Fragment key={item.id}>
@@ -471,7 +476,7 @@ export const PurchaseReceiveForm = ({
                             />
                           </td>
                         </tr>
-                        {requiresLot ? (
+                        {showLotFields ? (
                           <tr className="bg-blue-50/40">
                             <td colSpan={5} className="px-4 py-4">
                               <div className="space-y-3">
@@ -481,7 +486,7 @@ export const PurchaseReceiveForm = ({
                                     ? " Tambien requiere fecha de vencimiento."
                                     : ""}
                                 </p>
-                                <div className="grid gap-3 md:grid-cols-4">
+                                <div className="grid grid-cols-[minmax(170px,1fr)_minmax(190px,1fr)_minmax(250px,1.2fr)_minmax(170px,1fr)] gap-3">
                                   <Input
                                     label="Lote"
                                     required
@@ -582,8 +587,14 @@ export const PurchaseReceiveForm = ({
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           </section>
+          ) : (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+              Esta compra no tiene productos pendientes por recibir.
+            </div>
+          )}
 
           {errors.items ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -603,7 +614,7 @@ export const PurchaseReceiveForm = ({
             </div>
           ) : null}
 
-          <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <section className="w-full min-w-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800 sm:px-5">
             <p className="font-medium text-amber-950">Confirmar recepcion</p>
             <p className="mt-1">
               Al guardar, se registrara la recepcion parcial de esta compra y se actualizara
@@ -611,11 +622,22 @@ export const PurchaseReceiveForm = ({
             </p>
           </section>
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row">
-            <Button type="submit" isLoading={isSubmitting} disabled={isBlockedStatus} className="w-full sm:w-auto">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+            <Button
+              type="submit"
+              isLoading={isSubmitting}
+              disabled={isBlockedStatus || rows.length === 0}
+              className="w-full sm:w-auto"
+            >
               Confirmar recepcion
             </Button>
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting} className="w-full sm:w-auto">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto"
+            >
               Volver
             </Button>
           </div>

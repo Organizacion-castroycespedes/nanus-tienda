@@ -13,6 +13,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
@@ -37,6 +38,7 @@ type AuthRequest = Request & {
 type CreateOrderBody = {
   customerId: string;
   branchId?: string;
+  terminalId?: string;
   type?: "CASH" | "CREDIT";
   total: number;
   items: Array<{
@@ -88,11 +90,14 @@ export class OrderController {
     return tenantId;
   }
 
-  private getInventoryContext(request: AuthRequest) {
+  private getInventoryContext(
+    request: AuthRequest,
+    fallback?: { branchId?: string | null; terminalId?: string | null }
+  ) {
     return {
       tenantId: this.getTenantId(request),
-      branchId: request.context?.branchId ?? null,
-      terminalId: request.context?.terminalId ?? null,
+      branchId: request.context?.branchId ?? fallback?.branchId ?? null,
+      terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
     };
@@ -118,7 +123,10 @@ export class OrderController {
       type: body.type,
       total: Number(body.total),
       items: body.items ?? [],
-      context: this.getInventoryContext(request),
+      context: this.getInventoryContext(request, {
+        branchId: body.branchId ?? null,
+        terminalId: body.terminalId ?? null,
+      }),
       actor: this.buildActor(request),
     });
   }
@@ -214,6 +222,7 @@ export class OrderController {
 
   @Post(":id/invoice")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePosSession()
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   invoice(
     @Param("id") id: string,

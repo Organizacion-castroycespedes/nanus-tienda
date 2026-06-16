@@ -67,7 +67,7 @@ export class PromotionsController {
   }
 
   @Get()
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "READ" })
   list(
     @Req() request: AuthRequest,
@@ -93,7 +93,7 @@ export class PromotionsController {
   }
 
   @Get(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PROMOTIONS, level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.promotionsService.getPromotion(this.getTenantId(request), id);

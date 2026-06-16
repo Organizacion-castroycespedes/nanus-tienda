@@ -203,6 +203,20 @@ JOIN (
       '{"permission": "peripherals.manage"}'::jsonb,
       '2026-06-04 00:00:00-05'::timestamptz,
       '2026-06-04 00:00:00-05'::timestamptz
+    ),
+    (
+      '496bce95-497c-421f-866d-3b6da915243a'::uuid,
+      'CONFIG_TERMINALS',
+      'configuracion',
+      'Terminales',
+      '/{tenant}/config/terminals',
+      'Monitor',
+      45,
+      true,
+      false,
+      '{}'::jsonb,
+      '2026-06-16 00:00:00-05'::timestamptz,
+      '2026-06-16 00:00:00-05'::timestamptz
     )
 ) AS m(
   id,

@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Inject } from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
 import { AuditService } from "../../common/services/audit.service";
+import { AccessControlService } from "../../common/services/access-control.service";
 import { BranchesRepository } from "./branches.repository";
 import type { CreateBranchDto } from "./dto/create-branch.dto";
 import type { UpdateBranchDto } from "./dto/update-branch.dto";
@@ -19,14 +20,12 @@ export class BranchesService {
   constructor(
     @Inject(BranchesRepository) private readonly repository: BranchesRepository,
     @Inject(DatabaseService) private readonly db: DatabaseService,
-    @Inject(AuditService) private readonly auditService: AuditService
+    @Inject(AuditService) private readonly auditService: AuditService,
+    @Inject(AccessControlService) private readonly accessControl: AccessControlService
   ) {}
 
   private canViewAllTenants(actor: ActorContext) {
-    return (
-      actor.roles.includes("SUPER_ADMIN") ||
-      actor.roles.includes("SUPER_USER")
-    );
+    return actor.roles.includes("SUPER_ADMIN");
   }
 
   private resolveTenantId(actor: ActorContext, tenantId?: string) {
@@ -42,6 +41,9 @@ export class BranchesService {
     if (!actor.tenantId) {
       throw new ForbiddenException("Tenant requerido");
     }
+    if (tenantId && tenantId.trim() !== actor.tenantId) {
+      throw new ForbiddenException("Tenant no autorizado");
+    }
     return actor.tenantId;
   }
 
@@ -49,7 +51,15 @@ export class BranchesService {
     if (this.canViewAllTenants(actor)) {
       return this.repository.list(tenantId);
     }
-    return this.repository.list(this.resolveTenantId(actor));
+    const resolvedTenantId = this.resolveTenantId(actor, tenantId);
+    const branchIds = await this.accessControl.getAccessibleBranchIds(
+      { id: actor.userId, tenantId: actor.tenantId, roles: actor.roles },
+      resolvedTenantId
+    );
+    if (actor.roles.includes("SUPER_USER")) {
+      return this.repository.list(resolvedTenantId);
+    }
+    return this.repository.listByIds(resolvedTenantId, branchIds);
   }
 
   async getBranch(branchId: string, actor: ActorContext) {
@@ -59,6 +69,16 @@ export class BranchesService {
     const branch = await this.repository.findById(branchId, tenantId);
     if (!branch) {
       throw new NotFoundException("Sucursal no encontrada");
+    }
+    if (
+      tenantId &&
+      !(await this.accessControl.canAccessBranch(
+        { id: actor.userId, tenantId: actor.tenantId, roles: actor.roles },
+        tenantId,
+        branchId
+      ))
+    ) {
+      throw new ForbiddenException("Sucursal no autorizada");
     }
     return branch;
   }

@@ -3,12 +3,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Button } from "../../../../components/design-system/Button";
+import { ConfirmDialog } from "../../../../components/design-system/confirm-dialog";
 import { ConfirmationMessage } from "../../../../components/design-system/confirmation-message";
 import { Input } from "../../../../components/design-system/Input";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasPermission } from "../../../../lib/permissions";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
+import { FocusActionLayout } from "../../../../modules/inventory/components/FocusActionLayout";
 import { TaxForm } from "../../../../modules/inventory/components/TaxForm";
 import {
   deleteTax,
@@ -18,6 +20,12 @@ import {
 
 type TaxFilters = {
   query: string;
+};
+
+type ActionFeedback = {
+  title: string;
+  description?: string;
+  variant?: "default" | "success" | "warning" | "danger";
 };
 
 const defaultFilters: TaxFilters = {
@@ -41,6 +49,7 @@ const TaxesPage = () => {
   const [selectedTax, setSelectedTax] = useState<TaxResponse | null>(null);
   const [pendingDeleteTax, setPendingDeleteTax] = useState<TaxResponse | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
 
   const canCreate = hasPermission("inventory.create");
   const canEdit = hasPermission("inventory.update");
@@ -107,14 +116,51 @@ const TaxesPage = () => {
 
   const handleFormSuccess = (mode: "create" | "edit") => {
     closeForm();
-    showToast(
-      mode === "create" ? "Impuesto creado correctamente." : "Impuesto actualizado correctamente.",
-      "success"
-    );
+    setActionFeedback({
+      title:
+        mode === "create"
+          ? "Impuesto creado correctamente"
+          : "Impuesto actualizado correctamente",
+      description:
+        mode === "create"
+          ? "El impuesto quedo disponible para el catalogo."
+          : "Los cambios del impuesto fueron guardados correctamente.",
+      variant: "success",
+    });
     if (hasSearched) {
       void loadTaxes();
     }
   };
+
+  const openCreateForm = () => {
+    setSelectedTax(null);
+    setFormMode("create");
+  };
+
+  const openEditForm = (tax: TaxResponse) => {
+    setSelectedTax(tax);
+    setFormMode("edit");
+  };
+
+  const isActionMode = formMode !== null || pendingDeleteTax !== null;
+  const actionTitle =
+    pendingDeleteTax
+      ? "Eliminar impuesto"
+      : formMode === "edit"
+        ? "Editar impuesto"
+        : "Crear impuesto";
+  const actionDescription =
+    pendingDeleteTax
+      ? "Confirma o cancela la eliminacion antes de volver al listado."
+      : formMode === "edit"
+        ? "Actualiza el impuesto seleccionado sin mezclar el formulario con el listado."
+        : "Registra un impuesto nuevo sin mezclar el formulario con el listado.";
+  const actionContextLabel =
+    pendingDeleteTax
+      ? `${pendingDeleteTax.name} - ${pendingDeleteTax.rate * 100}%`
+      : formMode === "edit" && selectedTax
+        ? `${selectedTax.name} - ${selectedTax.rate * 100}%`
+        : undefined;
 
   const handleDelete = async () => {
     if (!pendingDeleteTax) {
@@ -138,109 +184,143 @@ const TaxesPage = () => {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={Boolean(actionFeedback)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionFeedback(null);
+          }
+        }}
+        title={actionFeedback?.title ?? ""}
+        description={actionFeedback?.description}
+        confirmText="Entendido"
+        variant={actionFeedback?.variant ?? "success"}
+        hideCancel
+        onConfirm={() => setActionFeedback(null)}
+      />
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
             <h1 className="text-2xl font-semibold text-slate-900">Impuestos</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Configura los impuestos disponibles para el catalogo de productos.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Configura los impuestos disponibles para el catalogo de productos."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="ghost" onClick={() => void loadTaxes()} isLoading={loading}>
-              <RefreshCw className="h-4 w-4" />
-              Actualizar
-            </Button>
-            {canCreate ? (
-              <Button
-                onClick={() => {
-                  setSelectedTax(null);
-                  setFormMode("create");
-                }}
-              >
-                <Plus className="h-4 w-4" />
-                Crear impuesto
+          {!isActionMode ? (
+            <div className="flex flex-wrap gap-3">
+              <Button variant="ghost" onClick={() => void loadTaxes()} isLoading={loading}>
+                <RefreshCw className="h-4 w-4" />
+                Actualizar
               </Button>
-            ) : null}
-          </div>
+              {canCreate ? (
+                <Button onClick={openCreateForm}>
+                  <Plus className="h-4 w-4" />
+                  Crear impuesto
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
 
-      {formMode ? (
-        <TaxForm
-          mode={formMode}
-          tax={selectedTax}
-          onCancel={closeForm}
-          onSuccess={handleFormSuccess}
-        />
+      {isActionMode ? (
+        <FocusActionLayout
+          title={actionTitle}
+          description={actionDescription}
+          contextLabel={actionContextLabel}
+          onBack={pendingDeleteTax ? () => setPendingDeleteTax(null) : closeForm}
+          onCancel={pendingDeleteTax ? () => setPendingDeleteTax(null) : closeForm}
+        >
+          {formMode ? (
+            <TaxForm
+              mode={formMode}
+              tax={selectedTax}
+              onCancel={closeForm}
+              onSuccess={handleFormSuccess}
+            />
+          ) : null}
+
+          {pendingDeleteTax ? (
+            <div className="space-y-4">
+              <ConfirmationMessage
+                title={`Eliminar impuesto: ${pendingDeleteTax.name}`}
+                description="Esta accion eliminara el impuesto seleccionado. Si esta asociado a productos, la base de datos puede rechazar la operacion."
+                onDismiss={() => setPendingDeleteTax(null)}
+              />
+              <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setPendingDeleteTax(null)}
+                    disabled={isDeleting}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => void handleDelete()}
+                    isLoading={isDeleting}
+                  >
+                    Confirmar eliminacion
+                  </Button>
+                </div>
+              </section>
+            </div>
+          ) : null}
+        </FocusActionLayout>
       ) : null}
 
-      {pendingDeleteTax ? (
-        <ConfirmationMessage
-          title={`Eliminar impuesto: ${pendingDeleteTax.name}`}
-          description="Esta accion eliminara el impuesto seleccionado. Si esta asociado a productos, la base de datos puede rechazar la operacion."
-          onDismiss={() => setPendingDeleteTax(null)}
-        />
-      ) : null}
-
-      {pendingDeleteTax ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button variant="ghost" onClick={() => setPendingDeleteTax(null)} disabled={isDeleting}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={() => void handleDelete()} isLoading={isDeleting}>
-              Confirmar eliminacion
-            </Button>
+      {!isActionMode ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
+            <Input
+              label="Buscar"
+              placeholder="Nombre o porcentaje"
+              value={draftFilters.query}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, query: event.target.value }))
+              }
+            />
+            <div className="flex items-end gap-2">
+              <Button variant="outline" onClick={applyFilters}>
+                <Search className="h-4 w-4" />
+                Buscar
+              </Button>
+              <Button variant="ghost" onClick={resetFilters}>
+                Limpiar
+              </Button>
+            </div>
+            <Select
+              label="Filas por pagina"
+              value={String(pageSize)}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
           </div>
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
-          <Input
-            label="Buscar"
-            placeholder="Nombre o porcentaje"
-            value={draftFilters.query}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, query: event.target.value }))
-            }
-          />
-          <div className="flex items-end gap-2">
-            <Button variant="outline" onClick={applyFilters}>
-              <Search className="h-4 w-4" />
-              Buscar
-            </Button>
-            <Button variant="ghost" onClick={resetFilters}>
-              Limpiar
-            </Button>
-          </div>
-          <Select
-            label="Filas por pagina"
-            value={String(pageSize)}
-            onChange={(event) => {
-              setPageSize(Number(event.target.value));
-              setPage(0);
-            }}
-          >
-            {pageSizeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </section>
-
-      {errorMessage ? (
+      {!isActionMode && errorMessage ? (
         <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
           {errorMessage}
         </section>
       ) : null}
 
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -289,10 +369,7 @@ const TaxesPage = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setSelectedTax(tax);
-                              setFormMode("edit");
-                            }}
+                            onClick={() => openEditForm(tax)}
                           >
                             <Pencil className="h-4 w-4" />
                             Editar
@@ -339,6 +416,7 @@ const TaxesPage = () => {
           </div>
         </div>
       </section>
+      ) : null}
     </div>
   );
 };

@@ -12,6 +12,10 @@ import {
 } from "../store/posCart";
 import { ApiError } from "./request";
 
+export type ApiRequestOptions = RequestInit & {
+  includePosSession?: boolean;
+};
+
 const parseJson = async <T>(response: Response): Promise<T> => {
   if (response.status === 204) {
     return undefined as T;
@@ -72,7 +76,10 @@ const handleInvalidPosSession = () => {
   }
 };
 
-const buildRequestHeaders = (options?: RequestInit) => {
+const buildRequestHeaders = (
+  options?: RequestInit,
+  includePosSession = false
+) => {
   const accessToken = store.getState().auth.accessToken;
   const mergedHeaders = new Headers(options?.headers);
   if (!mergedHeaders.has("Content-Type")) {
@@ -82,12 +89,9 @@ const buildRequestHeaders = (options?: RequestInit) => {
     mergedHeaders.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  const posSessionId = getPosSessionId();
+  const posSessionId = includePosSession ? getPosSessionId() : null;
   if (posSessionId) {
     mergedHeaders.set("x-pos-session-id", posSessionId);
-    if (process.env.NEXT_PUBLIC_DEBUG_POS === "true") {
-      console.log("POS SESSION:", posSessionId);
-    }
   }
 
   return mergedHeaders;
@@ -114,16 +118,21 @@ const parseError = async (response: Response) => {
 
 const sendAuthorizedRequest = async (
   url: string,
-  options?: RequestInit,
+  options?: ApiRequestOptions,
   customBaseUrl?: string
 ): Promise<Response> => {
-  const mergedHeaders = buildRequestHeaders(options);
+  const { includePosSession = false, ...requestOptions } = options ?? {};
+  const mergedHeaders = buildRequestHeaders(requestOptions, includePosSession);
 
-  const response = await requestRaw(url, {
-    ...options,
-    credentials: "include",
-    headers: mergedHeaders,
-  }, customBaseUrl);
+  const response = await requestRaw(
+    url,
+    {
+      ...requestOptions,
+      credentials: "include",
+      headers: mergedHeaders,
+    },
+    customBaseUrl
+  );
 
   if (response.status === 401) {
     const requestError = await parseError(response);
@@ -136,16 +145,23 @@ const sendAuthorizedRequest = async (
     if (!refreshedToken) {
       throw requestError;
     }
-    const retryHeaders = buildRequestHeaders({
-      ...options,
-      headers: mergedHeaders,
-    });
+    const retryHeaders = buildRequestHeaders(
+      {
+        ...requestOptions,
+        headers: mergedHeaders,
+      },
+      includePosSession
+    );
     retryHeaders.set("Authorization", `Bearer ${refreshedToken}`);
-    const retryResponse = await requestRaw(url, {
-      ...options,
-      credentials: "include",
-      headers: retryHeaders,
-    }, customBaseUrl);
+    const retryResponse = await requestRaw(
+      url,
+      {
+        ...requestOptions,
+        credentials: "include",
+        headers: retryHeaders,
+      },
+      customBaseUrl
+    );
     if (retryResponse.status === 401) {
       const retryError = await parseError(retryResponse);
       if (isInvalidPosSessionError(retryError.message)) {
@@ -159,7 +175,10 @@ const sendAuthorizedRequest = async (
   return response;
 };
 
-export const apiClient = async <T>(url: string, options?: RequestInit): Promise<T> => {
+export const apiClient = async <T>(
+  url: string,
+  options?: ApiRequestOptions
+): Promise<T> => {
   const response = await sendAuthorizedRequest(url, options);
 
   if (!response.ok) {
@@ -169,7 +188,10 @@ export const apiClient = async <T>(url: string, options?: RequestInit): Promise<
   return parseJson<T>(response);
 };
 
-export const apiBlobClient = async (url: string, options?: RequestInit): Promise<Blob> => {
+export const apiBlobClient = async (
+  url: string,
+  options?: ApiRequestOptions
+): Promise<Blob> => {
   const response = await sendAuthorizedRequest(url, options);
 
   if (!response.ok) {
@@ -182,7 +204,7 @@ export const apiBlobClient = async (url: string, options?: RequestInit): Promise
 export const apiClientWithBaseUrl = async <T>(
   baseUrl: string | undefined,
   url: string,
-  options?: RequestInit
+  options?: ApiRequestOptions
 ): Promise<T> => {
   const response = await sendAuthorizedRequest(url, options, baseUrl);
 
@@ -196,7 +218,7 @@ export const apiClientWithBaseUrl = async <T>(
 export const apiBlobClientWithBaseUrl = async (
   baseUrl: string | undefined,
   url: string,
-  options?: RequestInit
+  options?: ApiRequestOptions
 ): Promise<Blob> => {
   const response = await sendAuthorizedRequest(url, options, baseUrl);
 

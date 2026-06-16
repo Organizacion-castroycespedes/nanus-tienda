@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -216,6 +217,9 @@ export class SalesReportsService {
   async getSaleTicket(saleId: string, user?: ReportUser) {
     const actor = this.resolveActor(user);
     const payload = await this.salesReportAdapter.getSaleTicket(actor, saleId);
+    if (!payload && (await this.salesReportAdapter.saleExists(saleId))) {
+      throw new ForbiddenException("sale ticket is not authorized");
+    }
     const dataset = this.normalizeSaleTicketDataset(payload);
 
     if (["CANCELLED", "REFUNDED"].includes(dataset.header.status)) {

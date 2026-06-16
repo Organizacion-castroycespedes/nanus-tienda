@@ -82,7 +82,9 @@ CROSS JOIN (
     ('INVENTORY_TAXES', 'Impuestos', '/{tenant}/inventory/taxes', 'calculator', 103, TRUE),
     ('INVENTORY_PURCHASES', 'Compras', '/{tenant}/inventory/purchases', 'shopping-bag', 104, TRUE),
     ('INVENTORY_SUPPLIERS', 'Proveedores', '/{tenant}/inventory/suppliers', 'truck', 105, TRUE),
-    ('INVENTORY_PROMOTIONS', 'Promociones', '/{tenant}/inventory/promotions', 'tags', 106, TRUE)
+    ('INVENTORY_PROMOTIONS', 'Promociones', '/{tenant}/inventory/promotions', 'tags', 106, TRUE),
+    ('INVENTORY_LOCATIONS', 'Ubicaciones', '/{tenant}/inventory/locations', 'building', 107, TRUE),
+    ('INVENTORY_LOTS', 'Lotes', '/{tenant}/inventory/lots', 'archive', 108, TRUE)
 ) AS seed(key, label, route, icon, sort_order, visible)
 WHERE NOT EXISTS (
   SELECT 1
@@ -114,7 +116,9 @@ inventory_children AS (
       ('INVENTORY_TAXES', 103),
       ('INVENTORY_PURCHASES', 104),
       ('INVENTORY_SUPPLIERS', 105),
-      ('INVENTORY_PROMOTIONS', 106)
+      ('INVENTORY_PROMOTIONS', 106),
+      ('INVENTORY_LOCATIONS', 107),
+      ('INVENTORY_LOTS', 108)
   ) AS seed(key, sort_order)
     ON seed.key = child.key
 )

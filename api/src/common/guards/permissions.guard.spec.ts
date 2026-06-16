@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MENU_KEYS } from "../constants/menu-keys";
 import { PermissionsGuard } from "./permissions.guard";
 
-const buildContext = (user: { id?: string; tenantId?: string }) =>
+const buildContext = (user: { id?: string; tenantId?: string; roles?: string[] }) =>
   ({
     switchToHttp: () => ({
       getRequest: () => ({ user }),
@@ -202,6 +203,202 @@ test("PermissionsGuard: allows SUPER_USER to read CONFIG_ROLES", async () => {
     buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] } as any)
   );
   assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: allows SUPER_USER to read CONFIG_TERMINALS", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for SUPER_USER terminal shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] } as any)
+  );
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks ADMIN CONFIG_TERMINALS without permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["ADMIN"] })
+      ),
+    /Permisos insuficientes/
+  );
+});
+
+test("PermissionsGuard: allows ADMIN operational catalog WRITE without DB permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.INVENTORY_PRODUCTS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for ADMIN operational shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["ADMIN"] })
+  );
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: allows ADMIN generic inventory WRITE without DB permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: "INVENTORY",
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for ADMIN inventory shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["ADMIN"] })
+  );
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks USER generic inventory WRITE without permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: "INVENTORY",
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["USER"] })
+      ),
+    /Permisos insuficientes/
+  );
+});
+
+test("PermissionsGuard: allows ADMIN electronic invoicing suppliers WRITE through inventory suppliers alias", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for ADMIN suppliers alias shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["ADMIN"] })
+  );
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks USER electronic invoicing suppliers WRITE without permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_SUPPLIERS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["USER"] })
+      ),
+    /Permisos insuficientes/
+  );
+});
+
+test("PermissionsGuard: allows SUPER_USER operational promotions WRITE without DB permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for SUPER_USER operational shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(
+    buildContext({ id: "user", tenantId: "tenant", roles: ["SUPER_USER"] })
+  );
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks USER without explicit operational promotion permission", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.INVENTORY_PROMOTIONS,
+      level: "WRITE",
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => new Map(),
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(
+        buildContext({ id: "user", tenantId: "tenant", roles: ["USER"] })
+      ),
+    /Permisos insuficientes/
+  );
 });
 
 test("PermissionsGuard: allows explicit action permission", async () => {

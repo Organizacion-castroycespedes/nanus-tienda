@@ -3,12 +3,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Button } from "../../../../components/design-system/Button";
+import { ConfirmDialog } from "../../../../components/design-system/confirm-dialog";
 import { ConfirmationMessage } from "../../../../components/design-system/confirmation-message";
 import { Input } from "../../../../components/design-system/Input";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasPermission } from "../../../../lib/permissions";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
+import { FocusActionLayout } from "../../../../modules/inventory/components/FocusActionLayout";
 import { UnitForm } from "../../../../modules/inventory/components/UnitForm";
 import {
   deleteUnit,
@@ -18,6 +20,12 @@ import {
 
 type UnitFilters = {
   query: string;
+};
+
+type ActionFeedback = {
+  title: string;
+  description?: string;
+  variant?: "default" | "success" | "warning" | "danger";
 };
 
 const defaultFilters: UnitFilters = {
@@ -41,6 +49,7 @@ const UnitsPage = () => {
   const [selectedUnit, setSelectedUnit] = useState<UnitResponse | null>(null);
   const [pendingDeleteUnit, setPendingDeleteUnit] = useState<UnitResponse | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
 
   const canCreate = hasPermission("inventory.create");
   const canEdit = hasPermission("inventory.update");
@@ -107,14 +116,51 @@ const UnitsPage = () => {
 
   const handleFormSuccess = (mode: "create" | "edit") => {
     closeForm();
-    showToast(
-      mode === "create" ? "Unidad creada correctamente." : "Unidad actualizada correctamente.",
-      "success"
-    );
+    setActionFeedback({
+      title:
+        mode === "create"
+          ? "Unidad creada correctamente"
+          : "Unidad actualizada correctamente",
+      description:
+        mode === "create"
+          ? "La unidad quedo disponible para el catalogo."
+          : "Los cambios de la unidad fueron guardados correctamente.",
+      variant: "success",
+    });
     if (hasSearched) {
       void loadUnits();
     }
   };
+
+  const openCreateForm = () => {
+    setSelectedUnit(null);
+    setFormMode("create");
+  };
+
+  const openEditForm = (unit: UnitResponse) => {
+    setSelectedUnit(unit);
+    setFormMode("edit");
+  };
+
+  const isActionMode = formMode !== null || pendingDeleteUnit !== null;
+  const actionTitle =
+    pendingDeleteUnit
+      ? "Eliminar unidad"
+      : formMode === "edit"
+        ? "Editar unidad"
+        : "Crear unidad";
+  const actionDescription =
+    pendingDeleteUnit
+      ? "Confirma o cancela la eliminacion antes de volver al listado."
+      : formMode === "edit"
+        ? "Actualiza la unidad seleccionada sin mezclar el formulario con el listado."
+        : "Registra una unidad nueva sin mezclar el formulario con el listado.";
+  const actionContextLabel =
+    pendingDeleteUnit
+      ? `${pendingDeleteUnit.name} · ${pendingDeleteUnit.abbreviation}`
+      : formMode === "edit" && selectedUnit
+        ? `${selectedUnit.name} · ${selectedUnit.abbreviation}`
+        : undefined;
 
   const handleDelete = async () => {
     if (!pendingDeleteUnit) {
@@ -138,65 +184,97 @@ const UnitsPage = () => {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={Boolean(actionFeedback)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionFeedback(null);
+          }
+        }}
+        title={actionFeedback?.title ?? ""}
+        description={actionFeedback?.description}
+        confirmText="Entendido"
+        variant={actionFeedback?.variant ?? "success"}
+        hideCancel
+        onConfirm={() => setActionFeedback(null)}
+      />
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
             <h1 className="text-2xl font-semibold text-slate-900">Unidades</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Administra las unidades de medida disponibles para los productos.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Administra las unidades de medida disponibles para los productos."}
             </p>
           </div>
+          {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
             <Button variant="ghost" onClick={() => void loadUnits()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar
             </Button>
             {canCreate ? (
-              <Button
-                onClick={() => {
-                  setSelectedUnit(null);
-                  setFormMode("create");
-                }}
-              >
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear unidad
               </Button>
             ) : null}
           </div>
+          ) : null}
         </div>
       </section>
 
-      {formMode ? (
-        <UnitForm
-          mode={formMode}
-          unit={selectedUnit}
-          onCancel={closeForm}
-          onSuccess={handleFormSuccess}
-        />
+      {isActionMode ? (
+        <FocusActionLayout
+          title={actionTitle}
+          description={actionDescription}
+          contextLabel={actionContextLabel}
+          onBack={pendingDeleteUnit ? () => setPendingDeleteUnit(null) : closeForm}
+          onCancel={pendingDeleteUnit ? () => setPendingDeleteUnit(null) : closeForm}
+        >
+          {formMode ? (
+            <UnitForm
+              mode={formMode}
+              unit={selectedUnit}
+              onCancel={closeForm}
+              onSuccess={handleFormSuccess}
+            />
+          ) : null}
+
+          {pendingDeleteUnit ? (
+            <div className="space-y-4">
+              <ConfirmationMessage
+                title={`Eliminar unidad: ${pendingDeleteUnit.name}`}
+                description="Esta accion eliminara la unidad seleccionada. Si esta asociada a productos, la base de datos puede rechazar la operacion."
+                onDismiss={() => setPendingDeleteUnit(null)}
+              />
+              <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setPendingDeleteUnit(null)}
+                    disabled={isDeleting}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => void handleDelete()}
+                    isLoading={isDeleting}
+                  >
+                    Confirmar eliminacion
+                  </Button>
+                </div>
+              </section>
+            </div>
+          ) : null}
+        </FocusActionLayout>
       ) : null}
 
-      {pendingDeleteUnit ? (
-        <ConfirmationMessage
-          title={`Eliminar unidad: ${pendingDeleteUnit.name}`}
-          description="Esta accion eliminara la unidad seleccionada. Si esta asociada a productos, la base de datos puede rechazar la operacion."
-          onDismiss={() => setPendingDeleteUnit(null)}
-        />
-      ) : null}
-
-      {pendingDeleteUnit ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button variant="ghost" onClick={() => setPendingDeleteUnit(null)} disabled={isDeleting}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={() => void handleDelete()} isLoading={isDeleting}>
-              Confirmar eliminacion
-            </Button>
-          </div>
-        </section>
-      ) : null}
-
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
@@ -232,15 +310,17 @@ const UnitsPage = () => {
           </Select>
         </div>
       </section>
+      ) : null}
 
-      {errorMessage ? (
+      {!isActionMode && errorMessage ? (
         <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
           {errorMessage}
         </section>
       ) : null}
 
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -285,10 +365,7 @@ const UnitsPage = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setSelectedUnit(unit);
-                              setFormMode("edit");
-                            }}
+                            onClick={() => openEditForm(unit)}
                           >
                             <Pencil className="h-4 w-4" />
                             Editar
@@ -335,6 +412,7 @@ const UnitsPage = () => {
           </div>
         </div>
       </section>
+      ) : null}
     </div>
   );
 };
