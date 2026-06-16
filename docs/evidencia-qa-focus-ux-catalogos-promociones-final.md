@@ -84,6 +84,28 @@ Promociones:
 - `git diff --check`: PASS con warnings LF/CRLF.
 - `git status --short`: ejecutado.
 
+## Archive OpenSpec
+
+Changes archivados:
+
+- `mejorar-focus-acciones-clientes-unidades-proveedores`: archivado como `openspec/changes/archive/2026-06-16-mejorar-focus-acciones-clientes-unidades-proveedores`.
+- `mejorar-focus-acciones-promociones`: archivado como `openspec/changes/archive/2026-06-16-mejorar-focus-acciones-promociones`.
+
+Specs creadas por archive:
+
+- `openspec/specs/catalog-action-focus-ux/spec.md`.
+- `openspec/specs/promotion-action-focus-ux/spec.md`.
+
+Validaciones post-archive:
+
+- `openspec.cmd validate --all --strict`: PASS, 17 items.
+- `openspec.cmd list`: los dos changes archivados ya no aparecen como activos.
+- `cd web && npm.cmd run build`: PASS con warnings existentes. Se limpio cache generada `web/.next` antes del reintento exitoso por error transitorio de build cache `PageNotFoundError: /_document`.
+- `git diff --check`: PASS con warnings LF/CRLF.
+- `git status --short`: ejecutado.
+
+Estado: PASS.
+
 ## Confirmaciones
 
 - No PRD.
