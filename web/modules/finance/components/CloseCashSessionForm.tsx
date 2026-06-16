@@ -1,10 +1,15 @@
 "use client";
 
+import { type ChangeEvent, useEffect, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
-import { Input } from "../../../components/design-system/Input";
 import { Textarea } from "../../../components/design-system/Textarea";
 import type { CashSessionSummary, CloseCashSessionPayload } from "../types";
 import { formatCurrency } from "../utils";
+import {
+  formatCashAmountForInput,
+  parseCashAmountInput,
+  sanitizeCashAmountInput,
+} from "./close-cash-session-money";
 
 type CloseCashSessionFormProps = {
   value: CloseCashSessionPayload;
@@ -25,7 +30,28 @@ export const CloseCashSessionForm = ({
   onSubmit,
   isSaving = false,
 }: CloseCashSessionFormProps) => {
+  const [closingAmountInput, setClosingAmountInput] = useState(() =>
+    formatCashAmountForInput(value.closingAmount)
+  );
   const differenceAmount = Number((value.closingAmount - expectedAmount).toFixed(2));
+
+  useEffect(() => {
+    const currentAmount = parseCashAmountInput(closingAmountInput);
+    if (Math.abs(currentAmount - value.closingAmount) > 0.009) {
+      setClosingAmountInput(formatCashAmountForInput(value.closingAmount));
+    }
+  }, [closingAmountInput, value.closingAmount]);
+
+  const handleClosingAmountChange = (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const nextValue = sanitizeCashAmountInput(event.target.value);
+    setClosingAmountInput(nextValue);
+    onChange({
+      ...value,
+      closingAmount: parseCashAmountInput(nextValue),
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -87,20 +113,26 @@ export const CloseCashSessionForm = ({
       ) : null}
 
       <div className="grid gap-4">
-        <Input
-          label="Efectivo contado"
-          type="number"
-          min="0"
-          step="0.01"
-          value={String(value.closingAmount)}
-          onChange={(event) =>
-            onChange({
-              ...value,
-              closingAmount: Number(event.target.value),
-            })
-          }
-          required
-        />
+        <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <span className="font-medium">
+            Efectivo contado <span className="text-rose-600">*</span>
+          </span>
+          <div className="flex min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-100">
+            <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+              $
+            </span>
+            <input
+              className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+              inputMode="decimal"
+              pattern="[0-9]*[.]?[0-9]{0,2}"
+              placeholder="0.00"
+              value={closingAmountInput}
+              onChange={handleClosingAmountChange}
+              disabled={isSaving}
+              required
+            />
+          </div>
+        </label>
         <Textarea
           label="Observacion"
           rows={3}

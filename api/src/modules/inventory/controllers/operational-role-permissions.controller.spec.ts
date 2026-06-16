@@ -5,10 +5,13 @@ import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { PERMISSION_KEY } from "../../../common/decorators/require-permission.decorator";
 import { ROLES_KEY } from "../../../common/decorators/roles.decorator";
 import { PromotionsController } from "../../pricing/promotions.controller";
+import { InventoryLocationController } from "./inventory-location.controller";
+import { InventoryLotController } from "./inventory-lot.controller";
 import { ProductBarcodeController } from "./product-barcode.controller";
 import { ProductController } from "./product.controller";
 import { PurchaseController } from "./purchase.controller";
 import { SupplierController } from "./supplier.controller";
+import { StockAdjustmentController } from "./stock-adjustment.controller";
 import { TaxController } from "./tax.controller";
 import { UnitController } from "./unit.controller";
 
@@ -23,7 +26,13 @@ type ControllerMethod = {
 const getMethodRoles = (prototype: object, methodName: string) => {
   const method = (prototype as Record<string, unknown>)[methodName];
   assert.equal(typeof method, "function", `${methodName} must be a method`);
-  return Reflect.getMetadata(ROLES_KEY, method) as string[] | undefined;
+  return (
+    (Reflect.getMetadata(ROLES_KEY, method) as string[] | undefined) ??
+    (Reflect.getMetadata(
+      ROLES_KEY,
+      (prototype as { constructor: unknown }).constructor
+    ) as string[] | undefined)
+  );
 };
 
 const getMethodPermission = (prototype: object, methodName: string) => {
@@ -51,6 +60,21 @@ describe("operational catalog role permissions", () => {
         controller: "ProductBarcodeController",
         prototype: ProductBarcodeController.prototype,
         methods: ["create", "update", "deactivate", "setPrimary"],
+      },
+      {
+        controller: "StockAdjustmentController",
+        prototype: StockAdjustmentController.prototype,
+        methods: ["create"],
+      },
+      {
+        controller: "InventoryLocationController",
+        prototype: InventoryLocationController.prototype,
+        methods: ["create", "update", "deactivate"],
+      },
+      {
+        controller: "InventoryLotController",
+        prototype: InventoryLotController.prototype,
+        methods: ["create", "update", "block", "cancel"],
       },
       {
         controller: "UnitController",

@@ -11,8 +11,11 @@ import { AccessControlService } from "../services/access-control.service";
 import { MENU_KEYS, getMenuKeyCandidates } from "../constants/menu-keys";
 
 const OPERATIONAL_ADMIN_MENU_KEYS = new Set<string>([
+  "INVENTORY",
   MENU_KEYS.INVENTORY_PURCHASES,
   MENU_KEYS.INVENTORY_PRODUCTS,
+  MENU_KEYS.INVENTORY_LOCATIONS,
+  MENU_KEYS.INVENTORY_LOTS,
   MENU_KEYS.INVENTORY_UNITS,
   MENU_KEYS.INVENTORY_TAXES,
   MENU_KEYS.INVENTORY_SUPPLIERS,
@@ -64,6 +67,7 @@ export class PermissionsGuard implements CanActivate {
       Array.from(expandedRequiredMenuKeys).some(
         (menuKey) =>
           menuKey === MENU_KEYS.CONFIG_GENERAL ||
+          menuKey === MENU_KEYS.CONFIG_TERMINALS ||
           menuKey === MENU_KEYS.CONFIG_USUARIOS ||
           menuKey === MENU_KEYS.CONFIG_ROLES
       )

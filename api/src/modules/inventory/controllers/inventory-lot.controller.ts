@@ -160,7 +160,7 @@ export class InventoryLotController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   create(@Body() body: CreateInventoryLotBody, @Req() request: AuthRequest) {
     this.assertUuid(body.branchId, "branchId");
@@ -179,7 +179,7 @@ export class InventoryLotController {
   }
 
   @Put(":lotId")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   update(
     @Param("lotId") lotId: string,
@@ -204,7 +204,7 @@ export class InventoryLotController {
   }
 
   @Patch(":lotId/block")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   block(@Param("lotId") lotId: string, @Req() request: AuthRequest) {
     this.assertUuid(lotId, "lotId");
@@ -216,7 +216,7 @@ export class InventoryLotController {
   }
 
   @Patch(":lotId/cancel")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY", level: "WRITE" })
   cancel(@Param("lotId") lotId: string, @Req() request: AuthRequest) {
     this.assertUuid(lotId, "lotId");

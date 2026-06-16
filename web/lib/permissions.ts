@@ -19,6 +19,8 @@ const operationalAdminMenuKeys = new Set(
   [
     MENU_KEYS.INVENTORY_PURCHASES,
     MENU_KEYS.INVENTORY_PRODUCTS,
+    MENU_KEYS.INVENTORY_LOCATIONS,
+    MENU_KEYS.INVENTORY_LOTS,
     MENU_KEYS.INVENTORY_UNITS,
     MENU_KEYS.INVENTORY_TAXES,
     MENU_KEYS.INVENTORY_SUPPLIERS,
@@ -70,6 +72,7 @@ const isRestrictedForRole = (role: string, moduleName: string) => {
   return new Set([
     normalizeValue(MENU_KEYS.CONFIG_GENERAL),
     normalizeValue("CONFIGURACION_TENANT_CONFIGURACION"),
+    normalizeValue(MENU_KEYS.CONFIG_TERMINALS),
     normalizeValue(MENU_KEYS.POS_PERIPHERALS),
     normalizeValue("peripherals"),
   ]).has(moduleName);
@@ -78,6 +81,7 @@ const isRestrictedForRole = (role: string, moduleName: string) => {
 const isScopedSuperUserPermission = (role: string, moduleName: string) =>
   role === "SUPER_USER" &&
   (moduleName === normalizeValue("CONFIG_GENERAL") ||
+    moduleName === normalizeValue(MENU_KEYS.CONFIG_TERMINALS) ||
     moduleName === normalizeValue("CONFIG_USUARIOS"));
 
 const resolvePermissionInput = (
@@ -213,20 +217,12 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
     role === "ADMIN" &&
     (normalizedCandidates.includes(normalizeValue(MENU_KEYS.CONFIG_GENERAL)) ||
       normalizedCandidates.includes(normalizeValue("CONFIGURACION_TENANT_CONFIGURACION")) ||
+      normalizedCandidates.includes(normalizeValue(MENU_KEYS.CONFIG_TERMINALS)) ||
       normalizedCandidates.includes(normalizeValue(MENU_KEYS.POS_PERIPHERALS)))
   ) {
     return false;
   }
 
-  if (
-    role === "SUPER_USER" &&
-    (normalizedCandidates.includes(normalizeValue("CONFIG_GENERAL")) ||
-      normalizedCandidates.includes(normalizeValue("CONFIGURACION_TENANT_CONFIGURACION")) ||
-      normalizedCandidates.includes(normalizeValue("CONFIG_USUARIOS")) ||
-      normalizedCandidates.includes(normalizeValue("USUARIOS_TENANT_USUARIOS")))
-  ) {
-    return true;
-  }
   if (
     role === "USER" &&
     normalizedCandidates.some((candidate) =>
@@ -234,14 +230,6 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
     )
   ) {
     return false;
-  }
-  if (
-    isOperationalAdminRole(role) &&
-    normalizedCandidates.some((candidate) =>
-      operationalAdminMenuKeys.has(candidate)
-    )
-  ) {
-    return true;
   }
 
   return candidates.some((candidate) => {

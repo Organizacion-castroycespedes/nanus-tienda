@@ -196,7 +196,7 @@ const ProductsPage = () => {
   const canCreate = canManageProducts && hasPermission("inventory.create");
   const canEdit = canManageProducts && hasPermission("inventory.update");
   const canDelete = canManageProducts && hasPermission("inventory.delete");
-  const canAdjustStock = isSuperRole;
+  const canAdjustStock = canManageProducts && hasPermission("inventory.update");
 
   useAutoClearState(toastMessage, setToastMessage);
 
