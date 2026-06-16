@@ -185,7 +185,7 @@ const ProductsPage = () => {
   const [priceFeedback, setPriceFeedback] = useState<{
     title: string;
     description?: string;
-    variant?: "default" | "danger" | "warning";
+    variant?: "default" | "success" | "danger" | "warning";
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const { currentTenant, isSuperRole } = useInventoryScope();
