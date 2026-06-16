@@ -17,6 +17,12 @@ import {
   listInventoryLocations,
   type InventoryLocationResponse,
 } from "../services/inventory-location.service";
+import {
+  getPendingReceiveRows,
+  getReceiveQuantity,
+  getRowsWithReceivableQuantity,
+  hasAnyPositiveReceiveQuantity,
+} from "./purchase-receive-lines";
 
 type ReceiveItemValue = {
   productId: string;
@@ -67,10 +73,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
   return fallback;
 };
-
-const isReceivePayloadItem = (
-  item: ReceivePurchasePayload["items"][number] | null
-): item is ReceivePurchasePayload["items"][number] => item !== null;
 
 export const PurchaseReceiveForm = ({
   purchaseId,
@@ -173,14 +175,7 @@ export const PurchaseReceiveForm = ({
       return [];
     }
 
-    return purchase.items.map((item, index) => {
-      const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
-      return {
-        item,
-        index,
-        pending,
-      };
-    });
+    return getPendingReceiveRows(purchase.items);
   }, [purchase]);
 
   const isBlockedStatus =
@@ -197,15 +192,18 @@ export const PurchaseReceiveForm = ({
       return false;
     }
 
-    const hasAnyQuantity = values.some((value) => {
-      const quantity = Number(value.quantity);
-      return Number.isFinite(quantity) && quantity > 0;
-    });
+    if (rows.length === 0) {
+      nextErrors.items = "Esta compra no tiene productos pendientes por recibir.";
+      setErrors(nextErrors);
+      return false;
+    }
+
+    const hasAnyQuantity = hasAnyPositiveReceiveQuantity(rows, values);
 
     const itemErrors: string[] = [];
 
-    const hasInvalidQuantity = rows.some(({ item, pending }, index) => {
-      const quantity = Number(values[index]?.quantity ?? "");
+    const hasInvalidQuantity = rows.some(({ item, index, pending }) => {
+      const quantity = getReceiveQuantity(values[index]);
       if (!Number.isFinite(quantity) || quantity === 0) {
         return false;
       }
@@ -245,11 +243,11 @@ export const PurchaseReceiveForm = ({
       return quantity < 0 || quantity > pending;
     });
 
-    if (!hasAnyQuantity) {
-      nextErrors.items = "Debes ingresar al menos una cantidad a recibir.";
-    } else if (hasInvalidQuantity) {
+    if (hasInvalidQuantity) {
       nextErrors.items =
         "Las cantidades a recibir deben ser mayores a 0 y no pueden exceder el pendiente.";
+    } else if (!hasAnyQuantity) {
+      nextErrors.items = "Debes ingresar al menos una cantidad a recibir.";
     } else if (itemErrors.length > 0) {
       nextErrors.items = itemErrors.join(" ");
     }
@@ -270,37 +268,31 @@ export const PurchaseReceiveForm = ({
 
     try {
       const payload = {
-        items: rows
-          .map(({ item, index, pending }) => {
-            const quantity = Number(values[index]?.quantity ?? "");
-            if (!Number.isFinite(quantity) || quantity <= 0 || quantity > pending) {
-              return null;
-            }
+        items: getRowsWithReceivableQuantity(rows, values).map(({ item, index }) => {
+          const quantity = getReceiveQuantity(values[index]);
+          const product = productById.get(item.productId);
+          const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
+          const value = values[index];
+          const payloadItem: ReceivePurchasePayload["items"][number] = {
+            product_id: item.productId,
+            productId: item.productId,
+            purchaseItemId: item.id,
+            quantity,
+            receivedQuantity: quantity,
+          };
 
-            const product = productById.get(item.productId);
-            const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
-            const value = values[index];
-            const payloadItem: ReceivePurchasePayload["items"][number] = {
-              product_id: item.productId,
-              productId: item.productId,
-              purchaseItemId: item.id,
-              quantity,
-              receivedQuantity: quantity,
-            };
+          if (!requiresLot) {
+            return payloadItem;
+          }
 
-            if (!requiresLot) {
-              return payloadItem;
-            }
-
-            return {
-              ...payloadItem,
-              lotCode: value.lotCode.trim().toUpperCase(),
-              expirationDate: value.expirationDate || undefined,
-              locationId: value.locationId || undefined,
-              unitCost: value.unitCost ? Number(value.unitCost) : undefined,
-            };
-          })
-          .filter(isReceivePayloadItem),
+          return {
+            ...payloadItem,
+            lotCode: value.lotCode.trim().toUpperCase(),
+            expirationDate: value.expirationDate || undefined,
+            locationId: value.locationId || undefined,
+            unitCost: value.unitCost ? Number(value.unitCost) : undefined,
+          };
+        }),
       };
 
       const response = await receivePurchase(purchaseId, payload);
@@ -392,6 +384,7 @@ export const PurchaseReceiveForm = ({
             </div>
           ) : null}
 
+          {rows.length > 0 ? (
           <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain">
               <div className="min-w-[1040px]">
@@ -414,6 +407,8 @@ export const PurchaseReceiveForm = ({
                     );
                     const isPerishable = Boolean(product?.isPerishable ?? item.isPerishable);
                     const value = values[index];
+                    const quantity = getReceiveQuantity(value);
+                    const showLotFields = requiresLot && quantity > 0;
 
                     return (
                       <Fragment key={item.id}>
@@ -481,7 +476,7 @@ export const PurchaseReceiveForm = ({
                             />
                           </td>
                         </tr>
-                        {requiresLot ? (
+                        {showLotFields ? (
                           <tr className="bg-blue-50/40">
                             <td colSpan={5} className="px-4 py-4">
                               <div className="space-y-3">
@@ -595,6 +590,11 @@ export const PurchaseReceiveForm = ({
               </div>
             </div>
           </section>
+          ) : (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+              Esta compra no tiene productos pendientes por recibir.
+            </div>
+          )}
 
           {errors.items ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -626,7 +626,7 @@ export const PurchaseReceiveForm = ({
             <Button
               type="submit"
               isLoading={isSubmitting}
-              disabled={isBlockedStatus}
+              disabled={isBlockedStatus || rows.length === 0}
               className="w-full sm:w-auto"
             >
               Confirmar recepcion
