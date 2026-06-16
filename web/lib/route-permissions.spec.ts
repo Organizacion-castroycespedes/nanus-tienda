@@ -24,6 +24,18 @@ test("legacy terminales path is not a protected canonical route", () => {
   );
 });
 
+test("roles route uses canonical CONFIG_ROLES permission", () => {
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/roles"
+    ),
+    {
+      module: MENU_KEYS.CONFIG_ROLES,
+      action: "read",
+    }
+  );
+});
+
 test("finance routes use canonical FINANCE permission", () => {
   assert.deepEqual(
     getRoutePermissionRequirement(

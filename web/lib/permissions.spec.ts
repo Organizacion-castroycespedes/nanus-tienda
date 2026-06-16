@@ -122,6 +122,23 @@ test("route permissions allow finance for USER and ADMIN without opening admin m
   assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), false);
 });
 
+test("roles module is visible only for SUPER_ADMIN", () => {
+  const rolesPermission = permissionFor(MENU_KEYS.CONFIG_ROLES);
+  const legacyRolesPermission = permissionFor("ROLES_TENANT_ROLES");
+
+  for (const role of ["USER", "ADMIN", "SUPER_USER"]) {
+    setRole(role, [rolesPermission, legacyRolesPermission]);
+
+    assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_ROLES, "READ"), false);
+    assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), false);
+    assert.equal(hasPermission("ROLES_TENANT_ROLES", "read"), false);
+  }
+
+  setRole("SUPER_ADMIN");
+  assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_ROLES, "READ"), true);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), true);
+});
+
 test("menu permissions expose terminals only when DB grants super roles", () => {
   const terminalPermission = permissionFor(MENU_KEYS.CONFIG_TERMINALS);
 

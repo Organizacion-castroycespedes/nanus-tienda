@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import "reflect-metadata";
+import { ROLES_KEY } from "../../common/decorators/roles.decorator";
+import { PERMISSION_KEY } from "../../common/decorators/require-permission.decorator";
+import { MENU_KEYS } from "../../common/constants/menu-keys";
 import { RolesController } from "./roles.controller";
 
 const roles = [
@@ -29,23 +33,21 @@ const roles = [
   },
 ];
 
-test("RolesController: SUPER_USER list excludes higher roles", async () => {
-  const controller = new RolesController({
-    listRoles: async () => roles,
-  } as never);
-
-  const result = await controller.list({
-    user: {
-      id: "user-1",
-      tenantId: "tenant-1",
-      roles: ["SUPER_USER"],
-    },
-  } as never);
-
-  assert.deepEqual(
-    result.map((role) => role.nombre),
-    ["ADMIN", "USER"]
+test("RolesController: list is gated to SUPER_ADMIN only", () => {
+  const rolesMetadata = Reflect.getMetadata(
+    ROLES_KEY,
+    RolesController.prototype.list
   );
+  const permissionMetadata = Reflect.getMetadata(
+    PERMISSION_KEY,
+    RolesController.prototype.list
+  );
+
+  assert.deepEqual(rolesMetadata, ["SUPER_ADMIN"]);
+  assert.deepEqual(permissionMetadata, {
+    menuKey: MENU_KEYS.CONFIG_ROLES,
+    level: "READ",
+  });
 });
 
 test("RolesController: SUPER_ADMIN list keeps all roles", async () => {

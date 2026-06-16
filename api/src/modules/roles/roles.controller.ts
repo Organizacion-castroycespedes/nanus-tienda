@@ -16,7 +16,7 @@ import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { PermissionsGuard } from "../../common/guards/permissions.guard";
 import { MENU_KEYS } from "../../common/constants/menu-keys";
-import { RolesService, type RoleRecord } from "./roles.service";
+import { RolesService } from "./roles.service";
 import type { CreateRoleDto } from "./dto/create-role.dto";
 import type { UpdateRoleDto } from "./dto/update-role.dto";
 
@@ -46,28 +46,12 @@ export class RolesController {
     };
   }
 
-  private isSuperAdmin(actor: ReturnType<RolesController["buildActor"]>) {
-    return actor.roles.includes("SUPER_ADMIN");
-  }
-
-  private filterSuperAdminRole(
-    roles: RoleRecord[],
-    actor: ReturnType<RolesController["buildActor"]>
-  ) {
-    if (this.isSuperAdmin(actor)) {
-      return roles;
-    }
-    const restricted = new Set(["SUPER_ADMIN", "SUPER_USER"]);
-    return roles.filter((role) => !restricted.has(role.nombre));
-  }
-
   @Get()
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN")
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_ROLES, level: "READ" })
   async list(@Req() request: AuthRequest) {
     const actor = this.buildActor(request);
-    const roles = await this.rolesService.listRoles(actor);
-    return this.filterSuperAdminRole(roles, actor);
+    return this.rolesService.listRoles(actor);
   }
 
   @Post()
