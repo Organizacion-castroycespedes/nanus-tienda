@@ -203,10 +203,7 @@ export class OrdersReportsService {
 
   async getOrderSaleTicket(orderId: string, user?: ReportUser) {
     const actor = this.resolveActor(user);
-    console.log("actor:", actor);
-    console.log("orderId:", orderId);
     const payload = await this.ordersReportAdapter.getOrderSaleTicket(actor, orderId);
-    console.log("payload:", payload);
     if (!payload && (await this.ordersReportAdapter.orderSaleExists(orderId))) {
       throw new ForbiddenException("order ticket is not authorized");
     }

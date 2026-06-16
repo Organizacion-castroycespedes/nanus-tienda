@@ -57,7 +57,6 @@ export class OrdersReportAdapter {
       "SELECT EXISTS (SELECT 1 FROM orders WHERE id = $1) AS exists",
       [orderId]
     );
-    console.log("orderSaleExists result:", result.rows);
     return result.rows[0]?.exists === true;
   }
 }

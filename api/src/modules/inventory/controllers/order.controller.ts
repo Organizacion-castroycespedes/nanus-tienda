@@ -142,13 +142,6 @@ export class OrderController {
     @Query("paymentMethod") paymentMethod: string | undefined,
     @Req() request: AuthRequest
   ) {
-    console.log("list orders with filters:", {
-      tenantId,
-      branchId,
-      fromDate,
-      toDate,
-      paymentMethod,
-    });
     return this.orderService.getOrders(
       {
         tenantId,
