@@ -99,7 +99,7 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/finance(?:\/.*)?$/i,
-    requirement: { module: "finance", action: "read" },
+    requirement: { module: MENU_KEYS.FINANCE, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/reporteria(?:\/.*)?$/i,

@@ -66,6 +66,13 @@ const isUserBlockedFromAdminModule = (
     isOperationalInventoryAction(moduleName, actionName));
 
 const isRestrictedForRole = (role: string, moduleName: string) => {
+  if (
+    role !== "SUPER_ADMIN" &&
+    (moduleName === normalizeValue(MENU_KEYS.CONFIG_ROLES) ||
+      moduleName === normalizeValue("ROLES_TENANT_ROLES"))
+  ) {
+    return true;
+  }
   if (role !== "ADMIN") {
     return false;
   }
@@ -212,6 +219,14 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
 
   const candidates = getMenuKeyCandidates(menuKey);
   const normalizedCandidates = candidates.map((candidate) => normalizeValue(candidate));
+
+  if (
+    role !== "SUPER_ADMIN" &&
+    (normalizedCandidates.includes(normalizeValue(MENU_KEYS.CONFIG_ROLES)) ||
+      normalizedCandidates.includes(normalizeValue("ROLES_TENANT_ROLES")))
+  ) {
+    return false;
+  }
 
   if (
     role === "ADMIN" &&
