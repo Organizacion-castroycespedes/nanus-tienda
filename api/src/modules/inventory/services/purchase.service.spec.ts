@@ -13,11 +13,24 @@ const ids = {
   purchase: "10000000-0000-0000-0000-000000000001",
   supplier: "20000000-0000-0000-0000-000000000001",
   branch: "30000000-0000-0000-0000-000000000001",
+  otherBranch: "30000000-0000-0000-0000-000000000099",
+  terminal: "30000000-0000-0000-0000-000000000002",
   user: "40000000-0000-0000-0000-000000000001",
   purchaseItem: "50000000-0000-0000-0000-000000000001",
+  purchaseItem2: "50000000-0000-0000-0000-000000000002",
   product: "60000000-0000-0000-0000-000000000001",
+  product2: "60000000-0000-0000-0000-000000000002",
   lot: "70000000-0000-0000-0000-000000000001",
   location: "80000000-0000-0000-0000-000000000001",
+};
+
+type FakePurchaseItem = {
+  id: string;
+  productId: string;
+  orderedQuantity: number;
+  receivedQuantity: number;
+  cost?: number;
+  subtotal?: number;
 };
 
 type Scenario = {
@@ -35,6 +48,9 @@ type Scenario = {
   existingLotExpirationDate?: string | null;
   locationBelongsToBranch?: boolean;
   invalidAuditContextUuid?: boolean;
+  terminalBranchId?: string | null;
+  auditTerminalName?: string | null;
+  purchaseItems?: FakePurchaseItem[];
 };
 
 const buildPurchaseRow = (scenario: Scenario = {}) => ({
@@ -60,9 +76,37 @@ const actor = {
 class FakeClient {
   readonly queries: string[] = [];
   readonly params: unknown[][] = [];
+  insertedPurchase: unknown[] | null = null;
+  insertedItems: unknown[][] = [];
+  purchaseItems: FakePurchaseItem[];
   released = false;
 
-  constructor(private readonly scenario: Scenario = {}) {}
+  constructor(readonly scenario: Scenario = {}) {
+    this.purchaseItems = (
+      scenario.purchaseItems ?? [
+        {
+          id: ids.purchaseItem,
+          productId: ids.product,
+          orderedQuantity: 10,
+          receivedQuantity: scenario.itemReceivedQuantity ?? 7,
+          cost: scenario.itemCost ?? 10000,
+          subtotal: 100000,
+        },
+      ]
+    ).map((item) => ({ ...item }));
+  }
+
+  private buildPurchaseItemRows() {
+    return this.purchaseItems.map((item) => ({
+      id: item.id,
+      purchase_id: ids.purchase,
+      product_id: item.productId,
+      ordered_quantity: item.orderedQuantity,
+      received_quantity: item.receivedQuantity,
+      cost: item.cost ?? this.scenario.itemCost ?? 10000,
+      subtotal: item.subtotal ?? (item.cost ?? this.scenario.itemCost ?? 10000) * item.orderedQuantity,
+    }));
+  }
 
   async query(text: string, params: unknown[] = []) {
     const trimmed = text.trim();
@@ -103,31 +147,65 @@ class FakeClient {
     if (trimmed.includes("SELECT received_quantity") && trimmed.includes("FROM purchase_items")) {
       return { rows: [{ received_quantity: this.scenario.receivedQuantity ?? 0 }] };
     }
+    if (trimmed.includes("FROM terminals")) {
+      const terminalBranchId = this.scenario.terminalBranchId ?? ids.branch;
+      if (
+        terminalBranchId &&
+        params[0] === ids.terminal &&
+        params[1] === ids.tenant &&
+        params[2] === terminalBranchId
+      ) {
+        return { rows: [{ id: ids.terminal, name: "Terminal QA" }] };
+      }
+      return { rows: [] };
+    }
+    if (trimmed.includes("FROM tenant_branches")) {
+      return { rows: [{ id: params[0] }] };
+    }
     if (trimmed.includes("requires_lot") && trimmed.includes("FROM products")) {
+      const requestedProductIds = Array.isArray(params[1])
+        ? (params[1] as string[])
+        : this.purchaseItems.map((item) => item.productId);
+      return {
+        rows: requestedProductIds.map((productId) => ({
+          id: productId,
+          requires_lot: this.scenario.productRequiresLot ?? false,
+          requires_expiration: this.scenario.productRequiresExpiration ?? false,
+        })),
+      };
+    }
+    if (trimmed.includes("FROM products")) {
+      return { rows: [{ id: params[0] ?? ids.product }] };
+    }
+    if (trimmed.startsWith("INSERT INTO purchases")) {
+      this.insertedPurchase = params;
       return {
         rows: [
           {
-            id: ids.product,
-            requires_lot: this.scenario.productRequiresLot ?? false,
-            requires_expiration: this.scenario.productRequiresExpiration ?? false,
+            id: params[0],
+            tenant_id: params[1],
+            supplier_id: params[2],
+            type: params[3],
+            status: params[4],
+            total: params[5],
+            balance: params[6],
+            payment_status: params[7],
+            total_paid: params[8],
+            balance_due: params[9],
+            created_at: params[10],
           },
         ],
       };
     }
+    if (trimmed.startsWith("DELETE FROM purchase_items")) {
+      return { rows: [] };
+    }
+    if (trimmed.startsWith("INSERT INTO purchase_items")) {
+      this.insertedItems.push(params);
+      return { rows: [] };
+    }
     if (trimmed.includes("FROM purchase_items")) {
-      return {
-        rows: [
-          {
-            id: ids.purchaseItem,
-            purchase_id: ids.purchase,
-            product_id: ids.product,
-            ordered_quantity: 10,
-            received_quantity: this.scenario.itemReceivedQuantity ?? 7,
-            cost: this.scenario.itemCost ?? 10000,
-            subtotal: 100000,
-          },
-        ],
-      };
+      return { rows: this.buildPurchaseItemRows() };
     }
     if (trimmed.includes("FROM stock_movements")) {
       return { rows: this.scenario.hasMovement ? [{ id: "movement-1" }] : [] };
@@ -194,6 +272,13 @@ class FakeClient {
       };
     }
     if (trimmed.startsWith("UPDATE purchase_items")) {
+      const itemId = String(params[0]);
+      const receivedDelta = Number(params[1] ?? 0);
+      this.purchaseItems = this.purchaseItems.map((item) =>
+        item.id === itemId
+          ? { ...item, receivedQuantity: item.receivedQuantity + receivedDelta }
+          : item
+      );
       return { rows: [] };
     }
     if (trimmed.startsWith("INSERT INTO auditoria_eventos")) {
@@ -220,6 +305,21 @@ class FakeDatabaseService {
   }
 
   async query() {
+    if (this.client.scenario?.auditTerminalName !== undefined) {
+      return {
+        rows: [
+          {
+            ...buildPurchaseRow(this.client.scenario),
+            tenant_name: "Tenant QA",
+            supplier_name: "Proveedor QA",
+            branch_id: ids.branch,
+            branch_name: "Principal",
+            terminal_id: ids.terminal,
+            terminal_name: this.client.scenario.auditTerminalName,
+          },
+        ],
+      };
+    }
     return { rows: [] };
   }
 }
@@ -324,6 +424,7 @@ const buildService = (scenario: Scenario = {}) => {
   const inventoryLotService = new FakeInventoryLotService(scenario);
   const inventoryLotBalanceService = new FakeInventoryLotBalanceService(scenario);
   const stockMovementLotService = new FakeStockMovementLotService();
+  const auditEvents: unknown[] = [];
   const service = new PurchaseService(
     db as never,
     stockMovementService as never,
@@ -331,17 +432,110 @@ const buildService = (scenario: Scenario = {}) => {
     inventoryLotBalanceService as never,
     stockMovementLotService as never,
     { findAccessibleBranchIds: async () => [] } as never,
-    { isModuleEnabled: () => true, logEvent: () => undefined } as never
+    {
+      isModuleEnabled: () => true,
+      logEvent: (event: unknown) => {
+        auditEvents.push(event);
+      },
+    } as never
   );
   return {
     service,
     db,
+    auditEvents,
     stockMovementService,
     inventoryLotService,
     inventoryLotBalanceService,
     stockMovementLotService,
   };
 };
+
+const createPurchasePayload = () => ({
+  tenantId: ids.tenant,
+  supplierId: ids.supplier,
+  branchId: ids.branch,
+  terminalId: ids.terminal,
+  type: "CREDIT" as const,
+  total: 100,
+  items: [
+    {
+      productId: ids.product,
+      quantity: 2,
+      cost: 50,
+      subtotal: 100,
+    },
+  ],
+  actor,
+});
+
+test("PurchaseService.createPurchase: guarda terminal valida en audit payload y respuesta", async () => {
+  const { service, db, auditEvents } = buildService();
+
+  const result = await service.createPurchase(createPurchasePayload());
+
+  assert.equal(result.branchId, ids.branch);
+  assert.equal(result.terminalId, ids.terminal);
+  assert.equal(result.terminalName, "Terminal QA");
+  assert.equal(db.client.insertedPurchase?.[1], ids.tenant);
+  assert.equal(db.client.insertedItems.length, 1);
+  assert.equal((auditEvents[0] as any).after.terminalId, ids.terminal);
+  assert.equal((auditEvents[0] as any).after.branchId, ids.branch);
+});
+
+test("PurchaseService.createPurchase: usa terminal desde contexto operativo cuando no viene en payload", async () => {
+  const { service, auditEvents } = buildService();
+
+  const result = await service.createPurchase({
+    ...createPurchasePayload(),
+    terminalId: undefined,
+    context: {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      terminalId: ids.terminal,
+      userId: ids.user,
+    },
+  });
+
+  assert.equal(result.terminalId, ids.terminal);
+  assert.equal((auditEvents[0] as any).after.terminalId, ids.terminal);
+});
+
+test("PurchaseService.createPurchase: rechaza compra sin terminal resoluble", async () => {
+  const { service, db } = buildService();
+
+  await assert.rejects(
+    () =>
+      service.createPurchase({
+        ...createPurchasePayload(),
+        terminalId: undefined,
+      }),
+    /No hay terminal activa para registrar la compra/
+  );
+
+  assert.equal(db.client.insertedPurchase, null);
+  assert.equal(db.client.queries.length, 0);
+});
+
+test("PurchaseService.createPurchase: rechaza terminal de otra sucursal", async () => {
+  const { service, db } = buildService({ terminalBranchId: ids.otherBranch });
+
+  await assert.rejects(
+    () => service.createPurchase(createPurchasePayload()),
+    BadRequestException
+  );
+
+  assert.equal(db.client.insertedPurchase, null);
+  assert.equal(db.client.queries.includes("ROLLBACK"), true);
+});
+
+test("PurchaseService.getPurchases: devuelve terminalName cuando audit trae terminal valida", async () => {
+  const { service } = buildService({ auditTerminalName: "Terminal QA" });
+
+  const result = await service.getPurchases({ tenantId: ids.tenant }, actor);
+
+  assert.equal(result[0].terminalId, ids.terminal);
+  assert.equal(result[0].terminalName, "Terminal QA");
+});
 
 test("PurchaseService.cancelPurchase: cancela compra en estado permitido y registra historial", async () => {
   const { service, db } = buildService({ status: "PENDING" });
@@ -931,6 +1125,131 @@ test("PurchaseService.receivePurchase: compra parcial crea lote y balance solo p
 
   assert.equal(inventoryLotBalanceService.increments.length, 1);
   assert.equal((inventoryLotBalanceService.increments[0] as any).quantity, 4);
+});
+
+test("PurchaseService.receivePurchase: permite recibir una linea y dejar otra pendiente", async () => {
+  const { service, stockMovementService } = buildService({
+    status: "PENDING",
+    purchaseItems: [
+      {
+        id: ids.purchaseItem,
+        productId: ids.product,
+        orderedQuantity: 15,
+        receivedQuantity: 0,
+        cost: 1000,
+        subtotal: 15000,
+      },
+      {
+        id: ids.purchaseItem2,
+        productId: ids.product2,
+        orderedQuantity: 20,
+        receivedQuantity: 0,
+        cost: 2000,
+        subtotal: 40000,
+      },
+    ],
+  });
+
+  const result = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      {
+        purchaseItemId: ids.purchaseItem,
+        productId: ids.product,
+        quantity: 15,
+      },
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(result.status, "PARTIAL");
+  assert.equal(stockMovementService.movements.length, 1);
+  assert.equal(result.items[0].receivedQuantity, 15);
+  assert.equal(result.items[1].receivedQuantity, 0);
+});
+
+test("PurchaseService.receivePurchase: no reprocesa linea ya recibida y completa pendientes", async () => {
+  const { service, stockMovementService } = buildService({
+    status: "PARTIAL",
+    purchaseItems: [
+      {
+        id: ids.purchaseItem,
+        productId: ids.product,
+        orderedQuantity: 15,
+        receivedQuantity: 15,
+        cost: 1000,
+        subtotal: 15000,
+      },
+      {
+        id: ids.purchaseItem2,
+        productId: ids.product2,
+        orderedQuantity: 15,
+        receivedQuantity: 0,
+        cost: 2000,
+        subtotal: 30000,
+      },
+    ],
+  });
+
+  const result = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      {
+        purchaseItemId: ids.purchaseItem2,
+        productId: ids.product2,
+        quantity: 15,
+      },
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(result.status, "RECEIVED");
+  assert.equal(stockMovementService.movements.length, 1);
+  assert.equal(result.items[0].receivedQuantity, 15);
+  assert.equal(result.items[1].receivedQuantity, 15);
+});
+
+test("PurchaseService.receivePurchase: rechaza cantidad mayor al pendiente", async () => {
+  const { service, db } = buildService({
+    status: "PARTIAL",
+    purchaseItems: [
+      {
+        id: ids.purchaseItem,
+        productId: ids.product,
+        orderedQuantity: 15,
+        receivedQuantity: 12,
+        cost: 1000,
+        subtotal: 15000,
+      },
+    ],
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [
+          {
+            purchaseItemId: ids.purchaseItem,
+            productId: ids.product,
+            quantity: 4,
+          },
+        ],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /received quantity exceeds pending ordered quantity/
+  );
+
+  assert.equal(
+    db.client.queries.some((query) => query.startsWith("UPDATE purchase_items")),
+    false
+  );
 });
 
 test("PurchaseService.receivePurchase: locationId de otra sucursal se rechaza", async () => {

@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
   Inject,
@@ -50,8 +51,21 @@ export class TenantsController {
 
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER")
-  list() {
-    return this.tenantsService.listTenants();
+  list(
+    @Query("tenantId") tenantId: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    const roles = Array.isArray(request.user?.roles) ? request.user.roles : [];
+    if (roles.includes("SUPER_ADMIN")) {
+      return this.tenantsService.listTenants(tenantId);
+    }
+    if (!request.user?.tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+    if (tenantId && tenantId.trim() !== request.user.tenantId) {
+      throw new ForbiddenException("Tenant invalido");
+    }
+    return this.tenantsService.listTenants(request.user.tenantId);
   }
 
   @Post()

@@ -25,6 +25,34 @@ Contratos disponibles:
 
 Todos los contratos devuelven errores controlados mediante `PeripheralOperationResult` o callbacks de eventos. No deben lanzar errores crudos hacia componentes de POS.
 
+## Endpoint del agent
+
+La URL del `backend-perifericos` se resuelve solo en `web/domains/peripherals/api.ts`.
+
+Desarrollo local puede omitir variables y usar defaults:
+
+```text
+NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL=http://localhost:4050
+NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL=ws://localhost:4050/peripherals
+```
+
+Produccion debe configurar una URL publica segura:
+
+```text
+NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL=https://peripherals.example.com
+NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL=wss://peripherals.example.com/peripherals
+```
+
+Si `NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL` no existe, la web deriva `wss://<host>/peripherals` desde la URL HTTPS. En produccion la web bloquea `http://`, `localhost` y `127.0.0.1` antes de hacer `fetch`, para evitar mixed content y llamadas al equipo del usuario.
+
+Codigos controlados de configuracion/conexion:
+
+- `MISSING_CONFIG`: falta `NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL` en produccion.
+- `INVALID_CONFIG`: URL insegura, local o mal formada.
+- `AGENT_OFFLINE`: agent local de desarrollo no disponible.
+- `NETWORK_ERROR`: error de red, CORS o TLS contra URL publica.
+- `HTTP_ERROR`: el backend respondio HTTP no exitoso.
+
 ## Builders
 
 Archivo:

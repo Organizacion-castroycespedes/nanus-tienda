@@ -3,9 +3,11 @@
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
+import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { FocusActionLayout } from "../../../modules/inventory/components/FocusActionLayout";
 import { SupplierForm } from "../../../modules/inventory/components/SupplierForm";
 import {
   listElectronicInvoicingSuppliers,
@@ -22,6 +24,12 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 
 type SupplierFilters = {
   query: string;
+};
+
+type ActionFeedback = {
+  title: string;
+  description?: string;
+  variant?: "default" | "success" | "warning" | "danger";
 };
 
 const defaultFilters: SupplierFilters = {
@@ -102,6 +110,7 @@ const SuppliersPage = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierResponse | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
 
   const canCreate = hasPermission("inventory.create");
   const canEdit = hasPermission("inventory.update");
@@ -196,16 +205,42 @@ const SuppliersPage = () => {
 
   const handleFormSuccess = (mode: "create" | "edit") => {
     closeForm();
-    showToast(
-      mode === "create"
-        ? "Proveedor creado correctamente."
-        : "Proveedor actualizado correctamente.",
-      "success"
-    );
+    setActionFeedback({
+      title:
+        mode === "create"
+          ? "Proveedor creado correctamente"
+          : "Proveedor actualizado correctamente",
+      description:
+        mode === "create"
+          ? "El proveedor quedo registrado y disponible para compras."
+          : "Los cambios del proveedor fueron guardados correctamente.",
+      variant: "success",
+    });
     if (hasSearched) {
       void loadSuppliers();
     }
   };
+
+  const openCreateForm = () => {
+    setSelectedSupplier(null);
+    setFormMode("create");
+  };
+
+  const openEditForm = (supplier: SupplierResponse) => {
+    setSelectedSupplier(supplier);
+    setFormMode("edit");
+  };
+
+  const isActionMode = formMode !== null;
+  const actionTitle = formMode === "edit" ? "Editar proveedor" : "Crear proveedor";
+  const actionDescription =
+    formMode === "edit"
+      ? "Actualiza los datos comerciales y fiscales del proveedor seleccionado."
+      : "Registra un proveedor nuevo sin mezclar el formulario con el listado.";
+  const actionContextLabel =
+    formMode === "edit" && selectedSupplier
+      ? `${selectedSupplier.name} · ${getSupplierDocument(selectedSupplier)}`
+      : undefined;
 
   const handleDelete = async (supplier: SupplierResponse) => {
     try {
@@ -231,44 +266,67 @@ const SuppliersPage = () => {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={Boolean(actionFeedback)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionFeedback(null);
+          }
+        }}
+        title={actionFeedback?.title ?? ""}
+        description={actionFeedback?.description}
+        confirmText="Entendido"
+        variant={actionFeedback?.variant ?? "success"}
+        hideCancel
+        onConfirm={() => setActionFeedback(null)}
+      />
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Suppliers</p>
             <h1 className="text-2xl font-semibold text-slate-900">Proveedores</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Administra proveedores, contactos y ubicacion comercial.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Administra proveedores, contactos y ubicacion comercial."}
             </p>
           </div>
+          {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
             <Button variant="ghost" onClick={() => void loadSuppliers()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar
             </Button>
             {canCreate ? (
-              <Button
-                onClick={() => {
-                  setSelectedSupplier(null);
-                  setFormMode("create");
-                }}
-              >
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear proveedor
               </Button>
             ) : null}
           </div>
+          ) : null}
         </div>
       </section>
 
       {formMode ? (
-        <SupplierForm
-          mode={formMode}
-          supplier={selectedSupplier}
+        <FocusActionLayout
+          title={actionTitle}
+          description={actionDescription}
+          contextLabel={actionContextLabel}
+          onBack={closeForm}
           onCancel={closeForm}
-          onSuccess={handleFormSuccess}
-        />
+        >
+          <SupplierForm
+            mode={formMode}
+            supplier={selectedSupplier}
+            onCancel={closeForm}
+            onSuccess={handleFormSuccess}
+          />
+        </FocusActionLayout>
       ) : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
@@ -304,21 +362,23 @@ const SuppliersPage = () => {
           </Select>
         </div>
       </section>
+      ) : null}
 
-      {errorMessage ? (
+      {!isActionMode && errorMessage ? (
         <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
           {errorMessage}
         </section>
       ) : null}
 
-      {fiscalWarning ? (
+      {!isActionMode && fiscalWarning ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
           {fiscalWarning}
         </section>
       ) : null}
 
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -392,10 +452,7 @@ const SuppliersPage = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => {
-                                setSelectedSupplier(supplier);
-                                setFormMode("edit");
-                              }}
+                              onClick={() => openEditForm(supplier)}
                             >
                               <Pencil className="h-4 w-4" />
                               Editar
@@ -443,6 +500,7 @@ const SuppliersPage = () => {
           </div>
         </div>
       </section>
+      ) : null}
     </div>
   );
 };

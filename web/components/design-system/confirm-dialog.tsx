@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -16,7 +16,7 @@ export interface ConfirmDialogProps {
   description?: string;
   confirmText?: string;
   cancelText?: string;
-  variant?: "default" | "danger" | "warning";
+  variant?: "default" | "success" | "danger" | "warning";
   onConfirm: () => void | Promise<void>;
   loading?: boolean;
   hideCancel?: boolean;
@@ -26,6 +26,11 @@ const variantStyles = {
   default: {
     badge: "border border-blue-100 bg-blue-50 text-blue-700",
     icon: <ShieldAlert className="h-5 w-5" aria-hidden="true" />,
+    confirmVariant: "primary" as const,
+  },
+  success: {
+    badge: "border border-emerald-100 bg-emerald-50 text-emerald-700",
+    icon: <CheckCircle2 className="h-5 w-5" aria-hidden="true" />,
     confirmVariant: "primary" as const,
   },
   danger: {

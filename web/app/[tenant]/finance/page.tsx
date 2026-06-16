@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CreditCard, ReceiptText, Scale, Wallet } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  CreditCard,
+  ReceiptText,
+  Scale,
+  Wallet,
+} from "lucide-react";
 import { useEffect } from "react";
 import { FinanceAccessNotice } from "../../../modules/finance/components/FinanceAccessNotice";
 import { FinanceMetricCard } from "../../../modules/finance/components/FinanceMetricCard";
@@ -71,6 +78,12 @@ const FinanceHomePage = () => {
       href: `/${tenantSlug}/finance/cash-sessions`,
       description: "Controla aperturas, cierres y diferencias de arqueo.",
       icon: ReceiptText,
+    },
+    {
+      label: "Turno actual",
+      href: `/${tenantSlug}/finance/current-shift`,
+      description: "Ventas, pedidos, compras, arqueo y tickets de la caja abierta.",
+      icon: Activity,
     },
     {
       label: "Movimientos",

@@ -12,7 +12,11 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../../common/guards/permissions.guard";
+import { RolesGuard } from "../../../common/guards/roles.guard";
 import { CustomerService } from "../services/customer.service";
 
 type AuthRequest = Request & {
@@ -37,7 +41,8 @@ type CreateCustomerBody = {
 type UpdateCustomerBody = Partial<CreateCustomerBody>;
 
 @Controller("customers")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class CustomerController {
   constructor(
     @Inject(CustomerService)
@@ -53,6 +58,7 @@ export class CustomerController {
   }
 
   @Post()
+  @RequirePermission({ menuKey: "CUSTOMERS", level: "WRITE" })
   create(@Body() body: CreateCustomerBody, @Req() request: AuthRequest) {
     return this.customerService.createCustomer({
       tenantId: this.getTenantId(request),
@@ -70,16 +76,19 @@ export class CustomerController {
   }
 
   @Get()
+  @RequirePermission({ menuKey: "CUSTOMERS", level: "READ" })
   list(@Req() request: AuthRequest) {
     return this.customerService.listCustomers(this.getTenantId(request));
   }
 
   @Get(":id")
+  @RequirePermission({ menuKey: "CUSTOMERS", level: "READ" })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.customerService.getCustomerById(id, this.getTenantId(request));
   }
 
   @Put(":id")
+  @RequirePermission({ menuKey: "CUSTOMERS", level: "WRITE" })
   update(
     @Param("id") id: string,
     @Body() body: UpdateCustomerBody,
@@ -89,6 +98,8 @@ export class CustomerController {
   }
 
   @Delete(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "CUSTOMERS", level: "WRITE" })
   remove(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.customerService.softDeleteCustomer(id, this.getTenantId(request));
   }

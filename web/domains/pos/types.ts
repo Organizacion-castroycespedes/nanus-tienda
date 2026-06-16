@@ -39,3 +39,7 @@ export type CreatePosSessionResponse = {
   branchId: string;
   terminalId: string;
 };
+
+export type CurrentPosSessionResponse = CreatePosSessionResponse & {
+  startedAt?: string;
+};

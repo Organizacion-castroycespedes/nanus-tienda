@@ -54,7 +54,7 @@ export class TerminalsController {
   }
 
   @Post()
-  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "WRITE" })
+  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" })
   create(@Body() payload: CreateTerminalDto, @Req() request: AuthRequest) {
     return this.terminalsService.createTerminal(
       payload,
@@ -63,7 +63,7 @@ export class TerminalsController {
   }
 
   @Get()
-  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "READ" })
+  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" })
   list(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
@@ -79,7 +79,7 @@ export class TerminalsController {
   }
 
   @Patch(":id")
-  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "WRITE" })
+  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" })
   update(
     @Param("id") terminalId: string,
     @Body() payload: UpdateTerminalDto,
@@ -93,7 +93,7 @@ export class TerminalsController {
   }
 
   @Patch(":id/status")
-  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "WRITE" })
+  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" })
   updateStatus(
     @Param("id") terminalId: string,
     @Body() payload: UpdateTerminalStatusDto,

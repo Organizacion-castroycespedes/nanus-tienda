@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { MENU_KEYS } from "../domains/menu/constants";
+import type { PermissionSummary } from "../domains/menu/types";
+import { store } from "../store";
+import { clearAuth, setAuthPermissions, setUser } from "../store/authSlice";
+import { hasMenuAccess, hasPermission } from "./permissions";
+
+const permissionFor = (key: string): PermissionSummary => ({
+  key,
+  module: key,
+  route: "",
+  accessLevel: "WRITE",
+  actions: {
+    read: true,
+    create: true,
+    update: true,
+    delete: true,
+  },
+});
+
+const setRole = (role: string, permissions: PermissionSummary[] = []) => {
+  store.dispatch(clearAuth());
+  store.dispatch(
+    setUser({
+      id: `${role.toLowerCase()}-user`,
+      name: role,
+      email: `${role.toLowerCase()}@local.test`,
+      role,
+      tenantId: "tenant-local",
+    })
+  );
+  store.dispatch(setAuthPermissions(permissions));
+};
+
+test("menu permissions expose DB-granted inventory modules to admin roles", () => {
+  const inventoryPermissions = [
+    MENU_KEYS.INVENTORY_PRODUCTS,
+    MENU_KEYS.INVENTORY_UNITS,
+    MENU_KEYS.INVENTORY_TAXES,
+    MENU_KEYS.INVENTORY_PROMOTIONS,
+    MENU_KEYS.INVENTORY_LOCATIONS,
+    MENU_KEYS.INVENTORY_LOTS,
+  ].map(permissionFor);
+
+  for (const role of ["ADMIN", "SUPER_USER", "SUPER_ADMIN"]) {
+    setRole(role, inventoryPermissions);
+
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCTS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_UNITS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_TAXES, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_LOCATIONS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_LOTS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PROMOTIONS, "READ"), true);
+  }
+});
+
+test("menu permissions keep operational inventory modules hidden for USER", () => {
+  setRole("USER");
+
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCTS, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_UNITS, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_TAXES, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_LOCATIONS, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_LOTS, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PROMOTIONS, "READ"), false);
+});
+
+test("menu permissions expose terminals only when DB grants super roles", () => {
+  const terminalPermission = permissionFor(MENU_KEYS.CONFIG_TERMINALS);
+
+  setRole("ADMIN", [terminalPermission]);
+  assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), false);
+
+  setRole("SUPER_USER", [terminalPermission]);
+  assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), true);
+
+  setRole("SUPER_ADMIN", [terminalPermission]);
+  assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), true);
+});
+
+test("route permissions allow terminal module only for super roles with DB grant", () => {
+  const terminalPermission = permissionFor(MENU_KEYS.CONFIG_TERMINALS);
+
+  setRole("ADMIN", [terminalPermission]);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), false);
+
+  setRole("USER");
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), false);
+
+  setRole("SUPER_USER");
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), true);
+
+  setRole("SUPER_ADMIN");
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), true);
+});

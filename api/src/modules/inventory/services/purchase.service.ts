@@ -48,6 +48,7 @@ type CreatePurchaseInput = {
   tenantId: string;
   supplierId: string;
   branchId?: string;
+  terminalId?: string;
   type?: PurchaseType;
   total: number;
   balance?: number;
@@ -119,6 +120,7 @@ type PurchaseListRow = PurchaseRow & {
   supplier_name: string | null;
   branch_id: string | null;
   branch_name: string | null;
+  terminal_id: string | null;
   terminal_name: string | null;
 };
 
@@ -126,6 +128,7 @@ type PurchaseDetailRow = PurchaseRow & {
   supplier_name: string | null;
   branch_id: string | null;
   branch_name: string | null;
+  terminal_id: string | null;
   terminal_name: string | null;
 };
 
@@ -160,6 +163,11 @@ type ProductLotPolicyRow = {
 
 type BranchRow = {
   id: string;
+};
+
+type TerminalRow = {
+  id: string;
+  name: string | null;
 };
 
 type PurchaseAuditContextRow = {
@@ -465,6 +473,32 @@ export class PurchaseService {
     }
   }
 
+  private async ensureTerminalBelongsToBranch(
+    terminalId: string,
+    tenantId: string,
+    branchId: string,
+    client: PoolClient
+  ) {
+    const result = await client.query<TerminalRow>(
+      `
+        SELECT id, name
+        FROM terminals
+        WHERE id = $1
+          AND tenant_id = $2
+          AND branch_id = $3
+          AND is_active = TRUE
+        LIMIT 1
+      `,
+      [terminalId, tenantId, branchId]
+    );
+
+    if (!result.rows[0]) {
+      throw new BadRequestException("terminal not found for tenant branch");
+    }
+
+    return result.rows[0];
+  }
+
   private async getPurchaseAuditContext(
     purchaseId: string,
     tenantId: string,
@@ -567,6 +601,13 @@ export class PurchaseService {
     if (!purchaseBranchId) {
       throw new BadRequestException("branch is required");
     }
+    const purchaseTerminalId =
+      data.context?.branchId === purchaseBranchId
+        ? data.context?.terminalId ?? data.terminalId ?? null
+        : data.terminalId ?? null;
+    if (!purchaseTerminalId) {
+      throw new BadRequestException("No hay terminal activa para registrar la compra");
+    }
 
     const purchaseId = crypto.randomUUID();
     const purchaseType = data.type ?? "CASH";
@@ -586,12 +627,19 @@ export class PurchaseService {
     });
 
     const items = this.normalizeItems(data.items, purchase.id);
+    let purchaseTerminal: TerminalRow | null = null;
 
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
       await this.ensureProductsBelongToTenant(data.items, purchase.tenantId, client);
       await this.ensureBranchBelongsToTenant(purchaseBranchId, purchase.tenantId, client);
+      purchaseTerminal = await this.ensureTerminalBelongsToBranch(
+        purchaseTerminalId,
+        purchase.tenantId,
+        purchaseBranchId,
+        client
+      );
 
       const purchaseResult = await client.query<PurchaseRow>(
         `
@@ -655,8 +703,7 @@ export class PurchaseService {
           total: purchase.total,
           balance: purchase.balance,
           branchId: purchaseBranchId,
-          terminalId:
-            data.context?.branchId === purchaseBranchId ? data.context?.terminalId ?? null : null,
+          terminalId: purchaseTerminalId,
           posSessionId:
             data.context?.branchId === purchaseBranchId ? data.context?.posSessionId ?? null : null,
         },
@@ -664,6 +711,9 @@ export class PurchaseService {
 
       return {
         ...this.mapPurchase(purchaseResult.rows[0]),
+        branchId: purchaseBranchId,
+        terminalId: purchaseTerminalId,
+        terminalName: purchaseTerminal?.name ?? null,
         items,
       };
     } catch (error) {
@@ -907,6 +957,7 @@ export class PurchaseService {
           s.name AS supplier_name,
           audit_context.branch_id::text AS branch_id,
           branch.nombre AS branch_name,
+          audit_context.terminal_id::text AS terminal_id,
           terminal.name AS terminal_name
         FROM purchases p
         INNER JOIN tenants t
@@ -965,6 +1016,7 @@ export class PurchaseService {
       supplierName: row.supplier_name,
       branchId: row.branch_id,
       branchName: row.branch_name,
+      terminalId: row.terminal_id,
       terminalName: row.terminal_name,
     }));
   }
@@ -1101,6 +1153,7 @@ export class PurchaseService {
       supplierName: purchaseRow.supplier_name,
       branchId: purchaseAuditContext.branch_id,
       branchName: purchaseAuditContext.branch_name,
+      terminalId: purchaseAuditContext.terminal_id,
       terminalName: purchaseAuditContext.terminal_name,
       statusHistory: historyResult.rows.map((row) => this.mapStatusHistory(row)),
     };

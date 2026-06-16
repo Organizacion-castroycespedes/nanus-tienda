@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../common/db/database.service";
+import { AccessControlService } from "../../common/services/access-control.service";
 import { PosUserSessionsRepository } from "./pos-user-sessions.repository";
 import type { CreatePosSessionDto } from "./dto/create-pos-session.dto";
 
@@ -23,7 +24,9 @@ export class PosUserSessionsService {
   constructor(
     @Inject(PosUserSessionsRepository)
     private readonly repository: PosUserSessionsRepository,
-    @Inject(DatabaseService) private readonly db: DatabaseService
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(AccessControlService)
+    private readonly accessControl: AccessControlService
   ) {}
 
   private isSuperAdmin(actor: ActorContext) {
@@ -89,6 +92,21 @@ export class PosUserSessionsService {
     return activeSessionId;
   }
 
+  private async assertBranchAccess(
+    actor: ActorContext,
+    tenantId: string,
+    branchId: string
+  ) {
+    const allowed = await this.accessControl.canAccessBranch(
+      { id: actor.userId, tenantId: actor.tenantId, roles: actor.roles },
+      tenantId,
+      branchId
+    );
+    if (!allowed) {
+      throw new ForbiddenException("Acceso no autorizado a la sucursal");
+    }
+  }
+
   async createPosSession(payload: CreatePosSessionDto, actor: ActorContext) {
     const branchId = this.normalizeRequired(payload.branchId, "Sucursal requerida");
     const terminalId = this.normalizeRequired(payload.terminalId, "Terminal requerida");
@@ -116,6 +134,8 @@ export class PosUserSessionsService {
       if (authSession.user_id !== userId || authSession.tenant_id !== tenantId) {
         throw new UnauthorizedException("Sesion de autenticacion invalida");
       }
+
+      await this.assertBranchAccess(actor, tenantId, branchId);
 
       const terminal = await this.repository.validateTerminal(
         tenantId,

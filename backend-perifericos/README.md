@@ -227,6 +227,14 @@ Si el flag queda apagado, cualquier intento de usar el device `NETWORK` devuelve
 | `PERIPHERALS_LOG_LIMIT` | `500` | Maximo de logs en memoria. |
 | `PERIPHERALS_PRINTER_WIDTH_CHARS` | `48` | Valor historico de ancho 80mm. En Fase 4.2 el ancho efectivo sale del `profileId` del dispositivo. |
 
+Para produccion publica, `PERIPHERALS_ALLOWED_ORIGINS` debe incluir el origen HTTPS de la web:
+
+```text
+PERIPHERALS_ALLOWED_ORIGINS=https://www.apptiendamanus.space
+```
+
+Si se publican ambientes QA/staging, agregarlos separados por coma. No usar `*`.
+
 ## Comandos ESC/POS
 
 En `MOCK`, estos comandos son representacion conceptual. No se convierten en bytes y no se envian a hardware.
@@ -251,8 +259,20 @@ El servicio permite:
 
 - Requests con `Origin` incluido solo si el origen esta en `PERIPHERALS_ALLOWED_ORIGINS`.
 - Requests sin `Origin`, para uso local con curl, Postman o pruebas tecnicas.
+- Preflight `OPTIONS` para metodos `GET`, `POST`, `PATCH` y `OPTIONS`.
 
-El servicio escucha por defecto en `127.0.0.1`; no se expone a red externa.
+El servicio escucha por defecto en `127.0.0.1`; no se expone a red externa salvo que infraestructura/reverse proxy lo publique de forma explicita con HTTPS.
+
+Smoke de preflight permitido:
+
+```bash
+curl -i -X OPTIONS http://localhost:4050/devices \
+  -H "Origin: https://www.apptiendamanus.space" \
+  -H "Access-Control-Request-Method: POST" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+La respuesta esperada es `204` con `Access-Control-Allow-Origin: https://www.apptiendamanus.space`.
 
 ## Endpoints
 
