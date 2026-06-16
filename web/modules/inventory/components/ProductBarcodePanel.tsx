@@ -23,6 +23,7 @@ import {
 type ProductBarcodePanelProps = {
   productId: string;
   productName: string;
+  canWrite: boolean;
 };
 
 type BarcodeFormValues = {
@@ -68,6 +69,7 @@ const formatBarcodeError = (error: unknown) => {
 export const ProductBarcodePanel = ({
   productId,
   productName,
+  canWrite,
 }: ProductBarcodePanelProps) => {
   const confirm = useConfirm();
   const [barcodes, setBarcodes] = useState<ProductBarcode[]>([]);
@@ -250,14 +252,16 @@ export const ProductBarcodePanel = ({
             <RefreshCw className="h-4 w-4" />
             Actualizar
           </Button>
-          <Button onClick={startCreate}>
-            <Plus className="h-4 w-4" />
-            Agregar
-          </Button>
+          {canWrite ? (
+            <Button onClick={startCreate}>
+              <Plus className="h-4 w-4" />
+              Agregar
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {pendingPrimary ? (
+      {canWrite && pendingPrimary ? (
         <div className="mt-5">
           <ConfirmationMessage
             title={`Marcar principal: ${pendingPrimary.barcode}`}
@@ -284,7 +288,7 @@ export const ProductBarcodePanel = ({
         </div>
       ) : null}
 
-      {pendingDeactivate ? (
+      {canWrite && pendingDeactivate ? (
         <div className="mt-5">
           <ConfirmationMessage
             title={`Inactivar codigo: ${pendingDeactivate.barcode}`}
@@ -312,7 +316,7 @@ export const ProductBarcodePanel = ({
         </div>
       ) : null}
 
-      {showForm ? (
+      {canWrite && showForm ? (
         <form
           className="mt-5 grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
           onSubmit={handleSubmit}
@@ -450,11 +454,13 @@ export const ProductBarcodePanel = ({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => startEdit(barcode)}>
-                        <Pencil className="h-4 w-4" />
-                        Editar
-                      </Button>
-                      {barcode.isActive && !barcode.isPrimary ? (
+                      {canWrite ? (
+                        <Button variant="ghost" size="sm" onClick={() => startEdit(barcode)}>
+                          <Pencil className="h-4 w-4" />
+                          Editar
+                        </Button>
+                      ) : null}
+                      {canWrite && barcode.isActive && !barcode.isPrimary ? (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -465,7 +471,7 @@ export const ProductBarcodePanel = ({
                           Principal
                         </Button>
                       ) : null}
-                      {barcode.isActive ? (
+                      {canWrite && barcode.isActive ? (
                         <Button
                           variant="ghost"
                           size="sm"

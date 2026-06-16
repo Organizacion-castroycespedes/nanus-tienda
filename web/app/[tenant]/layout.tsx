@@ -62,6 +62,8 @@ import { isConfirmCancelledError, useConfirm } from "../../hooks/use-confirm";
 import { useTenantTheme } from "../../hooks/useTenantTheme";
 import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
+import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
+import type { CashSession } from "../../modules/finance/types";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -123,6 +125,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [layoutCashSession, setLayoutCashSession] = useState<CashSession | null>(null);
+  const [cashSessionChecked, setCashSessionChecked] = useState(false);
   const [profileForm, setProfileForm] = useState({
     nombres: "",
     apellidos: "",
@@ -423,63 +427,56 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     return targetLabel.includes("dashboard") || targetRoute.includes("/dashboard");
   }, []);
 
-  const menuItemsWithTerminalShortcut = useMemo(() => {
-    const isSuperRole =
-      authUser?.role === "SUPER_ADMIN" || authUser?.role === "SUPER_USER";
-    if (!isSuperRole || !hasPermission(MENU_KEYS.CONFIG_GENERAL, "read")) {
-      return menuItems;
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      setLayoutCashSession(null);
+      setCashSessionChecked(false);
+      return;
     }
 
-    const shortcutRoute = `/${tenantSlug}/config/terminals`;
-    const configRoute = `/${tenantSlug}/configuracion`;
+    let active = true;
 
-    const routeExists = (items: MenuItem[]): boolean =>
-      items.some(
-        (item) =>
-          item.route === shortcutRoute || routeExists(item.children ?? [])
-      );
-
-    if (routeExists(menuItems)) {
-      return menuItems;
-    }
-
-    const appendShortcut = (items: MenuItem[]): MenuItem[] =>
-      items.map((item) => {
-        const nextChildren = appendShortcut(item.children ?? []);
-        if (item.route !== configRoute) {
-          return nextChildren === item.children
-            ? item
-            : { ...item, children: nextChildren };
+    const loadCashSession = async () => {
+      setCashSessionChecked(false);
+      try {
+        const session = await getCurrentCashSession();
+        if (active) {
+          setLayoutCashSession(session);
         }
+      } catch {
+        if (active) {
+          setLayoutCashSession(null);
+        }
+      } finally {
+        if (active) {
+          setCashSessionChecked(true);
+        }
+      }
+    };
 
-        return {
-          ...item,
-          children: [
-            ...nextChildren,
-            {
-              id: "local-config-terminals",
-              key: "CONFIG_GENERAL_TERMINALS",
-              module: item.module,
-              label: "Terminales",
-              route: shortcutRoute,
-              icon: "Monitor",
-              parentId: item.id,
-              sortOrder: Number(item.sortOrder ?? 0) + 100,
-              visible: true,
-              belowMainMenu: item.belowMainMenu,
-              metadata: {},
-              accessLevel: "READ",
-              children: [],
-            },
-          ],
-        };
-      });
+    void loadCashSession();
+    window.addEventListener("manus:cash-session-changed", loadCashSession);
 
-    return appendShortcut(menuItems);
-  }, [authUser?.role, menuItems, tenantSlug]);
+    return () => {
+      active = false;
+      window.removeEventListener("manus:cash-session-changed", loadCashSession);
+    };
+  }, [authStatus, authUser?.id, tenantSlug]);
+
+  const isPosMenuItem = useCallback((item: MenuItem) => {
+    const normalizedRoute = item.route.toLowerCase();
+    const normalizedKey = item.key.toLowerCase();
+    const normalizedLabel = item.label.toLowerCase();
+
+    return (
+      normalizedKey === "pos" ||
+      normalizedLabel === "pos" ||
+      normalizedRoute.endsWith("/pos")
+    );
+  }, []);
 
   const { menuSections, mainMenuSections } = useMemo(() => {
-    const allowedItems = getAllowedMenuItems(menuItemsWithTerminalShortcut);
+    const allowedItems = getAllowedMenuItems(menuItems);
     const rootItems = allowedItems.filter(
       (item) => item.visible && !isDashboardItem(item.label, item.route)
     );
@@ -498,7 +495,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       menuSections: groupByModule(primaryItems),
       mainMenuSections: groupByModule(mainMenuItems),
     };
-  }, [isDashboardItem, menuItemsWithTerminalShortcut]);
+  }, [isDashboardItem, menuItems]);
 
   const getMenuIcon = (label: string, module: string, iconName?: string | null) => {
     if (iconName?.trim()) {
@@ -561,6 +558,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         const isActive = pathname === item.route;
         const hasChildren = Array.isArray(item.children) && item.children.length > 0;
         const isExpanded = openMenuItems[item.id] ?? false;
+        const posRequiresCash =
+          isPosMenuItem(item) && cashSessionChecked && !layoutCashSession;
+        const effectiveRoute = posRequiresCash
+          ? `/${tenantSlug}/pos/select-context`
+          : item.route;
         const activeChildChain = hasChildren
           ? getActiveMenuChain(item.children ?? [], pathname ?? "")
           : [];
@@ -611,7 +613,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }`}
               />
               <Link
-                href={item.route}
+                href={effectiveRoute}
                 aria-current={isDirectActive ? "page" : undefined}
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-active)] ${
                   depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
@@ -619,7 +621,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   sidebarCollapsed ? "justify-center" : ""
                 }`}
                 onClick={() => setSidebarOpen(false)}
-                aria-label={sidebarCollapsed ? item.label : undefined}
+                aria-label={
+                  posRequiresCash
+                    ? "POS requiere caja abierta"
+                    : sidebarCollapsed
+                      ? item.label
+                      : undefined
+                }
               >
                 {depth > 0 ? (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
@@ -641,7 +649,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   </span>
                 )}
                 {!sidebarCollapsed ? (
-                  <span className="flex-1 truncate leading-5">{item.label}</span>
+                  <span className="flex min-w-0 flex-1 flex-col leading-5">
+                    <span className="truncate">{item.label}</span>
+                    {posRequiresCash ? (
+                      <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] opacity-75">
+                        Requiere caja
+                      </span>
+                    ) : null}
+                  </span>
                 ) : null}
               </Link>
               {hasChildren ? (

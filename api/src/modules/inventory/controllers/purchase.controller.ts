@@ -40,6 +40,7 @@ type AuthRequest = Request & {
 type CreatePurchaseBody = {
   supplierId: string;
   branchId?: string;
+  terminalId?: string;
   type?: "CASH" | "CREDIT";
   total: number;
   balance?: number;
@@ -93,11 +94,14 @@ export class PurchaseController {
     return tenantId;
   }
 
-  private getInventoryContext(request: AuthRequest) {
+  private getInventoryContext(
+    request: AuthRequest,
+    fallback?: { branchId?: string | null; terminalId?: string | null }
+  ) {
     return {
       tenantId: this.getTenantId(request),
-      branchId: request.context?.branchId ?? null,
-      terminalId: request.context?.terminalId ?? null,
+      branchId: request.context?.branchId ?? fallback?.branchId ?? null,
+      terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
     };
@@ -113,7 +117,7 @@ export class PurchaseController {
   }
 
   @Post()
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   create(@Body() body: CreatePurchaseBody, @Req() request: AuthRequest) {
     return this.purchaseService.createPurchase({
@@ -124,13 +128,17 @@ export class PurchaseController {
       total: Number(body.total),
       balance: body.balance !== undefined ? Number(body.balance) : undefined,
       items: body.items ?? [],
-      context: this.getInventoryContext(request),
+      terminalId: body.terminalId,
+      context: this.getInventoryContext(request, {
+        branchId: body.branchId ?? null,
+        terminalId: body.terminalId ?? null,
+      }),
       actor: this.buildActor(request),
     });
   }
 
   @Put(":id")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   update(
     @Param("id") id: string,
@@ -180,7 +188,7 @@ export class PurchaseController {
   }
 
   @Post(":id/receive")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   receive(
     @Param("id") id: string,
@@ -212,7 +220,7 @@ export class PurchaseController {
   }
 
   @Patch(":id/cancel")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "cancel" })
   cancel(
     @Param("id") id: string,
@@ -231,7 +239,7 @@ export class PurchaseController {
   }
 
   @Patch(":id/settle-partial")
-  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "settle_partial" })
   settlePartial(
     @Param("id") id: string,

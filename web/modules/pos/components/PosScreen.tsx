@@ -77,6 +77,7 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 
 type CategoryKey = "all" | "available" | "low" | "out";
 type ScannerMockStatus = "disabled" | "connected" | "error";
@@ -1933,6 +1934,20 @@ export const PosScreen = () => {
                 const isCartItemWeighable = Boolean(
                   product && isWeighableProduct(product)
                 );
+                const discountDisplay = buildPosCartDiscountDisplay({
+                  baseUnitPrice: item.baseUnitPrice,
+                  finalUnitPrice: item.finalUnitPrice,
+                  unitPrice: item.unitPrice,
+                  quantity: item.quantity,
+                  discountAmount: item.discountAmount,
+                  discountTotal: item.discountTotal,
+                  discountPercent: item.discountPercent,
+                  isWeighable: isCartItemWeighable,
+                });
+                const discountPercentLabel =
+                  discountDisplay?.percent !== null && discountDisplay?.percent !== undefined
+                    ? ` (${discountDisplay.percent}%)`
+                    : "";
 
                 return (
                   <article
@@ -2035,10 +2050,23 @@ export const PosScreen = () => {
                           {item.appliedPromotionName}
                         </p>
                       ) : null}
-                      {item.discountTotal > 0 ? (
+                      {discountDisplay ? (
                         <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                          Descuento {formatCurrency(item.discountTotal)}
-                          {item.discountPercent ? ` (${item.discountPercent}%)` : ""}
+                          {discountDisplay.showLineTotal ? (
+                            <>
+                              Descuento {formatCurrency(discountDisplay.unitDiscount)} c/u{" "}
+                              <span className="font-semibold">
+                                Ahorro total{" "}
+                                {formatCurrency(discountDisplay.totalDiscount)}
+                                {discountPercentLabel}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              Descuento {formatCurrency(discountDisplay.unitDiscount)}
+                              {discountPercentLabel}
+                            </>
+                          )}
                         </p>
                       ) : null}
                     </div>

@@ -19,7 +19,7 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/config\/terminals\/?$/i,
-    requirement: { module: MENU_KEYS.CONFIG_GENERAL, action: "read" },
+    requirement: { module: MENU_KEYS.CONFIG_TERMINALS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/configuracion\/menu\/?$/i,
@@ -51,19 +51,19 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/inventory\/units\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_UNITS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/locations\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_LOCATIONS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/lots\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_LOTS, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/taxes\/?$/i,
-    requirement: { module: "inventory", action: "read" },
+    requirement: { module: MENU_KEYS.INVENTORY_TAXES, action: "read" },
   },
   {
     pattern: /^\/[^/]+\/inventory\/purchases\/?$/i,

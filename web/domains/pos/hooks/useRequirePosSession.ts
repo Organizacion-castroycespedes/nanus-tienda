@@ -5,15 +5,25 @@ import { usePathname, useRouter } from "next/navigation";
 import { usePosContext } from "./usePosContext";
 import { useAppSelector } from "../../../store/hooks";
 
-export const useRequirePosSession = () => {
+type UseRequirePosSessionOptions = {
+  redirect?: boolean;
+};
+
+export const useRequirePosSession = (
+  options: UseRequirePosSessionOptions = {}
+) => {
   const router = useRouter();
   const pathname = usePathname();
   const { branchId, posSessionId, terminalId } = usePosContext();
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
   const tenantId = useAppSelector((state) => state.auth.tenantId);
+  const shouldRedirect = options.redirect ?? true;
 
   useEffect(() => {
+    if (!shouldRedirect) {
+      return;
+    }
     if (!bootstrapped || authStatus !== "authenticated") {
       return;
     }
@@ -25,7 +35,17 @@ export const useRequirePosSession = () => {
     }
     const targetTenant = tenantId ?? "default";
     router.replace(`/${targetTenant}/pos/select-context`);
-  }, [authStatus, bootstrapped, branchId, pathname, posSessionId, router, tenantId, terminalId]);
+  }, [
+    authStatus,
+    bootstrapped,
+    branchId,
+    pathname,
+    posSessionId,
+    router,
+    shouldRedirect,
+    tenantId,
+    terminalId,
+  ]);
 
   return { hasSession: Boolean(posSessionId && branchId && terminalId) };
 };

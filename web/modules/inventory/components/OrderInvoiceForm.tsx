@@ -1,10 +1,14 @@
 "use client";
 
 import { Plus, Wallet, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { getCurrentPosSession } from "../../../domains/pos/api";
+import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
+import { useAppSelector } from "../../../store/hooks";
 import {
   getCurrentCashSession,
   listPaymentMethods,
@@ -66,7 +70,15 @@ export const OrderInvoiceForm = ({
   onCancel,
   onSuccess,
 }: OrderInvoiceFormProps) => {
+  const router = useRouter();
   const confirm = useConfirm();
+  const tenantId = useAppSelector((state) => state.auth.tenantId ?? state.auth.user?.tenantId);
+  const {
+    branchId: posBranchId,
+    terminalId: posTerminalId,
+    posSessionId,
+    setSession: setPosSession,
+  } = usePosContext();
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
   const [type, setType] = useState<"CASH" | "CREDIT">("CASH");
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -84,16 +96,24 @@ export const OrderInvoiceForm = ({
       setLoading(true);
       setLoadError(null);
       try {
-        const [result, methods, currentSession] = await Promise.all([
+        const [result, methods, currentSession, currentPosSession] = await Promise.all([
           getOrderById(orderId),
           listPaymentMethods({ active: true }),
           getCurrentCashSession(),
+          getCurrentPosSession().catch(() => null),
         ]);
         if (!mounted) {
           return;
         }
 
         const activeMethods = methods.filter((method) => method.active);
+        if (currentPosSession?.posSessionId) {
+          setPosSession({
+            posSessionId: currentPosSession.posSessionId,
+            branchId: currentPosSession.branchId,
+            terminalId: currentPosSession.terminalId,
+          });
+        }
         setOrder(result);
         setPaymentMethods(activeMethods);
         setCashSession(currentSession);
@@ -114,7 +134,7 @@ export const OrderInvoiceForm = ({
     return () => {
       mounted = false;
     };
-  }, [orderId]);
+  }, [orderId, setPosSession]);
 
   const rows = useMemo(() => {
     if (!order) {
@@ -199,6 +219,10 @@ export const OrderInvoiceForm = ({
     [enteredTotal, inheritedTotal, total]
   );
   const cashSessionMatchesBranch = !cashSession || cashSession.branchId === order?.branchId;
+  const hasPosSession = Boolean(posSessionId && posBranchId && posTerminalId);
+  const posSessionMatchesBranch =
+    !order?.branchId || !posBranchId || posBranchId === order.branchId;
+  const contextTarget = `/${tenantId ?? "default"}/pos/select-context`;
 
   const createInvoicePaymentDraft = useCallback(
     (paymentMethodId: string, amount: string): PaymentDraft => ({
@@ -296,6 +320,14 @@ export const OrderInvoiceForm = ({
   const validate = () => {
     if (rows.length === 0) {
       return "No hay productos entregados pendientes por facturar.";
+    }
+
+    if (!hasPosSession) {
+      return "Necesitas seleccionar contexto POS y abrir caja antes de facturar este pedido.";
+    }
+
+    if (!posSessionMatchesBranch) {
+      return "La sesion POS activa pertenece a otra sucursal. Selecciona contexto para la sucursal del pedido.";
     }
 
     if (
@@ -399,6 +431,20 @@ export const OrderInvoiceForm = ({
       onSuccess();
     } catch (error) {
       if (isConfirmCancelledError(error)) {
+        return;
+      }
+      const apiMessage = error instanceof Error ? error.message : "";
+      if (/sesion pos/i.test(apiMessage)) {
+        const message =
+          "Necesitas seleccionar contexto POS y abrir caja antes de facturar este pedido.";
+        setSubmitError(message);
+        await confirm({
+          title: "Caja requerida",
+          description: message,
+          confirmText: "Entendido",
+          hideCancel: true,
+          variant: "warning",
+        });
         return;
       }
       const dialog = buildConfirmFromApiError(
@@ -527,6 +573,39 @@ export const OrderInvoiceForm = ({
               <Wallet className="h-4 w-4" />
               Caja y abonos heredados
             </div>
+            {!hasPosSession ? (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <p className="font-medium">Selecciona contexto POS antes de facturar.</p>
+                <p className="mt-1">
+                  La factura crea una venta y necesita sesion POS valida en la sucursal del pedido.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => router.push(contextTarget)}
+                >
+                  Ir a seleccion de contexto
+                </Button>
+              </div>
+            ) : !posSessionMatchesBranch ? (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <p className="font-medium">La sesion POS activa no coincide con la sucursal.</p>
+                <p className="mt-1">
+                  Cambia el contexto POS a la sucursal del pedido antes de facturar.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => router.push(contextTarget)}
+                >
+                  Cambiar contexto
+                </Button>
+              </div>
+            ) : null}
             <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
               {cashSession
                 ? `${cashSession.cashRegisterNombre ?? "Caja"} abierta con fondo ${formatCurrency(
@@ -716,8 +795,19 @@ export const OrderInvoiceForm = ({
           </section>
 
           {submitError ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {submitError}
+            <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <p>{submitError}</p>
+              {submitError.toLowerCase().includes("pos") ||
+              submitError.toLowerCase().includes("sucursal") ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push(contextTarget)}
+                >
+                  Ir a seleccion de contexto
+                </Button>
+              ) : null}
             </div>
           ) : null}
 

@@ -27,6 +27,8 @@ WITH role_targets AS (
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
           'INVENTORY_PROMOTIONS',
+          'INVENTORY_LOCATIONS',
+          'INVENTORY_LOTS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -39,8 +41,6 @@ WITH role_targets AS (
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'INVENTORY',
-          'INVENTORY_PRODUCTS',
-          'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
@@ -85,6 +85,8 @@ WITH role_targets AS (
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
           'INVENTORY_PROMOTIONS',
+          'INVENTORY_LOCATIONS',
+          'INVENTORY_LOTS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -102,8 +104,6 @@ WITH role_targets AS (
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'INVENTORY',
-          'INVENTORY_PRODUCTS',
-          'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
@@ -172,6 +172,8 @@ WITH allowed_permissions AS (
           'INVENTORY_PURCHASES',
           'INVENTORY_SUPPLIERS',
           'INVENTORY_PROMOTIONS',
+          'INVENTORY_LOCATIONS',
+          'INVENTORY_LOTS',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -182,8 +184,6 @@ WITH allowed_permissions AS (
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'INVENTORY',
-          'INVENTORY_PRODUCTS',
-          'INVENTORY_TAXES',
           'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',

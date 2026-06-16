@@ -3,10 +3,12 @@
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
+import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { CustomerForm } from "../../../modules/inventory/components/CustomerForm";
+import { FocusActionLayout } from "../../../modules/inventory/components/FocusActionLayout";
 import {
   listElectronicInvoicingCustomers,
   type ElectronicInvoicingCustomer,
@@ -23,6 +25,12 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 
 type CustomerFilters = {
   query: string;
+};
+
+type ActionFeedback = {
+  title: string;
+  description?: string;
+  variant?: "default" | "success" | "warning" | "danger";
 };
 
 const defaultFilters: CustomerFilters = {
@@ -103,6 +111,7 @@ const CustomersPage = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResponse | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
 
   const canCreate = hasPermission(MENU_KEYS.CUSTOMERS, "write");
   const canEdit = hasPermission(MENU_KEYS.CUSTOMERS, "write");
@@ -197,16 +206,42 @@ const CustomersPage = () => {
 
   const handleFormSuccess = (mode: "create" | "edit") => {
     closeForm();
-    showToast(
-      mode === "create"
-        ? "Cliente creado correctamente."
-        : "Cliente actualizado correctamente.",
-      "success"
-    );
+    setActionFeedback({
+      title:
+        mode === "create"
+          ? "Cliente creado correctamente"
+          : "Cliente actualizado correctamente",
+      description:
+        mode === "create"
+          ? "El cliente quedo registrado y el listado puede actualizarse."
+          : "Los cambios del cliente fueron guardados correctamente.",
+      variant: "success",
+    });
     if (hasSearched) {
       void loadCustomers();
     }
   };
+
+  const openCreateForm = () => {
+    setSelectedCustomer(null);
+    setFormMode("create");
+  };
+
+  const openEditForm = (customer: CustomerResponse) => {
+    setSelectedCustomer(customer);
+    setFormMode("edit");
+  };
+
+  const isActionMode = formMode !== null;
+  const actionTitle = formMode === "edit" ? "Editar cliente" : "Crear cliente";
+  const actionDescription =
+    formMode === "edit"
+      ? "Actualiza los datos comerciales y fiscales del cliente seleccionado."
+      : "Registra un cliente nuevo sin mezclar el formulario con el listado.";
+  const actionContextLabel =
+    formMode === "edit" && selectedCustomer
+      ? `${selectedCustomer.name} · ${getCustomerDocument(selectedCustomer)}`
+      : undefined;
 
   const handleDelete = async (customer: CustomerResponse) => {
     if (customer.isFinalConsumer) {
@@ -237,44 +272,67 @@ const CustomersPage = () => {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={Boolean(actionFeedback)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActionFeedback(null);
+          }
+        }}
+        title={actionFeedback?.title ?? ""}
+        description={actionFeedback?.description}
+        confirmText="Entendido"
+        variant={actionFeedback?.variant ?? "success"}
+        hideCancel
+        onConfirm={() => setActionFeedback(null)}
+      />
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Customers</p>
             <h1 className="text-2xl font-semibold text-slate-900">Clientes</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Administra clientes, contactos y ubicacion comercial.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Administra clientes, contactos y ubicacion comercial."}
             </p>
           </div>
+          {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
             <Button variant="ghost" onClick={() => void loadCustomers()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar
             </Button>
             {canCreate ? (
-              <Button
-                onClick={() => {
-                  setSelectedCustomer(null);
-                  setFormMode("create");
-                }}
-              >
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear cliente
               </Button>
             ) : null}
           </div>
+          ) : null}
         </div>
       </section>
 
       {formMode ? (
-        <CustomerForm
-          mode={formMode}
-          customer={selectedCustomer}
+        <FocusActionLayout
+          title={actionTitle}
+          description={actionDescription}
+          contextLabel={actionContextLabel}
+          onBack={closeForm}
           onCancel={closeForm}
-          onSuccess={handleFormSuccess}
-        />
+        >
+          <CustomerForm
+            mode={formMode}
+            customer={selectedCustomer}
+            onCancel={closeForm}
+            onSuccess={handleFormSuccess}
+          />
+        </FocusActionLayout>
       ) : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
@@ -310,21 +368,23 @@ const CustomersPage = () => {
           </Select>
         </div>
       </section>
+      ) : null}
 
-      {errorMessage ? (
+      {!isActionMode && errorMessage ? (
         <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
           {errorMessage}
         </section>
       ) : null}
 
-      {fiscalWarning ? (
+      {!isActionMode && fiscalWarning ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
           {fiscalWarning}
         </section>
       ) : null}
 
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -398,10 +458,7 @@ const CustomersPage = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => {
-                                setSelectedCustomer(customer);
-                                setFormMode("edit");
-                              }}
+                              onClick={() => openEditForm(customer)}
                             >
                               <Pencil className="h-4 w-4" />
                               Editar
@@ -455,6 +512,7 @@ const CustomersPage = () => {
           </div>
         </div>
       </section>
+      ) : null}
     </div>
   );
 };

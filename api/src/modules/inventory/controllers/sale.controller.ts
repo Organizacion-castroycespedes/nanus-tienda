@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
@@ -102,6 +103,7 @@ export class SaleController {
   }
 
   @Post()
+  @RequirePosSession()
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
   create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
     return this.saleService.createSale({

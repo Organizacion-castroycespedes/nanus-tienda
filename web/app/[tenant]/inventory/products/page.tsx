@@ -185,18 +185,18 @@ const ProductsPage = () => {
   const [priceFeedback, setPriceFeedback] = useState<{
     title: string;
     description?: string;
-    variant?: "default" | "danger" | "warning";
+    variant?: "default" | "success" | "danger" | "warning";
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const { currentTenant, isSuperRole } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
   const canManageProducts =
-    role === "SUPER_ADMIN" || role === "SUPER_USER";
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
   const canCreate = canManageProducts && hasPermission("inventory.create");
   const canEdit = canManageProducts && hasPermission("inventory.update");
   const canDelete = canManageProducts && hasPermission("inventory.delete");
-  const canAdjustStock = isSuperRole;
+  const canAdjustStock = canManageProducts && hasPermission("inventory.update");
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -627,6 +627,7 @@ const ProductsPage = () => {
               <ProductBarcodePanel
                 productId={barcodeProduct.id}
                 productName={barcodeProduct.name}
+                canWrite={canEdit}
               />
             ) : null}
 

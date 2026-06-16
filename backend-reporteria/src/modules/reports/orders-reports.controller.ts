@@ -11,6 +11,7 @@ import {
 import type { Request, Response } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ReportAuthzGuard } from "../auth/report-authz.guard";
+import { ReportRoles } from "../auth/report-roles.decorator";
 import type { ReportUser } from "../auth/report-auth.types";
 import { OrdersReportsService } from "./orders-reports.service";
 
@@ -56,6 +57,7 @@ export class OrdersReportsController {
   }
 
   @Get(":orderId/ticket")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getOrderSaleTicket(
     @Param("orderId") orderId: string,
     @Req() request: AuthenticatedRequest,

@@ -61,11 +61,15 @@ const buildService = (
     settings?: PosTerminalPeripheralSettingsRecord | null;
     branchExists?: boolean;
     allowedBranchIds?: string[];
+    failOnTextFindById?: boolean;
   } = {}
 ) => {
   const terminals = options.terminals ?? [buildTerminal()];
   let settings = options.settings ?? buildSettings();
   const calls: string[] = [];
+  const lookupCalls: string[] = [];
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   const repository = {
     validateBranch: async () => options.branchExists ?? true,
@@ -76,10 +80,17 @@ const buildService = (
     }),
     existsCodeInBranch: async () => false,
     findAll: async () => terminals,
-    findById: async (id: string) =>
-      terminals.find((terminal) => terminal.id === id) ?? null,
-    findByCode: async (_tenantId: string, _branchId: string, code: string) =>
-      terminals.find((terminal) => terminal.code === code) ?? null,
+    findById: async (id: string) => {
+      lookupCalls.push(`findById:${id}`);
+      if (options.failOnTextFindById && !uuidPattern.test(id)) {
+        throw new Error(`invalid uuid lookup: ${id}`);
+      }
+      return terminals.find((terminal) => terminal.id === id) ?? null;
+    },
+    findByCode: async (_tenantId: string, _branchId: string, code: string) => {
+      lookupCalls.push(`findByCode:${code}`);
+      return terminals.find((terminal) => terminal.code === code) ?? null;
+    },
     findDefaultForBranch: async () => terminals[0] ?? null,
     create: async (data: any) => {
       calls.push("create");
@@ -145,6 +156,7 @@ const buildService = (
   return {
     service: new PosTerminalsService(repository as any, accessControl as any),
     calls,
+    lookupCalls,
   };
 };
 
@@ -265,6 +277,21 @@ describe("PosTerminalsService", () => {
     assert.equal(result.terminalId, "local-terminal");
     assert.equal(result.printerDeviceId, "network-printer-001");
     assert.equal(result.features.scanner, false);
+  });
+
+  it("resolves text terminalId as code without UUID lookup", async () => {
+    const { service, lookupCalls } = buildService({
+      failOnTextFindById: true,
+    });
+
+    const result = await service.resolveCurrent(
+      { tenantId, branchId, terminalId: "local-terminal" },
+      actor
+    );
+
+    assert.equal(result.source, "CONFIGURED");
+    assert.equal(result.terminalId, "local-terminal");
+    assert.deepEqual(lookupCalls, ["findByCode:local-terminal"]);
   });
 
   it("resolves fallback MOCK when terminal is not configured", async () => {

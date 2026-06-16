@@ -8,6 +8,7 @@ export type PurchaseResponse = {
   supplierName?: string | null;
   branchId?: string | null;
   branchName?: string | null;
+  terminalId?: string | null;
   terminalName?: string | null;
   type: "CASH" | "CREDIT";
   status: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CERRADA_PARCIAL" | "CANCELLED";
@@ -75,6 +76,7 @@ export type PurchaseDetailResponse = PurchaseResponse & {
 export type CreatePurchasePayload = {
   supplierId: string;
   branchId: string;
+  terminalId: string;
   type: "CASH" | "CREDIT";
   items: Array<{
     productId: string;

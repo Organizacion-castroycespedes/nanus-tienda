@@ -68,7 +68,7 @@ const LoginPageContent = () => {
     }
     const targetTenant = tenantId ?? "default";
     setStatusWarning("Ya existe una sesion activa en este navegador.");
-    router.replace(`/${targetTenant}/pos/select-context`);
+    router.replace(`/${targetTenant}/dashboard`);
   }, [authStatus, router, tenantId]);
 
   const handleSocialLogin = (provider: "google" | "facebook") => {
@@ -111,7 +111,7 @@ const LoginPageContent = () => {
         persistRefresh: rememberMe && hasRefreshTokenStorage(),
       });
       setStatusSuccess("Inicio de sesion exitoso. Redirigiendo...");
-      router.push(`/${tenantSlug}/pos/select-context`);
+      router.push(`/${tenantSlug}/dashboard`);
     } catch (requestError) {
       if (
         requestError instanceof ApiError &&
@@ -150,7 +150,7 @@ const LoginPageContent = () => {
       setShowSessionConflict(false);
       setPendingCredentials(null);
       setStatusSuccess("Sesion anterior cerrada. Redirigiendo...");
-      router.push(`/${tenantSlug}/pos/select-context`);
+      router.push(`/${tenantSlug}/dashboard`);
     } catch {
       dispatch(setAuthStatus("error"));
       setStatusError("No fue posible iniciar sesion. Intenta nuevamente.");

@@ -41,6 +41,7 @@ type CreateOrderInput = {
   tenantId: string;
   customerId: string;
   branchId?: string;
+  terminalId?: string;
   type?: OrderType;
   total: number;
   items: CreateOrderItemInput[];
@@ -75,6 +76,7 @@ type OrderListRow = OrderRow & {
   customer_name: string | null;
   branch_id: string | null;
   branch_name: string | null;
+  terminal_id: string | null;
   terminal_name: string | null;
   billing_status: "UNBILLED" | "PARTIAL" | "INVOICED";
 };
@@ -130,6 +132,11 @@ type CustomerRow = {
 
 type BranchRow = {
   id: string;
+};
+
+type TerminalRow = {
+  id: string;
+  name: string | null;
 };
 
 type OrderAuditContextRow = {
@@ -470,6 +477,32 @@ export class OrderService {
     }
   }
 
+  private async ensureTerminalBelongsToBranch(
+    terminalId: string,
+    tenantId: string,
+    branchId: string,
+    client: PoolClient
+  ) {
+    const result = await client.query<TerminalRow>(
+      `
+        SELECT id, name
+        FROM terminals
+        WHERE id = $1
+          AND tenant_id = $2
+          AND branch_id = $3
+          AND is_active = TRUE
+        LIMIT 1
+      `,
+      [terminalId, tenantId, branchId]
+    );
+
+    if (!result.rows[0]) {
+      throw new BadRequestException("terminal not found for tenant branch");
+    }
+
+    return result.rows[0];
+  }
+
   private async getOrderAuditContext(
     orderId: string,
     tenantId: string,
@@ -629,9 +662,14 @@ export class OrderService {
     if (!orderBranchId) {
       throw new BadRequestException("branch is required");
     }
+    const orderTerminalId =
+      data.context?.branchId === orderBranchId
+        ? data.context?.terminalId ?? data.terminalId ?? null
+        : data.terminalId ?? null;
 
     const orderId = crypto.randomUUID();
     const createdAt = new Date();
+    let orderTerminal: TerminalRow | null = null;
 
     const client = await this.db.getClient();
     try {
@@ -639,6 +677,14 @@ export class OrderService {
       await this.ensureCustomerBelongsToTenant(data.customerId, data.tenantId, client);
       await this.ensureProductsBelongToTenant(data.items, data.tenantId, client);
       await this.ensureBranchBelongsToTenant(orderBranchId, data.tenantId, client);
+      if (orderTerminalId) {
+        orderTerminal = await this.ensureTerminalBelongsToBranch(
+          orderTerminalId,
+          data.tenantId,
+          orderBranchId,
+          client
+        );
+      }
 
       const items = await this.calculatePricedItems({
         tenantId: data.tenantId,
@@ -719,8 +765,7 @@ export class OrderService {
           type: order.type,
           total: order.total,
           branchId: orderBranchId,
-          terminalId:
-            data.context?.branchId === orderBranchId ? data.context?.terminalId ?? null : null,
+          terminalId: orderTerminalId,
           posSessionId:
             data.context?.branchId === orderBranchId ? data.context?.posSessionId ?? null : null,
         },
@@ -728,6 +773,9 @@ export class OrderService {
 
       return {
         ...this.mapOrder(orderResult.rows[0]),
+        branchId: orderBranchId,
+        terminalId: orderTerminalId,
+        terminalName: orderTerminal?.name ?? null,
         items,
       };
     } catch (error) {
@@ -1005,6 +1053,7 @@ export class OrderService {
           c.name AS customer_name,
           audit_context.branch_id::text AS branch_id,
           branch.nombre AS branch_name,
+          audit_context.terminal_id::text AS terminal_id,
           terminal.name AS terminal_name,
           CASE
             WHEN COALESCE(item_totals.delivered_total, 0) <= 0
@@ -1056,6 +1105,7 @@ export class OrderService {
       customerName: row.customer_name,
       branchId: row.branch_id,
       branchName: row.branch_name,
+      terminalId: row.terminal_id,
       terminalName: row.terminal_name,
       billingStatus: row.billing_status,
     }));
@@ -1553,6 +1603,10 @@ export class OrderService {
     );
     if (invoiceableQuantity <= 0) {
       throw new BadRequestException("order has no delivered items pending invoicing");
+    }
+
+    if (order.branchId && context?.branchId && order.branchId !== context.branchId) {
+      throw new ForbiddenException("La sesion POS no pertenece a la sucursal del pedido");
     }
 
     return this.saleService.createSaleFromOrderDelivery(

@@ -1,9 +1,14 @@
 "use client";
 
-import { Plus, Receipt, RefreshCw } from "lucide-react";
+import { Download, Eye, Plus, Printer, Receipt, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Modal } from "../../../../components/design-system/Modal";
+import {
+  NoticeDialog,
+  type NoticeDialogVariant,
+} from "../../../../components/design-system/NoticeDialog";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
@@ -13,41 +18,146 @@ import { FinanceMetricCard } from "../../../../modules/finance/components/Financ
 import { FinancePageHeader } from "../../../../modules/finance/components/FinancePageHeader";
 import { FinanceSectionNav } from "../../../../modules/finance/components/FinanceSectionNav";
 import { FinanceStatusBadge } from "../../../../modules/finance/components/FinanceStatusBadge";
-import { OpenCashSessionForm } from "../../../../modules/finance/components/OpenCashSessionForm";
 import { useFinanceCatalogs } from "../../../../modules/finance/hooks/use-finance-catalogs";
 import { useCashSessions } from "../../../../modules/finance/hooks/use-cash-sessions";
 import { getFinancePermissions } from "../../../../modules/finance/permissions";
 import type {
+  CashSession,
+  CashSessionSummary,
   CloseCashSessionPayload,
-  OpenCashSessionPayload,
 } from "../../../../modules/finance/types";
 import { formatCurrency, formatDateTime } from "../../../../modules/finance/utils";
+import { PdfPreviewModal } from "../../../../modules/reporteria/components/PdfPreviewModal";
+import { getCashClosingTicket } from "../../../../modules/reporteria/services/reporting.service";
+import {
+  downloadBlob,
+  getApiErrorMessage,
+} from "../../../../modules/reporteria/utils";
 import { useAppSelector } from "../../../../store/hooks";
-
-const openFormInitial: OpenCashSessionPayload = {
-  tenantId: undefined,
-  branchId: "",
-  cashRegisterId: "",
-  openingAmount: 0,
-};
 
 const closeFormInitial: CloseCashSessionPayload = {
   closingAmount: 0,
   description: "",
 };
 
+type PdfConfig = {
+  title: string;
+  fileName: string;
+  getPdf: () => Promise<Blob>;
+};
+
+type CloseNoticeState = {
+  variant: NoticeDialogVariant;
+  title: string;
+  message: string;
+  session?: CashSession;
+  summary?: CashSessionSummary | null;
+  expectedAmount?: number;
+  realAmount?: number;
+  differenceAmount?: number;
+};
+
+const buildCashClosingTicketFileName = (cashSessionId: string) =>
+  `ticket-cierre-${cashSessionId}.pdf`;
+
+const buildCashClosingTicketTitle = (cashSessionId: string) =>
+  `Ticket de cierre ${cashSessionId.slice(0, 8)}`;
+
+const buildCloseNoticeRows = (notice: CloseNoticeState) => {
+  if (!notice.session) {
+    return [];
+  }
+
+  const totals = notice.summary?.totals;
+  const entries =
+    totals === undefined ? undefined : totals.paymentsIn + totals.adjustmentsIn;
+  const exits =
+    totals === undefined
+      ? undefined
+      : totals.paymentsOut +
+        totals.expenses +
+        totals.withdrawals +
+        totals.adjustmentsOut;
+  const expected =
+    notice.session.expectedAmount ?? totals?.expectedAmount ?? notice.expectedAmount;
+  const real =
+    notice.session.closingAmount ?? totals?.closingRecorded ?? notice.realAmount;
+  const difference =
+    notice.session.differenceAmount ??
+    notice.differenceAmount ??
+    (real !== undefined && expected !== undefined ? real - expected : undefined);
+
+  return [
+    {
+      label: "Monto apertura",
+      value: formatCurrency(notice.session.openingAmount),
+    },
+    entries === undefined
+      ? null
+      : {
+          label: "Entradas",
+          value: formatCurrency(entries),
+        },
+    exits === undefined
+      ? null
+      : {
+          label: "Salidas",
+          value: formatCurrency(exits),
+        },
+    expected === undefined || expected === null
+      ? null
+      : {
+          label: "Esperado",
+          value: formatCurrency(expected),
+        },
+    real === undefined || real === null
+      ? null
+      : {
+          label: "Real",
+          value: formatCurrency(real),
+        },
+    difference === undefined || difference === null
+      ? null
+      : {
+          label: "Diferencia",
+          value: formatCurrency(difference),
+        },
+    {
+      label: "Fecha/hora cierre",
+      value: formatDateTime(notice.session.closedAt),
+    },
+  ].filter((row): row is { label: string; value: string } => Boolean(row));
+};
+
+const sumRecentMovementsByReference = (
+  summary: CashSessionSummary | null,
+  referenceType: string
+) =>
+  summary?.recentMovements
+    .filter((movement) => movement.referenceType === referenceType)
+    .reduce((sum, movement) => sum + movement.amount, 0) ?? 0;
+
+const countRecentMovementsByReference = (
+  summary: CashSessionSummary | null,
+  referenceType: string
+) =>
+  summary?.recentMovements.filter(
+    (movement) => movement.referenceType === referenceType
+  ).length ?? 0;
+
 const CashSessionsPage = () => {
+  const router = useRouter();
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
   const tenantSlug = authUser?.tenantId ?? "default";
   const [statusFilter, setStatusFilter] = useState("all");
   const [registerFilter, setRegisterFilter] = useState("");
-  const [openModal, setOpenModal] = useState(false);
   const [closeModal, setCloseModal] = useState(false);
-  const [openForm, setOpenForm] = useState<OpenCashSessionPayload>(openFormInitial);
   const [closeForm, setCloseForm] = useState<CloseCashSessionPayload>(closeFormInitial);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
+  const [closeNotice, setCloseNotice] = useState<CloseNoticeState | null>(null);
+  const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
 
   const { canViewFinance, canOperateCashSessions } = getFinancePermissions(role);
   const {
@@ -62,13 +172,10 @@ const CashSessionsPage = () => {
     loadCurrentSession,
     loadHistory,
     loadSessionSummary,
-    openSession,
     closeSession,
   } = useCashSessions();
   const {
-    branchOptions,
     registerOptions,
-    loadBranches,
     loadCashRegisters,
   } = useFinanceCatalogs({
     role,
@@ -84,12 +191,10 @@ const CashSessionsPage = () => {
 
     void loadCurrentSession();
     void loadHistory({ limit: 50 });
-    void loadBranches(authUser?.tenantId ?? undefined);
     void loadCashRegisters();
   }, [
     authUser?.tenantId,
     canViewFinance,
-    loadBranches,
     loadCashRegisters,
     loadCurrentSession,
     loadHistory,
@@ -121,23 +226,64 @@ const CashSessionsPage = () => {
       currentSession.openingAmount
     : 0;
 
-  const handleOpenSession = async () => {
-    if (!openForm.branchId || !openForm.cashRegisterId) {
-      setToastMessage("Selecciona sucursal y caja.");
-      setToastVariant("warning");
-      return;
-    }
+  const showTicketActionError = (error: unknown, fallbackMessage: string) => {
+    setToastMessage(getApiErrorMessage(error, fallbackMessage));
+    setToastVariant("error");
+  };
 
+  const openTicketPreview = (cashSessionId: string) => {
+    setCloseNotice(null);
+    setPdfConfig({
+      title: buildCashClosingTicketTitle(cashSessionId),
+      fileName: buildCashClosingTicketFileName(cashSessionId),
+      getPdf: () => getCashClosingTicket(cashSessionId),
+    });
+  };
+
+  const handleDownloadTicket = async (cashSessionId: string) => {
     try {
-      await openSession(openForm);
-      setToastMessage("Caja abierta correctamente.");
-      setToastVariant("success");
-      setOpenModal(false);
-      setOpenForm(openFormInitial);
-      await loadHistory({ limit: 50 });
-    } catch {
-      setToastMessage("No se pudo abrir la caja.");
-      setToastVariant("error");
+      const blob = await getCashClosingTicket(cashSessionId);
+      downloadBlob(blob, buildCashClosingTicketFileName(cashSessionId));
+    } catch (error) {
+      showTicketActionError(error, "No se pudo descargar el ticket de cierre.");
+    }
+  };
+
+  const handlePrintTicket = async (
+    cashSessionId: string,
+    options: { automatic?: boolean } = {}
+  ) => {
+    try {
+      const blob = await getCashClosingTicket(cashSessionId);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const printWindow = window.open(objectUrl, "_blank");
+
+      if (!printWindow) {
+        window.URL.revokeObjectURL(objectUrl);
+        setToastMessage(
+          options.automatic
+            ? "El navegador bloqueo la impresion automatica. Usa Imprimir o Ver ticket para hacerlo manualmente."
+            : "El navegador bloqueo la impresion. Usa Ver ticket para imprimir manualmente."
+        );
+        setToastVariant("warning");
+        return;
+      }
+
+      const print = () => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch {
+          setToastMessage("No se pudo imprimir automaticamente. Usa Ver ticket.");
+          setToastVariant("warning");
+        }
+      };
+
+      printWindow.addEventListener("load", print, { once: true });
+      window.setTimeout(print, 1000);
+      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60000);
+    } catch (error) {
+      showTicketActionError(error, "No se pudo imprimir el ticket de cierre.");
     }
   };
 
@@ -146,17 +292,34 @@ const CashSessionsPage = () => {
       return;
     }
 
+    const summarySnapshot = sessionSummary;
+    const expectedSnapshot = expectedCurrent;
+    const realSnapshot = closeForm.closingAmount;
+
     try {
-      await closeSession(currentSession.id, closeForm);
-      setToastMessage("Caja cerrada correctamente.");
-      setToastVariant("success");
+      const closed = await closeSession(currentSession.id, closeForm);
       setCloseModal(false);
       setCloseForm(closeFormInitial);
       await loadCurrentSession();
       await loadHistory({ limit: 50 });
-    } catch {
-      setToastMessage("No se pudo cerrar la caja.");
-      setToastVariant("error");
+      setCloseNotice({
+        variant: "success",
+        title: "Caja cerrada",
+        message: "Caja cerrada correctamente",
+        session: closed,
+        summary: summarySnapshot,
+        expectedAmount: expectedSnapshot,
+        realAmount: realSnapshot,
+        differenceAmount: closed.differenceAmount ?? realSnapshot - expectedSnapshot,
+      });
+      window.dispatchEvent(new Event("manus:cash-session-changed"));
+      void handlePrintTicket(closed.id, { automatic: true });
+    } catch (error) {
+      setCloseNotice({
+        variant: "error",
+        title: "No se pudo cerrar la caja",
+        message: getApiErrorMessage(error, "No se pudo cerrar la caja."),
+      });
     }
   };
 
@@ -168,6 +331,14 @@ const CashSessionsPage = () => {
 
   const openCount = history.filter((item) => item.status === "OPEN").length;
   const closedCount = history.filter((item) => item.status === "CLOSED").length;
+  const recentOrderAmount = sumRecentMovementsByReference(
+    sessionSummary,
+    "SALES_ORDER"
+  );
+  const recentOrderCount = countRecentMovementsByReference(
+    sessionSummary,
+    "SALES_ORDER"
+  );
 
   return (
     <div className="space-y-6">
@@ -189,9 +360,12 @@ const CashSessionsPage = () => {
               Actualizar
             </Button>
             {canOperateCashSessions ? (
-              <Button onClick={() => setOpenModal(true)} disabled={Boolean(currentSession)}>
+              <Button
+                onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
+                disabled={Boolean(currentSession)}
+              >
                 <Plus className="h-4 w-4" />
-                Abrir caja
+                Abrir caja desde contexto
               </Button>
             ) : null}
           </>
@@ -325,6 +499,101 @@ const CashSessionsPage = () => {
                   />
                 </div>
               ) : null}
+
+              {sessionSummary ? (
+                <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                        Gestion del turno
+                      </p>
+                      <h3 className="mt-2 text-lg font-semibold text-slate-900">
+                        Caja abierta actual
+                      </h3>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        router.push(
+                          `/${tenantSlug}/finance/cash-movements?cashSessionId=${currentSession.id}`
+                        )
+                      }
+                    >
+                      Ver movimientos
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <FinanceMetricCard
+                      label="Ventas POS"
+                      value={formatCurrency(sessionSummary.totals.salesPayments)}
+                      accent="blue"
+                    />
+                    <FinanceMetricCard
+                      label="Pedidos"
+                      value={
+                        recentOrderCount > 0
+                          ? formatCurrency(recentOrderAmount)
+                          : "Sin pedidos"
+                      }
+                      accent="emerald"
+                    />
+                    <FinanceMetricCard
+                      label="Compras"
+                      value={formatCurrency(sessionSummary.totals.purchasePayments)}
+                      accent="rose"
+                    />
+                    <FinanceMetricCard
+                      label="Movimientos"
+                      value={sessionSummary.totals.movementCount}
+                      accent="amber"
+                    />
+                    <FinanceMetricCard
+                      label="Arqueo"
+                      value={
+                        sessionSummary.lastCount
+                          ? formatCurrency(sessionSummary.lastCount.countedCashAmount)
+                          : "Sin arqueo"
+                      }
+                      accent="slate"
+                    />
+                    <FinanceMetricCard
+                      label="Tickets"
+                      value="Ticket al cerrar"
+                      accent="slate"
+                    />
+                  </div>
+
+                  {sessionSummary.recentMovements.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                        Ultimos movimientos
+                      </p>
+                      {sessionSummary.recentMovements.slice(0, 4).map((movement) => (
+                        <div
+                          key={movement.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2 text-sm"
+                        >
+                          <span className="font-medium text-slate-700">
+                            {movement.description ??
+                              movement.referenceType ??
+                              movement.movementType}
+                          </span>
+                          <span className="font-semibold text-slate-900">
+                            {movement.direction === "OUT" ? "-" : ""}
+                            {formatCurrency(movement.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                      Sin movimientos registrados en la caja abierta.
+                    </div>
+                  )}
+                </section>
+              ) : null}
             </div>
           )}
         </article>
@@ -401,6 +670,40 @@ const CashSessionsPage = () => {
                       </p>
                     </div>
                   </div>
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    {session.status === "CLOSED" ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openTicketPreview(session.id)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Ver ticket
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleDownloadTicket(session.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                          Descargar PDF
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handlePrintTicket(session.id)}
+                        >
+                          <Printer className="h-4 w-4" />
+                          Imprimir
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        El ticket de cierre estara disponible cuando la caja quede cerrada.
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -416,20 +719,6 @@ const CashSessionsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      {openModal ? (
-        <Modal title="Abrir caja" className="max-w-3xl">
-          <OpenCashSessionForm
-            value={openForm}
-            branchOptions={branchOptions}
-            registerOptions={registerOptions}
-            onChange={setOpenForm}
-            onCancel={() => setOpenModal(false)}
-            onSubmit={() => void handleOpenSession()}
-            isSaving={saving}
-          />
-        </Modal>
-      ) : null}
-
       {closeModal && currentSession ? (
         <Modal title="Cerrar caja" className="max-w-2xl">
           <CloseCashSessionForm
@@ -442,6 +731,73 @@ const CashSessionsPage = () => {
             isSaving={saving}
           />
         </Modal>
+      ) : null}
+
+      {closeNotice ? (
+        <NoticeDialog
+          open={Boolean(closeNotice)}
+          title={closeNotice.title}
+          message={closeNotice.message}
+          variant={closeNotice.variant}
+          closeText={closeNotice.variant === "success" ? "Cerrar" : "Reintentar"}
+          onClose={() => setCloseNotice(null)}
+        >
+          {closeNotice.variant === "success" && closeNotice.session ? (
+            <div className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {buildCloseNoticeRows(closeNotice).map((row) => (
+                  <div
+                    key={row.label}
+                    className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                  >
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                      {row.label}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {row.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openTicketPreview(closeNotice.session!.id)}
+                >
+                  <Eye className="h-4 w-4" />
+                  Ver ticket
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleDownloadTicket(closeNotice.session!.id)}
+                >
+                  <Download className="h-4 w-4" />
+                  Descargar PDF
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handlePrintTicket(closeNotice.session!.id)}
+                >
+                  <Printer className="h-4 w-4" />
+                  Imprimir
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </NoticeDialog>
+      ) : null}
+
+      {pdfConfig ? (
+        <PdfPreviewModal
+          isOpen={Boolean(pdfConfig)}
+          title={pdfConfig.title}
+          fileName={pdfConfig.fileName}
+          getPdf={pdfConfig.getPdf}
+          onClose={() => setPdfConfig(null)}
+        />
       ) : null}
     </div>
   );

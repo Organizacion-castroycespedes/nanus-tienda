@@ -22,14 +22,17 @@ import {
 } from "../../../../components/design-system/DataTable";
 import { ConfirmDialog } from "../../../../components/design-system/confirm-dialog";
 import { Input } from "../../../../components/design-system/Input";
-import { Modal } from "../../../../components/design-system/Modal";
 import { Select } from "../../../../components/design-system/Select";
-import { Textarea } from "../../../../components/design-system/Textarea";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasMenuAccess } from "../../../../lib/permissions";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../../store/hooks";
 import { useInventoryScope } from "../../../../hooks/useInventoryScope";
+import { FocusActionLayout } from "../../../../modules/inventory/components/FocusActionLayout";
+import {
+  PromotionFormPanel,
+  type PromotionFormState,
+} from "../../../../modules/pricing/components/PromotionFormPanel";
 import {
   createPromotion,
   deactivatePromotion,
@@ -48,17 +51,12 @@ type PromotionFilters = {
   status: StatusFilter;
 };
 
-type PromotionFormState = {
-  name: string;
-  description: string;
-  discountType: PromotionDiscountType;
-  discountValue: string;
-  startsAt: string;
-  endsAt: string;
-  priority: string;
-  isActive: boolean;
-  productIds: string[];
-  branchIds: string[];
+type ActiveAction = "create" | "edit" | "deactivate" | null;
+
+type ActionFeedback = {
+  title: string;
+  description?: string;
+  variant?: "default" | "success" | "warning" | "danger";
 };
 
 const defaultFilters: PromotionFilters = {
@@ -211,6 +209,7 @@ const PromotionsAdminPage = () => {
   const [promotionToDeactivate, setPromotionToDeactivate] =
     useState<PromotionResponse | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<ActionFeedback | null>(null);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -405,6 +404,13 @@ const PromotionsAdminPage = () => {
     setFormError(null);
   };
 
+  const closeDeactivate = () => {
+    if (deactivating) {
+      return;
+    }
+    setPromotionToDeactivate(null);
+  };
+
   const handleApplyFilters = () => {
     setAppliedFilters(filters);
     void readPromotions(filters);
@@ -470,7 +476,11 @@ const PromotionsAdminPage = () => {
           created = await updatePromotion(created.id, { isActive: false });
         }
         setSelectedPromotion(created);
-        showToast("Promocion creada correctamente.", "success");
+        setActionFeedback({
+          title: "Promoción creada correctamente",
+          description: "La promoción quedó disponible para el motor de precios.",
+          variant: "success",
+        });
       }
 
       if (formMode === "edit" && selectedPromotion) {
@@ -478,7 +488,11 @@ const PromotionsAdminPage = () => {
           ...buildPayload(),
           isActive: form.isActive,
         });
-        showToast("Promocion actualizada correctamente.", "success");
+        setActionFeedback({
+          title: "Promoción actualizada correctamente",
+          description: "Los cambios de la promoción fueron guardados.",
+          variant: "success",
+        });
       }
 
       setFormMode(null);
@@ -501,7 +515,11 @@ const PromotionsAdminPage = () => {
     setDeactivating(true);
     try {
       await deactivatePromotion(promotionToDeactivate.id);
-      showToast("Promocion inactivada correctamente.", "success");
+      setActionFeedback({
+        title: "Promoción desactivada correctamente",
+        description: "La promoción dejó de aplicar en PricingService.",
+        variant: "success",
+      });
       setPromotionToDeactivate(null);
       await readPromotions(appliedFilters);
     } catch (error) {
@@ -513,6 +531,27 @@ const PromotionsAdminPage = () => {
       setDeactivating(false);
     }
   };
+
+  const activeAction: ActiveAction = formMode ?? (promotionToDeactivate ? "deactivate" : null);
+  const isActionMode = activeAction !== null;
+  const actionTitle =
+    activeAction === "create"
+      ? "Crear promoción"
+      : activeAction === "edit"
+        ? "Editar promoción"
+        : "Desactivar promoción";
+  const actionDescription =
+    activeAction === "create"
+      ? "Configura la promoción sin mezclar el formulario con el listado."
+      : activeAction === "edit"
+        ? "Actualiza la promoción seleccionada y conserva el contexto del listado."
+        : "Confirma o cancela la desactivación antes de volver al listado.";
+  const actionContextLabel =
+    activeAction === "edit" && selectedPromotion
+      ? selectedPromotion.name
+      : activeAction === "deactivate" && promotionToDeactivate
+        ? promotionToDeactivate.name
+        : undefined;
 
   const columns: DataTableColumn<PromotionResponse>[] = [
     {
@@ -628,261 +667,76 @@ const PromotionsAdminPage = () => {
   return (
     <div className="space-y-6">
       <ConfirmDialog
-        open={Boolean(promotionToDeactivate)}
+        open={Boolean(actionFeedback)}
         onOpenChange={(open) => {
-          if (!open && !deactivating) {
-            setPromotionToDeactivate(null);
+          if (!open) {
+            setActionFeedback(null);
           }
         }}
-        title="Inactivar promocion"
-        description={
-          promotionToDeactivate
-            ? `La promocion "${promotionToDeactivate.name}" dejara de aplicar en PricingService.`
-            : undefined
-        }
-        confirmText="Inactivar"
-        cancelText="Cancelar"
-        variant="warning"
-        loading={deactivating}
-        onConfirm={handleDeactivate}
+        title={actionFeedback?.title ?? ""}
+        description={actionFeedback?.description}
+        confirmText="Entendido"
+        variant={actionFeedback?.variant ?? "success"}
+        hideCancel
+        onConfirm={() => setActionFeedback(null)}
       />
 
-      {formMode ? (
-        <Modal
-          title={formMode === "create" ? "Crear promocion" : "Editar promocion"}
-          description="Menor priority gana cuando varias promociones aplican al mismo producto."
-          size="full"
-          className="max-h-[92vh] overflow-y-auto"
-          onClose={closeForm}
+      {isActionMode ? (
+        <FocusActionLayout
+          title={actionTitle}
+          description={actionDescription}
+          contextLabel={actionContextLabel}
+          onBack={activeAction === "deactivate" ? closeDeactivate : closeForm}
+          onCancel={activeAction === "deactivate" ? closeDeactivate : closeForm}
         >
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Input
-                label="name"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
-                }
-                required
-              />
-              <Select
-                label="discountType"
-                value={form.discountType}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    discountType: event.target.value as PromotionDiscountType,
-                  }))
-                }
-                required
-              >
-                <option value="PERCENTAGE">PERCENTAGE</option>
-                <option value="FIXED_AMOUNT">FIXED_AMOUNT</option>
-                <option value="SPECIAL_PRICE">SPECIAL_PRICE</option>
-              </Select>
-              <Input
-                label="discountValue"
-                type="number"
-                min={
-                  form.discountType === "SPECIAL_PRICE"
-                    ? 0
-                    : 0.01
-                }
-                max={form.discountType === "PERCENTAGE" ? 100 : undefined}
-                step="0.01"
-                value={form.discountValue}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    discountValue: event.target.value,
-                  }))
-                }
-                required
-              />
-              <Input
-                label="priority"
-                type="number"
-                min={0}
-                step={1}
-                hint="Menor priority gana."
-                value={form.priority}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    priority: event.target.value,
-                  }))
-                }
-                required
-              />
-              <Input
-                label="startsAt"
-                type="datetime-local"
-                value={form.startsAt}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    startsAt: event.target.value,
-                  }))
-                }
-                required
-              />
-              <Input
-                label="endsAt"
-                type="datetime-local"
-                value={form.endsAt}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    endsAt: event.target.value,
-                  }))
-                }
-                required
-              />
-              <div className="lg:col-span-2">
-                <Textarea
-                  label="description"
-                  rows={3}
-                  value={form.description}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      description: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
+          {formMode ? (
+            <PromotionFormPanel
+              mode={formMode}
+              form={form}
+              setForm={setForm}
+              formError={formError}
+              saving={saving}
+              referencesLoading={referencesLoading}
+              filteredProducts={filteredProducts}
+              filteredBranches={filteredBranches}
+              productSearch={productSearch}
+              branchSearch={branchSearch}
+              branchWarning={branchWarning}
+              onProductSearchChange={setProductSearch}
+              onBranchSearchChange={setBranchSearch}
+              onToggleProduct={toggleProduct}
+              onToggleBranch={toggleBranch}
+              onSubmit={handleSubmit}
+              onCancel={closeForm}
+            />
+          ) : null}
 
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-blue-600"
-                checked={form.isActive}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    isActive: event.target.checked,
-                  }))
-                }
-              />
-              <span className="font-medium">isActive</span>
-            </label>
-
-            <section className="grid gap-5 xl:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">productIds</h3>
-                    <p className="text-xs text-slate-500">
-                      Seleccionados: {form.productIds.length}
-                    </p>
-                  </div>
-                  <Input
-                    label="Buscar producto"
-                    value={productSearch}
-                    onChange={(event) => setProductSearch(event.target.value)}
-                    className="min-w-56"
-                  />
-                </div>
-                <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-                  {referencesLoading ? (
-                    <p className="text-sm text-slate-500">Cargando productos...</p>
-                  ) : filteredProducts.length === 0 ? (
-                    <p className="text-sm text-slate-500">No hay productos para seleccionar.</p>
-                  ) : (
-                    filteredProducts.map((product) => (
-                      <label
-                        key={product.id}
-                        className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
-                          checked={form.productIds.includes(product.id)}
-                          onChange={() => toggleProduct(product.id)}
-                        />
-                        <span>
-                          <span className="block font-medium text-slate-900">
-                            {product.name}
-                          </span>
-                          <span className="text-xs text-slate-500">{product.sku}</span>
-                        </span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">branchIds</h3>
-                    <p className="text-xs text-slate-500">
-                      {form.branchIds.length === 0
-                        ? "Aplica a todas las sucursales permitidas."
-                        : `Seleccionadas: ${form.branchIds.length}`}
-                    </p>
-                  </div>
-                  <Input
-                    label="Buscar sucursal"
-                    value={branchSearch}
-                    onChange={(event) => setBranchSearch(event.target.value)}
-                    className="min-w-56"
-                  />
-                </div>
-                {branchWarning ? (
-                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    {branchWarning}
-                  </p>
-                ) : null}
-                <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-                  {referencesLoading ? (
-                    <p className="text-sm text-slate-500">Cargando sucursales...</p>
-                  ) : filteredBranches.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      Sin selector de sucursales disponible.
-                    </p>
-                  ) : (
-                    filteredBranches.map((branch) => (
-                      <label
-                        key={branch.id}
-                        className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
-                          checked={form.branchIds.includes(branch.id)}
-                          onChange={() => toggleBranch(branch.id)}
-                        />
-                        <span>
-                          <span className="block font-medium text-slate-900">
-                            {branch.nombre}
-                          </span>
-                          <span className="text-xs text-slate-500">{branch.codigo}</span>
-                        </span>
-                      </label>
-                    ))
-                  )}
+          {promotionToDeactivate ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-amber-900">
+                  Desactivar promocion: {promotionToDeactivate.name}
+                </p>
+                <p className="text-sm text-amber-800">
+                  La promocion dejara de aplicar en PricingService. Esta accion conserva
+                  el registro para consulta posterior.
+                </p>
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <Button variant="ghost" onClick={closeDeactivate} disabled={deactivating}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => void handleDeactivate()}
+                    isLoading={deactivating}
+                  >
+                    Desactivar promocion
+                  </Button>
                 </div>
               </div>
             </section>
-
-            {formError ? (
-              <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {formError}
-              </p>
-            ) : null}
-
-            <div className="flex flex-wrap justify-end gap-3">
-              <Button variant="outline" onClick={closeForm} disabled={saving}>
-                Cancelar
-              </Button>
-              <Button type="submit" isLoading={saving}>
-                {formMode === "create" ? "Crear promocion" : "Guardar cambios"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          ) : null}
+        </FocusActionLayout>
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -891,29 +745,33 @@ const PromotionsAdminPage = () => {
             <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
             <h1 className="text-2xl font-semibold text-slate-900">Promociones</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Administra descuentos de productos. Menor priority gana.
+              {isActionMode
+                ? "Completa la accion activa y vuelve al listado cuando termines."
+                : "Administra descuentos de productos. Menor priority gana."}
             </p>
             <p className="mt-1 text-xs text-slate-500">Tenant ruta: {routeTenant}</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                void loadReferences();
-                void readPromotions(appliedFilters);
-              }}
-              isLoading={loading || referencesLoading}
-            >
-              <RefreshCw className="h-4 w-4" />
-              Actualizar
-            </Button>
-            {canWrite ? (
-              <Button onClick={openCreateForm}>
-                <Plus className="h-4 w-4" />
-                Crear promocion
+          {!isActionMode ? (
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  void loadReferences();
+                  void readPromotions(appliedFilters);
+                }}
+                isLoading={loading || referencesLoading}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Actualizar
               </Button>
-            ) : null}
-          </div>
+              {canWrite ? (
+                <Button onClick={openCreateForm}>
+                  <Plus className="h-4 w-4" />
+                  Crear promocion
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -931,6 +789,7 @@ const PromotionsAdminPage = () => {
         </section>
       ) : null}
 
+      {!isActionMode ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto_auto]">
           <Input
@@ -977,7 +836,9 @@ const PromotionsAdminPage = () => {
           </div>
         </div>
       </section>
+      ) : null}
 
+      {!isActionMode ? (
       <DataTable
         columns={columns}
         rows={promotions}
@@ -987,6 +848,7 @@ const PromotionsAdminPage = () => {
         loadingState="Cargando promociones..."
         emptyState="No hay promociones para mostrar."
       />
+      ) : null}
     </div>
   );
 };

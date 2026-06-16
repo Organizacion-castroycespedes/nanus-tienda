@@ -53,6 +53,8 @@ export type ResolveCurrentPosTerminalFilters = {
 };
 
 const allowedModes: PosTerminalMode[] = ["MOCK", "REAL", "HYBRID"];
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const fallbackSettings: UpsertPeripheralSettingsInput = {
   printerDeviceId: "mock-printer-001",
@@ -146,6 +148,10 @@ export class PosTerminalsService {
       throw new BadRequestException("mode must be MOCK, REAL or HYBRID");
     }
     return normalized;
+  }
+
+  private isUuid(value: string) {
+    return UUID_PATTERN.test(value);
   }
 
   private normalizeSettings(
@@ -456,7 +462,10 @@ export class PosTerminalsService {
     let terminal: PosTerminalRecord | null = null;
 
     if (requestedTerminalId) {
-      terminal = await this.repository.findById(requestedTerminalId, tenantId);
+      if (this.isUuid(requestedTerminalId)) {
+        terminal = await this.repository.findById(requestedTerminalId, tenantId);
+      }
+
       if (!terminal) {
         terminal = await this.repository.findByCode(
           tenantId,
