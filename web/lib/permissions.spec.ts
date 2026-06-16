@@ -66,6 +66,62 @@ test("menu permissions keep operational inventory modules hidden for USER", () =
   assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PROMOTIONS, "READ"), false);
 });
 
+test("menu permissions expose finance modules from DB grants", () => {
+  const financePermissions = [
+    MENU_KEYS.FINANCE,
+    MENU_KEYS.FINANCE_CASH_SESSIONS,
+    MENU_KEYS.FINANCE_CASH_MOVEMENTS,
+  ].map(permissionFor);
+
+  for (const role of ["USER", "ADMIN"]) {
+    setRole(role, financePermissions);
+
+    assert.equal(hasMenuAccess(MENU_KEYS.FINANCE, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_SESSIONS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_MOVEMENTS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_PAYMENT_METHODS, "READ"), false);
+  }
+
+  setRole("ADMIN", [
+    ...financePermissions,
+    permissionFor(MENU_KEYS.FINANCE_CASH_REGISTERS),
+  ]);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_REGISTERS, "READ"), true);
+
+  setRole("SUPER_USER", [
+    ...financePermissions,
+    permissionFor(MENU_KEYS.FINANCE_CASH_REGISTERS),
+    permissionFor(MENU_KEYS.FINANCE_PAYMENT_METHODS),
+  ]);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_REGISTERS, "READ"), true);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_PAYMENT_METHODS, "READ"), true);
+
+  setRole("SUPER_ADMIN");
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE, "READ"), true);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_SESSIONS, "READ"), true);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_MOVEMENTS, "READ"), true);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_CASH_REGISTERS, "READ"), true);
+  assert.equal(hasMenuAccess(MENU_KEYS.FINANCE_PAYMENT_METHODS, "READ"), true);
+});
+
+test("route permissions allow finance for USER and ADMIN without opening admin modules", () => {
+  const financePermission = permissionFor(MENU_KEYS.FINANCE);
+
+  setRole("USER", [financePermission]);
+  assert.equal(hasPermission(MENU_KEYS.FINANCE, "read"), true);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), false);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), false);
+
+  setRole("ADMIN", [financePermission]);
+  assert.equal(hasPermission(MENU_KEYS.FINANCE, "read"), true);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), false);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), false);
+
+  setRole("SUPER_USER", [financePermission]);
+  assert.equal(hasPermission(MENU_KEYS.FINANCE, "read"), true);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), false);
+});
+
 test("menu permissions expose terminals only when DB grants super roles", () => {
   const terminalPermission = permissionFor(MENU_KEYS.CONFIG_TERMINALS);
 

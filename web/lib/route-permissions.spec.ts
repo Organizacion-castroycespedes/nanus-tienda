@@ -23,3 +23,24 @@ test("legacy terminales path is not a protected canonical route", () => {
     null
   );
 });
+
+test("finance routes use canonical FINANCE permission", () => {
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/finance"
+    ),
+    {
+      module: MENU_KEYS.FINANCE,
+      action: "read",
+    }
+  );
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/finance/cash-sessions"
+    ),
+    {
+      module: MENU_KEYS.FINANCE,
+      action: "read",
+    }
+  );
+});

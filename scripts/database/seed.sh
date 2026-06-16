@@ -70,6 +70,9 @@ echo "[seed] Running demo operational users and menus seed..."
 echo "[seed] Running demo user-role assignments seed..."
 "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/010_seed_demo_user_roles.sql"
 
+echo "[seed] Running finance menu access seed..."
+"${PSQL_APP[@]}" -f "${SCRIPT_DIR}/finance/patches/20260502_1135_finance_menu_access.sql"
+
 echo "[seed] Running role-menu permissions seed..."
 "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/007_seed_role_menu_permissions.sql"
 
