@@ -1605,6 +1605,10 @@ export class OrderService {
       throw new BadRequestException("order has no delivered items pending invoicing");
     }
 
+    if (order.branchId && context?.branchId && order.branchId !== context.branchId) {
+      throw new ForbiddenException("La sesion POS no pertenece a la sucursal del pedido");
+    }
+
     return this.saleService.createSaleFromOrderDelivery(
       {
         orderId: id,

@@ -157,6 +157,37 @@ test("JwtAuthGuard: hydrates POS context when POS session header is valid", asyn
   });
 });
 
+test("JwtAuthGuard: hydrates required POS context from active auth POS session when header is missing", async () => {
+  const { db, queries } = buildDb([
+    {
+      id: ids.posSession,
+      tenant_id: ids.tenant,
+      branch_id: ids.branch,
+      terminal_id: ids.terminal,
+      user_id: ids.user,
+    },
+  ]);
+  const guard = new JwtAuthGuard(db as never);
+  const request: Record<string, unknown> = {
+    headers: {
+      authorization: `Bearer ${buildToken()}`,
+    },
+  };
+
+  const allowed = await guard.canActivate(buildContext(request, true));
+
+  assert.equal(allowed, true);
+  assert.equal(queries.length, 2);
+  assert.deepEqual((request as { context?: unknown }).context, {
+    tenantId: ids.tenant,
+    branchId: ids.branch,
+    terminalId: ids.terminal,
+    posSessionId: ids.posSession,
+    userId: ids.user,
+  });
+  assert.deepEqual(queries[1].params, [ids.user, ids.tenant, ids.authSession]);
+});
+
 test("JwtAuthGuard: rejects missing POS session when endpoint requires it", async () => {
   const { db, queries } = buildDb([]);
   const guard = new JwtAuthGuard(db as never);
@@ -170,5 +201,5 @@ test("JwtAuthGuard: rejects missing POS session when endpoint requires it", asyn
     () => guard.canActivate(buildContext(request, true)),
     ForbiddenException
   );
-  assert.equal(queries.length, 1);
+  assert.equal(queries.length, 2);
 });

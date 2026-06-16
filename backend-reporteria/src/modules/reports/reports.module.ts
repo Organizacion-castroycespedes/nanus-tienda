@@ -6,6 +6,8 @@ import { CashReportsController } from "./cash-reports.controller";
 import { CashReportsService } from "./cash-reports.service";
 import { CustomersReportsController } from "./customers-reports.controller";
 import { CustomersReportsService } from "./customers-reports.service";
+import { CurrentShiftReportsController } from "./current-shift-reports.controller";
+import { CurrentShiftReportsService } from "./current-shift-reports.service";
 import { OrdersReportsController } from "./orders-reports.controller";
 import { OrdersReportsService } from "./orders-reports.service";
 import { PurchasesReportsController } from "./purchases-reports.controller";
@@ -29,6 +31,7 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     PurchasesReportsController,
     OrdersReportsController,
     CustomersReportsController,
+    CurrentShiftReportsController,
   ],
   providers: [
     ReportsService,
@@ -37,6 +40,7 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     PurchasesReportsService,
     OrdersReportsService,
     CustomersReportsService,
+    CurrentShiftReportsService,
     SalesReportAdapter,
     CashReportAdapter,
     PurchasesReportAdapter,

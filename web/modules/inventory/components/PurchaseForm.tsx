@@ -1,12 +1,15 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { listBranches } from "../../../domains/branches/api";
 import type { BranchResponse } from "../../../domains/branches/dtos";
+import { getAuthContext } from "../../../domains/pos/api";
+import type { PosBranch } from "../../../domains/pos/types";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
@@ -65,6 +68,7 @@ export const PurchaseForm = ({
   onError,
   onDirtyChange,
 }: PurchaseFormProps) => {
+  const router = useRouter();
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
   const authUser = useAppSelector((state) => state.auth.user);
   const currentPosBranchId = useAppSelector((state) => state.pos.branchId);
@@ -81,6 +85,10 @@ export const PurchaseForm = ({
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [branches, setBranches] = useState<BranchResponse[]>([]);
+  const [contextBranches, setContextBranches] = useState<PosBranch[]>([]);
+  const [selectedTerminalId, setSelectedTerminalId] = useState("");
+  const [terminalLoading, setTerminalLoading] = useState(false);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
@@ -139,12 +147,100 @@ export const PurchaseForm = ({
     };
   }, [currentTenant, isSuperRole, currentBranch, values.branchId]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadContextBranches = async () => {
+      setTerminalLoading(true);
+      setTerminalError(null);
+      try {
+        const response = await getAuthContext();
+        if (!mounted) {
+          return;
+        }
+
+        const targetTenantId = currentTenant ?? authUser?.tenantId ?? null;
+        const tenantBranches = response.tenants
+          .filter((tenant) => !targetTenantId || tenant.id === targetTenantId)
+          .flatMap((tenant) => tenant.branches);
+        setContextBranches(tenantBranches);
+      } catch {
+        if (mounted) {
+          setTerminalError("No se pudieron cargar las terminales disponibles.");
+          setContextBranches([]);
+        }
+      } finally {
+        if (mounted) {
+          setTerminalLoading(false);
+        }
+      }
+    };
+
+    void loadContextBranches();
+
+    return () => {
+      mounted = false;
+    };
+  }, [authUser?.tenantId, currentTenant]);
+
   const selectedBranchName = useMemo(() => {
     if (isSuperRole) {
       return branches.find((branch) => branch.id === values.branchId)?.nombre ?? "";
     }
     return authBranchName ?? values.branchId;
   }, [authBranchName, branches, isSuperRole, values.branchId]);
+
+  const selectedBranchTerminals = useMemo(
+    () =>
+      contextBranches.find((branch) => branch.id === values.branchId)?.terminals ?? [],
+    [contextBranches, values.branchId]
+  );
+
+  useEffect(() => {
+    if (!values.branchId) {
+      setSelectedTerminalId("");
+      return;
+    }
+    if (currentPosBranchId === values.branchId && currentPosTerminalId) {
+      setSelectedTerminalId("");
+      return;
+    }
+    if (
+      selectedTerminalId &&
+      selectedBranchTerminals.some((terminal) => terminal.id === selectedTerminalId)
+    ) {
+      return;
+    }
+
+    setSelectedTerminalId(selectedBranchTerminals[0]?.id ?? "");
+  }, [
+    currentPosBranchId,
+    currentPosTerminalId,
+    selectedBranchTerminals,
+    selectedTerminalId,
+    values.branchId,
+  ]);
+
+  const resolvedTerminalId = useMemo(() => {
+    if (currentPosBranchId === values.branchId && currentPosTerminalId) {
+      return currentPosTerminalId;
+    }
+    return selectedTerminalId || undefined;
+  }, [currentPosBranchId, currentPosTerminalId, selectedTerminalId, values.branchId]);
+
+  const resolvedTerminalName = useMemo(
+    () =>
+      selectedBranchTerminals.find((terminal) => terminal.id === resolvedTerminalId)
+        ?.name ?? "",
+    [resolvedTerminalId, selectedBranchTerminals]
+  );
+
+  const terminalDisplayName =
+    terminalLoading
+      ? "Cargando..."
+      : resolvedTerminalName || (resolvedTerminalId ? "Terminal activa" : "Sin terminal activa");
+
+  const contextTarget = `/${currentTenant ?? authUser?.tenantId ?? "default"}/pos/select-context`;
 
   const itemSubtotals = useMemo(
     () =>
@@ -177,11 +273,15 @@ export const PurchaseForm = ({
       nextErrors.branchId = "Debes seleccionar una sucursal.";
     }
 
-    if (!currentPosTerminalId) {
-      nextErrors.terminalId = "No hay terminal activa para registrar la compra.";
+    if (!resolvedTerminalId) {
+      nextErrors.terminalId =
+        values.branchId && !terminalLoading
+          ? "La sucursal seleccionada no tiene terminal activa disponible. Abre caja o selecciona contexto para operar la compra."
+          : "Selecciona una terminal antes de registrar la compra.";
     }
 
     if (
+      resolvedTerminalId === currentPosTerminalId &&
       currentPosBranchId &&
       values.branchId &&
       currentPosBranchId !== values.branchId
@@ -253,7 +353,7 @@ export const PurchaseForm = ({
       const response = await createPurchase({
         supplierId: values.supplierId,
         branchId: values.branchId,
-        terminalId: currentPosTerminalId ?? "",
+        terminalId: resolvedTerminalId ?? "",
         type: values.type,
         total,
         items: values.items.map((item, index) => ({
@@ -370,6 +470,7 @@ export const PurchaseForm = ({
                 onChange={(event) => {
                   markDirty();
                   setValues((prev) => ({ ...prev, branchId: event.target.value }));
+                  setSelectedTerminalId("");
                   setErrors((prev) => ({
                     ...prev,
                     branchId: undefined,
@@ -388,18 +489,58 @@ export const PurchaseForm = ({
                 ))}
               </Select>
               {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
-              {errors.terminalId ? (
-                <p className="text-xs text-rose-600">{errors.terminalId}</p>
-              ) : null}
             </div>
           ) : (
             <div className="space-y-1">
               <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
-              {errors.terminalId ? (
-                <p className="text-xs text-rose-600">{errors.terminalId}</p>
-              ) : null}
             </div>
           )}
+
+          <div className="space-y-1">
+            {selectedBranchTerminals.length > 1 ? (
+              <Select
+                label="Terminal"
+                required
+                value={resolvedTerminalId ?? ""}
+                disabled={terminalLoading}
+                onChange={(event) => {
+                  markDirty();
+                  setSelectedTerminalId(event.target.value);
+                  setErrors((prev) => ({
+                    ...prev,
+                    terminalId: undefined,
+                    submit: undefined,
+                  }));
+                }}
+              >
+                <option value="">
+                  {terminalLoading ? "Cargando..." : "Selecciona una terminal"}
+                </option>
+                {selectedBranchTerminals.map((terminal) => (
+                  <option key={terminal.id} value={terminal.id}>
+                    {terminal.name} ({terminal.code})
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input label="Terminal" value={terminalDisplayName} disabled readOnly />
+            )}
+            {terminalError ? (
+              <p className="text-xs text-amber-700">{terminalError}</p>
+            ) : null}
+            {errors.terminalId ? (
+              <div className="space-y-2">
+                <p className="text-xs text-rose-600">{errors.terminalId}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push(contextTarget)}
+                >
+                  Ir a seleccion de contexto
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-1">

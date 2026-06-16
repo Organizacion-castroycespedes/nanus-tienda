@@ -144,7 +144,46 @@ export class JwtAuthGuard implements CanActivate {
         userId: contextRow.user_id,
       };
     } else if (requiresPosSession) {
-      throw new ForbiddenException("Sesion POS requerida");
+      const posSession = await this.db.query<PosSessionContextRow>(
+        `
+        SELECT
+          session.id,
+          session.tenant_id,
+          session.branch_id,
+          session.terminal_id,
+          session.user_id
+        FROM pos_user_sessions AS session
+        INNER JOIN terminals AS terminal
+          ON terminal.id = session.terminal_id
+         AND terminal.tenant_id = session.tenant_id
+         AND terminal.branch_id = session.branch_id
+         AND terminal.is_active = TRUE
+        INNER JOIN tenant_branches AS branch
+          ON branch.id = session.branch_id
+         AND branch.tenant_id = session.tenant_id
+         AND branch.estado = 'ACTIVE'
+        WHERE session.user_id = $1
+          AND session.tenant_id = $2
+          AND session.auth_session_id = $3
+          AND session.is_active = TRUE
+        ORDER BY session.started_at DESC
+        LIMIT 1
+        `,
+        [payload.sub, payload.tenant_id, payload.session_id]
+      );
+
+      const contextRow = posSession.rows?.[0];
+      if (!contextRow) {
+        throw new ForbiddenException("Sesion POS requerida");
+      }
+
+      request.context = {
+        tenantId: contextRow.tenant_id,
+        branchId: contextRow.branch_id,
+        terminalId: contextRow.terminal_id,
+        posSessionId: contextRow.id,
+        userId: contextRow.user_id,
+      };
     }
 
     return true;

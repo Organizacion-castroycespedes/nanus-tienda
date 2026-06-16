@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { OrderService } from "./order.service";
 import type {
@@ -634,4 +634,109 @@ test("OrderService.createOrder uses product price from PricingService instead of
   assert.equal(client.insertedItems[0].finalUnitPrice, 250);
   assert.equal(client.insertedItems[0].price, 250);
   assert.equal(client.insertedItems[0].subtotal, 500);
+});
+
+test("OrderService.invoiceOrder rejects POS session from another order branch", async () => {
+  let saleCreated = false;
+  const queries: RecordedQuery[] = [];
+  const service = new OrderService(
+    {
+      query: async (text: string, params: unknown[] = []) => {
+        queries.push({ text, params });
+        const sql = text.replace(/\s+/g, " ").trim();
+
+        if (sql.includes("auditoria_eventos")) {
+          return {
+            rows: [
+              {
+                branch_id: ids.branch,
+                branch_name: "Sucursal QA",
+                terminal_id: ids.terminal,
+                terminal_name: "Terminal QA",
+              },
+            ],
+          };
+        }
+
+        if (sql.includes("FROM orders") && sql.includes("LIMIT 1")) {
+          return {
+            rows: [
+              {
+                id: ids.order,
+                tenant_id: ids.tenant,
+                customer_id: ids.customer,
+                type: "CASH",
+                status: "COMPLETED",
+                total: 500,
+                payment_status: "PENDING",
+                total_paid: 0,
+                balance_due: 500,
+                created_at: new Date("2026-06-01T10:00:00.000Z"),
+              },
+            ],
+          };
+        }
+
+        if (sql.includes("FROM order_items")) {
+          return {
+            rows: [
+              {
+                id: "10000000-0000-0000-0000-000000000012",
+                order_id: ids.order,
+                product_id: ids.product,
+                product_name: "Producto QA",
+                ordered_quantity: 1,
+                delivered_quantity: 1,
+                billed_quantity: 0,
+                price: 500,
+                subtotal: 500,
+              },
+            ],
+          };
+        }
+
+        if (sql.includes("FROM payments")) {
+          return { rows: [] };
+        }
+
+        throw new Error(`Unexpected SQL in invoice test: ${sql}`);
+      },
+    } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {
+      createSaleFromOrderDelivery: async () => {
+        saleCreated = true;
+        return { id: "sale-001" };
+      },
+    } as never,
+    {} as never,
+    {} as never
+  );
+
+  await assert.rejects(
+    () =>
+      service.invoiceOrder(
+        ids.order,
+        ids.tenant,
+        { type: "CASH", payments: [] },
+        {
+          tenantId: ids.tenant,
+          branchId: ids.otherBranch,
+          terminalId: ids.terminal,
+          posSessionId: "10000000-0000-0000-0000-000000000013",
+          userId: ids.user,
+        },
+        {
+          roles: ["SUPER_USER"],
+          tenantId: ids.tenant,
+          userId: ids.user,
+          branchId: ids.otherBranch,
+        }
+      ),
+    ForbiddenException
+  );
+
+  assert.equal(saleCreated, false);
+  assert.ok(queries.length >= 4);
 });

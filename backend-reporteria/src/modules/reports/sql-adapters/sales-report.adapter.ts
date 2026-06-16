@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { DatabaseService } from "../../database/database.service";
 import { FunctionRunnerService } from "../../database/function-runner.service";
 import type {
   PosSaleCancelTicketDataset,
@@ -18,7 +19,9 @@ type SalesListParams = {
 export class SalesReportAdapter {
   constructor(
     @Inject(FunctionRunnerService)
-    private readonly functionRunnerService: FunctionRunnerService
+    private readonly functionRunnerService: FunctionRunnerService,
+    @Inject(DatabaseService)
+    private readonly databaseService: DatabaseService
   ) {}
 
   async getSalesList(
@@ -48,6 +51,14 @@ export class SalesReportAdapter {
       "report_pos_sale_ticket",
       [actor.userId, actor.role, actor.tenantId, actor.branchId, saleId]
     );
+  }
+
+  async saleExists(saleId: string): Promise<boolean> {
+    const result = await this.databaseService.query<{ exists: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM sales WHERE id = $1) AS exists",
+      [saleId]
+    );
+    return result.rows[0]?.exists === true;
   }
 
   async getSaleCancelTicket(

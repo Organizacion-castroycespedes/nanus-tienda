@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   ArrowRightLeft,
   Banknote,
   BriefcaseBusiness,
@@ -46,6 +47,12 @@ const items: Array<{
     icon: ReceiptText,
   },
   {
+    label: "Turno actual",
+    description: "Ventas, pedidos, compras y tickets",
+    href: (tenant) => `/${tenant}/finance/current-shift`,
+    icon: Activity,
+  },
+  {
     label: "Movimientos",
     description: "Entradas, salidas y balance rapido",
     href: (tenant) => `/${tenant}/finance/cash-movements`,
@@ -57,7 +64,7 @@ export const FinanceSectionNav = ({ tenantSlug }: FinanceSectionNavProps) => {
   const pathname = usePathname();
 
   return (
-    <div className="grid gap-3 lg:grid-cols-5">
+    <div className="grid gap-3 lg:grid-cols-6">
       {items.map((item) => {
         const href = item.href(tenantSlug);
         const isActive = pathname === href;
