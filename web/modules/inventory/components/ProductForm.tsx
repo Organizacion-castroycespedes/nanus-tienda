@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { InventoryImageUploadPanel } from "./InventoryImageUploadPanel";
 import type {
   ProductMeasurementUnit,
   ProductOperationalStatus,
@@ -22,7 +23,9 @@ import {
 } from "../services/unit.service";
 import {
   createProduct,
+  deleteProductImage,
   updateProduct,
+  uploadProductImage,
   type CreateProductPayload,
   type UpdateProductPayload,
 } from "../services/product.service";
@@ -82,6 +85,7 @@ type ProductFormProps = {
   product?: ProductResponse | null;
   onCancel: () => void;
   onSuccess: (mode: "create" | "edit") => void;
+  onImageChange?: (product: ProductResponse) => void;
 };
 
 const createInitialValues = (product?: ProductResponse | null): ProductFormValues => ({
@@ -147,6 +151,7 @@ export const ProductForm = ({
   product,
   onCancel,
   onSuccess,
+  onImageChange,
 }: ProductFormProps) => {
   const params = useParams<{ tenant: string }>();
   const tenantSlug = params?.tenant ?? "default";
@@ -163,10 +168,14 @@ export const ProductForm = ({
   const [subcategoriesLoading, setSubcategoriesLoading] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [subcategoriesError, setSubcategoriesError] = useState<string | null>(null);
+  const [imageProduct, setImageProduct] = useState<ProductResponse | null>(
+    product ?? null
+  );
 
   useEffect(() => {
     setValues(createInitialValues(product));
     setErrors({});
+    setImageProduct(product ?? null);
   }, [mode, product]);
 
   useEffect(() => {
@@ -422,6 +431,29 @@ export const ProductForm = ({
     [subcategories]
   );
   const categoriesPath = `/${tenantSlug}/inventory/product-categories`;
+  const currentImageProduct = imageProduct ?? product ?? null;
+
+  const handleImageUpload = async (file: File) => {
+    if (!product?.id) {
+      throw new Error("Guarda primero el producto para poder cargar imagen.");
+    }
+    const updated = await uploadProductImage(
+      product.id,
+      file,
+      values.name.trim() || product.name
+    );
+    setImageProduct(updated);
+    onImageChange?.(updated);
+  };
+
+  const handleImageDelete = async () => {
+    if (!product?.id) {
+      throw new Error("Guarda primero el producto para poder eliminar imagen.");
+    }
+    const updated = await deleteProductImage(product.id);
+    setImageProduct(updated);
+    onImageChange?.(updated);
+  };
 
   const validate = () => {
     const nextErrors: ProductFormErrors = {};
@@ -843,6 +875,19 @@ export const ProductForm = ({
             </div>
           ) : null}
         </section>
+
+        <InventoryImageUploadPanel
+          entityId={mode === "edit" ? product?.id : null}
+          title="Imagen del producto"
+          imageUrl={currentImageProduct?.imageUrl}
+          imageAltText={currentImageProduct?.imageAltText}
+          imageMimeType={currentImageProduct?.imageMimeType}
+          imageSizeBytes={currentImageProduct?.imageSizeBytes}
+          disabledMessage="Guarda primero el producto para poder cargar imagen."
+          fallbackLabel={values.name || "Producto"}
+          onUpload={handleImageUpload}
+          onDelete={handleImageDelete}
+        />
 
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <input

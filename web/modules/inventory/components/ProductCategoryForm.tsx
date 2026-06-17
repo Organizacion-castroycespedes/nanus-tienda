@@ -4,9 +4,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Textarea } from "../../../components/design-system/Textarea";
+import { InventoryImageUploadPanel } from "./InventoryImageUploadPanel";
 import {
   createProductCategory,
+  deleteProductCategoryImage,
   updateProductCategory,
+  uploadProductCategoryImage,
   type ProductCategoryResponse,
 } from "../services/product-classification.service";
 import {
@@ -23,6 +26,7 @@ type ProductCategoryFormProps = {
   category?: ProductCategoryResponse | null;
   onCancel: () => void;
   onSuccess: (mode: "create" | "edit") => void;
+  onImageChange?: (category: ProductCategoryResponse) => void;
 };
 
 const createInitialValues = (
@@ -40,6 +44,7 @@ export const ProductCategoryForm = ({
   category,
   onCancel,
   onSuccess,
+  onImageChange,
 }: ProductCategoryFormProps) => {
   const [values, setValues] = useState<ProductClassificationFormValues>(
     createInitialValues(category)
@@ -47,12 +52,39 @@ export const ProductCategoryForm = ({
   const [errors, setErrors] = useState<ProductClassificationFormErrors>({});
   const [slugTouched, setSlugTouched] = useState(mode === "edit");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageCategory, setImageCategory] =
+    useState<ProductCategoryResponse | null>(category ?? null);
 
   useEffect(() => {
     setValues(createInitialValues(category));
     setErrors({});
     setSlugTouched(mode === "edit");
+    setImageCategory(category ?? null);
   }, [mode, category]);
+
+  const currentImageCategory = imageCategory ?? category ?? null;
+
+  const handleImageUpload = async (file: File) => {
+    if (!category?.id) {
+      throw new Error("Guarda primero la categoria para poder cargar imagen.");
+    }
+    const updated = await uploadProductCategoryImage(
+      category.id,
+      file,
+      values.name.trim() || category.name
+    );
+    setImageCategory(updated);
+    onImageChange?.(updated);
+  };
+
+  const handleImageDelete = async () => {
+    if (!category?.id) {
+      throw new Error("Guarda primero la categoria para poder eliminar imagen.");
+    }
+    const updated = await deleteProductCategoryImage(category.id);
+    setImageCategory(updated);
+    onImageChange?.(updated);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -197,6 +229,19 @@ export const ProductCategoryForm = ({
         />
         Categoria activa
       </label>
+
+      <InventoryImageUploadPanel
+        entityId={mode === "edit" ? category?.id : null}
+        title="Imagen predeterminada"
+        imageUrl={currentImageCategory?.defaultImageUrl}
+        imageAltText={currentImageCategory?.defaultImageAltText}
+        imageMimeType={currentImageCategory?.defaultImageMimeType}
+        imageSizeBytes={currentImageCategory?.defaultImageSizeBytes}
+        disabledMessage="Guarda primero la categoria para poder cargar imagen."
+        fallbackLabel={values.name || "Categoria"}
+        onUpload={handleImageUpload}
+        onDelete={handleImageDelete}
+      />
 
       {errors.submit ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

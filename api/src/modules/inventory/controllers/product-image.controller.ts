@@ -5,9 +5,9 @@ import {
   Delete,
   Get,
   Inject,
+  NotFoundException,
   Param,
   Post,
-  Query,
   Req,
   Res,
   UploadedFile,
@@ -24,56 +24,37 @@ import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import type { UploadedInventoryImageFile } from "../services/local-image-storage.service";
 import { ProductImageService } from "../services/product-image.service";
-import { InventoryService } from "../services/inventory.service";
 
 type AuthRequest = Request & {
   user?: {
-    id?: string;
     tenantId?: string;
+    id?: string;
     roles?: string[];
   };
   context?: {
-    userId?: string;
     tenantId?: string;
-    branchId?: string;
-    terminalId?: string;
-    posSessionId?: string;
   };
 };
 
 const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value
   );
 
 const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
 
-@Controller("inventory")
+@Controller("inventory/products")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-export class InventoryController {
+export class ProductImageController {
   constructor(
-    @Inject(InventoryService)
-    private readonly inventoryService: InventoryService,
     @Inject(ProductImageService)
     private readonly productImageService: ProductImageService
   ) {}
 
-  private buildActor(request: AuthRequest) {
-    return {
-      roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
-      userId: request.context?.userId ?? request.user?.id,
-      tenantId: request.context?.tenantId ?? request.user?.tenantId,
-      branchId: request.context?.branchId,
-      terminalId: request.context?.terminalId,
-      posSessionId: request.context?.posSessionId,
-    };
-  }
-
   private getTenantId(request: AuthRequest) {
     const tenantId = request.context?.tenantId ?? request.user?.tenantId;
     if (!tenantId) {
-      throw new BadRequestException("tenant not found in request context");
+      throw new NotFoundException("tenant not found in request context");
     }
     return tenantId;
   }
@@ -84,14 +65,17 @@ export class InventoryController {
       return normalized;
     }
 
-    const match = normalized.match(
+    const match = normalized?.match(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
     );
     if (match?.[0] && isUuid(match[0])) {
       return match[0];
     }
 
-    throw new BadRequestException(`${field} must be a valid UUID`);
+    if (!isUuid(normalized)) {
+      throw new BadRequestException(`${field} must be a valid UUID`);
+    }
+    return normalized;
   }
 
   private sendImage(
@@ -103,7 +87,7 @@ export class InventoryController {
     response.send(image.buffer);
   }
 
-  @Post("products/:productId/image")
+  @Post(":productId/image")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PRODUCTS, level: "WRITE" })
   @UseInterceptors(FileInterceptor("file"))
@@ -122,7 +106,7 @@ export class InventoryController {
     );
   }
 
-  @Delete("products/:productId/image")
+  @Delete(":productId/image")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PRODUCTS, level: "WRITE" })
   deleteProductImage(
@@ -136,7 +120,7 @@ export class InventoryController {
     );
   }
 
-  @Get("products/:productId/image")
+  @Get(":productId/image")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({
     menuKey: MENU_KEYS.INVENTORY_PRODUCTS,
@@ -156,43 +140,4 @@ export class InventoryController {
     this.sendImage(response, image);
   }
 
-  @Get("products")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
-  listProducts(
-    @Query("tenantId") tenantId: string | undefined,
-    @Query("branchId") branchId: string | undefined,
-    @Req() request: AuthRequest
-  ) {
-    return this.inventoryService.listInventoryProducts(
-      {
-        tenantId,
-        branchId,
-      },
-      this.buildActor(request)
-    );
-  }
-
-  @Get("dashboard")
-  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
-  getDashboard(
-    @Query("tenantId") tenantId: string | undefined,
-    @Query("branchId") branchId: string | undefined,
-    @Query("terminalId") terminalId: string | undefined,
-    @Query("cashSessionId") cashSessionId: string | undefined,
-    @Query("startDate") startDate: string | undefined,
-    @Query("endDate") endDate: string | undefined,
-    @Req() request: AuthRequest
-  ) {
-    return this.inventoryService.getInventoryDashboard(
-      {
-        tenantId,
-        branchId,
-        terminalId,
-        cashSessionId,
-        startDate,
-        endDate,
-      },
-      this.buildActor(request)
-    );
-  }
 }

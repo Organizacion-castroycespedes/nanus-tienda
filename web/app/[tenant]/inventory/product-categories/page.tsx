@@ -16,6 +16,7 @@ import { hasMenuAccess } from "../../../../lib/permissions";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../../store/hooks";
 import { FocusActionLayout } from "../../../../modules/inventory/components/FocusActionLayout";
+import { InventoryImagePreview } from "../../../../modules/inventory/components/InventoryImagePreview";
 import { ProductCategoryForm } from "../../../../modules/inventory/components/ProductCategoryForm";
 import {
   activateProductCategory,
@@ -58,21 +59,13 @@ const getStatusParam = (status: StatusFilter) => {
 };
 
 const CategoryImage = ({ category }: { category: ProductCategoryResponse }) => {
-  if (category.defaultImageUrl) {
-    return (
-      <div
-        aria-label={category.defaultImageAltText ?? category.name}
-        className="h-12 w-12 rounded-lg bg-cover bg-center"
-        role="img"
-        style={{ backgroundImage: `url("${category.defaultImageUrl}")` }}
-      />
-    );
-  }
-
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-600">
-      {getClassificationInitials(category.name)}
-    </div>
+    <InventoryImagePreview
+      imageUrl={category.defaultImageUrl}
+      altText={category.defaultImageAltText ?? category.name}
+      className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600"
+      fallback={getClassificationInitials(category.name)}
+    />
   );
 };
 
@@ -193,6 +186,21 @@ const ProductCategoriesPage = () => {
       "success"
     );
     void loadCategories(appliedFilters);
+  };
+
+  const handleCategoryImageChange = (updatedCategory: ProductCategoryResponse) => {
+    setCategories((current) =>
+      current.map((category) =>
+        category.id === updatedCategory.id
+          ? { ...category, ...updatedCategory }
+          : category
+      )
+    );
+    setSelectedCategory((current) =>
+      current?.id === updatedCategory.id
+        ? { ...current, ...updatedCategory }
+        : current
+    );
   };
 
   const handleStatusChange = async () => {
@@ -364,6 +372,7 @@ const ProductCategoriesPage = () => {
               category={selectedCategory}
               onCancel={closeAction}
               onSuccess={handleFormSuccess}
+              onImageChange={handleCategoryImageChange}
             />
           ) : null}
 

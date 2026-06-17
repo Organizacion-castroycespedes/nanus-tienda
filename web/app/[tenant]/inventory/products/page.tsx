@@ -456,6 +456,17 @@ const ProductsPage = () => {
     }
   };
 
+  const handleProductImageChange = (updatedProduct: ProductResponse) => {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === updatedProduct.id ? { ...product, ...updatedProduct } : product
+      )
+    );
+    setSelectedProduct((current) =>
+      current?.id === updatedProduct.id ? { ...current, ...updatedProduct } : current
+    );
+  };
+
   const handleDelete = async () => {
     if (!pendingDeleteProduct) {
       return;
@@ -684,6 +695,7 @@ const ProductsPage = () => {
                 product={selectedProduct}
                 onCancel={requestFocusCancel}
                 onSuccess={handleFormSuccess}
+                onImageChange={handleProductImageChange}
               />
             ) : null}
 

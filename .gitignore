@@ -33,6 +33,10 @@ logs/
 !backend-perifericos/src/modules/logs/**
 *.log
 
+# Local uploads
+storage/
+api/storage/
+
 # OS / editor
 .DS_Store
 Thumbs.db

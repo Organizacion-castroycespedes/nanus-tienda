@@ -1501,6 +1501,44 @@
 - [x] Confirmar QA manual local que producto existente sin categoria sigue funcionando y no se afectaron precio, impuestos, unidad, estado operativo, inventario/stock ni cobro.
 - [x] Confirmar que no se implemento upload real, storage local, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario/stock ni cobro/pagos.
 
+## Fase 6.9.8: upload local de imagenes para productos/categorias/subcategorias
+
+- [x] Confirmar `git status --short` limpio y HEAD `7de1ee9 feat(web): add product classification fields to product CRUD`.
+- [x] Discover que no existia modulo upload/archivos, storage local, static serving ni env vars de uploads.
+- [x] Discover que `@nestjs/platform-express` permite `multipart/form-data` con `FileInterceptor`.
+- [x] Discover que productos/categorias/subcategorias ya tenian metadata `image_*` y `default_image_*`.
+- [x] Crear `LocalImageStorageService` con storage keys seguras y sin rutas absolutas.
+- [x] Agregar variables `LOCAL_UPLOADS_DIR`, `MAX_PRODUCT_IMAGE_SIZE_MB` y `MAX_CATEGORY_IMAGE_SIZE_MB`.
+- [x] Ignorar `storage/` y `api/storage/` en `.gitignore`.
+- [x] Crear `ProductImageService` para upload, reemplazo, lectura y delete tenant-safe.
+- [x] Crear endpoints `POST/DELETE/GET /api/inventory/products/:productId/image`.
+- [x] Crear endpoints `POST/DELETE/GET /api/inventory/product-categories/:categoryId/image`.
+- [x] Crear endpoints `POST/DELETE/GET /api/inventory/product-subcategories/:subcategoryId/image`.
+- [x] Proteger endpoints con `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard` y `INVENTORY_PRODUCTS`.
+- [x] Validar MIME, extension, tamano, magic bytes y path traversal.
+- [x] Actualizar metadata DB al subir/eliminar imagen de producto.
+- [x] Actualizar metadata DB al subir/eliminar imagen de categoria.
+- [x] Actualizar metadata DB al subir/eliminar imagen de subcategoria.
+- [x] Extender `ProductResponse` e inventory listing con metadata de imagen.
+- [x] Corregir cliente HTTP para no forzar `Content-Type: application/json` con `FormData`.
+- [x] Crear API client frontend para upload/delete de imagenes.
+- [x] Crear panel UI reutilizable de imagen sin modales.
+- [x] Integrar panel en `ProductForm`.
+- [x] Integrar panel en `ProductCategoryForm`.
+- [x] Integrar panel en `ProductSubcategoryForm`.
+- [x] Mostrar preview autenticado via blob API sin exponer ruta fisica.
+- [x] Agregar tests backend de storage local, validacion, reemplazo/delete y cross-tenant.
+- [x] Agregar tests frontend de helpers de imagen.
+- [x] Ejecutar tests backend relevantes.
+- [x] Ejecutar tests frontend relevantes.
+- [x] Ejecutar build API.
+- [x] Ejecutar lint/build frontend.
+- [x] Crear `docs/evidencia-product-images-local-upload-fase-6-9-8.md`.
+- [x] Ejecutar QA manual local de upload/reemplazo/delete/archivo invalido en productos, categorias y subcategorias: PASS.
+- [x] Confirmar QA manual local en `/00000000-0000-0000-0000-000000000001/inventory/product-categories`, `/00000000-0000-0000-0000-000000000001/inventory/product-subcategories` y `/00000000-0000-0000-0000-000000000001/inventory/products`.
+- [x] Confirmar QA manual local de preview autenticado, rechazo de archivos invalidos con mensaje legible, sin ruta fisica expuesta y registros sin imagen funcionando.
+- [x] Confirmar que no se implemento filtros POS, imagen efectiva POS, impuestos, descuentos, inventario/stock, cobro/pagos ni migraciones nuevas.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.

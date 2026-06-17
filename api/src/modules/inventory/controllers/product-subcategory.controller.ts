@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   NotFoundException,
@@ -11,9 +12,13 @@ import {
   Put,
   Query,
   Req,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
-import type { Request } from "express";
+import { FileInterceptor } from "@nestjs/platform-express";
+import type { Request, Response } from "express";
 import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
@@ -21,6 +26,8 @@ import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import type { ProductImageMimeType } from "../entities/product-category.entity";
+import type { UploadedInventoryImageFile } from "../services/local-image-storage.service";
+import { ProductImageService } from "../services/product-image.service";
 import { ProductSubcategoryService } from "../services/product-subcategory.service";
 
 type AuthRequest = Request & {
@@ -62,7 +69,9 @@ const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
 export class ProductSubcategoryController {
   constructor(
     @Inject(ProductSubcategoryService)
-    private readonly productSubcategoryService: ProductSubcategoryService
+    private readonly productSubcategoryService: ProductSubcategoryService,
+    @Inject(ProductImageService)
+    private readonly productImageService: ProductImageService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -90,6 +99,15 @@ export class ProductSubcategoryController {
       return false;
     }
     throw new BadRequestException(`${field} must be true or false`);
+  }
+
+  private sendImage(
+    response: Response,
+    image: { buffer: Buffer; mimeType: string }
+  ) {
+    response.setHeader("Content-Type", image.mimeType);
+    response.setHeader("Cache-Control", "private, max-age=300");
+    response.send(image.buffer);
   }
 
   @Get()
@@ -146,6 +164,59 @@ export class ProductSubcategoryController {
       ...body,
       tenantId: this.getTenantId(request),
     });
+  }
+
+  @Post(":subcategoryId/image")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PRODUCTS, level: "WRITE" })
+  @UseInterceptors(FileInterceptor("file"))
+  uploadImage(
+    @Param("subcategoryId") subcategoryId: string,
+    @UploadedFile() file: UploadedInventoryImageFile | undefined,
+    @Body("altText") altText: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    this.assertUuid(subcategoryId, "subcategoryId");
+    return this.productImageService.uploadSubcategoryImage(
+      this.getTenantId(request),
+      subcategoryId,
+      file,
+      altText
+    );
+  }
+
+  @Delete(":subcategoryId/image")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_PRODUCTS, level: "WRITE" })
+  deleteImage(
+    @Param("subcategoryId") subcategoryId: string,
+    @Req() request: AuthRequest
+  ) {
+    this.assertUuid(subcategoryId, "subcategoryId");
+    return this.productImageService.deleteSubcategoryImage(
+      this.getTenantId(request),
+      subcategoryId
+    );
+  }
+
+  @Get(":subcategoryId/image")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({
+    menuKey: MENU_KEYS.INVENTORY_PRODUCTS,
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
+  async getImage(
+    @Param("subcategoryId") subcategoryId: string,
+    @Req() request: AuthRequest,
+    @Res() response: Response
+  ) {
+    this.assertUuid(subcategoryId, "subcategoryId");
+    const image = await this.productImageService.readSubcategoryImage(
+      this.getTenantId(request),
+      subcategoryId
+    );
+    this.sendImage(response, image);
   }
 
   @Put(":subcategoryId")

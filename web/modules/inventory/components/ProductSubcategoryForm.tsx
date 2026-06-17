@@ -5,9 +5,12 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Textarea } from "../../../components/design-system/Textarea";
+import { InventoryImageUploadPanel } from "./InventoryImageUploadPanel";
 import {
   createProductSubcategory,
+  deleteProductSubcategoryImage,
   updateProductSubcategory,
+  uploadProductSubcategoryImage,
   type ProductCategoryResponse,
   type ProductSubcategoryResponse,
 } from "../services/product-classification.service";
@@ -27,6 +30,7 @@ type ProductSubcategoryFormProps = {
   defaultCategoryId?: string;
   onCancel: () => void;
   onSuccess: (mode: "create" | "edit") => void;
+  onImageChange?: (subcategory: ProductSubcategoryResponse) => void;
 };
 
 const createInitialValues = (
@@ -48,6 +52,7 @@ export const ProductSubcategoryForm = ({
   defaultCategoryId = "",
   onCancel,
   onSuccess,
+  onImageChange,
 }: ProductSubcategoryFormProps) => {
   const [values, setValues] = useState<ProductClassificationFormValues>(
     createInitialValues(subcategory, defaultCategoryId)
@@ -55,12 +60,41 @@ export const ProductSubcategoryForm = ({
   const [errors, setErrors] = useState<ProductClassificationFormErrors>({});
   const [slugTouched, setSlugTouched] = useState(mode === "edit");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageSubcategory, setImageSubcategory] =
+    useState<ProductSubcategoryResponse | null>(subcategory ?? null);
 
   useEffect(() => {
     setValues(createInitialValues(subcategory, defaultCategoryId));
     setErrors({});
     setSlugTouched(mode === "edit");
+    setImageSubcategory(subcategory ?? null);
   }, [mode, subcategory, defaultCategoryId]);
+
+  const currentImageSubcategory = imageSubcategory ?? subcategory ?? null;
+
+  const handleImageUpload = async (file: File) => {
+    if (!subcategory?.id) {
+      throw new Error("Guarda primero la subcategoria para poder cargar imagen.");
+    }
+    const updated = await uploadProductSubcategoryImage(
+      subcategory.id,
+      file,
+      values.name.trim() || subcategory.name
+    );
+    setImageSubcategory(updated);
+    onImageChange?.(updated);
+  };
+
+  const handleImageDelete = async () => {
+    if (!subcategory?.id) {
+      throw new Error(
+        "Guarda primero la subcategoria para poder eliminar imagen."
+      );
+    }
+    const updated = await deleteProductSubcategoryImage(subcategory.id);
+    setImageSubcategory(updated);
+    onImageChange?.(updated);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -237,6 +271,19 @@ export const ProductSubcategoryForm = ({
         />
         Subcategoria activa
       </label>
+
+      <InventoryImageUploadPanel
+        entityId={mode === "edit" ? subcategory?.id : null}
+        title="Imagen predeterminada"
+        imageUrl={currentImageSubcategory?.defaultImageUrl}
+        imageAltText={currentImageSubcategory?.defaultImageAltText}
+        imageMimeType={currentImageSubcategory?.defaultImageMimeType}
+        imageSizeBytes={currentImageSubcategory?.defaultImageSizeBytes}
+        disabledMessage="Guarda primero la subcategoria para poder cargar imagen."
+        fallbackLabel={values.name || "Subcategoria"}
+        onUpload={handleImageUpload}
+        onDelete={handleImageDelete}
+      />
 
       {errors.submit ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

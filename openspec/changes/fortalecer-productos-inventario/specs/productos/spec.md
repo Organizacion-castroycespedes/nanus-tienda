@@ -232,9 +232,9 @@ The system SHALL allow products to reference an optional category and optional s
 - WHEN a product payload pairs it with the wrong category
 - THEN the API SHALL reject the request.
 
-### Requirement: Product image metadata without upload
+### Requirement: Product image metadata
 
-The system SHALL store optional product image metadata fields without implementing actual file upload or local storage in this phase.
+The system SHALL store optional product image metadata fields used by product image workflows.
 
 #### Scenario: Product image metadata provided
 
@@ -275,7 +275,7 @@ The system SHALL provide frontend pages to administer product categories and sub
 
 - GIVEN the classification UI is available
 - WHEN the user administers categories or subcategories
-- THEN the system SHALL NOT implement real image upload, local storage, POS category filters or POS product image changes in this phase.
+- THEN the system SHALL NOT implement POS category filters or POS product image changes in this phase.
 
 ### Requirement: Product CRUD classification assignment UI
 
@@ -313,4 +313,54 @@ The system SHALL allow product create and edit workflows to assign optional prod
 
 - GIVEN product CRUD supports classification assignment
 - WHEN the user creates or edits products
-- THEN the system SHALL NOT implement real image upload, local storage, POS filters, POS effective image, taxes, discounts, inventory/stock changes or payments changes in this phase.
+- THEN the system SHALL NOT implement POS filters, POS effective image, taxes, discounts, inventory/stock changes or payments changes in this phase.
+
+### Requirement: Local product image upload
+
+The system SHALL support optional local image upload, replacement, retrieval and deletion for products, product categories and product subcategories.
+
+#### Scenario: Valid image uploaded
+
+- GIVEN a user has product-equivalent write permission
+- WHEN the user uploads a JPG, PNG or WebP image for a product, category or subcategory
+- THEN the API SHALL save the file in local storage using a generated storage key.
+- AND the API SHALL persist only URL, storage key, alt text, MIME type, size and updated image metadata in the database.
+- AND the API SHALL NOT expose an absolute filesystem path.
+
+#### Scenario: Invalid image rejected
+
+- GIVEN a user uploads a file with unsupported MIME type, unsupported extension, invalid signature, unsafe filename or excessive size
+- WHEN the upload endpoint validates the file
+- THEN the API SHALL reject the request without updating database image metadata.
+
+#### Scenario: Image replaced
+
+- GIVEN a product, category or subcategory already has an image
+- WHEN the user uploads a replacement image
+- THEN the API SHALL save the new file, update database metadata and remove the previous local file when possible.
+
+#### Scenario: Image deleted
+
+- GIVEN a product, category or subcategory has image metadata
+- WHEN the user deletes the image
+- THEN the API SHALL clear the corresponding image metadata fields.
+- AND the API SHALL remove the local file when possible.
+
+#### Scenario: Tenant-safe image retrieval
+
+- GIVEN an image belongs to a record in another tenant
+- WHEN a user attempts to retrieve it by ID
+- THEN the API SHALL reject the request as not found or unauthorized according to the current authorization pattern.
+
+#### Scenario: Image upload UI after save
+
+- GIVEN a user is creating a product, category or subcategory
+- WHEN the record has not been saved yet
+- THEN the UI SHALL indicate that the record must be saved before uploading an image.
+- AND the rest of the form SHALL remain usable without an image.
+
+#### Scenario: POS image behavior remains out of scope
+
+- GIVEN local image upload is available in inventory administration
+- WHEN POS renders products
+- THEN the system SHALL NOT use these images as effective POS product images in this phase.

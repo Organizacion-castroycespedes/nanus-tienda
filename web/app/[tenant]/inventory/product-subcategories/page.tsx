@@ -17,6 +17,7 @@ import { hasMenuAccess } from "../../../../lib/permissions";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../../store/hooks";
 import { FocusActionLayout } from "../../../../modules/inventory/components/FocusActionLayout";
+import { InventoryImagePreview } from "../../../../modules/inventory/components/InventoryImagePreview";
 import { ProductSubcategoryForm } from "../../../../modules/inventory/components/ProductSubcategoryForm";
 import {
   activateProductSubcategory,
@@ -67,21 +68,13 @@ const SubcategoryImage = ({
 }: {
   subcategory: ProductSubcategoryResponse;
 }) => {
-  if (subcategory.defaultImageUrl) {
-    return (
-      <div
-        aria-label={subcategory.defaultImageAltText ?? subcategory.name}
-        className="h-12 w-12 rounded-lg bg-cover bg-center"
-        role="img"
-        style={{ backgroundImage: `url("${subcategory.defaultImageUrl}")` }}
-      />
-    );
-  }
-
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-600">
-      {getClassificationInitials(subcategory.name)}
-    </div>
+    <InventoryImagePreview
+      imageUrl={subcategory.defaultImageUrl}
+      altText={subcategory.defaultImageAltText ?? subcategory.name}
+      className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600"
+      fallback={getClassificationInitials(subcategory.name)}
+    />
   );
 };
 
@@ -253,6 +246,23 @@ const ProductSubcategoriesPage = () => {
       "success"
     );
     void loadSubcategories(appliedFilters);
+  };
+
+  const handleSubcategoryImageChange = (
+    updatedSubcategory: ProductSubcategoryResponse
+  ) => {
+    setSubcategories((current) =>
+      current.map((subcategory) =>
+        subcategory.id === updatedSubcategory.id
+          ? { ...subcategory, ...updatedSubcategory }
+          : subcategory
+      )
+    );
+    setSelectedSubcategory((current) =>
+      current?.id === updatedSubcategory.id
+        ? { ...current, ...updatedSubcategory }
+        : current
+    );
   };
 
   const handleStatusChange = async () => {
@@ -441,6 +451,7 @@ const ProductSubcategoriesPage = () => {
               defaultCategoryId={filters.categoryId}
               onCancel={closeAction}
               onSuccess={handleFormSuccess}
+              onImageChange={handleSubcategoryImageChange}
             />
           ) : null}
 

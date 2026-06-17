@@ -31,6 +31,12 @@ export type InventoryProductRow = QueryResultRow & {
   max_stock: string | number | null;
   category_id: string | null;
   subcategory_id: string | null;
+  image_url: string | null;
+  image_storage_key: string | null;
+  image_alt_text: string | null;
+  image_mime_type: string | null;
+  image_size_bytes: string | number | null;
+  image_updated_at: string | Date | null;
   created_at: string | Date;
   updated_at: string | Date;
   stock: string | number;
@@ -163,6 +169,12 @@ export class InventoryRepository {
         p.max_stock,
         p.category_id,
         p.subcategory_id,
+        p.image_url,
+        p.image_storage_key,
+        p.image_alt_text,
+        p.image_mime_type,
+        p.image_size_bytes,
+        p.image_updated_at,
         p.created_at,
         p.updated_at,
         COALESCE(stock_summary.stock, 0) AS stock,

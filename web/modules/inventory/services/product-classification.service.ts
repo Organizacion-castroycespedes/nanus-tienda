@@ -102,6 +102,32 @@ export const updateProductCategory = (
     }
   );
 
+export const uploadProductCategoryImage = (
+  categoryId: string,
+  file: File,
+  altText?: string | null
+) => {
+  const body = new FormData();
+  body.append("file", file);
+  if (altText?.trim()) {
+    body.append("altText", altText.trim());
+  }
+
+  return apiClient<ProductCategoryResponse>(
+    `/inventory/product-categories/${categoryId}/image`,
+    {
+      method: "POST",
+      body,
+    }
+  );
+};
+
+export const deleteProductCategoryImage = (categoryId: string) =>
+  apiClient<ProductCategoryResponse>(
+    `/inventory/product-categories/${categoryId}/image`,
+    { method: "DELETE" }
+  );
+
 export const activateProductCategory = (categoryId: string) =>
   apiClient<ProductCategoryResponse>(
     `/inventory/product-categories/${categoryId}/activate`,
@@ -147,6 +173,32 @@ export const updateProductSubcategory = (
       method: "PUT",
       body: JSON.stringify(payload),
     }
+  );
+
+export const uploadProductSubcategoryImage = (
+  subcategoryId: string,
+  file: File,
+  altText?: string | null
+) => {
+  const body = new FormData();
+  body.append("file", file);
+  if (altText?.trim()) {
+    body.append("altText", altText.trim());
+  }
+
+  return apiClient<ProductSubcategoryResponse>(
+    `/inventory/product-subcategories/${subcategoryId}/image`,
+    {
+      method: "POST",
+      body,
+    }
+  );
+};
+
+export const deleteProductSubcategoryImage = (subcategoryId: string) =>
+  apiClient<ProductSubcategoryResponse>(
+    `/inventory/product-subcategories/${subcategoryId}/image`,
+    { method: "DELETE" }
   );
 
 export const activateProductSubcategory = (subcategoryId: string) =>

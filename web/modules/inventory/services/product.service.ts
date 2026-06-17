@@ -123,6 +123,34 @@ export const updateProduct = (
     body: JSON.stringify(payload),
   });
 
+export const uploadProductImage = (
+  productId: string,
+  file: File,
+  altText?: string | null,
+  headers?: HeadersInit
+) => {
+  const body = new FormData();
+  body.append("file", file);
+  if (altText?.trim()) {
+    body.append("altText", altText.trim());
+  }
+
+  return apiClient<ProductResponse>(`/inventory/products/${productId}/image`, {
+    method: "POST",
+    headers,
+    body,
+  });
+};
+
+export const deleteProductImage = (
+  productId: string,
+  headers?: HeadersInit
+) =>
+  apiClient<ProductResponse>(`/inventory/products/${productId}/image`, {
+    method: "DELETE",
+    headers,
+  });
+
 export const deleteProduct = (productId: string, headers?: HeadersInit) =>
   apiClient<void>(`/products/${productId}`, {
     method: "DELETE",

@@ -34,7 +34,9 @@ import { InventoryLotReconciliationService } from "./services/inventory-lot-reco
 import { OrderService } from "./services/order.service";
 import { ProductBarcodeService } from "./services/product-barcode.service";
 import { ProductCategoryService } from "./services/product-category.service";
+import { LocalImageStorageService } from "./services/local-image-storage.service";
 import { ProductService } from "./services/product.service";
+import { ProductImageService } from "./services/product-image.service";
 import { ProductSubcategoryService } from "./services/product-subcategory.service";
 import { PurchaseService } from "./services/purchase.service";
 import { SaleService } from "./services/sale.service";
@@ -100,6 +102,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationService,
     OrderService,
     ProductService,
+    ProductImageService,
+    LocalImageStorageService,
     ProductBarcodeService,
     ProductCategoryService,
     ProductSubcategoryService,
