@@ -5,6 +5,7 @@ import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { PERMISSION_KEY } from "../../../common/decorators/require-permission.decorator";
 import { ROLES_KEY } from "../../../common/decorators/roles.decorator";
 import { PromotionsController } from "../../pricing/promotions.controller";
+import { CustomerController } from "./customer.controller";
 import { InventoryLocationController } from "./inventory-location.controller";
 import { InventoryLotController } from "./inventory-lot.controller";
 import { ProductBarcodeController } from "./product-barcode.controller";
@@ -16,6 +17,7 @@ import { TaxController } from "./tax.controller";
 import { UnitController } from "./unit.controller";
 
 const adminWriteRoles = ["SUPER_ADMIN", "SUPER_USER", "ADMIN"];
+const operationalRoles = ["USER", "ADMIN", "SUPER_USER"];
 
 type ControllerMethod = {
   controller: string;
@@ -39,7 +41,7 @@ const getMethodPermission = (prototype: object, methodName: string) => {
   const method = (prototype as Record<string, unknown>)[methodName];
   assert.equal(typeof method, "function", `${methodName} must be a method`);
   return Reflect.getMetadata(PERMISSION_KEY, method) as
-    | { menuKey: string; level: string }
+    | { menuKey: string; level: string; operationalRoles?: string[] }
     | undefined;
 };
 
@@ -132,6 +134,56 @@ describe("operational catalog role permissions", () => {
         `TaxController.${methodName} must use INVENTORY_TAXES`
       );
       assert.notEqual(taxPermission?.menuKey, "INVENTORY");
+    }
+  });
+
+  it("marks customer create and update as operational writes", () => {
+    for (const methodName of ["create", "list", "getById", "update"]) {
+      const permission = getMethodPermission(CustomerController.prototype, methodName);
+      assert.equal(
+        permission?.menuKey,
+        "CUSTOMERS",
+        `CustomerController.${methodName} must use CUSTOMERS`
+      );
+      assert.deepEqual(
+        permission?.operationalRoles,
+        operationalRoles,
+        `CustomerController.${methodName} must allow operational roles`
+      );
+    }
+
+    const removeRoles = getMethodRoles(CustomerController.prototype, "remove");
+    assert.equal(removeRoles?.includes("USER"), false);
+  });
+
+  it("marks POS/Orders catalog reads as operational reads without opening writes", () => {
+    for (const methodName of ["list", "getById", "getPriceHistory"]) {
+      const permission = getMethodPermission(ProductController.prototype, methodName);
+      assert.equal(permission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(permission?.level, "READ");
+      assert.deepEqual(permission?.operationalRoles, operationalRoles);
+    }
+
+    const barcodePermission = getMethodPermission(
+      ProductBarcodeController.prototype,
+      "list"
+    );
+    assert.equal(barcodePermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+    assert.equal(barcodePermission?.level, "READ");
+    assert.deepEqual(barcodePermission?.operationalRoles, operationalRoles);
+
+    const taxPermission = getMethodPermission(TaxController.prototype, "list");
+    assert.equal(taxPermission?.menuKey, MENU_KEYS.INVENTORY_TAXES);
+    assert.equal(taxPermission?.level, "READ");
+    assert.deepEqual(taxPermission?.operationalRoles, operationalRoles);
+
+    for (const methodName of ["create", "changePrice", "update", "remove"]) {
+      const roles = getMethodRoles(ProductController.prototype, methodName);
+      assert.equal(roles?.includes("USER"), false);
+    }
+    for (const methodName of ["create", "update", "remove"]) {
+      const roles = getMethodRoles(TaxController.prototype, methodName);
+      assert.equal(roles?.includes("USER"), false);
     }
   });
 

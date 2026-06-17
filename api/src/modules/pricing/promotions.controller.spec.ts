@@ -59,6 +59,7 @@ describe("PromotionsController", () => {
       deactivatePermission,
     ]) {
       assert.notEqual(permission.menuKey, "INVENTORY_PRODUCTS");
+      assert.equal(permission.operationalRoles, undefined);
     }
   });
 

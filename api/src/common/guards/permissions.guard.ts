@@ -25,6 +25,13 @@ const OPERATIONAL_ADMIN_MENU_KEYS = new Set<string>([
 const hasOperationalAdminRole = (roles: string[] | undefined) =>
   roles?.some((role) => role === "ADMIN" || role === "SUPER_USER") ?? false;
 
+const hasOperationalRoleOverride = (
+  roles: string[] | undefined,
+  requiredPermission: RequiredPermission
+) =>
+  requiredPermission.operationalRoles?.some((role) => roles?.includes(role)) ??
+  false;
+
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
@@ -82,6 +89,9 @@ export class PermissionsGuard implements CanActivate {
         OPERATIONAL_ADMIN_MENU_KEYS.has(menuKey)
       )
     ) {
+      return true;
+    }
+    if (hasOperationalRoleOverride(user.roles, requiredPermission)) {
       return true;
     }
 

@@ -1,9 +1,27 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
+import "reflect-metadata";
+import { MENU_KEYS } from "../../common/constants/menu-keys";
+import { PERMISSION_KEY } from "../../common/decorators/require-permission.decorator";
 import { PricingController } from "./pricing.controller";
 
+const pricingPreviewOperationalRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 describe("PricingController", () => {
+  it("marks preview-line as an operational read without pricing admin grants", () => {
+    const previewPermission = Reflect.getMetadata(
+      PERMISSION_KEY,
+      PricingController.prototype.previewLine
+    );
+
+    assert.deepEqual(previewPermission, {
+      menuKey: MENU_KEYS.INVENTORY_PRODUCTS,
+      level: "READ",
+      operationalRoles: pricingPreviewOperationalRoles,
+    });
+  });
+
   it("previews a line using tenant from authenticated request", async () => {
     const tenantId = randomUUID();
     const productId = randomUUID();

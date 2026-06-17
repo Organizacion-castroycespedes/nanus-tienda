@@ -7,6 +7,7 @@ export type RequiredPermission = {
   menuKey: string | string[];
   level: PermissionAccessLevel;
   action?: string;
+  operationalRoles?: string[];
 };
 
 export const RequirePermission = (permission: RequiredPermission) =>

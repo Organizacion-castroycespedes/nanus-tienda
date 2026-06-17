@@ -42,6 +42,8 @@ const isUuid = (value: string) =>
     value
   );
 
+const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 @Controller("products/:productId/barcodes")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ProductBarcodeController {
@@ -66,7 +68,11 @@ export class ProductBarcodeController {
 
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  @RequirePermission({
+    menuKey: "INVENTORY_PRODUCTS",
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
   list(@Param("productId") productId: string, @Req() request: AuthRequest) {
     this.assertUuid(productId, "productId");
     return this.productBarcodeService.findByProduct(

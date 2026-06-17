@@ -33,6 +33,8 @@ type AuthRequest = Request & {
   };
 };
 
+const customerOperationalRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 @Controller("electronic-invoicing/customers")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
@@ -51,7 +53,11 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Get()
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "READ" })
+  @RequirePermission({
+    menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+    level: "READ",
+    operationalRoles: customerOperationalRoles,
+  })
   list(
     @Query() query: ListElectronicInvoicingCustomersDto,
     @Req() request: AuthRequest
@@ -60,7 +66,11 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Post()
-  @RequirePermission({ menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"], level: "WRITE" })
+  @RequirePermission({
+    menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
+    level: "WRITE",
+    operationalRoles: customerOperationalRoles,
+  })
   create(
     @Body() body: CreateElectronicInvoicingCustomerDto,
     @Req() request: AuthRequest
@@ -84,7 +94,11 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Patch(":id")
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "WRITE" })
+  @RequirePermission({
+    menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+    level: "WRITE",
+    operationalRoles: customerOperationalRoles,
+  })
   update(
     @Param("id") id: string,
     @Body() body: UpdateElectronicInvoicingCustomerDto,
@@ -112,7 +126,11 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Get("default")
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "READ" })
+  @RequirePermission({
+    menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+    level: "READ",
+    operationalRoles: customerOperationalRoles,
+  })
   getDefault(@Req() request: AuthRequest) {
     return this.customersService.getDefaultFinalConsumer(
       this.getTenantId(request)
@@ -120,7 +138,11 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Post("default/ensure")
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "WRITE" })
+  @RequirePermission({
+    menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+    level: "WRITE",
+    operationalRoles: customerOperationalRoles,
+  })
   ensureDefault(@Req() request: AuthRequest) {
     return this.customersService.ensureDefaultFinalConsumer(
       this.getTenantId(request)
@@ -128,7 +150,11 @@ export class ElectronicInvoicingCustomersController {
   }
 
   @Get(":id")
-  @RequirePermission({ menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, level: "READ" })
+  @RequirePermission({
+    menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+    level: "READ",
+    operationalRoles: customerOperationalRoles,
+  })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.customersService.getCustomer(id, this.getTenantId(request));
   }
