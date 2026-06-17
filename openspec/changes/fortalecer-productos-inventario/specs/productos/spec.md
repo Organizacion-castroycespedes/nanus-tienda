@@ -243,3 +243,36 @@ The system SHALL store optional product image metadata fields without implementi
 - THEN it SHALL allow only `image/jpeg`, `image/png` or `image/webp` MIME types.
 - AND it SHALL reject negative image sizes.
 - AND it SHALL update `image_updated_at` when image metadata changes.
+
+### Requirement: Product classification administration UI
+
+The system SHALL provide frontend pages to administer product categories and subcategories without using modals as the primary create/edit pattern.
+
+#### Scenario: Manage categories from focused UI
+
+- GIVEN a user has product-equivalent permission
+- WHEN the user opens `/inventory/product-categories`
+- THEN the system SHALL list product categories for the current tenant.
+- AND the user SHALL be able to create, edit, activate and deactivate categories through a focused inline or master-detail experience.
+- AND the page SHALL show active/inactive state, description, sort order and image placeholder or image URL preview.
+
+#### Scenario: Manage subcategories from focused UI
+
+- GIVEN a user has product-equivalent permission
+- WHEN the user opens `/inventory/product-subcategories`
+- THEN the system SHALL list product subcategories for the current tenant.
+- AND the user SHALL be able to filter by parent category.
+- AND the user SHALL be able to create, edit, activate and deactivate subcategories through a focused inline or master-detail experience.
+- AND creating a subcategory SHALL require selecting a parent category.
+
+#### Scenario: No categories exist for subcategories
+
+- GIVEN no product categories exist for the current tenant
+- WHEN the user opens the subcategory administration page
+- THEN the system SHALL guide the user to create categories before creating subcategories.
+
+#### Scenario: Classification UI preserves out-of-scope features
+
+- GIVEN the classification UI is available
+- WHEN the user administers categories or subcategories
+- THEN the system SHALL NOT implement real image upload, local storage, POS category filters or product CRUD classification changes in this phase.

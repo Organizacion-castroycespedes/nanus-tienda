@@ -1443,6 +1443,34 @@
 - [x] Crear `docs/evidencia-product-classification-backend-fase-6-9-5.md`.
 - [x] Confirmar que no se implemento UI, upload real, storage local, filtros POS, impuestos, descuentos, inventario ni cobro/pagos.
 
+## Fase 6.9.6: UI categorias/subcategorias sin modales
+
+- [x] Confirmar `git status --short` limpio y HEAD `7fb773d fix(api): wire product classification into inventory module`.
+- [x] Discover rutas frontend de inventario/productos.
+- [x] Discover convencion de modulos frontend en `web/modules/inventory`.
+- [x] Discover patrones CRUD sin modales en unidades, impuestos y ubicaciones.
+- [x] Discover componentes `web/components/design-system`.
+- [x] Discover patron de API client/fetch y manejo de errores.
+- [x] Discover permisos y rutas para categorias/subcategorias.
+- [x] Crear cliente frontend de categorias/subcategorias.
+- [x] Crear helpers frontend de clasificacion y tests.
+- [x] Crear formulario inline de categorias.
+- [x] Crear formulario inline de subcategorias.
+- [x] Crear ruta `/[tenant]/inventory/product-categories`.
+- [x] Crear ruta `/[tenant]/inventory/product-subcategories`.
+- [x] Implementar listado/loading/empty/error para categorias.
+- [x] Implementar listado/loading/empty/error para subcategorias.
+- [x] Implementar crear/editar/activar/desactivar categorias sin modales.
+- [x] Implementar crear/editar/activar/desactivar subcategorias sin modales.
+- [x] Implementar filtro por categoria en subcategorias.
+- [x] Implementar placeholder/preview de imagen sin upload real.
+- [x] Mantener permisos frontend equivalentes a Productos.
+- [x] Ejecutar tests frontend relevantes.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Crear `docs/evidencia-product-classification-ui-fase-6-9-6.md`.
+- [x] Confirmar que no se implemento upload real, storage local, adaptacion CRUD productos, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario ni cobro/pagos.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.
