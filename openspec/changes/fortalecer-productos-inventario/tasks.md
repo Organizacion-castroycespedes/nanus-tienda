@@ -1566,6 +1566,24 @@
 - [x] Confirmar QA manual local de carrito sticky/floating, F4 cobrar y Scanner/Balanza compactos funcionando.
 - [x] Confirmar que no se implemento nuevas migraciones, upload endpoints, storage local, impuestos, descuentos, inventario/stock, cobro/pagos ni reescritura visual grande del POS.
 
+## Fase 6.9.10: QA integral clasificacion productos
+
+- [x] Confirmar `git status --short` limpio y HEAD `bec8632 feat(pos): filter products by classification and show effective images`.
+- [x] Consolidar evidencia fase 6.9.4 menu/permisos.
+- [x] Consolidar evidencia fase 6.9.5 DB/backend tenant-safe.
+- [x] Consolidar evidencia fase 6.9.6 UI categorias/subcategorias.
+- [x] Consolidar evidencia fase 6.9.7 CRUD productos.
+- [x] Consolidar evidencia fase 6.9.8 upload local imagenes.
+- [x] Consolidar evidencia fase 6.9.9 POS filtros/imagenes.
+- [x] Ejecutar tests backend relevantes de permisos, categorias, subcategorias, productos e imagenes.
+- [x] Ejecutar tests frontend relevantes de permisos, rutas, helpers de clasificacion, upload e imagen efectiva POS.
+- [x] Ejecutar build API.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar OpenSpec validate.
+- [x] Ejecutar `git diff --check`.
+- [x] Crear `docs/evidencia-product-classification-integral-qa-fase-6-9-10.md`.
+- [x] Confirmar que no se agregaron migraciones, endpoints, pantallas, permisos, cambios fiscales, impuestos, descuentos, inventario/stock, cobro/pagos ni reescrituras visuales grandes.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.
