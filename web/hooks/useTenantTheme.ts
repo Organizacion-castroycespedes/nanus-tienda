@@ -12,7 +12,14 @@ export const useTenantTheme = () => {
 
     return {
       primary: theme.primary,
+      primaryText: theme.primaryText,
+      primarySoftBg: theme.primarySoftBg,
+      primaryBorder: theme.primaryBorder,
       secondary: theme.secondary,
+      secondaryText: theme.secondaryText,
+      secondarySoftBg: theme.secondarySoftBg,
+      secondaryBorder: theme.secondaryBorder,
+      appBackground: theme.appBackground,
       background: theme.background,
       text: theme.text,
       hover: theme.hover,
@@ -25,6 +32,7 @@ export const useTenantTheme = () => {
       font: theme.font,
       spacing: theme.spacing,
       sidebar: theme.sidebar,
+      menu: theme.menu,
       header: theme.header,
       surface: theme.surface,
     };

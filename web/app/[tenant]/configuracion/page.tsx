@@ -15,6 +15,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
+import { ColorField } from "../../../components/design-system/ColorField";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { SearchFilters } from "../../../components/design-system/SearchFilters";
@@ -54,8 +55,14 @@ import {
   updateTenant,
 } from "../../../domains/tenants/api";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
-import { setBranding } from "../../../store/brandingSlice";
+import { setBranding, type BrandingConfig } from "../../../store/brandingSlice";
 import { resetCompanyDetails, setCompanyDetails } from "../../../store/companySlice";
+import { buildTenantThemeTokens } from "../../../src/lib/theme/buildTenantTheme";
+import {
+  isValidHexColor,
+  normalizeHexColor,
+} from "../../../src/lib/theme/colors";
+import { BrandingThemePreview } from "./components/BrandingThemePreview";
 
 type TabKey = "empresa" | "branding" | "sucursales";
 
@@ -82,6 +89,44 @@ type BranchForm = {
   email: string;
   estado: BranchStatus;
 };
+
+type BrandingColorKey = keyof BrandingConfig["colors"];
+
+type BrandingFormState = {
+  colors: BrandingConfig["colors"];
+  font: string;
+  logo: string;
+  spacing: BrandingConfig["spacing"];
+};
+
+const brandingColorFields: Array<{
+  key: BrandingColorKey;
+  label: string;
+  required?: boolean;
+}> = [
+  { key: "primary", label: "Color primario", required: true },
+  { key: "secondary", label: "Color secundario" },
+  { key: "background", label: "Color fondo" },
+  { key: "text", label: "Color texto" },
+];
+
+const colorFallbacks: Record<BrandingColorKey, string> = {
+  primary: defaultTheme.colors.primary,
+  secondary: defaultTheme.colors.secondary,
+  background: defaultTheme.colors.background,
+  text: defaultTheme.colors.text,
+};
+
+const resolveColorFormValue = (value: unknown, fallback: string) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return fallback;
+  }
+
+  return normalizeHexColor(value) ?? value;
+};
+
+const normalizeColorOrFallback = (value: string, fallback: string) =>
+  normalizeHexColor(value) ?? fallback;
 
 const emptyCompanyDetails = {
   razonSocial: "",
@@ -198,12 +243,21 @@ const ConfiguracionPage = () => {
     ...emptyCompanyDetails,
     ...(companyDetails ?? {}),
   }));
-  const [brandingForm, setBrandingForm] = useState(() => ({
+  const [brandingForm, setBrandingForm] = useState<BrandingFormState>(() => ({
     colors: {
-      primary: branding.colors.primary,
-      secondary: branding.colors.secondary,
-      background: branding.colors.background,
-      text: branding.colors.text,
+      primary: resolveColorFormValue(
+        branding.colors.primary,
+        defaultTheme.colors.primary
+      ),
+      secondary: resolveColorFormValue(
+        branding.colors.secondary,
+        defaultTheme.colors.secondary
+      ),
+      background: resolveColorFormValue(
+        branding.colors.background,
+        defaultTheme.colors.background
+      ),
+      text: resolveColorFormValue(branding.colors.text, defaultTheme.colors.text),
     },
     font: branding.font,
     logo: branding.logo ?? "",
@@ -351,23 +405,42 @@ const ConfiguracionPage = () => {
 
   const buildBrandingForm = useCallback(
     (config?: {
-      colors?: Record<string, string>;
+      colors?: Record<string, unknown>;
       font?: string;
       logo?: string;
-      spacing?: Record<string, string>;
-    }) => ({
+      logoUrl?: string;
+      spacing?: Record<string, unknown>;
+    }): BrandingFormState => ({
       colors: {
-        primary: config?.colors?.primary ?? defaultTheme.colors.primary,
-        secondary: config?.colors?.secondary ?? defaultTheme.colors.secondary,
-        background: config?.colors?.background ?? defaultTheme.colors.background,
-        text: config?.colors?.text ?? defaultTheme.colors.text,
+        primary: resolveColorFormValue(
+          config?.colors?.primary,
+          defaultTheme.colors.primary
+        ),
+        secondary: resolveColorFormValue(
+          config?.colors?.secondary,
+          defaultTheme.colors.secondary
+        ),
+        background: resolveColorFormValue(
+          config?.colors?.background,
+          defaultTheme.colors.background
+        ),
+        text: resolveColorFormValue(config?.colors?.text, defaultTheme.colors.text),
       },
       font: config?.font ?? defaultTheme.typography.fontFamily,
-      logo: config?.logo ?? "",
+      logo: config?.logo ?? config?.logoUrl ?? "",
       spacing: {
-        sm: config?.spacing?.sm ?? defaultTheme.spacing.sm,
-        md: config?.spacing?.md ?? defaultTheme.spacing.md,
-        lg: config?.spacing?.lg ?? defaultTheme.spacing.lg,
+        sm:
+          typeof config?.spacing?.sm === "string"
+            ? config.spacing.sm
+            : defaultTheme.spacing.sm,
+        md:
+          typeof config?.spacing?.md === "string"
+            ? config.spacing.md
+            : defaultTheme.spacing.md,
+        lg:
+          typeof config?.spacing?.lg === "string"
+            ? config.spacing.lg
+            : defaultTheme.spacing.lg,
       },
     }),
     []
@@ -550,22 +623,8 @@ const ConfiguracionPage = () => {
     if (!isCurrentTenant) {
       return;
     }
-    setBrandingForm({
-      colors: {
-        primary: branding.colors.primary,
-        secondary: branding.colors.secondary,
-        background: branding.colors.background,
-        text: branding.colors.text,
-      },
-      font: branding.font,
-      logo: branding.logo ?? "",
-      spacing: {
-        sm: branding.spacing.sm,
-        md: branding.spacing.md,
-        lg: branding.spacing.lg,
-      },
-    });
-  }, [branding, isCurrentTenant]);
+    setBrandingForm(buildBrandingForm(branding));
+  }, [branding, buildBrandingForm, isCurrentTenant]);
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -576,6 +635,10 @@ const ConfiguracionPage = () => {
     }
     let active = true;
     setTenantLoading(true);
+    setBrandingForm(isCurrentTenant ? buildBrandingForm(branding) : buildBrandingForm());
+    if (!isCurrentTenant) {
+      setCompanyForm({ ...emptyCompanyDetails });
+    }
     void (async () => {
       try {
         const [configResult, detailsResult] = await Promise.allSettled([
@@ -650,6 +713,7 @@ const ConfiguracionPage = () => {
   }, [
     activeTab,
     buildBrandingForm,
+    branding,
     isCurrentTenant,
     isSuperAdmin,
     selectedTenantId,
@@ -733,6 +797,23 @@ const ConfiguracionPage = () => {
     });
   };
 
+  const normalizeBrandingColorField = (key: BrandingColorKey) => {
+    setBrandingForm((prev) => {
+      const normalized = normalizeHexColor(prev.colors[key]);
+      if (!normalized) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        colors: {
+          ...prev.colors,
+          [key]: normalized,
+        },
+      };
+    });
+  };
+
   const handleLogoUpload = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
@@ -742,6 +823,74 @@ const ConfiguracionPage = () => {
     };
     reader.readAsDataURL(file);
   };
+
+  const brandingColorErrors = useMemo(() => {
+    return brandingColorFields.reduce<Record<BrandingColorKey, string | null>>(
+      (acc, field) => {
+        const value = brandingForm.colors[field.key]?.trim() ?? "";
+
+        if (!value) {
+          acc[field.key] = field.required ? "Este color es obligatorio." : null;
+          return acc;
+        }
+
+        acc[field.key] = isValidHexColor(value)
+          ? null
+          : "Usa formato #RGB o #RRGGBB.";
+        return acc;
+      },
+      {
+        primary: null,
+        secondary: null,
+        background: null,
+        text: null,
+      }
+    );
+  }, [brandingForm.colors]);
+
+  const hasBrandingColorErrors = Object.values(brandingColorErrors).some(Boolean);
+
+  const normalizedBrandingConfig = useMemo<BrandingConfig>(
+    () => ({
+      colors: {
+        primary: normalizeColorOrFallback(
+          brandingForm.colors.primary,
+          defaultTheme.colors.primary
+        ),
+        secondary: normalizeColorOrFallback(
+          brandingForm.colors.secondary,
+          defaultTheme.colors.secondary
+        ),
+        background: normalizeColorOrFallback(
+          brandingForm.colors.background,
+          defaultTheme.colors.background
+        ),
+        text: normalizeColorOrFallback(brandingForm.colors.text, defaultTheme.colors.text),
+      },
+      font: brandingForm.font.trim() || defaultTheme.typography.fontFamily,
+      logo: brandingForm.logo.trim() || undefined,
+      spacing: {
+        sm: brandingForm.spacing.sm.trim() || defaultTheme.spacing.sm,
+        md: brandingForm.spacing.md.trim() || defaultTheme.spacing.md,
+        lg: brandingForm.spacing.lg.trim() || defaultTheme.spacing.lg,
+      },
+    }),
+    [brandingForm]
+  );
+
+  const previewTheme = useMemo(
+    () => buildTenantThemeTokens(normalizedBrandingConfig),
+    [normalizedBrandingConfig]
+  );
+  const selectedTenantName =
+    tenants.find((tenant) => tenant.id === selectedTenantId)?.nombre ??
+    authUser?.tenantName ??
+    "";
+  const previewCompanyName =
+    companyForm.razonSocial.trim() ||
+    companyDetails?.razonSocial?.trim() ||
+    selectedTenantName ||
+    "Manus Tienda Platform S.A.S.";
 
   const openCreateBranchModal = () => {
     setBranchModalMode("create");
@@ -1158,38 +1307,21 @@ const ConfiguracionPage = () => {
       </p>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Input
-          label="Color primario"
-          type="color"
-          value={brandingForm.colors.primary}
-          onChange={(event) =>
-            handleBrandingChange("colors.primary", event.target.value)
-          }
-        />
-        <Input
-          label="Color secundario"
-          type="color"
-          value={brandingForm.colors.secondary}
-          onChange={(event) =>
-            handleBrandingChange("colors.secondary", event.target.value)
-          }
-        />
-        <Input
-          label="Color fondo"
-          type="color"
-          value={brandingForm.colors.background}
-          onChange={(event) =>
-            handleBrandingChange("colors.background", event.target.value)
-          }
-        />
-        <Input
-          label="Color texto"
-          type="color"
-          value={brandingForm.colors.text}
-          onChange={(event) =>
-            handleBrandingChange("colors.text", event.target.value)
-          }
-        />
+        {brandingColorFields.map((field) => (
+          <ColorField
+            key={field.key}
+            id={`branding-color-${field.key}`}
+            label={field.label}
+            required={field.required}
+            value={brandingForm.colors[field.key] ?? ""}
+            fallback={colorFallbacks[field.key]}
+            error={brandingColorErrors[field.key]}
+            onBlur={() => normalizeBrandingColorField(field.key)}
+            onChange={(value) =>
+              handleBrandingChange(`colors.${field.key}`, value)
+            }
+          />
+        ))}
         <Input
           label="Tipografía base"
           required
@@ -1246,32 +1378,11 @@ const ConfiguracionPage = () => {
         />
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Vista previa</p>
-        <div
-          className="mt-3 rounded-xl border border-slate-200 bg-white p-4"
-          style={{
-            color: brandingForm.colors.text,
-            background: brandingForm.colors.background,
-            fontFamily: brandingForm.font,
-          }}
-        >
-          <p className="text-sm font-semibold">
-            {companyForm.razonSocial || "Nombre de la compañía"}
-          </p>
-          <p className="text-xs text-slate-500">
-            El branding se aplicará en todo el sistema al guardar.
-          </p>
-          <Button
-            className="mt-3"
-            style={{
-              background: brandingForm.colors.primary,
-            }}
-          >
-            Acción primaria
-          </Button>
-        </div>
-      </div>
+      <BrandingThemePreview
+        theme={previewTheme}
+        companyName={previewCompanyName}
+        logo={normalizedBrandingConfig.logo}
+      />
     </div>
   );
 
@@ -1455,19 +1566,16 @@ const ConfiguracionPage = () => {
   }, [companyForm]);
 
   const isBrandingFormComplete = useMemo(() => {
-    const { colors, spacing, font, logo } = brandingForm;
+    const { colors, spacing, font } = brandingForm;
     return (
       colors.primary.trim().length > 0 &&
-      colors.secondary.trim().length > 0 &&
-      colors.background.trim().length > 0 &&
-      colors.text.trim().length > 0 &&
       font.trim().length > 0 &&
       spacing.sm.trim().length > 0 &&
       spacing.md.trim().length > 0 &&
-      spacing.lg.trim().length > 0 ||
-      logo.trim().length > 0
+      spacing.lg.trim().length > 0 &&
+      !hasBrandingColorErrors
     );
-  }, [brandingForm]);
+  }, [brandingForm, hasBrandingColorErrors]);
 
   const isBranchFormComplete = useMemo(() => {
     return (
@@ -1554,32 +1662,45 @@ const ConfiguracionPage = () => {
       setStatusWarning("No hay un tenant activo para guardar el branding.");
       return;
     }
+    if (hasBrandingColorErrors) {
+      setStatusWarning("Corrige los colores invalidos antes de guardar.");
+      return;
+    }
     try {
-      const response = await updateTenantConfig(selectedTenantId, {
-        colors: brandingForm.colors,
-        font: brandingForm.font,
-        logo: brandingForm.logo || undefined,
-        spacing: brandingForm.spacing,
-      });
+      const response = await updateTenantConfig(selectedTenantId, normalizedBrandingConfig);
+      const savedConfig = buildBrandingForm(response?.config ?? normalizedBrandingConfig);
+      const savedBranding: BrandingConfig = {
+        colors: {
+          primary: normalizeColorOrFallback(
+            savedConfig.colors.primary,
+            normalizedBrandingConfig.colors.primary
+          ),
+          secondary: normalizeColorOrFallback(
+            savedConfig.colors.secondary,
+            normalizedBrandingConfig.colors.secondary
+          ),
+          background: normalizeColorOrFallback(
+            savedConfig.colors.background,
+            normalizedBrandingConfig.colors.background
+          ),
+          text: normalizeColorOrFallback(
+            savedConfig.colors.text,
+            normalizedBrandingConfig.colors.text
+          ),
+        },
+        font: savedConfig.font || normalizedBrandingConfig.font,
+        logo: savedConfig.logo || normalizedBrandingConfig.logo,
+        spacing: {
+          sm: savedConfig.spacing.sm || normalizedBrandingConfig.spacing.sm,
+          md: savedConfig.spacing.md || normalizedBrandingConfig.spacing.md,
+          lg: savedConfig.spacing.lg || normalizedBrandingConfig.spacing.lg,
+        },
+      };
 
-      if (response?.config && isCurrentTenant) {
-        dispatch(
-          setBranding({
-            colors: {
-              primary: response.config.colors.primary,
-              secondary: response.config.colors.secondary ?? brandingForm.colors.secondary,
-              background: response.config.colors.background ?? brandingForm.colors.background,
-              text: response.config.colors.text ?? brandingForm.colors.text,
-            },
-            font: response.config.font ?? brandingForm.font,
-            logo: response.config.logo ?? brandingForm.logo,
-            spacing: {
-              sm: response.config.spacing?.sm ?? brandingForm.spacing.sm,
-              md: response.config.spacing?.md ?? brandingForm.spacing.md,
-              lg: response.config.spacing?.lg ?? brandingForm.spacing.lg,
-            },
-          })
-        );
+      setBrandingForm(savedConfig);
+
+      if (isCurrentTenant) {
+        dispatch(setBranding(savedBranding));
       }
       setStatusSuccess("Branding actualizado.");
     } catch {
