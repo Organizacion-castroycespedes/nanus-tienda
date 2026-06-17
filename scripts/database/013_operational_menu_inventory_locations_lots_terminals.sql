@@ -201,9 +201,12 @@ WHERE rmp.role_id = r.id
     OR (
       r.nombre = 'USER'
       AND mi.key IN (
+        'INVENTORY',
         'INVENTORY_PRODUCTS',
         'INVENTORY_UNITS',
         'INVENTORY_TAXES',
+        'INVENTORY_PURCHASES',
+        'INVENTORY_SUPPLIERS',
         'INVENTORY_PROMOTIONS',
         'INVENTORY_LOCATIONS',
         'INVENTORY_LOTS',

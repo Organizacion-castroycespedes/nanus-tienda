@@ -55,9 +55,6 @@ WITH official_matrix(role_name, menu_key, access_level, actions) AS (
     ('ADMIN', 'ELECTRONIC_INVOICING_SUPPLIERS', 'WRITE', '{}'::jsonb),
 
     ('USER', 'DASHBOARD', 'READ', '{}'::jsonb),
-    ('USER', 'INVENTORY', 'READ', '{}'::jsonb),
-    ('USER', 'INVENTORY_PRODUCTS', 'READ', '{}'::jsonb),
-    ('USER', 'INVENTORY_PURCHASES', 'READ', '{}'::jsonb),
     ('USER', 'CUSTOMERS', 'WRITE', '{}'::jsonb),
     ('USER', 'CRM_CUSTOMERS', 'WRITE', '{}'::jsonb),
     ('USER', 'ORDERS', 'WRITE', '{}'::jsonb),
