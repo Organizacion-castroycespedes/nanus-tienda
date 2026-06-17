@@ -17,6 +17,7 @@ const isPrivilegedRole = (role: string) => role === "SUPER_ADMIN";
 
 const operationalAdminMenuKeys = new Set(
   [
+    MENU_KEYS.INVENTORY,
     MENU_KEYS.INVENTORY_PURCHASES,
     MENU_KEYS.INVENTORY_PRODUCTS,
     MENU_KEYS.INVENTORY_LOCATIONS,
@@ -38,8 +39,13 @@ const operationalInventoryActions = new Set([
   "settle_partial",
 ]);
 
+const operationalCustomerActions = new Set(["read", "write", "create", "update"]);
+
 const isOperationalAdminRole = (role: string) =>
   role === "ADMIN" || role === "SUPER_USER";
+
+const isOperationalCustomerRole = (role: string) =>
+  role === "USER" || role === "ADMIN" || role === "SUPER_USER";
 
 const isOperationalAdminModule = (moduleName: string) =>
   operationalAdminMenuKeys.has(moduleName);
@@ -56,6 +62,15 @@ const hasOperationalAdminFallback = (
   (isOperationalAdminModule(moduleName) ||
     isOperationalInventoryAction(moduleName, actionName));
 
+const hasOperationalCustomerFallback = (
+  role: string,
+  moduleName: string,
+  actionName: string
+) =>
+  isOperationalCustomerRole(role) &&
+  moduleName === normalizeValue(MENU_KEYS.CUSTOMERS) &&
+  operationalCustomerActions.has(actionName);
+
 const isUserBlockedFromAdminModule = (
   role: string,
   moduleName: string,
@@ -65,7 +80,23 @@ const isUserBlockedFromAdminModule = (
   (isOperationalAdminModule(moduleName) ||
     isOperationalInventoryAction(moduleName, actionName));
 
+const isUserBlockedFromCustomerAction = (
+  role: string,
+  moduleName: string,
+  actionName: string
+) =>
+  role === "USER" &&
+  moduleName === normalizeValue(MENU_KEYS.CUSTOMERS) &&
+  actionName === "delete";
+
 const isRestrictedForRole = (role: string, moduleName: string) => {
+  if (
+    role !== "SUPER_ADMIN" &&
+    (moduleName === normalizeValue(MENU_KEYS.CONFIG_ROLES) ||
+      moduleName === normalizeValue("ROLES_TENANT_ROLES"))
+  ) {
+    return true;
+  }
   if (role !== "ADMIN") {
     return false;
   }
@@ -163,7 +194,13 @@ export const hasPermission = (
   if (isUserBlockedFromAdminModule(role, module, resolvedAction)) {
     return false;
   }
+  if (isUserBlockedFromCustomerAction(role, module, resolvedAction)) {
+    return false;
+  }
   if (isPrivilegedRole(role) || isScopedSuperUserPermission(role, module)) {
+    return true;
+  }
+  if (hasOperationalCustomerFallback(role, module, resolvedAction)) {
     return true;
   }
   if (hasOperationalAdminFallback(role, module, resolvedAction)) {
@@ -185,18 +222,17 @@ export const canPerformAction = (
 export const canAccessModule = (moduleCode: string) =>
   canPerformAction(moduleCode, "read");
 
-const menuItemAllowed = (item: MenuItem) =>
-  Boolean(item.inherited) || hasMenuAccess(item.key, "READ");
-
 export const getAllowedMenuItems = (items: MenuItem[]): MenuItem[] =>
   items.reduce<MenuItem[]>((allowed, item) => {
-      const children = item.children ? getAllowedMenuItems(item.children) : [];
-      if (!menuItemAllowed(item) && children.length === 0) {
+    const children = item.children ? getAllowedMenuItems(item.children) : [];
+    const itemAllowed =
+      (!item.inherited && hasMenuAccess(item.key, "READ")) || children.length > 0;
+    if (!itemAllowed) {
       return allowed;
-      }
+    }
     allowed.push({
-        ...item,
-        children,
+      ...item,
+      children,
     });
     return allowed;
   }, []);
@@ -212,6 +248,14 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
 
   const candidates = getMenuKeyCandidates(menuKey);
   const normalizedCandidates = candidates.map((candidate) => normalizeValue(candidate));
+
+  if (
+    role !== "SUPER_ADMIN" &&
+    (normalizedCandidates.includes(normalizeValue(MENU_KEYS.CONFIG_ROLES)) ||
+      normalizedCandidates.includes(normalizeValue("ROLES_TENANT_ROLES")))
+  ) {
+    return false;
+  }
 
   if (
     role === "ADMIN" &&

@@ -40,6 +40,8 @@ type CreateCustomerBody = {
 
 type UpdateCustomerBody = Partial<CreateCustomerBody>;
 
+const customerOperationalRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 @Controller("customers")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
@@ -58,7 +60,11 @@ export class CustomerController {
   }
 
   @Post()
-  @RequirePermission({ menuKey: "CUSTOMERS", level: "WRITE" })
+  @RequirePermission({
+    menuKey: "CUSTOMERS",
+    level: "WRITE",
+    operationalRoles: customerOperationalRoles,
+  })
   create(@Body() body: CreateCustomerBody, @Req() request: AuthRequest) {
     return this.customerService.createCustomer({
       tenantId: this.getTenantId(request),
@@ -76,19 +82,31 @@ export class CustomerController {
   }
 
   @Get()
-  @RequirePermission({ menuKey: "CUSTOMERS", level: "READ" })
+  @RequirePermission({
+    menuKey: "CUSTOMERS",
+    level: "READ",
+    operationalRoles: customerOperationalRoles,
+  })
   list(@Req() request: AuthRequest) {
     return this.customerService.listCustomers(this.getTenantId(request));
   }
 
   @Get(":id")
-  @RequirePermission({ menuKey: "CUSTOMERS", level: "READ" })
+  @RequirePermission({
+    menuKey: "CUSTOMERS",
+    level: "READ",
+    operationalRoles: customerOperationalRoles,
+  })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.customerService.getCustomerById(id, this.getTenantId(request));
   }
 
   @Put(":id")
-  @RequirePermission({ menuKey: "CUSTOMERS", level: "WRITE" })
+  @RequirePermission({
+    menuKey: "CUSTOMERS",
+    level: "WRITE",
+    operationalRoles: customerOperationalRoles,
+  })
   update(
     @Param("id") id: string,
     @Body() body: UpdateCustomerBody,

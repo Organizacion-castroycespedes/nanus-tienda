@@ -17,6 +17,16 @@ WITH role_targets AS (
         END
       WHEN r.nombre = 'ADMIN'
         AND mi.key IN (
+          'FINANCE',
+          'FINANCE_CASH_SESSIONS',
+          'FINANCE_CASH_MOVEMENTS'
+        )
+        THEN 'WRITE'
+      WHEN r.nombre = 'ADMIN'
+        AND mi.key = 'FINANCE_CASH_REGISTERS'
+        THEN 'READ'
+      WHEN r.nombre = 'ADMIN'
+        AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'CONFIGURACION_TENANT_CONFIGURACION',
           'POS_PERIPHERALS',
@@ -39,9 +49,14 @@ WITH role_targets AS (
         END
       WHEN r.nombre = 'USER'
         AND mi.key IN (
+          'FINANCE',
+          'FINANCE_CASH_SESSIONS',
+          'FINANCE_CASH_MOVEMENTS'
+        )
+        THEN 'READ'
+      WHEN r.nombre = 'USER'
+        AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
-          'INVENTORY',
-          'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -74,6 +89,18 @@ WITH role_targets AS (
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'ADMIN'
+        AND mi.key = 'FINANCE'
+        THEN '{"read": true}'::jsonb
+      WHEN r.nombre = 'ADMIN'
+        AND mi.key = 'FINANCE_CASH_SESSIONS'
+        THEN '{"read": true, "create": true, "update": true}'::jsonb
+      WHEN r.nombre = 'ADMIN'
+        AND mi.key = 'FINANCE_CASH_MOVEMENTS'
+        THEN '{"read": true, "create": true}'::jsonb
+      WHEN r.nombre = 'ADMIN'
+        AND mi.key = 'FINANCE_CASH_REGISTERS'
+        THEN '{"read": true}'::jsonb
+      WHEN r.nombre = 'ADMIN'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
           'CONFIGURACION_TENANT_CONFIGURACION',
@@ -101,10 +128,17 @@ WITH role_targets AS (
           ELSE '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
         END
       WHEN r.nombre = 'USER'
+        AND mi.key = 'FINANCE'
+        THEN '{"read": true}'::jsonb
+      WHEN r.nombre = 'USER'
+        AND mi.key = 'FINANCE_CASH_SESSIONS'
+        THEN '{"read": true, "create": true, "update": true}'::jsonb
+      WHEN r.nombre = 'USER'
+        AND mi.key = 'FINANCE_CASH_MOVEMENTS'
+        THEN '{"read": true, "create": true}'::jsonb
+      WHEN r.nombre = 'USER'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
-          'INVENTORY',
-          'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -113,7 +147,7 @@ WITH role_targets AS (
           WHEN mi.key = 'POS'
             THEN '{"read": true, "create": true, "update": true}'::jsonb
           WHEN mi.key = 'CUSTOMERS'
-            THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
+            THEN '{"read": true, "create": true, "update": true}'::jsonb
           ELSE '{"read": true}'::jsonb
         END
       ELSE NULL
@@ -176,18 +210,23 @@ WITH allowed_permissions AS (
           'INVENTORY_LOTS',
           'CUSTOMERS',
           'ORDERS',
-          'POS'
+          'POS',
+          'FINANCE',
+          'FINANCE_CASH_SESSIONS',
+          'FINANCE_CASH_MOVEMENTS',
+          'FINANCE_CASH_REGISTERS'
         )
       )
       OR (
         r.nombre = 'USER'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
-          'INVENTORY',
-          'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
-          'POS'
+          'POS',
+          'FINANCE',
+          'FINANCE_CASH_SESSIONS',
+          'FINANCE_CASH_MOVEMENTS'
         )
       )
     )

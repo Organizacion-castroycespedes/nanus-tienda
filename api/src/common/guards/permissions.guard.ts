@@ -25,6 +25,13 @@ const OPERATIONAL_ADMIN_MENU_KEYS = new Set<string>([
 const hasOperationalAdminRole = (roles: string[] | undefined) =>
   roles?.some((role) => role === "ADMIN" || role === "SUPER_USER") ?? false;
 
+const hasOperationalRoleOverride = (
+  roles: string[] | undefined,
+  requiredPermission: RequiredPermission
+) =>
+  requiredPermission.operationalRoles?.some((role) => roles?.includes(role)) ??
+  false;
+
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(
@@ -62,14 +69,16 @@ export class PermissionsGuard implements CanActivate {
     const expandedRequiredMenuKeys = new Set(
       requiredMenuKeys.flatMap((menuKey) => getMenuKeyCandidates(menuKey))
     );
+    if (expandedRequiredMenuKeys.has(MENU_KEYS.CONFIG_ROLES)) {
+      throw new ForbiddenException("Permisos insuficientes");
+    }
     if (
       user.roles?.includes("SUPER_USER") &&
       Array.from(expandedRequiredMenuKeys).some(
         (menuKey) =>
           menuKey === MENU_KEYS.CONFIG_GENERAL ||
           menuKey === MENU_KEYS.CONFIG_TERMINALS ||
-          menuKey === MENU_KEYS.CONFIG_USUARIOS ||
-          menuKey === MENU_KEYS.CONFIG_ROLES
+          menuKey === MENU_KEYS.CONFIG_USUARIOS
       )
     ) {
       return true;
@@ -80,6 +89,9 @@ export class PermissionsGuard implements CanActivate {
         OPERATIONAL_ADMIN_MENU_KEYS.has(menuKey)
       )
     ) {
+      return true;
+    }
+    if (hasOperationalRoleOverride(user.roles, requiredPermission)) {
       return true;
     }
 
