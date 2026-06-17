@@ -1473,6 +1473,34 @@
 - [x] Confirmar en QA manual local paginas cargadas, CRUD categorias/subcategorias, UX sin modales, foco a la accion y permisos equivalentes a Productos.
 - [x] Confirmar que no se implemento upload real, storage local, adaptacion CRUD productos, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario ni cobro/pagos.
 
+## Fase 6.9.7: adaptar CRUD de productos a categoria/subcategoria
+
+- [x] Confirmar `git status --short` limpio y HEAD `5a0724d feat(web): add product classification management UI`.
+- [x] Discover ruta CRUD de productos, formulario, focus layout, catalogos auxiliares, payload y tipos.
+- [x] Confirmar que create/update backend de productos acepta `categoryId` y `subcategoryId`.
+- [x] Detectar y corregir bug minimo: `/api/inventory/products` no devolvia `categoryId` ni `subcategoryId`.
+- [x] Extender tipos frontend de producto y payload create/update con clasificacion.
+- [x] Reutilizar `product-classification.service.ts` en el formulario y listado de productos.
+- [x] Agregar helpers/tests de subcategoria dependiente, limpieza y payload.
+- [x] Agregar seccion compacta `Clasificacion` al formulario de producto.
+- [x] Permitir crear/editar producto sin categoria.
+- [x] Permitir crear/editar producto con categoria.
+- [x] Permitir crear/editar producto con categoria y subcategoria valida.
+- [x] Limpiar subcategoria al cambiar o quitar categoria.
+- [x] Bloquear subcategoria sin categoria desde validacion frontend.
+- [x] Mostrar estados de carga/error de categorias y subcategorias sin bloquear guardado sin clasificacion.
+- [x] Mostrar categoria/subcategoria compacta en listado de productos.
+- [x] Mantener permisos existentes de Productos sin crear permisos nuevos.
+- [x] Crear `docs/evidencia-product-crud-classification-fase-6-9-7.md`.
+- [x] Ejecutar tests frontend/backend relevantes.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar build API por ajuste minimo backend.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Ejecutar QA manual local en `/00000000-0000-0000-0000-000000000001/inventory/products`: PASS.
+- [x] Confirmar QA manual local de crear producto sin categoria, con categoria, con categoria + subcategoria, editar/asignar clasificacion, limpiar subcategoria invalida al cambiar/quitar categoria y listado compacto.
+- [x] Confirmar QA manual local que producto existente sin categoria sigue funcionando y no se afectaron precio, impuestos, unidad, estado operativo, inventario/stock ni cobro.
+- [x] Confirmar que no se implemento upload real, storage local, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario/stock ni cobro/pagos.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.

@@ -43,6 +43,8 @@ export type CreateProductPayload = {
   measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
 };
 
 export type UpdateProductPayload = Partial<CreateProductPayload>;

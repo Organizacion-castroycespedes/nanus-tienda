@@ -67,6 +67,8 @@ export class InventoryService {
       rotationClass: row.rotation_class,
       minStock: row.min_stock === null ? null : Number(row.min_stock),
       maxStock: row.max_stock === null ? null : Number(row.max_stock),
+      categoryId: row.category_id,
+      subcategoryId: row.subcategory_id,
       createdAt: new Date(row.created_at).toISOString(),
       updatedAt: new Date(row.updated_at).toISOString(),
       stock: Number(row.stock),

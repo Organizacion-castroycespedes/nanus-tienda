@@ -275,4 +275,42 @@ The system SHALL provide frontend pages to administer product categories and sub
 
 - GIVEN the classification UI is available
 - WHEN the user administers categories or subcategories
-- THEN the system SHALL NOT implement real image upload, local storage, POS category filters or product CRUD classification changes in this phase.
+- THEN the system SHALL NOT implement real image upload, local storage, POS category filters or POS product image changes in this phase.
+
+### Requirement: Product CRUD classification assignment UI
+
+The system SHALL allow product create and edit workflows to assign optional product categories and subcategories.
+
+#### Scenario: Create product without classification
+
+- GIVEN a user has product write permission
+- WHEN the user creates a product without selecting category or subcategory
+- THEN the product SHALL be saved without classification.
+- AND existing price, tax, unit, stock and operational fields SHALL keep their current behavior.
+
+#### Scenario: Create product with category and subcategory
+
+- GIVEN categories and subcategories exist for the current tenant
+- WHEN the user creates a product with a category and one of its subcategories
+- THEN the frontend SHALL send both `categoryId` and `subcategoryId`.
+- AND the product SHALL be saved with that classification.
+
+#### Scenario: Dependent subcategory selection
+
+- GIVEN a category is selected in the product form
+- WHEN the user opens the subcategory selector
+- THEN only subcategories belonging to the selected category SHALL be available.
+- AND changing or clearing the category SHALL clear any subcategory that no longer belongs.
+
+#### Scenario: Product list shows classification compactly
+
+- GIVEN products are listed in inventory
+- WHEN a product has category or subcategory values
+- THEN the list SHALL show the category and subcategory compactly.
+- AND products without category SHALL show a clear fallback.
+
+#### Scenario: Product CRUD classification preserves out-of-scope features
+
+- GIVEN product CRUD supports classification assignment
+- WHEN the user creates or edits products
+- THEN the system SHALL NOT implement real image upload, local storage, POS filters, POS effective image, taxes, discounts, inventory/stock changes or payments changes in this phase.

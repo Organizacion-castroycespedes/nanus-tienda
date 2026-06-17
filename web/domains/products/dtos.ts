@@ -65,6 +65,8 @@ export type ProductResponse = {
   measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
   createdAt: string;
   updatedAt: string;
   branchId?: string;

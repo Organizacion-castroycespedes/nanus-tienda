@@ -29,6 +29,8 @@ export type InventoryProductRow = QueryResultRow & {
   rotation_class: ProductRotationClass;
   min_stock: string | number | null;
   max_stock: string | number | null;
+  category_id: string | null;
+  subcategory_id: string | null;
   created_at: string | Date;
   updated_at: string | Date;
   stock: string | number;
@@ -159,6 +161,8 @@ export class InventoryRepository {
         p.rotation_class,
         p.min_stock,
         p.max_stock,
+        p.category_id,
+        p.subcategory_id,
         p.created_at,
         p.updated_at,
         COALESCE(stock_summary.stock, 0) AS stock,
