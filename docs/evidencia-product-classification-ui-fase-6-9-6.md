@@ -78,9 +78,21 @@ Change OpenSpec: `fortalecer-productos-inventario`
 
 ## QA manual
 
+- Estado: QA Manual PASS.
+- Fase: 6.9.6 UI categorias/subcategorias sin modales.
+- Rutas validadas:
+  - `/00000000-0000-0000-0000-000000000001/inventory/product-categories`
+  - `/00000000-0000-0000-0000-000000000001/inventory/product-subcategories`
+- Confirmado:
+  - Paginas cargan correctamente.
+  - CRUD de categorias funciona.
+  - CRUD de subcategorias funciona.
+  - UX sin modales.
+  - Foco a la accion.
+  - Permisos equivalentes a Productos.
 - Servidor local iniciado en `http://localhost:3029`.
 - Smoke HTTP de rutas nuevas realizado: PASS.
-- QA visual con sesion real queda pendiente.
+- QA visual con sesion real realizado: PASS.
 - Build confirma que las rutas nuevas compilan y se generan.
 - Pruebas unitarias cubren helpers de validacion, slug e iniciales.
 - Pruebas de permisos existentes confirman proteccion de rutas por `INVENTORY_PRODUCTS`.

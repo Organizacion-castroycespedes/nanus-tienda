@@ -1469,6 +1469,8 @@
 - [x] Ejecutar lint/build frontend.
 - [x] Ejecutar `openspec validate` y `git diff --check`.
 - [x] Crear `docs/evidencia-product-classification-ui-fase-6-9-6.md`.
+- [x] Ejecutar QA manual local en `/00000000-0000-0000-0000-000000000001/inventory/product-categories` y `/00000000-0000-0000-0000-000000000001/inventory/product-subcategories`: PASS.
+- [x] Confirmar en QA manual local paginas cargadas, CRUD categorias/subcategorias, UX sin modales, foco a la accion y permisos equivalentes a Productos.
 - [x] Confirmar que no se implemento upload real, storage local, adaptacion CRUD productos, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario ni cobro/pagos.
 
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
