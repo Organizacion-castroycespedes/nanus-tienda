@@ -111,22 +111,65 @@
 - Hover: queda mas suave que active.
 - Focus: conserva ring visible desde `theme.sidebar.focusRing`.
 
+## Ajuste final submenú activo sin contorno completo
+
+- Problema QA: `Terminales` ya no se perdia, pero parecia outline/error por un contorno rojo completo.
+- Causa tecnica: el estado activo de subitem usaba `boxShadow: inset 0 0 0 1px ${themeTokens.menu.subActiveIndicator}`.
+- Correccion: el subitem activo ahora usa `boxShadow: none`; el foco visible queda reservado al `focus-visible:ring`.
+- Correccion: `menuSubActiveBg` en sidebar oscuro sube a una superficie aclarada mas visible (`lighten(menuBackground, 0.3/0.36/0.42)`).
+- Resultado esperado: seleccion por fondo + indicador lateral + bullet activo, no por contorno completo.
+- Jerarquia: el submenú activo queda mas suave que el menu padre activo, pero mas evidente que hover.
+- Coherencia: preview y sidebar real siguen usando `getMenuItemStateStyles` y los mismos tokens `theme.menu.*`.
+- Tests agregan guard contra regresion: `submenu.container.boxShadow === "none"` y contraste minimo de fondo submenu contra menu.
+
+## Fix jerarquia real submenu activo promovido
+
+- Problema QA: en `Configuracion > Terminales`, el padre `Configuracion` se veia contextual/suave, pero `Terminales` seguia gris/suave.
+- Causa tecnica: el helper solo distinguia activo y submenu activo suave; no tenia estado explicito para `parent open with active child` ni para `child active promoted`.
+- Correccion helper: `getMenuItemStateStyles` ahora acepta `isOpen` y `promoteActive`.
+- Estado `parent active`: `depth: 0`, `isActive: true`, `hasActiveChild: false`; usa `menu.activeBg`, `menu.activeText`, `menu.activeIndicator`.
+- Estado `parent open/contextual`: `depth: 0`, `isOpen: true`, `hasActiveChild: true`; usa `menu.openBg`, `menu.openText`, `menu.openIndicator`.
+- Estado `child active promoted`: `depth: 1`, `isActive: true`, `promoteActive: true`; usa `menu.activeBg`, `menu.activeText`, `menu.activeIndicator`.
+- Sidebar real: el padre con hijo activo se llama con `isOpen: true` y `hasActiveChild: true`.
+- Sidebar real: el hijo activo se llama con `promoteActive: true`.
+- Preview: muestra la misma jerarquia: `Configuracion` contextual/open y `Menu visual` promoted/fuerte.
+- Rutas QA esperadas:
+  - Configuracion principal: `Configuracion` puede verse fuerte.
+  - Configuracion > Usuarios: `Configuracion` contextual y `Usuarios` fuerte.
+  - Configuracion > Perifericos POS: `Configuracion` contextual y `Perifericos POS` fuerte.
+  - Configuracion > Terminales: `Configuracion` contextual y `Terminales` fuerte.
+- Tests agregados: parent active strong, parent open contextual, child active promoted, child promoted en sidebar claro, contrato preview/sidebar con tokens open.
+
 ### Captura / navegador
 
-- Intento Browser in-app: bloqueado por runtime local con `windows sandbox failed: spawn setup refresh`.
-- Captura visual: no generada por bloqueo del Browser in-app.
-- Guardar branding, refrescar pagina y persistencia: no ejecutado visualmente por el mismo bloqueo.
-- Resultado de esta seccion: PASS tecnico; PASS QA visual manual pendiente.
+- Browser in-app: bloqueado por runtime local con `windows sandbox failed: spawn setup refresh`.
+- QA visual manual: ejecutado por el usuario en navegador local con captura.
+- Ruta validada:
+  - `/00000000-0000-0000-0000-000000000001/configuracion`
+  - `/00000000-0000-0000-0000-000000000001/configuracion/terminales`
+- Resultado visual final: PASS.
+
+Validación observada:
+- En configuración principal, `Configuracion` mantiene énfasis principal cuando no hay submenú activo.
+- En `Configuracion > Terminales`, el padre `Configuracion` queda como contexto abierto/suave.
+- En `Configuracion > Terminales`, el submenú `Terminales` queda promovido como activo fuerte/principal.
+- El submenú activo ya no se ve opaco, gris ni apagado.
+- El submenú activo tiene mayor protagonismo visual que el padre contextual.
+- El contraste es legible sobre sidebar oscuro.
+- La jerarquía visual queda correcta:
+  - Padre = contexto.
+  - Hijo activo = ubicación actual.
 
 ## Validacion responsive basica
 
 - Build Next.js pasa para rutas app, incluyendo `/[tenant]/configuracion`.
-- No se pudo completar inspeccion visual responsive con Browser in-app por fallo del runtime local.
-- No se conto como PASS visual porque el smoke HTTP quedo bloqueado por servidores Next locales stale.
+- QA visual manual ejecutado en navegador local de escritorio.
+- No se ejecutó inspección responsive completa por Browser in-app debido al fallo del runtime local.
+- Resultado responsive: no aplica como PASS responsive completo; sin regresión visual evidente en escritorio.
 
 ## Validaciones ejecutadas
 
-- `npx.cmd tsx --test src\lib\theme\colors.spec.ts src\lib\theme\buildTenantTheme.spec.ts`: PASS, 16/16.
+- `npx.cmd tsx --test src\lib\theme\colors.spec.ts src\lib\theme\buildTenantTheme.spec.ts`: PASS, 20/20.
 - `npm.cmd run lint`: PASS con warnings preexistentes de hooks e imagenes.
 - `npm.cmd run build`: PASS con warnings preexistentes de hooks, imagenes y Browserslist.
 - `openspec.cmd validate mejorar-ux-branding-menu-multitenant --type change --strict`: PASS.
@@ -136,4 +179,22 @@
 ## Resultado
 
 - PASS tecnico.
-- PASS QA visual manual: no ejecutado por bloqueo del Browser in-app.
+- PASS QA visual manual.
+- QA visual validado por el usuario en navegador local mediante captura.
+- Browser in-app no ejecutado por bloqueo del runtime local, pero no bloquea el cierre porque la validación visual manual fue realizada externamente.
+
+## Estado final
+
+- Rama: `feat/develop/mejora-experiencia-visual-menu`
+- OpenSpec: `mejorar-ux-branding-menu-multitenant`
+- Estado OpenSpec: tareas completas.
+- Backend tocado: NO
+- Frontend tocado: SI
+- SQL tocado: NO
+- DB QA tocada: NO
+- Permisos/guards tocados: NO
+- Contratos API tocados: NO
+- Produccion tocada: NO
+- Deploy: NO
+- Push: NO
+- Merge: NO

@@ -44,3 +44,18 @@
 - [x] 7.3 Make real sidebar child indicator and active surface consume the same helper output as preview.
 - [x] 7.4 Add focused dark/light/primary/secondary token contrast tests.
 - [x] 7.5 Update QA evidence and rerun required validations.
+
+## 8. Final Submenu Active Selection Polish
+
+- [x] 8.1 Remove the permanent full outline from active submenu state.
+- [x] 8.2 Strengthen active submenu background while keeping lower hierarchy than parent active item.
+- [x] 8.3 Keep active submenu selection driven by background, bullet and lateral indicator.
+- [x] 8.4 Update tests and QA evidence for no-outline submenu active state.
+
+## 9. Promoted Active Child Hierarchy Fix
+
+- [x] 9.1 Add explicit open/contextual parent state to menu item style helper.
+- [x] 9.2 Add promoted active child state so active submenu can use the strong active style.
+- [x] 9.3 Wire real sidebar parent items to open/contextual state when a child is active.
+- [x] 9.4 Wire real sidebar and preview child active items to promoted active state.
+- [x] 9.5 Add hierarchy tests for parent active, parent open and child promoted active states.
