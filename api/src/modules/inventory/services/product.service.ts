@@ -18,9 +18,15 @@ import {
   type ProductRotationClass,
   type ProductSaleType,
 } from "../entities/product.entity";
+import {
+  PRODUCT_IMAGE_MIME_TYPES,
+  type ProductImageMimeType,
+} from "../entities/product-category.entity";
 import type { ProductBarcodeEntity } from "../entities/product-barcode.entity";
 import { ProductBarcodeRepository } from "../repositories/product-barcode.repository";
+import { ProductCategoryRepository } from "../repositories/product-category.repository";
 import { ProductRepository } from "../repositories/product.repository";
+import { ProductSubcategoryRepository } from "../repositories/product-subcategory.repository";
 import { StockMovementService } from "./stock-movement.service";
 
 type CreateProductInput = {
@@ -44,6 +50,14 @@ type CreateProductInput = {
   measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  imageUrl?: string | null;
+  imageStorageKey?: string | null;
+  imageAltText?: string | null;
+  imageMimeType?: ProductImageMimeType | null;
+  imageSizeBytes?: number | null;
+  imageUpdatedAt?: Date | null;
 };
 
 type UpdateProductInput = Partial<
@@ -68,6 +82,14 @@ type UpdateProductInput = Partial<
     | "measurementUnit"
     | "minStock"
     | "maxStock"
+    | "categoryId"
+    | "subcategoryId"
+    | "imageUrl"
+    | "imageStorageKey"
+    | "imageAltText"
+    | "imageMimeType"
+    | "imageSizeBytes"
+    | "imageUpdatedAt"
   >
 >;
 
@@ -105,6 +127,10 @@ export class ProductService {
     private readonly stockMovementService: StockMovementService,
     @Inject(ProductBarcodeRepository)
     private readonly productBarcodeRepository: ProductBarcodeRepository,
+    @Inject(ProductCategoryRepository)
+    private readonly productCategoryRepository: ProductCategoryRepository,
+    @Inject(ProductSubcategoryRepository)
+    private readonly productSubcategoryRepository: ProductSubcategoryRepository,
     @Inject(DatabaseService)
     private readonly db: DatabaseService
   ) {}
@@ -164,6 +190,26 @@ export class ProductService {
     }
   }
 
+  private normalizeNullableText(value: string | null | undefined) {
+    if (value === null) {
+      return null;
+    }
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
+  }
+
+  private assertOptionalImageMimeType(
+    value: ProductImageMimeType | null | undefined,
+    field: string
+  ) {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (!PRODUCT_IMAGE_MIME_TYPES.includes(value)) {
+      throw new BadRequestException(`${field} is invalid`);
+    }
+  }
+
   private assertOptionalBoolean(
     value: boolean | null | undefined,
     field: string
@@ -214,6 +260,110 @@ export class ProductService {
       throw new BadRequestException(
         "WEIGHT or BOTH products must use KG, LB, G or OZ measurementUnit"
       );
+    }
+  }
+
+  private hasOwn(data: Record<string, unknown>, field: string) {
+    return Object.prototype.hasOwnProperty.call(data, field);
+  }
+
+  private hasImageMetadata(data: Record<string, unknown>) {
+    return [
+      "imageUrl",
+      "imageStorageKey",
+      "imageAltText",
+      "imageMimeType",
+      "imageSizeBytes",
+    ].some((field) => this.hasOwn(data, field));
+  }
+
+  private validateProductImageMetadata(
+    data: Partial<
+      Pick<ProductProps, "imageMimeType" | "imageSizeBytes">
+    >
+  ) {
+    this.assertOptionalImageMimeType(data.imageMimeType, "imageMimeType");
+    this.assertOptionalNonNegative(data.imageSizeBytes, "imageSizeBytes");
+  }
+
+  private buildCreateImageMetadata(
+    product: CreateProductInput,
+    changedAt: Date
+  ) {
+    this.validateProductImageMetadata(product);
+    const hasImageMetadata = this.hasImageMetadata(
+      product as Record<string, unknown>
+    );
+
+    return {
+      imageUrl: this.normalizeNullableText(product.imageUrl),
+      imageStorageKey: this.normalizeNullableText(product.imageStorageKey),
+      imageAltText: this.normalizeNullableText(product.imageAltText),
+      imageMimeType: product.imageMimeType ?? null,
+      imageSizeBytes: product.imageSizeBytes ?? null,
+      imageUpdatedAt: hasImageMetadata ? changedAt : null,
+    };
+  }
+
+  private buildUpdateImageMetadata(data: ProductUpdatePayload) {
+    this.validateProductImageMetadata(data);
+    if (!this.hasImageMetadata(data)) {
+      return {};
+    }
+
+    return {
+      imageUrl:
+        data.imageUrl !== undefined
+          ? this.normalizeNullableText(data.imageUrl)
+          : undefined,
+      imageStorageKey:
+        data.imageStorageKey !== undefined
+          ? this.normalizeNullableText(data.imageStorageKey)
+          : undefined,
+      imageAltText:
+        data.imageAltText !== undefined
+          ? this.normalizeNullableText(data.imageAltText)
+          : undefined,
+      imageMimeType: data.imageMimeType,
+      imageSizeBytes: data.imageSizeBytes,
+      imageUpdatedAt: new Date(),
+    };
+  }
+
+  private async validateProductClassification(
+    tenantId: string,
+    categoryId: string | null,
+    subcategoryId: string | null
+  ) {
+    if (subcategoryId !== null && categoryId === null) {
+      throw new BadRequestException(
+        "categoryId is required when subcategoryId is provided"
+      );
+    }
+
+    if (categoryId !== null) {
+      const category = await this.productCategoryRepository.findById(
+        tenantId,
+        categoryId
+      );
+      if (!category) {
+        throw new BadRequestException("categoryId is invalid");
+      }
+    }
+
+    if (subcategoryId !== null) {
+      const subcategory = await this.productSubcategoryRepository.findById(
+        tenantId,
+        subcategoryId
+      );
+      if (!subcategory) {
+        throw new BadRequestException("subcategoryId is invalid");
+      }
+      if (subcategory.categoryId !== categoryId) {
+        throw new BadRequestException(
+          "subcategoryId does not belong to categoryId"
+        );
+      }
     }
   }
 
@@ -353,6 +503,11 @@ export class ProductService {
     this.validateOperationalRules(operationalRules);
     const saleModel = this.buildCreateSaleModel(product);
     this.validateSaleModel(saleModel);
+    await this.validateProductClassification(
+      product.tenantId,
+      product.categoryId ?? null,
+      product.subcategoryId ?? null
+    );
 
     const normalizedSku = this.normalizeSku(product.sku);
     const existing = await this.productRepository.findBySku(
@@ -366,6 +521,7 @@ export class ProductService {
     const now = new Date();
     const priceWithoutTax = product.priceWithoutTax ?? product.price;
     const priceWithTax = product.priceWithTax ?? product.price;
+    const imageMetadata = this.buildCreateImageMetadata(product, now);
 
     const entity = ProductEntity.create({
       ...product,
@@ -376,6 +532,7 @@ export class ProductService {
       priceWithoutTax,
       ...saleModel,
       ...operationalRules,
+      ...imageMetadata,
       createdAt: now,
       updatedAt: now,
     });
@@ -404,6 +561,14 @@ export class ProductService {
       measurementUnit: entity.measurementUnit,
       minStock: entity.minStock,
       maxStock: entity.maxStock,
+      categoryId: entity.categoryId,
+      subcategoryId: entity.subcategoryId,
+      imageUrl: entity.imageUrl,
+      imageStorageKey: entity.imageStorageKey,
+      imageAltText: entity.imageAltText,
+      imageMimeType: entity.imageMimeType,
+      imageSizeBytes: entity.imageSizeBytes,
+      imageUpdatedAt: entity.imageUpdatedAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     });
@@ -485,6 +650,31 @@ export class ProductService {
     this.validateOperationalRules(operationalRules);
     const saleModel = this.buildUpdateSaleModel(current, data);
     this.validateSaleModel(saleModel);
+    const categoryWasProvided = this.hasOwn(data, "categoryId");
+    const subcategoryWasProvided = this.hasOwn(data, "subcategoryId");
+    const nextCategoryId = categoryWasProvided
+      ? data.categoryId ?? null
+      : current.categoryId;
+    const nextSubcategoryId = subcategoryWasProvided
+      ? data.subcategoryId ?? null
+      : current.subcategoryId;
+
+    if (
+      categoryWasProvided &&
+      !subcategoryWasProvided &&
+      current.subcategoryId !== null &&
+      nextCategoryId !== current.categoryId
+    ) {
+      throw new BadRequestException(
+        "subcategoryId must be provided when changing categoryId"
+      );
+    }
+
+    await this.validateProductClassification(
+      tenantId,
+      nextCategoryId,
+      nextSubcategoryId
+    );
 
     if (data.sku !== undefined) {
       const normalizedSku = this.normalizeSku(data.sku);
@@ -501,7 +691,10 @@ export class ProductService {
       };
     }
 
-    const updated = await this.productRepository.update(id, tenantId, data);
+    const updated = await this.productRepository.update(id, tenantId, {
+      ...data,
+      ...this.buildUpdateImageMetadata(data),
+    });
     if (!updated) {
       throw new NotFoundException("product not found");
     }

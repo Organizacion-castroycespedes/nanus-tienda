@@ -1403,6 +1403,46 @@
 - [x] Ejecutar tests pricing, build API, lint/build web, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco PricingService, POS venta, Orders, `inventory_create_sale_v2`, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.9.4: permisos y menu de clasificacion de productos
+
+- [x] Discover current Products menu key and permission model.
+- [x] Discover menu_items and role_menu_permissions structure.
+- [x] Decide whether categories/subcategories reuse Products permission or use product-equivalent aliases.
+- [x] Create idempotent SQL script for menu entries.
+- [x] Assign classification menu to the same roles that can access Products.
+- [x] Protect category/subcategory backend endpoints with product-equivalent guards.
+- [x] Protect category/subcategory frontend routes with product-equivalent access.
+- [x] Add QA for role with Products access.
+- [x] Add QA for role without Products access.
+- [x] Validate SQL idempotency x2.
+- [x] Validate no duplicate menu_items.
+- [x] Validate no duplicate role_menu_permissions.
+
+## Fase 6.9.5: DB y backend categorias/subcategorias tenant-safe
+
+- [x] Discover real inventory/product migrations, SQL naming, idempotency, product backend patterns, tenant resolution and guards.
+- [x] Crear migracion idempotente `V062__product_classification_backend_phase_6_9_5.sql`.
+- [x] Crear tablas `product_categories` y `product_subcategories`.
+- [x] Agregar columnas de clasificacion e imagen a `products`.
+- [x] Agregar constraints tenant-safe, checks e indices requeridos.
+- [x] Ejecutar migracion SQL local/dev dos veces para validar idempotencia.
+- [x] Crear entidades `ProductCategoryEntity` y `ProductSubcategoryEntity`.
+- [x] Crear repositories de categorias y subcategorias con filtro por `tenant_id`.
+- [x] Crear services de categorias y subcategorias con validacion de slug, tenant y activacion/inactivacion.
+- [x] Crear controllers REST de categorias y subcategorias bajo `/api/inventory/product-categories` y `/api/inventory/product-subcategories`.
+- [x] Proteger endpoints con `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard` y permiso equivalente `INVENTORY_PRODUCTS`.
+- [x] Extender producto con `category_id`, `subcategory_id` y metadata de imagen sin upload real.
+- [x] Validar categoria/subcategoria tenant-safe al crear y actualizar producto.
+- [x] Agregar tests backend de categorias.
+- [x] Agregar tests backend de subcategorias.
+- [x] Agregar tests backend de producto con clasificacion.
+- [x] Agregar tests de permisos para endpoints de clasificacion.
+- [x] Ejecutar tests backend relevantes.
+- [x] Ejecutar build de `api/`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Crear `docs/evidencia-product-classification-backend-fase-6-9-5.md`.
+- [x] Confirmar que no se implemento UI, upload real, storage local, filtros POS, impuestos, descuentos, inventario ni cobro/pagos.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.

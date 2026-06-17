@@ -6,8 +6,12 @@ import { ProductEntity, type ProductProps } from "../entities/product.entity";
 import { ProductService } from "./product.service";
 
 const tenantId = randomUUID();
+const secondTenantId = randomUUID();
 const unitId = randomUUID();
 const productId = randomUUID();
+const categoryId = randomUUID();
+const otherCategoryId = randomUUID();
+const subcategoryId = randomUUID();
 
 const baseCreateInput = () => ({
   tenantId,
@@ -60,6 +64,12 @@ type BuildServiceOptions = {
   barcodes?: ProductBarcodeEntity[];
   stockByProduct?: Record<string, number>;
   barcodeProductIdCalls?: string[][];
+  categories?: Array<{ id: string; tenantId: string }>;
+  subcategories?: Array<{
+    id: string;
+    tenantId: string;
+    categoryId: string;
+  }>;
 };
 
 const buildService = (
@@ -102,6 +112,27 @@ const buildService = (
     },
   };
 
+  const productCategoryRepository = {
+    findById: async (requestedTenantId: string, requestedCategoryId: string) =>
+      (options.categories ?? []).find(
+        (category) =>
+          category.id === requestedCategoryId &&
+          category.tenantId === requestedTenantId
+      ) ?? null,
+  };
+
+  const productSubcategoryRepository = {
+    findById: async (
+      requestedTenantId: string,
+      requestedSubcategoryId: string
+    ) =>
+      (options.subcategories ?? []).find(
+        (subcategory) =>
+          subcategory.id === requestedSubcategoryId &&
+          subcategory.tenantId === requestedTenantId
+      ) ?? null,
+  };
+
   const db = {
     getClient: async () => ({
       query: async () => ({ rows: [] }),
@@ -113,6 +144,8 @@ const buildService = (
     repository as any,
     stockMovementService as any,
     productBarcodeRepository as any,
+    productCategoryRepository as any,
+    productSubcategoryRepository as any,
     db as any
   );
 };
@@ -173,6 +206,12 @@ const buildPriceChangeService = (
   const productBarcodeRepository = {
     findActiveByProductIds: async () => [],
   };
+  const productCategoryRepository = {
+    findById: async () => null,
+  };
+  const productSubcategoryRepository = {
+    findById: async () => null,
+  };
   const client = {
     query: async (sql: string) => {
       calls.push(sql);
@@ -189,6 +228,8 @@ const buildPriceChangeService = (
       repository as any,
       stockMovementService as any,
       productBarcodeRepository as any,
+      productCategoryRepository as any,
+      productSubcategoryRepository as any,
       db as any
     ),
     calls,
@@ -212,6 +253,48 @@ describe("ProductService enriched product rules", () => {
     assert.equal(product.measurementUnit, "UND");
     assert.equal(product.minStock, null);
     assert.equal(product.maxStock, null);
+    assert.equal(product.categoryId, null);
+    assert.equal(product.subcategoryId, null);
+    assert.equal(product.imageUrl, null);
+    assert.equal(product.imageStorageKey, null);
+    assert.equal(product.imageUpdatedAt, null);
+  });
+
+  it("creates a product with a valid category", async () => {
+    const service = buildService(buildProduct(), {
+      categories: [{ id: categoryId, tenantId }],
+    });
+
+    const product = await service.createProduct({
+      ...baseCreateInput(),
+      categoryId,
+      imageUrl: "https://cdn.example.test/category/product.png",
+      imageMimeType: "image/png",
+      imageSizeBytes: 2048,
+    });
+
+    assert.equal(product.categoryId, categoryId);
+    assert.equal(product.subcategoryId, null);
+    assert.equal(product.imageUrl, "https://cdn.example.test/category/product.png");
+    assert.equal(product.imageMimeType, "image/png");
+    assert.equal(product.imageSizeBytes, 2048);
+    assert.ok(product.imageUpdatedAt instanceof Date);
+  });
+
+  it("creates a product with valid category and subcategory", async () => {
+    const service = buildService(buildProduct(), {
+      categories: [{ id: categoryId, tenantId }],
+      subcategories: [{ id: subcategoryId, tenantId, categoryId }],
+    });
+
+    const product = await service.createProduct({
+      ...baseCreateInput(),
+      categoryId,
+      subcategoryId,
+    });
+
+    assert.equal(product.categoryId, categoryId);
+    assert.equal(product.subcategoryId, subcategoryId);
   });
 
   it("creates weighted products with explicit sale model", async () => {
@@ -543,6 +626,106 @@ describe("ProductService enriched product rules", () => {
     assert.equal(updated.name, "Producto sin cambio de precio");
     assert.equal(updated.price, 100);
     assert.equal(updated.cost, 60);
+  });
+
+  it("updates product with valid category and subcategory", async () => {
+    const service = buildService(buildProduct(), {
+      categories: [{ id: categoryId, tenantId }],
+      subcategories: [{ id: subcategoryId, tenantId, categoryId }],
+    });
+
+    const updated = await service.updateProduct(productId, tenantId, {
+      categoryId,
+      subcategoryId,
+    });
+
+    assert.equal(updated.categoryId, categoryId);
+    assert.equal(updated.subcategoryId, subcategoryId);
+  });
+
+  it("rejects subcategory without category", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          subcategoryId,
+        }),
+      /categoryId is required when subcategoryId is provided/
+    );
+  });
+
+  it("rejects subcategory that does not belong to category", async () => {
+    const service = buildService(buildProduct(), {
+      categories: [{ id: categoryId, tenantId }],
+      subcategories: [
+        { id: subcategoryId, tenantId, categoryId: otherCategoryId },
+      ],
+    });
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          categoryId,
+          subcategoryId,
+        }),
+      /subcategoryId does not belong to categoryId/
+    );
+  });
+
+  it("rejects category from another tenant", async () => {
+    const service = buildService(buildProduct(), {
+      categories: [{ id: categoryId, tenantId: secondTenantId }],
+    });
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          categoryId,
+        }),
+      /categoryId is invalid/
+    );
+  });
+
+  it("rejects subcategory from another tenant", async () => {
+    const service = buildService(buildProduct(), {
+      categories: [{ id: categoryId, tenantId }],
+      subcategories: [
+        { id: subcategoryId, tenantId: secondTenantId, categoryId },
+      ],
+    });
+
+    await assert.rejects(
+      () =>
+        service.createProduct({
+          ...baseCreateInput(),
+          categoryId,
+          subcategoryId,
+        }),
+      /subcategoryId is invalid/
+    );
+  });
+
+  it("rejects category changes that leave current subcategory ambiguous", async () => {
+    const current = buildProduct({ categoryId, subcategoryId });
+    const service = buildService(current, {
+      categories: [
+        { id: categoryId, tenantId },
+        { id: otherCategoryId, tenantId },
+      ],
+      subcategories: [{ id: subcategoryId, tenantId, categoryId }],
+    });
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          categoryId: otherCategoryId,
+        }),
+      /subcategoryId must be provided when changing categoryId/
+    );
   });
 
   it("updates formal sale model fields without touching price", async () => {

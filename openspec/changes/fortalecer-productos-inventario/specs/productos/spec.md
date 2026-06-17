@@ -124,3 +124,122 @@ El sistema SHALL permitir estados y clasificaciones operativas mas ricas que `is
 - THEN el sistema SHALL mostrar su clasificacion.
 
 RIESGO: Nuevos estados mal definidos pueden bloquear ventas o compras legitimas.
+
+### Requirement: Product classification menu access
+
+The system SHALL expose product categories and subcategories through the application menu only to roles with product-equivalent permissions.
+
+#### Scenario: Role has product access
+
+- GIVEN a role has access to Products
+- WHEN the user opens the application menu
+- THEN the user SHALL be able to access product categories and subcategories according to the selected navigation design.
+
+#### Scenario: Role lacks product access
+
+- GIVEN a role does not have access to Products
+- WHEN the user opens the application menu
+- THEN the user SHALL NOT see product categories or subcategories.
+
+### Requirement: Product-equivalent classification permissions
+
+The system SHALL protect product categories and subcategories with the same permission model used by Products.
+
+#### Scenario: Direct URL access without product permission
+
+- GIVEN a user does not have product permission
+- WHEN the user navigates directly to the product categories or subcategories route
+- THEN access SHALL be denied according to the current authorization pattern.
+
+#### Scenario: API request without product permission
+
+- GIVEN a user does not have product permission
+- WHEN the user calls a product category or subcategory endpoint
+- THEN the API SHALL reject the request.
+
+### Requirement: Idempotent menu and permission seed
+
+The system SHALL provide an idempotent database script for product classification menu and permissions.
+
+#### Scenario: Permission script executed twice
+
+- GIVEN the product classification menu/permission script was already applied
+- WHEN it is executed again
+- THEN it SHALL NOT create duplicate menu items
+- AND it SHALL NOT create duplicate role-menu permission rows
+- AND it SHALL preserve existing product permissions.
+
+### Requirement: Product classification persistence
+
+The system SHALL persist product categories and subcategories in tenant-scoped tables prepared for default image metadata without implementing file upload.
+
+#### Scenario: Category stored per tenant
+
+- GIVEN a user creates a product category
+- WHEN the category is saved
+- THEN the system SHALL persist it with `tenant_id`, `name`, `slug`, `is_active`, `sort_order`, timestamps and optional default image metadata.
+- AND the category `slug` SHALL be unique only inside the tenant.
+
+#### Scenario: Subcategory stored per tenant and category
+
+- GIVEN a user creates a product subcategory
+- WHEN the subcategory is saved
+- THEN the system SHALL persist it with `tenant_id`, `category_id`, `name`, `slug`, `is_active`, `sort_order`, timestamps and optional default image metadata.
+- AND the subcategory `slug` SHALL be unique only inside the same tenant and category.
+
+### Requirement: Tenant-safe classification backend
+
+The system SHALL expose backend endpoints for product categories and subcategories that validate tenant ownership on every operation.
+
+#### Scenario: Cross-tenant category update
+
+- GIVEN a category belongs to another tenant
+- WHEN a user attempts to update it through the category API
+- THEN the system SHALL reject the operation as not found or invalid according to the current backend pattern.
+
+#### Scenario: Subcategory uses category from another tenant
+
+- GIVEN a category belongs to another tenant
+- WHEN a user attempts to create or update a subcategory using that category
+- THEN the API SHALL reject the request.
+
+### Requirement: Product classification assignment
+
+The system SHALL allow products to reference an optional category and optional subcategory while preserving products without classification.
+
+#### Scenario: Product without classification
+
+- GIVEN a product has no category or subcategory
+- WHEN it is created, updated or listed
+- THEN it SHALL continue working with compatible null classification fields.
+
+#### Scenario: Product with valid category and subcategory
+
+- GIVEN a category and subcategory belong to the same tenant
+- AND the subcategory belongs to the category
+- WHEN a product is created or updated with those identifiers
+- THEN the system SHALL persist the classification.
+
+#### Scenario: Subcategory without category
+
+- GIVEN a product payload includes `subcategory_id` without `category_id`
+- WHEN the API validates the payload
+- THEN it SHALL reject the request.
+
+#### Scenario: Subcategory does not belong to category
+
+- GIVEN a subcategory belongs to a different category
+- WHEN a product payload pairs it with the wrong category
+- THEN the API SHALL reject the request.
+
+### Requirement: Product image metadata without upload
+
+The system SHALL store optional product image metadata fields without implementing actual file upload or local storage in this phase.
+
+#### Scenario: Product image metadata provided
+
+- GIVEN a product payload includes image URL, storage key, alt text, MIME type or size
+- WHEN the API validates and saves the product
+- THEN it SHALL allow only `image/jpeg`, `image/png` or `image/webp` MIME types.
+- AND it SHALL reject negative image sizes.
+- AND it SHALL update `image_updated_at` when image metadata changes.
