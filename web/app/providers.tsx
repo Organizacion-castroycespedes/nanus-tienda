@@ -32,8 +32,14 @@ const BrandingApplier = ({ children }: { children: ReactNode }) => {
     root.style.setProperty("--color-bg", theme.surface.page);
     root.style.setProperty("--color-text", theme.surface.text);
     root.style.setProperty("--brand-primary", theme.primary);
+    root.style.setProperty("--brand-primary-text", theme.primaryText);
+    root.style.setProperty("--brand-primary-soft", theme.primarySoftBg);
+    root.style.setProperty("--brand-primary-border", theme.primaryBorder);
     root.style.setProperty("--brand-primary-hover", theme.header.actionHover);
     root.style.setProperty("--brand-secondary", theme.secondary);
+    root.style.setProperty("--brand-secondary-text", theme.secondaryText);
+    root.style.setProperty("--brand-secondary-soft", theme.secondarySoftBg);
+    root.style.setProperty("--brand-secondary-border", theme.secondaryBorder);
     root.style.setProperty("--brand-background", theme.surface.page);
     root.style.setProperty("--brand-text", theme.surface.text);
     root.style.setProperty("--font-base", config.font);
@@ -42,8 +48,26 @@ const BrandingApplier = ({ children }: { children: ReactNode }) => {
     root.style.setProperty("--brand-sidebar-muted", theme.sidebar.mutedText);
     root.style.setProperty("--brand-sidebar-active", theme.sidebar.activeBackground);
     root.style.setProperty("--brand-sidebar-active-text", theme.sidebar.activeText);
+    root.style.setProperty(
+      "--brand-sidebar-sub-active",
+      theme.sidebar.subItemActiveBackground
+    );
+    root.style.setProperty(
+      "--brand-sidebar-sub-active-text",
+      theme.sidebar.subItemActiveText
+    );
+    root.style.setProperty(
+      "--brand-sidebar-sub-indicator",
+      theme.sidebar.subItemActiveIndicator
+    );
     root.style.setProperty("--brand-sidebar-hover", theme.sidebar.itemHoverBackground);
     root.style.setProperty("--brand-sidebar-border", theme.sidebar.border);
+    root.style.setProperty("--brand-sidebar-accent", theme.sidebar.activeIndicator);
+    root.style.setProperty("--brand-sidebar-focus", theme.sidebar.focusRing);
+    root.style.setProperty(
+      "--brand-sidebar-focus-offset",
+      theme.sidebar.focusRingOffset
+    );
     root.style.setProperty("--brand-header-bg", theme.header.background);
     root.style.setProperty("--brand-header-text", theme.header.text);
     root.style.setProperty("--brand-header-muted", theme.header.mutedText);

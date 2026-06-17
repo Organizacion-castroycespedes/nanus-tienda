@@ -60,6 +60,7 @@ import type { MenuItem, MenuResponse } from "../../domains/menu/types";
 import { Select } from "../../components/design-system/Select";
 import { isConfirmCancelledError, useConfirm } from "../../hooks/use-confirm";
 import { useTenantTheme } from "../../hooks/useTenantTheme";
+import { getMenuItemStateStyles } from "../../src/lib/theme/buildTenantTheme";
 import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
@@ -569,53 +570,37 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         const hasActiveChild = activeChildChain.length > 0;
         const isDirectActive = isActive;
         const isVisuallyActive = isDirectActive || hasActiveChild;
+        const menuItemStyles = getMenuItemStateStyles(tenantTheme, {
+          depth,
+          isActive: isDirectActive,
+          hasActiveChild,
+        });
         return (
           <li key={item.key}>
             <div
               className={`group relative flex items-center gap-2 overflow-hidden transition-all duration-200 ${
                 depth > 0
-                  ? ""
+                  ? "rounded-lg text-[13px]"
                   : "rounded-xl px-3 py-2 text-sm"
               } ${
                 isVisuallyActive
                   ? "bg-[var(--brand-sidebar-active)] text-[var(--brand-sidebar-active-text)] shadow-sm"
                   : "text-[var(--brand-sidebar-text)] hover:bg-[var(--brand-sidebar-hover)]"
               }`}
-              style={{
-                backgroundColor:
-                  isDirectActive
-                    ? depth > 0
-                      ? tenantTheme.sidebar.subItemActiveBackground
-                      : tenantTheme.sidebar.activeBackground
-                    : hasActiveChild
-                      ? depth > 0
-                        ? "transparent"
-                        : `color-mix(in srgb, ${tenantTheme.sidebar.activeBackground} 24%, transparent)`
-                      : undefined,
-                color: isDirectActive || hasActiveChild
-                  ? depth > 0
-                    ? tenantTheme.sidebar.subItemActiveText
-                    : tenantTheme.sidebar.activeText
-                  : tenantTheme.sidebar.text,
-              }}
+              style={menuItemStyles.container}
               title={sidebarCollapsed ? item.label : undefined}
             >
               <span
                 aria-hidden="true"
-                className={`absolute left-0 w-0.5 rounded-r-full transition-all duration-200 ${
+                className={`absolute left-0 w-0.5 rounded-r-full transition-all duration-200 group-hover:opacity-70 ${
                   depth > 0 ? "inset-y-1" : "inset-y-2"
-                } ${
-                  isDirectActive
-                    ? "bg-[var(--brand-sidebar-active-text)] opacity-100"
-                    : hasActiveChild
-                      ? "bg-[var(--brand-sidebar-active)] opacity-60"
-                      : "bg-[var(--brand-sidebar-active)] opacity-0 group-hover:opacity-70"
                 }`}
+                style={menuItemStyles.indicator}
               />
               <Link
                 href={effectiveRoute}
                 aria-current={isDirectActive ? "page" : undefined}
-                className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-active)] ${
+                className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
                   depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
                 } ${
                   sidebarCollapsed ? "justify-center" : ""
@@ -630,19 +615,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }
               >
                 {depth > 0 ? (
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70" />
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={menuItemStyles.icon}
+                  />
                 ) : (
                   <span
                     className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-all duration-200"
                   style={{
-                    backgroundColor: isDirectActive
-                      ? "rgba(255,255,255,0.16)"
-                      : hasActiveChild
-                        ? "rgba(255,255,255,0.10)"
-                      : "rgba(255,255,255,0.08)",
-                    color: isDirectActive || hasActiveChild
-                      ? tenantTheme.sidebar.activeText
-                      : tenantTheme.sidebar.text,
+                    backgroundColor: String(menuItemStyles.icon.backgroundColor),
+                    color: String(menuItemStyles.icon.color),
                   }}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -662,13 +644,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               {hasChildren ? (
                 <button
                   type="button"
-                  className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-active)] ${
+                  className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
                     isVisuallyActive
-                      ? "text-[var(--brand-sidebar-active-text)] hover:bg-black/10"
+                      ? "text-[var(--brand-sidebar-active-text)] hover:bg-[var(--brand-sidebar-hover)]"
                       : "text-[var(--brand-sidebar-muted)] hover:bg-[var(--brand-sidebar-hover)] hover:text-[var(--brand-sidebar-text)]"
                   }`}
                   aria-label={isExpanded ? "Colapsar submenu" : "Expandir submenu"}
                   aria-expanded={isExpanded}
+                  style={menuItemStyles.chevron}
                   title={
                     sidebarCollapsed
                       ? `${isExpanded ? "Colapsar" : "Expandir"} ${item.label}`
@@ -704,7 +687,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         const sectionKey = `${prefix}:${section}`;
         const isExpanded = openSections[sectionKey] ?? true;
         return (
-          <li key={sectionKey} className="border-t border-white/7 pt-2 first:border-t-0 first:pt-0">
+          <li
+            key={sectionKey}
+            className="border-t pt-2 first:border-t-0 first:pt-0"
+            style={{ borderColor: tenantTheme.sidebar.border }}
+          >
             {!sidebarCollapsed ? (
               <p className="mb-2 mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--brand-sidebar-muted)] opacity-70">
                 {section}
@@ -974,7 +961,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       className="flex h-screen overflow-hidden overscroll-none bg-[var(--brand-background)] text-[var(--brand-text)]"
       style={{
         ["--brand-primary" as never]: tenantTheme.primary,
+        ["--brand-primary-text" as never]: tenantTheme.primaryText,
+        ["--brand-primary-soft" as never]: tenantTheme.primarySoftBg,
+        ["--brand-primary-border" as never]: tenantTheme.primaryBorder,
         ["--brand-secondary" as never]: tenantTheme.secondary,
+        ["--brand-secondary-text" as never]: tenantTheme.secondaryText,
+        ["--brand-secondary-soft" as never]: tenantTheme.secondarySoftBg,
+        ["--brand-secondary-border" as never]: tenantTheme.secondaryBorder,
         ["--brand-background" as never]: tenantTheme.surface.page,
         ["--brand-text" as never]: tenantTheme.surface.text,
         ["--brand-primary-hover" as never]: tenantTheme.header.actionHover,
@@ -983,8 +976,17 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         ["--brand-sidebar-muted" as never]: tenantTheme.sidebar.mutedText,
         ["--brand-sidebar-active" as never]: tenantTheme.sidebar.activeBackground,
         ["--brand-sidebar-active-text" as never]: tenantTheme.sidebar.activeText,
+        ["--brand-sidebar-sub-active" as never]:
+          tenantTheme.sidebar.subItemActiveBackground,
+        ["--brand-sidebar-sub-active-text" as never]:
+          tenantTheme.sidebar.subItemActiveText,
+        ["--brand-sidebar-sub-indicator" as never]:
+          tenantTheme.sidebar.subItemActiveIndicator,
         ["--brand-sidebar-hover" as never]: tenantTheme.sidebar.hoverBackground,
         ["--brand-sidebar-border" as never]: tenantTheme.sidebar.border,
+        ["--brand-sidebar-accent" as never]: tenantTheme.sidebar.activeIndicator,
+        ["--brand-sidebar-focus" as never]: tenantTheme.sidebar.focusRing,
+        ["--brand-sidebar-focus-offset" as never]: tenantTheme.sidebar.focusRingOffset,
         ["--brand-header-bg" as never]: tenantTheme.header.background,
         ["--brand-header-text" as never]: tenantTheme.header.text,
         ["--brand-header-muted" as never]: tenantTheme.header.mutedText,
@@ -1022,6 +1024,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         }`}
         style={{
           background: `linear-gradient(180deg, ${tenantTheme.sidebar.background}, ${tenantTheme.sidebar.border})`,
+          borderColor: tenantTheme.sidebar.border,
           color: tenantTheme.sidebar.text,
         }}
       >
@@ -1059,7 +1062,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             <div className={`ml-auto flex items-center gap-2 ${sidebarCollapsed ? "lg:ml-0" : ""}`}>
               <button
                 type="button"
-                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-bg)] lg:grid"
+                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
                 aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
                 onClick={() => setSidebarCollapsed((prev) => !prev)}
               >
@@ -1071,7 +1074,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-bg)] lg:hidden"
+                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
                 aria-label="Cerrar menu lateral"
                 onClick={() => setSidebarOpen(false)}
               >
