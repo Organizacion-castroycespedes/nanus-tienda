@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { InventoryImageUploadPanel } from "./InventoryImageUploadPanel";
 import type {
   ProductMeasurementUnit,
   ProductOperationalStatus,
@@ -21,10 +23,24 @@ import {
 } from "../services/unit.service";
 import {
   createProduct,
+  deleteProductImage,
   updateProduct,
+  uploadProductImage,
   type CreateProductPayload,
   type UpdateProductPayload,
 } from "../services/product.service";
+import {
+  listProductCategories,
+  listProductSubcategoriesByCategory,
+  type ProductCategoryResponse,
+  type ProductSubcategoryResponse,
+} from "../services/product-classification.service";
+import {
+  buildProductClassificationPayload,
+  getProductClassificationErrorMessage,
+  resolveSubcategoryForCategory,
+  validateProductClassificationSelection,
+} from "../utils/product-classification";
 
 type ProductOption = {
   id: string;
@@ -56,6 +72,8 @@ type ProductFormValues = {
   measurementUnit: ProductMeasurementUnit;
   minStock: string;
   maxStock: string;
+  categoryId: string;
+  subcategoryId: string;
 };
 
 type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>> & {
@@ -67,6 +85,7 @@ type ProductFormProps = {
   product?: ProductResponse | null;
   onCancel: () => void;
   onSuccess: (mode: "create" | "edit") => void;
+  onImageChange?: (product: ProductResponse) => void;
 };
 
 const createInitialValues = (product?: ProductResponse | null): ProductFormValues => ({
@@ -88,6 +107,8 @@ const createInitialValues = (product?: ProductResponse | null): ProductFormValue
     product?.minStock === null || product?.minStock === undefined ? "" : String(product.minStock),
   maxStock:
     product?.maxStock === null || product?.maxStock === undefined ? "" : String(product.maxStock),
+  categoryId: product?.categoryId ?? "",
+  subcategoryId: product?.subcategoryId ?? "",
 });
 
 const isValidNumber = (value: string) => value.trim() !== "" && !Number.isNaN(Number(value));
@@ -130,7 +151,10 @@ export const ProductForm = ({
   product,
   onCancel,
   onSuccess,
+  onImageChange,
 }: ProductFormProps) => {
+  const params = useParams<{ tenant: string }>();
+  const tenantSlug = params?.tenant ?? "default";
   const [values, setValues] = useState<ProductFormValues>(createInitialValues(product));
   const [errors, setErrors] = useState<ProductFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -138,10 +162,20 @@ export const ProductForm = ({
   const [taxOptions, setTaxOptions] = useState<TaxInfo[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<ProductCategoryResponse[]>([]);
+  const [subcategories, setSubcategories] = useState<ProductSubcategoryResponse[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [subcategoriesLoading, setSubcategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [subcategoriesError, setSubcategoriesError] = useState<string | null>(null);
+  const [imageProduct, setImageProduct] = useState<ProductResponse | null>(
+    product ?? null
+  );
 
   useEffect(() => {
     setValues(createInitialValues(product));
     setErrors({});
+    setImageProduct(product ?? null);
   }, [mode, product]);
 
   useEffect(() => {
@@ -192,9 +226,133 @@ export const ProductForm = ({
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+      setCategoriesError(null);
+
+      try {
+        const result = await listProductCategories();
+        if (!mounted) {
+          return;
+        }
+        setCategories(result);
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        setCategoriesError(
+          getProductClassificationErrorMessage(
+            error,
+            "No se pudieron cargar las categorias."
+          )
+        );
+      } finally {
+        if (mounted) {
+          setCategoriesLoading(false);
+        }
+      }
+    };
+
+    void loadCategories();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const categoryId = values.categoryId;
+
+    if (!categoryId) {
+      setSubcategories([]);
+      setSubcategoriesError(null);
+      setSubcategoriesLoading(false);
+      setValues((current) =>
+        current.subcategoryId ? { ...current, subcategoryId: "" } : current
+      );
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const loadSubcategories = async () => {
+      setSubcategoriesLoading(true);
+      setSubcategoriesError(null);
+
+      try {
+        const result = await listProductSubcategoriesByCategory(categoryId);
+        if (!mounted) {
+          return;
+        }
+        setSubcategories(result);
+        setValues((current) => {
+          if (current.categoryId !== categoryId || !current.subcategoryId) {
+            return current;
+          }
+          const nextSubcategoryId = resolveSubcategoryForCategory(
+            current.subcategoryId,
+            categoryId,
+            result
+          );
+          return nextSubcategoryId === current.subcategoryId
+            ? current
+            : { ...current, subcategoryId: "" };
+        });
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        setSubcategories([]);
+        setSubcategoriesError(
+          getProductClassificationErrorMessage(
+            error,
+            "No se pudieron cargar las subcategorias."
+          )
+        );
+      } finally {
+        if (mounted) {
+          setSubcategoriesLoading(false);
+        }
+      }
+    };
+
+    void loadSubcategories();
+
+    return () => {
+      mounted = false;
+    };
+  }, [values.categoryId]);
+
   const setFieldValue = <K extends keyof ProductFormValues>(field: K, value: ProductFormValues[K]) => {
     setValues((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: undefined, submit: undefined }));
+  };
+
+  const setCategoryValue = (categoryId: string) => {
+    setValues((prev) => ({
+      ...prev,
+      categoryId,
+      subcategoryId: prev.categoryId === categoryId ? prev.subcategoryId : "",
+    }));
+    setErrors((prev) => ({
+      ...prev,
+      categoryId: undefined,
+      subcategoryId: undefined,
+      submit: undefined,
+    }));
+  };
+
+  const setSubcategoryValue = (subcategoryId: string) => {
+    setValues((prev) => ({ ...prev, subcategoryId }));
+    setErrors((prev) => ({
+      ...prev,
+      subcategoryId: undefined,
+      submit: undefined,
+    }));
   };
 
   const setOperationalValue = <K extends keyof ProductFormValues>(
@@ -254,6 +412,48 @@ export const ProductForm = ({
   };
 
   const selectedTax = taxOptions.find((tax) => tax.id === values.taxId) ?? null;
+  const sortedCategories = useMemo(
+    () =>
+      [...categories].sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.name.localeCompare(right.name, "es")
+      ),
+    [categories]
+  );
+  const sortedSubcategories = useMemo(
+    () =>
+      [...subcategories].sort(
+        (left, right) =>
+          left.sortOrder - right.sortOrder ||
+          left.name.localeCompare(right.name, "es")
+      ),
+    [subcategories]
+  );
+  const categoriesPath = `/${tenantSlug}/inventory/product-categories`;
+  const currentImageProduct = imageProduct ?? product ?? null;
+
+  const handleImageUpload = async (file: File) => {
+    if (!product?.id) {
+      throw new Error("Guarda primero el producto para poder cargar imagen.");
+    }
+    const updated = await uploadProductImage(
+      product.id,
+      file,
+      values.name.trim() || product.name
+    );
+    setImageProduct(updated);
+    onImageChange?.(updated);
+  };
+
+  const handleImageDelete = async () => {
+    if (!product?.id) {
+      throw new Error("Guarda primero el producto para poder eliminar imagen.");
+    }
+    const updated = await deleteProductImage(product.id);
+    setImageProduct(updated);
+    onImageChange?.(updated);
+  };
 
   const validate = () => {
     const nextErrors: ProductFormErrors = {};
@@ -312,6 +512,16 @@ export const ProductForm = ({
     if (minStock !== null && maxStock !== null && maxStock < minStock) {
       nextErrors.maxStock = "El stock maximo debe ser mayor o igual al minimo.";
     }
+    const classificationError = validateProductClassificationSelection(
+      {
+        categoryId: values.categoryId,
+        subcategoryId: values.subcategoryId,
+      },
+      subcategories
+    );
+    if (classificationError) {
+      nextErrors.subcategoryId = classificationError;
+    }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -341,6 +551,10 @@ export const ProductForm = ({
       measurementUnit: values.measurementUnit,
       minStock: optionalNumber(values.minStock),
       maxStock: optionalNumber(values.maxStock),
+      ...buildProductClassificationPayload({
+        categoryId: values.categoryId,
+        subcategoryId: values.subcategoryId,
+      }),
     };
 
     setIsSubmitting(true);
@@ -359,12 +573,15 @@ export const ProductForm = ({
 
       void savedProduct;
       onSuccess(mode);
-    } catch {
+    } catch (error) {
       setErrors({
         submit:
-          mode === "create"
-            ? "No se pudo crear el producto."
-            : "No se pudo actualizar el producto.",
+          getProductClassificationErrorMessage(
+            error,
+            mode === "create"
+              ? "No se pudo crear el producto."
+              : "No se pudo actualizar el producto."
+          ),
       });
     } finally {
       setIsSubmitting(false);
@@ -558,6 +775,119 @@ export const ProductForm = ({
             ) : null}
           </div>
         </div>
+
+        <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">
+                Clasificacion
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                La subcategoria depende de la categoria seleccionada.
+              </p>
+            </div>
+            {categories.length === 0 && !categoriesLoading ? (
+              <a
+                className="text-sm font-semibold text-blue-700 hover:text-blue-800"
+                href={categoriesPath}
+              >
+                Crear categorias
+              </a>
+            ) : null}
+          </div>
+
+          {categories.length === 0 && !categoriesLoading ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              No hay categorias creadas. Puedes guardar el producto sin
+              clasificacion.
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1">
+              <Select
+                label="Categoria"
+                value={values.categoryId}
+                onChange={(event) => setCategoryValue(event.target.value)}
+                disabled={categoriesLoading || categories.length === 0}
+                hint={
+                  categoriesLoading
+                    ? "Cargando categorias..."
+                    : "Campo opcional."
+                }
+              >
+                <option value="">Sin categoria</option>
+                {sortedCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                    {category.isActive ? "" : " (inactiva)"}
+                  </option>
+                ))}
+              </Select>
+              {errors.categoryId ? (
+                <p className="text-xs text-rose-600">{errors.categoryId}</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-1">
+              <Select
+                label="Subcategoria"
+                value={values.subcategoryId}
+                onChange={(event) => setSubcategoryValue(event.target.value)}
+                disabled={
+                  !values.categoryId ||
+                  subcategoriesLoading ||
+                  sortedSubcategories.length === 0
+                }
+                hint={
+                  !values.categoryId
+                    ? "Selecciona una categoria primero."
+                    : subcategoriesLoading
+                      ? "Cargando subcategorias..."
+                      : sortedSubcategories.length === 0
+                        ? "La categoria no tiene subcategorias."
+                        : "Campo opcional."
+                }
+              >
+                <option value="">Sin subcategoria</option>
+                {sortedSubcategories.map((subcategory) => (
+                  <option key={subcategory.id} value={subcategory.id}>
+                    {subcategory.name}
+                    {subcategory.isActive ? "" : " (inactiva)"}
+                  </option>
+                ))}
+              </Select>
+              {errors.subcategoryId ? (
+                <p className="text-xs text-rose-600">{errors.subcategoryId}</p>
+              ) : null}
+            </div>
+          </div>
+
+          {categoriesError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {categoriesError} Puedes guardar el producto sin clasificacion.
+            </div>
+          ) : null}
+
+          {subcategoriesError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {subcategoriesError}
+            </div>
+          ) : null}
+        </section>
+
+        <InventoryImageUploadPanel
+          entityId={mode === "edit" ? product?.id : null}
+          title="Imagen del producto"
+          imageUrl={currentImageProduct?.imageUrl}
+          imageAltText={currentImageProduct?.imageAltText}
+          imageMimeType={currentImageProduct?.imageMimeType}
+          imageSizeBytes={currentImageProduct?.imageSizeBytes}
+          disabledMessage="Guarda primero el producto para poder cargar imagen."
+          fallbackLabel={values.name || "Producto"}
+          onUpload={handleImageUpload}
+          onDelete={handleImageDelete}
+        />
 
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <input

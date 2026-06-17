@@ -6,6 +6,8 @@ export type ProductSaleType = "UNIT" | "WEIGHT" | "BOTH";
 
 export type ProductMeasurementUnit = "UND" | "KG" | "LB" | "G" | "OZ";
 
+export type ProductImageMimeType = "image/jpeg" | "image/png" | "image/webp";
+
 export type ProductBarcodeType =
   | "UNIT"
   | "PACKAGE"
@@ -65,6 +67,14 @@ export type ProductResponse = {
   measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  imageUrl?: string | null;
+  imageStorageKey?: string | null;
+  imageAltText?: string | null;
+  imageMimeType?: ProductImageMimeType | null;
+  imageSizeBytes?: number | null;
+  imageUpdatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   branchId?: string;

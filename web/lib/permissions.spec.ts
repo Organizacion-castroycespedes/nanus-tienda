@@ -36,6 +36,8 @@ const setRole = (role: string, permissions: PermissionSummary[] = []) => {
 test("menu permissions expose DB-granted inventory modules to admin roles", () => {
   const inventoryPermissions = [
     MENU_KEYS.INVENTORY_PRODUCTS,
+    MENU_KEYS.INVENTORY_PRODUCT_CATEGORIES,
+    MENU_KEYS.INVENTORY_PRODUCT_SUBCATEGORIES,
     MENU_KEYS.INVENTORY_UNITS,
     MENU_KEYS.INVENTORY_TAXES,
     MENU_KEYS.INVENTORY_PROMOTIONS,
@@ -47,6 +49,8 @@ test("menu permissions expose DB-granted inventory modules to admin roles", () =
     setRole(role, inventoryPermissions);
 
     assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCTS, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCT_CATEGORIES, "READ"), true);
+    assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCT_SUBCATEGORIES, "READ"), true);
     assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_UNITS, "READ"), true);
     assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_TAXES, "READ"), true);
     assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_LOCATIONS, "READ"), true);
@@ -60,6 +64,8 @@ test("menu permissions keep operational inventory modules hidden for USER", () =
 
   assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY, "READ"), false);
   assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCTS, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCT_CATEGORIES, "READ"), false);
+  assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_PRODUCT_SUBCATEGORIES, "READ"), false);
   assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_UNITS, "READ"), false);
   assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_TAXES, "READ"), false);
   assert.equal(hasMenuAccess(MENU_KEYS.INVENTORY_LOCATIONS, "READ"), false);

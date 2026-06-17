@@ -14,7 +14,9 @@ import { InventoryLotController } from "./controllers/inventory-lot.controller";
 import { InventoryLocationController } from "./controllers/inventory-location.controller";
 import { OrderController } from "./controllers/order.controller";
 import { ProductBarcodeController } from "./controllers/product-barcode.controller";
+import { ProductCategoryController } from "./controllers/product-category.controller";
 import { ProductController } from "./controllers/product.controller";
+import { ProductSubcategoryController } from "./controllers/product-subcategory.controller";
 import { PurchaseController } from "./controllers/purchase.controller";
 import { SaleController } from "./controllers/sale.controller";
 import { SupplierController } from "./controllers/supplier.controller";
@@ -31,7 +33,11 @@ import { InventoryLocationService } from "./services/inventory-location.service"
 import { InventoryLotReconciliationService } from "./services/inventory-lot-reconciliation.service";
 import { OrderService } from "./services/order.service";
 import { ProductBarcodeService } from "./services/product-barcode.service";
+import { ProductCategoryService } from "./services/product-category.service";
+import { LocalImageStorageService } from "./services/local-image-storage.service";
 import { ProductService } from "./services/product.service";
+import { ProductImageService } from "./services/product-image.service";
+import { ProductSubcategoryService } from "./services/product-subcategory.service";
 import { PurchaseService } from "./services/purchase.service";
 import { SaleService } from "./services/sale.service";
 import { StockAdjustmentService } from "./services/stock-adjustment.service";
@@ -48,7 +54,9 @@ import { InventoryLotRepository } from "./repositories/inventory-lot.repository"
 import { InventoryLocationRepository } from "./repositories/inventory-location.repository";
 import { InventoryLotReconciliationRepository } from "./repositories/inventory-lot-reconciliation.repository";
 import { ProductBarcodeRepository } from "./repositories/product-barcode.repository";
+import { ProductCategoryRepository } from "./repositories/product-category.repository";
 import { ProductRepository } from "./repositories/product.repository";
+import { ProductSubcategoryRepository } from "./repositories/product-subcategory.repository";
 import { SaleRepository } from "./repositories/sale.repository";
 import { StockMovementLotRepository } from "./repositories/stock-movement-lot.repository";
 import { SupplierRepository } from "./repositories/supplier.repository";
@@ -72,6 +80,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLocationController,
     ProductController,
     ProductBarcodeController,
+    ProductCategoryController,
+    ProductSubcategoryController,
     SupplierController,
     UnitController,
     TaxController,
@@ -92,7 +102,11 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationService,
     OrderService,
     ProductService,
+    ProductImageService,
+    LocalImageStorageService,
     ProductBarcodeService,
+    ProductCategoryService,
+    ProductSubcategoryService,
     PurchaseService,
     SaleService,
     StockAdjustmentService,
@@ -110,6 +124,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationRepository,
     ProductRepository,
     ProductBarcodeRepository,
+    ProductCategoryRepository,
+    ProductSubcategoryRepository,
     SaleRepository,
     StockMovementLotRepository,
     SupplierRepository,
@@ -128,6 +144,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     OrderService,
     ProductService,
     ProductBarcodeService,
+    ProductCategoryService,
+    ProductSubcategoryService,
     PurchaseService,
     SaleService,
     StockAdjustmentService,
@@ -145,6 +163,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationRepository,
     ProductRepository,
     ProductBarcodeRepository,
+    ProductCategoryRepository,
+    ProductSubcategoryRepository,
     SaleRepository,
     StockMovementLotRepository,
     SupplierRepository,

@@ -8,6 +8,8 @@ const buildInventoryProductRow = (
   overrides: Partial<InventoryProductRow> = {}
 ): InventoryProductRow =>
   ({
+    category_id: randomUUID(),
+    subcategory_id: randomUUID(),
     tenant_id: randomUUID(),
     tenant_name: "Tenant prueba",
     branch_id: randomUUID(),
@@ -67,5 +69,7 @@ describe("InventoryService product mapping", () => {
     assert.equal(product.rotationClass, "HIGH");
     assert.equal(product.minStock, 5);
     assert.equal(product.maxStock, 20);
+    assert.equal(product.categoryId, row.category_id);
+    assert.equal(product.subcategoryId, row.subcategory_id);
   });
 });

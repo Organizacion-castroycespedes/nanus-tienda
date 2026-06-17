@@ -6,10 +6,13 @@ import { PERMISSION_KEY } from "../../../common/decorators/require-permission.de
 import { ROLES_KEY } from "../../../common/decorators/roles.decorator";
 import { PromotionsController } from "../../pricing/promotions.controller";
 import { CustomerController } from "./customer.controller";
+import { InventoryController } from "./inventory.controller";
 import { InventoryLocationController } from "./inventory-location.controller";
 import { InventoryLotController } from "./inventory-lot.controller";
 import { ProductBarcodeController } from "./product-barcode.controller";
+import { ProductCategoryController } from "./product-category.controller";
 import { ProductController } from "./product.controller";
+import { ProductSubcategoryController } from "./product-subcategory.controller";
 import { PurchaseController } from "./purchase.controller";
 import { SupplierController } from "./supplier.controller";
 import { StockAdjustmentController } from "./stock-adjustment.controller";
@@ -62,6 +65,35 @@ describe("operational catalog role permissions", () => {
         controller: "ProductBarcodeController",
         prototype: ProductBarcodeController.prototype,
         methods: ["create", "update", "deactivate", "setPrimary"],
+      },
+      {
+        controller: "ProductCategoryController",
+        prototype: ProductCategoryController.prototype,
+        methods: [
+          "create",
+          "update",
+          "activate",
+          "deactivate",
+          "uploadImage",
+          "deleteImage",
+        ],
+      },
+      {
+        controller: "ProductSubcategoryController",
+        prototype: ProductSubcategoryController.prototype,
+        methods: [
+          "create",
+          "update",
+          "activate",
+          "deactivate",
+          "uploadImage",
+          "deleteImage",
+        ],
+      },
+      {
+        controller: "InventoryController",
+        prototype: InventoryController.prototype,
+        methods: ["uploadProductImage", "deleteProductImage"],
       },
       {
         controller: "StockAdjustmentController",
@@ -172,6 +204,42 @@ describe("operational catalog role permissions", () => {
     assert.equal(barcodePermission?.level, "READ");
     assert.deepEqual(barcodePermission?.operationalRoles, operationalRoles);
 
+    const productImagePermission = getMethodPermission(
+      InventoryController.prototype,
+      "getProductImage"
+    );
+    assert.equal(productImagePermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+    assert.equal(productImagePermission?.level, "READ");
+    assert.deepEqual(
+      productImagePermission?.operationalRoles,
+      operationalRoles
+    );
+
+    const categoryImagePermission = getMethodPermission(
+      ProductCategoryController.prototype,
+      "getImage"
+    );
+    assert.equal(categoryImagePermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+    assert.equal(categoryImagePermission?.level, "READ");
+    assert.deepEqual(
+      categoryImagePermission?.operationalRoles,
+      operationalRoles
+    );
+
+    const subcategoryImagePermission = getMethodPermission(
+      ProductSubcategoryController.prototype,
+      "getImage"
+    );
+    assert.equal(
+      subcategoryImagePermission?.menuKey,
+      MENU_KEYS.INVENTORY_PRODUCTS
+    );
+    assert.equal(subcategoryImagePermission?.level, "READ");
+    assert.deepEqual(
+      subcategoryImagePermission?.operationalRoles,
+      operationalRoles
+    );
+
     const taxPermission = getMethodPermission(TaxController.prototype, "list");
     assert.equal(taxPermission?.menuKey, MENU_KEYS.INVENTORY_TAXES);
     assert.equal(taxPermission?.level, "READ");
@@ -181,9 +249,90 @@ describe("operational catalog role permissions", () => {
       const roles = getMethodRoles(ProductController.prototype, methodName);
       assert.equal(roles?.includes("USER"), false);
     }
+    for (const methodName of [
+      "create",
+      "update",
+      "activate",
+      "deactivate",
+      "uploadImage",
+      "deleteImage",
+    ]) {
+      const categoryRoles = getMethodRoles(
+        ProductCategoryController.prototype,
+        methodName
+      );
+      const subcategoryRoles = getMethodRoles(
+        ProductSubcategoryController.prototype,
+        methodName
+      );
+      assert.equal(categoryRoles?.includes("USER"), false);
+      assert.equal(subcategoryRoles?.includes("USER"), false);
+    }
+    for (const methodName of [
+      "uploadProductImage",
+      "deleteProductImage",
+    ]) {
+      const roles = getMethodRoles(InventoryController.prototype, methodName);
+      assert.equal(roles?.includes("USER"), false);
+    }
     for (const methodName of ["create", "update", "remove"]) {
       const roles = getMethodRoles(TaxController.prototype, methodName);
       assert.equal(roles?.includes("USER"), false);
+    }
+  });
+
+  it("protects product classification controllers with product-equivalent permissions", () => {
+    for (const methodName of ["list", "getById"]) {
+      const categoryPermission = getMethodPermission(
+        ProductCategoryController.prototype,
+        methodName
+      );
+      assert.equal(categoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(categoryPermission?.level, "READ");
+      assert.deepEqual(categoryPermission?.operationalRoles, operationalRoles);
+
+      const subcategoryPermission = getMethodPermission(
+        ProductSubcategoryController.prototype,
+        methodName
+      );
+      assert.equal(subcategoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(subcategoryPermission?.level, "READ");
+      assert.deepEqual(subcategoryPermission?.operationalRoles, operationalRoles);
+    }
+
+    for (const methodName of [
+      "create",
+      "update",
+      "activate",
+      "deactivate",
+      "uploadImage",
+      "deleteImage",
+    ]) {
+      const categoryPermission = getMethodPermission(
+        ProductCategoryController.prototype,
+        methodName
+      );
+      assert.equal(categoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(categoryPermission?.level, "WRITE");
+
+      const subcategoryPermission = getMethodPermission(
+        ProductSubcategoryController.prototype,
+        methodName
+      );
+      assert.equal(subcategoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(subcategoryPermission?.level, "WRITE");
+    }
+
+    for (const methodName of [
+      "uploadProductImage",
+      "deleteProductImage",
+    ]) {
+      const imagePermission = getMethodPermission(
+        InventoryController.prototype,
+        methodName
+      );
+      assert.equal(imagePermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(imagePermission?.level, "WRITE");
     }
   });
 

@@ -67,6 +67,18 @@ export class InventoryService {
       rotationClass: row.rotation_class,
       minStock: row.min_stock === null ? null : Number(row.min_stock),
       maxStock: row.max_stock === null ? null : Number(row.max_stock),
+      categoryId: row.category_id,
+      subcategoryId: row.subcategory_id,
+      imageUrl: row.image_url,
+      imageStorageKey: row.image_storage_key,
+      imageAltText: row.image_alt_text,
+      imageMimeType: row.image_mime_type,
+      imageSizeBytes:
+        row.image_size_bytes === null ? null : Number(row.image_size_bytes),
+      imageUpdatedAt:
+        row.image_updated_at === null
+          ? null
+          : new Date(row.image_updated_at).toISOString(),
       createdAt: new Date(row.created_at).toISOString(),
       updatedAt: new Date(row.updated_at).toISOString(),
       stock: Number(row.stock),
