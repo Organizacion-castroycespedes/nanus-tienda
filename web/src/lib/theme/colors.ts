@@ -16,19 +16,39 @@ export type HslColor = {
 const clamp = (value: number, min = 0, max = 255) =>
   Math.min(max, Math.max(min, value));
 
-const normalizeHex = (hex: string) => {
-  const value = hex.trim();
+export const normalizeHexColor = (color?: string | null) => {
+  if (typeof color !== "string") {
+    return null;
+  }
+
+  const value = color.trim();
+  if (!value) {
+    return null;
+  }
+
   if (SHORT_HEX_COLOR_REGEX.test(value)) {
     return value.replace(
       SHORT_HEX_COLOR_REGEX,
       (_, r: string, g: string, b: string) => `#${r}${r}${g}${g}${b}${b}`
-    );
+    ).toUpperCase();
   }
-  return value.startsWith("#") ? value : `#${value}`;
+
+  if (!HEX_COLOR_REGEX.test(value)) {
+    return null;
+  }
+
+  return (value.startsWith("#") ? value : `#${value}`).toUpperCase();
 };
 
+export const isValidHexColor = (color?: string | null) =>
+  normalizeHexColor(color) !== null;
+
 export const hexToRgb = (hex: string): RgbColor | null => {
-  const normalized = normalizeHex(hex);
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) {
+    return null;
+  }
+
   const match = HEX_COLOR_REGEX.exec(normalized);
 
   if (!match) {
@@ -106,7 +126,7 @@ const mix = (hex: string, target: string, amount: number) => {
 const getRelativeLuminance = (hex: string) => {
   const rgb = hexToRgb(hex);
   if (!rgb) {
-    return 0;
+    return null;
   }
 
   const channels = [rgb.r, rgb.g, rgb.b].map((channel) => {
@@ -120,24 +140,41 @@ const getRelativeLuminance = (hex: string) => {
 };
 
 export const getContrastRatio = (foreground: string, background: string) => {
-  const light = Math.max(
-    getRelativeLuminance(foreground),
-    getRelativeLuminance(background)
-  );
-  const dark = Math.min(
-    getRelativeLuminance(foreground),
-    getRelativeLuminance(background)
-  );
+  const foregroundLuminance = getRelativeLuminance(foreground);
+  const backgroundLuminance = getRelativeLuminance(background);
+
+  if (foregroundLuminance === null || backgroundLuminance === null) {
+    return 1;
+  }
+
+  const light = Math.max(foregroundLuminance, backgroundLuminance);
+  const dark = Math.min(foregroundLuminance, backgroundLuminance);
 
   return (light + 0.05) / (dark + 0.05);
 };
 
-export const isDarkColor = (hex: string) => getRelativeLuminance(hex) < 0.45;
+export const isDarkColor = (hex: string) => {
+  const luminance = getRelativeLuminance(hex);
+  return luminance === null ? false : luminance < 0.45;
+};
 
 export const getContrastColor = (background: string, dark = "#0F172A", light = "#FFFFFF") =>
   getContrastRatio(light, background) >= getContrastRatio(dark, background)
     ? light
     : dark;
+
+export const getReadableTextColor = (
+  backgroundColor?: string | null,
+  dark = "#0F172A",
+  light = "#FFFFFF"
+) => {
+  const normalized = normalizeHexColor(backgroundColor);
+  if (!normalized) {
+    return dark;
+  }
+
+  return getContrastColor(normalized, dark, light);
+};
 
 export const lighten = (hex: string, amount = 0.12) => mix(hex, "#FFFFFF", amount);
 
