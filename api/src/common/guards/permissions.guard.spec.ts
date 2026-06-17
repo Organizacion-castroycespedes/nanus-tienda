@@ -411,6 +411,33 @@ test("PermissionsGuard: allows ADMIN operational catalog WRITE without DB permis
   assert.equal(allowed, true);
 });
 
+test("PermissionsGuard: allows ADMIN product classification WRITE without DB permission", async () => {
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for ADMIN operational shortcut");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  for (const menuKey of [
+    MENU_KEYS.INVENTORY_PRODUCT_CATEGORIES,
+    MENU_KEYS.INVENTORY_PRODUCT_SUBCATEGORIES,
+  ]) {
+    const reflector = {
+      getAllAndOverride: () => ({
+        menuKey,
+        level: "WRITE",
+      }),
+    } as any;
+    const guard = new PermissionsGuard(reflector, accessControlService);
+    const allowed = await guard.canActivate(
+      buildContext({ id: "user", tenantId: "tenant", roles: ["ADMIN"] })
+    );
+    assert.equal(allowed, true);
+  }
+});
+
 test("PermissionsGuard: allows ADMIN generic inventory WRITE without DB permission", async () => {
   const reflector = {
     getAllAndOverride: () => ({

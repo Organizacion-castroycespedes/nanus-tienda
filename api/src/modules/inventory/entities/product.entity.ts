@@ -1,5 +1,9 @@
 import type { TaxEntity } from "./tax.entity";
 import type { UnitEntity } from "./unit.entity";
+import {
+  PRODUCT_IMAGE_MIME_TYPES,
+  type ProductImageMimeType,
+} from "./product-category.entity";
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -71,6 +75,14 @@ export type ProductProps = {
   measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  imageUrl?: string | null;
+  imageStorageKey?: string | null;
+  imageAltText?: string | null;
+  imageMimeType?: ProductImageMimeType | null;
+  imageSizeBytes?: number | null;
+  imageUpdatedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -99,6 +111,14 @@ export class ProductEntity {
   readonly measurementUnit: ProductMeasurementUnit;
   readonly minStock: number | null;
   readonly maxStock: number | null;
+  readonly categoryId: string | null;
+  readonly subcategoryId: string | null;
+  readonly imageUrl: string | null;
+  readonly imageStorageKey: string | null;
+  readonly imageAltText: string | null;
+  readonly imageMimeType: ProductImageMimeType | null;
+  readonly imageSizeBytes: number | null;
+  readonly imageUpdatedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -114,6 +134,20 @@ export class ProductEntity {
     }
     if (props.taxId !== undefined && props.taxId !== null && !isUuid(props.taxId)) {
       throw new Error("taxId must be a valid UUID");
+    }
+    if (
+      props.categoryId !== undefined &&
+      props.categoryId !== null &&
+      !isUuid(props.categoryId)
+    ) {
+      throw new Error("categoryId must be a valid UUID");
+    }
+    if (
+      props.subcategoryId !== undefined &&
+      props.subcategoryId !== null &&
+      !isUuid(props.subcategoryId)
+    ) {
+      throw new Error("subcategoryId must be a valid UUID");
     }
     if (!props.name?.trim()) {
       throw new Error("name is required");
@@ -131,6 +165,16 @@ export class ProductEntity {
     }
     if (props.maxStock !== undefined && props.maxStock !== null) {
       assertNonNegativeDecimal(props.maxStock, "maxStock");
+    }
+    if (props.imageSizeBytes !== undefined && props.imageSizeBytes !== null) {
+      assertNonNegativeDecimal(props.imageSizeBytes, "imageSizeBytes");
+    }
+    if (
+      props.imageMimeType !== undefined &&
+      props.imageMimeType !== null &&
+      !PRODUCT_IMAGE_MIME_TYPES.includes(props.imageMimeType)
+    ) {
+      throw new Error("imageMimeType is invalid");
     }
     if (
       props.operationalStatus !== undefined &&
@@ -178,6 +222,13 @@ export class ProductEntity {
       throw new Error("requiresLot is required when requiresExpiration is true");
     }
     if (
+      props.subcategoryId !== undefined &&
+      props.subcategoryId !== null &&
+      (props.categoryId === undefined || props.categoryId === null)
+    ) {
+      throw new Error("categoryId is required when subcategoryId is provided");
+    }
+    if (
       props.isPerishable === true &&
       props.requiresLot !== true &&
       props.requiresExpiration !== true
@@ -210,6 +261,14 @@ export class ProductEntity {
     this.measurementUnit = measurementUnit;
     this.minStock = props.minStock ?? null;
     this.maxStock = props.maxStock ?? null;
+    this.categoryId = props.categoryId ?? null;
+    this.subcategoryId = props.subcategoryId ?? null;
+    this.imageUrl = props.imageUrl?.trim() || null;
+    this.imageStorageKey = props.imageStorageKey?.trim() || null;
+    this.imageAltText = props.imageAltText?.trim() || null;
+    this.imageMimeType = props.imageMimeType ?? null;
+    this.imageSizeBytes = props.imageSizeBytes ?? null;
+    this.imageUpdatedAt = props.imageUpdatedAt ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

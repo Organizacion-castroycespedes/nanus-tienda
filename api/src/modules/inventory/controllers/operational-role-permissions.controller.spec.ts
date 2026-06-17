@@ -9,7 +9,9 @@ import { CustomerController } from "./customer.controller";
 import { InventoryLocationController } from "./inventory-location.controller";
 import { InventoryLotController } from "./inventory-lot.controller";
 import { ProductBarcodeController } from "./product-barcode.controller";
+import { ProductCategoryController } from "./product-category.controller";
 import { ProductController } from "./product.controller";
+import { ProductSubcategoryController } from "./product-subcategory.controller";
 import { PurchaseController } from "./purchase.controller";
 import { SupplierController } from "./supplier.controller";
 import { StockAdjustmentController } from "./stock-adjustment.controller";
@@ -62,6 +64,16 @@ describe("operational catalog role permissions", () => {
         controller: "ProductBarcodeController",
         prototype: ProductBarcodeController.prototype,
         methods: ["create", "update", "deactivate", "setPrimary"],
+      },
+      {
+        controller: "ProductCategoryController",
+        prototype: ProductCategoryController.prototype,
+        methods: ["create", "update", "activate", "deactivate"],
+      },
+      {
+        controller: "ProductSubcategoryController",
+        prototype: ProductSubcategoryController.prototype,
+        methods: ["create", "update", "activate", "deactivate"],
       },
       {
         controller: "StockAdjustmentController",
@@ -181,9 +193,57 @@ describe("operational catalog role permissions", () => {
       const roles = getMethodRoles(ProductController.prototype, methodName);
       assert.equal(roles?.includes("USER"), false);
     }
+    for (const methodName of ["create", "update", "activate", "deactivate"]) {
+      const categoryRoles = getMethodRoles(
+        ProductCategoryController.prototype,
+        methodName
+      );
+      const subcategoryRoles = getMethodRoles(
+        ProductSubcategoryController.prototype,
+        methodName
+      );
+      assert.equal(categoryRoles?.includes("USER"), false);
+      assert.equal(subcategoryRoles?.includes("USER"), false);
+    }
     for (const methodName of ["create", "update", "remove"]) {
       const roles = getMethodRoles(TaxController.prototype, methodName);
       assert.equal(roles?.includes("USER"), false);
+    }
+  });
+
+  it("protects product classification controllers with product-equivalent permissions", () => {
+    for (const methodName of ["list", "getById"]) {
+      const categoryPermission = getMethodPermission(
+        ProductCategoryController.prototype,
+        methodName
+      );
+      assert.equal(categoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(categoryPermission?.level, "READ");
+      assert.deepEqual(categoryPermission?.operationalRoles, operationalRoles);
+
+      const subcategoryPermission = getMethodPermission(
+        ProductSubcategoryController.prototype,
+        methodName
+      );
+      assert.equal(subcategoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(subcategoryPermission?.level, "READ");
+      assert.deepEqual(subcategoryPermission?.operationalRoles, operationalRoles);
+    }
+
+    for (const methodName of ["create", "update", "activate", "deactivate"]) {
+      const categoryPermission = getMethodPermission(
+        ProductCategoryController.prototype,
+        methodName
+      );
+      assert.equal(categoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(categoryPermission?.level, "WRITE");
+
+      const subcategoryPermission = getMethodPermission(
+        ProductSubcategoryController.prototype,
+        methodName
+      );
+      assert.equal(subcategoryPermission?.menuKey, MENU_KEYS.INVENTORY_PRODUCTS);
+      assert.equal(subcategoryPermission?.level, "WRITE");
     }
   });
 

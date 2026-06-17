@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
+import type { ProductImageMimeType } from "../entities/product-category.entity";
 import { ProductEntity, type ProductProps } from "../entities/product.entity";
 
 type ProductRow = QueryResultRow & {
@@ -25,6 +26,14 @@ type ProductRow = QueryResultRow & {
   measurement_unit: ProductProps["measurementUnit"];
   min_stock: string | number | null;
   max_stock: string | number | null;
+  category_id: string | null;
+  subcategory_id: string | null;
+  image_url: string | null;
+  image_storage_key: string | null;
+  image_alt_text: string | null;
+  image_mime_type: ProductImageMimeType | null;
+  image_size_bytes: string | number | null;
+  image_updated_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -69,6 +78,14 @@ type UpdateProductData = Partial<
     | "measurementUnit"
     | "minStock"
     | "maxStock"
+    | "categoryId"
+    | "subcategoryId"
+    | "imageUrl"
+    | "imageStorageKey"
+    | "imageAltText"
+    | "imageMimeType"
+    | "imageSizeBytes"
+    | "imageUpdatedAt"
   >
 >;
 
@@ -137,6 +154,14 @@ export class ProductRepository {
     measurement_unit,
     min_stock,
     max_stock,
+    category_id,
+    subcategory_id,
+    image_url,
+    image_storage_key,
+    image_alt_text,
+    image_mime_type,
+    image_size_bytes,
+    image_updated_at,
     created_at,
     updated_at
   `;
@@ -166,6 +191,16 @@ export class ProductRepository {
       measurementUnit: row.measurement_unit ?? "UND",
       minStock: row.min_stock === null ? null : Number(row.min_stock),
       maxStock: row.max_stock === null ? null : Number(row.max_stock),
+      categoryId: row.category_id,
+      subcategoryId: row.subcategory_id,
+      imageUrl: row.image_url,
+      imageStorageKey: row.image_storage_key,
+      imageAltText: row.image_alt_text,
+      imageMimeType: row.image_mime_type,
+      imageSizeBytes:
+        row.image_size_bytes === null ? null : Number(row.image_size_bytes),
+      imageUpdatedAt:
+        row.image_updated_at === null ? null : new Date(row.image_updated_at),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     });
@@ -219,12 +254,21 @@ export class ProductRepository {
         measurement_unit,
         min_stock,
         max_stock,
+        category_id,
+        subcategory_id,
+        image_url,
+        image_storage_key,
+        image_alt_text,
+        image_mime_type,
+        image_size_bytes,
+        image_updated_at,
         created_at,
         updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
-        $20, $21, $22, $23
+        $20, $21, $22, $23, $24, $25, $26, $27, $28,
+        $29, $30, $31
       )
       RETURNING
         ${this.selectColumns}
@@ -251,6 +295,14 @@ export class ProductRepository {
         product.measurementUnit ?? "UND",
         product.minStock ?? null,
         product.maxStock ?? null,
+        product.categoryId ?? null,
+        product.subcategoryId ?? null,
+        product.imageUrl ?? null,
+        product.imageStorageKey ?? null,
+        product.imageAltText ?? null,
+        product.imageMimeType ?? null,
+        product.imageSizeBytes ?? null,
+        product.imageUpdatedAt ?? null,
         product.createdAt,
         product.updatedAt,
       ],
@@ -415,6 +467,30 @@ export class ProductRepository {
     }
     if (data.maxStock !== undefined) {
       addUpdate("max_stock", data.maxStock);
+    }
+    if (data.categoryId !== undefined) {
+      addUpdate("category_id", data.categoryId);
+    }
+    if (data.subcategoryId !== undefined) {
+      addUpdate("subcategory_id", data.subcategoryId);
+    }
+    if (data.imageUrl !== undefined) {
+      addUpdate("image_url", data.imageUrl);
+    }
+    if (data.imageStorageKey !== undefined) {
+      addUpdate("image_storage_key", data.imageStorageKey);
+    }
+    if (data.imageAltText !== undefined) {
+      addUpdate("image_alt_text", data.imageAltText);
+    }
+    if (data.imageMimeType !== undefined) {
+      addUpdate("image_mime_type", data.imageMimeType);
+    }
+    if (data.imageSizeBytes !== undefined) {
+      addUpdate("image_size_bytes", data.imageSizeBytes);
+    }
+    if (data.imageUpdatedAt !== undefined) {
+      addUpdate("image_updated_at", data.imageUpdatedAt);
     }
 
     if (updates.length === 0) {
