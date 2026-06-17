@@ -275,7 +275,7 @@ The system SHALL provide frontend pages to administer product categories and sub
 
 - GIVEN the classification UI is available
 - WHEN the user administers categories or subcategories
-- THEN the system SHALL NOT implement POS category filters or POS product image changes in this phase.
+- THEN the system SHALL keep classification administration separate from taxes, discounts, inventory/stock and payments.
 
 ### Requirement: Product CRUD classification assignment UI
 
@@ -313,7 +313,7 @@ The system SHALL allow product create and edit workflows to assign optional prod
 
 - GIVEN product CRUD supports classification assignment
 - WHEN the user creates or edits products
-- THEN the system SHALL NOT implement POS filters, POS effective image, taxes, discounts, inventory/stock changes or payments changes in this phase.
+- THEN the system SHALL NOT change taxes, discounts, inventory/stock or payments behavior.
 
 ### Requirement: Local product image upload
 
@@ -359,8 +359,47 @@ The system SHALL support optional local image upload, replacement, retrieval and
 - THEN the UI SHALL indicate that the record must be saved before uploading an image.
 - AND the rest of the form SHALL remain usable without an image.
 
-#### Scenario: POS image behavior remains out of scope
+#### Scenario: POS image metadata remains tenant-safe
 
 - GIVEN local image upload is available in inventory administration
 - WHEN POS renders products
-- THEN the system SHALL NOT use these images as effective POS product images in this phase.
+- THEN it SHALL use only image URLs returned by product, category or subcategory APIs for the current tenant.
+
+### Requirement: POS product classification filters and effective images
+
+The system SHALL allow POS users to filter products by product category and dependent subcategory, and SHALL show the effective POS product image when available.
+
+#### Scenario: POS category filter combines with existing filters
+
+- GIVEN the POS catalog has products with and without categories
+- WHEN the user selects a product category
+- THEN the POS SHALL show only products in that category.
+- AND it SHALL preserve the current search text, stock filter and cart contents.
+
+#### Scenario: POS subcategory depends on selected category
+
+- GIVEN a category is selected in POS
+- WHEN the user opens the subcategory selector
+- THEN the POS SHALL show only subcategories belonging to that category.
+- AND changing or clearing the category SHALL clear any selected subcategory that no longer applies.
+
+#### Scenario: POS filters compose together
+
+- GIVEN the user has search text, stock filter, category filter and subcategory filter selected
+- WHEN the POS product list is rendered
+- THEN the results SHALL match all selected filters together.
+
+#### Scenario: POS effective image priority
+
+- GIVEN a product has optional product, subcategory and category images
+- WHEN the POS product card renders
+- THEN it SHALL use the product image first.
+- AND if missing, it SHALL use the subcategory default image.
+- AND if missing, it SHALL use the category default image.
+- AND if all are missing or fail to load, it SHALL show the existing initials or placeholder fallback.
+
+#### Scenario: POS classification filters preserve sales behavior
+
+- GIVEN POS classification filters and effective images are available
+- WHEN the user sells products
+- THEN the system SHALL NOT change taxes, discounts, inventory/stock, payment or checkout behavior.

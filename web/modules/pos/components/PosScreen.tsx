@@ -85,8 +85,20 @@ import type {
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
 import { buildPosCartDiscountDisplay } from "./pos-discount-display";
+import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
+import {
+  listProductCategories,
+  listProductSubcategories,
+  type ProductCategoryResponse,
+  type ProductSubcategoryResponse,
+} from "../../inventory/services/product-classification.service";
+import {
+  filterPosProductsByClassification,
+  resolveEffectivePosProductImage,
+  sortPosClassificationOptions,
+} from "../utils/product-classification";
 
-type CategoryKey = "all" | "available" | "low" | "out";
+type StockFilterKey = "all" | "available" | "low" | "out";
 type ScannerMockStatus = "disabled" | "connected" | "error";
 type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
 
@@ -153,7 +165,7 @@ type PosItemTax = {
   isIncluded: boolean;
 };
 
-const categoryLabels: Record<CategoryKey, string> = {
+const stockFilterLabels: Record<StockFilterKey, string> = {
   all: "Todos",
   available: "Con stock",
   low: "Stock bajo",
@@ -544,8 +556,12 @@ export const PosScreen = () => {
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [taxes, setTaxes] = useState<TaxResponse[]>([]);
+  const [productCategories, setProductCategories] = useState<ProductCategoryResponse[]>([]);
+  const [productSubcategories, setProductSubcategories] = useState<ProductSubcategoryResponse[]>([]);
   const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
+  const [activeStockFilter, setActiveStockFilter] = useState<StockFilterKey>("all");
+  const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("");
+  const [selectedProductSubcategoryId, setSelectedProductSubcategoryId] = useState("");
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
@@ -668,6 +684,8 @@ export const PosScreen = () => {
       setCatalogLoading(false);
       setCatalogError("No hay una sucursal POS activa para cargar inventario.");
       setProducts([]);
+      setProductCategories([]);
+      setProductSubcategories([]);
       return;
     }
 
@@ -678,11 +696,19 @@ export const PosScreen = () => {
       setCatalogError(null);
       setCatalogWarnings([]);
 
-        try {
-          const [productsResult, customersResult, taxesResult] = await Promise.allSettled([
+      try {
+        const [
+          productsResult,
+          customersResult,
+          taxesResult,
+          categoriesResult,
+          subcategoriesResult,
+        ] = await Promise.allSettled([
           getPosProducts(activeBranchId),
           getPosCustomers(),
           getPosTaxes(),
+          listProductCategories({ isActive: true }),
+          listProductSubcategories({ isActive: true }),
         ]);
 
         if (!active) {
@@ -702,6 +728,14 @@ export const PosScreen = () => {
           taxesResult.status === "fulfilled"
             ? taxesResult.value.filter((tax) => tax.isActive)
             : [];
+        const activeProductCategories =
+          categoriesResult.status === "fulfilled"
+            ? categoriesResult.value.filter((category) => category.isActive)
+            : [];
+        const activeProductSubcategories =
+          subcategoriesResult.status === "fulfilled"
+            ? subcategoriesResult.value.filter((subcategory) => subcategory.isActive)
+            : [];
 
         if (productsResult.status === "rejected") {
           console.error("POS products catalog failed", productsResult.reason);
@@ -715,10 +749,23 @@ export const PosScreen = () => {
           console.error("POS taxes catalog failed", taxesResult.reason);
           warnings.push("No se pudieron cargar los impuestos del POS.");
         }
+        if (categoriesResult.status === "rejected") {
+          console.error("POS product categories failed", categoriesResult.reason);
+          warnings.push("No se pudieron cargar las categorias del POS.");
+        }
+        if (subcategoriesResult.status === "rejected") {
+          console.error(
+            "POS product subcategories failed",
+            subcategoriesResult.reason
+          );
+          warnings.push("No se pudieron cargar las subcategorias del POS.");
+        }
 
         setProducts(activeProducts);
         setCustomers(activeCustomers);
         setTaxes(activeTaxes);
+        setProductCategories(activeProductCategories);
+        setProductSubcategories(activeProductSubcategories);
         setCatalogWarnings(warnings);
 
         if (activeProducts.length === 0) {
@@ -900,6 +947,101 @@ export const PosScreen = () => {
     [paymentMethodsCatalog]
   );
 
+  const productCategoryOptions = useMemo(
+    () => sortPosClassificationOptions(productCategories),
+    [productCategories]
+  );
+
+  const productSubcategoryOptions = useMemo(
+    () =>
+      sortPosClassificationOptions(
+        selectedProductCategoryId
+          ? productSubcategories.filter(
+              (subcategory) =>
+                subcategory.categoryId === selectedProductCategoryId
+            )
+          : []
+      ),
+    [productSubcategories, selectedProductCategoryId]
+  );
+
+  const productCategoryById = useMemo(
+    () =>
+      productCategories.reduce<Map<string, ProductCategoryResponse>>(
+        (acc, category) => acc.set(category.id, category),
+        new Map()
+      ),
+    [productCategories]
+  );
+
+  const productSubcategoryById = useMemo(
+    () =>
+      productSubcategories.reduce<Map<string, ProductSubcategoryResponse>>(
+        (acc, subcategory) => acc.set(subcategory.id, subcategory),
+        new Map()
+      ),
+    [productSubcategories]
+  );
+
+  const selectedProductCategory = selectedProductCategoryId
+    ? productCategoryById.get(selectedProductCategoryId) ?? null
+    : null;
+  const hasSelectedCategoryWithoutSubcategories =
+    Boolean(selectedProductCategoryId) &&
+    !catalogLoading &&
+    productSubcategoryOptions.length === 0;
+
+  useEffect(() => {
+    if (!selectedProductCategoryId && selectedProductSubcategoryId) {
+      setSelectedProductSubcategoryId("");
+      return;
+    }
+
+    if (
+      selectedProductSubcategoryId &&
+      !productSubcategoryOptions.some(
+        (subcategory) => subcategory.id === selectedProductSubcategoryId
+      )
+    ) {
+      setSelectedProductSubcategoryId("");
+    }
+  }, [
+    productSubcategoryOptions,
+    selectedProductCategoryId,
+    selectedProductSubcategoryId,
+  ]);
+
+  const handleStockFilterChange = useCallback(
+    (filter: StockFilterKey) => {
+      setActiveStockFilter(filter);
+      focusProductSearch();
+    },
+    [focusProductSearch]
+  );
+
+  const handleProductCategoryFilterChange = useCallback(
+    (categoryId: string) => {
+      setSelectedProductCategoryId(categoryId);
+      setSelectedProductSubcategoryId("");
+      focusProductSearch();
+    },
+    [focusProductSearch]
+  );
+
+  const handleProductSubcategoryFilterChange = useCallback(
+    (subcategoryId: string) => {
+      setSelectedProductSubcategoryId(subcategoryId);
+      focusProductSearch();
+    },
+    [focusProductSearch]
+  );
+
+  const clearProductClassificationFilters = useCallback(() => {
+    setSelectedProductCategoryId("");
+    setSelectedProductSubcategoryId("");
+    focusProductSearch();
+  }, [focusProductSearch]);
+
   const createPaymentDraft = useCallback(
     (paymentMethodId: string, amount: string): PaymentDraft => ({
       id: buildPaymentId(),
@@ -910,7 +1052,7 @@ export const PosScreen = () => {
     []
   );
 
-  const categoryCounts = useMemo(() => {
+  const stockFilterCounts = useMemo(() => {
     return {
       all: products.length,
       available: products.filter((product) => Number(product.stock ?? 0) > 0).length,
@@ -922,18 +1064,18 @@ export const PosScreen = () => {
   const filteredProducts = useMemo(() => {
     const normalizedQuery = normalizeText(query);
 
-    return products.filter((product) => {
+    const productsMatchingStockAndSearch = products.filter((product) => {
       const stock = Number(product.stock ?? 0);
-      const matchesCategory =
-        activeCategory === "all"
+      const matchesStockFilter =
+        activeStockFilter === "all"
           ? true
-          : activeCategory === "available"
+          : activeStockFilter === "available"
             ? stock > 0
-            : activeCategory === "low"
+            : activeStockFilter === "low"
               ? isLowStock(stock)
               : stock <= 0;
 
-      if (!matchesCategory) {
+      if (!matchesStockFilter) {
         return false;
       }
 
@@ -948,7 +1090,18 @@ export const PosScreen = () => {
       );
       return haystack.includes(normalizedQuery);
     });
-  }, [activeCategory, products, query]);
+
+    return filterPosProductsByClassification(productsMatchingStockAndSearch, {
+      categoryId: selectedProductCategoryId,
+      subcategoryId: selectedProductSubcategoryId,
+    });
+  }, [
+    activeStockFilter,
+    products,
+    query,
+    selectedProductCategoryId,
+    selectedProductSubcategoryId,
+  ]);
 
   const productById = useMemo(
     () =>
@@ -2642,24 +2795,83 @@ export const PosScreen = () => {
                 ) : null}
               </div>
 
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                <Select
+                  label="Categoria"
+                  value={selectedProductCategoryId}
+                  onChange={(event) =>
+                    handleProductCategoryFilterChange(event.target.value)
+                  }
+                  className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                >
+                  <option value="">Todas las categorias</option>
+                  {productCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Subcategoria"
+                  value={selectedProductSubcategoryId}
+                  onChange={(event) =>
+                    handleProductSubcategoryFilterChange(event.target.value)
+                  }
+                  disabled={
+                    !selectedProductCategoryId ||
+                    productSubcategoryOptions.length === 0
+                  }
+                  className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                >
+                  <option value="">
+                    {!selectedProductCategoryId
+                      ? "Selecciona categoria"
+                      : productSubcategoryOptions.length === 0
+                        ? "Sin subcategorias"
+                        : "Todas las subcategorias"}
+                  </option>
+                  {productSubcategoryOptions.map((subcategory) => (
+                    <option key={subcategory.id} value={subcategory.id}>
+                      {subcategory.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  variant="outline"
+                  size="md"
+                  onClick={clearProductClassificationFilters}
+                  disabled={
+                    !selectedProductCategoryId && !selectedProductSubcategoryId
+                  }
+                  className="min-h-10"
+                >
+                  Limpiar
+                </Button>
+                {hasSelectedCategoryWithoutSubcategories ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 lg:col-span-3">
+                    {selectedProductCategory?.name ?? "Categoria"} sin subcategorias.
+                  </p>
+                ) : null}
+              </div>
+
               {/* Filter Chips */}
               <div className="flex flex-wrap gap-2">
-                {(Object.keys(categoryLabels) as CategoryKey[]).map((category) => {
-                  const isActive = activeCategory === category;
+                {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
+                  const isActive = activeStockFilter === filter;
                   return (
                     <button
-                      key={category}
+                      key={filter}
                       type="button"
-                      onClick={() => setActiveCategory(category)}
+                      onClick={() => handleStockFilterChange(filter)}
                       className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
                         isActive
                           ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                       }`}
                     >
-                      <span>{categoryLabels[category]}</span>
+                      <span>{stockFilterLabels[filter]}</span>
                       <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">
-                        {categoryCounts[category]}
+                        {stockFilterCounts[filter]}
                       </span>
                     </button>
                   );
@@ -2687,6 +2899,10 @@ export const PosScreen = () => {
                     const requiresScale = productSaleType === "WEIGHT";
                     const quantityInCart = cartQuantityByProductId[product.id] ?? 0;
                     const hasProductInCart = quantityInCart > 0;
+                    const effectiveImage = resolveEffectivePosProductImage(product, {
+                      categoryById: productCategoryById,
+                      subcategoryById: productSubcategoryById,
+                    });
                     return (
                       <button
                         key={product.id}
@@ -2705,9 +2921,13 @@ export const PosScreen = () => {
                       >
                         <div className="flex h-full flex-col p-4">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
-                              {buildImageLabel(product.name)}
-                            </div>
+                            <InventoryImagePreview
+                              imageUrl={effectiveImage.imageUrl}
+                              altText={effectiveImage.altText}
+                              lazy
+                              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 bg-cover bg-center text-sm font-semibold text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                              fallback={<span>{buildImageLabel(product.name)}</span>}
+                            />
                             <div className="flex flex-col items-end gap-2">
                               <span
                                 className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getProductStockTone(

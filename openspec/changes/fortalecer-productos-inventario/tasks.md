@@ -1539,6 +1539,33 @@
 - [x] Confirmar QA manual local de preview autenticado, rechazo de archivos invalidos con mensaje legible, sin ruta fisica expuesta y registros sin imagen funcionando.
 - [x] Confirmar que no se implemento filtros POS, imagen efectiva POS, impuestos, descuentos, inventario/stock, cobro/pagos ni migraciones nuevas.
 
+## Fase 6.9.9: POS filtros por categoria/subcategoria + imagen efectiva
+
+- [x] Confirmar `git status --short` limpio y HEAD `c454fb7 feat(inventory): add local image uploads for product classification`.
+- [x] Discover que POS carga productos con `getPosProducts(activeBranchId)` desde `/products?branchId=...`.
+- [x] Discover que los filtros POS actuales son busqueda local + chips de stock `Todos`, `Con stock`, `Stock bajo`, `Sin stock`.
+- [x] Discover que el carrito POS vive en `posCart` y no depende del listado filtrado.
+- [x] Discover que `ProductResponse` ya expone `categoryId`, `subcategoryId`, `imageUrl` y metadata de imagen.
+- [x] Discover que categorias/subcategorias deben cargarse con `product-classification.service.ts` para nombres y default images.
+- [x] Reutilizar `InventoryImagePreview` con preview autenticado via blob API.
+- [x] Agregar lazy load a `InventoryImagePreview` para reducir fetch/blob en tarjetas POS fuera de viewport.
+- [x] Agregar selector POS de categoria con opcion `Todas las categorias`.
+- [x] Agregar selector POS de subcategoria dependiente de categoria.
+- [x] Limpiar subcategoria al cambiar o limpiar categoria.
+- [x] Combinar filtros de busqueda + stock + categoria + subcategoria.
+- [x] Mantener carrito, busqueda y filtro stock al cambiar categoria/subcategoria.
+- [x] Mostrar estado compacto `Sin subcategorias` cuando aplica.
+- [x] Resolver imagen efectiva POS con prioridad producto, subcategoria, categoria y fallback de iniciales.
+- [x] Agregar tests frontend de helper de filtros e imagen efectiva POS.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar OpenSpec validate y `git diff --check`.
+- [x] Crear `docs/evidencia-pos-product-classification-filters-images-fase-6-9-9.md`.
+- [x] Ejecutar QA manual local en `/00000000-0000-0000-0000-000000000001/pos`: PASS.
+- [x] Confirmar QA manual local de filtros categoria/subcategoria, busqueda combinada, stock filter combinado y carrito preservado.
+- [x] Confirmar QA manual local de imagen efectiva producto > subcategoria > categoria > fallback e imagen rota con fallback.
+- [x] Confirmar QA manual local de carrito sticky/floating, F4 cobrar y Scanner/Balanza compactos funcionando.
+- [x] Confirmar que no se implemento nuevas migraciones, upload endpoints, storage local, impuestos, descuentos, inventario/stock, cobro/pagos ni reescritura visual grande del POS.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { apiBlobClient } from "../../../lib/http";
 import { normalizeInventoryImageApiPath } from "../utils/inventory-image-upload";
 
@@ -9,6 +9,7 @@ type InventoryImagePreviewProps = {
   altText?: string | null;
   className: string;
   fallback: ReactNode;
+  lazy?: boolean;
 };
 
 export const InventoryImagePreview = ({
@@ -16,9 +17,48 @@ export const InventoryImagePreview = ({
   altText,
   className,
   fallback,
+  lazy = false,
 }: InventoryImagePreviewProps) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [shouldLoad, setShouldLoad] = useState(!lazy);
+
+  useEffect(() => {
+    const apiPath = normalizeInventoryImageApiPath(imageUrl);
+
+    if (!lazy || !apiPath) {
+      setShouldLoad(true);
+      return;
+    }
+
+    setShouldLoad(false);
+
+    if (typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true);
+      return;
+    }
+
+    const node = containerRef.current;
+    if (!node) {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "160px" }
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [imageUrl, lazy]);
 
   useEffect(() => {
     let mounted = true;
@@ -28,7 +68,7 @@ export const InventoryImagePreview = ({
     setObjectUrl(null);
     setFailed(false);
 
-    if (!apiPath) {
+    if (!apiPath || !shouldLoad) {
       return () => {
         mounted = false;
       };
@@ -64,10 +104,11 @@ export const InventoryImagePreview = ({
         URL.revokeObjectURL(currentObjectUrl);
       }
     };
-  }, [imageUrl]);
+  }, [imageUrl, shouldLoad]);
 
   return (
     <div
+      ref={containerRef}
       aria-label={altText ?? undefined}
       className={className}
       role="img"
