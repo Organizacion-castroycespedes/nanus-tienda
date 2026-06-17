@@ -14,9 +14,9 @@ type BrandingThemePreviewProps = {
 
 const menuItems = [
   { label: "Dashboard", active: false },
-  { label: "Configuracion", active: true },
+  { label: "Configuracion", active: false, isOpen: true, hasActiveChild: true },
   { label: "Branding", active: false, child: true },
-  { label: "Menu visual", active: true, child: true },
+  { label: "Menu visual", active: true, child: true, promoteActive: true },
 ];
 
 export const BrandingThemePreview = ({
@@ -78,6 +78,9 @@ export const BrandingThemePreview = ({
                 const styles = getMenuItemStateStyles(theme, {
                   depth: item.child ? 1 : 0,
                   isActive: active,
+                  isOpen: item.isOpen,
+                  hasActiveChild: item.hasActiveChild,
+                  promoteActive: item.promoteActive,
                 });
                 return (
                   <div

@@ -37,6 +37,17 @@ const assertDifferentStateBg = (stateBackground: string, menuBackground: string)
   );
 };
 
+const assertClearSubmenuStateBg = (
+  stateBackground: string,
+  menuBackground: string
+) => {
+  assert.notEqual(stateBackground, menuBackground);
+  assert.ok(
+    getContrastRatio(stateBackground, menuBackground) >= 1.45,
+    `${stateBackground} is not visible enough against ${menuBackground}`
+  );
+};
+
 const assertNotNearWhite = (color: string) => {
   const hsl = hexToHsl(color);
   assert.ok(hsl && hsl.l < 0.94, `${color} is too close to white`);
@@ -95,6 +106,79 @@ test("returns readable active and submenu menu styles", () => {
   assert.equal(active.indicator.opacity, 1);
 });
 
+test("keeps parent active strong when no child is active", () => {
+  const tokens = buildTenantThemeTokens(
+    branding({ primary: "#2563EB", secondary: "#0F172A" })
+  );
+  const parentActive = getMenuItemStateStyles(tokens, {
+    depth: 0,
+    isActive: true,
+    hasActiveChild: false,
+  });
+
+  assert.equal(parentActive.container.backgroundColor, tokens.menu.activeBg);
+  assert.equal(parentActive.container.color, tokens.menu.activeText);
+  assert.equal(parentActive.indicator.backgroundColor, tokens.menu.activeIndicator);
+  assert.equal(parentActive.indicator.opacity, 1);
+});
+
+test("keeps parent open contextual when child is active", () => {
+  const tokens = buildTenantThemeTokens(
+    branding({ primary: "#2563EB", secondary: "#0F172A" })
+  );
+  const parentOpen = getMenuItemStateStyles(tokens, {
+    depth: 0,
+    isOpen: true,
+    hasActiveChild: true,
+  });
+
+  assert.equal(parentOpen.container.backgroundColor, tokens.menu.openBg);
+  assert.equal(parentOpen.container.color, tokens.menu.openText);
+  assert.equal(parentOpen.indicator.backgroundColor, tokens.menu.openIndicator);
+  assert.notEqual(parentOpen.container.backgroundColor, tokens.menu.activeBg);
+  assert.notEqual(parentOpen.container.color, tokens.menu.activeText);
+});
+
+test("promotes active child to the strong active style", () => {
+  const tokens = buildTenantThemeTokens(
+    branding({ primary: "#2563EB", secondary: "#0F172A" })
+  );
+  const parentOpen = getMenuItemStateStyles(tokens, {
+    depth: 0,
+    isOpen: true,
+    hasActiveChild: true,
+  });
+  const childActive = getMenuItemStateStyles(tokens, {
+    depth: 1,
+    isActive: true,
+    promoteActive: true,
+  });
+
+  assert.notEqual(
+    parentOpen.container.backgroundColor,
+    childActive.container.backgroundColor
+  );
+  assert.equal(childActive.container.backgroundColor, tokens.menu.activeBg);
+  assert.equal(childActive.container.color, tokens.menu.activeText);
+  assert.equal(childActive.indicator.backgroundColor, tokens.menu.activeIndicator);
+  assert.equal(childActive.icon.backgroundColor, tokens.menu.activeIndicator);
+  assert.equal(childActive.container.boxShadow, "none");
+  assertReadable(
+    String(childActive.container.color),
+    String(childActive.container.backgroundColor)
+  );
+  assert.ok(
+    getContrastRatio(
+      String(childActive.container.backgroundColor),
+      tokens.menu.background
+    ) >
+      getContrastRatio(
+        String(parentOpen.container.backgroundColor),
+        tokens.menu.background
+      )
+  );
+});
+
 test("keeps dark sidebar active and submenu states visible", () => {
   const tokens = buildTenantThemeTokens(
     branding({ primary: "#DC2626", secondary: "#0F172A" })
@@ -103,7 +187,7 @@ test("keeps dark sidebar active and submenu states visible", () => {
   const submenu = getMenuItemStateStyles(tokens, { depth: 1, isActive: true });
 
   assertDifferentStateBg(String(active.container.backgroundColor), tokens.menu.background);
-  assertDifferentStateBg(
+  assertClearSubmenuStateBg(
     String(submenu.container.backgroundColor),
     tokens.menu.background
   );
@@ -116,6 +200,7 @@ test("keeps dark sidebar active and submenu states visible", () => {
   assert.ok(
     getContrastRatio(tokens.menu.subActiveIndicator, tokens.menu.background) >= 3
   );
+  assert.equal(submenu.container.boxShadow, "none");
 });
 
 test("keeps menu active visible when secondary is light", () => {
@@ -155,6 +240,25 @@ test("keeps light sidebar active and submenu states away from white", () => {
   assertReadable(
     String(submenu.container.color),
     String(submenu.container.backgroundColor)
+  );
+});
+
+test("keeps promoted child active visible on a light sidebar", () => {
+  const tokens = buildTenantThemeTokens(
+    branding({ primary: "#2563EB", secondary: "#FFFFFF" })
+  );
+  const childActive = getMenuItemStateStyles(tokens, {
+    depth: 1,
+    isActive: true,
+    promoteActive: true,
+  });
+
+  assert.equal(tokens.menu.background, "#FFFFFF");
+  assert.equal(childActive.container.backgroundColor, tokens.menu.activeBg);
+  assertNotNearWhite(String(childActive.container.backgroundColor));
+  assertReadable(
+    String(childActive.container.color),
+    String(childActive.container.backgroundColor)
   );
 });
 
@@ -200,6 +304,7 @@ test("keeps submenu active evident on light menu backgrounds", () => {
   assert.notEqual(submenu.container.backgroundColor, tokens.menu.background);
   assert.equal(submenu.icon.backgroundColor, tokens.menu.subActiveIndicator);
   assertNotNearWhite(String(submenu.container.backgroundColor));
+  assert.equal(submenu.container.boxShadow, "none");
   assertReadable(
     String(submenu.container.color),
     String(submenu.container.backgroundColor)
@@ -232,6 +337,9 @@ test("keeps sidebar and preview token contract aligned", () => {
   assert.equal(tokens.sidebar.subItemActiveBackground, tokens.menu.subActiveBg);
   assert.equal(tokens.sidebar.subItemActiveText, tokens.menu.subActiveText);
   assert.equal(tokens.sidebar.subItemActiveIndicator, tokens.menu.subActiveIndicator);
+  assert.equal(tokens.sidebar.openBackground, tokens.menu.openBg);
+  assert.equal(tokens.sidebar.openText, tokens.menu.openText);
+  assert.equal(tokens.sidebar.openIndicator, tokens.menu.openIndicator);
   assert.equal(submenu.container.backgroundColor, tokens.menu.subActiveBg);
   assert.equal(submenu.indicator.backgroundColor, tokens.menu.subActiveIndicator);
   assert.equal(submenu.icon.backgroundColor, tokens.menu.subActiveIndicator);

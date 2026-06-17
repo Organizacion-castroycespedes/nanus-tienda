@@ -48,6 +48,12 @@ const BrandingApplier = ({ children }: { children: ReactNode }) => {
     root.style.setProperty("--brand-sidebar-muted", theme.sidebar.mutedText);
     root.style.setProperty("--brand-sidebar-active", theme.sidebar.activeBackground);
     root.style.setProperty("--brand-sidebar-active-text", theme.sidebar.activeText);
+    root.style.setProperty("--brand-sidebar-open", theme.sidebar.openBackground);
+    root.style.setProperty("--brand-sidebar-open-text", theme.sidebar.openText);
+    root.style.setProperty(
+      "--brand-sidebar-open-indicator",
+      theme.sidebar.openIndicator
+    );
     root.style.setProperty(
       "--brand-sidebar-sub-active",
       theme.sidebar.subItemActiveBackground

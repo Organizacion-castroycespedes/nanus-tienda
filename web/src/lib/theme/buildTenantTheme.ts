@@ -48,6 +48,9 @@ export type TenantThemeTokens = {
     mutedText: string;
     activeBackground: string;
     activeText: string;
+    openBackground: string;
+    openText: string;
+    openIndicator: string;
     hoverBackground: string;
     border: string;
     logoBackground: string;
@@ -70,6 +73,9 @@ export type TenantThemeTokens = {
     activeBg: string;
     activeText: string;
     activeIndicator: string;
+    openBg: string;
+    openText: string;
+    openIndicator: string;
     hoverBg: string;
     subActiveBg: string;
     subActiveText: string;
@@ -317,12 +323,12 @@ export const buildTenantTheme = (branding: BrandingConfig): TenantThemeTokens =>
   const menuSubActiveBg = menuIsDark
     ? pickStateBackground(
         [
-          lighten(menuBackground, 0.2),
-          lighten(menuBackground, 0.26),
-          lighten(menuBackground, 0.32),
+          lighten(menuBackground, 0.3),
+          lighten(menuBackground, 0.36),
+          lighten(menuBackground, 0.42),
         ],
         menuBackground,
-        lighten(SAFE_SIDEBAR_BACKGROUND, 0.26),
+        lighten(SAFE_SIDEBAR_BACKGROUND, 0.36),
         menuIsDark
       )
     : pickStateBackground(
@@ -344,6 +350,20 @@ export const buildTenantTheme = (branding: BrandingConfig): TenantThemeTokens =>
     menuBackground,
     menuActiveIndicator
   );
+  const menuOpenBg = menuIsDark
+    ? lighten(menuBackground, 0.16)
+    : pickStateBackground(
+        [
+          darken(menuBackground, 0.04),
+          getSoftTint(menuPrimary, 0.9),
+          getSoftTint(SAFE_ACTIVE_BLUE, 0.9),
+        ],
+        menuBackground,
+        darken(SAFE_CARD_BACKGROUND, 0.04),
+        menuIsDark
+      );
+  const menuOpenText = ensureReadableText(menuText, menuOpenBg);
+  const menuOpenIndicator = menuSubActiveIndicator;
   const sidebarBackground = menuBackground;
   const sidebarText = menuText;
   const sidebarActiveText = menuActiveText;
@@ -385,6 +405,9 @@ export const buildTenantTheme = (branding: BrandingConfig): TenantThemeTokens =>
       mutedText: menuMutedText,
       activeBackground: menuActiveBg,
       activeText: sidebarActiveText,
+      openBackground: menuOpenBg,
+      openText: menuOpenText,
+      openIndicator: menuOpenIndicator,
       hoverBackground: sidebarHoverBackground,
       border: sidebarBorder,
       logoBackground: getContrastColor(sidebarBackground, "#E2E8F0", "#FFFFFF"),
@@ -407,6 +430,9 @@ export const buildTenantTheme = (branding: BrandingConfig): TenantThemeTokens =>
       activeBg: menuActiveBg,
       activeText: sidebarActiveText,
       activeIndicator: sidebarAccent,
+      openBg: menuOpenBg,
+      openText: menuOpenText,
+      openIndicator: menuOpenIndicator,
       hoverBg: sidebarHoverBackground,
       subActiveBg: menuSubActiveBg,
       subActiveText: menuSubActiveText,
@@ -436,7 +462,9 @@ export const buildTenantThemeTokens = buildTenantTheme;
 export type MenuItemStateInput = {
   depth?: number;
   isActive?: boolean;
+  isOpen?: boolean;
   hasActiveChild?: boolean;
+  promoteActive?: boolean;
 };
 
 export type MenuItemStateStyles = {
@@ -453,64 +481,75 @@ export const getMenuItemStateStyles = (
   const depth = state.depth ?? 0;
   const isSubItem = depth > 0;
   const isActive = Boolean(state.isActive);
+  const isOpen = Boolean(state.isOpen);
   const hasActiveChild = Boolean(state.hasActiveChild);
-  const isVisuallyActive = isActive || hasActiveChild;
-
-  const activeChildBackground = isSubItem
-    ? "transparent"
-    : themeTokens.menu.subActiveBg;
+  const promoteActive = Boolean(state.promoteActive);
+  const isStrongActive =
+    isActive && (promoteActive || (!isSubItem && !hasActiveChild));
+  const isSoftSubActive = isActive && isSubItem && !promoteActive;
+  const isOpenContext =
+    !isStrongActive && !isSoftSubActive && (isOpen || hasActiveChild);
+  const isVisuallyActive = isStrongActive || isSoftSubActive || isOpenContext;
 
   return {
     container: {
-      backgroundColor: isActive
-        ? isSubItem
+      backgroundColor: isStrongActive
+        ? themeTokens.menu.activeBg
+        : isSoftSubActive
           ? themeTokens.menu.subActiveBg
-          : themeTokens.menu.activeBg
-        : hasActiveChild
-          ? activeChildBackground
+          : isOpenContext
+            ? themeTokens.menu.openBg
           : "transparent",
       color: isVisuallyActive
-        ? isSubItem
-          ? themeTokens.menu.subActiveText
-          : themeTokens.menu.activeText
+        ? isStrongActive
+          ? themeTokens.menu.activeText
+          : isSoftSubActive
+            ? themeTokens.menu.subActiveText
+            : themeTokens.menu.openText
         : themeTokens.menu.text,
-      boxShadow: isActive
-        ? isSubItem
-          ? `inset 0 0 0 1px ${themeTokens.menu.subActiveIndicator}`
-          : "0 10px 24px rgba(15, 23, 42, 0.22)"
+      boxShadow: isStrongActive && !isSubItem
+        ? "0 10px 24px rgba(15, 23, 42, 0.22)"
         : "none",
     },
     indicator: {
-      backgroundColor: isActive
-        ? isSubItem
+      backgroundColor: isStrongActive
+        ? themeTokens.menu.activeIndicator
+        : isSoftSubActive
           ? themeTokens.menu.subActiveIndicator
-          : themeTokens.menu.activeIndicator
-        : hasActiveChild
-          ? themeTokens.menu.activeBg
-          : themeTokens.menu.activeIndicator,
-      opacity: isActive ? 1 : hasActiveChild ? 0.72 : 0,
-      width: isActive ? 3 : 2,
+          : isOpenContext
+            ? themeTokens.menu.openIndicator
+            : themeTokens.menu.activeIndicator,
+      opacity: isStrongActive || isSoftSubActive ? 1 : isOpenContext ? 0.78 : 0,
+      width: isStrongActive || isSoftSubActive ? 3 : 2,
     },
     icon: {
       backgroundColor: isSubItem
-        ? isActive
-          ? themeTokens.menu.subActiveIndicator
+        ? isStrongActive
+          ? themeTokens.menu.activeIndicator
+          : isSoftSubActive
+            ? themeTokens.menu.subActiveIndicator
           : themeTokens.menu.mutedText
-        : isVisuallyActive
+        : isStrongActive
           ? themeTokens.menu.iconActiveBg
+          : isOpenContext
+            ? themeTokens.menu.iconBg
           : themeTokens.menu.iconBg,
       color: isVisuallyActive
-        ? isSubItem
-          ? themeTokens.menu.subActiveText
-          : themeTokens.menu.activeText
+        ? isStrongActive
+          ? themeTokens.menu.activeText
+          : isSoftSubActive
+            ? themeTokens.menu.subActiveText
+            : themeTokens.menu.openText
         : themeTokens.menu.text,
       opacity: isSubItem && !isVisuallyActive ? 0.72 : 1,
     },
     chevron: {
       color: isVisuallyActive
-        ? isSubItem
-          ? themeTokens.menu.subActiveText
-          : themeTokens.menu.activeText
+        ? isStrongActive
+          ? themeTokens.menu.activeText
+          : isSoftSubActive
+            ? themeTokens.menu.subActiveText
+            : themeTokens.menu.openText
         : themeTokens.menu.mutedText,
     },
   };

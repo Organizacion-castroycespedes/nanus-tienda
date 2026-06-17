@@ -569,11 +569,15 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           : [];
         const hasActiveChild = activeChildChain.length > 0;
         const isDirectActive = isActive;
+        const isContextOpen = hasChildren && (isExpanded || hasActiveChild);
+        const isPromotedChildActive = depth > 0 && isDirectActive;
         const isVisuallyActive = isDirectActive || hasActiveChild;
         const menuItemStyles = getMenuItemStateStyles(tenantTheme, {
           depth,
-          isActive: isDirectActive,
+          isActive: isDirectActive && !hasActiveChild,
+          isOpen: isContextOpen,
           hasActiveChild,
+          promoteActive: isPromotedChildActive,
         });
         return (
           <li key={item.key}>
@@ -672,7 +676,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </button>
               ) : null}
             </div>
-            {hasChildren && isExpanded && !sidebarCollapsed
+            {hasChildren && (isExpanded || hasActiveChild) && !sidebarCollapsed
               ? renderMenuItems(item.children ?? [], depth + 1)
               : null}
           </li>
@@ -976,6 +980,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         ["--brand-sidebar-muted" as never]: tenantTheme.sidebar.mutedText,
         ["--brand-sidebar-active" as never]: tenantTheme.sidebar.activeBackground,
         ["--brand-sidebar-active-text" as never]: tenantTheme.sidebar.activeText,
+        ["--brand-sidebar-open" as never]:
+          tenantTheme.sidebar.openBackground,
+        ["--brand-sidebar-open-text" as never]:
+          tenantTheme.sidebar.openText,
+        ["--brand-sidebar-open-indicator" as never]:
+          tenantTheme.sidebar.openIndicator,
         ["--brand-sidebar-sub-active" as never]:
           tenantTheme.sidebar.subItemActiveBackground,
         ["--brand-sidebar-sub-active-text" as never]:
