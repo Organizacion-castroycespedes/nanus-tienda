@@ -29,3 +29,17 @@
 - [x] 5.1 Create evidence document without JWT, cookies, tokens, passwords, `DATABASE_URL`, `DB_PASSWORD`, or SSH keys.
 - [x] 5.2 Run OpenSpec, API, web, SQL, diff, and status validations available in the local environment.
 - [x] 5.3 Record root causes, changed files, validation results, and deployment/push/commit status.
+
+## 6. Fiscal customers follow-up
+
+- [x] 6.1 Diagnose `/customers` calls to `GET/PATCH /api/electronic-invoicing/customers`.
+- [x] 6.2 Allow operational roles on fiscal customer list/create/update/detail/default endpoints without opening suppliers or broader electronic-invoicing modules.
+- [x] 6.3 Extend idempotent SQL for backend-only `ELECTRONIC_INVOICING_CUSTOMERS` permissions.
+- [x] 6.4 Add focused backend tests and update evidence.
+
+## 7. Pricing preview follow-up
+
+- [x] 7.1 Diagnose POS calls to `POST /api/pricing/preview-line`.
+- [x] 7.2 Allow operational roles on pricing preview-line without granting promotion administration.
+- [x] 7.3 Add focused pricing/guard tests and update evidence.
+- [x] 7.4 Validate POS preview-line smoke for operational roles locally.

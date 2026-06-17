@@ -11,8 +11,10 @@ const request = {
   },
 } as never;
 
+const customerOperationalRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 describe("ElectronicInvoicingCustomersController", () => {
-  it("keeps the customers electronic invoicing permission key", () => {
+  it("keeps fiscal customer operational permissions scoped to customer endpoints", () => {
     const listPermission = Reflect.getMetadata(
       PERMISSION_KEY,
       ElectronicInvoicingCustomersController.prototype.list
@@ -49,14 +51,17 @@ describe("ElectronicInvoicingCustomersController", () => {
     assert.deepEqual(listPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "READ",
+      operationalRoles: customerOperationalRoles,
     });
     assert.deepEqual(createPermission, {
       menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
       level: "WRITE",
+      operationalRoles: customerOperationalRoles,
     });
     assert.deepEqual(updatePermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "WRITE",
+      operationalRoles: customerOperationalRoles,
     });
     assert.deepEqual(lookupPermission, {
       menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
@@ -69,14 +74,17 @@ describe("ElectronicInvoicingCustomersController", () => {
     assert.deepEqual(getDefaultPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "READ",
+      operationalRoles: customerOperationalRoles,
     });
     assert.deepEqual(ensureDefaultPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "WRITE",
+      operationalRoles: customerOperationalRoles,
     });
     assert.deepEqual(getByIdPermission, {
       menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
       level: "READ",
+      operationalRoles: customerOperationalRoles,
     });
   });
 

@@ -12,6 +12,7 @@ QA manual local: PASS.
 DB QA tocada: NO.
 Produccion tocada: NO.
 Commit local controlado: SI.
+Commit adicional seguimiento fiscal/pricing: SI.
 Push/Merge/Deploy: NO.
 
 ## Causa raiz
@@ -40,6 +41,20 @@ Push/Merge/Deploy: NO.
 - Local tenia permisos distintos, por eso cargaba.
 - QA no tenia esos permisos, por eso devolvia 403.
 
+5. Customers fiscal follow-up
+
+- La pantalla real `/customers` carga catalogo base con `/api/customers`, pero tambien mezcla datos fiscales con `GET /api/electronic-invoicing/customers`.
+- El formulario real guarda datos fiscales con `POST/PATCH /api/electronic-invoicing/customers`.
+- El primer hotfix habilito `CUSTOMERS`, pero no cubrio `ELECTRONIC_INVOICING_CUSTOMERS` para el flujo fiscal basico.
+- Resultado observado con `USER`: `GET /api/electronic-invoicing/customers` y `PATCH /api/electronic-invoicing/customers/:id` devolvian `403 Permisos insuficientes`.
+
+6. POS pricing preview-line follow-up
+
+- POS agrega productos y calcula precio/promocion con `POST /api/pricing/preview-line`.
+- El endpoint estaba protegido con `INVENTORY_PRODUCTS READ` sin override operativo.
+- `USER` podia cargar productos e impuestos, pero fallaba al calcular linea con `403 Permisos insuficientes`.
+- El endpoint es calculo transaccional, no administracion de promociones/precios.
+
 ## Cambios aplicados
 
 Backend tocado: SI.
@@ -47,8 +62,12 @@ Backend tocado: SI.
 - `RequirePermission` ahora soporta `operationalRoles`.
 - `PermissionsGuard` respeta ese override solo cuando el endpoint lo declara.
 - Clientes create/list/get/update permiten lectura/escritura operativa a `USER`, `ADMIN`, `SUPER_USER`.
+- Clientes fiscales basicos `electronic-invoicing/customers` list/create/get/update/default permiten lectura/escritura operativa a `USER`, `ADMIN`, `SUPER_USER`.
+- Lookup/aplicacion DIAN no se abrio globalmente; conserva su guard existente por `ELECTRONIC_INVOICING_CUSTOMERS` o `POS`.
 - Productos, barcodes de productos e impuestos permiten lecturas operativas a `USER`, `ADMIN`, `SUPER_USER`.
+- `pricing/preview-line` permite calculo operativo POS/Orders a `USER`, `ADMIN`, `SUPER_USER`.
 - Escrituras administrativas de Inventario siguen sin `USER`.
+- Escrituras administrativas de Promociones siguen sin `USER`.
 - Roles sigue `SUPER_ADMIN`.
 - Terminales sigue `SUPER_USER` y `SUPER_ADMIN`.
 
@@ -68,6 +87,7 @@ SQL tocado: SI.
 - Seed base deja de otorgar `INVENTORY` o `INVENTORY_PURCHASES` a `USER`.
 - Script operativo borra tambien `INVENTORY`, `INVENTORY_PURCHASES` y `INVENTORY_SUPPLIERS` a `USER`.
 - Script de seguridad viejo deja de sembrar Inventory a `USER`.
+- Script operativo crea/actualiza `ELECTRONIC_INVOICING_CUSTOMERS` como permiso backend-only no visible y lo deja `WRITE` para `USER`, `ADMIN` y `SUPER_USER`.
 - Nuevo script idempotente:
   - `scripts/database/security/20260616_1830_operational_role_permissions_customers_orders_pos_inventory.sql`
 
@@ -79,9 +99,10 @@ Resultado de validacion local:
 
 ```text
 user_inventory_permissions=0
+user_fe_customers=WRITE
+fe_customers_visible=false
 blocked_roles_terminals_permissions=0
 duplicates_role_menu_permissions=0
-duplicates_menu_items=0
 user_operational_permissions=CUSTOMERS:WRITE,FINANCE:READ,FINANCE_CASH_MOVEMENTS:WRITE,FINANCE_CASH_SESSIONS:WRITE,ORDERS:WRITE,POS:WRITE
 ```
 
@@ -100,12 +121,32 @@ Ejecucion: PASS.
 | `SUPER_USER` | PASS | PASS, clientes 32+, productos 7 | PASS, productos 7, impuestos 2 | PASS visible y API admin `200` | PASS visible | PASS permitido `200` | PASS bloqueado `403` |
 | `SUPER_ADMIN` | PASS | PASS, clientes 33+, productos 7 | PASS, productos 7, impuestos 2 | PASS visible y API admin `200` | PASS visible | PASS permitido `200` | PASS permitido `200` |
 
+Seguimiento fiscal Customers:
+
+| Rol | `GET /api/electronic-invoicing/customers` | `POST /api/electronic-invoicing/customers` | `PATCH /api/electronic-invoicing/customers/:id` | Regresiones |
+| --- | --- | --- | --- | --- |
+| `USER` | PASS, HTTP `200` | PASS, HTTP `201/200` | PASS, HTTP `200` | Inventario write `403`, Terminales `403`, Roles `403` |
+| `ADMIN` | PASS, HTTP `200` | PASS, HTTP `201/200` | PASS, HTTP `200` | Terminales `403`, Roles `403` |
+| `SUPER_USER` | PASS, HTTP `200` | PASS, HTTP `201/200` | PASS, HTTP `200` | Terminales `200`, Roles `403` |
+| `SUPER_ADMIN` | PASS, HTTP `200` | PASS, HTTP `201/200` | PASS, HTTP `200` | Roles `200` |
+
+Seguimiento pricing POS:
+
+| Rol | Productos POS | Impuestos POS | `POST /api/pricing/preview-line` | Regresiones |
+| --- | --- | --- | --- | --- |
+| `USER` | PASS, 7 | PASS, 2 | PASS, HTTP `201`, `lineTotal=6750` | Promotions write `403`, Inventory write `403`, Terminales `403`, Roles `403` |
+| `ADMIN` | PASS, 7 | PASS, 2 | PASS, HTTP `201`, `lineTotal=6750` | Terminales `403`, Roles `403` |
+| `SUPER_USER` | PASS, 7 | PASS, 2 | PASS, HTTP `201`, `lineTotal=6750` | Terminales `200`, Roles `403` |
+| `SUPER_ADMIN` | PASS, 7 | PASS, 2 | PASS, HTTP `201`, `lineTotal=6750` | Roles `200` |
+
 Rutas y endpoints cubiertos:
 
 - `/customers`: list/create/update por rol.
+- `/electronic-invoicing/customers`: list/create/update fiscal basico por rol operativo.
 - `/orders`: list con `tenantId` y `branchId`.
 - `/products?branchId=...`: lectura operativa para Orders/POS.
 - `/taxes`: lectura operativa para POS.
+- `/pricing/preview-line`: calculo operativo de precio/promocion para POS.
 - `/me/menu`: visibilidad de Inventario, Finanzas, Roles y Terminales.
 - `/inventory/products?branchId=...`: bloqueo administrativo para `USER`, permitido para roles admin.
 - `/terminals`: bloqueo para `USER`/`ADMIN`, permitido para `SUPER_USER`/`SUPER_ADMIN`.
@@ -114,7 +155,9 @@ Rutas y endpoints cubiertos:
 Observaciones:
 
 - Se crearon clientes locales de QA por rol para validar create/edit real.
+- Se crearon clientes fiscales locales de QA por rol para validar create/edit real del endpoint usado por `/customers`.
 - Sucursal usada en smoke local: `ab41d3da-6686-4de3-9191-875a5a7da5a5`.
+- Preview-line validado con producto local existente y cliente local existente; no se registraron headers de autorizacion.
 - DB QA tocada: NO.
 - Produccion tocada: NO.
 - Push/Merge/Deploy: NO.
@@ -130,6 +173,8 @@ API:
 
 - `cd api && npm.cmd run build`: PASS
 - `cd api && npx.cmd tsx --test src\common\guards\permissions.guard.spec.ts src\modules\inventory\controllers\operational-role-permissions.controller.spec.ts src\modules\roles\roles.controller.spec.ts src\modules\terminals\terminals.controller.spec.ts`: PASS, 31 tests.
+- `cd api && node node_modules\tsx\dist\cli.mjs --test src\common\guards\permissions.guard.spec.ts src\modules\electronic-invoicing\customers\electronic-invoicing-customers.controller.spec.ts src\modules\inventory\controllers\operational-role-permissions.controller.spec.ts src\modules\roles\roles.controller.spec.ts src\modules\terminals\terminals.controller.spec.ts`: PASS, 35 tests.
+- `cd api && node node_modules\tsx\dist\cli.mjs --test src\common\guards\permissions.guard.spec.ts src\modules\pricing\pricing.controller.spec.ts src\modules\pricing\promotions.controller.spec.ts src\modules\electronic-invoicing\customers\electronic-invoicing-customers.controller.spec.ts src\modules\inventory\controllers\operational-role-permissions.controller.spec.ts src\modules\roles\roles.controller.spec.ts src\modules\terminals\terminals.controller.spec.ts`: PASS, 45 tests.
 
 Web:
 

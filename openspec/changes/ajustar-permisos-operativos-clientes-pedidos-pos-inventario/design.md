@@ -4,11 +4,17 @@ Manus POS usa permisos de menu (`menu_items` + `role_menu_permissions`) para con
 
 Clientes, Orders y POS son flujos operativos. Inventario administrativo es otro alcance. El hotfix debe permitir lectura operativa sin abrir pantallas ni escrituras administrativas.
 
+La pantalla real de `/customers` no consume solo `/api/customers`: tambien mezcla datos fiscales desde `/api/electronic-invoicing/customers` y guarda cambios fiscales con `POST/PATCH` sobre ese prefijo. Ese controller debe quedar alineado con la misma regla operativa de Customers, sin abrir proveedores ni otros modulos de facturacion electronica.
+
+POS calcula cada linea con `POST /api/pricing/preview-line`. Ese endpoint lee producto, impuesto y promociones aplicables para devolver precio transaccional; no administra promociones. Debe quedar disponible para roles operativos del POS sin conceder `INVENTORY_PROMOTIONS WRITE`.
+
 ## Goals / Non-Goals
 
 **Goals:**
 - Permitir a `USER`, `ADMIN`, `SUPER_USER` y `SUPER_ADMIN` crear/editar clientes.
+- Permitir a `USER`, `ADMIN`, `SUPER_USER` y `SUPER_ADMIN` listar/crear/editar datos fiscales basicos de clientes usados por `/customers`.
 - Permitir a `USER` leer clientes, productos e impuestos para Orders/POS.
+- Permitir a roles operativos ejecutar preview de precio/promocion para lineas POS/Orders.
 - Bloquear menu y ruta administrativa `/inventory` para `USER`.
 - Mantener escrituras administrativas de Inventario bloqueadas para `USER`.
 - Mantener Roles solo `SUPER_ADMIN`.
@@ -33,11 +39,21 @@ Clientes, Orders y POS son flujos operativos. Inventario administrativo es otro 
    - Decision: `POST/PATCH/DELETE` de productos, impuestos, ubicaciones, lotes y acciones destructivas siguen requiriendo permisos de Inventario.
    - Alternativa descartada: permisos globales por rol sin menu key. Es mas rapido pero peligroso.
 
-3. Arreglar frontend y backend en conjunto.
+3. Alinear `electronic-invoicing/customers` con Customers operativo.
+   - Decision: list/create/update/detail/default de clientes fiscales basicos declaran `operationalRoles` para `USER`, `ADMIN` y `SUPER_USER`; `SUPER_ADMIN` conserva bypass.
+   - Decision: el SQL crea/usa `ELECTRONIC_INVOICING_CUSTOMERS` como permiso backend-only no visible.
+   - Alternativa descartada: abrir todo electronic-invoicing o proveedores fiscales. No es necesario para `/customers`.
+
+4. Alinear `pricing/preview-line` con POS operativo.
+   - Decision: `POST /api/pricing/preview-line` declara `operationalRoles` para `USER`, `ADMIN` y `SUPER_USER`; `SUPER_ADMIN` conserva bypass.
+   - Decision: no se agrega menu ni permiso administrativo de promociones para `USER`.
+   - Alternativa descartada: otorgar `INVENTORY_PROMOTIONS` o inventario administrativo a `USER`. Eso corrige el 403 pero abre administracion indebida.
+
+5. Arreglar frontend y backend en conjunto.
    - Decision: backend define el limite de seguridad y frontend solo mejora experiencia: botones, rutas y menu.
    - Alternativa descartada: solo ocultar botones en frontend. Eso no corrige 403 ni seguridad real.
 
-4. SQL sera idempotente y correctivo.
+6. SQL sera idempotente y correctivo.
    - Decision: agregar script que quite `USER` de Inventario administrativo y garantice permisos operativos requeridos donde correspondan.
    - Alternativa descartada: editar manualmente QA. No deja rastro ni idempotencia.
 

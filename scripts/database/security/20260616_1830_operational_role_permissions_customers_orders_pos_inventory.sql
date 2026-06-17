@@ -33,10 +33,59 @@ WHERE rmp.tenant_id = blocked.tenant_id
 
 WITH target_tenant AS (
   SELECT '00000000-0000-0000-0000-000000000001'::uuid AS tenant_id
+)
+INSERT INTO public.menu_items (
+  tenant_id,
+  key,
+  module,
+  label,
+  route,
+  icon,
+  parent_id,
+  sort_order,
+  visible,
+  below_main_menu,
+  metadata,
+  created_at,
+  updated_at,
+  deleted_at
+)
+SELECT
+  tt.tenant_id,
+  'ELECTRONIC_INVOICING_CUSTOMERS',
+  'electronic-invoicing',
+  'Clientes fiscales',
+  '/{tenant}/electronic-invoicing/customers',
+  'FileText',
+  NULL,
+  222,
+  FALSE,
+  FALSE,
+  '{"change": "ajustar-permisos-operativos-clientes-pedidos-pos-inventario", "backendOnly": true}'::jsonb,
+  now(),
+  now(),
+  NULL
+FROM target_tenant tt
+ON CONFLICT (tenant_id, key) WHERE deleted_at IS NULL
+DO UPDATE SET
+  module = EXCLUDED.module,
+  label = EXCLUDED.label,
+  route = EXCLUDED.route,
+  icon = EXCLUDED.icon,
+  sort_order = EXCLUDED.sort_order,
+  visible = FALSE,
+  below_main_menu = FALSE,
+  metadata = COALESCE(public.menu_items.metadata, '{}'::jsonb) || EXCLUDED.metadata,
+  updated_at = now(),
+  deleted_at = NULL;
+
+WITH target_tenant AS (
+  SELECT '00000000-0000-0000-0000-000000000001'::uuid AS tenant_id
 ),
 permission_targets(role_name, menu_key, access_level, actions) AS (
   VALUES
     ('USER', 'CUSTOMERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
+    ('USER', 'ELECTRONIC_INVOICING_CUSTOMERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('USER', 'ORDERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('USER', 'POS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('USER', 'FINANCE', 'READ', '{"read": true}'::jsonb),
@@ -44,6 +93,7 @@ permission_targets(role_name, menu_key, access_level, actions) AS (
     ('USER', 'FINANCE_CASH_MOVEMENTS', 'WRITE', '{"read": true, "create": true}'::jsonb),
 
     ('ADMIN', 'CUSTOMERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
+    ('ADMIN', 'ELECTRONIC_INVOICING_CUSTOMERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('ADMIN', 'ORDERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('ADMIN', 'POS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('ADMIN', 'FINANCE', 'READ', '{"read": true}'::jsonb),
@@ -52,6 +102,7 @@ permission_targets(role_name, menu_key, access_level, actions) AS (
     ('ADMIN', 'FINANCE_CASH_REGISTERS', 'READ', '{"read": true}'::jsonb),
 
     ('SUPER_USER', 'CUSTOMERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
+    ('SUPER_USER', 'ELECTRONIC_INVOICING_CUSTOMERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('SUPER_USER', 'ORDERS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb),
     ('SUPER_USER', 'POS', 'WRITE', '{"read": true, "create": true, "update": true}'::jsonb)
 ),

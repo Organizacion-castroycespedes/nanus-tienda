@@ -103,6 +103,58 @@ test("PermissionsGuard: allows declared operational role without DB permission",
   assert.equal(allowed, true);
 });
 
+test("PermissionsGuard: allows fiscal customer operational writes for customer roles", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      level: "WRITE",
+      operationalRoles: ["USER", "ADMIN", "SUPER_USER"],
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for declared operational role");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+
+  for (const role of ["USER", "ADMIN", "SUPER_USER"]) {
+    const allowed = await guard.canActivate(
+      buildContext({ id: "user", tenantId: "tenant", roles: [role] })
+    );
+    assert.equal(allowed, true);
+  }
+});
+
+test("PermissionsGuard: allows pricing preview operational reads for POS roles", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.INVENTORY_PRODUCTS,
+      level: "READ",
+      operationalRoles: ["USER", "ADMIN", "SUPER_USER"],
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () => {
+      throw new Error("should not fetch permissions for pricing preview roles");
+    },
+    findPermission: () => undefined,
+    isAccessAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+
+  for (const role of ["USER", "ADMIN", "SUPER_USER"]) {
+    const allowed = await guard.canActivate(
+      buildContext({ id: "user", tenantId: "tenant", roles: [role] })
+    );
+    assert.equal(allowed, true);
+  }
+});
+
 test("PermissionsGuard: blocks USER catalog READ when endpoint did not opt in", async () => {
   const reflector = {
     getAllAndOverride: () => ({

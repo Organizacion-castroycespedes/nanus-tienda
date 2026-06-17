@@ -12,6 +12,22 @@ The system SHALL allow `USER`, `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN` to creat
 - **WHEN** `ADMIN`, `SUPER_USER`, or `SUPER_ADMIN` creates or edits a customer
 - **THEN** the backend and frontend SHALL allow the operation according to tenant scope.
 
+### Requirement: Fiscal customer endpoints used by Customers
+The system SHALL allow `USER`, `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN` to use the fiscal customer endpoints required by the `/customers` screen for basic customer list/create/edit workflows.
+
+#### Scenario: USER loads fiscal customer data
+- **WHEN** a `USER` opens `/customers`
+- **THEN** `GET /api/electronic-invoicing/customers` SHALL be authorized inside the authenticated tenant.
+
+#### Scenario: USER edits fiscal customer data
+- **WHEN** a `USER` saves an edit from `/customers`
+- **THEN** `PATCH /api/electronic-invoicing/customers/:id` SHALL be authorized inside the authenticated tenant.
+
+#### Scenario: Operational roles create fiscal customer data
+- **WHEN** `USER`, `ADMIN`, or `SUPER_USER` creates a customer from `/customers`
+- **THEN** `POST /api/electronic-invoicing/customers` SHALL be authorized.
+- **AND** fiscal customer permissions SHALL NOT grant access to unrelated electronic-invoicing supplier or document administration endpoints.
+
 ### Requirement: Operational catalog reads for POS and Orders
 The system SHALL allow `USER`, `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN` to read customers, products, and taxes required by POS and Orders without requiring administrative inventory visibility.
 
@@ -24,6 +40,18 @@ The system SHALL allow `USER`, `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN` to read 
 - **WHEN** a `USER` opens Orders
 - **THEN** customer and product selectors SHALL load from authorized backend reads.
 - **AND** any required tax reads SHALL be authorized.
+
+### Requirement: Operational pricing preview for POS and Orders
+The system SHALL allow `USER`, `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN` to calculate line price and promotion previews required by POS and Orders without granting pricing or promotion administration.
+
+#### Scenario: USER adds product to POS cart
+- **WHEN** a `USER` adds a product in POS and the frontend calls `POST /api/pricing/preview-line`
+- **THEN** the backend SHALL authorize the request inside the authenticated tenant.
+- **AND** the response SHALL still be calculated by the pricing service using the provided branch, product, quantity, channel, and customer context.
+
+#### Scenario: Promotion administration remains protected
+- **WHEN** a `USER` calls pricing promotion administration endpoints
+- **THEN** the backend SHALL deny create, update, deactivate, or other administrative promotion writes.
 
 ### Requirement: USER inventory administration remains blocked
 The system SHALL prevent `USER` from seeing or accessing administrative Inventory modules while preserving operational reads used by POS and Orders.
