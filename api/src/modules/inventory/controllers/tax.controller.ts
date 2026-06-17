@@ -35,6 +35,8 @@ type CreateTaxBody = {
 
 type UpdateTaxBody = Partial<CreateTaxBody>;
 
+const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 @Controller("taxes")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
@@ -53,7 +55,11 @@ export class TaxController {
   }
 
   @Get()
-  @RequirePermission({ menuKey: MENU_KEYS.INVENTORY_TAXES, level: "READ" })
+  @RequirePermission({
+    menuKey: MENU_KEYS.INVENTORY_TAXES,
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
   list(@Req() request: AuthRequest) {
     return this.taxService.listTaxes(this.getTenantId(request));
   }

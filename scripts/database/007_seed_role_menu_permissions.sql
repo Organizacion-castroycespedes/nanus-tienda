@@ -57,8 +57,6 @@ WITH role_targets AS (
       WHEN r.nombre = 'USER'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
-          'INVENTORY',
-          'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -141,8 +139,6 @@ WITH role_targets AS (
       WHEN r.nombre = 'USER'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
-          'INVENTORY',
-          'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
           'POS'
@@ -151,7 +147,7 @@ WITH role_targets AS (
           WHEN mi.key = 'POS'
             THEN '{"read": true, "create": true, "update": true}'::jsonb
           WHEN mi.key = 'CUSTOMERS'
-            THEN '{"read": true, "create": true, "update": true, "delete": true}'::jsonb
+            THEN '{"read": true, "create": true, "update": true}'::jsonb
           ELSE '{"read": true}'::jsonb
         END
       ELSE NULL
@@ -225,8 +221,6 @@ WITH allowed_permissions AS (
         r.nombre = 'USER'
         AND mi.key IN (
           'DASHBOARD_TENANT_DASHBOARD',
-          'INVENTORY',
-          'INVENTORY_PURCHASES',
           'CUSTOMERS',
           'ORDERS',
           'POS',

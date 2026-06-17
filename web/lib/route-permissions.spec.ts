@@ -36,6 +36,18 @@ test("roles route uses canonical CONFIG_ROLES permission", () => {
   );
 });
 
+test("inventory admin route uses canonical INVENTORY permission", () => {
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/inventory"
+    ),
+    {
+      module: MENU_KEYS.INVENTORY,
+      action: "read",
+    }
+  );
+});
+
 test("finance routes use canonical FINANCE permission", () => {
   assert.deepEqual(
     getRoutePermissionRequirement(

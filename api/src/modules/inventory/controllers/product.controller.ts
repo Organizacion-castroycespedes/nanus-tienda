@@ -76,6 +76,8 @@ const changeProductPriceValidationPipe = new ValidationPipe({
   forbidNonWhitelisted: true,
 });
 
+const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
+
 @Controller("products")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ProductController {
@@ -146,7 +148,11 @@ export class ProductController {
 
   @Get()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  @RequirePermission({
+    menuKey: "INVENTORY_PRODUCTS",
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
   async list(
     @Query("branchId") branchId: string | undefined,
     @Req() request: AuthRequest
@@ -162,14 +168,22 @@ export class ProductController {
 
   @Get(":id")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  @RequirePermission({
+    menuKey: "INVENTORY_PRODUCTS",
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
   getById(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.getProductById(id, this.getTenantId(request));
   }
 
   @Get(":id/price-history")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
-  @RequirePermission({ menuKey: "INVENTORY_PRODUCTS", level: "READ" })
+  @RequirePermission({
+    menuKey: "INVENTORY_PRODUCTS",
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
   getPriceHistory(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.productService.getPriceHistory(id, this.getTenantId(request));
   }
