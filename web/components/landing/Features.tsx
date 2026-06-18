@@ -1,126 +1,133 @@
-import {
-  BarChart3,
-  Boxes,
-  ClipboardList,
-  CreditCard,
-  Settings2,
-  ShoppingCart,
-  Tag,
-  Truck,
-  Users,
-  Warehouse,
-} from "lucide-react";
+import Image from "next/image";
 
 const features = [
   {
-    icon: ShoppingCart,
-    title: "Punto de venta (POS)",
+    title: "Punto de venta",
     description:
-      "Registra ventas en segundos, aplica descuentos y cobra con efectivo, tarjeta o billeteras.",
-    benefit: "Atiende más rápido y sin filas.",
+      "Cobra rápido en mostrador, busca productos, calcula totales y registra la venta sin fricción.",
+    highlight: "Ventas ágiles en horas pico.",
+    imageSrc: "/images/features/punto_ventas.png",
+    imageAlt: "Interfaz comercial del punto de venta de Manus POS",
+    accent: "bg-blue-50 text-blue-700 border-blue-100",
   },
   {
-    icon: Boxes,
     title: "Inventario",
     description:
-      "Stock actualizado con cada venta y recepción, con alertas de productos por agotarse.",
-    benefit: "Nunca te quedes sin lo que más vendes.",
+      "Mantén stock, lotes, ubicaciones y alertas operativas conectadas con ventas y compras.",
+    highlight: "Stock claro antes de comprar.",
+    imageSrc: "/images/features/inventario.png",
+    imageAlt: "Vista de inventario de Manus POS",
+    accent: "bg-emerald-50 text-emerald-700 border-emerald-100",
   },
   {
-    icon: CreditCard,
-    title: "Caja",
+    title: "Caja y finanzas",
     description:
-      "Apertura y cierre de caja, control de movimientos y arqueo al final del turno.",
-    benefit: "Cuadra tu dinero sin dolores de cabeza.",
+      "Abre turnos, registra movimientos, controla pagos y cierra caja con trazabilidad.",
+    highlight: "Dinero bajo control.",
+    imageSrc: "/images/features/caja-finanzas.png",
+    imageAlt: "Control de caja y finanzas operativas de Manus POS",
+    accent: "bg-amber-50 text-amber-700 border-amber-100",
   },
   {
-    icon: ClipboardList,
     title: "Pedidos",
     description:
-      "Crea y administra pedidos, da seguimiento a su estado y conviértelos en ventas.",
-    benefit: "Lleva el control de cada encargo.",
+      "Crea pedidos, confirma entregas, factura cantidades listas y evita perder solicitudes.",
+    highlight: "Cada encargo tiene estado.",
+    imageSrc: "/images/features/pedidos.png",
+    imageAlt: "Gestión de pedidos de Manus POS",
+    accent: "bg-cyan-50 text-cyan-700 border-cyan-100",
   },
   {
-    icon: Truck,
-    title: "Compras y recepción",
+    title: "Compras",
     description:
-      "Genera órdenes de compra y registra la mercancía recibida actualizando el stock.",
-    benefit: "Repón mercadería con orden.",
+      "Registra compras, recepciones parciales o totales y pagos a proveedores.",
+    highlight: "Reposición ordenada.",
+    imageSrc: "/images/features/compras.png",
+    imageAlt: "Modulo de compras de Manus POS",
+    accent: "bg-orange-50 text-orange-700 border-orange-100",
   },
   {
-    icon: Users,
     title: "Clientes",
     description:
-      "Guarda los datos de tus clientes y su historial para darles una mejor atención.",
-    benefit: "Conoce y fideliza a tus compradores.",
+      "Guarda datos de clientes, consumidor final y datos fiscales mock para operar mejor.",
+    highlight: "Atención más personal.",
+    imageSrc: "/images/features/clientes.png",
+    imageAlt: "Gestión de clientes de Manus POS",
+    accent: "bg-rose-50 text-rose-700 border-rose-100",
   },
   {
-    icon: Warehouse,
-    title: "Proveedores",
-    description:
-      "Centraliza la información de tus proveedores y el historial de tus compras.",
-    benefit: "Negocia mejor con tus datos a la mano.",
-  },
-  {
-    icon: BarChart3,
     title: "Reportes",
     description:
-      "Consulta ventas, productos top y movimientos del negocio en resúmenes claros.",
-    benefit: "Decide con información real.",
+      "Consulta ventas, compras, caja, pedidos y tickets PDF para entender el negocio.",
+    highlight: "Decisiones con datos.",
+    imageSrc: "/images/features/reportes.png",
+    imageAlt: "Reportes operativos de Manus POS",
+    accent: "bg-indigo-50 text-indigo-700 border-indigo-100",
   },
   {
-    icon: Tag,
-    title: "Promociones",
-    description:
-      "Crea descuentos y promociones para impulsar las ventas en fechas clave.",
-    benefit: "Vende más en los momentos correctos.",
-  },
-  {
-    icon: Settings2,
     title: "Configuración",
     description:
-      "Define tu negocio, impuestos, usuarios y roles desde un panel multinegocio.",
-    benefit: "Adapta Manus a tu operación.",
+      "Administra usuarios, roles, menú, branding, terminales y parámetros del negocio.",
+    highlight: "Sistema listo para crecer.",
+    imageSrc: "/images/features/configuracion.png",
+    imageAlt: "Configuracion administrativa de Manus POS",
+    accent: "bg-slate-100 text-slate-700 border-slate-200",
   },
 ];
 
 const Features = () => (
   <section id="funcionalidades" className="bg-slate-50 px-6 py-20 md:py-28">
     <div className="mx-auto max-w-6xl">
-      <div className="mx-auto mb-14 max-w-2xl text-center">
-        <span className="mb-3 inline-block text-sm font-semibold uppercase tracking-widest text-blue-600">
-          Funcionalidades
-        </span>
-        <h2 className="text-balance text-3xl font-bold text-slate-900 md:text-4xl">
-          Todo lo que tu negocio necesita, en un solo sistema
-        </h2>
-        <p className="mt-4 text-pretty text-lg text-slate-600">
-          Cada módulo trabaja conectado con los demás para que la operación de
-          tu tienda fluya sin esfuerzo.
+      <div className="mb-12 grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+        <div>
+          <span className="text-sm font-bold uppercase tracking-[0.2em] text-blue-700">
+            Funcionalidades principales
+          </span>
+          <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+            Todo lo que necesita una tienda para vender y operar mejor
+          </h2>
+        </div>
+        <p className="text-pretty text-lg leading-8 text-slate-600">
+          Manus POS conecta mostrador, inventario, caja, pedidos y reportes para
+          que el negocio deje de operar a ciegas. Cada módulo ayuda a reducir
+          errores y ahorrar tiempo en el día a día.
         </p>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {features.map(({ icon: Icon, title, description, benefit }) => (
-          <article
-            key={title}
-            className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-lg"
-          >
-            <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
-              <Icon className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <h3 className="mb-2 text-base font-semibold text-slate-900">
-              {title}
-            </h3>
-            <p className="text-sm leading-relaxed text-slate-600">
-              {description}
-            </p>
-            <p className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-4 text-sm font-medium text-blue-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-              {benefit}
-            </p>
-          </article>
-        ))}
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {features.map(
+          ({ title, description, highlight, imageSrc, imageAlt, accent }) => (
+            <article
+              key={title}
+              className="group flex h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+            >
+              <div className="flex min-h-full w-full flex-col">
+                <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                  <Image
+                    src={imageSrc}
+                    alt={imageAlt}
+                    fill
+                    sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
+                    className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-950/25 to-transparent" />
+                </div>
+
+                <div className="flex flex-1 flex-col p-5">
+                  <h3 className="text-lg font-bold text-slate-950">{title}</h3>
+                  <p className="mt-3 flex-1 text-sm leading-6 text-slate-600">
+                    {description}
+                  </p>
+                  <p
+                    className={`mt-5 inline-flex w-fit rounded-full border px-3 py-1.5 text-xs font-bold ${accent}`}
+                  >
+                    {highlight}
+                  </p>
+                </div>
+              </div>
+            </article>
+          ),
+        )}
       </div>
     </div>
   </section>

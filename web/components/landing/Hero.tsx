@@ -1,13 +1,13 @@
-"use client";
-
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
+  BarChart3,
   Boxes,
   ClipboardList,
   CreditCard,
+  PlayCircle,
   ShoppingCart,
-  BarChart3,
 } from "lucide-react";
 
 const chips = [
@@ -18,140 +18,81 @@ const chips = [
   { label: "Reportes", icon: BarChart3 },
 ];
 
-const ProductMockup = () => (
-  <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-    {/* Browser chrome */}
-    <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-      <div className="flex gap-1.5">
-        <span className="h-3 w-3 rounded-full bg-rose-400" />
-        <span className="h-3 w-3 rounded-full bg-amber-400" />
-        <span className="h-3 w-3 rounded-full bg-emerald-400" />
-      </div>
-      <div className="ml-3 flex flex-1 items-center rounded-md border border-slate-200 bg-white px-3 py-1 text-xs text-slate-400">
-        app.manus.com
-      </div>
-    </div>
+const Hero = () => (
+  <section id="inicio" className="relative isolate overflow-hidden bg-slate-950">
+    <Image
+      src="/images/home/manus-pos-hero-landing.png"
+      alt="Pantallas de Manus POS para ventas, inventario, caja y reportes"
+      fill
+      priority
+      sizes="100vw"
+      className="absolute inset-0 -z-20 h-full w-full object-cover object-[62%_28%]"
+    />
+    <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(2,6,23,0.94)_0%,rgba(15,23,42,0.84)_36%,rgba(15,23,42,0.36)_67%,rgba(15,23,42,0.1)_100%)]" />
+    <div className="absolute inset-x-0 bottom-0 -z-10 h-40 bg-[linear-gradient(180deg,rgba(2,6,23,0)_0%,rgba(248,250,252,1)_100%)]" />
 
-    {/* Content: a clean POS-style screen */}
-    <div className="grid grid-cols-1 gap-0 sm:grid-cols-[1fr_280px]">
-      {/* Cart / sale */}
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-900">Venta #1847</p>
-          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-            En curso
-          </span>
+    <div className="mx-auto flex min-h-[760px] max-w-6xl items-center px-6 pb-24 pt-32 sm:min-h-[820px] lg:min-h-[760px]">
+      <div className="max-w-2xl">
+        <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100 backdrop-blur">
+          Manus POS v0.0.1
+        </span>
+
+        <h1 className="mt-6 text-balance text-4xl font-bold leading-[1.04] tracking-tight text-white sm:text-5xl lg:text-6xl">
+          Controla ventas, inventario, caja y pedidos desde un solo lugar
+        </h1>
+
+        <p className="mt-6 max-w-xl text-pretty text-lg leading-8 text-slate-200 sm:text-xl">
+          Manus POS ayuda a tiendas, minimarkets y negocios a operar más
+          rápido, vender mejor y tener control total de su negocio en tiempo
+          real.
+        </p>
+
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <Link
+            href="#contacto"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            <PlayCircle className="h-5 w-5" aria-hidden="true" />
+            Solicitar demo
+          </Link>
+          <Link
+            href="#funcionalidades"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            Ver funcionalidades
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
         </div>
-        <div className="space-y-2">
+
+        <div className="mt-8 flex flex-wrap gap-2">
+          {chips.map(({ label, icon: Icon }) => (
+            <span
+              key={label}
+              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-slate-100 backdrop-blur"
+            >
+              <Icon className="h-4 w-4 text-blue-200" aria-hidden="true" />
+              {label}
+            </span>
+          ))}
+        </div>
+
+        <dl className="mt-10 grid max-w-xl grid-cols-3 gap-3 text-white">
           {[
-            { name: "Arroz Costeño 1kg", qty: "x2", price: "S/ 7.80" },
-            { name: "Aceite Primor 1L", qty: "x1", price: "S/ 12.50" },
-            { name: "Leche Gloria 400g", qty: "x3", price: "S/ 11.70" },
-            { name: "Fideos Don Vittorio", qty: "x2", price: "S/ 6.40" },
+            { value: "1", label: "sistema" },
+            { value: "8", label: "módulos clave" },
+            { value: "24/7", label: "acceso web" },
           ].map((item) => (
             <div
-              key={item.name}
-              className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+              key={item.label}
+              className="rounded-lg border border-white/10 bg-white/10 px-4 py-3 backdrop-blur"
             >
-              <div>
-                <p className="text-xs font-medium text-slate-700">{item.name}</p>
-                <p className="text-xs text-slate-400">{item.qty}</p>
-              </div>
-              <span className="text-xs font-semibold text-slate-900">
-                {item.price}
-              </span>
+              <dt className="text-2xl font-bold">{item.value}</dt>
+              <dd className="mt-1 text-xs font-medium text-slate-300">
+                {item.label}
+              </dd>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Totals / payment */}
-      <div className="border-t border-slate-100 bg-slate-50 p-4 sm:border-l sm:border-t-0">
-        <p className="text-xs font-medium text-slate-500">Total a cobrar</p>
-        <p className="mt-1 text-2xl font-bold text-slate-900">S/ 38.40</p>
-        <div className="mt-4 space-y-2">
-          {["Efectivo", "Tarjeta", "Yape / Plin"].map((m, i) => (
-            <button
-              key={m}
-              className={`w-full rounded-lg px-3 py-2 text-left text-xs font-medium ${
-                i === 0
-                  ? "bg-blue-600 text-white"
-                  : "border border-slate-200 bg-white text-slate-600"
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
-          <p className="text-xs font-medium text-emerald-700">Caja abierta</p>
-          <p className="text-xs text-emerald-600">Turno: 08:00 - 14:32</p>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-const Hero = () => (
-  <section className="relative overflow-hidden bg-white px-6 pb-16 pt-28 md:pb-24 md:pt-36">
-    <div
-      className="pointer-events-none absolute inset-0 opacity-[0.03]"
-      style={{
-        backgroundImage:
-          "linear-gradient(#0f172a 1px, transparent 1px), linear-gradient(90deg, #0f172a 1px, transparent 1px)",
-        backgroundSize: "48px 48px",
-      }}
-    />
-    <div className="relative mx-auto max-w-6xl">
-      <div className="grid items-center gap-12 lg:grid-cols-2">
-        <div>
-          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-            Software de gestión para tu negocio
-          </span>
-          <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-slate-900 md:text-5xl lg:text-[3.4rem]">
-            Controla ventas, inventario, caja y pedidos{" "}
-            <span className="text-blue-600">desde un solo lugar</span>
-          </h1>
-          <p className="mt-6 max-w-xl text-pretty text-lg leading-relaxed text-slate-600">
-            Manus POS es el sistema operativo de tu tienda o minimarket: vende
-            rápido, mantén tu stock al día, cuadra la caja y haz seguimiento a
-            tus pedidos y clientes sin complicaciones.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="#contacto"
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-            >
-              Solicitar demo
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="#funcionalidades"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-            >
-              Ver funcionalidades
-            </Link>
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-2">
-            {chips.map(({ label, icon: Icon }) => (
-              <span
-                key={label}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
-              >
-                <Icon className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative">
-          <div className="absolute -inset-4 rounded-3xl bg-blue-50 opacity-60" />
-          <div className="relative">
-            <ProductMockup />
-          </div>
-        </div>
+        </dl>
       </div>
     </div>
   </section>

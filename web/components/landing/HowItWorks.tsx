@@ -1,81 +1,46 @@
-import {
-  BarChart3,
-  Boxes,
-  Building2,
-  Package,
-  ShoppingCart,
-} from "lucide-react";
+import Image from "next/image";
 
-const steps = [
-  {
-    icon: Building2,
-    title: "Configura tu negocio",
-    description:
-      "Crea tu cuenta, define tu empresa, impuestos y usuarios en minutos.",
-  },
-  {
-    icon: Package,
-    title: "Registra productos y clientes",
-    description:
-      "Carga tu catálogo, tus precios y los datos de clientes y proveedores.",
-  },
-  {
-    icon: ShoppingCart,
-    title: "Vende desde el POS",
-    description:
-      "Cobra rápido en el mostrador con efectivo, tarjeta o billeteras.",
-  },
-  {
-    icon: Boxes,
-    title: "Controla inventario y caja",
-    description:
-      "El stock se actualiza solo y la caja queda cuadrada en cada turno.",
-  },
-  {
-    icon: BarChart3,
-    title: "Consulta tus reportes",
-    description:
-      "Revisa ventas y movimientos para tomar mejores decisiones.",
-  },
-];
+const flowImage = {
+  src: "/images/home/flows/flujo-operacion-pos.png",
+  alt: "Flujo operativo de Manus POS desde producto en estantería hasta reporte de ventas",
+  width: 1672,
+  height: 941,
+};
 
 const HowItWorks = () => (
-  <section id="como-funciona" className="bg-slate-900 px-6 py-20 md:py-28">
+  <section
+    id="como-funciona"
+    className="overflow-hidden bg-slate-950 px-6 py-20 text-white md:py-28"
+  >
     <div className="mx-auto max-w-6xl">
-      <div className="mx-auto mb-14 max-w-2xl text-center">
-        <span className="mb-3 inline-block text-sm font-semibold uppercase tracking-widest text-blue-400">
-          Cómo funciona
-        </span>
-        <h2 className="text-balance text-3xl font-bold text-white md:text-4xl">
-          Empieza a operar en cinco pasos
-        </h2>
-        <p className="mt-4 text-pretty text-lg text-slate-400">
-          Sin instalaciones complicadas. Configura tu negocio y empieza a
-          vender el mismo día.
+      <div className="mb-12 grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+        <div>
+          <span className="text-sm font-bold uppercase tracking-[0.2em] text-blue-300">
+            Cómo funciona
+          </span>
+          <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight md:text-4xl">
+            Del producto en estantería al reporte de ventas
+          </h2>
+        </div>
+        <p className="text-pretty text-lg leading-8 text-slate-300">
+          El flujo de Manus POS acompaña la operación completa del negocio:
+          configurar, vender, controlar y consultar.
         </p>
       </div>
 
-      <ol className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-        {steps.map(({ icon: Icon, title, description }, index) => (
-          <li
-            key={title}
-            className="relative flex flex-col rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white">
-                <Icon className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <span className="text-2xl font-bold text-white/20">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-            </div>
-            <h3 className="text-base font-semibold text-white">{title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              {description}
-            </p>
-          </li>
-        ))}
-      </ol>
+      <div className="-mx-6 overflow-x-auto px-6 pb-2 sm:mx-0 sm:px-0">
+        <div className="mx-auto min-w-[760px] max-w-6xl rounded-2xl border border-white/10 bg-white/[0.04] p-2 shadow-[0_24px_90px_rgba(37,99,235,0.25)] sm:min-w-0 sm:p-3">
+          <Image
+            src={flowImage.src}
+            alt={flowImage.alt}
+            width={flowImage.width}
+            height={flowImage.height}
+            sizes="(min-width: 1024px) 1100px, 760px"
+            className="h-auto w-full rounded-xl object-contain"
+            priority={false}
+          />
+        </div>
+      </div>
     </div>
   </section>
 );

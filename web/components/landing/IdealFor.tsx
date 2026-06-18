@@ -1,63 +1,80 @@
-import { Store, ShoppingBag, Building2, Boxes } from "lucide-react";
+import Image from "next/image";
 
 const audiences = [
   {
-    icon: Store,
-    title: "Tiendas",
+    title: "Tiendas de barrio",
     description:
-      "Tiendas de barrio que quieren vender ordenado y controlar su stock.",
+      "Vende rápido, identifica qué productos se mueven y controla caja sin perder el ritmo del mostrador.",
+    imageSrc: "/images/audience/tiendas-barrio.png",
+    imageAlt: "Tienda de barrio moderna usando Manus POS",
+    highlight: "Mostrador ágil",
   },
   {
-    icon: ShoppingBag,
     title: "Minimarkets",
     description:
-      "Minimarkets con alto flujo de ventas que necesitan rapidez en caja.",
+      "Opera con alto flujo de productos, compras frecuentes, turnos de caja y reposición constante.",
+    imageSrc: "/images/audience/minimarkets.png",
+    imageAlt: "Minimarket con análisis de datos y operación conectada",
+    highlight: "Alto movimiento",
   },
   {
-    icon: Building2,
     title: "Retail pequeño",
     description:
-      "Negocios retail que buscan profesionalizar su operación diaria.",
+      "Profesionaliza usuarios, roles, reportes y procesos para crecer con una operación más ordenada.",
+    imageSrc: "/images/audience/retail-pequeno.png",
+    imageAlt: "Tienda retail pequeña con paneles digitales",
+    highlight: "Procesos claros",
   },
   {
-    icon: Boxes,
-    title: "Comercios operativos",
+    title: "Negocios con inventario",
     description:
-      "Comercios que necesitan control de inventario, caja y pedidos.",
+      "Controla stock, pedidos, compras y proveedores con información confiable para decidir a tiempo.",
+    imageSrc: "/images/audience/negocios-inventario.png",
+    imageAlt: "Gestión de inventario en almacén conectado",
+    highlight: "Stock bajo control",
   },
 ];
 
 const IdealFor = () => (
   <section className="bg-slate-50 px-6 py-20 md:py-28">
     <div className="mx-auto max-w-6xl">
-      <div className="mx-auto mb-14 max-w-2xl text-center">
-        <span className="mb-3 inline-block text-sm font-semibold uppercase tracking-widest text-blue-600">
-          Ideal para
+      <div className="mb-12 max-w-3xl">
+        <span className="text-sm font-bold uppercase tracking-[0.2em] text-blue-700">
+          Para quién sirve
         </span>
-        <h2 className="text-balance text-3xl font-bold text-slate-900 md:text-4xl">
-          Hecho para negocios como el tuyo
+        <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
+          Hecho para negocios que viven de operar bien todos los días
         </h2>
-        <p className="mt-4 text-pretty text-lg text-slate-600">
-          Manus POS se adapta a distintos tipos de comercio que necesitan
-          control operativo real.
-        </p>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {audiences.map(({ icon: Icon, title, description }) => (
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        {audiences.map(({ title, description, imageSrc, imageAlt, highlight }) => (
           <article
             key={title}
-            className="flex flex-col items-start rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+            className="group flex h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
           >
-            <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-              <Icon className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <h3 className="mb-2 text-base font-semibold text-slate-900">
-              {title}
-            </h3>
-            <p className="text-sm leading-relaxed text-slate-600">
-              {description}
-            </p>
+            <div className="flex min-h-full w-full flex-col">
+              <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                <Image
+                  src={imageSrc}
+                  alt={imageAlt}
+                  fill
+                  sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
+                  className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/45 to-transparent" />
+                <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-slate-900 shadow-sm">
+                  {highlight}
+                </span>
+              </div>
+
+              <div className="flex flex-1 flex-col p-5">
+                <h3 className="text-lg font-bold text-slate-950">{title}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  {description}
+                </p>
+              </div>
+            </div>
           </article>
         ))}
       </div>

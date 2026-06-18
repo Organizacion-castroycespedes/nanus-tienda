@@ -15,10 +15,10 @@ const HomePage = () => {
       <main>
         <Hero />
         <Features />
+        <Benefits />
         <FeatureShowcase />
         <HowItWorks />
         <IdealFor />
-        <Benefits />
         <CTA />
       </main>
       <Footer />
