@@ -75,10 +75,9 @@ export class InventoryService {
       imageMimeType: row.image_mime_type,
       imageSizeBytes:
         row.image_size_bytes === null ? null : Number(row.image_size_bytes),
-      imageUpdatedAt:
-        row.image_updated_at === null
-          ? null
-          : new Date(row.image_updated_at).toISOString(),
+      imageUpdatedAt: row.image_updated_at
+        ? new Date(row.image_updated_at).toISOString()
+        : null,
       createdAt: new Date(row.created_at).toISOString(),
       updatedAt: new Date(row.updated_at).toISOString(),
       stock: Number(row.stock),
