@@ -23,19 +23,19 @@ const Navbar = () => {
         {/* Desktop nav */}
         <nav className="hidden items-center gap-6 md:flex" aria-label="Navegacion principal">
           <Link
-            href="#features"
+            href="#funcionalidades"
             className="text-sm text-slate-600 transition hover:text-slate-900"
           >
             Funcionalidades
           </Link>
           <Link
-            href="#benefits"
+            href="#beneficios"
             className="text-sm text-slate-600 transition hover:text-slate-900"
           >
             Beneficios
           </Link>
           <Link
-            href="#how"
+            href="#como-funciona"
             className="text-sm text-slate-600 transition hover:text-slate-900"
           >
             Como funciona
@@ -51,10 +51,10 @@ const Navbar = () => {
             Iniciar sesion
           </Link>
           <Link
-            href="/login"
+            href="#contacto"
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
           >
-            Empezar gratis
+            Solicitar demo
           </Link>
         </div>
 
@@ -77,9 +77,9 @@ const Navbar = () => {
         >
           <ul className="space-y-1">
             {[
-              { href: "#features", label: "Funcionalidades" },
-              { href: "#benefits", label: "Beneficios" },
-              { href: "#how", label: "Como funciona" },
+              { href: "#funcionalidades", label: "Funcionalidades" },
+              { href: "#beneficios", label: "Beneficios" },
+              { href: "#como-funciona", label: "Como funciona" },
             ].map(({ href, label }) => (
               <li key={href}>
                 <Link
@@ -93,11 +93,11 @@ const Navbar = () => {
             ))}
             <li className="pt-2">
               <Link
-                href="/login"
+                href="#contacto"
                 className="block rounded-lg bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white"
                 onClick={() => setOpen(false)}
               >
-                Empezar gratis
+                Solicitar demo
               </Link>
             </li>
           </ul>
