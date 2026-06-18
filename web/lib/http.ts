@@ -82,7 +82,9 @@ const buildRequestHeaders = (
 ) => {
   const accessToken = store.getState().auth.accessToken;
   const mergedHeaders = new Headers(options?.headers);
-  if (!mergedHeaders.has("Content-Type")) {
+  const isFormDataBody =
+    typeof FormData !== "undefined" && options?.body instanceof FormData;
+  if (!isFormDataBody && !mergedHeaders.has("Content-Type")) {
     mergedHeaders.set("Content-Type", "application/json");
   }
   if (accessToken) {

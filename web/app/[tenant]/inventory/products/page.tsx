@@ -27,7 +27,14 @@ import { ProductForm } from "../../../../modules/inventory/components/ProductFor
 import { ProductPriceChangeModal } from "../../../../modules/inventory/components/ProductPriceChangeModal";
 import { ProductPriceHistoryPanel } from "../../../../modules/inventory/components/ProductPriceHistoryPanel";
 import { StockAdjustmentForm } from "../../../../modules/inventory/components/StockAdjustmentForm";
+import {
+  listProductCategories,
+  listProductSubcategories,
+  type ProductCategoryResponse,
+  type ProductSubcategoryResponse,
+} from "../../../../modules/inventory/services/product-classification.service";
 import { deleteProduct } from "../../../../modules/inventory/services/product.service";
+import { getProductClassificationErrorMessage } from "../../../../modules/inventory/utils/product-classification";
 
 type ProductFilters = {
   query: string;
@@ -163,7 +170,10 @@ const ProductsPage = () => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [products, setProducts] = useState<ProductResponse[]>([]);
+  const [categories, setCategories] = useState<ProductCategoryResponse[]>([]);
+  const [subcategories, setSubcategories] = useState<ProductSubcategoryResponse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [classificationLoading, setClassificationLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProductFilters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<ProductFilters>(defaultFilters);
   const [page, setPage] = useState(0);
@@ -171,6 +181,7 @@ const ProductsPage = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [classificationError, setClassificationError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit" | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null);
@@ -256,6 +267,32 @@ const ProductsPage = () => {
     }
   }, [appliedFilters, resolveProductFilters]);
 
+  const loadClassificationCatalogs = useCallback(async () => {
+    setClassificationLoading(true);
+    setClassificationError(null);
+    try {
+      const [categoryResult, subcategoryResult] = await Promise.all([
+        listProductCategories(),
+        listProductSubcategories(),
+      ]);
+      setCategories(categoryResult);
+      setSubcategories(subcategoryResult);
+    } catch (error) {
+      setClassificationError(
+        getProductClassificationErrorMessage(
+          error,
+          "No se pudo cargar la clasificacion de productos."
+        )
+      );
+    } finally {
+      setClassificationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadClassificationCatalogs();
+  }, [loadClassificationCatalogs]);
+
   const tenantOptions = useMemo(() => {
     const seen = new Map<string, string>();
     products.forEach((product) => {
@@ -283,6 +320,22 @@ const ProductsPage = () => {
     return Array.from(seen.values());
   }, [draftFilters.tenantId, products]);
 
+  const categoryById = useMemo(() => {
+    const map = new Map<string, ProductCategoryResponse>();
+    categories.forEach((category) => {
+      map.set(category.id, category);
+    });
+    return map;
+  }, [categories]);
+
+  const subcategoryById = useMemo(() => {
+    const map = new Map<string, ProductSubcategoryResponse>();
+    subcategories.forEach((subcategory) => {
+      map.set(subcategory.id, subcategory);
+    });
+    return map;
+  }, [subcategories]);
+
   const filteredProducts = useMemo(() => {
     const query = appliedFilters.query.trim().toLowerCase();
     if (!query) {
@@ -294,14 +347,22 @@ const ProductsPage = () => {
       const sku = product.sku.toLowerCase();
       const branchName = (product.branchName ?? "").toLowerCase();
       const terminalName = (product.terminalName ?? "").toLowerCase();
+      const categoryName = (
+        categoryById.get(product.categoryId ?? "")?.name ?? ""
+      ).toLowerCase();
+      const subcategoryName = (
+        subcategoryById.get(product.subcategoryId ?? "")?.name ?? ""
+      ).toLowerCase();
       return (
         name.includes(query) ||
         sku.includes(query) ||
         branchName.includes(query) ||
-        terminalName.includes(query)
+        terminalName.includes(query) ||
+        categoryName.includes(query) ||
+        subcategoryName.includes(query)
       );
     });
-  }, [appliedFilters.query, products]);
+  }, [appliedFilters.query, categoryById, products, subcategoryById]);
 
   const paginatedProducts = useMemo(() => {
     const start = page * pageSize;
@@ -353,7 +414,7 @@ const ProductsPage = () => {
 
   const handleHeaderActionConfirm = async () => {
     if (pendingHeaderAction === "refresh") {
-      await loadProducts();
+      await Promise.all([loadProducts(), loadClassificationCatalogs()]);
       setPendingHeaderAction(null);
       return;
     }
@@ -393,6 +454,17 @@ const ProductsPage = () => {
     if (hasSearched) {
       void loadProducts();
     }
+  };
+
+  const handleProductImageChange = (updatedProduct: ProductResponse) => {
+    setProducts((current) =>
+      current.map((product) =>
+        product.id === updatedProduct.id ? { ...product, ...updatedProduct } : product
+      )
+    );
+    setSelectedProduct((current) =>
+      current?.id === updatedProduct.id ? { ...current, ...updatedProduct } : current
+    );
   };
 
   const handleDelete = async () => {
@@ -532,7 +604,10 @@ const ProductsPage = () => {
         cancelText="Cancelar"
         variant={pendingHeaderAction === "refresh" ? "default" : "warning"}
         onConfirm={handleHeaderActionConfirm}
-        loading={pendingHeaderAction === "refresh" && loading}
+        loading={
+          pendingHeaderAction === "refresh" &&
+          (loading || classificationLoading)
+        }
       />
 
       <ConfirmDialog
@@ -572,7 +647,7 @@ const ProductsPage = () => {
             <Button
               variant="ghost"
               onClick={() => setPendingHeaderAction("refresh")}
-              isLoading={loading}
+              isLoading={loading || classificationLoading}
             >
               <RefreshCw className="h-4 w-4" />
               Actualizar
@@ -620,6 +695,7 @@ const ProductsPage = () => {
                 product={selectedProduct}
                 onCancel={requestFocusCancel}
                 onSuccess={handleFormSuccess}
+                onImageChange={handleProductImageChange}
               />
             ) : null}
 
@@ -745,6 +821,13 @@ const ProductsPage = () => {
         </section>
       ) : null}
 
+      {classificationError ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
+          {classificationError} El listado seguira disponible sin nombres de
+          categoria.
+        </section>
+      ) : null}
+
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -754,6 +837,7 @@ const ProductsPage = () => {
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">SKU</th>
+                <th className="px-4 py-3 font-medium">Clasificacion</th>
                 <th className="px-4 py-3 font-medium">Sucursal</th>
                 <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Venta</th>
@@ -765,25 +849,29 @@ const ProductsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
                     Cargando productos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar productos.
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
                     No hay productos para mostrar.
                   </td>
                 </tr>
               ) : (
                 paginatedProducts.map((product) => {
                   const badges = getProductBadges(product);
+                  const category = categoryById.get(product.categoryId ?? "");
+                  const subcategory = subcategoryById.get(
+                    product.subcategoryId ?? ""
+                  );
 
                   return (
                     <tr key={product.id}>
@@ -805,6 +893,24 @@ const ProductsPage = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-700">{product.sku}</td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <div className="max-w-[180px] space-y-1">
+                          <p className="truncate text-sm font-medium text-slate-800">
+                            {product.categoryId
+                              ? category?.name ?? "Categoria no cargada"
+                              : "Sin categoria"}
+                          </p>
+                          {subcategory ? (
+                            <p className="truncate text-xs text-slate-500">
+                              {subcategory.name}
+                            </p>
+                          ) : product.categoryId ? (
+                            <p className="text-xs text-slate-400">
+                              Sin subcategoria
+                            </p>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-slate-700">{product.branchName ?? "-"}</td>
                       <td className="px-4 py-3 text-slate-700">{product.terminalName ?? "-"}</td>
                       <td className="px-4 py-3 text-slate-700">

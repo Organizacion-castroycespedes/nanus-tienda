@@ -25,9 +25,13 @@ export const buildUrl = (url: string, customBaseUrl?: string) => {
   return `${resolvedBaseUrl}/${url}`;
 };
 
-const mergeHeaders = (headers?: HeadersInit) => {
-  const defaultHeaders = { "Content-Type": "application/json" };
-  const mergedHeaders = new Headers(defaultHeaders);
+const isFormDataBody = (body?: BodyInit | null) =>
+  typeof FormData !== "undefined" && body instanceof FormData;
+
+const mergeHeaders = (headers?: HeadersInit, body?: BodyInit | null) => {
+  const mergedHeaders = new Headers(
+    isFormDataBody(body) ? undefined : { "Content-Type": "application/json" }
+  );
   if (headers) {
     const incoming = new Headers(headers);
     incoming.forEach((value, key) => mergedHeaders.set(key, value));
@@ -40,7 +44,7 @@ export const requestRaw = async (
   options?: RequestInit,
   customBaseUrl?: string
 ) => {
-  const headers = mergeHeaders(options?.headers);
+  const headers = mergeHeaders(options?.headers, options?.body);
   return fetch(buildUrl(url, customBaseUrl), {
     ...options,
     headers,

@@ -124,3 +124,282 @@ El sistema SHALL permitir estados y clasificaciones operativas mas ricas que `is
 - THEN el sistema SHALL mostrar su clasificacion.
 
 RIESGO: Nuevos estados mal definidos pueden bloquear ventas o compras legitimas.
+
+### Requirement: Product classification menu access
+
+The system SHALL expose product categories and subcategories through the application menu only to roles with product-equivalent permissions.
+
+#### Scenario: Role has product access
+
+- GIVEN a role has access to Products
+- WHEN the user opens the application menu
+- THEN the user SHALL be able to access product categories and subcategories according to the selected navigation design.
+
+#### Scenario: Role lacks product access
+
+- GIVEN a role does not have access to Products
+- WHEN the user opens the application menu
+- THEN the user SHALL NOT see product categories or subcategories.
+
+### Requirement: Product-equivalent classification permissions
+
+The system SHALL protect product categories and subcategories with the same permission model used by Products.
+
+#### Scenario: Direct URL access without product permission
+
+- GIVEN a user does not have product permission
+- WHEN the user navigates directly to the product categories or subcategories route
+- THEN access SHALL be denied according to the current authorization pattern.
+
+#### Scenario: API request without product permission
+
+- GIVEN a user does not have product permission
+- WHEN the user calls a product category or subcategory endpoint
+- THEN the API SHALL reject the request.
+
+### Requirement: Idempotent menu and permission seed
+
+The system SHALL provide an idempotent database script for product classification menu and permissions.
+
+#### Scenario: Permission script executed twice
+
+- GIVEN the product classification menu/permission script was already applied
+- WHEN it is executed again
+- THEN it SHALL NOT create duplicate menu items
+- AND it SHALL NOT create duplicate role-menu permission rows
+- AND it SHALL preserve existing product permissions.
+
+### Requirement: Product classification persistence
+
+The system SHALL persist product categories and subcategories in tenant-scoped tables prepared for default image metadata without implementing file upload.
+
+#### Scenario: Category stored per tenant
+
+- GIVEN a user creates a product category
+- WHEN the category is saved
+- THEN the system SHALL persist it with `tenant_id`, `name`, `slug`, `is_active`, `sort_order`, timestamps and optional default image metadata.
+- AND the category `slug` SHALL be unique only inside the tenant.
+
+#### Scenario: Subcategory stored per tenant and category
+
+- GIVEN a user creates a product subcategory
+- WHEN the subcategory is saved
+- THEN the system SHALL persist it with `tenant_id`, `category_id`, `name`, `slug`, `is_active`, `sort_order`, timestamps and optional default image metadata.
+- AND the subcategory `slug` SHALL be unique only inside the same tenant and category.
+
+### Requirement: Tenant-safe classification backend
+
+The system SHALL expose backend endpoints for product categories and subcategories that validate tenant ownership on every operation.
+
+#### Scenario: Cross-tenant category update
+
+- GIVEN a category belongs to another tenant
+- WHEN a user attempts to update it through the category API
+- THEN the system SHALL reject the operation as not found or invalid according to the current backend pattern.
+
+#### Scenario: Subcategory uses category from another tenant
+
+- GIVEN a category belongs to another tenant
+- WHEN a user attempts to create or update a subcategory using that category
+- THEN the API SHALL reject the request.
+
+### Requirement: Product classification assignment
+
+The system SHALL allow products to reference an optional category and optional subcategory while preserving products without classification.
+
+#### Scenario: Product without classification
+
+- GIVEN a product has no category or subcategory
+- WHEN it is created, updated or listed
+- THEN it SHALL continue working with compatible null classification fields.
+
+#### Scenario: Product with valid category and subcategory
+
+- GIVEN a category and subcategory belong to the same tenant
+- AND the subcategory belongs to the category
+- WHEN a product is created or updated with those identifiers
+- THEN the system SHALL persist the classification.
+
+#### Scenario: Subcategory without category
+
+- GIVEN a product payload includes `subcategory_id` without `category_id`
+- WHEN the API validates the payload
+- THEN it SHALL reject the request.
+
+#### Scenario: Subcategory does not belong to category
+
+- GIVEN a subcategory belongs to a different category
+- WHEN a product payload pairs it with the wrong category
+- THEN the API SHALL reject the request.
+
+### Requirement: Product image metadata
+
+The system SHALL store optional product image metadata fields used by product image workflows.
+
+#### Scenario: Product image metadata provided
+
+- GIVEN a product payload includes image URL, storage key, alt text, MIME type or size
+- WHEN the API validates and saves the product
+- THEN it SHALL allow only `image/jpeg`, `image/png` or `image/webp` MIME types.
+- AND it SHALL reject negative image sizes.
+- AND it SHALL update `image_updated_at` when image metadata changes.
+
+### Requirement: Product classification administration UI
+
+The system SHALL provide frontend pages to administer product categories and subcategories without using modals as the primary create/edit pattern.
+
+#### Scenario: Manage categories from focused UI
+
+- GIVEN a user has product-equivalent permission
+- WHEN the user opens `/inventory/product-categories`
+- THEN the system SHALL list product categories for the current tenant.
+- AND the user SHALL be able to create, edit, activate and deactivate categories through a focused inline or master-detail experience.
+- AND the page SHALL show active/inactive state, description, sort order and image placeholder or image URL preview.
+
+#### Scenario: Manage subcategories from focused UI
+
+- GIVEN a user has product-equivalent permission
+- WHEN the user opens `/inventory/product-subcategories`
+- THEN the system SHALL list product subcategories for the current tenant.
+- AND the user SHALL be able to filter by parent category.
+- AND the user SHALL be able to create, edit, activate and deactivate subcategories through a focused inline or master-detail experience.
+- AND creating a subcategory SHALL require selecting a parent category.
+
+#### Scenario: No categories exist for subcategories
+
+- GIVEN no product categories exist for the current tenant
+- WHEN the user opens the subcategory administration page
+- THEN the system SHALL guide the user to create categories before creating subcategories.
+
+#### Scenario: Classification UI preserves out-of-scope features
+
+- GIVEN the classification UI is available
+- WHEN the user administers categories or subcategories
+- THEN the system SHALL keep classification administration separate from taxes, discounts, inventory/stock and payments.
+
+### Requirement: Product CRUD classification assignment UI
+
+The system SHALL allow product create and edit workflows to assign optional product categories and subcategories.
+
+#### Scenario: Create product without classification
+
+- GIVEN a user has product write permission
+- WHEN the user creates a product without selecting category or subcategory
+- THEN the product SHALL be saved without classification.
+- AND existing price, tax, unit, stock and operational fields SHALL keep their current behavior.
+
+#### Scenario: Create product with category and subcategory
+
+- GIVEN categories and subcategories exist for the current tenant
+- WHEN the user creates a product with a category and one of its subcategories
+- THEN the frontend SHALL send both `categoryId` and `subcategoryId`.
+- AND the product SHALL be saved with that classification.
+
+#### Scenario: Dependent subcategory selection
+
+- GIVEN a category is selected in the product form
+- WHEN the user opens the subcategory selector
+- THEN only subcategories belonging to the selected category SHALL be available.
+- AND changing or clearing the category SHALL clear any subcategory that no longer belongs.
+
+#### Scenario: Product list shows classification compactly
+
+- GIVEN products are listed in inventory
+- WHEN a product has category or subcategory values
+- THEN the list SHALL show the category and subcategory compactly.
+- AND products without category SHALL show a clear fallback.
+
+#### Scenario: Product CRUD classification preserves out-of-scope features
+
+- GIVEN product CRUD supports classification assignment
+- WHEN the user creates or edits products
+- THEN the system SHALL NOT change taxes, discounts, inventory/stock or payments behavior.
+
+### Requirement: Local product image upload
+
+The system SHALL support optional local image upload, replacement, retrieval and deletion for products, product categories and product subcategories.
+
+#### Scenario: Valid image uploaded
+
+- GIVEN a user has product-equivalent write permission
+- WHEN the user uploads a JPG, PNG or WebP image for a product, category or subcategory
+- THEN the API SHALL save the file in local storage using a generated storage key.
+- AND the API SHALL persist only URL, storage key, alt text, MIME type, size and updated image metadata in the database.
+- AND the API SHALL NOT expose an absolute filesystem path.
+
+#### Scenario: Invalid image rejected
+
+- GIVEN a user uploads a file with unsupported MIME type, unsupported extension, invalid signature, unsafe filename or excessive size
+- WHEN the upload endpoint validates the file
+- THEN the API SHALL reject the request without updating database image metadata.
+
+#### Scenario: Image replaced
+
+- GIVEN a product, category or subcategory already has an image
+- WHEN the user uploads a replacement image
+- THEN the API SHALL save the new file, update database metadata and remove the previous local file when possible.
+
+#### Scenario: Image deleted
+
+- GIVEN a product, category or subcategory has image metadata
+- WHEN the user deletes the image
+- THEN the API SHALL clear the corresponding image metadata fields.
+- AND the API SHALL remove the local file when possible.
+
+#### Scenario: Tenant-safe image retrieval
+
+- GIVEN an image belongs to a record in another tenant
+- WHEN a user attempts to retrieve it by ID
+- THEN the API SHALL reject the request as not found or unauthorized according to the current authorization pattern.
+
+#### Scenario: Image upload UI after save
+
+- GIVEN a user is creating a product, category or subcategory
+- WHEN the record has not been saved yet
+- THEN the UI SHALL indicate that the record must be saved before uploading an image.
+- AND the rest of the form SHALL remain usable without an image.
+
+#### Scenario: POS image metadata remains tenant-safe
+
+- GIVEN local image upload is available in inventory administration
+- WHEN POS renders products
+- THEN it SHALL use only image URLs returned by product, category or subcategory APIs for the current tenant.
+
+### Requirement: POS product classification filters and effective images
+
+The system SHALL allow POS users to filter products by product category and dependent subcategory, and SHALL show the effective POS product image when available.
+
+#### Scenario: POS category filter combines with existing filters
+
+- GIVEN the POS catalog has products with and without categories
+- WHEN the user selects a product category
+- THEN the POS SHALL show only products in that category.
+- AND it SHALL preserve the current search text, stock filter and cart contents.
+
+#### Scenario: POS subcategory depends on selected category
+
+- GIVEN a category is selected in POS
+- WHEN the user opens the subcategory selector
+- THEN the POS SHALL show only subcategories belonging to that category.
+- AND changing or clearing the category SHALL clear any selected subcategory that no longer applies.
+
+#### Scenario: POS filters compose together
+
+- GIVEN the user has search text, stock filter, category filter and subcategory filter selected
+- WHEN the POS product list is rendered
+- THEN the results SHALL match all selected filters together.
+
+#### Scenario: POS effective image priority
+
+- GIVEN a product has optional product, subcategory and category images
+- WHEN the POS product card renders
+- THEN it SHALL use the product image first.
+- AND if missing, it SHALL use the subcategory default image.
+- AND if missing, it SHALL use the category default image.
+- AND if all are missing or fail to load, it SHALL show the existing initials or placeholder fallback.
+
+#### Scenario: POS classification filters preserve sales behavior
+
+- GIVEN POS classification filters and effective images are available
+- WHEN the user sells products
+- THEN the system SHALL NOT change taxes, discounts, inventory/stock, payment or checkout behavior.

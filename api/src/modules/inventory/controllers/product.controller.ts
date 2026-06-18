@@ -29,6 +29,7 @@ import type {
   ProductRotationClass,
   ProductSaleType,
 } from "../entities/product.entity";
+import type { ProductImageMimeType } from "../entities/product-category.entity";
 import { ProductService } from "../services/product.service";
 
 type AuthRequest = Request & {
@@ -62,6 +63,14 @@ type CreateProductBody = {
   measurementUnit?: ProductMeasurementUnit;
   minStock?: number | null;
   maxStock?: number | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  imageUrl?: string | null;
+  imageStorageKey?: string | null;
+  imageAltText?: string | null;
+  imageMimeType?: ProductImageMimeType | null;
+  imageSizeBytes?: number | null;
+  imageUpdatedAt?: Date | null;
 };
 
 type UpdateProductBody = Partial<

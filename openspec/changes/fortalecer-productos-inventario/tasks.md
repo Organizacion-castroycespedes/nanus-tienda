@@ -1403,6 +1403,187 @@
 - [x] Ejecutar tests pricing, build API, lint/build web, `openspec validate` y `git diff --check`.
 - [x] Confirmar que no se toco PricingService, POS venta, Orders, `inventory_create_sale_v2`, facturacion electronica, DIAN/GetAcquirer, suppliers, PRD real, remoto ni commits.
 
+## Fase 6.9.4: permisos y menu de clasificacion de productos
+
+- [x] Discover current Products menu key and permission model.
+- [x] Discover menu_items and role_menu_permissions structure.
+- [x] Decide whether categories/subcategories reuse Products permission or use product-equivalent aliases.
+- [x] Create idempotent SQL script for menu entries.
+- [x] Assign classification menu to the same roles that can access Products.
+- [x] Protect category/subcategory backend endpoints with product-equivalent guards.
+- [x] Protect category/subcategory frontend routes with product-equivalent access.
+- [x] Add QA for role with Products access.
+- [x] Add QA for role without Products access.
+- [x] Validate SQL idempotency x2.
+- [x] Validate no duplicate menu_items.
+- [x] Validate no duplicate role_menu_permissions.
+
+## Fase 6.9.5: DB y backend categorias/subcategorias tenant-safe
+
+- [x] Discover real inventory/product migrations, SQL naming, idempotency, product backend patterns, tenant resolution and guards.
+- [x] Crear migracion idempotente `V062__product_classification_backend_phase_6_9_5.sql`.
+- [x] Crear tablas `product_categories` y `product_subcategories`.
+- [x] Agregar columnas de clasificacion e imagen a `products`.
+- [x] Agregar constraints tenant-safe, checks e indices requeridos.
+- [x] Ejecutar migracion SQL local/dev dos veces para validar idempotencia.
+- [x] Crear entidades `ProductCategoryEntity` y `ProductSubcategoryEntity`.
+- [x] Crear repositories de categorias y subcategorias con filtro por `tenant_id`.
+- [x] Crear services de categorias y subcategorias con validacion de slug, tenant y activacion/inactivacion.
+- [x] Crear controllers REST de categorias y subcategorias bajo `/api/inventory/product-categories` y `/api/inventory/product-subcategories`.
+- [x] Proteger endpoints con `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard` y permiso equivalente `INVENTORY_PRODUCTS`.
+- [x] Extender producto con `category_id`, `subcategory_id` y metadata de imagen sin upload real.
+- [x] Validar categoria/subcategoria tenant-safe al crear y actualizar producto.
+- [x] Agregar tests backend de categorias.
+- [x] Agregar tests backend de subcategorias.
+- [x] Agregar tests backend de producto con clasificacion.
+- [x] Agregar tests de permisos para endpoints de clasificacion.
+- [x] Ejecutar tests backend relevantes.
+- [x] Ejecutar build de `api/`.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Crear `docs/evidencia-product-classification-backend-fase-6-9-5.md`.
+- [x] Confirmar que no se implemento UI, upload real, storage local, filtros POS, impuestos, descuentos, inventario ni cobro/pagos.
+
+## Fase 6.9.6: UI categorias/subcategorias sin modales
+
+- [x] Confirmar `git status --short` limpio y HEAD `7fb773d fix(api): wire product classification into inventory module`.
+- [x] Discover rutas frontend de inventario/productos.
+- [x] Discover convencion de modulos frontend en `web/modules/inventory`.
+- [x] Discover patrones CRUD sin modales en unidades, impuestos y ubicaciones.
+- [x] Discover componentes `web/components/design-system`.
+- [x] Discover patron de API client/fetch y manejo de errores.
+- [x] Discover permisos y rutas para categorias/subcategorias.
+- [x] Crear cliente frontend de categorias/subcategorias.
+- [x] Crear helpers frontend de clasificacion y tests.
+- [x] Crear formulario inline de categorias.
+- [x] Crear formulario inline de subcategorias.
+- [x] Crear ruta `/[tenant]/inventory/product-categories`.
+- [x] Crear ruta `/[tenant]/inventory/product-subcategories`.
+- [x] Implementar listado/loading/empty/error para categorias.
+- [x] Implementar listado/loading/empty/error para subcategorias.
+- [x] Implementar crear/editar/activar/desactivar categorias sin modales.
+- [x] Implementar crear/editar/activar/desactivar subcategorias sin modales.
+- [x] Implementar filtro por categoria en subcategorias.
+- [x] Implementar placeholder/preview de imagen sin upload real.
+- [x] Mantener permisos frontend equivalentes a Productos.
+- [x] Ejecutar tests frontend relevantes.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Crear `docs/evidencia-product-classification-ui-fase-6-9-6.md`.
+- [x] Ejecutar QA manual local en `/00000000-0000-0000-0000-000000000001/inventory/product-categories` y `/00000000-0000-0000-0000-000000000001/inventory/product-subcategories`: PASS.
+- [x] Confirmar en QA manual local paginas cargadas, CRUD categorias/subcategorias, UX sin modales, foco a la accion y permisos equivalentes a Productos.
+- [x] Confirmar que no se implemento upload real, storage local, adaptacion CRUD productos, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario ni cobro/pagos.
+
+## Fase 6.9.7: adaptar CRUD de productos a categoria/subcategoria
+
+- [x] Confirmar `git status --short` limpio y HEAD `5a0724d feat(web): add product classification management UI`.
+- [x] Discover ruta CRUD de productos, formulario, focus layout, catalogos auxiliares, payload y tipos.
+- [x] Confirmar que create/update backend de productos acepta `categoryId` y `subcategoryId`.
+- [x] Detectar y corregir bug minimo: `/api/inventory/products` no devolvia `categoryId` ni `subcategoryId`.
+- [x] Extender tipos frontend de producto y payload create/update con clasificacion.
+- [x] Reutilizar `product-classification.service.ts` en el formulario y listado de productos.
+- [x] Agregar helpers/tests de subcategoria dependiente, limpieza y payload.
+- [x] Agregar seccion compacta `Clasificacion` al formulario de producto.
+- [x] Permitir crear/editar producto sin categoria.
+- [x] Permitir crear/editar producto con categoria.
+- [x] Permitir crear/editar producto con categoria y subcategoria valida.
+- [x] Limpiar subcategoria al cambiar o quitar categoria.
+- [x] Bloquear subcategoria sin categoria desde validacion frontend.
+- [x] Mostrar estados de carga/error de categorias y subcategorias sin bloquear guardado sin clasificacion.
+- [x] Mostrar categoria/subcategoria compacta en listado de productos.
+- [x] Mantener permisos existentes de Productos sin crear permisos nuevos.
+- [x] Crear `docs/evidencia-product-crud-classification-fase-6-9-7.md`.
+- [x] Ejecutar tests frontend/backend relevantes.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar build API por ajuste minimo backend.
+- [x] Ejecutar `openspec validate` y `git diff --check`.
+- [x] Ejecutar QA manual local en `/00000000-0000-0000-0000-000000000001/inventory/products`: PASS.
+- [x] Confirmar QA manual local de crear producto sin categoria, con categoria, con categoria + subcategoria, editar/asignar clasificacion, limpiar subcategoria invalida al cambiar/quitar categoria y listado compacto.
+- [x] Confirmar QA manual local que producto existente sin categoria sigue funcionando y no se afectaron precio, impuestos, unidad, estado operativo, inventario/stock ni cobro.
+- [x] Confirmar que no se implemento upload real, storage local, filtros POS, imagen efectiva POS, impuestos, descuentos, inventario/stock ni cobro/pagos.
+
+## Fase 6.9.8: upload local de imagenes para productos/categorias/subcategorias
+
+- [x] Confirmar `git status --short` limpio y HEAD `7de1ee9 feat(web): add product classification fields to product CRUD`.
+- [x] Discover que no existia modulo upload/archivos, storage local, static serving ni env vars de uploads.
+- [x] Discover que `@nestjs/platform-express` permite `multipart/form-data` con `FileInterceptor`.
+- [x] Discover que productos/categorias/subcategorias ya tenian metadata `image_*` y `default_image_*`.
+- [x] Crear `LocalImageStorageService` con storage keys seguras y sin rutas absolutas.
+- [x] Agregar variables `LOCAL_UPLOADS_DIR`, `MAX_PRODUCT_IMAGE_SIZE_MB` y `MAX_CATEGORY_IMAGE_SIZE_MB`.
+- [x] Ignorar `storage/` y `api/storage/` en `.gitignore`.
+- [x] Crear `ProductImageService` para upload, reemplazo, lectura y delete tenant-safe.
+- [x] Crear endpoints `POST/DELETE/GET /api/inventory/products/:productId/image`.
+- [x] Crear endpoints `POST/DELETE/GET /api/inventory/product-categories/:categoryId/image`.
+- [x] Crear endpoints `POST/DELETE/GET /api/inventory/product-subcategories/:subcategoryId/image`.
+- [x] Proteger endpoints con `JwtAuthGuard`, `RolesGuard`, `PermissionsGuard` y `INVENTORY_PRODUCTS`.
+- [x] Validar MIME, extension, tamano, magic bytes y path traversal.
+- [x] Actualizar metadata DB al subir/eliminar imagen de producto.
+- [x] Actualizar metadata DB al subir/eliminar imagen de categoria.
+- [x] Actualizar metadata DB al subir/eliminar imagen de subcategoria.
+- [x] Extender `ProductResponse` e inventory listing con metadata de imagen.
+- [x] Corregir cliente HTTP para no forzar `Content-Type: application/json` con `FormData`.
+- [x] Crear API client frontend para upload/delete de imagenes.
+- [x] Crear panel UI reutilizable de imagen sin modales.
+- [x] Integrar panel en `ProductForm`.
+- [x] Integrar panel en `ProductCategoryForm`.
+- [x] Integrar panel en `ProductSubcategoryForm`.
+- [x] Mostrar preview autenticado via blob API sin exponer ruta fisica.
+- [x] Agregar tests backend de storage local, validacion, reemplazo/delete y cross-tenant.
+- [x] Agregar tests frontend de helpers de imagen.
+- [x] Ejecutar tests backend relevantes.
+- [x] Ejecutar tests frontend relevantes.
+- [x] Ejecutar build API.
+- [x] Ejecutar lint/build frontend.
+- [x] Crear `docs/evidencia-product-images-local-upload-fase-6-9-8.md`.
+- [x] Ejecutar QA manual local de upload/reemplazo/delete/archivo invalido en productos, categorias y subcategorias: PASS.
+- [x] Confirmar QA manual local en `/00000000-0000-0000-0000-000000000001/inventory/product-categories`, `/00000000-0000-0000-0000-000000000001/inventory/product-subcategories` y `/00000000-0000-0000-0000-000000000001/inventory/products`.
+- [x] Confirmar QA manual local de preview autenticado, rechazo de archivos invalidos con mensaje legible, sin ruta fisica expuesta y registros sin imagen funcionando.
+- [x] Confirmar que no se implemento filtros POS, imagen efectiva POS, impuestos, descuentos, inventario/stock, cobro/pagos ni migraciones nuevas.
+
+## Fase 6.9.9: POS filtros por categoria/subcategoria + imagen efectiva
+
+- [x] Confirmar `git status --short` limpio y HEAD `c454fb7 feat(inventory): add local image uploads for product classification`.
+- [x] Discover que POS carga productos con `getPosProducts(activeBranchId)` desde `/products?branchId=...`.
+- [x] Discover que los filtros POS actuales son busqueda local + chips de stock `Todos`, `Con stock`, `Stock bajo`, `Sin stock`.
+- [x] Discover que el carrito POS vive en `posCart` y no depende del listado filtrado.
+- [x] Discover que `ProductResponse` ya expone `categoryId`, `subcategoryId`, `imageUrl` y metadata de imagen.
+- [x] Discover que categorias/subcategorias deben cargarse con `product-classification.service.ts` para nombres y default images.
+- [x] Reutilizar `InventoryImagePreview` con preview autenticado via blob API.
+- [x] Agregar lazy load a `InventoryImagePreview` para reducir fetch/blob en tarjetas POS fuera de viewport.
+- [x] Agregar selector POS de categoria con opcion `Todas las categorias`.
+- [x] Agregar selector POS de subcategoria dependiente de categoria.
+- [x] Limpiar subcategoria al cambiar o limpiar categoria.
+- [x] Combinar filtros de busqueda + stock + categoria + subcategoria.
+- [x] Mantener carrito, busqueda y filtro stock al cambiar categoria/subcategoria.
+- [x] Mostrar estado compacto `Sin subcategorias` cuando aplica.
+- [x] Resolver imagen efectiva POS con prioridad producto, subcategoria, categoria y fallback de iniciales.
+- [x] Agregar tests frontend de helper de filtros e imagen efectiva POS.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar OpenSpec validate y `git diff --check`.
+- [x] Crear `docs/evidencia-pos-product-classification-filters-images-fase-6-9-9.md`.
+- [x] Ejecutar QA manual local en `/00000000-0000-0000-0000-000000000001/pos`: PASS.
+- [x] Confirmar QA manual local de filtros categoria/subcategoria, busqueda combinada, stock filter combinado y carrito preservado.
+- [x] Confirmar QA manual local de imagen efectiva producto > subcategoria > categoria > fallback e imagen rota con fallback.
+- [x] Confirmar QA manual local de carrito sticky/floating, F4 cobrar y Scanner/Balanza compactos funcionando.
+- [x] Confirmar que no se implemento nuevas migraciones, upload endpoints, storage local, impuestos, descuentos, inventario/stock, cobro/pagos ni reescritura visual grande del POS.
+
+## Fase 6.9.10: QA integral clasificacion productos
+
+- [x] Confirmar `git status --short` limpio y HEAD `bec8632 feat(pos): filter products by classification and show effective images`.
+- [x] Consolidar evidencia fase 6.9.4 menu/permisos.
+- [x] Consolidar evidencia fase 6.9.5 DB/backend tenant-safe.
+- [x] Consolidar evidencia fase 6.9.6 UI categorias/subcategorias.
+- [x] Consolidar evidencia fase 6.9.7 CRUD productos.
+- [x] Consolidar evidencia fase 6.9.8 upload local imagenes.
+- [x] Consolidar evidencia fase 6.9.9 POS filtros/imagenes.
+- [x] Ejecutar tests backend relevantes de permisos, categorias, subcategorias, productos e imagenes.
+- [x] Ejecutar tests frontend relevantes de permisos, rutas, helpers de clasificacion, upload e imagen efectiva POS.
+- [x] Ejecutar build API.
+- [x] Ejecutar lint/build frontend.
+- [x] Ejecutar OpenSpec validate.
+- [x] Ejecutar `git diff --check`.
+- [x] Crear `docs/evidencia-product-classification-integral-qa-fase-6-9-10.md`.
+- [x] Confirmar que no se agregaron migraciones, endpoints, pantallas, permisos, cambios fiscales, impuestos, descuentos, inventario/stock, cobro/pagos ni reescrituras visuales grandes.
+
 ## Fase 6.10: release readiness pricing, promociones, POS y Orders
 
 - [x] Crear `docs/release-readiness-pricing-promociones-pos-orders-fase-6-10.md`.

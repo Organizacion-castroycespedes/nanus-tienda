@@ -48,6 +48,27 @@ test("inventory admin route uses canonical INVENTORY permission", () => {
   );
 });
 
+test("product classification routes use product-equivalent permission", () => {
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/inventory/product-categories"
+    ),
+    {
+      module: MENU_KEYS.INVENTORY_PRODUCTS,
+      action: "read",
+    }
+  );
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/inventory/product-subcategories"
+    ),
+    {
+      module: MENU_KEYS.INVENTORY_PRODUCTS,
+      action: "read",
+    }
+  );
+});
+
 test("finance routes use canonical FINANCE permission", () => {
   assert.deepEqual(
     getRoutePermissionRequirement(

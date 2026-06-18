@@ -46,6 +46,14 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.INVENTORY_PRODUCTS, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/inventory\/product-categories\/?$/i,
+    requirement: { module: MENU_KEYS.INVENTORY_PRODUCTS, action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/inventory\/product-subcategories\/?$/i,
+    requirement: { module: MENU_KEYS.INVENTORY_PRODUCTS, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/inventory\/promotions\/?$/i,
     requirement: { module: MENU_KEYS.INVENTORY_PROMOTIONS, action: "read" },
   },
