@@ -3,9 +3,9 @@ import Providers from "./providers";
 import "../styles/globals.css";
 
 export const metadata = {
-  title: "Manus — Gestiona tu negocio desde un solo lugar",
+  title: "Manus POS — Controla ventas, inventario, caja y pedidos",
   description:
-    "Manus es una plataforma SaaS multi-tenant para pequenos negocios. POS, inventario, clientes, compras y finanzas en un solo lugar.",
+    "Manus POS es el software para tiendas, minimarkets y pequeños negocios. Punto de venta, inventario, caja, pedidos, compras, clientes y reportes en un solo lugar.",
 };
 
 const RootLayout = ({ children }: { children: ReactNode }) => {
