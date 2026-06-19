@@ -18,6 +18,32 @@ Ruta afectada: `/`
 | Backend / SQL / permisos / guards | No tocado |
 | Logica de negocio | No tocada |
 
+## Despliegue QA
+
+| Item | Estado |
+| --- | --- |
+| Estado final | DEPLOY_QA_OK |
+| QA manual | PASS |
+| Deploy QA | PASS |
+| Ruta QA validada | `/` |
+| Home publico redisenado desplegado | PASS |
+| Ambiente | QA |
+| Confirmacion | Deploy QA realizado correctamente segun reporte del usuario |
+
+Alcance confirmado en deploy QA:
+
+- No dashboard interno `/:tenantId/dashboard`.
+- No backend.
+- No SQL.
+- No permisos.
+- No guards.
+- No logica de negocio.
+- No Electron.
+- No Capacitor.
+- No perifericos.
+- No facturacion electronica.
+- No CRM.
+
 Secciones revisadas:
 
 - Header/nav.
@@ -329,6 +355,15 @@ Assets detectados no usados por el Home publico actual:
 | `git diff --check` | PASS con warnings CRLF/LF de Git, sin errores |
 | `git diff --name-only` | Revisado |
 | `git diff --stat` | Revisado |
+| `git status --short` | Revisado |
+
+## Validaciones post deploy QA
+
+| Comando | Resultado |
+| --- | --- |
+| `openspec.cmd validate redisenar-home-publico-manus-pos --type change --strict` | PASS |
+| `openspec.cmd validate --all --strict` | PASS, 26 passed |
+| `git diff --check` | PASS con warnings CRLF/LF de Git, sin errores |
 | `git status --short` | Revisado |
 
 ## Riesgos
