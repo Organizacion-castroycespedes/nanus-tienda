@@ -102,6 +102,12 @@ type PageOptions = {
   search: string | null;
 };
 
+type SessionFilters = {
+  branchId?: string;
+  terminalId?: string;
+  cashRegisterId?: string;
+};
+
 @Injectable()
 export class CurrentShiftReportsService {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
@@ -227,6 +233,17 @@ export class CurrentShiftReportsService {
       throw new ForbiddenException("No autorizado para otra sucursal");
     }
 
+    if (query.terminalId && query.terminalId !== session.terminalId) {
+      throw new ForbiddenException("No autorizado para otra terminal");
+    }
+
+    if (
+      query.cashRegisterId &&
+      query.cashRegisterId !== session.cashRegisterId
+    ) {
+      throw new ForbiddenException("No autorizado para otra caja");
+    }
+
     if (actor.role === "USER" && session.userId !== actor.userId) {
       throw new ForbiddenException("No autorizado para caja ajena");
     }
@@ -281,6 +298,94 @@ export class CurrentShiftReportsService {
       [cashSessionId]
     );
     return result.rows[0] ? this.mapSession(result.rows[0]) : null;
+  }
+
+  private async listAvailableOpenSessions(
+    actor: CurrentShiftActorContext,
+    tenantId: string,
+    filters: SessionFilters
+  ) {
+    const params: unknown[] = [tenantId];
+    const where = [
+      "session.tenant_id = $1",
+      "session.status = 'OPEN'",
+    ];
+
+    if (filters.branchId) {
+      params.push(filters.branchId);
+      where.push(`session.branch_id = $${params.length}`);
+    }
+
+    if (filters.terminalId) {
+      params.push(filters.terminalId);
+      where.push(`cash_register.terminal_id = $${params.length}`);
+    }
+
+    if (filters.cashRegisterId) {
+      params.push(filters.cashRegisterId);
+      where.push(`session.cash_register_id = $${params.length}`);
+    }
+
+    if (actor.role === "USER") {
+      params.push(actor.userId);
+      where.push(`session.opened_by_user_id = $${params.length}`);
+    }
+
+    if (actor.role === "ADMIN") {
+      if (actor.branchId) {
+        params.push(actor.branchId);
+        where.push(`session.branch_id = $${params.length}`);
+      }
+
+      params.push(actor.userId);
+      where.push(`session.opened_by_user_id = $${params.length}`);
+    }
+
+    params.push(actor.userId);
+    const actorUserParamIndex = params.length;
+
+    const result = await this.db.query<SessionRow>(
+      `/* current-shift: available-sessions */
+      SELECT
+        session.id::text AS id,
+        session.tenant_id::text AS tenant_id,
+        session.branch_id::text AS branch_id,
+        branch.nombre AS branch_name,
+        session.cash_register_id::text AS cash_register_id,
+        cash_register.nombre AS cash_register_name,
+        cash_register.codigo AS cash_register_code,
+        cash_register.terminal_id::text AS terminal_id,
+        terminal.name AS terminal_name,
+        session.opened_by_user_id::text AS opened_by_user_id,
+        opened_user.email AS opened_by_user_email,
+        session.opened_at::text AS opened_at,
+        session.opening_amount::text AS opening_amount,
+        session.status
+      FROM cash_sessions AS session
+      INNER JOIN cash_registers AS cash_register
+        ON cash_register.id = session.cash_register_id
+       AND cash_register.tenant_id = session.tenant_id
+      LEFT JOIN tenant_branches AS branch
+        ON branch.id = session.branch_id
+       AND branch.tenant_id = session.tenant_id
+      LEFT JOIN terminals AS terminal
+        ON terminal.id = cash_register.terminal_id
+       AND terminal.tenant_id = session.tenant_id
+      LEFT JOIN users AS opened_user
+        ON opened_user.id = session.opened_by_user_id
+       AND opened_user.tenant_id = session.tenant_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY
+        CASE WHEN session.opened_by_user_id = $${actorUserParamIndex}::uuid THEN 0 ELSE 1 END,
+        branch.nombre NULLS LAST,
+        terminal.name NULLS LAST,
+        cash_register.nombre NULLS LAST,
+        session.opened_at DESC
+      LIMIT 100`,
+      params
+    );
+
+    return result.rows.map((row) => this.mapSession(row));
   }
 
   private async findOpenSession(
@@ -726,12 +831,27 @@ export class CurrentShiftReportsService {
     const actor = this.resolveActor(user);
     const tenantId = this.resolveTenant(actor, query);
     const branchId = this.normalizeUuid(query.branchId, "branchId");
+    const terminalId = this.normalizeUuid(query.terminalId, "terminalId");
+    const cashRegisterId = this.normalizeUuid(
+      query.cashRegisterId,
+      "cashRegisterId"
+    );
     const cashSessionId = this.normalizeUuid(query.cashSessionId, "cashSessionId");
     const page = this.normalizePage(query);
+    const sessionFilters = {
+      branchId,
+      terminalId,
+      cashRegisterId,
+    };
+    const availableCashSessions = await this.listAvailableOpenSessions(
+      actor,
+      tenantId,
+      sessionFilters
+    );
 
     const session = cashSessionId
       ? await this.findSessionById(cashSessionId)
-      : await this.findOpenSession(actor, tenantId, branchId);
+      : availableCashSessions[0] ?? null;
 
     if (!session) {
       return {
@@ -740,12 +860,15 @@ export class CurrentShiftReportsService {
         filters: {
           tenantId,
           branchId: branchId ?? null,
+          terminalId: terminalId ?? null,
+          cashRegisterId: cashRegisterId ?? null,
           cashSessionId: cashSessionId ?? null,
           actorRole: actor.role,
           page: page.page,
           pageSize: page.pageSize,
           search: page.search,
         },
+        availableCashSessions,
         tabs: this.emptyTabs(),
       };
     }
@@ -753,6 +876,8 @@ export class CurrentShiftReportsService {
     this.assertSessionScope(actor, tenantId, session, {
       ...query,
       branchId,
+      terminalId,
+      cashRegisterId,
       cashSessionId,
     });
 
@@ -764,12 +889,15 @@ export class CurrentShiftReportsService {
         filters: {
           tenantId,
           branchId: session.branchId,
+          terminalId: session.terminalId,
+          cashRegisterId: session.cashRegisterId,
           cashSessionId: session.id,
           actorRole: actor.role,
           page: page.page,
           pageSize: page.pageSize,
           search: page.search,
         },
+        availableCashSessions,
         tabs: this.emptyTabs(),
       };
     }
@@ -801,12 +929,15 @@ export class CurrentShiftReportsService {
       filters: {
         tenantId: session.tenantId,
         branchId: session.branchId,
+        terminalId: session.terminalId,
+        cashRegisterId: session.cashRegisterId,
         cashSessionId: session.id,
         actorRole: actor.role,
         page: page.page,
         pageSize: page.pageSize,
         search: page.search,
       },
+      availableCashSessions,
       tabs: {
         sales: { total: sales.length, rows: sales },
         orders: { total: orders.length, rows: orders },

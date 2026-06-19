@@ -13,6 +13,8 @@ export type ReportFilters = {
 export type CurrentShiftFilters = {
   tenantId?: string;
   branchId?: string;
+  terminalId?: string;
+  cashRegisterId?: string;
   cashSessionId?: string;
   tab?: "sales" | "orders" | "purchases" | "movements" | "cash-count" | "tickets";
   page?: number;
@@ -346,12 +348,15 @@ export type CurrentShiftResponse = {
   filters: {
     tenantId: string;
     branchId: string | null;
+    terminalId: string | null;
+    cashRegisterId: string | null;
     cashSessionId: string | null;
     actorRole: string;
     page: number;
     pageSize: number;
     search: string | null;
   };
+  availableCashSessions: CurrentShiftCashSession[];
   tabs: {
     sales: CurrentShiftTab<CurrentShiftSaleRow>;
     orders: CurrentShiftTab<CurrentShiftOrderRow>;
