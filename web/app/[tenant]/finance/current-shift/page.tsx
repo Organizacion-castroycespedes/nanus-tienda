@@ -7,7 +7,7 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "../../../../components/design-system/Button";
@@ -22,6 +22,11 @@ import { getFinancePermissions } from "../../../../modules/finance/permissions";
 import { formatCurrency, formatDateTime } from "../../../../modules/finance/utils";
 import { PdfPreviewModal } from "../../../../modules/reporteria/components/PdfPreviewModal";
 import {
+  buildCurrentShiftSessionOptionLabel,
+  filterCurrentShiftSessions,
+  getCurrentShiftSessionCashRegisterLabel,
+} from "../../../../modules/reporteria/current-shift-session-options";
+import {
   getCashAuditTicket,
   getCashClosingTicket,
   getCurrentShiftReport,
@@ -31,6 +36,7 @@ import {
 } from "../../../../modules/reporteria/services/reporting.service";
 import type {
   CurrentShiftCashCountRow,
+  CurrentShiftCashSession,
   CurrentShiftMovementRow,
   CurrentShiftOrderRow,
   CurrentShiftPurchaseRow,
@@ -81,6 +87,11 @@ const ticketLabelByType: Record<CurrentShiftTicketType, string> = {
 const getTicketFileName = (type: CurrentShiftTicketType, entityId: string) =>
   `ticket-${type.toLowerCase().replace(/_/g, "-")}-${entityId}.pdf`;
 
+const buildSessionSelectLabel = (session: CurrentShiftCashSession) =>
+  buildCurrentShiftSessionOptionLabel(session, (value) =>
+    formatDateTime(value ?? null)
+  );
+
 const getTicketPdf = (type: CurrentShiftTicketType, entityId: string) => {
   switch (type) {
     case "POS_SALE":
@@ -113,6 +124,10 @@ const CurrentShiftPage = () => {
   const [activeTab, setActiveTab] = useState<ShiftTab>("sales");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [sessionFilter, setSessionFilter] = useState("");
+  const [selectedCashSessionId, setSelectedCashSessionId] = useState<string | null>(
+    null
+  );
   const [shift, setShift] = useState<CurrentShiftResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -121,7 +136,7 @@ const CurrentShiftPage = () => {
 
   useAutoClearState(toastMessage, setToastMessage);
 
-  const loadShift = async () => {
+  const loadShift = useCallback(async () => {
     if (!canViewFinance || !authUser?.tenantId) {
       return;
     }
@@ -129,10 +144,20 @@ const CurrentShiftPage = () => {
     try {
       const result = await getCurrentShiftReport({
         tenantId: authUser.tenantId,
+        cashSessionId: selectedCashSessionId ?? undefined,
         pageSize: 50,
         search: appliedSearch || undefined,
       });
       setShift(result);
+      const resultAvailableCashSessions = result.availableCashSessions ?? [];
+      if (
+        selectedCashSessionId &&
+        !resultAvailableCashSessions.some(
+          (session) => session.id === selectedCashSessionId
+        )
+      ) {
+        setSelectedCashSessionId(resultAvailableCashSessions[0]?.id ?? null);
+      }
     } catch (error) {
       setToastMessage(
         getApiErrorMessage(error, "No se pudo consultar la gestion del turno.")
@@ -141,7 +166,12 @@ const CurrentShiftPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [appliedSearch, authUser?.tenantId, canViewFinance, selectedCashSessionId]);
+
+  useEffect(() => {
+    setSelectedCashSessionId(null);
+    setSessionFilter("");
+  }, [authUser?.tenantId]);
 
   useEffect(() => {
     void loadShift();
@@ -150,8 +180,7 @@ const CurrentShiftPage = () => {
     return () => {
       window.removeEventListener("manus:cash-session-changed", onCashSessionChanged);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.tenantId, canViewFinance, appliedSearch]);
+  }, [loadShift]);
 
   const tabCounters = useMemo(() => {
     if (!shift?.tabs) {
@@ -282,6 +311,35 @@ const CurrentShiftPage = () => {
     </div>
   );
 
+  const availableCashSessions = useMemo(
+    () => shift?.availableCashSessions ?? [],
+    [shift?.availableCashSessions]
+  );
+  const currentCashSessionId = selectedCashSessionId ?? shift?.cashSession?.id ?? "";
+  const filteredCashSessions = useMemo(
+    () => filterCurrentShiftSessions(availableCashSessions, sessionFilter),
+    [availableCashSessions, sessionFilter]
+  );
+  const selectorCashSessions = useMemo(() => {
+    if (
+      !currentCashSessionId ||
+      filteredCashSessions.some((session) => session.id === currentCashSessionId)
+    ) {
+      return filteredCashSessions;
+    }
+
+    const currentSession = availableCashSessions.find(
+      (session) => session.id === currentCashSessionId
+    );
+    return currentSession
+      ? [currentSession, ...filteredCashSessions]
+      : filteredCashSessions;
+  }, [availableCashSessions, currentCashSessionId, filteredCashSessions]);
+
+  const handleCashSessionSelection = (cashSessionId: string) => {
+    setSelectedCashSessionId(cashSessionId || null);
+  };
+
   if (!canViewFinance) {
     return (
       <FinanceAccessNotice description="No tienes acceso a Gestion del turno." />
@@ -318,10 +376,10 @@ const CurrentShiftPage = () => {
       {!shift?.hasOpenCashSession ? (
         <section className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm">
           <p className="text-sm font-semibold text-slate-900">
-            {shift?.message ?? "No hay caja abierta para este contexto."}
+            {shift?.message ?? "No hay cajas abiertas para el alcance seleccionado."}
           </p>
           <p className="mt-2 text-sm text-slate-500">
-            Abre caja desde seleccion de contexto para consultar tu gestion operativa.
+            Abre caja desde seleccion de contexto o ajusta el alcance operativo.
           </p>
           <Button
             className="mt-5"
@@ -332,6 +390,124 @@ const CurrentShiftPage = () => {
         </section>
       ) : (
         <>
+          {availableCashSessions.length > 0 ? (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Turno actual
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold text-slate-900">
+                    {availableCashSessions.length > 1
+                      ? "Seleccionar caja abierta"
+                      : "Caja abierta actual"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {availableCashSessions.length > 1
+                      ? `${availableCashSessions.length} cajas abiertas disponibles para este alcance.`
+                      : "Una caja abierta disponible para este alcance."}
+                  </p>
+                </div>
+
+                {availableCashSessions.length > 1 ? (
+                  <div className="grid w-full gap-2 lg:max-w-3xl lg:grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,1.6fr)]">
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Buscar
+                      </span>
+                      <input
+                        className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                        value={sessionFilter}
+                        onChange={(event) => setSessionFilter(event.target.value)}
+                        placeholder="Usuario, caja o codigo"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Sesion abierta
+                      </span>
+                      <select
+                        className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                        value={
+                          selectorCashSessions.some(
+                            (session) => session.id === currentCashSessionId
+                          )
+                            ? currentCashSessionId
+                            : ""
+                        }
+                        onChange={(event) =>
+                          handleCashSessionSelection(event.target.value)
+                        }
+                        disabled={selectorCashSessions.length === 0}
+                      >
+                        {selectorCashSessions.length === 0 ? (
+                          <option value="">Sin coincidencias</option>
+                        ) : null}
+                        {selectorCashSessions.map((session) => (
+                          <option key={session.id} value={session.id}>
+                            {buildSessionSelectLabel(session)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    Sucursal
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {cashSession?.branchName ?? cashSession?.branchId ?? "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    Terminal
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {cashSession?.terminalName ?? "Sin terminal"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    Caja
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {cashSession
+                      ? getCurrentShiftSessionCashRegisterLabel(cashSession)
+                      : "Caja abierta"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    Apertura
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {formatDateTime(cashSession?.openedAt ?? null)}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {cashSession?.userName ?? "Usuario operativo"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    Estado
+                  </p>
+                  <div className="mt-1">
+                    {cashSession ? (
+                      <FinanceStatusBadge value={cashSession.status} kind="session" />
+                    ) : (
+                      "-"
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <FinanceMetricCard
               label="Caja"
