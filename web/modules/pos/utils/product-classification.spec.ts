@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  buildClearedPosProductCatalogFilters,
   filterPosProductsByClassification,
+  filterPosProductsForCatalog,
   resolveEffectivePosProductImage,
+  resolvePosSubcategoryFilterForCategory,
   sortPosClassificationOptions,
 } from "./product-classification";
 import type {
@@ -46,14 +49,18 @@ describe("POS product classification helpers", () => {
   it("filters products by selected category", () => {
     const result = filterPosProductsByClassification(
       [
-        { categoryId: "cat-1", subcategoryId: "sub-1" },
+        { categoryId: " cat-1 ", subcategoryId: "sub-1" },
         { categoryId: "cat-2", subcategoryId: "sub-2" },
+        { category_id: "cat-1", subcategory_id: null },
         { categoryId: null, subcategoryId: null },
       ],
       { categoryId: "cat-1" }
     );
 
-    assert.deepEqual(result, [{ categoryId: "cat-1", subcategoryId: "sub-1" }]);
+    assert.deepEqual(result, [
+      { categoryId: " cat-1 ", subcategoryId: "sub-1" },
+      { category_id: "cat-1", subcategory_id: null },
+    ]);
   });
 
   it("filters products by selected subcategory", () => {
@@ -67,6 +74,103 @@ describe("POS product classification helpers", () => {
     );
 
     assert.deepEqual(result, [{ categoryId: "cat-1", subcategoryId: "sub-1" }]);
+  });
+
+  it("combines search and category filters", () => {
+    const result = filterPosProductsForCatalog(
+      [
+        {
+          id: "prod-1",
+          name: "Leche entera",
+          description: null,
+          sku: "L-001",
+          stock: 10,
+          categoryId: "cat-1",
+          subcategoryId: "sub-1",
+        },
+        {
+          id: "prod-2",
+          name: "Leche de almendras",
+          description: null,
+          sku: "A-001",
+          stock: 8,
+          categoryId: "cat-2",
+          subcategoryId: "sub-2",
+        },
+        {
+          id: "prod-3",
+          name: "Yogur natural",
+          description: null,
+          sku: "Y-001",
+          stock: 6,
+          categoryId: "cat-1",
+          subcategoryId: "sub-3",
+        },
+      ],
+      { query: "leche", categoryId: "cat-1", stockFilter: "all" }
+    );
+
+    assert.deepEqual(
+      result.map((product) => product.id),
+      ["prod-1"]
+    );
+  });
+
+  it("keeps products without subcategory when filtering by category only", () => {
+    const result = filterPosProductsForCatalog(
+      [
+        {
+          id: "prod-1",
+          name: "Pan tajado",
+          description: null,
+          sku: "P-001",
+          stock: 10,
+          categoryId: "cat-1",
+          subcategoryId: null,
+        },
+        {
+          id: "prod-2",
+          name: "Arepa",
+          description: null,
+          sku: "A-001",
+          stock: 10,
+          categoryId: "cat-2",
+          subcategoryId: null,
+        },
+      ],
+      { categoryId: "cat-1" }
+    );
+
+    assert.deepEqual(
+      result.map((product) => product.id),
+      ["prod-1"]
+    );
+  });
+
+  it("resets selected subcategory when changing to an unrelated category", () => {
+    assert.equal(
+      resolvePosSubcategoryFilterForCategory("sub-1", "cat-2", [
+        { id: "sub-1", categoryId: "cat-1" },
+        { id: "sub-2", categoryId: "cat-2" },
+      ]),
+      ""
+    );
+
+    assert.equal(
+      resolvePosSubcategoryFilterForCategory("sub-2", "cat-2", [
+        { id: "sub-1", categoryId: "cat-1" },
+        { id: "sub-2", categoryId: "cat-2" },
+      ]),
+      "sub-2"
+    );
+  });
+
+  it("builds cleared search and classification filters", () => {
+    assert.deepEqual(buildClearedPosProductCatalogFilters(), {
+      query: "",
+      categoryId: "",
+      subcategoryId: "",
+    });
   });
 
   it("keeps all products when no classification filter is selected", () => {

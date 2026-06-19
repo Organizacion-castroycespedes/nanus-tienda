@@ -9,6 +9,7 @@ import {
   Plus,
   Scale,
   Search,
+  SlidersHorizontal,
   ShoppingCart,
   Trash2,
   UserRound,
@@ -93,12 +94,16 @@ import {
   type ProductSubcategoryResponse,
 } from "../../inventory/services/product-classification.service";
 import {
-  filterPosProductsByClassification,
+  buildClearedPosProductCatalogFilters,
+  filterPosProductsForCatalog,
+  normalizePosClassificationId,
   resolveEffectivePosProductImage,
+  resolvePosSubcategoryFilterForCategory,
   sortPosClassificationOptions,
+  type PosStockFilterKey,
 } from "../utils/product-classification";
 
-type StockFilterKey = "all" | "available" | "low" | "out";
+type StockFilterKey = PosStockFilterKey;
 type ScannerMockStatus = "disabled" | "connected" | "error";
 type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
 
@@ -562,6 +567,7 @@ export const PosScreen = () => {
   const [activeStockFilter, setActiveStockFilter] = useState<StockFilterKey>("all");
   const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("");
   const [selectedProductSubcategoryId, setSelectedProductSubcategoryId] = useState("");
+  const [productFiltersOpen, setProductFiltersOpen] = useState(false);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
@@ -958,7 +964,8 @@ export const PosScreen = () => {
         selectedProductCategoryId
           ? productSubcategories.filter(
               (subcategory) =>
-                subcategory.categoryId === selectedProductCategoryId
+                normalizePosClassificationId(subcategory.categoryId) ===
+                normalizePosClassificationId(selectedProductCategoryId)
             )
           : []
       ),
@@ -986,24 +993,34 @@ export const PosScreen = () => {
   const selectedProductCategory = selectedProductCategoryId
     ? productCategoryById.get(selectedProductCategoryId) ?? null
     : null;
+  const selectedProductSubcategory = selectedProductSubcategoryId
+    ? productSubcategoryById.get(selectedProductSubcategoryId) ?? null
+    : null;
   const hasSelectedCategoryWithoutSubcategories =
     Boolean(selectedProductCategoryId) &&
     !catalogLoading &&
     productSubcategoryOptions.length === 0;
+  const activeProductFilterLabels = [
+    query.trim() ? `Busqueda: ${query.trim()}` : null,
+    selectedProductCategory ? `Categoria: ${selectedProductCategory.name}` : null,
+    selectedProductSubcategory
+      ? `Subcategoria: ${selectedProductSubcategory.name}`
+      : null,
+  ].filter((label): label is string => Boolean(label));
+  const hasProductCatalogFilters = activeProductFilterLabels.length > 0;
 
   useEffect(() => {
-    if (!selectedProductCategoryId && selectedProductSubcategoryId) {
-      setSelectedProductSubcategoryId("");
-      return;
-    }
+    const nextSubcategoryId = resolvePosSubcategoryFilterForCategory(
+      selectedProductSubcategoryId,
+      selectedProductCategoryId,
+      productSubcategoryOptions
+    );
 
     if (
       selectedProductSubcategoryId &&
-      !productSubcategoryOptions.some(
-        (subcategory) => subcategory.id === selectedProductSubcategoryId
-      )
+      selectedProductSubcategoryId !== nextSubcategoryId
     ) {
-      setSelectedProductSubcategoryId("");
+      setSelectedProductSubcategoryId(nextSubcategoryId);
     }
   }, [
     productSubcategoryOptions,
@@ -1036,9 +1053,12 @@ export const PosScreen = () => {
     [focusProductSearch]
   );
 
-  const clearProductClassificationFilters = useCallback(() => {
-    setSelectedProductCategoryId("");
-    setSelectedProductSubcategoryId("");
+  const clearProductCatalogFilters = useCallback(() => {
+    const clearedFilters = buildClearedPosProductCatalogFilters();
+
+    setQuery(clearedFilters.query);
+    setSelectedProductCategoryId(clearedFilters.categoryId);
+    setSelectedProductSubcategoryId(clearedFilters.subcategoryId);
     focusProductSearch();
   }, [focusProductSearch]);
 
@@ -1062,38 +1082,16 @@ export const PosScreen = () => {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    const normalizedQuery = normalizeText(query);
-
-    const productsMatchingStockAndSearch = products.filter((product) => {
-      const stock = Number(product.stock ?? 0);
-      const matchesStockFilter =
-        activeStockFilter === "all"
-          ? true
-          : activeStockFilter === "available"
-            ? stock > 0
-            : activeStockFilter === "low"
-              ? isLowStock(stock)
-              : stock <= 0;
-
-      if (!matchesStockFilter) {
-        return false;
-      }
-
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const haystack = normalizeText(
-        `${product.name} ${product.description ?? ""} ${collectProductScannerCodes(
-          product
-        ).join(" ")}`
-      );
-      return haystack.includes(normalizedQuery);
-    });
-
-    return filterPosProductsByClassification(productsMatchingStockAndSearch, {
+    return filterPosProductsForCatalog(products, {
+      query,
+      stockFilter: activeStockFilter,
       categoryId: selectedProductCategoryId,
       subcategoryId: selectedProductSubcategoryId,
+      isLowStock,
+      getSearchText: (product) =>
+        `${product.name} ${product.description ?? ""} ${collectProductScannerCodes(
+          product
+        ).join(" ")}`,
     });
   }, [
     activeStockFilter,
@@ -2535,18 +2533,75 @@ export const PosScreen = () => {
             </div>
           </div>
 
-          <div className="relative min-w-0">
-            <Input
-              ref={searchInputRef}
-              label="Buscador POS principal"
-              placeholder="Buscar productos por nombre, SKU o codigo"
-              autoFocus
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-            />
-            <Search className="pointer-events-none absolute left-3 top-[42px] h-5 w-5 text-slate-400" />
+          <div className="min-w-0">
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div className="relative min-w-0">
+                <Input
+                  ref={searchInputRef}
+                  label="Buscador POS principal"
+                  placeholder="Buscar productos por nombre, SKU o codigo"
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+                <Search className="pointer-events-none absolute left-3 top-[42px] h-5 w-5 text-slate-400" />
+              </div>
+
+              <Button
+                variant={hasProductCatalogFilters ? "primary" : "outline"}
+                size="md"
+                onClick={() => setProductFiltersOpen((current) => !current)}
+                aria-expanded={productFiltersOpen}
+                aria-controls="pos-product-filter-panel"
+                className={`min-h-12 rounded-xl whitespace-nowrap ${
+                  hasProductCatalogFilters
+                    ? "border border-blue-600 shadow-sm focus-visible:ring-blue-600 dark:border-blue-400"
+                    : "dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800"
+                }`}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Filtros
+                {activeProductFilterLabels.length > 0 ? (
+                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs dark:bg-slate-950/10">
+                    {activeProductFilterLabels.length}
+                  </span>
+                ) : null}
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform duration-200 ${
+                    productFiltersOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </Button>
+            </div>
+
+            <div className="mt-2 flex min-h-7 flex-wrap items-center gap-2 text-xs">
+              {hasProductCatalogFilters ? (
+                <>
+                  {activeProductFilterLabels.map((label) => (
+                    <span
+                      key={label}
+                      className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
+                    >
+                      <span className="truncate">{label}</span>
+                    </span>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={clearProductCatalogFilters}
+                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Limpiar filtros
+                  </button>
+                </>
+              ) : (
+                <span className="text-slate-500 dark:text-slate-400">
+                  Sin filtros activos
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-3">
@@ -2795,64 +2850,82 @@ export const PosScreen = () => {
                 ) : null}
               </div>
 
-              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
-                <Select
-                  label="Categoria"
-                  value={selectedProductCategoryId}
-                  onChange={(event) =>
-                    handleProductCategoryFilterChange(event.target.value)
-                  }
-                  className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+              {productFiltersOpen ? (
+                <div
+                  id="pos-product-filter-panel"
+                  className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70"
                 >
-                  <option value="">Todas las categorias</option>
-                  {productCategoryOptions.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  label="Subcategoria"
-                  value={selectedProductSubcategoryId}
-                  onChange={(event) =>
-                    handleProductSubcategoryFilterChange(event.target.value)
-                  }
-                  disabled={
-                    !selectedProductCategoryId ||
-                    productSubcategoryOptions.length === 0
-                  }
-                  className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                >
-                  <option value="">
-                    {!selectedProductCategoryId
-                      ? "Selecciona categoria"
-                      : productSubcategoryOptions.length === 0
-                        ? "Sin subcategorias"
-                        : "Todas las subcategorias"}
-                  </option>
-                  {productSubcategoryOptions.map((subcategory) => (
-                    <option key={subcategory.id} value={subcategory.id}>
-                      {subcategory.name}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={clearProductClassificationFilters}
-                  disabled={
-                    !selectedProductCategoryId && !selectedProductSubcategoryId
-                  }
-                  className="min-h-10"
-                >
-                  Limpiar
-                </Button>
-                {hasSelectedCategoryWithoutSubcategories ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 lg:col-span-3">
-                    {selectedProductCategory?.name ?? "Categoria"} sin subcategorias.
-                  </p>
-                ) : null}
-              </div>
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Filtros de productos
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Categoria y subcategoria del catalogo POS.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearProductCatalogFilters}
+                      disabled={!hasProductCatalogFilters}
+                      className="justify-center dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:hover:bg-slate-800"
+                    >
+                      <X className="h-4 w-4" />
+                      Limpiar filtros
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Select
+                      label="Categoria"
+                      value={selectedProductCategoryId}
+                      onChange={(event) =>
+                        handleProductCategoryFilterChange(event.target.value)
+                      }
+                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    >
+                      <option value="">Todas las categorias</option>
+                      {productCategoryOptions.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      label="Subcategoria"
+                      value={selectedProductSubcategoryId}
+                      onChange={(event) =>
+                        handleProductSubcategoryFilterChange(event.target.value)
+                      }
+                      disabled={
+                        !selectedProductCategoryId ||
+                        productSubcategoryOptions.length === 0
+                      }
+                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                    >
+                      <option value="">
+                        {!selectedProductCategoryId
+                          ? "Selecciona categoria"
+                          : productSubcategoryOptions.length === 0
+                            ? "Sin subcategorias"
+                            : "Todas las subcategorias"}
+                      </option>
+                      {productSubcategoryOptions.map((subcategory) => (
+                        <option key={subcategory.id} value={subcategory.id}>
+                          {subcategory.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  {hasSelectedCategoryWithoutSubcategories ? (
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      {selectedProductCategory?.name ?? "Categoria"} sin subcategorias.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {/* Filter Chips */}
               <div className="flex flex-wrap gap-2">
