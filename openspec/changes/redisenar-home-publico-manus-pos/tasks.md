@@ -34,6 +34,7 @@
 
 - [x] 4.1 Create `docs/evidencia-qa-home-publico-manus-pos.md`.
 - [x] 4.2 Update QA evidence with manual QA PASS and final phase closure.
+- [x] 4.3 Document QA deployment result as `DEPLOY_QA_OK`.
 
 ## 5. Validation
 
@@ -49,6 +50,7 @@
 - [x] 5.10 Re-run OpenSpec, lint, build and diff validations after benefits image update: PASS with existing warnings only.
 - [x] 5.11 Re-run OpenSpec, lint, build and diff validations after audience image update: PASS with existing warnings only.
 - [x] 5.12 Run final closure validations and review final diff/status: PASS with existing warnings only.
+- [x] 5.13 Run post-deploy evidence validations: PASS with CRLF/LF warnings only.
 
 ## 6. Guardrails
 
