@@ -44,6 +44,8 @@ const buildCurrentShiftQuery = (filters: CurrentShiftFilters) => {
   Object.entries({
     tenantId: filters.tenantId,
     branchId: filters.branchId,
+    terminalId: filters.terminalId,
+    cashRegisterId: filters.cashRegisterId,
     cashSessionId: filters.cashSessionId,
     tab: filters.tab,
     page: filters.page ? String(filters.page) : undefined,
