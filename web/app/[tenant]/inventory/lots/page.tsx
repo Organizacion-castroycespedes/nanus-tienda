@@ -593,7 +593,7 @@ const InventoryLotsPage = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -659,103 +659,117 @@ const InventoryLotsPage = () => {
         />
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_180px_180px_180px_180px_160px_auto_auto]">
-          <Input
-            label="Buscar"
-            placeholder="Lote, producto, sucursal o ubicacion"
-            value={draftFilters.search}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, search: event.target.value }))
-            }
-          />
-          <Select
-            label="Sucursal"
-            value={draftFilters.branchId}
-            disabled={!isSuperRole || loadingLookups}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({
-                ...prev,
-                branchId: event.target.value,
-                locationId: "",
-              }))
-            }
-          >
-            <option value="">{isSuperRole ? "Todas" : "Sucursal actual"}</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Producto"
-            value={draftFilters.productId}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, productId: event.target.value }))
-            }
-          >
-            <option value="">Todos</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Estado"
-            value={draftFilters.status}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({
-                ...prev,
-                status: event.target.value as InventoryLotStatus | "",
-              }))
-            }
-          >
-            <option value="">Todos</option>
-            {INVENTORY_LOT_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {statusLabels[status]}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Ubicacion"
-            value={draftFilters.locationId}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({ ...prev, locationId: event.target.value }))
-            }
-          >
-            <option value="">Todas</option>
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.code} - {location.name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Vence desde"
-            type="date"
-            value={draftFilters.expirationFrom}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({
-                ...prev,
-                expirationFrom: event.target.value,
-              }))
-            }
-          />
-          <Input
-            label="Vence hasta"
-            type="date"
-            value={draftFilters.expirationTo}
-            onChange={(event) =>
-              setDraftFilters((prev) => ({
-                ...prev,
-                expirationTo: event.target.value,
-              }))
-            }
-          />
-          <label className="flex items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+      <section className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <div className="min-w-0 sm:col-span-2 lg:col-span-3 2xl:col-span-2">
+            <Input
+              label="Buscar"
+              placeholder="Lote, producto, sucursal o ubicacion"
+              value={draftFilters.search}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, search: event.target.value }))
+              }
+            />
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Sucursal"
+              value={draftFilters.branchId}
+              disabled={!isSuperRole || loadingLookups}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  branchId: event.target.value,
+                  locationId: "",
+                }))
+              }
+            >
+              <option value="">{isSuperRole ? "Todas" : "Sucursal actual"}</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Producto"
+              value={draftFilters.productId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, productId: event.target.value }))
+              }
+            >
+              <option value="">Todos</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Estado"
+              value={draftFilters.status}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  status: event.target.value as InventoryLotStatus | "",
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {INVENTORY_LOT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {statusLabels[status]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="min-w-0">
+            <Select
+              label="Ubicacion"
+              value={draftFilters.locationId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({ ...prev, locationId: event.target.value }))
+              }
+            >
+              <option value="">Todas</option>
+              {locations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.code} - {location.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="min-w-0">
+            <Input
+              label="Vence desde"
+              type="date"
+              value={draftFilters.expirationFrom}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  expirationFrom: event.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="min-w-0">
+            <Input
+              label="Vence hasta"
+              type="date"
+              value={draftFilters.expirationTo}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  expirationTo: event.target.value,
+                }))
+              }
+            />
+          </div>
+          <label className="flex min-w-0 w-full items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={draftFilters.onlyAvailable}
@@ -767,31 +781,41 @@ const InventoryLotsPage = () => {
               }
               className="mb-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
             />
-            Solo disponibles
+            <span className="whitespace-nowrap">Solo disponibles</span>
           </label>
-          <div className="flex items-end gap-2">
-            <Button variant="outline" onClick={applyFilters}>
+          <div className="flex min-w-0 w-full flex-wrap items-end gap-2 self-end sm:col-span-2 lg:col-span-1">
+            <Button
+              variant="outline"
+              onClick={applyFilters}
+              className="w-full sm:w-auto"
+            >
               <Search className="h-4 w-4" />
               Buscar
             </Button>
-            <Button variant="ghost" onClick={resetFilters}>
+            <Button
+              variant="ghost"
+              onClick={resetFilters}
+              className="w-full sm:w-auto"
+            >
               Limpiar
             </Button>
           </div>
-          <Select
-            label="Filas"
-            value={String(pageSize)}
-            onChange={(event) => {
-              setPageSize(Number(event.target.value));
-              setPage(0);
-            }}
-          >
-            {pageSizeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
+          <div className="min-w-0">
+            <Select
+              label="Filas"
+              value={String(pageSize)}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </section>
 
@@ -807,8 +831,8 @@ const InventoryLotsPage = () => {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="overflow-x-auto">
+      <section className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="max-w-full overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
