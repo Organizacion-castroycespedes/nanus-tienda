@@ -3,6 +3,8 @@
 import {
   ChevronDown,
   CreditCard,
+  Grid3X3,
+  List,
   Loader2,
   Minus,
   Package,
@@ -104,6 +106,7 @@ import {
 } from "../utils/product-classification";
 
 type StockFilterKey = PosStockFilterKey;
+type ProductViewMode = "grid" | "list";
 type ScannerMockStatus = "disabled" | "connected" | "error";
 type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
 
@@ -176,6 +179,23 @@ const stockFilterLabels: Record<StockFilterKey, string> = {
   low: "Stock bajo",
   out: "Sin stock",
 };
+
+const productViewModeOptions: Array<{
+  value: ProductViewMode;
+  label: string;
+  icon: typeof Grid3X3;
+}> = [
+  {
+    value: "grid",
+    label: "Cuadricula",
+    icon: Grid3X3,
+  },
+  {
+    value: "list",
+    label: "Lista",
+    icon: List,
+  },
+];
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -568,6 +588,8 @@ export const PosScreen = () => {
   const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("");
   const [selectedProductSubcategoryId, setSelectedProductSubcategoryId] = useState("");
   const [productFiltersOpen, setProductFiltersOpen] = useState(false);
+  const [productViewMode, setProductViewMode] =
+    useState<ProductViewMode>("grid");
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
@@ -2928,31 +2950,66 @@ export const PosScreen = () => {
               ) : null}
 
               {/* Filter Chips */}
-              <div className="flex flex-wrap gap-2">
-                {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
-                  const isActive = activeStockFilter === filter;
-                  return (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() => handleStockFilterChange(filter)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
-                        isActive
-                          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      <span>{stockFilterLabels[filter]}</span>
-                      <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">
-                        {stockFilterCounts[filter]}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
+                    const isActive = activeStockFilter === filter;
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => handleStockFilterChange(filter)}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
+                          isActive
+                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>{stockFilterLabels[filter]}</span>
+                        <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">
+                          {stockFilterCounts[filter]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                    Vista productos
+                  </span>
+                  <div
+                    className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                    role="group"
+                    aria-label="Vista de productos"
+                  >
+                    {productViewModeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isActive = productViewMode === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setProductViewMode(option.value)}
+                          aria-pressed={isActive}
+                          className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
+                            isActive
+                              ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Products Grid */}
+            {/* Products Catalog */}
             <div className="mt-5">
               {catalogLoading ? (
                 <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
@@ -2965,7 +3022,13 @@ export const PosScreen = () => {
                   No hay productos que coincidan con la busqueda actual.
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3 min-[1800px]:grid-cols-4">
+                <div
+                  className={
+                    productViewMode === "grid"
+                      ? "grid gap-4 sm:grid-cols-2 2xl:grid-cols-3 min-[1800px]:grid-cols-4"
+                      : "grid gap-3"
+                  }
+                >
                   {filteredProducts.map((product) => {
                     const stock = Number(product.stock ?? 0);
                     const productSaleType = getProductSaleType(product);
@@ -2976,16 +3039,117 @@ export const PosScreen = () => {
                       categoryById: productCategoryById,
                       subcategoryById: productSubcategoryById,
                     });
+                    const isProductActionDisabled =
+                      stock <= 0 ||
+                      !canCreate ||
+                      (requiresScale && (!scaleMockEnabled || scaleReading));
+
+                    if (productViewMode === "list") {
+                      return (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => handleProductCardAction(product)}
+                          disabled={isProductActionDisabled}
+                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-900 dark:hover:border-slate-700 ${
+                            hasProductInCart
+                              ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
+                              : "border-slate-200 dark:border-slate-800"
+                          }`}
+                        >
+                          <div className="flex min-w-0 flex-col gap-4 p-4 sm:flex-row sm:items-center">
+                            <InventoryImagePreview
+                              imageUrl={effectiveImage.imageUrl}
+                              altText={effectiveImage.altText}
+                              lazy
+                              className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 bg-cover bg-center text-sm font-semibold text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                              fallback={<span>{buildImageLabel(product.name)}</span>}
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getProductStockTone(
+                                    stock
+                                  )}`}
+                                >
+                                  {stock <= 0
+                                    ? "Sin stock"
+                                    : isLowStock(stock)
+                                      ? `Stock bajo ${stock}`
+                                      : `Stock ${stock}`}
+                                </span>
+                                {hasProductInCart ? (
+                                  <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                                    En carrito {quantityInCart}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <h3 className="mt-2 line-clamp-2 text-base font-semibold text-slate-950 dark:text-white">
+                                {product.name}
+                              </h3>
+                              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="max-w-full truncate text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  {product.sku}
+                                </span>
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                    productSaleType === "UNIT"
+                                      ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                                      : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+                                  }`}
+                                >
+                                  {productSaleTypeLabels[productSaleType]} /{" "}
+                                  {product.measurementUnit ??
+                                    (productSaleType === "UNIT" ? "UND" : "KG")}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex w-full min-w-0 items-end justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:w-auto sm:min-w-[180px] sm:flex-col sm:border-t-0 sm:pt-0">
+                              <div className="min-w-0">
+                                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  Precio final
+                                </p>
+                                <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
+                                  {formatCurrency(Number(product.price))}
+                                </p>
+                              </div>
+                              <span
+                                className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold transition-colors ${
+                                  requiresScale
+                                    ? scaleMockEnabled
+                                      ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-100 dark:ring-sky-500/30"
+                                      : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
+                                    : "bg-blue-50 text-blue-700 ring-1 ring-blue-100 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-500/10 dark:text-blue-100 dark:ring-blue-500/20"
+                                }`}
+                              >
+                                {requiresScale ? (
+                                  scaleMockEnabled ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <Scale className="h-4 w-4" />
+                                      Leer
+                                    </span>
+                                  ) : (
+                                    "Sin balanza"
+                                  )
+                                ) : (
+                                  <Plus className="h-5 w-5" />
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    }
+
                     return (
                       <button
                         key={product.id}
                         type="button"
                         onClick={() => handleProductCardAction(product)}
-                        disabled={
-                          stock <= 0 ||
-                          !canCreate ||
-                          (requiresScale && (!scaleMockEnabled || scaleReading))
-                        }
+                        disabled={isProductActionDisabled}
                         className={`group min-h-[230px] overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-900 ${
                           hasProductInCart
                             ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
