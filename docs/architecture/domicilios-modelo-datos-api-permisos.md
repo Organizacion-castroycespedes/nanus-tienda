@@ -552,14 +552,15 @@ No crear estos archivos en esta fase.
 ## Plan de implementacion futura
 
 1. Validar este diseno tecnico con negocio y equipo.
-2. Crear OpenSpec o delta de Fase 3 para modelo SQL.
-3. Crear migraciones y rollback.
-4. Implementar backend `deliveries` con reglas de estado y permisos.
-5. Implementar frontend modulo Domicilios.
-6. Integrar con pedidos y ventas/facturas.
-7. Integrar caja/contraentrega solo cuando reglas de dinero esten cerradas.
-8. Implementar reporteria y auditoria operativa.
-9. Ejecutar QA multi-rol, multi-tenant, caja y responsive.
+2. Revisar `docs/architecture/domicilios-plan-implementacion-backend.md`.
+3. Crear OpenSpec o delta para modelo SQL.
+4. Crear migraciones y rollback.
+5. Implementar backend `deliveries` con reglas de estado y permisos.
+6. Implementar frontend modulo Domicilios.
+7. Integrar con pedidos y ventas/facturas.
+8. Integrar caja/contraentrega solo cuando reglas de dinero esten cerradas.
+9. Implementar reporteria y auditoria operativa.
+10. Ejecutar QA multi-rol, multi-tenant, caja y responsive.
 
 ## Confirmacion de alcance
 

@@ -187,3 +187,29 @@ The system SHALL document minimum audit data for lifecycle actors, timestamps, r
 #### Scenario: Status history is recommended
 - **WHEN** lifecycle traceability is reviewed
 - **THEN** `delivery_status_history` is recommended from the initial technical design for state changes and sensitive actions
+
+### Requirement: Backend implementation plan
+The system SHALL document a backend implementation plan for the future Domicilios module without creating runtime code in this phase.
+
+#### Scenario: Candidate backend files are listed
+- **WHEN** the backend plan is reviewed
+- **THEN** it lists candidate module, controller, service, repository, entity, DTO and test files under a future `api/src/modules/deliveries` area
+
+#### Scenario: Backend service responsibilities are listed
+- **WHEN** future services are reviewed
+- **THEN** the plan defines responsibilities for `DeliveriesService`, `DeliveryStateMachineService`, `DeliveryNumberService`, `DeliveryCashIntegrationService` and `DeliveryAuditService`
+
+#### Scenario: Backend implementation order is listed
+- **WHEN** implementation sequencing is reviewed
+- **THEN** the plan starts with migrations and types, then DTOs, state machine, repository, service, controller, permissions, tests and validation
+
+#### Scenario: Runtime remains untouched
+- **WHEN** this backend planning phase is completed
+- **THEN** no backend entity, service, controller, DTO, migration, guard or executable test file is created
+
+### Requirement: Backend acceptance criteria
+The system SHALL document acceptance criteria for future backend implementation before runtime work begins.
+
+#### Scenario: Backend criteria are reviewed
+- **WHEN** future implementation is evaluated
+- **THEN** criteria include strict OpenSpec validation, tenant isolation, valid transitions, active order uniqueness, permission enforcement, no duplicate delivery fee and backend tests

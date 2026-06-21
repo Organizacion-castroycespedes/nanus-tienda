@@ -62,3 +62,14 @@ The system SHALL document a future delivery summary report contract for operatio
 #### Scenario: Summary filters are reviewed
 - **WHEN** summary filters are reviewed
 - **THEN** the contract supports date range, status, customer, zone, responsible user, branch and cash session when applicable
+
+### Requirement: Backend reporting implementation plan
+The system SHALL document future backend reporting work for deliveries without changing reporting runtime in this phase.
+
+#### Scenario: Summary report service is planned
+- **WHEN** backend reporting implementation is planned
+- **THEN** the plan keeps summary reporting under delivery backend contracts until a later decision moves it to `backend-reporteria`
+
+#### Scenario: Reporting tests are planned
+- **WHEN** future summary report tests are planned
+- **THEN** they cover status totals, delivery fee totals, expected collection, collected amount, differences and average delivery times

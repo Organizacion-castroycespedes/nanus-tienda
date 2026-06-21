@@ -69,3 +69,18 @@ The system SHALL document a future `deliveries.order_id` relationship and same-t
 #### Scenario: Final delivery allows later design decision
 - **WHEN** a linked delivery is `ENTREGADO`, `CANCELADO` or `NO_ENTREGADO`
 - **THEN** any additional delivery or retry behavior requires an explicit future rule before implementation
+
+### Requirement: Backend order integration plan
+The system SHALL document backend safeguards for order-linked deliveries before runtime implementation.
+
+#### Scenario: Order tenant validation is planned
+- **WHEN** a future delivery references `orderId`
+- **THEN** the backend plan requires the service to verify the order exists and belongs to the same tenant
+
+#### Scenario: Active delivery check is planned
+- **WHEN** a future delivery is created for an order
+- **THEN** the backend plan requires checking for existing active deliveries before insert
+
+#### Scenario: Order cancellation risk is planned
+- **WHEN** order cancellation integration is implemented later
+- **THEN** the backend plan requires an explicit rule for linked deliveries before changing order runtime behavior

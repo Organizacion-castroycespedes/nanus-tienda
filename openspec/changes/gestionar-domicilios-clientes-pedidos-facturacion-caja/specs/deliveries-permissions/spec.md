@@ -79,3 +79,18 @@ The system SHALL NOT modify `menu_items`, `role_menu_permissions`, frontend rout
 #### Scenario: Permission design is validated
 - **WHEN** this change is validated
 - **THEN** proposed delivery permissions remain documentation-only and no real access matrix is changed
+
+### Requirement: Backend permission implementation plan
+The system SHALL document future backend permission rollout without modifying guards, menus or seeds in this phase.
+
+#### Scenario: Endpoint permission mapping is planned
+- **WHEN** future `DeliveriesController` endpoints are reviewed
+- **THEN** each endpoint has a documented `DELIVERIES_*` permission requirement before implementation
+
+#### Scenario: Role matrix rollout is planned
+- **WHEN** future permission SQL is prepared
+- **THEN** it must be idempotent and reviewed separately before applying `DELIVERIES_*` to real roles
+
+#### Scenario: Guard changes are deferred
+- **WHEN** this backend planning phase is completed
+- **THEN** no real guard, decorator, menu, route permission or seed file is modified

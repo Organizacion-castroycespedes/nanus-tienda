@@ -77,3 +77,18 @@ The system SHALL document `delivery_fee_source` to prevent double counting betwe
 #### Scenario: No fee exists
 - **WHEN** the delivery has no fee
 - **THEN** the delivery records a no-fee source such as `NONE`
+
+### Requirement: Backend invoice integration plan
+The system SHALL document invoice and sale integration risks before backend runtime work begins.
+
+#### Scenario: Invoice storage is unresolved
+- **WHEN** backend implementation planning reviews `invoiceId`
+- **THEN** it must record whether the reference maps to `sales`, a fiscal invoice table or a future external document before creating a foreign key
+
+#### Scenario: Fee source enum is finalized
+- **WHEN** backend enums are implemented
+- **THEN** the delivery fee source names must be aligned to the final sale/invoice/cash model to avoid duplicate revenue
+
+#### Scenario: Invoice annulment remains isolated
+- **WHEN** delivery backend is first implemented
+- **THEN** it must not alter invoice annulment behavior until an explicit integration phase is approved

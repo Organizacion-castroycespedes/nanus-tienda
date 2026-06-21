@@ -14,48 +14,57 @@
 - [x] 2.5 Crear `docs/architecture/domicilios-modelo-datos-api-permisos.md`.
 - [x] 2.6 Actualizar specs OpenSpec relevantes para la fase tecnica documental.
 
-## 3. Fase 3 - Modelo de datos y migraciones futuras
+## 3. Fase 3 - Plan de implementacion backend documental
 
-- [ ] 3.1 Disenar tabla futura de domicilios con `tenant_id`, `branch_id`, fuente asociada, cliente, direccion snapshot, estado, responsable, valores, timestamps y auditoria.
-- [ ] 3.2 Disenar estrategia SQL de historico de estados o eventos de domicilio.
-- [ ] 3.3 Definir indices, restricciones multi-tenant y llaves hacia pedidos, ventas/facturas, usuarios y caja.
-- [ ] 3.4 Crear migraciones y rollback solo despues de aprobacion de esta fase.
+- [x] 3.1 Crear `docs/architecture/domicilios-plan-implementacion-backend.md`.
+- [x] 3.2 Documentar migraciones futuras, restricciones e indices.
+- [x] 3.3 Documentar entidades/modelos, enums y DTOs futuros.
+- [x] 3.4 Documentar servicios, controlador/endpoints y permisos futuros.
+- [x] 3.5 Documentar tests backend futuros, orden recomendado, criterios de aceptacion y rollback.
+- [x] 3.6 Actualizar `design.md`, docs base y specs OpenSpec relevantes.
 
-## 4. Fase 4 - Backend API y reglas de negocio
+## 4. Fase 4 - Modelo de datos y migraciones futuras
 
-- [ ] 4.1 Crear modulo backend de domicilios con controller, service, repository/SQL y DTOs.
-- [ ] 4.2 Implementar validaciones de estados y transiciones permitidas.
-- [ ] 4.3 Implementar scope por tenant, sucursal, rol y permisos.
-- [ ] 4.4 Implementar trazabilidad de cambios de estado y acciones sensibles.
-- [ ] 4.5 Agregar tests backend unitarios y de autorizacion.
+- [ ] 4.1 Disenar tabla futura de domicilios con `tenant_id`, `branch_id`, fuente asociada, cliente, direccion snapshot, estado, responsable, valores, timestamps y auditoria.
+- [ ] 4.2 Disenar estrategia SQL de historico de estados o eventos de domicilio.
+- [ ] 4.3 Definir indices, restricciones multi-tenant y llaves hacia pedidos, ventas/facturas, usuarios y caja.
+- [ ] 4.4 Crear migraciones y rollback solo despues de aprobacion de esta fase.
 
-## 5. Fase 5 - Frontend modulo Domicilios
+## 5. Fase 5 - Backend API y reglas de negocio
 
-- [ ] 5.1 Crear ruta futura `/{tenant}/deliveries` y dominio frontend de domicilios.
-- [ ] 5.2 Implementar listado con filtros por estado, cliente, fecha, pedido/factura, repartidor y caja/turno.
-- [ ] 5.3 Implementar vista detalle con datos de cliente, direccion, fuente, estado, valores, timestamps y observaciones.
-- [ ] 5.4 Implementar creacion manual y acciones por estado.
-- [ ] 5.5 Verificar responsive movil sin overflow horizontal.
+- [ ] 5.1 Crear modulo backend de domicilios con controller, service, repository/SQL y DTOs.
+- [ ] 5.2 Implementar validaciones de estados y transiciones permitidas.
+- [ ] 5.3 Implementar scope por tenant, sucursal, rol y permisos.
+- [ ] 5.4 Implementar trazabilidad de cambios de estado y acciones sensibles.
+- [ ] 5.5 Agregar tests backend unitarios y de autorizacion.
 
-## 6. Fase 6 - Integraciones con pedidos, facturacion y caja
+## 6. Fase 6 - Frontend modulo Domicilios
 
-- [ ] 6.1 Integrar creacion/consulta de domicilio desde pedidos sin romper estados existentes.
-- [ ] 6.2 Integrar vinculacion con ventas/facturas y definir fuente financiera del valor de envio.
-- [ ] 6.3 Integrar reglas de pago contra entrega, recaudo por repartidor y asociacion a turno.
-- [ ] 6.4 Implementar resolucion de cancelaciones, anulaciones y `NO_ENTREGADO` con trazabilidad.
-- [ ] 6.5 Agregar tests de integracion para pedidos, facturacion y caja.
+- [ ] 6.1 Crear ruta futura `/{tenant}/deliveries` y dominio frontend de domicilios.
+- [ ] 6.2 Implementar listado con filtros por estado, cliente, fecha, pedido/factura, repartidor y caja/turno.
+- [ ] 6.3 Implementar vista detalle con datos de cliente, direccion, fuente, estado, valores, timestamps y observaciones.
+- [ ] 6.4 Implementar creacion manual y acciones por estado.
+- [ ] 6.5 Verificar responsive movil sin overflow horizontal.
 
-## 7. Fase 7 - Reporteria y auditoria
+## 7. Fase 7 - Integraciones con pedidos, facturacion y caja
 
-- [ ] 7.1 Implementar reportes de domicilios por estado, cliente, zona, repartidor y fecha.
-- [ ] 7.2 Implementar reportes de recaudo por domicilio, repartidor y caja/turno.
-- [ ] 7.3 Implementar metricas de tiempos de entrega.
-- [ ] 7.4 Integrar auditoria operativa de cambios sensibles.
+- [ ] 7.1 Integrar creacion/consulta de domicilio desde pedidos sin romper estados existentes.
+- [ ] 7.2 Integrar vinculacion con ventas/facturas y definir fuente financiera del valor de envio.
+- [ ] 7.3 Integrar reglas de pago contra entrega, recaudo por repartidor y asociacion a turno.
+- [ ] 7.4 Implementar resolucion de cancelaciones, anulaciones y `NO_ENTREGADO` con trazabilidad.
+- [ ] 7.5 Agregar tests de integracion para pedidos, facturacion y caja.
 
-## 8. Fase 8 - QA integral y hardening
+## 8. Fase 8 - Reporteria y auditoria
 
-- [ ] 8.1 Ejecutar QA por rol `USER`, `ADMIN`, `SUPER_USER` y `SUPER_ADMIN`.
-- [ ] 8.2 Ejecutar QA multi-tenant y multi-sucursal.
-- [ ] 8.3 Ejecutar QA de caja con pago previo, contra entrega, cancelado y no entregado.
-- [ ] 8.4 Ejecutar QA de responsive y navegacion.
-- [ ] 8.5 Documentar evidencia y checklist de release.
+- [ ] 8.1 Implementar reportes de domicilios por estado, cliente, zona, repartidor y fecha.
+- [ ] 8.2 Implementar reportes de recaudo por domicilio, repartidor y caja/turno.
+- [ ] 8.3 Implementar metricas de tiempos de entrega.
+- [ ] 8.4 Integrar auditoria operativa de cambios sensibles.
+
+## 9. Fase 9 - QA integral y hardening
+
+- [ ] 9.1 Ejecutar QA por rol `USER`, `ADMIN`, `SUPER_USER` y `SUPER_ADMIN`.
+- [ ] 9.2 Ejecutar QA multi-tenant y multi-sucursal.
+- [ ] 9.3 Ejecutar QA de caja con pago previo, contra entrega, cancelado y no entregado.
+- [ ] 9.4 Ejecutar QA de responsive y navegacion.
+- [ ] 9.5 Documentar evidencia y checklist de release.

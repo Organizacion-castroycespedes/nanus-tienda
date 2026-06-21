@@ -82,7 +82,7 @@ Restricciones de esta fase:
    - Decision: `NO_ENTREGADO` con pago previo debe abrir decision operativa de reembolso, nota credito o reintento futuro; no debe ajustar caja automaticamente sin flujo aprobado.
 
 10. **Permisos**
-    - Decision: proponer permisos `DELIVERIES_VIEW`, `DELIVERIES_CREATE`, `DELIVERIES_UPDATE`, `DELIVERIES_ASSIGN`, `DELIVERIES_DISPATCH`, `DELIVERIES_MARK_DELIVERED`, `DELIVERIES_CANCEL`, `DELIVERIES_REPORTS`.
+    - Decision: proponer permisos `DELIVERIES_VIEW`, `DELIVERIES_CREATE`, `DELIVERIES_UPDATE`, `DELIVERIES_ASSIGN`, `DELIVERIES_DISPATCH`, `DELIVERIES_MARK_DELIVERED`, `DELIVERIES_MARK_NOT_DELIVERED`, `DELIVERIES_CANCEL`, `DELIVERIES_REPORTS`.
     - Decision: `SUPER_ADMIN`, `SUPER_USER` y `ADMIN` pueden tener permisos amplios; `USER` debe tener permisos operativos limitados por tenant/sucursal/turno.
     - Rationale: despachar, cancelar y recaudar son acciones sensibles. Usuario basico puede operar, pero no debe tener administracion global.
 
@@ -212,6 +212,84 @@ No se aplican permisos reales en esta fase.
 - Si el envio es operativo separado, debe quedar identificado y conciliado.
 - `NO_ENTREGADO` o `CANCELADO` con dinero debe abrir resolucion financiera.
 
+## Fase 3 - Plan de implementacion backend
+
+Esta fase define el orden tecnico para implementar backend despues de aprobar modelo y permisos. El documento principal es `docs/architecture/domicilios-plan-implementacion-backend.md`.
+
+No crea migraciones, tablas, endpoints, DTOs, servicios, guards, permisos reales ni tests ejecutables.
+
+### Migraciones futuras
+
+Migraciones candidatas:
+- `deliveries`: tabla principal con tenant, cliente, pedido, factura/venta, caja, estado, direccion snapshot, valor, fuente financiera, pago, responsables, timestamps, motivos y notas.
+- `delivery_status_history`: historial de estados recomendado desde v0.0.1.
+- `delivery_payment_events`: opcional para contraentrega y conciliacion.
+- `customer_delivery_addresses`: opcional para libreta de direcciones.
+- `delivery_assignments`: opcional para historial de asignaciones.
+
+Restricciones futuras:
+- FK a tenant.
+- FK opcional a customer, order, invoice/sale, cash session y usuarios responsables.
+- Check constraints para estados, `delivery_fee >= 0`, fuente financiera y estado de pago.
+- Restriccion unica conceptual para maximo un domicilio activo por pedido.
+- Validacion de mismo tenant entre domicilio y entidades relacionadas.
+
+### Backend futuro
+
+Archivos candidatos:
+- `api/src/modules/deliveries/deliveries.module.ts`
+- `api/src/modules/deliveries/deliveries.controller.ts`
+- `api/src/modules/deliveries/deliveries.service.ts`
+- `api/src/modules/deliveries/deliveries.repository.ts`
+- `api/src/modules/deliveries/entities/*`
+- `api/src/modules/deliveries/dto/*`
+- `api/src/modules/deliveries/*.spec.ts`
+
+Servicios candidatos:
+- `DeliveriesService`
+- `DeliveryStateMachineService`
+- `DeliveryNumberService`
+- `DeliveryCashIntegrationService`
+- `DeliveryAuditService`
+
+### Endpoints backend futuros
+
+```text
+GET    /api/deliveries
+POST   /api/deliveries
+GET    /api/deliveries/:id
+PATCH  /api/deliveries/:id
+POST   /api/deliveries/:id/assign
+POST   /api/deliveries/:id/dispatch
+POST   /api/deliveries/:id/mark-delivered
+POST   /api/deliveries/:id/mark-not-delivered
+POST   /api/deliveries/:id/cancel
+GET    /api/deliveries/reports/summary
+```
+
+### Tests backend futuros
+
+El plan cubre tests de migracion/modelo, servicio, state machine, controller/guards y caja. Deben usar el patron actual de `node:test` y `assert/strict` cuando aplique.
+
+### Orden recomendado
+
+1. Migracion `deliveries`.
+2. Migracion `delivery_status_history`.
+3. Tipos/enums backend.
+4. DTOs.
+5. State machine.
+6. Consecutivo.
+7. Repository/SQL.
+8. Servicio principal.
+9. Auditoria.
+10. Controller.
+11. Guards/permisos codigo.
+12. Tests.
+13. Build/test/OpenSpec.
+14. SQL de permisos para local/QA.
+15. QA backend.
+16. Frontend despues.
+
 ## Risks / Trade-offs
 
 - [Riesgo] Doble fuente de verdad entre factura, domicilio y caja. -> [Mitigacion] definir una fuente financiera unica para valor de envio antes de implementar.
@@ -229,12 +307,13 @@ No hay migracion en esta fase.
 Fases futuras recomendadas:
 1. OpenSpec + arquitectura funcional.
 2. Diseno tecnico documental de modelo, API y permisos.
-3. Modelo de datos y migraciones.
-4. Backend API y reglas de negocio.
-5. Frontend modulo Domicilios.
-6. Integracion con pedidos/facturacion/caja.
-7. Reporteria y auditoria.
-8. QA integral y hardening.
+3. Plan tecnico de implementacion backend.
+4. Modelo de datos y migraciones.
+5. Backend API y reglas de negocio.
+6. Frontend modulo Domicilios.
+7. Integracion con pedidos/facturacion/caja.
+8. Reporteria y auditoria.
+9. QA integral y hardening.
 
 Rollback de esta fase: revertir solo archivos OpenSpec y documento de arquitectura.
 

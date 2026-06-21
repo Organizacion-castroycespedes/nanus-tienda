@@ -61,3 +61,14 @@ The system SHALL require future delivery customer links to stay within the same 
 #### Scenario: Cross-tenant customer link is attempted
 - **WHEN** a future request links a delivery to a customer from another tenant
 - **THEN** the backend must reject the operation
+
+### Requirement: Backend customer validation plan
+The system SHALL document how future backend services validate customer links before creating or updating a delivery.
+
+#### Scenario: Customer validation is planned
+- **WHEN** `CreateDeliveryDto` or `UpdateDeliveryDto` includes `customerId`
+- **THEN** the backend plan requires the service to verify that the customer exists, belongs to the same tenant and is allowed by actor scope
+
+#### Scenario: Generic customer validation is planned
+- **WHEN** a future delivery has no `customerId`
+- **THEN** the backend plan requires contact name or equivalent reference, contact phone and address line before dispatch

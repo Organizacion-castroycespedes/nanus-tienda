@@ -88,3 +88,18 @@ The system SHALL require future cash design to distinguish billed delivery fees 
 #### Scenario: Separate delivery collection exists
 - **WHEN** a delivery fee is collected outside the original sale or invoice
 - **THEN** the future cash flow must show the collection source and reconciliation status
+
+### Requirement: Backend cash integration plan
+The system SHALL document future backend cash safeguards without creating cash movements in the planning phase.
+
+#### Scenario: Cash integration service is planned
+- **WHEN** backend services are reviewed
+- **THEN** the plan includes `DeliveryCashIntegrationService` to validate fee source, payment status, cash session and duplicate-income risks
+
+#### Scenario: Cash movement creation is deferred
+- **WHEN** future delivery backend is first implemented
+- **THEN** it must not create cash movements until a cash integration phase approves exact accounting rules
+
+#### Scenario: Cash tests are planned
+- **WHEN** backend tests are planned
+- **THEN** they include cases proving no movement is created for invoice-included or no-fee deliveries and no duplicate income is recorded

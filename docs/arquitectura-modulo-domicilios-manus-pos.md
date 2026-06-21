@@ -367,25 +367,29 @@ Diseno tecnico documental de modelo de datos, contratos API, DTOs conceptuales, 
 
 ### Fase 3
 
-Modelo de datos y migraciones.
+Plan tecnico de implementacion backend.
 
 ### Fase 4
 
-Backend API y reglas de negocio.
+Modelo de datos y migraciones.
 
 ### Fase 5
 
-Frontend modulo Domicilios.
+Backend API y reglas de negocio.
 
 ### Fase 6
 
-Integracion con pedidos/facturacion/caja.
+Frontend modulo Domicilios.
 
 ### Fase 7
 
-Reporteria y auditoria.
+Integracion con pedidos/facturacion/caja.
 
 ### Fase 8
+
+Reporteria y auditoria.
+
+### Fase 9
 
 QA integral y hardening.
 
@@ -401,6 +405,22 @@ Incluye:
 - Permisos `DELIVERIES_*`.
 - Indices y restricciones sugeridas.
 - Reglas de caja y auditoria minima.
+
+## Extension tecnica Fase 3
+
+El plan de implementacion backend queda documentado en `docs/architecture/domicilios-plan-implementacion-backend.md`.
+
+Incluye:
+- Migraciones futuras.
+- Archivos backend candidatos.
+- Entidades/modelos futuros.
+- DTOs futuros.
+- Servicios futuros.
+- Controlador y endpoints futuros.
+- Guards/permisos futuros.
+- Tests backend futuros.
+- Orden recomendado de implementacion.
+- Criterios de aceptacion y rollback.
 
 ## Confirmacion de alcance de esta fase
 
