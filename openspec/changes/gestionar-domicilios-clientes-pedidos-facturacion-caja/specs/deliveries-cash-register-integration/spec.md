@@ -38,15 +38,15 @@ The system SHALL require traceability for differences between invoiced amount, d
 - **THEN** the future system records the difference, reason and actor for cash review
 
 #### Scenario: No entregado with prepaid amount
-- **WHEN** a prepaid delivery becomes `NO_ENTREGADO`
+- **WHEN** a prepaid delivery becomes `NOT_DELIVERED`
 - **THEN** the future system flags refund, credit note or retry decision without automatically changing cash
 
 #### Scenario: Cancelled delivery with shipping fee
-- **WHEN** a delivery is `CANCELADO` and a shipping fee was charged
+- **WHEN** a delivery is `CANCELLED` and a shipping fee was charged
 - **THEN** the future system requires a financial resolution path before closing the case
 
 ### Requirement: No cash implementation in this phase
-The system SHALL NOT modify cash sessions, payments, cash movements, cash reports or close-turn logic during this OpenSpec-only phase.
+The system SHALL NOT modify cash sessions, payments, cash movements, cash reports or close-turn logic during Fase 4.
 
 #### Scenario: Cash integration is validated
 - **WHEN** this change is validated

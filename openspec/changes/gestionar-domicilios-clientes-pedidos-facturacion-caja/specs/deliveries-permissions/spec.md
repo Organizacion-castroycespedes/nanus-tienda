@@ -16,19 +16,19 @@ The system SHALL define future delivery permissions for viewing, creating, updat
 - **THEN** the user must have `DELIVERIES_ASSIGN`
 
 #### Scenario: Dispatch permission is required
-- **WHEN** a user moves a delivery to `DESPACHADO`
+- **WHEN** a user moves a delivery to `DISPATCHED`
 - **THEN** the user must have `DELIVERIES_DISPATCH`
 
 #### Scenario: Delivery completion permission is required
-- **WHEN** a user moves a delivery to `ENTREGADO`
+- **WHEN** a user moves a delivery to `DELIVERED`
 - **THEN** the user must have `DELIVERIES_MARK_DELIVERED`
 
 #### Scenario: Not-delivered permission is required
-- **WHEN** a user moves a delivery to `NO_ENTREGADO`
+- **WHEN** a user moves a delivery to `NOT_DELIVERED`
 - **THEN** the user must have `DELIVERIES_MARK_NOT_DELIVERED`
 
 #### Scenario: Cancel permission is required
-- **WHEN** a user moves a delivery to `CANCELADO`
+- **WHEN** a user moves a delivery to `CANCELLED`
 - **THEN** the user must have `DELIVERIES_CANCEL`
 
 #### Scenario: Reports permission is required
@@ -73,12 +73,16 @@ The system SHALL document a future role matrix for `DELIVERIES_*` permissions wi
 - **WHEN** SUPER_ADMIN permissions are reviewed
 - **THEN** SUPER_ADMIN can be proposed for all delivery permissions with global behavior constrained by existing multi-tenant rules
 
-### Requirement: Permissions are not applied in this phase
-The system SHALL NOT modify `menu_items`, `role_menu_permissions`, frontend route permissions, backend decorators or guard logic during this OpenSpec-only phase.
+### Requirement: Delivery permissions are not applied in Fase 4
+The system SHALL NOT modify `menu_items`, `role_menu_permissions`, frontend route permissions or permission seed data during Fase 4.
 
 #### Scenario: Permission design is validated
 - **WHEN** this change is validated
 - **THEN** proposed delivery permissions remain documentation-only and no real access matrix is changed
+
+#### Scenario: Initial runtime uses existing authentication
+- **WHEN** Fase 4 initial delivery endpoints are implemented
+- **THEN** they use `JwtAuthGuard` and defer `DELIVERIES_*` enforcement until real menu/action permissions are seeded in a later phase
 
 ### Requirement: Backend permission implementation plan
 The system SHALL document future backend permission rollout without modifying guards, menus or seeds in this phase.
@@ -91,6 +95,6 @@ The system SHALL document future backend permission rollout without modifying gu
 - **WHEN** future permission SQL is prepared
 - **THEN** it must be idempotent and reviewed separately before applying `DELIVERIES_*` to real roles
 
-#### Scenario: Guard changes are deferred
+#### Scenario: Permission guard rollout is deferred
 - **WHEN** this backend planning phase is completed
-- **THEN** no real guard, decorator, menu, route permission or seed file is modified
+- **THEN** no menu, route permission or seed file is modified for `DELIVERIES_*`

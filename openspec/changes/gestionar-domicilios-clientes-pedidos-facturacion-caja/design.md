@@ -2,14 +2,15 @@
 
 Manus POS ya tiene modulos operativos de clientes, pedidos, POS/ventas, facturacion, caja/turno, roles/permisos y reporteria. El modelo actual usa Next.js en `web/`, NestJS en `api/`, `backend-reporteria/` para reportes/PDF, PostgreSQL, JWT, `tenant_id`, sucursal, terminal, sesion POS y sesion de caja.
 
-El modulo Domicilios cruza varios dominios. Un domicilio puede nacer desde un pedido, desde una venta/factura o manualmente, y puede afectar caja si el envio o el recaudo se cobran en turno. Por eso esta fase queda como diseno funcional OpenSpec: no crea tablas, endpoints, componentes, migraciones, seeds, permisos reales ni cambios de reglas productivas.
+El modulo Domicilios cruza varios dominios. Un domicilio puede nacer desde un pedido, desde una venta/factura o manualmente, y puede afectar caja si el envio o el recaudo se cobran en turno. Las fases 1 a 3 fueron documentales. Fase 4 habilita una base runtime acotada con SQL DDL directo y backend NestJS inicial, sin frontend ni integraciones avanzadas.
 
-Restricciones de esta fase:
-- Backend productivo: no tocar.
+Restricciones vigentes para Fase 4:
+- Prisma: no usar.
 - Frontend productivo: no tocar.
-- SQL/migraciones/seeds: no tocar.
 - Permisos reales/menu real: no tocar.
 - Facturacion, caja, pedidos y clientes existentes: no tocar.
+- Endpoints de acciones de estado: no crear todavia.
+- Reporteria avanzada: no crear todavia.
 - Commit: no hacer sin aprobacion expresa.
 
 ## Goals / Non-Goals
@@ -22,9 +23,8 @@ Restricciones de esta fase:
 - Dejar decisiones pendientes claras para fases futuras de datos, backend, frontend e integraciones.
 
 **Non-Goals:**
-- No implementar codigo funcional.
-- No definir SQL final ni crear migraciones.
-- No agregar endpoints ni DTOs.
+- No implementar frontend.
+- No implementar caja, facturacion electronica, integracion real con pedidos ni reporteria avanzada.
 - No modificar `customers`, `orders`, `sales`, pagos, caja o reporteria.
 - No aplicar `DELIVERIES_*` en `menu_items` ni `role_menu_permissions`.
 - No disenar sincronizacion offline detallada para Electron.
@@ -47,16 +47,17 @@ Restricciones de esta fase:
    - Alternativa descartada: leer siempre la direccion actual del cliente. Eso rompe historico y trazabilidad.
 
 4. **Estados v0.0.1 minimos, sin estados extra**
-   - Decision: usar `PENDIENTE`, `EN_PREPARACION`, `DESPACHADO`, `ENTREGADO`, `CANCELADO`, `NO_ENTREGADO`.
+   - Decision Fase 4: usar estados runtime en ingles `DRAFT`, `CREATED`, `ASSIGNED`, `DISPATCHED`, `DELIVERED`, `NOT_DELIVERED`, `CANCELLED`.
    - Rationale: son suficientes para una primera version. Pago, asignacion y diferencias de caja deben ser campos/eventos, no estados mezclados.
-   - Decision adicional: `ENTREGADO`, `CANCELADO` y `NO_ENTREGADO` quedan como estados finales en v0.0.1. Un reintento futuro debe modelarse como nuevo intento o nuevo domicilio enlazado.
+   - Decision adicional: `DELIVERED`, `CANCELLED` y `NOT_DELIVERED` quedan como estados finales en v0.0.1. Un reintento futuro debe modelarse como nuevo intento o nuevo domicilio enlazado.
    - Alternativa descartada: agregar `REPROGRAMADO`, `REINTENTO`, `PAGADO`, `ASIGNADO`. Mezcla ejes distintos y complica caja antes de tener modelo de datos.
 
 5. **Transiciones operativas**
-   - `PENDIENTE` puede pasar a `EN_PREPARACION`, `DESPACHADO` o `CANCELADO`.
-   - `EN_PREPARACION` puede pasar a `DESPACHADO` o `CANCELADO`.
-   - `DESPACHADO` puede pasar a `ENTREGADO` o `NO_ENTREGADO`.
-   - `ENTREGADO`, `CANCELADO` y `NO_ENTREGADO` no cambian en v0.0.1.
+   - `DRAFT` puede pasar a `CREATED` o `CANCELLED`.
+   - `CREATED` puede pasar a `ASSIGNED`, `DISPATCHED` o `CANCELLED`.
+   - `ASSIGNED` puede pasar a `DISPATCHED` o `CANCELLED`.
+   - `DISPATCHED` puede pasar a `DELIVERED` o `NOT_DELIVERED`.
+   - `DELIVERED`, `CANCELLED` y `NOT_DELIVERED` no cambian en v0.0.1.
    - Toda transicion debe registrar usuario, fecha/hora, estado anterior, estado nuevo y observacion/motivo cuando aplique.
 
 6. **Clientes y direcciones**
@@ -79,7 +80,7 @@ Restricciones de esta fase:
 9. **Caja / turno actual**
    - Decision: el domicilio solo se asocia a caja cuando hay recaudo o movimiento de dinero.
    - Decision: pago previo queda trazado a POS/factura; pago contra entrega requiere control de responsable/repartidor y conciliacion con turno.
-   - Decision: `NO_ENTREGADO` con pago previo debe abrir decision operativa de reembolso, nota credito o reintento futuro; no debe ajustar caja automaticamente sin flujo aprobado.
+   - Decision: `NOT_DELIVERED` con pago previo debe abrir decision operativa de reembolso, nota credito o reintento futuro; no debe ajustar caja automaticamente sin flujo aprobado.
 
 10. **Permisos**
     - Decision: proponer permisos `DELIVERIES_VIEW`, `DELIVERIES_CREATE`, `DELIVERIES_UPDATE`, `DELIVERIES_ASSIGN`, `DELIVERIES_DISPATCH`, `DELIVERIES_MARK_DELIVERED`, `DELIVERIES_MARK_NOT_DELIVERED`, `DELIVERIES_CANCEL`, `DELIVERIES_REPORTS`.
@@ -129,18 +130,20 @@ Tablas candidatas:
 ### Estados y transiciones tecnicas
 
 Estados v0.0.1:
-- `PENDIENTE`
-- `EN_PREPARACION`
-- `DESPACHADO`
-- `ENTREGADO`
-- `CANCELADO`
-- `NO_ENTREGADO`
+- `DRAFT`
+- `CREATED`
+- `ASSIGNED`
+- `DISPATCHED`
+- `DELIVERED`
+- `NOT_DELIVERED`
+- `CANCELLED`
 
 Transiciones:
-- `PENDIENTE` -> `EN_PREPARACION`, `DESPACHADO`, `CANCELADO`.
-- `EN_PREPARACION` -> `DESPACHADO`, `CANCELADO`.
-- `DESPACHADO` -> `ENTREGADO`, `NO_ENTREGADO`.
-- `ENTREGADO`, `CANCELADO` y `NO_ENTREGADO` son finales en v0.0.1.
+- `DRAFT` -> `CREATED`, `CANCELLED`.
+- `CREATED` -> `ASSIGNED`, `DISPATCHED`, `CANCELLED`.
+- `ASSIGNED` -> `DISPATCHED`, `CANCELLED`.
+- `DISPATCHED` -> `DELIVERED`, `NOT_DELIVERED`.
+- `DELIVERED`, `CANCELLED` y `NOT_DELIVERED` son finales en v0.0.1.
 
 Campos obligatorios por accion futura:
 - Despachar: responsable o usuario asignado, usuario que despacha y fecha/hora.
@@ -210,7 +213,7 @@ No se aplican permisos reales en esta fase.
 - Contraentrega requiere cash session o conciliacion futura.
 - Si el envio esta en factura/POS, no se duplica como ingreso separado.
 - Si el envio es operativo separado, debe quedar identificado y conciliado.
-- `NO_ENTREGADO` o `CANCELADO` con dinero debe abrir resolucion financiera.
+- `NOT_DELIVERED` o `CANCELLED` con dinero debe abrir resolucion financiera.
 
 ## Fase 3 - Plan de implementacion backend
 
@@ -290,10 +293,65 @@ El plan cubre tests de migracion/modelo, servicio, state machine, controller/gua
 15. QA backend.
 16. Frontend despues.
 
+## Fase 4 - Implementacion base con SQL DDL directo
+
+Fase 4 crea la primera base real del modulo sin Prisma y sin ORM nuevo.
+
+### DDL implementado
+
+Archivo:
+- `scripts/database/migrations/V063__deliveries_base.sql`
+
+Tablas:
+- `public.deliveries`
+- `public.delivery_status_history`
+
+Decisiones tecnicas:
+- IDs `uuid` con `gen_random_uuid()`.
+- Scope obligatorio `tenant_id` y `branch_id`.
+- Estados runtime en ingles: `DRAFT`, `CREATED`, `ASSIGNED`, `DISPATCHED`, `DELIVERED`, `NOT_DELIVERED`, `CANCELLED`.
+- Estado inicial de API: `CREATED`.
+- `CHECK` constraints para estado, montos no negativos, direccion no vacia y `metadata` como objeto JSON.
+- Unique `tenant_id`, `branch_id`, `delivery_number`.
+- Indices para tenant/sucursal/estado/fecha, cliente, pedido, venta, domiciliario e historial.
+- FKs seguras a `tenants`, `tenant_branches`, `customers`, `orders`, `sales`, `payment_methods` y `users` cuando la tabla existe.
+
+### Backend implementado
+
+Archivos:
+- `api/src/modules/deliveries/deliveries.module.ts`
+- `api/src/modules/deliveries/deliveries.controller.ts`
+- `api/src/modules/deliveries/deliveries.service.ts`
+- `api/src/modules/deliveries/deliveries.constants.ts`
+- `api/src/modules/deliveries/dto/create-delivery.dto.ts`
+- `api/src/modules/deliveries/dto/update-delivery.dto.ts`
+- `api/src/modules/deliveries/dto/query-deliveries.dto.ts`
+- `api/src/modules/deliveries/services/delivery-number.service.ts`
+
+Endpoints iniciales:
+- `GET /api/deliveries`
+- `POST /api/deliveries`
+- `GET /api/deliveries/:id`
+- `PATCH /api/deliveries/:id`
+
+Seguridad:
+- Usa `JwtAuthGuard`.
+- `tenant_id` sale de `request.context.tenantId` o `request.user.tenantId`.
+- `branch_id` usa contexto si existe; si no, body/query.
+- No se aplican `DELIVERIES_*` todavia porque no hay seed/menu aprobado.
+
+Fuera de Fase 4:
+- State machine formal de `assign`, `dispatch`, `delivered`, `not_delivered` y `cancel`.
+- Integracion con caja.
+- Integracion con facturacion/electronica.
+- Integracion real con pedidos.
+- Frontend.
+- Reporteria avanzada.
+
 ## Risks / Trade-offs
 
 - [Riesgo] Doble fuente de verdad entre factura, domicilio y caja. -> [Mitigacion] definir una fuente financiera unica para valor de envio antes de implementar.
-- [Riesgo] `NO_ENTREGADO` necesita reintentos reales. -> [Mitigacion] dejarlo final en v0.0.1 y modelar intentos en fase posterior si negocio lo exige.
+- [Riesgo] `NOT_DELIVERED` necesita reintentos reales. -> [Mitigacion] dejarlo final en v0.0.1 y modelar intentos en fase posterior si negocio lo exige.
 - [Riesgo] Cliente generico reduce trazabilidad. -> [Mitigacion] exigir direccion, telefono y observacion minima cuando no hay cliente identificado.
 - [Riesgo] Caja puede descuadrar por pago contra entrega. -> [Mitigacion] exigir reglas de recaudo por repartidor y turno antes de tocar caja.
 - [Riesgo] Multiples domicilios por pedido/factura pueden ser necesarios. -> [Mitigacion] v0.0.1 limita un domicilio activo; multiples entregas quedan pendientes.
@@ -324,7 +382,7 @@ Rollback de esta fase: revertir solo archivos OpenSpec y documento de arquitectu
 - `invoice_id` sera `sales.id`, documento fiscal separado o tabla futura?
 - `delivery_number` sera consecutivo por tenant o por tenant/sucursal?
 - Se requiere propina o pago extra al repartidor?
-- `NO_ENTREGADO` debe permitir reintento en v0.0.2 con intentos separados?
+- `NOT_DELIVERED` debe permitir reintento en v0.0.2 con intentos separados?
 - Un pedido debe soportar entregas parciales o multiples domicilios?
 - La conciliacion de recaudo por repartidor entra al turno actual del cajero, a una caja del repartidor o a una liquidacion posterior?
-- Que rol operativo real marcara `ENTREGADO`: cajero, admin, repartidor o backend externo?
+- Que rol operativo real marcara `DELIVERED`: cajero, admin, repartidor o backend externo?

@@ -16,11 +16,11 @@ The system SHALL define a future Domicilios module that can register and consult
 - **THEN** the delivery keeps the address and contact snapshot used for the delivery trace
 
 ### Requirement: Delivery state model
-The system SHALL define the v0.0.1 delivery states as `PENDIENTE`, `EN_PREPARACION`, `DESPACHADO`, `ENTREGADO`, `CANCELADO` and `NO_ENTREGADO`.
+The system SHALL define the v0.0.1 backend delivery states as `DRAFT`, `CREATED`, `ASSIGNED`, `DISPATCHED`, `DELIVERED`, `NOT_DELIVERED` and `CANCELLED`.
 
 #### Scenario: Initial delivery state
 - **WHEN** a delivery is registered and no dispatch action has occurred
-- **THEN** the delivery starts as `PENDIENTE` unless the creating flow explicitly dispatches it
+- **THEN** the delivery starts as `CREATED`
 
 #### Scenario: No additional operational state is required in v0.0.1
 - **WHEN** assignment, payment, collection or retry information is needed
@@ -30,19 +30,19 @@ The system SHALL define the v0.0.1 delivery states as `PENDIENTE`, `EN_PREPARACI
 The system SHALL allow only documented delivery state transitions and SHALL record traceability for every transition.
 
 #### Scenario: Pending delivery advances or cancels
-- **WHEN** a delivery is in `PENDIENTE`
-- **THEN** it can transition only to `EN_PREPARACION`, `DESPACHADO` or `CANCELADO`
+- **WHEN** a delivery is in `CREATED`
+- **THEN** it can transition only to `ASSIGNED`, `DISPATCHED` or `CANCELLED`
 
 #### Scenario: Preparation delivery advances or cancels
-- **WHEN** a delivery is in `EN_PREPARACION`
-- **THEN** it can transition only to `DESPACHADO` or `CANCELADO`
+- **WHEN** a delivery is in `ASSIGNED`
+- **THEN** it can transition only to `DISPATCHED` or `CANCELLED`
 
 #### Scenario: Dispatched delivery closes
-- **WHEN** a delivery is in `DESPACHADO`
-- **THEN** it can transition only to `ENTREGADO` or `NO_ENTREGADO`
+- **WHEN** a delivery is in `DISPATCHED`
+- **THEN** it can transition only to `DELIVERED` or `NOT_DELIVERED`
 
 #### Scenario: Final states stay closed
-- **WHEN** a delivery is in `ENTREGADO`, `CANCELADO` or `NO_ENTREGADO`
+- **WHEN** a delivery is in `DELIVERED`, `CANCELLED` or `NOT_DELIVERED`
 - **THEN** the state cannot change in v0.0.1 and any retry requires a future explicit design
 
 #### Scenario: Transition trace is captured
@@ -94,8 +94,8 @@ The system SHALL document Web/Electron delivery risks without implementing offli
 - **WHEN** a Type D client combines Web and Electron
 - **THEN** the design flags conflict resolution, duplicate dispatch and cash reconciliation as future risks
 
-### Requirement: Delivery technical data model proposal
-The system SHALL document a future `deliveries` data model with tenant scope, source links, delivery snapshot, state, money fields, responsible users, timestamps, reasons and notes without creating SQL in this phase.
+### Requirement: Delivery technical data model
+The system SHALL define and implement the approved Fase 4 base `deliveries` data model with tenant scope, branch scope, source links, delivery snapshot, state, money fields, responsible users, timestamps, metadata and notes using direct PostgreSQL SQL DDL.
 
 #### Scenario: Delivery table fields are proposed
 - **WHEN** the technical design is reviewed
@@ -105,35 +105,51 @@ The system SHALL document a future `deliveries` data model with tenant scope, so
 - **WHEN** audit, payment, address book or assignment history is evaluated
 - **THEN** the design documents candidate tables `delivery_status_history`, `delivery_payment_events`, `customer_delivery_addresses` and `delivery_assignments` without requiring their immediate creation
 
-#### Scenario: No migration is created
-- **WHEN** this technical design phase is completed
-- **THEN** no SQL migration, table, enum or database constraint is added to the repository
+#### Scenario: Base migration is created
+- **WHEN** Fase 4 base implementation is completed
+- **THEN** `scripts/database/migrations/V063__deliveries_base.sql` creates `deliveries` and `delivery_status_history` with UUID primary keys, `tenant_id`, `branch_id`, `CHECK` constraints, indexes and safe foreign keys to existing UUID tables
 
 ### Requirement: Delivery technical transition fields
 The system SHALL document mandatory future fields for dispatch, delivery, cancellation and not-delivered transitions.
 
 #### Scenario: Dispatch transition fields are required
-- **WHEN** a future delivery transitions to `DESPACHADO`
+- **WHEN** a future delivery transitions to `DISPATCHED`
 - **THEN** the future contract requires responsible user or assigned user, dispatch actor and dispatch timestamp
 
 #### Scenario: Delivered transition fields are required
-- **WHEN** a future delivery transitions to `ENTREGADO`
+- **WHEN** a future delivery transitions to `DELIVERED`
 - **THEN** the future contract requires delivery actor, delivery timestamp and collection information when payment on delivery applies
 
 #### Scenario: Cancel transition fields are required
-- **WHEN** a future delivery transitions to `CANCELADO`
+- **WHEN** a future delivery transitions to `CANCELLED`
 - **THEN** the future contract requires cancellation actor, cancellation timestamp and cancellation reason
 
 #### Scenario: Not-delivered transition fields are required
-- **WHEN** a future delivery transitions to `NO_ENTREGADO`
+- **WHEN** a future delivery transitions to `NOT_DELIVERED`
 - **THEN** the future contract requires not-delivered actor, not-delivered timestamp and not-delivered reason
 
-### Requirement: Delivery API contract proposal
-The system SHALL document future delivery API endpoints without creating runtime endpoints in this phase.
+### Requirement: Delivery API contract
+The system SHALL implement the initial delivery CRUD API endpoints in Fase 4 and SHALL keep action and reporting endpoints deferred to later phases.
 
 #### Scenario: Delivery CRUD endpoints are proposed
 - **WHEN** the technical API contract is reviewed
 - **THEN** it includes `GET /api/deliveries`, `POST /api/deliveries`, `GET /api/deliveries/:id` and `PATCH /api/deliveries/:id`
+
+#### Scenario: Delivery list endpoint is implemented
+- **WHEN** an authenticated actor calls `GET /api/deliveries`
+- **THEN** the backend returns only records for the authenticated tenant and supports filters for `status`, `branch_id`, `customer_id`, `date_from`, `date_to`, `page` and `limit`
+
+#### Scenario: Delivery create endpoint is implemented
+- **WHEN** an authenticated actor calls `POST /api/deliveries` with delivery address, branch context and customer reference or contact data
+- **THEN** the backend creates a `CREATED` delivery and writes the initial `delivery_status_history` row in the same transaction
+
+#### Scenario: Delivery detail endpoint is implemented
+- **WHEN** an authenticated actor calls `GET /api/deliveries/:id`
+- **THEN** the backend returns the delivery only when the id belongs to the actor tenant
+
+#### Scenario: Delivery update endpoint is implemented with limited editable fields
+- **WHEN** an authenticated actor calls `PATCH /api/deliveries/:id`
+- **THEN** the backend permits only customer snapshot, address, reference, delivery fee, subtotal, total, payment method, notes and metadata updates and does not allow status changes
 
 #### Scenario: Delivery action endpoints are proposed
 - **WHEN** delivery state actions are reviewed
@@ -143,9 +159,9 @@ The system SHALL document future delivery API endpoints without creating runtime
 - **WHEN** delivery reporting contracts are reviewed
 - **THEN** it includes `GET /api/deliveries/reports/summary`
 
-#### Scenario: No endpoint is created
-- **WHEN** this technical design phase is completed
-- **THEN** no NestJS controller route or frontend API client is added
+#### Scenario: Action endpoints remain deferred
+- **WHEN** Fase 4 base implementation is completed
+- **THEN** assign, dispatch, mark-delivered, mark-not-delivered, cancel and summary report endpoints are not implemented yet
 
 ### Requirement: Delivery DTO contract proposal
 The system SHALL document future DTO shapes for create, update, assignment, dispatch, delivered, not-delivered, cancellation, filters, response and summary report contracts.
@@ -162,8 +178,8 @@ The system SHALL document future DTO shapes for create, update, assignment, disp
 - **WHEN** list and report contracts are reviewed
 - **THEN** `DeliveryFiltersDto`, `DeliveryResponseDto` and `DeliverySummaryReportDto` define filters, response summary and reporting metrics
 
-### Requirement: Delivery indexes and constraints proposal
-The system SHALL document future indexes and constraints for tenant-safe querying and operational performance without creating SQL in this phase.
+### Requirement: Delivery indexes and constraints
+The system SHALL implement base delivery indexes and constraints for tenant-safe querying and operational performance using direct PostgreSQL DDL.
 
 #### Scenario: Core indexes are proposed
 - **WHEN** future database design is reviewed
@@ -188,8 +204,8 @@ The system SHALL document minimum audit data for lifecycle actors, timestamps, r
 - **WHEN** lifecycle traceability is reviewed
 - **THEN** `delivery_status_history` is recommended from the initial technical design for state changes and sensitive actions
 
-### Requirement: Backend implementation plan
-The system SHALL document a backend implementation plan for the future Domicilios module without creating runtime code in this phase.
+### Requirement: Backend implementation plan and base runtime
+The system SHALL document the backend implementation plan and implement only the approved Fase 4 base runtime for Domicilios.
 
 #### Scenario: Candidate backend files are listed
 - **WHEN** the backend plan is reviewed
@@ -203,9 +219,9 @@ The system SHALL document a backend implementation plan for the future Domicilio
 - **WHEN** implementation sequencing is reviewed
 - **THEN** the plan starts with migrations and types, then DTOs, state machine, repository, service, controller, permissions, tests and validation
 
-#### Scenario: Runtime remains untouched
-- **WHEN** this backend planning phase is completed
-- **THEN** no backend entity, service, controller, DTO, migration, guard or executable test file is created
+#### Scenario: Runtime scope stays limited
+- **WHEN** Fase 4 base implementation is completed
+- **THEN** runtime changes are limited to the deliveries module, initial DTOs, service, controller, direct SQL migration and AppModule registration
 
 ### Requirement: Backend acceptance criteria
 The system SHALL document acceptance criteria for future backend implementation before runtime work begins.

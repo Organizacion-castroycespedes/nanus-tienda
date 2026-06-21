@@ -37,19 +37,19 @@ The system SHALL define that order screens can show delivery status as related o
 The system SHALL document cancellation behavior between orders and deliveries before implementation.
 
 #### Scenario: Order cancels before dispatch
-- **WHEN** an order linked to a delivery is cancelled while the delivery is `PENDIENTE` or `EN_PREPARACION`
-- **THEN** the delivery should move to `CANCELADO` with traceability in a future implementation
+- **WHEN** an order linked to a delivery is cancelled while the delivery is `CREATED` or `ASSIGNED`
+- **THEN** the delivery should move to `CANCELLED` with traceability in a future implementation
 
 #### Scenario: Order cancels after dispatch
-- **WHEN** an order cancellation is requested after delivery is `DESPACHADO`
-- **THEN** the future implementation must require an explicit delivery resolution such as `NO_ENTREGADO` or a supervised exception
+- **WHEN** an order cancellation is requested after delivery is `DISPATCHED`
+- **THEN** the future implementation must require an explicit delivery resolution such as `NOT_DELIVERED` or a supervised exception
 
 #### Scenario: Delivery cancels before fulfillment
 - **WHEN** a delivery linked to an order is cancelled before dispatch
 - **THEN** the order remains available for non-delivery handling according to existing order rules
 
-### Requirement: No order implementation in this phase
-The system SHALL NOT modify order APIs, services, SQL functions, frontend pages or order permissions during this OpenSpec-only phase.
+### Requirement: No order implementation in Fase 4
+The system SHALL NOT modify order APIs, services, SQL functions, frontend pages or order permissions during Fase 4.
 
 #### Scenario: Order integration is validated
 - **WHEN** this change is validated
@@ -63,11 +63,11 @@ The system SHALL document a future `deliveries.order_id` relationship and same-t
 - **THEN** `deliveries.order_id` references the order and both records must belong to the same tenant
 
 #### Scenario: Active delivery uniqueness is enforced in future design
-- **WHEN** a future order already has an active delivery in `PENDIENTE`, `EN_PREPARACION` or `DESPACHADO`
+- **WHEN** a future order already has an active delivery in `DRAFT`, `CREATED`, `ASSIGNED` or `DISPATCHED`
 - **THEN** the system must prevent creating another active delivery for that order in v0.0.1
 
 #### Scenario: Final delivery allows later design decision
-- **WHEN** a linked delivery is `ENTREGADO`, `CANCELADO` or `NO_ENTREGADO`
+- **WHEN** a linked delivery is `DELIVERED`, `CANCELLED` or `NOT_DELIVERED`
 - **THEN** any additional delivery or retry behavior requires an explicit future rule before implementation
 
 ### Requirement: Backend order integration plan

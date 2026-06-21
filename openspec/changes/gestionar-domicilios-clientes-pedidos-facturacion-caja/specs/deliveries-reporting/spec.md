@@ -46,7 +46,7 @@ The system SHALL define future reports for average delivery time, deliveries by 
 - **THEN** the report shows counts, delivered rate, not-delivered rate and average time by zone
 
 ### Requirement: No reporting implementation in this phase
-The system SHALL NOT modify `backend-reporteria`, report endpoints, report SQL, report UI or PDF generation during this OpenSpec-only phase.
+The system SHALL NOT modify `backend-reporteria`, report endpoints, report SQL, report UI or PDF generation during Fase 4.
 
 #### Scenario: Reporting design is validated
 - **WHEN** this change is validated

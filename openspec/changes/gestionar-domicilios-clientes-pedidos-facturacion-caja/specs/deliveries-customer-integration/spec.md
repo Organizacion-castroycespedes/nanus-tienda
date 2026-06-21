@@ -33,8 +33,8 @@ The system SHALL allow delivery design for generic customer or final consumer fl
 - **WHEN** a generic customer delivery has no phone or delivery address
 - **THEN** the delivery cannot be considered ready for dispatch
 
-### Requirement: No customer implementation in this phase
-The system SHALL NOT require changes to customer tables, APIs, forms or permission behavior during this OpenSpec-only phase.
+### Requirement: No customer implementation in Fase 4
+The system SHALL NOT require changes to customer tables, APIs, forms or permission behavior during Fase 4.
 
 #### Scenario: Customer integration is reviewed
 - **WHEN** this change is validated

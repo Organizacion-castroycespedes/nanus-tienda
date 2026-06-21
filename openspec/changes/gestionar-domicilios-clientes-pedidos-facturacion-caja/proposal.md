@@ -5,7 +5,7 @@ Manus POS ya opera clientes, pedidos, POS, facturacion, caja y reporteria, pero 
 ## What Changes
 
 - Definir el modulo funcional "Domicilios" para registrar, consultar y hacer seguimiento de entregas asociadas a clientes, pedidos, ventas/facturas y caja cuando aplique.
-- Formalizar estados operativos iniciales, transiciones permitidas, estados finales y manejo de `NO_ENTREGADO` para v0.0.1.
+- Formalizar estados operativos iniciales, transiciones permitidas, estados finales y manejo de `NOT_DELIVERED` para v0.0.1.
 - Documentar integraciones conceptuales con Clientes, Pedidos, Facturacion y Caja/turno actual sin modificar esos modulos.
 - Proponer permisos, roles, menu, filtros, vista detalle, acciones por estado, estados vacios, responsive y reportería futura.
 - Declarar restricciones explicitas: no endpoints, no tablas, no migraciones, no cambios de permisos reales, no cambios de logica productiva y no commit en esta fase.

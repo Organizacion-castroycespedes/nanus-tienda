@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-Este documento define el plan tecnico para implementar el backend futuro del modulo Domicilios. No implementa runtime. Sirve como guia para migraciones, modelos, DTOs, servicios, controladores, permisos, tests, orden de trabajo, rollback y criterios de aceptacion.
+Este documento definio el plan tecnico para implementar el backend futuro del modulo Domicilios. Fase 4 ya implementa una primera base runtime acotada con SQL DDL directo y NestJS, sin Prisma, sin frontend y sin integraciones avanzadas.
 
 El modulo debe nacer aislado en `/api/deliveries`, con `tenant_id` obligatorio, estado logistico controlado, auditoria minima, y reglas explicitas para no duplicar dinero entre factura, caja y domicilio.
 
@@ -23,15 +23,15 @@ La implementacion futura debe cubrir:
 
 ## Fuera de alcance
 
-- No crear migraciones reales en esta fase.
-- No crear tablas reales en esta fase.
-- No crear entidades, servicios, controladores, DTOs o tests ejecutables.
+- No usar Prisma.
+- No crear modelos Prisma.
+- No crear frontend.
+- No crear integracion real con caja, facturacion electronica, pedidos o reporteria.
+- No crear endpoints de acciones de estado todavia.
 - No modificar guards reales.
 - No modificar permisos reales.
 - No modificar menus reales.
-- No modificar backend funcional.
 - No modificar frontend funcional.
-- No modificar SQL aplicado.
 - No tocar produccion.
 - No hacer commit sin aprobacion expresa.
 
@@ -174,7 +174,7 @@ Columnas candidatas:
 - Check constraint para `delivery_fee >= 0`.
 - Check constraint para `delivery_fee_source`.
 - Check constraint para `payment_status`.
-- Check constraint para motivos obligatorios en `CANCELADO` y `NO_ENTREGADO`.
+- Check constraint para motivos obligatorios en `CANCELLED` y `NOT_DELIVERED`.
 - Restriccion unica conceptual para maximo un domicilio activo por pedido.
 - Validacion de tenant consistente entre delivery y entidades relacionadas.
 
@@ -183,7 +183,7 @@ Posible indice unico parcial futuro:
 ```text
 (tenant_id, order_id)
 WHERE order_id IS NOT NULL
-  AND status IN ('PENDIENTE', 'EN_PREPARACION', 'DESPACHADO')
+  AND status IN ('DRAFT', 'CREATED', 'ASSIGNED', 'DISPATCHED')
 ```
 
 ## Indices futuros
@@ -242,12 +242,13 @@ No crear estos modelos en esta fase.
 ### `DeliveryStatus`
 
 ```text
-PENDIENTE
-EN_PREPARACION
-DESPACHADO
-ENTREGADO
-CANCELADO
-NO_ENTREGADO
+DRAFT
+CREATED
+ASSIGNED
+DISPATCHED
+DELIVERED
+NOT_DELIVERED
+CANCELLED
 ```
 
 ### `DeliveryFeeSource`
@@ -342,7 +343,7 @@ Valida que el usuario pertenezca al tenant/scope permitido.
 - `dispatchedAt?`
 - `notes?`
 
-Marca salida a entrega desde `PENDIENTE` o `EN_PREPARACION`.
+Marca salida a entrega desde `CREATED` o `ASSIGNED`.
 
 ### `MarkDeliveryDeliveredDto`
 
@@ -441,10 +442,11 @@ Responsabilidades:
 
 Matriz:
 
-- `PENDIENTE` -> `EN_PREPARACION`, `DESPACHADO`, `CANCELADO`.
-- `EN_PREPARACION` -> `DESPACHADO`, `CANCELADO`.
-- `DESPACHADO` -> `ENTREGADO`, `NO_ENTREGADO`.
-- `ENTREGADO`, `CANCELADO`, `NO_ENTREGADO` -> ninguno.
+- `DRAFT` -> `CREATED`, `CANCELLED`.
+- `CREATED` -> `ASSIGNED`, `DISPATCHED`, `CANCELLED`.
+- `ASSIGNED` -> `DISPATCHED`, `CANCELLED`.
+- `DISPATCHED` -> `DELIVERED`, `NOT_DELIVERED`.
+- `DELIVERED`, `CANCELLED`, `NOT_DELIVERED` -> ninguno.
 
 ### `DeliveryNumberService`
 
@@ -557,14 +559,15 @@ No aplicar esta matriz en esta fase.
 - Rechazar segundo domicilio activo para el mismo pedido.
 - Permitir nuevo domicilio si anterior esta final solo si regla final lo permite.
 - Validar edicion por estado.
-- Validar `PENDIENTE` -> `EN_PREPARACION`.
-- Validar `PENDIENTE` -> `DESPACHADO`.
-- Validar `EN_PREPARACION` -> `DESPACHADO`.
-- Validar `DESPACHADO` -> `ENTREGADO`.
-- Validar `DESPACHADO` -> `NO_ENTREGADO`.
-- Rechazar `ENTREGADO` -> `CANCELADO`.
-- Rechazar `CANCELADO` -> `DESPACHADO`.
-- Rechazar `NO_ENTREGADO` -> `DESPACHADO`.
+- Validar `DRAFT` -> `CREATED`.
+- Validar `CREATED` -> `ASSIGNED`.
+- Validar `CREATED` -> `DISPATCHED`.
+- Validar `ASSIGNED` -> `DISPATCHED`.
+- Validar `DISPATCHED` -> `DELIVERED`.
+- Validar `DISPATCHED` -> `NOT_DELIVERED`.
+- Rechazar `DELIVERED` -> `CANCELLED`.
+- Rechazar `CANCELLED` -> `DISPATCHED`.
+- Rechazar `NOT_DELIVERED` -> `DISPATCHED`.
 - Requerir motivo en cancelacion.
 - Requerir motivo en no entregado.
 
@@ -626,24 +629,127 @@ Entrada: filtros de fecha, estado, usuario, cliente, zona, caja.
 
 Salida: `DeliverySummaryReportDto`.
 
+## Fase 4 implementada con SQL DDL directo, no Prisma
+
+### DDL creado
+
+Archivo:
+
+```text
+scripts/database/migrations/V063__deliveries_base.sql
+```
+
+Tablas:
+
+- `public.deliveries`
+- `public.delivery_status_history`
+
+La migracion usa:
+
+- `CREATE TABLE IF NOT EXISTS`.
+- `CREATE INDEX IF NOT EXISTS`.
+- `CHECK` constraints para estados, montos no negativos, direccion no vacia y `metadata` como objeto JSON.
+- Constraints protegidas con `DO $$` cuando aplica.
+- IDs `uuid` con `gen_random_uuid()`.
+- Schema `public`.
+- Sin `DROP TABLE`.
+- Sin `TRUNCATE`.
+- Sin Prisma.
+
+Estados runtime permitidos:
+
+```text
+DRAFT
+CREATED
+ASSIGNED
+DISPATCHED
+DELIVERED
+NOT_DELIVERED
+CANCELLED
+```
+
+### Backend creado
+
+Archivos creados:
+
+```text
+api/src/modules/deliveries/deliveries.module.ts
+api/src/modules/deliveries/deliveries.controller.ts
+api/src/modules/deliveries/deliveries.service.ts
+api/src/modules/deliveries/deliveries.constants.ts
+api/src/modules/deliveries/dto/create-delivery.dto.ts
+api/src/modules/deliveries/dto/update-delivery.dto.ts
+api/src/modules/deliveries/dto/query-deliveries.dto.ts
+api/src/modules/deliveries/services/delivery-number.service.ts
+```
+
+Archivo modificado:
+
+```text
+api/src/modules/app.module.ts
+```
+
+Endpoints implementados:
+
+```text
+GET    /api/deliveries
+POST   /api/deliveries
+GET    /api/deliveries/:id
+PATCH  /api/deliveries/:id
+```
+
+No implementado en Fase 4:
+
+- `assign`.
+- `dispatch`.
+- `mark-delivered`.
+- `mark-not-delivered`.
+- `cancel`.
+- `reports/summary`.
+- Caja.
+- Facturacion electronica.
+- Integracion real con pedidos.
+- Frontend.
+- Permisos reales `DELIVERIES_*`.
+
+### Tenant, branch y seguridad
+
+- `tenant_id` se toma del JWT/contexto: `request.context.tenantId` o `request.user.tenantId`.
+- `branch_id` se toma del contexto si existe; si no, del body/query.
+- Si contexto trae branch y el body/query intenta otro branch, la API rechaza la operacion.
+- Todas las consultas filtran por `tenant_id`.
+- Se usa `JwtAuthGuard`.
+- No se usa `PermissionsGuard` para `DELIVERIES_*` porque los permisos no estan sembrados.
+
+### Numero de domicilio
+
+`DeliveryNumberService` genera un numero provisional:
+
+```text
+DOM-YYYYMMDD-<timestamp-base36>-<random>
+```
+
+La unicidad real queda garantizada por:
+
+```text
+UNIQUE (tenant_id, branch_id, delivery_number)
+```
+
+Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal en fase posterior.
+
 ## Secuencia recomendada de implementacion
 
-1. Crear migracion `deliveries` + enums/check constraints + indices.
-2. Crear migracion `delivery_status_history`.
-3. Crear tipos/enums backend.
-4. Crear DTOs con validaciones.
-5. Crear `DeliveryStateMachineService`.
-6. Crear `DeliveryNumberService`.
-7. Crear repository/SQL.
-8. Crear `DeliveriesService`.
-9. Crear `DeliveryAuditService`.
-10. Crear controlador CRUD minimo.
-11. Agregar guards/permisos en codigo, sin seed productivo hasta aprobacion.
-12. Agregar tests unitarios y de autorizacion.
-13. Validar build/test/OpenSpec.
-14. Preparar SQL idempotente de permisos para local/QA.
-15. Hacer QA backend con curl/Postman.
-16. Solo despues disenar frontend runtime.
+1. Completado en Fase 4: crear migracion `deliveries` + `delivery_status_history` + check constraints + indices.
+2. Completado en Fase 4: crear DTOs iniciales.
+3. Completado en Fase 4: crear `DeliveryNumberService`.
+4. Completado en Fase 4: crear `DeliveriesService`.
+5. Completado en Fase 4: crear controlador CRUD minimo.
+6. Pendiente Fase 5: crear `DeliveryStateMachineService`.
+7. Pendiente Fase 5: implementar endpoints de acciones de estado.
+8. Pendiente Fase 5: agregar guards/permisos reales cuando existan seeds aprobados.
+9. Pendiente Fase 5: agregar tests unitarios y de autorizacion.
+10. Pendiente Fase 6: integrar caja/facturacion/pedidos.
+11. Pendiente Fase 7: disenar frontend runtime.
 
 ## Riesgos tecnicos
 
@@ -697,15 +803,15 @@ Salida: `DeliverySummaryReportDto`.
 
 ## Confirmacion de alcance
 
-- Codigo backend tocado: NO.
+- Codigo backend tocado: SI, solo modulo `api/src/modules/deliveries` y registro en `AppModule`.
 - Codigo frontend tocado: NO.
-- SQL/migraciones reales creadas: NO.
-- Tablas reales creadas: NO.
-- Endpoints reales creados: NO.
-- DTOs reales creados: NO.
-- Servicios reales creados: NO.
+- SQL/migraciones reales creadas: SI, `scripts/database/migrations/V063__deliveries_base.sql`.
+- Tablas reales creadas: SI, cuando se aplique la migracion: `deliveries` y `delivery_status_history`.
+- Endpoints reales creados: SI, solo CRUD inicial.
+- DTOs reales creados: SI, DTOs iniciales de create, update y query.
+- Servicios reales creados: SI, `DeliveriesService` y `DeliveryNumberService`.
 - Guards reales modificados: NO.
 - Permisos reales modificados: NO.
 - Menus reales modificados: NO.
-- Logica de negocio modificada: NO.
+- Logica de negocio existente modificada: NO.
 - Commit realizado: NO.

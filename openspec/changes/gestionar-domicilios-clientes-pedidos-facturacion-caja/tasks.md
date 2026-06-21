@@ -23,19 +23,23 @@
 - [x] 3.5 Documentar tests backend futuros, orden recomendado, criterios de aceptacion y rollback.
 - [x] 3.6 Actualizar `design.md`, docs base y specs OpenSpec relevantes.
 
-## 4. Fase 4 - Modelo de datos y migraciones futuras
+## 4. Fase 4 - SQL DDL directo y backend inicial
 
-- [ ] 4.1 Disenar tabla futura de domicilios con `tenant_id`, `branch_id`, fuente asociada, cliente, direccion snapshot, estado, responsable, valores, timestamps y auditoria.
-- [ ] 4.2 Disenar estrategia SQL de historico de estados o eventos de domicilio.
-- [ ] 4.3 Definir indices, restricciones multi-tenant y llaves hacia pedidos, ventas/facturas, usuarios y caja.
-- [ ] 4.4 Crear migraciones y rollback solo despues de aprobacion de esta fase.
+- [x] 4.1 Confirmar que el proyecto usa SQL DDL directo, `DatabaseService` con `pg.Pool`, UUID, `tenant_id`, `branch_id`, schema `public` y `CHECK` constraints.
+- [x] 4.2 Crear `scripts/database/migrations/V063__deliveries_base.sql` sin Prisma, sin ORM nuevo y sin SQL destructivo.
+- [x] 4.3 Crear tablas `deliveries` y `delivery_status_history` con constraints, indices y FKs seguras hacia tablas existentes UUID.
+- [x] 4.4 Implementar modulo backend inicial `DeliveriesModule` con controller, service, DTOs y `DeliveryNumberService`.
+- [x] 4.5 Implementar endpoints iniciales `GET /api/deliveries`, `POST /api/deliveries`, `GET /api/deliveries/:id` y `PATCH /api/deliveries/:id`.
+- [x] 4.6 Aplicar `JwtAuthGuard`, tenant desde `request.user.tenantId`/contexto y branch scope desde contexto o body/query.
+- [x] 4.7 Crear historial inicial `CREATED` en la misma transaccion de alta de domicilio.
+- [x] 4.8 Documentar que permisos reales `DELIVERIES_*`, frontend, caja, facturacion, pedidos y reportes quedan fuera de esta fase.
 
-## 5. Fase 5 - Backend API y reglas de negocio
+## 5. Fase 5 - State machine, permisos reales y reglas de negocio
 
-- [ ] 5.1 Crear modulo backend de domicilios con controller, service, repository/SQL y DTOs.
+- [ ] 5.1 Implementar endpoints `assign`, `dispatch`, `mark-delivered`, `mark-not-delivered` y `cancel`.
 - [ ] 5.2 Implementar validaciones de estados y transiciones permitidas.
-- [ ] 5.3 Implementar scope por tenant, sucursal, rol y permisos.
-- [ ] 5.4 Implementar trazabilidad de cambios de estado y acciones sensibles.
+- [ ] 5.3 Implementar permisos reales `DELIVERIES_*` cuando existan menu/seed aprobados.
+- [ ] 5.4 Implementar trazabilidad de cambios de estado y acciones sensibles mas alla del historial inicial.
 - [ ] 5.5 Agregar tests backend unitarios y de autorizacion.
 
 ## 6. Fase 6 - Frontend modulo Domicilios
@@ -51,7 +55,7 @@
 - [ ] 7.1 Integrar creacion/consulta de domicilio desde pedidos sin romper estados existentes.
 - [ ] 7.2 Integrar vinculacion con ventas/facturas y definir fuente financiera del valor de envio.
 - [ ] 7.3 Integrar reglas de pago contra entrega, recaudo por repartidor y asociacion a turno.
-- [ ] 7.4 Implementar resolucion de cancelaciones, anulaciones y `NO_ENTREGADO` con trazabilidad.
+- [ ] 7.4 Implementar resolucion de cancelaciones, anulaciones y `NOT_DELIVERED` con trazabilidad.
 - [ ] 7.5 Agregar tests de integracion para pedidos, facturacion y caja.
 
 ## 8. Fase 8 - Reporteria y auditoria

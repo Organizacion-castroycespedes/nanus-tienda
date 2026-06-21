@@ -30,19 +30,19 @@ The system SHALL require a future implementation decision for whether the delive
 The system SHALL preserve delivery history when a linked invoice is annulled, reversed or adjusted with a credit note.
 
 #### Scenario: Invoice annulled before dispatch
-- **WHEN** a linked invoice is annulled while delivery is `PENDIENTE` or `EN_PREPARACION`
+- **WHEN** a linked invoice is annulled while delivery is `CREATED` or `ASSIGNED`
 - **THEN** the future system should cancel or block dispatch of the delivery with a traceable reason
 
 #### Scenario: Invoice annulled after delivery
-- **WHEN** a linked invoice is annulled after delivery is `ENTREGADO`
+- **WHEN** a linked invoice is annulled after delivery is `DELIVERED`
 - **THEN** the delivery remains historically delivered and the financial reversal is handled by invoice/cash/credit-note traceability
 
 #### Scenario: Invoice annulled after failed delivery
-- **WHEN** a linked invoice is annulled after delivery is `NO_ENTREGADO`
+- **WHEN** a linked invoice is annulled after delivery is `NOT_DELIVERED`
 - **THEN** the future system records both the failed delivery and financial resolution path
 
 ### Requirement: No invoicing implementation in this phase
-The system SHALL NOT modify invoicing APIs, SQL functions, invoice documents, fiscal behavior or electronic invoicing behavior during this OpenSpec-only phase.
+The system SHALL NOT modify invoicing APIs, SQL functions, invoice documents, fiscal behavior or electronic invoicing behavior during Fase 4.
 
 #### Scenario: Invoicing integration is validated
 - **WHEN** this change is validated
