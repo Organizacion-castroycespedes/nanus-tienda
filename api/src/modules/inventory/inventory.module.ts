@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AccessControlModule } from "../../common/access-control.module";
 import { CommonServicesModule } from "../../common/services/common-services.module";
 import { DatabaseModule } from "../../common/db/database.module";
+import { DeliveriesModule } from "../deliveries/deliveries.module";
 import { FinanceModule } from "../finance/finance.module";
 import { FinanceAccessRepository } from "../finance/common/repositories/finance-access.repository";
 import { PricingModule } from "../pricing/pricing.module";
@@ -68,6 +69,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     DatabaseModule,
     AccessControlModule,
     CommonServicesModule,
+    DeliveriesModule,
     FinanceModule,
     PricingModule,
   ],

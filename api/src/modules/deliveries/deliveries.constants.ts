@@ -1,0 +1,42 @@
+export const DELIVERY_STATUSES = [
+  "DRAFT",
+  "CREATED",
+  "ASSIGNED",
+  "DISPATCHED",
+  "DELIVERED",
+  "NOT_DELIVERED",
+  "CANCELLED",
+] as const;
+
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+
+export const DELIVERY_FINAL_STATUSES = [
+  "DELIVERED",
+  "NOT_DELIVERED",
+  "CANCELLED",
+] as const satisfies readonly DeliveryStatus[];
+
+export const DELIVERY_ACTIONS = [
+  "ASSIGN",
+  "DISPATCH",
+  "MARK_DELIVERED",
+  "MARK_NOT_DELIVERED",
+  "CANCEL",
+] as const;
+
+export type DeliveryAction = (typeof DELIVERY_ACTIONS)[number];
+
+export const DELIVERY_PERMISSION_ACTIONS = {
+  VIEW: "DELIVERIES_VIEW",
+  CREATE: "DELIVERIES_CREATE",
+  UPDATE: "DELIVERIES_UPDATE",
+  ASSIGN: "DELIVERIES_ASSIGN",
+  DISPATCH: "DELIVERIES_DISPATCH",
+  MARK_DELIVERED: "DELIVERIES_MARK_DELIVERED",
+  MARK_NOT_DELIVERED: "DELIVERIES_MARK_NOT_DELIVERED",
+  CANCEL: "DELIVERIES_CANCEL",
+  REPORTS: "DELIVERIES_REPORTS",
+} as const;
+
+export type DeliveryPermissionAction =
+  (typeof DELIVERY_PERMISSION_ACTIONS)[keyof typeof DELIVERY_PERMISSION_ACTIONS];
