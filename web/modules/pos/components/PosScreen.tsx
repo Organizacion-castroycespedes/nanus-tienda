@@ -87,6 +87,11 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import {
+  collectPosScannerProductCodes,
+  findUniquePosScannerProduct,
+  normalizePosScannerCode,
+} from "../utils/pos-scanner";
 import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
 import {
@@ -109,32 +114,6 @@ type StockFilterKey = PosStockFilterKey;
 type ProductViewMode = "grid" | "list";
 type ScannerMockStatus = "disabled" | "connected" | "error";
 type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
-
-type ProductBarcodeCandidate =
-  | string
-  | {
-      barcode?: string | null;
-      codigo?: string | null;
-      codigoBarras?: string | null;
-      codigo_barras?: string | null;
-      code?: string | null;
-      value?: string | null;
-      isActive?: boolean;
-      active?: boolean;
-    };
-
-type ScannerProductCandidate = Omit<ProductResponse, "barcodes"> & {
-  primaryBarcode?: string | null;
-  barcodeCodes?: string[];
-  barcode?: string | null;
-  codigoBarras?: string | null;
-  codigo_barras?: string | null;
-  reference?: string | null;
-  referencia?: string | null;
-  code?: string | null;
-  codigo?: string | null;
-  barcodes?: ProductBarcodeCandidate[];
-};
 
 type ProductUnitCandidate =
   | string
@@ -211,67 +190,6 @@ const normalizeText = (value: string) =>
     .trim()
     .toLowerCase();
 
-const normalizeScannerCode = (value?: string | null) =>
-  typeof value === "string" ? normalizeText(value) : "";
-
-const collectProductScannerCodes = (product: ProductResponse) => {
-  const candidate = product as unknown as ScannerProductCandidate;
-  const directCodes = [
-    candidate.primaryBarcode,
-    candidate.barcode,
-    candidate.codigoBarras,
-    candidate.codigo_barras,
-    candidate.sku,
-    candidate.reference,
-    candidate.referencia,
-    candidate.code,
-    candidate.codigo,
-    candidate.id,
-  ];
-  const barcodeCodes = (candidate.barcodes ?? [])
-    .filter((barcode) =>
-      typeof barcode === "string"
-        ? true
-        : barcode.isActive !== false && barcode.active !== false
-    )
-    .flatMap((barcode) => {
-      if (typeof barcode === "string") {
-        return [barcode];
-      }
-
-      return [
-        barcode.barcode,
-        barcode.codigoBarras,
-        barcode.codigo_barras,
-        barcode.code,
-        barcode.codigo,
-        barcode.value,
-      ];
-    });
-
-  return [...directCodes, ...(candidate.barcodeCodes ?? []), ...barcodeCodes]
-    .map(normalizeScannerCode)
-    .filter(Boolean);
-};
-
-const findProductByScannerCode = (
-  code: string,
-  products: ProductResponse[]
-) => {
-  const normalizedCode = normalizeScannerCode(code);
-  if (!normalizedCode) {
-    return null;
-  }
-
-  return (
-    products.find((product) =>
-      collectProductScannerCodes(product).some(
-        (candidateCode) => candidateCode === normalizedCode
-      )
-    ) ?? null
-  );
-};
-
 const weighableUnitCodes = new Set([
   "kg",
   "lb",
@@ -301,7 +219,9 @@ const weighableProductTypes = new Set([
 ]);
 
 const normalizeProductUnitValue = (value: unknown) =>
-  typeof value === "string" ? normalizeText(value).replace(/\s+/g, "") : "";
+  typeof value === "string"
+    ? normalizePosScannerCode(value).replace(/\s+/g, "")
+    : "";
 
 const collectUnitCandidateValues = (unit: ProductUnitCandidate | null | undefined) => {
   if (!unit) {
@@ -1111,7 +1031,7 @@ export const PosScreen = () => {
       subcategoryId: selectedProductSubcategoryId,
       isLowStock,
       getSearchText: (product) =>
-        `${product.name} ${product.description ?? ""} ${collectProductScannerCodes(
+        `${product.name} ${product.description ?? ""} ${collectPosScannerProductCodes(
           product
         ).join(" ")}`,
     });
@@ -1554,7 +1474,7 @@ export const PosScreen = () => {
 
       setScannerMockStatus("connected");
       setScannerLastCode(code);
-      const product = findProductByScannerCode(code, productsRef.current);
+      const product = findUniquePosScannerProduct(code, productsRef.current);
 
       if (!product) {
         const message = `Código no encontrado: ${code}`;
@@ -1807,12 +1727,13 @@ export const PosScreen = () => {
       }
 
       const firstProduct = filteredProducts[0];
-      if (!firstProduct) {
+      const exactMatch = findUniquePosScannerProduct(query, filteredProducts);
+      if (!exactMatch) {
         return;
       }
 
       event.preventDefault();
-      handleProductCardAction(firstProduct);
+      handleProductCardAction(exactMatch);
     },
     [filteredProducts, handleProductCardAction, query]
   );

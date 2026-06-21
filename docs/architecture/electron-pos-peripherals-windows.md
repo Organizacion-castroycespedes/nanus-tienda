@@ -50,6 +50,8 @@ El objetivo tecnico es definir limites: que puede pedir la web, que debe validar
 - Bascula.
 - Impresora fiscal como categoria futura/regulada.
 
+Nota actual: el lector de codigo de barras HID ya tiene validacion documental propia en `pos-barcode-hid-electron.md`. Esa ruta sigue siendo teclado, no hardware nativo.
+
 ## Estrategia por periferico
 
 ### Impresora termica/recibos
