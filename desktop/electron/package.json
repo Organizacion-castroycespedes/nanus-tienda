@@ -7,8 +7,33 @@
   "scripts": {
     "dev": "npm run build && electron .",
     "build": "tsc -p tsconfig.json",
+    "pack": "npm run build && electron-builder --win dir --publish never",
+    "pack:win": "npm run build && electron-builder --win dir --publish never",
+    "dist:win": "npm run build && electron-builder --win portable --publish never",
     "test": "npm run build && node --test dist/config.spec.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "build": {
+    "appId": "com.manus.pos",
+    "productName": "Manus POS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/main.js",
+      "dist/preload.js",
+      "dist/config.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "artifactName": "Manus-POS-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Manus-POS-${version}-${arch}-portable.${ext}"
+    }
   },
   "engines": {
     "node": ">=22.12.0"
@@ -16,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^26.0.0",
     "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
     "typescript": "^6.0.3"
   }
 }

@@ -14,6 +14,7 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 - Puede leer contexto local reservado de tenant, sucursal y terminal.
 - Mantiene Electron online-only.
 - Prioriza Windows para la primera validacion.
+- Puede generar un empaquetado Windows local de validacion.
 - Aplica baseline basico de seguridad Electron.
 
 ## Fuera de alcance
@@ -28,7 +29,7 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 - SQL.
 - Permisos.
 - Perifericos.
-- Instaladores.
+- Instaladores productivos.
 - Firma.
 - Auto-update.
 - Impresion nativa.
@@ -130,7 +131,41 @@ npm run dev
 npm run build
 npm test
 npm run typecheck
+npm run pack:win
+npm run dist:win
 ```
+
+## Empaquetado Windows local
+
+Esta fase usa `electron-builder` solo para validacion local Windows. No hay firma, certificados, auto-update ni publicacion automatica de releases.
+
+Generar build desempaquetado:
+
+```powershell
+npm run pack:win
+```
+
+Generar portable, si el entorno lo permite:
+
+```powershell
+npm run dist:win
+```
+
+Salida esperada:
+
+```text
+desktop/electron/release/
+```
+
+Probar build desempaquetado:
+
+```powershell
+$env:MANUS_WEB_URL="http://localhost:3000"
+$env:MANUS_START_PATH="/login"
+.\release\win-unpacked\Manus POS.exe
+```
+
+Los artefactos de `release/`, `dist/` y `out/` no se versionan.
 
 ## Seguridad base
 
@@ -147,7 +182,7 @@ npm run typecheck
 - Requiere que la web este disponible.
 - Requiere Node.js moderno para desarrollo local de Electron.
 - No opera offline.
-- No empaqueta instaladores.
+- No crea instalador productivo firmado.
 - No integra perifericos.
 - No firma binarios.
 - No implementa auto-update.

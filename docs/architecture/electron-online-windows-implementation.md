@@ -144,9 +144,11 @@ El primer objetivo de desarrollo es Windows. Linux y macOS quedan como compatibi
 - No imprime nativo.
 - No integra perifericos.
 - No tiene auto-update.
-- No tiene instalador.
+- No tiene instalador productivo firmado.
 - No define configuracion tenant/sucursal/terminal local.
 - No resuelve firma ni SmartScreen.
+
+Nota posterior: el empaquetado Windows local se prepara en `preparar-empaquetado-electron-windows` con `electron-builder`, target `dir` y opcion `portable`, sin firma ni auto-update.
 
 ## Proximas fases
 
@@ -154,8 +156,8 @@ El primer objetivo de desarrollo es Windows. Linux y macOS quedan como compatibi
 2. Configuracion tenant/sucursal/terminal para shell.
 3. Validacion POS/caja online en Windows.
 4. Validacion perifericos Windows.
-5. Empaquetado Windows.
-6. Firma e instalador.
+5. Empaquetado Windows local.
+6. Firma e instalador productivo.
 7. Soporte Linux.
 8. Soporte macOS.
 9. Investigacion offline futura.
