@@ -8,10 +8,17 @@ import {
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../common/db/database.service";
+import { type DeliveryAction, type DeliveryStatus } from "./deliveries.constants";
+import { AssignDeliveryDto } from "./dto/assign-delivery.dto";
+import { CancelDeliveryDto } from "./dto/cancel-delivery.dto";
 import { CreateDeliveryDto } from "./dto/create-delivery.dto";
+import { DispatchDeliveryDto } from "./dto/dispatch-delivery.dto";
+import { MarkDeliveredDeliveryDto } from "./dto/mark-delivered-delivery.dto";
+import { MarkNotDeliveredDeliveryDto } from "./dto/mark-not-delivered-delivery.dto";
 import { QueryDeliveriesDto } from "./dto/query-deliveries.dto";
 import { UpdateDeliveryDto } from "./dto/update-delivery.dto";
 import { DeliveryNumberService } from "./services/delivery-number.service";
+import { DeliveryStateMachineService } from "./services/delivery-state-machine.service";
 
 type DeliveryActor = {
   tenantId?: string;
@@ -49,12 +56,29 @@ type DeliveryRecord = {
   total_count?: string | number;
 };
 
+type TransitionOptions = {
+  action: DeliveryAction;
+  nextStatus: DeliveryStatus;
+  reason?: string | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+  extraHistoryMetadata?: Record<string, unknown>;
+  beforeUpdate?: (delivery: DeliveryRecord) => void;
+  buildAssignments?: (
+    params: unknown[],
+    assignments: string[],
+    delivery: DeliveryRecord
+  ) => void;
+};
+
 @Injectable()
 export class DeliveriesService {
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(DeliveryNumberService)
-    private readonly deliveryNumberService: DeliveryNumberService
+    private readonly deliveryNumberService: DeliveryNumberService,
+    @Inject(DeliveryStateMachineService)
+    private readonly stateMachine: DeliveryStateMachineService
   ) {}
 
   private resolveTenantId(actor: DeliveryActor) {
@@ -255,6 +279,35 @@ export class DeliveriesService {
     }
   }
 
+  private async assertUserScope(tenantId: string, userId?: string | null) {
+    if (!userId) {
+      return;
+    }
+
+    const result = await this.db.query<{ id: string }>(
+      `
+        SELECT id
+        FROM public.users
+        WHERE id = $1
+          AND tenant_id = $2
+          AND estado = 'ACTIVE'
+        LIMIT 1
+      `,
+      [userId, tenantId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new BadRequestException("Usuario invalido para el tenant");
+    }
+  }
+
+  private assertDeliveryBranchScope(delivery: DeliveryRecord, actor: DeliveryActor) {
+    const actorBranchId = actor.branchId?.trim();
+    if (actorBranchId && actorBranchId !== delivery.branch_id) {
+      throw new ForbiddenException("No autorizado para esta sucursal");
+    }
+  }
+
   private assertCustomerIdentity(payload: CreateDeliveryDto) {
     const hasCustomerId = Boolean(payload.customer_id);
     const hasCustomerName = Boolean(this.normalizeNullableText(payload.customer_name));
@@ -273,6 +326,7 @@ export class DeliveriesService {
     previousStatus: string | null,
     newStatus: string,
     changedByUserId: string | null,
+    reason: string | null,
     metadata: Record<string, unknown>
   ) {
     await client.query(
@@ -292,10 +346,50 @@ export class DeliveriesService {
         previousStatus,
         newStatus,
         changedByUserId,
-        null,
+        reason,
         JSON.stringify(metadata),
       ]
     );
+  }
+
+  private buildHistoryMetadata(
+    action: DeliveryAction,
+    metadata: Record<string, unknown> | undefined,
+    notes?: string | null,
+    extra?: Record<string, unknown>
+  ) {
+    const normalizedMetadata = this.normalizeMetadata(metadata);
+    return {
+      action,
+      source: "api",
+      ...normalizedMetadata,
+      ...(notes ? { notes } : {}),
+      ...(extra ?? {}),
+    };
+  }
+
+  private async findByIdForUpdate(
+    client: PoolClient,
+    deliveryId: string,
+    tenantId: string
+  ) {
+    const result = await client.query<DeliveryRecord>(
+      `
+        SELECT *
+        FROM public.deliveries
+        WHERE id = $1
+          AND tenant_id = $2
+        FOR UPDATE
+      `,
+      [deliveryId, tenantId]
+    );
+
+    const delivery = result.rows[0];
+    if (!delivery) {
+      throw new NotFoundException("Domicilio no encontrado");
+    }
+
+    return delivery;
   }
 
   async list(filters: QueryDeliveriesDto, actor: DeliveryActor) {
@@ -491,9 +585,18 @@ export class DeliveriesService {
       );
 
       const created = result.rows[0];
-      await this.insertHistory(client, created.id, null, "CREATED", actor.userId ?? null, {
-        source: "api",
-      });
+      await this.insertHistory(
+        client,
+        created.id,
+        null,
+        "CREATED",
+        actor.userId ?? null,
+        null,
+        {
+          action: "CREATE",
+          source: "api",
+        }
+      );
       await client.query("COMMIT");
 
       return this.mapRecord(created);
@@ -524,6 +627,195 @@ export class DeliveriesService {
     }
 
     return this.mapRecord(delivery);
+  }
+
+  private async transitionDelivery(
+    id: string,
+    actor: DeliveryActor,
+    options: TransitionOptions
+  ) {
+    const tenantId = this.resolveTenantId(actor);
+    const notes = this.normalizeNullableText(options.notes);
+    const reason = this.normalizeNullableText(options.reason);
+    const metadata = this.normalizeMetadata(options.metadata);
+    const client = await this.db.getClient();
+
+    try {
+      await client.query("BEGIN");
+      const current = await this.findByIdForUpdate(client, id, tenantId);
+      this.assertDeliveryBranchScope(current, actor);
+      this.stateMachine.assertCanTransition(
+        current.status,
+        options.nextStatus,
+        options.action
+      );
+      options.beforeUpdate?.(current);
+
+      const params: unknown[] = [options.nextStatus, actor.userId ?? null];
+      const assignments = [
+        "status = $1",
+        "updated_by_user_id = $2",
+        "updated_at = now()",
+      ];
+
+      if (notes !== null) {
+        params.push(notes);
+        assignments.push(`notes = $${params.length}`);
+      }
+
+      if (options.metadata !== undefined) {
+        params.push(JSON.stringify(metadata));
+        assignments.push(`metadata = metadata || $${params.length}::jsonb`);
+      }
+
+      options.buildAssignments?.(params, assignments, current);
+
+      params.push(id);
+      const idParam = params.length;
+      params.push(tenantId);
+      const tenantParam = params.length;
+
+      const result = await client.query<DeliveryRecord>(
+        `
+          UPDATE public.deliveries
+          SET ${assignments.join(", ")}
+          WHERE id = $${idParam}
+            AND tenant_id = $${tenantParam}
+          RETURNING *
+        `,
+        params
+      );
+
+      const updated = result.rows[0];
+      if (!updated) {
+        throw new NotFoundException("Domicilio no encontrado");
+      }
+
+      await this.insertHistory(
+        client,
+        current.id,
+        current.status,
+        options.nextStatus,
+        actor.userId ?? null,
+        reason,
+        this.buildHistoryMetadata(
+          options.action,
+          options.metadata,
+          notes,
+          options.extraHistoryMetadata
+        )
+      );
+
+      await client.query("COMMIT");
+      return this.mapRecord(updated);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async assign(id: string, payload: AssignDeliveryDto, actor: DeliveryActor) {
+    const tenantId = this.resolveTenantId(actor);
+    await this.assertUserScope(tenantId, payload.assigned_courier_id);
+
+    return this.transitionDelivery(id, actor, {
+      action: "ASSIGN",
+      nextStatus: "ASSIGNED",
+      notes: payload.notes,
+      metadata: payload.metadata,
+      extraHistoryMetadata: {
+        assigned_courier_id: payload.assigned_courier_id,
+      },
+      buildAssignments: (params, assignments) => {
+        params.push(payload.assigned_courier_id);
+        assignments.push(`assigned_courier_id = $${params.length}`);
+      },
+    });
+  }
+
+  async dispatch(id: string, payload: DispatchDeliveryDto, actor: DeliveryActor) {
+    return this.transitionDelivery(id, actor, {
+      action: "DISPATCH",
+      nextStatus: "DISPATCHED",
+      notes: payload.notes,
+      metadata: payload.metadata,
+      beforeUpdate: (delivery) => {
+        if (!delivery.assigned_courier_id) {
+          throw new BadRequestException(
+            "No se puede despachar sin domiciliario asignado"
+          );
+        }
+      },
+    });
+  }
+
+  async markDelivered(
+    id: string,
+    payload: MarkDeliveredDeliveryDto,
+    actor: DeliveryActor
+  ) {
+    const deliveredAt = payload.delivered_at
+      ? new Date(payload.delivered_at)
+      : new Date();
+    if (Number.isNaN(deliveredAt.getTime())) {
+      throw new BadRequestException("delivered_at invalido");
+    }
+
+    return this.transitionDelivery(id, actor, {
+      action: "MARK_DELIVERED",
+      nextStatus: "DELIVERED",
+      notes: payload.notes,
+      metadata: payload.metadata,
+      extraHistoryMetadata: {
+        ...(payload.received_by ? { received_by: payload.received_by } : {}),
+        delivered_at: deliveredAt.toISOString(),
+      },
+      buildAssignments: (params, assignments) => {
+        params.push(deliveredAt);
+        assignments.push(`delivered_at = $${params.length}`);
+      },
+    });
+  }
+
+  async markNotDelivered(
+    id: string,
+    payload: MarkNotDeliveredDeliveryDto,
+    actor: DeliveryActor
+  ) {
+    const reason = this.normalizeRequiredText(
+      payload.reason,
+      "reason es requerido"
+    );
+
+    return this.transitionDelivery(id, actor, {
+      action: "MARK_NOT_DELIVERED",
+      nextStatus: "NOT_DELIVERED",
+      reason,
+      notes: payload.notes,
+      metadata: payload.metadata,
+    });
+  }
+
+  async cancel(id: string, payload: CancelDeliveryDto, actor: DeliveryActor) {
+    const reason = this.normalizeRequiredText(
+      payload.reason,
+      "reason es requerido"
+    );
+
+    return this.transitionDelivery(id, actor, {
+      action: "CANCEL",
+      nextStatus: "CANCELLED",
+      reason,
+      notes: payload.notes,
+      metadata: payload.metadata,
+      buildAssignments: (params, assignments) => {
+        const cancelledAt = new Date();
+        params.push(cancelledAt);
+        assignments.push(`cancelled_at = $${params.length}`);
+      },
+    });
   }
 
   async update(id: string, payload: UpdateDeliveryDto, actor: DeliveryActor) {

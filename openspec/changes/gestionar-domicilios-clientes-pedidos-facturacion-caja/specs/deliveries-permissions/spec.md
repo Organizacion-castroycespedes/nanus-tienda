@@ -81,7 +81,7 @@ The system SHALL NOT modify `menu_items`, `role_menu_permissions`, frontend rout
 - **THEN** proposed delivery permissions remain documentation-only and no real access matrix is changed
 
 #### Scenario: Initial runtime uses existing authentication
-- **WHEN** Fase 4 initial delivery endpoints are implemented
+- **WHEN** Fase 4 and Fase 5 delivery endpoints are implemented before real delivery permission seeds exist
 - **THEN** they use `JwtAuthGuard` and defer `DELIVERIES_*` enforcement until real menu/action permissions are seeded in a later phase
 
 ### Requirement: Backend permission implementation plan

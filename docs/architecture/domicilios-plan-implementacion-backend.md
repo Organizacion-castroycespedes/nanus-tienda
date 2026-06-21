@@ -443,7 +443,7 @@ Responsabilidades:
 Matriz:
 
 - `DRAFT` -> `CREATED`, `CANCELLED`.
-- `CREATED` -> `ASSIGNED`, `DISPATCHED`, `CANCELLED`.
+- `CREATED` -> `ASSIGNED`, `CANCELLED`.
 - `ASSIGNED` -> `DISPATCHED`, `CANCELLED`.
 - `DISPATCHED` -> `DELIVERED`, `NOT_DELIVERED`.
 - `DELIVERED`, `CANCELLED`, `NOT_DELIVERED` -> ninguno.
@@ -561,7 +561,6 @@ No aplicar esta matriz en esta fase.
 - Validar edicion por estado.
 - Validar `DRAFT` -> `CREATED`.
 - Validar `CREATED` -> `ASSIGNED`.
-- Validar `CREATED` -> `DISPATCHED`.
 - Validar `ASSIGNED` -> `DISPATCHED`.
 - Validar `DISPATCHED` -> `DELIVERED`.
 - Validar `DISPATCHED` -> `NOT_DELIVERED`.
@@ -712,6 +711,78 @@ No implementado en Fase 4:
 - Frontend.
 - Permisos reales `DELIVERIES_*`.
 
+## Fase 5 implementada
+
+### State machine
+
+Servicio:
+
+```text
+api/src/modules/deliveries/services/delivery-state-machine.service.ts
+```
+
+Transiciones implementadas:
+
+- `CREATED` -> `ASSIGNED`.
+- `ASSIGNED` -> `DISPATCHED`.
+- `DISPATCHED` -> `DELIVERED`.
+- `DISPATCHED` -> `NOT_DELIVERED`.
+- `CREATED` -> `CANCELLED`.
+- `ASSIGNED` -> `CANCELLED`.
+
+Estados finales:
+
+- `DELIVERED`
+- `NOT_DELIVERED`
+- `CANCELLED`
+
+Transiciones bloqueadas:
+
+- `CREATED` -> `DISPATCHED`.
+- `ASSIGNED` -> `DELIVERED`.
+- `DISPATCHED` -> `CANCELLED`.
+- Cualquier cambio desde un estado final.
+
+### Endpoints de estado
+
+```text
+POST /api/deliveries/:id/assign
+POST /api/deliveries/:id/dispatch
+POST /api/deliveries/:id/mark-delivered
+POST /api/deliveries/:id/mark-not-delivered
+POST /api/deliveries/:id/cancel
+```
+
+Cada endpoint:
+
+- Usa `JwtAuthGuard`.
+- Busca `delivery` por `id` y `tenant_id`.
+- Valida branch context cuando existe.
+- Ejecuta `SELECT ... FOR UPDATE`.
+- Actualiza `deliveries`.
+- Inserta `delivery_status_history`.
+- Usa una sola transaccion.
+- No toca caja, facturacion, pedidos, ventas, inventario ni reporteria.
+
+### DTOs creados
+
+```text
+api/src/modules/deliveries/dto/assign-delivery.dto.ts
+api/src/modules/deliveries/dto/dispatch-delivery.dto.ts
+api/src/modules/deliveries/dto/mark-delivered-delivery.dto.ts
+api/src/modules/deliveries/dto/mark-not-delivered-delivery.dto.ts
+api/src/modules/deliveries/dto/cancel-delivery.dto.ts
+```
+
+### Tests creados
+
+```text
+api/src/modules/deliveries/services/delivery-state-machine.service.spec.ts
+api/src/modules/deliveries/deliveries.service.spec.ts
+```
+
+Cubren transiciones validas, saltos invalidos, estados finales, rollback e historial transaccional.
+
 ### Tenant, branch y seguridad
 
 - `tenant_id` se toma del JWT/contexto: `request.context.tenantId` o `request.user.tenantId`.
@@ -744,10 +815,10 @@ Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal 
 3. Completado en Fase 4: crear `DeliveryNumberService`.
 4. Completado en Fase 4: crear `DeliveriesService`.
 5. Completado en Fase 4: crear controlador CRUD minimo.
-6. Pendiente Fase 5: crear `DeliveryStateMachineService`.
-7. Pendiente Fase 5: implementar endpoints de acciones de estado.
-8. Pendiente Fase 5: agregar guards/permisos reales cuando existan seeds aprobados.
-9. Pendiente Fase 5: agregar tests unitarios y de autorizacion.
+6. Completado en Fase 5: crear `DeliveryStateMachineService`.
+7. Completado en Fase 5: implementar endpoints de acciones de estado.
+8. Completado en Fase 5: agregar tests unitarios de state machine y transiciones.
+9. Pendiente Fase 6A: agregar guards/permisos reales cuando existan seeds aprobados.
 10. Pendiente Fase 6: integrar caja/facturacion/pedidos.
 11. Pendiente Fase 7: disenar frontend runtime.
 
@@ -807,9 +878,9 @@ Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal 
 - Codigo frontend tocado: NO.
 - SQL/migraciones reales creadas: SI, `scripts/database/migrations/V063__deliveries_base.sql`.
 - Tablas reales creadas: SI, cuando se aplique la migracion: `deliveries` y `delivery_status_history`.
-- Endpoints reales creados: SI, solo CRUD inicial.
-- DTOs reales creados: SI, DTOs iniciales de create, update y query.
-- Servicios reales creados: SI, `DeliveriesService` y `DeliveryNumberService`.
+- Endpoints reales creados: SI, CRUD inicial y acciones de estado de Fase 5.
+- DTOs reales creados: SI, DTOs iniciales y DTOs de acciones de estado.
+- Servicios reales creados: SI, `DeliveriesService`, `DeliveryNumberService` y `DeliveryStateMachineService`.
 - Guards reales modificados: NO.
 - Permisos reales modificados: NO.
 - Menus reales modificados: NO.

@@ -36,11 +36,12 @@
 
 ## 5. Fase 5 - State machine, permisos reales y reglas de negocio
 
-- [ ] 5.1 Implementar endpoints `assign`, `dispatch`, `mark-delivered`, `mark-not-delivered` y `cancel`.
-- [ ] 5.2 Implementar validaciones de estados y transiciones permitidas.
+- [x] 5.1 Implementar endpoints `assign`, `dispatch`, `mark-delivered`, `mark-not-delivered` y `cancel`.
+- [x] 5.2 Implementar validaciones de estados y transiciones permitidas.
 - [ ] 5.3 Implementar permisos reales `DELIVERIES_*` cuando existan menu/seed aprobados.
-- [ ] 5.4 Implementar trazabilidad de cambios de estado y acciones sensibles mas alla del historial inicial.
-- [ ] 5.5 Agregar tests backend unitarios y de autorizacion.
+- [x] 5.4 Implementar trazabilidad de cambios de estado y acciones sensibles mas alla del historial inicial.
+- [x] 5.5 Agregar tests backend unitarios para state machine y transiciones.
+- [ ] 5.6 Agregar tests de autorizacion/permisos cuando `DELIVERIES_*` existan en menu/seed aprobados.
 
 ## 6. Fase 6 - Frontend modulo Domicilios
 

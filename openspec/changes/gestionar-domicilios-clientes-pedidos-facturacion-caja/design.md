@@ -54,7 +54,7 @@ Restricciones vigentes para Fase 4:
 
 5. **Transiciones operativas**
    - `DRAFT` puede pasar a `CREATED` o `CANCELLED`.
-   - `CREATED` puede pasar a `ASSIGNED`, `DISPATCHED` o `CANCELLED`.
+   - `CREATED` puede pasar a `ASSIGNED` o `CANCELLED`.
    - `ASSIGNED` puede pasar a `DISPATCHED` o `CANCELLED`.
    - `DISPATCHED` puede pasar a `DELIVERED` o `NOT_DELIVERED`.
    - `DELIVERED`, `CANCELLED` y `NOT_DELIVERED` no cambian en v0.0.1.
@@ -140,7 +140,7 @@ Estados v0.0.1:
 
 Transiciones:
 - `DRAFT` -> `CREATED`, `CANCELLED`.
-- `CREATED` -> `ASSIGNED`, `DISPATCHED`, `CANCELLED`.
+- `CREATED` -> `ASSIGNED`, `CANCELLED`.
 - `ASSIGNED` -> `DISPATCHED`, `CANCELLED`.
 - `DISPATCHED` -> `DELIVERED`, `NOT_DELIVERED`.
 - `DELIVERED`, `CANCELLED` y `NOT_DELIVERED` son finales en v0.0.1.
@@ -347,6 +347,80 @@ Fuera de Fase 4:
 - Integracion real con pedidos.
 - Frontend.
 - Reporteria avanzada.
+
+## Fase 5 - Maquina de estados backend
+
+Fase 5 implementa la maquina de estados real del modulo Domicilios sin tocar caja, facturacion, pedidos, inventario, frontend, menus ni seeds de permisos.
+
+### State machine implementada
+
+Servicio:
+- `api/src/modules/deliveries/services/delivery-state-machine.service.ts`
+
+Estados:
+- `DRAFT`
+- `CREATED`
+- `ASSIGNED`
+- `DISPATCHED`
+- `DELIVERED`
+- `NOT_DELIVERED`
+- `CANCELLED`
+
+Transiciones implementadas:
+- `CREATED` -> `ASSIGNED` por `ASSIGN`.
+- `ASSIGNED` -> `DISPATCHED` por `DISPATCH`.
+- `DISPATCHED` -> `DELIVERED` por `MARK_DELIVERED`.
+- `DISPATCHED` -> `NOT_DELIVERED` por `MARK_NOT_DELIVERED`.
+- `CREATED` -> `CANCELLED` por `CANCEL`.
+- `ASSIGNED` -> `CANCELLED` por `CANCEL`.
+
+Estados finales:
+- `DELIVERED`
+- `NOT_DELIVERED`
+- `CANCELLED`
+
+Transiciones bloqueadas:
+- `CREATED` -> `DISPATCHED` sin asignacion.
+- `ASSIGNED` -> `DELIVERED` sin despacho.
+- Cualquier cambio desde `DELIVERED`, `NOT_DELIVERED` o `CANCELLED`.
+- `DISPATCHED` -> `CANCELLED`, hasta que negocio apruebe esa excepcion.
+
+### Endpoints implementados
+
+- `POST /api/deliveries/:id/assign`
+- `POST /api/deliveries/:id/dispatch`
+- `POST /api/deliveries/:id/mark-delivered`
+- `POST /api/deliveries/:id/mark-not-delivered`
+- `POST /api/deliveries/:id/cancel`
+
+Todos los endpoints:
+- Usan `JwtAuthGuard`.
+- Filtran por `tenant_id`.
+- Validan branch context si existe.
+- Ejecutan `SELECT ... FOR UPDATE`.
+- Actualizan `deliveries` e insertan `delivery_status_history` en la misma transaccion.
+- No tocan caja, facturacion, pedidos, ventas, inventario ni reporteria.
+
+### DTOs implementados
+
+- `assign-delivery.dto.ts`
+- `dispatch-delivery.dto.ts`
+- `mark-delivered-delivery.dto.ts`
+- `mark-not-delivered-delivery.dto.ts`
+- `cancel-delivery.dto.ts`
+
+### Permisos
+
+`DELIVERIES_*` sigue pendiente. No se agregan seeds ni menu real en Fase 5. Los endpoints quedan protegidos por `JwtAuthGuard` hasta que exista matriz aprobada.
+
+### Tests
+
+Se agregan tests unitarios de:
+- Maquina de estados.
+- Transiciones validas.
+- Transiciones invalidas.
+- Rollback sin historial cuando falla la transicion.
+- Historial transaccional cuando la transicion es valida.
 
 ## Risks / Trade-offs
 

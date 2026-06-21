@@ -31,7 +31,7 @@ The system SHALL allow only documented delivery state transitions and SHALL reco
 
 #### Scenario: Pending delivery advances or cancels
 - **WHEN** a delivery is in `CREATED`
-- **THEN** it can transition only to `ASSIGNED`, `DISPATCHED` or `CANCELLED`
+- **THEN** it can transition only to `ASSIGNED` or `CANCELLED`
 
 #### Scenario: Preparation delivery advances or cancels
 - **WHEN** a delivery is in `ASSIGNED`
@@ -155,16 +155,20 @@ The system SHALL implement the initial delivery CRUD API endpoints in Fase 4 and
 - **WHEN** delivery state actions are reviewed
 - **THEN** it includes `POST /api/deliveries/:id/assign`, `POST /api/deliveries/:id/dispatch`, `POST /api/deliveries/:id/mark-delivered`, `POST /api/deliveries/:id/mark-not-delivered` and `POST /api/deliveries/:id/cancel`
 
+#### Scenario: Delivery action endpoints are implemented
+- **WHEN** Fase 5 state machine implementation is completed
+- **THEN** the backend exposes `assign`, `dispatch`, `mark-delivered`, `mark-not-delivered` and `cancel` endpoints and each endpoint updates state and writes history in one transaction
+
 #### Scenario: Delivery summary report endpoint is proposed
 - **WHEN** delivery reporting contracts are reviewed
 - **THEN** it includes `GET /api/deliveries/reports/summary`
 
-#### Scenario: Action endpoints remain deferred
-- **WHEN** Fase 4 base implementation is completed
-- **THEN** assign, dispatch, mark-delivered, mark-not-delivered, cancel and summary report endpoints are not implemented yet
+#### Scenario: Summary report remains deferred
+- **WHEN** Fase 5 state machine implementation is completed
+- **THEN** `GET /api/deliveries/reports/summary` is still not implemented
 
-### Requirement: Delivery DTO contract proposal
-The system SHALL document future DTO shapes for create, update, assignment, dispatch, delivered, not-delivered, cancellation, filters, response and summary report contracts.
+### Requirement: Delivery DTO contract
+The system SHALL document delivery DTO shapes and SHALL implement the Fase 5 action DTOs for assignment, dispatch, delivered, not-delivered and cancellation.
 
 #### Scenario: Create DTO is documented
 - **WHEN** `CreateDeliveryDto` is reviewed
@@ -173,6 +177,10 @@ The system SHALL document future DTO shapes for create, update, assignment, disp
 #### Scenario: Action DTOs are documented
 - **WHEN** delivery action DTOs are reviewed
 - **THEN** `AssignDeliveryDto`, `DispatchDeliveryDto`, `MarkDeliveryDeliveredDto`, `MarkDeliveryNotDeliveredDto` and `CancelDeliveryDto` define the minimum fields for their transitions
+
+#### Scenario: Action DTOs are implemented
+- **WHEN** Fase 5 state machine implementation is completed
+- **THEN** the backend has DTOs for assign, dispatch, mark-delivered, mark-not-delivered and cancel with `class-validator` validations for UUIDs, required reasons, optional notes and optional metadata
 
 #### Scenario: Query and response DTOs are documented
 - **WHEN** list and report contracts are reviewed
@@ -222,6 +230,10 @@ The system SHALL document the backend implementation plan and implement only the
 #### Scenario: Runtime scope stays limited
 - **WHEN** Fase 4 base implementation is completed
 - **THEN** runtime changes are limited to the deliveries module, initial DTOs, service, controller, direct SQL migration and AppModule registration
+
+#### Scenario: State machine runtime is implemented
+- **WHEN** Fase 5 state machine implementation is completed
+- **THEN** runtime changes remain limited to the deliveries module and add only state action endpoints, DTOs, transition validation, transactional history and focused backend tests
 
 ### Requirement: Backend acceptance criteria
 The system SHALL document acceptance criteria for future backend implementation before runtime work begins.

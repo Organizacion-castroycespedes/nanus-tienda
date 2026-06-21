@@ -232,7 +232,6 @@ Recomendacion: para v0.0.1 puede bastar `assigned_user_id` mas `delivery_status_
 | `DRAFT` | `CREATED` | actor, fecha/hora |
 | `DRAFT` | `CANCELLED` | `cancelled_by_user_id`, `cancelled_at`, `cancellation_reason` |
 | `CREATED` | `ASSIGNED` | actor, fecha/hora |
-| `CREATED` | `DISPATCHED` | `assigned_user_id` o responsable, `dispatched_by_user_id`, `dispatched_at` |
 | `CREATED` | `CANCELLED` | `cancelled_by_user_id`, `cancelled_at`, `cancellation_reason` |
 | `ASSIGNED` | `DISPATCHED` | `assigned_user_id` o responsable, `dispatched_by_user_id`, `dispatched_at` |
 | `ASSIGNED` | `CANCELLED` | `cancelled_by_user_id`, `cancelled_at`, `cancellation_reason` |
@@ -631,6 +630,79 @@ Seguridad:
 - `branch_id` usa contexto autenticado si existe; si no, body/query.
 - No se sembraron ni aplicaron permisos `DELIVERIES_*`.
 
+## Fase 5 implementada
+
+### State machine real
+
+Servicio creado:
+
+```text
+api/src/modules/deliveries/services/delivery-state-machine.service.ts
+```
+
+Transiciones permitidas:
+
+- `CREATED` -> `ASSIGNED` por `ASSIGN`.
+- `ASSIGNED` -> `DISPATCHED` por `DISPATCH`.
+- `DISPATCHED` -> `DELIVERED` por `MARK_DELIVERED`.
+- `DISPATCHED` -> `NOT_DELIVERED` por `MARK_NOT_DELIVERED`.
+- `CREATED` -> `CANCELLED` por `CANCEL`.
+- `ASSIGNED` -> `CANCELLED` por `CANCEL`.
+
+Estados finales:
+
+- `DELIVERED`
+- `NOT_DELIVERED`
+- `CANCELLED`
+
+Transiciones bloqueadas:
+
+- `CREATED` -> `DISPATCHED`.
+- `ASSIGNED` -> `DELIVERED`.
+- `DISPATCHED` -> `CANCELLED`.
+- Cualquier cambio desde estado final.
+
+### Endpoints reales de transicion
+
+```text
+POST /api/deliveries/:id/assign
+POST /api/deliveries/:id/dispatch
+POST /api/deliveries/:id/mark-delivered
+POST /api/deliveries/:id/mark-not-delivered
+POST /api/deliveries/:id/cancel
+```
+
+Cada endpoint:
+
+- Usa `JwtAuthGuard`.
+- Filtra por `tenant_id`.
+- Respeta `branch_id` del contexto si existe.
+- Bloquea fila con `SELECT ... FOR UPDATE`.
+- Actualiza estado en `deliveries`.
+- Inserta registro en `delivery_status_history`.
+- Ejecuta update e historial en la misma transaccion.
+- No toca caja, facturacion, pedidos, ventas, inventario ni reporteria.
+
+### DTOs reales de transicion
+
+- `assign-delivery.dto.ts`: `assigned_courier_id`, `notes`, `metadata`.
+- `dispatch-delivery.dto.ts`: `notes`, `metadata`.
+- `mark-delivered-delivery.dto.ts`: `delivered_at`, `received_by`, `notes`, `metadata`.
+- `mark-not-delivered-delivery.dto.ts`: `reason`, `notes`, `metadata`.
+- `cancel-delivery.dto.ts`: `reason`, `notes`, `metadata`.
+
+### Historial real
+
+Cada transicion registra:
+
+- `delivery_id`.
+- `previous_status`.
+- `new_status`.
+- `changed_by_user_id`.
+- `reason` cuando aplica.
+- `metadata` con accion y datos auxiliares.
+- `created_at` por default de base de datos.
+
 ## UX tecnica futura
 
 Pantallas:
@@ -693,7 +765,7 @@ No crear estos archivos en esta fase.
 - Codigo backend tocado: SI, solo modulo de domicilios y registro en `AppModule`.
 - Codigo frontend tocado: NO.
 - SQL/migraciones tocadas: SI, `V063__deliveries_base.sql`.
-- Endpoints reales creados: SI, solo CRUD inicial.
+- Endpoints reales creados: SI, CRUD inicial y acciones de estado de Fase 5.
 - Permisos reales modificados: NO.
 - Menus reales modificados: NO.
 - Logica de negocio existente modificada: NO.
