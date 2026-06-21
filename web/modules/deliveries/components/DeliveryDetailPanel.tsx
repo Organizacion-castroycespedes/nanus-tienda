@@ -88,7 +88,7 @@ export const DeliveryDetailPanel = ({
           <DetailItem label="Sucursal" value={delivery.branch_id} />
           <DetailItem label="Contacto" value={delivery.customer_name} />
           <DetailItem label="Telefono" value={delivery.customer_phone} />
-          <DetailItem label="Cliente ID" value={delivery.customer_id} />
+          <DetailItem label="Cliente" value={delivery.customer_id} />
           <DetailItem label="Direccion" value={delivery.delivery_address} />
           <DetailItem label="Referencia" value={delivery.delivery_reference} />
           <DetailItem label="Pedido" value={delivery.order_id} />

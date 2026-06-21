@@ -7,6 +7,7 @@ import {
   Search,
   Truck,
 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
@@ -40,7 +41,6 @@ import {
 import {
   assignDelivery,
   cancelDelivery,
-  createDelivery,
   dispatchDelivery,
   getDeliveryById,
   listDeliveries,
@@ -49,7 +49,6 @@ import {
 } from "../services/deliveries.service";
 import {
   DELIVERY_STATUSES,
-  type CreateDeliveryPayload,
   type DeliveryActionKey,
   type DeliveryActionPermissionMap,
   type DeliveryListResponse,
@@ -57,7 +56,6 @@ import {
   type DeliveryStatus,
   type GetDeliveriesParams,
 } from "../types";
-import { CreateDeliveryForm } from "./CreateDeliveryForm";
 import { DeliveryActions } from "./DeliveryActions";
 import { DeliveryDetailPanel } from "./DeliveryDetailPanel";
 import { DeliveryStatusBadge } from "./DeliveryStatusBadge";
@@ -129,6 +127,9 @@ const buildListParams = (
   page,
   limit,
 });
+
+const getParamValue = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
 
 const DeliveryActionModal = ({
   request,
@@ -311,6 +312,8 @@ export const DeliveriesScreen = ({
 }: {
   initialSearchParams?: DeliverySearchParamsInput;
 }) => {
+  const router = useRouter();
+  const params = useParams<{ tenant?: string | string[] }>();
   const initialFilters = useMemo(
     () => buildDeliveryFiltersFromSearchParams(initialSearchParams),
     [initialSearchParams]
@@ -329,6 +332,13 @@ export const DeliveriesScreen = ({
     (state) => state.auth.permissionsLoaded
   );
   const authPermissions = useAppSelector((state) => state.auth.permissions);
+  const authTenantId = useAppSelector(
+    (state) => state.auth.user?.tenantId ?? state.auth.tenantId
+  );
+  const tenantSlug =
+    getParamValue(params?.tenant) ??
+    authTenantId ??
+    "default";
   const deliveryPermission = useMemo(
     () => findDeliveryPermission(authPermissions),
     [authPermissions]
@@ -353,8 +363,6 @@ export const DeliveriesScreen = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
-  const [isCreating, setIsCreating] = useState(false);
-  const [savingCreate, setSavingCreate] = useState(false);
   const [detailDelivery, setDetailDelivery] = useState<DeliveryRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
@@ -500,22 +508,6 @@ export const DeliveriesScreen = ({
     }
   };
 
-  const handleCreate = async (payload: CreateDeliveryPayload) => {
-    setSavingCreate(true);
-    setErrorMessage(null);
-    try {
-      await createDelivery(payload);
-      setIsCreating(false);
-      await refreshAfterMutation("Domicilio creado correctamente.");
-    } catch (error) {
-      setErrorMessage(
-        getApiErrorMessage(error, "No se pudo crear el domicilio.")
-      );
-    } finally {
-      setSavingCreate(false);
-    }
-  };
-
   const handleSubmitAction = async () => {
     if (!actionRequest) {
       return;
@@ -641,41 +633,30 @@ export const DeliveriesScreen = ({
               y facturacion electronica quedan fuera de esta pantalla.
             </p>
           </div>
-          {!isCreating ? (
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button
+              variant="ghost"
+              onClick={() => void refreshCurrentPage()}
+              isLoading={loading}
+              className="w-full sm:w-auto"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Actualizar
+            </Button>
+            {canCreate ? (
               <Button
-                variant="ghost"
-                onClick={() => void refreshCurrentPage()}
-                isLoading={loading}
+                onClick={() => router.push(`/${tenantSlug}/deliveries/new`)}
                 className="w-full sm:w-auto"
               >
-                <RefreshCw className="h-4 w-4" />
-                Actualizar
+                <Plus className="h-4 w-4" />
+                Crear domicilio
               </Button>
-              {canCreate ? (
-                <Button
-                  onClick={() => setIsCreating(true)}
-                  className="w-full sm:w-auto"
-                >
-                  <Plus className="h-4 w-4" />
-                  Crear domicilio
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </section>
 
-      {isCreating ? (
-        <CreateDeliveryForm
-          isSaving={savingCreate}
-          onCancel={() => setIsCreating(false)}
-          onSubmit={(payload) => void handleCreate(payload)}
-        />
-      ) : null}
-
-      {!isCreating ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_180px_1fr_1fr_170px_170px_120px]">
             <Input
               label="Buscar"
@@ -707,7 +688,7 @@ export const DeliveriesScreen = ({
               ))}
             </Select>
             <Input
-              label="order_id"
+              label="Pedido"
               value={draftFilters.orderId}
               onChange={(event) =>
                 setDraftFilters((prev) => ({
@@ -717,7 +698,7 @@ export const DeliveriesScreen = ({
               }
             />
             <Input
-              label="sale_id"
+              label="Venta/factura"
               value={draftFilters.saleId}
               onChange={(event) =>
                 setDraftFilters((prev) => ({
@@ -770,8 +751,7 @@ export const DeliveriesScreen = ({
               Limpiar filtros
             </Button>
           </div>
-        </section>
-      ) : null}
+      </section>
 
       {errorMessage ? (
         <section className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
@@ -781,8 +761,7 @@ export const DeliveriesScreen = ({
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      {!isCreating ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
@@ -954,8 +933,7 @@ export const DeliveriesScreen = ({
               </Button>
             </div>
           </div>
-        </section>
-      ) : null}
+      </section>
     </div>
   );
 };
