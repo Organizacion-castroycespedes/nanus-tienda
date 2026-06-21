@@ -510,6 +510,63 @@ Motivo:
 - No se cambia estado de pedido al crear o consultar domicilio.
 - No se integran caja, facturacion, POS ni frontend.
 
+## Fase 6C - Integracion backend controlada con facturacion
+
+Fase 6C agrega integracion backend controlada con facturacion sobre el documento operativo real que hoy usa el backend: `sales`. No existe una tabla `invoice` separada en este codebase, asi que el enlace fiscal/operativo se resuelve sobre `sales.id`.
+
+### Decision tecnica
+
+Se implementan endpoints wrapper en el controller de ventas:
+
+| Endpoint | Permiso | Responsable de reglas |
+| --- | --- | --- |
+| `GET /api/sales/:id/delivery` | `DELIVERIES_VIEW` | `DeliveriesService.getBySale` |
+| `POST /api/sales/:id/delivery` | `DELIVERIES_CREATE` | `DeliveriesService.createFromSale` |
+
+Motivo:
+- `sales` es el documento billete/operativo real que produce el flujo de facturacion actual.
+- No existe controller separado de `invoice`.
+- `DeliveriesService` sigue siendo dueño de la logica de domicilio.
+- `SaleController` solo delega y no aprende state machine.
+
+### Reglas implementadas
+
+- El domicilio creado desde factura/venta inicia en `CREATED`.
+- El sistema carga la venta por `id` y `tenant_id`.
+- Se guarda snapshot de cliente/contacto/direccion desde `customers` cuando existe.
+- Si no hay direccion suficiente, `delivery_address` es obligatorio en el DTO.
+- Se valida branch desde la venta y contexto autenticado.
+- Se rechaza otro branch cuando el contexto autenticado ya trae una sucursal distinta.
+- Se rechaza cualquier segundo domicilio para la misma venta/factura, incluso si el anterior esta en estado final.
+- Si la venta ya esta vinculada a un pedido con domicilio existente, se rechaza crear otro.
+- No se toca `cash_session_id`.
+- No se crean movimientos de caja.
+- No se modifica `sales` ni `orders`.
+- No se modifican impuestos, totales ni facturacion electronica.
+- `GET /api/deliveries` acepta filtro `sale_id` como soporte operativo adicional.
+
+### Fuente financiera unica
+
+En Fase 6C solo se permiten estos valores logicos para la fuente de envio:
+
+- `INVOICE_INCLUDED`
+- `NO_FEE`
+
+No se usan movimientos de caja ni recaudo en esta fase. Si el valor existe, queda como dato operativo/fiscal de la venta; si no existe, se marca como `NO_FEE`.
+
+### DTO creado
+
+```text
+api/src/modules/deliveries/dto/create-sale-delivery.dto.ts
+```
+
+### Permisos
+
+| Endpoint | Permiso |
+| --- | --- |
+| `GET /api/sales/:id/delivery` | `DELIVERIES_VIEW` |
+| `POST /api/sales/:id/delivery` | `DELIVERIES_CREATE` |
+
 ## Risks / Trade-offs
 
 - [Riesgo] Doble fuente de verdad entre factura, domicilio y caja. -> [Mitigacion] definir una fuente financiera unica para valor de envio antes de implementar.

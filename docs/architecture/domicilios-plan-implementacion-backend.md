@@ -912,6 +912,67 @@ Cubren:
 - Confirmar que crear pedido normal no llama `DeliveriesService`.
 - Confirmar que no se consultan tablas de caja ni factura en la integracion.
 
+## Fase 6C implementada - integracion controlada con facturacion
+
+### Alcance implementado
+
+Se implementa integracion backend controlada con ventas/facturacion sobre el documento operativo actual `sales`:
+
+```text
+GET  /api/sales/:id/delivery
+POST /api/sales/:id/delivery
+```
+
+No se modifica la facturacion existente, la venta POS, impuestos, pagos, caja, `cash_session_id` ni frontend.
+
+### Patron aplicado
+
+- `SaleController` expone endpoints de acceso desde venta.
+- `DeliveriesService` conserva la regla de negocio con `getBySale` y `createFromSale`.
+- `InventoryModule` importa `DeliveriesModule` para inyectar `DeliveriesService`.
+- `CreateSaleDeliveryDto` valida payload especifico de creacion desde venta.
+
+### Reglas implementadas
+
+- Crear desde factura/venta requiere `DELIVERIES_CREATE`.
+- Consultar domicilio de factura/venta requiere `DELIVERIES_VIEW`.
+- La creacion desde venta inicia en estado `CREATED`.
+- Se valida `tenant_id` desde actor autenticado.
+- Se valida branch desde la venta y contexto autenticado.
+- Se guarda snapshot de cliente/contacto/direccion desde `customers` cuando existe.
+- Si no existe direccion suficiente, se exige `delivery_address`.
+- Se rechaza cualquier delivery existente para la misma venta/factura.
+- Si la venta ya esta vinculada a un pedido con domicilio, se rechaza crear otro.
+- `POST /api/deliveries` tambien bloquea duplicado cuando trae `sale_id`.
+- `GET /api/deliveries` soporta filtro `sale_id`.
+- No se toca `cash_session_id`.
+- No se crean movimientos de caja.
+
+### Fuente financiera unica
+
+- La fuente de envio queda documentada como `INVOICE_INCLUDED` o `NO_FEE`.
+- En esta fase no se registra recaudo.
+- No se modifican totales, impuestos ni documentos electronicos.
+
+### Tests agregados
+
+```text
+api/src/modules/deliveries/deliveries.service.spec.ts
+api/src/modules/inventory/controllers/sale.controller.spec.ts
+```
+
+Cubren:
+
+- Crear domicilio desde venta valida.
+- Rechazar venta inexistente.
+- Rechazar venta de otro tenant.
+- Rechazar venta de otra branch.
+- Rechazar segundo domicilio para la misma venta.
+- Consultar domicilio por venta.
+- Verificar permisos `DELIVERIES_VIEW` y `DELIVERIES_CREATE` en endpoints de venta.
+- Confirmar que crear venta normal no llama `DeliveriesService`.
+- Confirmar que no se consultan tablas de caja ni factura en la integracion.
+
 ## Secuencia recomendada de implementacion
 
 1. Completado en Fase 4: crear migracion `deliveries` + `delivery_status_history` + check constraints + indices.
@@ -925,13 +986,14 @@ Cubren:
 9. Completado en Fase 6A: agregar guards/permisos backend `DELIVERIES_*`.
 10. Completado en Fase 6A: crear SQL local/QA de permisos.
 11. Completado en Fase 6B: integrar creacion/consulta backend desde pedidos.
-12. Pendiente Fase 7: integrar caja/facturacion.
-13. Pendiente Fase 8: disenar frontend runtime.
+12. Completado en Fase 6C: integrar creacion/consulta backend desde facturacion.
+13. Pendiente Fase 7: integrar caja.
+14. Pendiente Fase 8: disenar frontend runtime.
 
 ## Riesgos tecnicos
 
 - Doble conteo de delivery fee entre factura, caja y domicilio.
-- Relacion `invoice_id` puede no existir aun como tabla estable.
+- Relacion `invoice_id` como tabla estable no existe aun; el runtime actual usa `sales`.
 - Un pedido con entregas parciales puede requerir mas de un domicilio.
 - Contraentrega sin cash session autorizada puede descuadrar caja.
 - Repartidor externo no encaja si solo se usa `users.id`.
@@ -977,19 +1039,20 @@ Cubren:
 - [ ] Confirmar generacion de `delivery_number`.
 - [ ] Confirmar regla para pedido con domicilio final y reintento.
 - [ ] Confirmar regla de caja para contraentrega.
+- [ ] Confirmar si una futura fase fiscal separada necesitara `invoice_id` distinto de `sales.id`.
 
 ## Confirmacion de alcance
 
-- Codigo backend tocado: SI, modulo `api/src/modules/deliveries` y wrappers backend en `OrderController`/`InventoryModule`.
+- Codigo backend tocado: SI, modulo `api/src/modules/deliveries` y wrappers backend en `OrderController`, `SaleController` e `InventoryModule`.
 - Codigo frontend tocado: NO.
 - SQL/migraciones reales creadas: SI, `scripts/database/migrations/V063__deliveries_base.sql`; SQL local/QA de permisos en `scripts/database/security`.
 - Tablas reales creadas: SI, cuando se aplique la migracion: `deliveries` y `delivery_status_history`.
-- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5, placeholder protegido de summary y wrappers `GET/POST /api/orders/:id/delivery`.
+- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5, placeholder protegido de summary y wrappers `GET/POST /api/orders/:id/delivery` y `GET/POST /api/sales/:id/delivery`.
 - DTOs reales creados: SI, DTOs iniciales y DTOs de acciones de estado.
 - Servicios reales creados: SI, `DeliveriesService`, `DeliveryNumberService` y `DeliveryStateMachineService`.
 - Guards reales modificados: SI, `DeliveriesController` usa `PermissionsGuard`.
 - Permisos backend modificados: SI, `DELIVERIES_*`.
 - Menus frontend reales modificados: NO.
 - SQL aplicado en produccion: NO.
-- Logica de negocio existente modificada: NO; el flujo normal de pedidos no cambia.
+- Logica de negocio existente modificada: NO; el flujo normal de pedidos y ventas no cambia.
 - Commit realizado: NO.

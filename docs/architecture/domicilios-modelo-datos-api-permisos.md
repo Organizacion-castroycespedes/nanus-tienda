@@ -813,6 +813,63 @@ Campos:
 | `GET /api/orders/:id/delivery` | `DELIVERIES_VIEW` |
 | `POST /api/orders/:id/delivery` | `DELIVERIES_CREATE` |
 
+## Fase 6C implementada - integracion backend con facturacion
+
+### Decision tecnica
+
+No existe una tabla `invoice` separada en este backend. La referencia fiscal/operativa actual se resuelve sobre `sales`.
+
+Se eligieron endpoints wrapper en `SaleController`:
+
+```text
+GET  /api/sales/:id/delivery
+POST /api/sales/:id/delivery
+```
+
+La regla queda en `DeliveriesService`:
+
+- `getBySale(saleId, actor)`.
+- `createFromSale(saleId, payload, actor)`.
+
+`SaleController` solo delega. No aprende state machine ni toca caja.
+
+### Reglas runtime
+
+- El domicilio creado desde factura/venta inicia en `CREATED`.
+- El sistema carga la venta por `id` y `tenant_id`.
+- Se guarda snapshot de cliente/contacto/direccion desde `customers` cuando existe.
+- Si no hay direccion suficiente, el DTO debe incluir `delivery_address`.
+- Se valida branch desde la venta y contexto autenticado.
+- Se rechaza otro branch cuando el contexto autenticado ya trae una sucursal distinta.
+- Se rechaza cualquier segundo domicilio para la misma venta/factura, incluso si el anterior esta en estado final.
+- Si la venta ya esta vinculada a un pedido con domicilio existente, se rechaza crear otro.
+- No se toca `cash_session_id`.
+- No se crean movimientos de caja.
+- No se modifica `sales`, `orders`, impuestos ni facturacion electronica.
+- `GET /api/deliveries` agrega filtro `sale_id`.
+
+### Fuente financiera unica
+
+En Fase 6C la fuente de envio queda documentada como:
+
+- `INVOICE_INCLUDED`
+- `NO_FEE`
+
+La fase no crea recaudo ni movimientos financieros. Si el valor existe, queda atado a la venta; si no, se marca como `NO_FEE`.
+
+### DTO creado
+
+```text
+api/src/modules/deliveries/dto/create-sale-delivery.dto.ts
+```
+
+### Permisos
+
+| Endpoint | Permiso |
+| --- | --- |
+| `GET /api/sales/:id/delivery` | `DELIVERIES_VIEW` |
+| `POST /api/sales/:id/delivery` | `DELIVERIES_CREATE` |
+
 ## UX tecnica futura
 
 Pantallas:
@@ -842,14 +899,14 @@ No crear estos archivos en esta fase.
 - Recaudo contraentrega sin cash session autorizada.
 - `NOT_DELIVERED` necesita reintento real en futuras versiones.
 - Unico domicilio activo por pedido puede quedarse corto para entregas parciales.
-- `invoice_id` puede no existir como tabla separada de `sales`; se debe confirmar modelo fiscal real.
+- `invoice_id` como tabla separada no existe en el runtime actual; la referencia fiscal operativa vive en `sales`.
 - `assigned_user_id` puede no representar repartidores externos.
 - Offline/Electron requiere idempotencia, cola local y reconciliacion.
 - Permisos demasiado amplios pueden permitir cancelar/entregar sin control.
 
 ## Decisiones pendientes
 
-- Confirmar si `invoice_id` sera `sales.id`, documento fiscal externo o tabla futura.
+- Confirmar si en una futura fase fiscal separada se necesitara `invoice_id` distinto de `sales.id`.
 - Confirmar si `delivery_number` sera por tenant o por tenant/sucursal.
 - Confirmar si repartidor siempre es `users.id` o si se permiten terceros.
 - Confirmar si `customer_delivery_addresses` entra en v0.0.1 o despues.
@@ -872,12 +929,12 @@ No crear estos archivos en esta fase.
 
 ## Confirmacion de alcance
 
-- Codigo backend tocado: SI, modulo de domicilios y wrappers backend en `OrderController`/`InventoryModule`.
+- Codigo backend tocado: SI, modulo de domicilios y wrappers backend en `OrderController`, `SaleController` e `InventoryModule`.
 - Codigo frontend tocado: NO.
 - SQL/migraciones tocadas: SI, `V063__deliveries_base.sql`; SQL local/QA de permisos en `scripts/database/security`.
-- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5, placeholder protegido de summary y wrappers `GET/POST /api/orders/:id/delivery`.
+- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5, placeholder protegido de summary y wrappers `GET/POST /api/orders/:id/delivery` y `GET/POST /api/sales/:id/delivery`.
 - Permisos backend modificados: SI, `DELIVERIES_*` via `PermissionsGuard`.
 - Menus frontend reales modificados: NO.
 - SQL aplicado en produccion: NO.
-- Logica de negocio existente modificada: NO; el flujo normal de pedidos no cambia.
+- Logica de negocio existente modificada: NO; el flujo normal de pedidos y ventas no cambia.
 - Commit realizado: NO.

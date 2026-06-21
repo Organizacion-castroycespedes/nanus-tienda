@@ -63,6 +63,17 @@
 - [x] 6B.7 Agregar tests backend para creacion, consulta, duplicados, tenant y permisos.
 - [x] 6B.8 Documentar evidencia QA backend en `docs/architecture/domicilios-integracion-pedidos-qa.md`.
 
+## 6C. Fase 6C - Integracion backend controlada con facturacion
+
+- [x] 6C.1 Documentar decision tecnica: usar `sales` como documento fiscal/operativo actual y wrappers `GET /api/sales/:id/delivery` y `POST /api/sales/:id/delivery`.
+- [x] 6C.2 Mantener `DeliveriesService` como duenio de reglas de domicilio y no mover logica fiscal a ventas.
+- [x] 6C.3 Implementar creacion de domicilio desde venta/factura con snapshot de cliente/contacto/direccion cuando existe.
+- [x] 6C.4 Implementar consulta de domicilio asociado a venta/factura.
+- [x] 6C.5 Validar `tenant_id`, branch de la venta/contexto y bloqueo de segundo domicilio para la misma venta/factura.
+- [x] 6C.6 Proteger endpoints de venta/factura con `DELIVERIES_VIEW` y `DELIVERIES_CREATE`.
+- [x] 6C.7 Agregar tests backend para creacion, consulta, duplicados, tenant, branch y permisos.
+- [x] 6C.8 Documentar evidencia QA backend en `docs/architecture/domicilios-integracion-facturacion-qa.md`.
+
 ## 6. Fase 6 - Frontend modulo Domicilios
 
 - [ ] 6.1 Crear ruta futura `/{tenant}/deliveries` y dominio frontend de domicilios.
@@ -74,7 +85,7 @@
 ## 7. Fase 7 - Integraciones con pedidos, facturacion y caja
 
 - [x] 7.1 Integrar creacion/consulta backend de domicilio desde pedidos sin romper estados existentes.
-- [ ] 7.2 Integrar vinculacion con ventas/facturas y definir fuente financiera del valor de envio.
+- [x] 7.2 Integrar vinculacion backend con ventas/facturas y definir fuente financiera del valor de envio.
 - [ ] 7.3 Integrar reglas de pago contra entrega, recaudo por repartidor y asociacion a turno.
 - [ ] 7.4 Implementar resolucion de cancelaciones, anulaciones y `NOT_DELIVERED` con trazabilidad.
 - [ ] 7.5 Agregar tests de integracion para pedidos, facturacion y caja.

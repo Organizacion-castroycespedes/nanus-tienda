@@ -28,6 +28,10 @@ export class QueryDeliveriesDto {
   order_id?: string;
 
   @IsOptional()
+  @IsUUID()
+  sale_id?: string;
+
+  @IsOptional()
   @IsDateString()
   date_from?: string;
 

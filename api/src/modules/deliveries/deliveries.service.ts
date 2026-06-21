@@ -13,6 +13,7 @@ import { AssignDeliveryDto } from "./dto/assign-delivery.dto";
 import { CancelDeliveryDto } from "./dto/cancel-delivery.dto";
 import { CreateDeliveryDto } from "./dto/create-delivery.dto";
 import { CreateOrderDeliveryDto } from "./dto/create-order-delivery.dto";
+import { CreateSaleDeliveryDto } from "./dto/create-sale-delivery.dto";
 import { DispatchDeliveryDto } from "./dto/dispatch-delivery.dto";
 import { MarkDeliveredDeliveryDto } from "./dto/mark-delivered-delivery.dto";
 import { MarkNotDeliveredDeliveryDto } from "./dto/mark-not-delivered-delivery.dto";
@@ -66,6 +67,18 @@ type OrderDeliverySourceRecord = {
   customer_phone: string | null;
   customer_address: string | null;
   branch_id: string | null;
+};
+
+type SaleDeliverySourceRecord = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  customer_id: string;
+  order_id: string | null;
+  total: string | number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_address: string | null;
 };
 
 type TransitionOptions = {
@@ -279,6 +292,38 @@ export class DeliveriesService {
     return order;
   }
 
+  private async loadSaleForDelivery(saleId: string, tenantId: string) {
+    const result = await this.db.query<SaleDeliverySourceRecord>(
+      `
+        SELECT
+          s.id,
+          s.tenant_id,
+          s.branch_id,
+          s.customer_id,
+          s.order_id,
+          s.total,
+          c.name AS customer_name,
+          c.phone AS customer_phone,
+          c.address AS customer_address
+        FROM public.sales s
+        LEFT JOIN public.customers c
+          ON c.id = s.customer_id
+          AND c.tenant_id = s.tenant_id
+        WHERE s.id = $1
+          AND s.tenant_id = $2
+        LIMIT 1
+      `,
+      [saleId, tenantId]
+    );
+
+    const sale = result.rows[0];
+    if (!sale) {
+      throw new NotFoundException("Factura no encontrada");
+    }
+
+    return sale;
+  }
+
   private resolveOrderDeliveryBranch(
     order: OrderDeliverySourceRecord,
     actor: DeliveryActor,
@@ -308,6 +353,24 @@ export class DeliveriesService {
     return branchId;
   }
 
+  private resolveSaleDeliveryBranch(
+    sale: SaleDeliverySourceRecord,
+    actor: DeliveryActor
+  ) {
+    const saleBranchId = this.normalizeNullableText(sale.branch_id);
+    const actorBranchId = this.normalizeNullableText(actor.branchId);
+
+    if (saleBranchId && actorBranchId && saleBranchId !== actorBranchId) {
+      throw new ForbiddenException("No autorizado para la sucursal de la factura");
+    }
+
+    if (!saleBranchId) {
+      throw new BadRequestException("branch_id es requerido");
+    }
+
+    return saleBranchId;
+  }
+
   private async lockOrderForDelivery(
     client: PoolClient,
     tenantId: string,
@@ -329,6 +392,27 @@ export class DeliveriesService {
     }
   }
 
+  private async lockSaleForDelivery(
+    client: PoolClient,
+    tenantId: string,
+    saleId: string
+  ) {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id
+        FROM public.sales
+        WHERE id = $1
+          AND tenant_id = $2
+        FOR UPDATE
+      `,
+      [saleId, tenantId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundException("Factura no encontrada");
+    }
+  }
+
   private async assertNoOrderDelivery(
     client: PoolClient,
     tenantId: string,
@@ -347,6 +431,37 @@ export class DeliveriesService {
 
     if (result.rows[0]) {
       throw new BadRequestException("El pedido ya tiene un domicilio asociado");
+    }
+  }
+
+  private async assertNoSaleDelivery(
+    client: PoolClient,
+    tenantId: string,
+    saleId: string,
+    orderId?: string | null
+  ) {
+    const params: unknown[] = [tenantId, saleId];
+    const conditions = ["tenant_id = $1", "sale_id = $2"];
+
+    if (orderId) {
+      params.push(orderId);
+      conditions.push(`order_id = $${params.length}`);
+    }
+
+    const result = await client.query<{ id: string; status: string }>(
+      `
+        SELECT id, status
+        FROM public.deliveries
+        WHERE ${conditions.join(" AND ")}
+        LIMIT 1
+      `,
+      params
+    );
+
+    if (result.rows[0]) {
+      throw new BadRequestException(
+        "La factura ya tiene un domicilio asociado"
+      );
     }
   }
 
@@ -550,6 +665,11 @@ export class DeliveriesService {
       conditions.push(`order_id = $${params.length}`);
     }
 
+    if (filters.sale_id) {
+      params.push(filters.sale_id);
+      conditions.push(`sale_id = $${params.length}`);
+    }
+
     if (filters.date_from) {
       params.push(filters.date_from);
       conditions.push(`created_at >= $${params.length}::timestamptz`);
@@ -630,6 +750,16 @@ export class DeliveriesService {
       }
     }
 
+    if (payload.sale_id) {
+      const sale = await this.loadSaleForDelivery(payload.sale_id, tenantId);
+      if (sale.branch_id !== branchId) {
+        throw new BadRequestException("branch_id no coincide con la factura");
+      }
+      if (payload.order_id && sale.order_id && payload.order_id !== sale.order_id) {
+        throw new BadRequestException("order_id no coincide con la factura");
+      }
+    }
+
     const deliveryAddress = this.normalizeRequiredText(
       payload.delivery_address,
       "delivery_address es requerido"
@@ -649,6 +779,16 @@ export class DeliveriesService {
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
+      if (payload.sale_id) {
+        const sale = await this.loadSaleForDelivery(payload.sale_id, tenantId);
+        await this.lockSaleForDelivery(client, tenantId, sale.id);
+        await this.assertNoSaleDelivery(
+          client,
+          tenantId,
+          sale.id,
+          sale.order_id
+        );
+      }
       if (payload.order_id) {
         await this.lockOrderForDelivery(client, tenantId, payload.order_id);
         await this.assertNoOrderDelivery(client, tenantId, payload.order_id);
@@ -805,6 +945,72 @@ export class DeliveriesService {
     );
   }
 
+  async createFromSale(
+    saleId: string,
+    payload: CreateSaleDeliveryDto,
+    actor: DeliveryActor
+  ) {
+    const tenantId = this.resolveTenantId(actor);
+    const sale = await this.loadSaleForDelivery(saleId, tenantId);
+    const branchId = this.resolveSaleDeliveryBranch(sale, actor);
+    const deliveryAddress =
+      this.normalizeNullableText(payload.delivery_address) ??
+      this.normalizeNullableText(sale.customer_address);
+
+    if (!deliveryAddress) {
+      throw new BadRequestException("delivery_address es requerido");
+    }
+
+    const feeAmount = this.normalizeAmount(payload.delivery_fee);
+    const deliveryFeeSource =
+      payload.delivery_fee_source ?? (feeAmount > 0 ? null : "NO_FEE");
+    if (feeAmount > 0 && deliveryFeeSource !== "INVOICE_INCLUDED") {
+      throw new BadRequestException(
+        "delivery_fee_source debe ser INVOICE_INCLUDED cuando delivery_fee > 0"
+      );
+    }
+    if (feeAmount === 0 && deliveryFeeSource && deliveryFeeSource !== "NO_FEE") {
+      throw new BadRequestException("delivery_fee_source no es valido");
+    }
+
+    const metadata = this.normalizeMetadata(payload.metadata);
+    return this.create(
+      {
+        branch_id: branchId,
+        customer_id: sale.customer_id ?? undefined,
+        order_id: sale.order_id ?? undefined,
+        sale_id: sale.id,
+        customer_name:
+          this.normalizeNullableText(payload.customer_name) ??
+          this.normalizeNullableText(sale.customer_name) ??
+          undefined,
+        customer_phone:
+          this.normalizeNullableText(payload.customer_phone) ??
+          this.normalizeNullableText(sale.customer_phone) ??
+          undefined,
+        delivery_address: deliveryAddress,
+        delivery_reference: payload.delivery_reference,
+        delivery_fee: feeAmount,
+        subtotal:
+          payload.subtotal ??
+          (sale.total !== null ? Number(sale.total) : undefined),
+        total:
+          payload.total ??
+          (sale.total !== null ? Number(sale.total) : undefined),
+        payment_method_id: payload.payment_method_id,
+        notes: payload.notes,
+        metadata: {
+          ...metadata,
+          source: "sale",
+          source_sale_id: sale.id,
+          delivery_fee_source: deliveryFeeSource ?? "NO_FEE",
+          ...(sale.order_id ? { source_order_id: sale.order_id } : {}),
+        },
+      },
+      actor
+    );
+  }
+
   async getById(id: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
     const result = await this.db.query<DeliveryRecord>(
@@ -846,6 +1052,37 @@ export class DeliveriesService {
         LIMIT 1
       `,
       [tenantId, orderId]
+    );
+
+    const delivery = result.rows[0];
+    if (!delivery) {
+      return null;
+    }
+
+    this.assertDeliveryBranchScope(delivery, actor);
+    return this.mapRecord(delivery);
+  }
+
+  async getBySale(saleId: string, actor: DeliveryActor) {
+    const tenantId = this.resolveTenantId(actor);
+    const sale = await this.loadSaleForDelivery(saleId, tenantId);
+    const saleBranchId = this.normalizeNullableText(sale.branch_id);
+    const actorBranchId = this.normalizeNullableText(actor.branchId);
+
+    if (saleBranchId && actorBranchId && saleBranchId !== actorBranchId) {
+      throw new ForbiddenException("No autorizado para la sucursal de la factura");
+    }
+
+    const result = await this.db.query<DeliveryRecord>(
+      `
+        SELECT *
+        FROM public.deliveries
+        WHERE tenant_id = $1
+          AND (sale_id = $2 OR order_id = $3)
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [tenantId, saleId, sale.order_id]
     );
 
     const delivery = result.rows[0];

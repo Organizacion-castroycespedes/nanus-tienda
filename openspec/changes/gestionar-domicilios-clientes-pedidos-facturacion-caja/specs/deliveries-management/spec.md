@@ -139,6 +139,10 @@ The system SHALL implement the initial delivery CRUD API endpoints in Fase 4 and
 - **WHEN** an authenticated actor calls `GET /api/deliveries`
 - **THEN** the backend returns only records for the authenticated tenant and supports filters for `status`, `branch_id`, `customer_id`, `date_from`, `date_to`, `page` and `limit`
 
+#### Scenario: Delivery list can filter by source sale
+- **WHEN** an authenticated actor calls `GET /api/deliveries?sale_id=...`
+- **THEN** the backend filters deliveries by the linked sales document without exposing other tenants
+
 #### Scenario: Delivery create endpoint is implemented
 - **WHEN** an authenticated actor calls `POST /api/deliveries` with delivery address, branch context and customer reference or contact data
 - **THEN** the backend creates a `CREATED` delivery and writes the initial `delivery_status_history` row in the same transaction
@@ -146,6 +150,10 @@ The system SHALL implement the initial delivery CRUD API endpoints in Fase 4 and
 #### Scenario: Delivery detail endpoint is implemented
 - **WHEN** an authenticated actor calls `GET /api/deliveries/:id`
 - **THEN** the backend returns the delivery only when the id belongs to the actor tenant
+
+#### Scenario: Delivery detail can be resolved from a sale source
+- **WHEN** the future backend needs to show delivery from a billed sales document
+- **THEN** the delivery can be resolved through the linked `sale_id` without changing the delivery lifecycle
 
 #### Scenario: Delivery update endpoint is implemented with limited editable fields
 - **WHEN** an authenticated actor calls `PATCH /api/deliveries/:id`

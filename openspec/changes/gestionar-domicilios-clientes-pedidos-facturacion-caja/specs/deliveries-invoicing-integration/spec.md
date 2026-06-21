@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Deliveries can link to sales or invoices
-The system SHALL define that a delivery can be associated with a sale or invoice when delivery execution depends on a billed document.
+The system SHALL define that a delivery can be associated with a billed document and SHALL use `sales` as the current operational billing source in this codebase until a separate invoice table exists.
 
 #### Scenario: Delivery exists before invoice
 - **WHEN** a delivery starts from an order before invoicing
@@ -11,12 +11,17 @@ The system SHALL define that a delivery can be associated with a sale or invoice
 - **WHEN** a user creates a delivery from an already billed sale or invoice
 - **THEN** the delivery references the billed document and keeps its own delivery lifecycle
 
+#### Scenario: Sales table is the operational billing source
+- **WHEN** the backend links a delivery to a billed document today
+- **THEN** the delivery stores `sale_id` because the current codebase represents billing through `sales`
+- **AND** the design does not invent a separate invoice foreign key until the fiscal model is confirmed
+
 ### Requirement: Shipping value has one financial source of truth
-The system SHALL require a future implementation decision for whether the delivery or shipping value is part of the invoice/POS sale or an operational-only charge.
+The system SHALL require a future implementation decision for whether the delivery or shipping value is part of the `sales` document or an operational-only charge.
 
 #### Scenario: Shipping is charged to customer
 - **WHEN** the delivery value is charged to the customer
-- **THEN** the value must be represented in the financial/fiscal source of truth before cash collection is finalized
+- **THEN** the value must be represented in the financial source of truth before any future cash collection is finalized
 
 #### Scenario: Shipping is internal cost
 - **WHEN** the delivery value is not charged to the customer
@@ -66,20 +71,20 @@ The system SHALL document future `sale_id` and `invoice_id` references without a
 ### Requirement: Delivery fee source is explicit
 The system SHALL document `delivery_fee_source` to prevent double counting between delivery, sale, invoice and cash.
 
-#### Scenario: Fee is included in invoice or sale
+#### Scenario: Fee is included in sales document
 - **WHEN** the delivery fee is included in the billed document
-- **THEN** the delivery records the source as `INVOICE` or `POS_SALE` and must not create a separate income movement for the same fee
+- **THEN** the delivery records the source as `INVOICE_INCLUDED` and must not create a separate income movement for the same fee
 
 #### Scenario: Fee is operationally separate
-- **WHEN** the delivery fee is not part of sale or invoice totals
-- **THEN** the delivery records the source as `OPERATIVE_SEPARATE` and requires future financial handling before collection
+- **WHEN** the delivery fee is not part of the sales total
+- **THEN** the delivery records the source as `NO_FEE` or another approved operational source and requires future financial handling before collection
 
 #### Scenario: No fee exists
 - **WHEN** the delivery has no fee
-- **THEN** the delivery records a no-fee source such as `NONE`
+- **THEN** the delivery records a no-fee source such as `NO_FEE`
 
 ### Requirement: Backend invoice integration plan
-The system SHALL document invoice and sale integration risks before backend runtime work begins.
+The system SHALL document sales-backed billing integration risks before backend runtime work begins.
 
 #### Scenario: Invoice storage is unresolved
 - **WHEN** backend implementation planning reviews `invoiceId`
@@ -88,6 +93,26 @@ The system SHALL document invoice and sale integration risks before backend runt
 #### Scenario: Fee source enum is finalized
 - **WHEN** backend enums are implemented
 - **THEN** the delivery fee source names must be aligned to the final sale/invoice/cash model to avoid duplicate revenue
+
+### Requirement: Backend sales delivery integration is implemented
+The system SHALL expose controlled backend endpoints that create and query deliveries from `sales` while keeping the existing billing flow unchanged.
+
+#### Scenario: Authorized user queries delivery by sale
+- **WHEN** an authorized user calls `GET /api/sales/:id/delivery` with `DELIVERIES_VIEW`
+- **THEN** the system returns the linked delivery for that sale or `null` when none exists
+
+#### Scenario: Authorized user creates delivery from sale
+- **WHEN** an authorized user calls `POST /api/sales/:id/delivery` with `DELIVERIES_CREATE`
+- **THEN** the system creates a `CREATED` delivery linked to the sale
+- **AND** the delivery stores a customer/contact/address snapshot
+
+#### Scenario: Sale already has delivery
+- **WHEN** any delivery already exists for the sale or its linked order
+- **THEN** the system rejects creating another delivery for the same financial document in v0.0.1
+
+#### Scenario: Sales backend remains unchanged
+- **WHEN** a delivery is created or queried from a sale
+- **THEN** the system does not change sale totals, taxes, payments, cash or electronic invoicing behavior
 
 #### Scenario: Invoice annulment remains isolated
 - **WHEN** delivery backend is first implemented
