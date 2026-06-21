@@ -52,6 +52,17 @@
 - [x] 6A.5 Agregar tests de metadata controller y `PermissionsGuard` para acciones `DELIVERIES_*`.
 - [x] 6A.6 Documentar que el SQL no se aplica en produccion sin aprobacion.
 
+## 6B. Fase 6B - Integracion backend controlada con pedidos
+
+- [x] 6B.1 Documentar decision tecnica: usar endpoints wrapper `GET /api/orders/:id/delivery` y `POST /api/orders/:id/delivery`.
+- [x] 6B.2 Mantener `DeliveriesService` como duenio de reglas de domicilio y no mover state machine a pedidos.
+- [x] 6B.3 Implementar creacion de domicilio desde pedido con snapshot de cliente/contacto/direccion cuando existe.
+- [x] 6B.4 Implementar consulta de domicilio asociado a pedido.
+- [x] 6B.5 Validar `tenant_id`, branch del pedido/contexto y bloqueo de segundo domicilio para el mismo pedido.
+- [x] 6B.6 Proteger endpoints de pedido/domicilio con `DELIVERIES_VIEW` y `DELIVERIES_CREATE`.
+- [x] 6B.7 Agregar tests backend para creacion, consulta, duplicados, tenant y permisos.
+- [x] 6B.8 Documentar evidencia QA backend en `docs/architecture/domicilios-integracion-pedidos-qa.md`.
+
 ## 6. Fase 6 - Frontend modulo Domicilios
 
 - [ ] 6.1 Crear ruta futura `/{tenant}/deliveries` y dominio frontend de domicilios.
@@ -62,7 +73,7 @@
 
 ## 7. Fase 7 - Integraciones con pedidos, facturacion y caja
 
-- [ ] 7.1 Integrar creacion/consulta de domicilio desde pedidos sin romper estados existentes.
+- [x] 7.1 Integrar creacion/consulta backend de domicilio desde pedidos sin romper estados existentes.
 - [ ] 7.2 Integrar vinculacion con ventas/facturas y definir fuente financiera del valor de envio.
 - [ ] 7.3 Integrar reglas de pago contra entrega, recaudo por repartidor y asociacion a turno.
 - [ ] 7.4 Implementar resolucion de cancelaciones, anulaciones y `NOT_DELIVERED` con trazabilidad.

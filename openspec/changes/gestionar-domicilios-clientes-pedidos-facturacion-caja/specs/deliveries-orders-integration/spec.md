@@ -84,3 +84,33 @@ The system SHALL document backend safeguards for order-linked deliveries before 
 #### Scenario: Order cancellation risk is planned
 - **WHEN** order cancellation integration is implemented later
 - **THEN** the backend plan requires an explicit rule for linked deliveries before changing order runtime behavior
+
+### Requirement: Backend can create and query delivery from order
+The system SHALL expose controlled backend endpoints to create and query the delivery associated with an order without changing existing order lifecycle behavior.
+
+#### Scenario: Authorized user queries order delivery
+- **WHEN** an authorized user calls `GET /api/orders/:id/delivery` with `DELIVERIES_VIEW`
+- **THEN** the system returns the delivery linked to that order or `null` when none exists
+- **AND** the lookup is scoped by `tenant_id`
+
+#### Scenario: Authorized user creates delivery from order
+- **WHEN** an authorized user calls `POST /api/orders/:id/delivery` with `DELIVERIES_CREATE`
+- **THEN** the system creates a `CREATED` delivery linked to the order
+- **AND** the delivery stores a snapshot of customer contact and delivery address data
+
+#### Scenario: Order address is incomplete
+- **WHEN** the order/customer snapshot does not provide enough delivery address data
+- **THEN** the create request must provide `delivery_address`
+
+#### Scenario: Order belongs to another tenant
+- **WHEN** a user tries to create or query delivery for an order outside the authenticated tenant
+- **THEN** the system rejects the request
+
+#### Scenario: Order already has delivery
+- **WHEN** any delivery already exists for the order
+- **THEN** the system rejects creating another delivery for the same order in v0.0.1
+- **AND** this includes deliveries in final states until a future retry/historical rule is approved
+
+#### Scenario: Order flow remains unchanged
+- **WHEN** a delivery is created or queried from an order
+- **THEN** the system does not change order creation, order status, POS, invoicing, cash register, inventory or financial movements

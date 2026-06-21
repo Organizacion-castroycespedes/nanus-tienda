@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-Este documento extiende el diseno OpenSpec del modulo Domicilios con modelo de datos, API y permisos. Fase 4 ya implementa la base real con SQL DDL directo y backend NestJS inicial. Fase 6A activa permisos backend con `PermissionsGuard`, sin usar Prisma, sin tocar frontend y sin aplicar SQL en produccion.
+Este documento extiende el diseno OpenSpec del modulo Domicilios con modelo de datos, API y permisos. Fase 4 ya implementa la base real con SQL DDL directo y backend NestJS inicial. Fase 6A activa permisos backend con `PermissionsGuard`. Fase 6B agrega integracion backend controlada con pedidos. Sigue sin Prisma, sin tocar frontend y sin aplicar SQL en produccion.
 
 La recomendacion tecnica es crear una entidad principal futura `deliveries`, acompanada desde el inicio por `delivery_status_history` para auditoria de estados. `delivery_payment_events`, `customer_delivery_addresses` y `delivery_assignments` quedan como tablas candidatas, pero no todas son obligatorias para v0.0.1.
 
@@ -15,11 +15,11 @@ Piedra grande aqui: dinero. Si el valor de domicilio se cobra al cliente, debe t
 - No crear reportes avanzados.
 - No integrar caja.
 - No integrar facturacion electronica.
-- No integrar pedidos de forma activa.
+- No modificar el flujo funcional existente de pedidos.
 - No modificar frontend funcional.
 - No aplicar permisos reales en produccion sin aprobacion.
 - No modificar menus frontend reales.
-- No modificar pedidos, facturacion, POS, caja o reporteria.
+- No modificar facturacion, POS, caja o reporteria.
 - No tocar produccion.
 - No hacer commit sin aprobacion expresa.
 
@@ -756,6 +756,63 @@ Comportamiento:
 - No se ejecuta automaticamente por `migrate_prd.sh`.
 - No aplicar en produccion sin aprobacion explicita.
 
+## Fase 6B implementada - integracion backend con pedidos
+
+### Decision tecnica
+
+Se eligieron endpoints wrapper bajo pedidos:
+
+```text
+GET  /api/orders/:id/delivery
+POST /api/orders/:id/delivery
+```
+
+La regla de negocio queda en `DeliveriesService`:
+
+- `getByOrder(orderId, actor)`.
+- `createFromOrder(orderId, payload, actor)`.
+
+`OrderService` no asume state machine, reglas de duplicado ni reglas internas de domicilios. El flujo normal de creacion de pedidos sigue intacto.
+
+### Reglas runtime
+
+- El domicilio creado desde pedido inicia en `CREATED`.
+- El pedido se busca por `id` y `tenant_id`.
+- El branch se toma del snapshot de auditoria del pedido cuando existe; si no existe, se usa contexto autenticado o `branch_id` del DTO.
+- Si el usuario trae branch en contexto y el pedido/body apunta a otro branch, la API rechaza.
+- Si el pedido tiene cliente, se usa snapshot de `customers.name`, `customers.phone` y `customers.address`.
+- Si no hay direccion en cliente/pedido, el DTO debe incluir `delivery_address`.
+- Se rechaza cualquier segundo domicilio para el mismo pedido, incluso si el anterior esta en estado final.
+- `GET /api/deliveries` agrega filtro `order_id`.
+- No se toca `invoice_id`, `cash_session_id`, caja, facturacion, POS ni inventario.
+
+### DTO creado
+
+```text
+api/src/modules/deliveries/dto/create-order-delivery.dto.ts
+```
+
+Campos:
+
+- `branch_id`
+- `customer_name`
+- `customer_phone`
+- `delivery_address`
+- `delivery_reference`
+- `delivery_fee`
+- `subtotal`
+- `total`
+- `payment_method_id`
+- `notes`
+- `metadata`
+
+### Permisos
+
+| Endpoint | Permiso |
+| --- | --- |
+| `GET /api/orders/:id/delivery` | `DELIVERIES_VIEW` |
+| `POST /api/orders/:id/delivery` | `DELIVERIES_CREATE` |
+
 ## UX tecnica futura
 
 Pantallas:
@@ -815,12 +872,12 @@ No crear estos archivos en esta fase.
 
 ## Confirmacion de alcance
 
-- Codigo backend tocado: SI, solo modulo de domicilios y registro en `AppModule`.
+- Codigo backend tocado: SI, modulo de domicilios y wrappers backend en `OrderController`/`InventoryModule`.
 - Codigo frontend tocado: NO.
 - SQL/migraciones tocadas: SI, `V063__deliveries_base.sql`; SQL local/QA de permisos en `scripts/database/security`.
-- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5 y placeholder protegido de summary.
+- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5, placeholder protegido de summary y wrappers `GET/POST /api/orders/:id/delivery`.
 - Permisos backend modificados: SI, `DELIVERIES_*` via `PermissionsGuard`.
 - Menus frontend reales modificados: NO.
 - SQL aplicado en produccion: NO.
-- Logica de negocio existente modificada: NO.
+- Logica de negocio existente modificada: NO; el flujo normal de pedidos no cambia.
 - Commit realizado: NO.

@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-Este documento definio el plan tecnico para implementar el backend futuro del modulo Domicilios. Fase 4 ya implementa una primera base runtime acotada con SQL DDL directo y NestJS; Fase 5 implementa state machine; Fase 6A activa permisos backend. Sigue sin Prisma, sin frontend y sin integraciones avanzadas.
+Este documento definio el plan tecnico para implementar el backend futuro del modulo Domicilios. Fase 4 ya implementa una primera base runtime acotada con SQL DDL directo y NestJS; Fase 5 implementa state machine; Fase 6A activa permisos backend; Fase 6B integra creacion/consulta backend desde pedidos. Sigue sin Prisma, sin frontend, sin caja y sin facturacion.
 
 El modulo debe nacer aislado en `/api/deliveries`, con `tenant_id` obligatorio, estado logistico controlado, auditoria minima, y reglas explicitas para no duplicar dinero entre factura, caja y domicilio.
 
@@ -26,7 +26,8 @@ La implementacion futura debe cubrir:
 - No usar Prisma.
 - No crear modelos Prisma.
 - No crear frontend.
-- No crear integracion real con caja, facturacion electronica, pedidos o reporteria.
+- No crear integracion real con caja, facturacion electronica o reporteria.
+- No modificar el flujo funcional existente de pedidos.
 - No crear reportes avanzados.
 - No aplicar SQL de permisos en produccion sin aprobacion.
 - No modificar menus frontend reales.
@@ -859,6 +860,58 @@ UNIQUE (tenant_id, branch_id, delivery_number)
 
 Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal en fase posterior.
 
+## Fase 6B implementada - integracion controlada con pedidos
+
+### Alcance implementado
+
+Se implementa solo integracion backend con pedidos:
+
+```text
+GET  /api/orders/:id/delivery
+POST /api/orders/:id/delivery
+```
+
+No se modifica la creacion normal de pedidos, confirmacion, entrega, facturacion, caja, POS, inventario ni frontend.
+
+### Patron aplicado
+
+- `OrderController` expone endpoints de acceso desde pedido.
+- `DeliveriesService` conserva la regla de negocio con `getByOrder` y `createFromOrder`.
+- `InventoryModule` importa `DeliveriesModule` para inyectar `DeliveriesService`.
+- `CreateOrderDeliveryDto` valida payload especifico de creacion desde pedido.
+
+### Reglas implementadas
+
+- Crear desde pedido requiere `DELIVERIES_CREATE`.
+- Consultar domicilio de pedido requiere `DELIVERIES_VIEW`.
+- La creacion desde pedido inicia en estado `CREATED`.
+- Se valida `tenant_id` desde actor autenticado.
+- Se valida branch desde auditoria de pedido, contexto o DTO.
+- Se guarda snapshot de cliente/contacto/direccion desde `customers` cuando existe.
+- Si no existe direccion suficiente, se exige `delivery_address`.
+- Se rechaza cualquier delivery existente para el mismo pedido.
+- El bloqueo de duplicado se ejecuta dentro de transaccion con lock del pedido.
+- `POST /api/deliveries` tambien bloquea duplicado cuando trae `order_id`.
+- `GET /api/deliveries` soporta filtro `order_id`.
+
+### Tests agregados
+
+```text
+api/src/modules/deliveries/deliveries.service.spec.ts
+api/src/modules/inventory/controllers/order.controller.spec.ts
+```
+
+Cubren:
+
+- Crear domicilio desde pedido valido.
+- Rechazar pedido inexistente.
+- Rechazar pedido de otro tenant.
+- Rechazar segundo domicilio para el mismo pedido.
+- Consultar domicilio por pedido.
+- Verificar permisos `DELIVERIES_VIEW` y `DELIVERIES_CREATE` en endpoints de pedido.
+- Confirmar que crear pedido normal no llama `DeliveriesService`.
+- Confirmar que no se consultan tablas de caja ni factura en la integracion.
+
 ## Secuencia recomendada de implementacion
 
 1. Completado en Fase 4: crear migracion `deliveries` + `delivery_status_history` + check constraints + indices.
@@ -871,8 +924,9 @@ Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal 
 8. Completado en Fase 5: agregar tests unitarios de state machine y transiciones.
 9. Completado en Fase 6A: agregar guards/permisos backend `DELIVERIES_*`.
 10. Completado en Fase 6A: crear SQL local/QA de permisos.
-11. Pendiente Fase 6B/7: integrar caja/facturacion/pedidos.
-12. Pendiente Fase 7: disenar frontend runtime.
+11. Completado en Fase 6B: integrar creacion/consulta backend desde pedidos.
+12. Pendiente Fase 7: integrar caja/facturacion.
+13. Pendiente Fase 8: disenar frontend runtime.
 
 ## Riesgos tecnicos
 
@@ -926,16 +980,16 @@ Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal 
 
 ## Confirmacion de alcance
 
-- Codigo backend tocado: SI, solo modulo `api/src/modules/deliveries` y registro en `AppModule`.
+- Codigo backend tocado: SI, modulo `api/src/modules/deliveries` y wrappers backend en `OrderController`/`InventoryModule`.
 - Codigo frontend tocado: NO.
 - SQL/migraciones reales creadas: SI, `scripts/database/migrations/V063__deliveries_base.sql`; SQL local/QA de permisos en `scripts/database/security`.
 - Tablas reales creadas: SI, cuando se aplique la migracion: `deliveries` y `delivery_status_history`.
-- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5 y placeholder protegido de summary.
+- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5, placeholder protegido de summary y wrappers `GET/POST /api/orders/:id/delivery`.
 - DTOs reales creados: SI, DTOs iniciales y DTOs de acciones de estado.
 - Servicios reales creados: SI, `DeliveriesService`, `DeliveryNumberService` y `DeliveryStateMachineService`.
 - Guards reales modificados: SI, `DeliveriesController` usa `PermissionsGuard`.
 - Permisos backend modificados: SI, `DELIVERIES_*`.
 - Menus frontend reales modificados: NO.
 - SQL aplicado en produccion: NO.
-- Logica de negocio existente modificada: NO.
+- Logica de negocio existente modificada: NO; el flujo normal de pedidos no cambia.
 - Commit realizado: NO.

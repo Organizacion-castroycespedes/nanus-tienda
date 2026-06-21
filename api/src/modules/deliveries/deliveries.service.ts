@@ -12,6 +12,7 @@ import { type DeliveryAction, type DeliveryStatus } from "./deliveries.constants
 import { AssignDeliveryDto } from "./dto/assign-delivery.dto";
 import { CancelDeliveryDto } from "./dto/cancel-delivery.dto";
 import { CreateDeliveryDto } from "./dto/create-delivery.dto";
+import { CreateOrderDeliveryDto } from "./dto/create-order-delivery.dto";
 import { DispatchDeliveryDto } from "./dto/dispatch-delivery.dto";
 import { MarkDeliveredDeliveryDto } from "./dto/mark-delivered-delivery.dto";
 import { MarkNotDeliveredDeliveryDto } from "./dto/mark-not-delivered-delivery.dto";
@@ -54,6 +55,17 @@ type DeliveryRecord = {
   cancelled_at: Date | string | null;
   delivered_at: Date | string | null;
   total_count?: string | number;
+};
+
+type OrderDeliverySourceRecord = {
+  id: string;
+  tenant_id: string;
+  customer_id: string | null;
+  order_total: string | number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_address: string | null;
+  branch_id: string | null;
 };
 
 type TransitionOptions = {
@@ -223,6 +235,118 @@ export class DeliveriesService {
 
     if (result.rows.length === 0) {
       throw new BadRequestException("Pedido invalido para el tenant");
+    }
+  }
+
+  private async loadOrderForDelivery(orderId: string, tenantId: string) {
+    const result = await this.db.query<OrderDeliverySourceRecord>(
+      `
+        SELECT
+          o.id,
+          o.tenant_id,
+          o.customer_id,
+          o.total AS order_total,
+          c.name AS customer_name,
+          c.phone AS customer_phone,
+          c.address AS customer_address,
+          order_context.branch_id
+        FROM public.orders o
+        LEFT JOIN public.customers c
+          ON c.id = o.customer_id
+          AND c.tenant_id = o.tenant_id
+        LEFT JOIN LATERAL (
+          SELECT NULLIF(ae.datos_despues->>'branchId', '')::text AS branch_id
+          FROM public.auditoria_eventos ae
+          WHERE ae.tenant_id = o.tenant_id
+            AND ae.entidad = 'orders'
+            AND ae.entidad_id = o.id::text
+            AND ae.accion IN ('ORDER_CREATED', 'ORDER_UPDATED')
+          ORDER BY ae.created_at DESC, ae.id DESC
+          LIMIT 1
+        ) order_context ON TRUE
+        WHERE o.id = $1
+          AND o.tenant_id = $2
+        LIMIT 1
+      `,
+      [orderId, tenantId]
+    );
+
+    const order = result.rows[0];
+    if (!order) {
+      throw new NotFoundException("Pedido no encontrado");
+    }
+
+    return order;
+  }
+
+  private resolveOrderDeliveryBranch(
+    order: OrderDeliverySourceRecord,
+    actor: DeliveryActor,
+    requestedBranchId?: string
+  ) {
+    const orderBranchId = this.normalizeNullableText(order.branch_id);
+    const actorBranchId = this.normalizeNullableText(actor.branchId);
+    const bodyBranchId = this.normalizeNullableText(requestedBranchId);
+
+    if (orderBranchId && actorBranchId && orderBranchId !== actorBranchId) {
+      throw new ForbiddenException("No autorizado para la sucursal del pedido");
+    }
+
+    if (orderBranchId && bodyBranchId && orderBranchId !== bodyBranchId) {
+      throw new BadRequestException("branch_id no coincide con el pedido");
+    }
+
+    if (!orderBranchId && actorBranchId && bodyBranchId && actorBranchId !== bodyBranchId) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
+    }
+
+    const branchId = orderBranchId || actorBranchId || bodyBranchId;
+    if (!branchId) {
+      throw new BadRequestException("branch_id es requerido");
+    }
+
+    return branchId;
+  }
+
+  private async lockOrderForDelivery(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string
+  ) {
+    const result = await client.query<{ id: string }>(
+      `
+        SELECT id
+        FROM public.orders
+        WHERE id = $1
+          AND tenant_id = $2
+        FOR UPDATE
+      `,
+      [orderId, tenantId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new BadRequestException("Pedido invalido para el tenant");
+    }
+  }
+
+  private async assertNoOrderDelivery(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string
+  ) {
+    const result = await client.query<{ id: string; status: string }>(
+      `
+        SELECT id, status
+        FROM public.deliveries
+        WHERE tenant_id = $1
+          AND order_id = $2
+        LIMIT 1
+      `,
+      [tenantId, orderId]
+    );
+
+    if (result.rows[0]) {
+      throw new BadRequestException("El pedido ya tiene un domicilio asociado");
     }
   }
 
@@ -421,6 +545,11 @@ export class DeliveriesService {
       conditions.push(`customer_id = $${params.length}`);
     }
 
+    if (filters.order_id) {
+      params.push(filters.order_id);
+      conditions.push(`order_id = $${params.length}`);
+    }
+
     if (filters.date_from) {
       params.push(filters.date_from);
       conditions.push(`created_at >= $${params.length}::timestamptz`);
@@ -493,6 +622,14 @@ export class DeliveriesService {
       throw new BadRequestException("branch_id es requerido");
     }
 
+    if (payload.order_id) {
+      const order = await this.loadOrderForDelivery(payload.order_id, tenantId);
+      const orderBranchId = this.normalizeNullableText(order.branch_id);
+      if (orderBranchId && orderBranchId !== branchId) {
+        throw new BadRequestException("branch_id no coincide con el pedido");
+      }
+    }
+
     const deliveryAddress = this.normalizeRequiredText(
       payload.delivery_address,
       "delivery_address es requerido"
@@ -512,6 +649,11 @@ export class DeliveriesService {
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
+      if (payload.order_id) {
+        await this.lockOrderForDelivery(client, tenantId, payload.order_id);
+        await this.assertNoOrderDelivery(client, tenantId, payload.order_id);
+      }
+
       const deliveryNumber = await this.deliveryNumberService.generate(
         tenantId,
         branchId,
@@ -608,6 +750,61 @@ export class DeliveriesService {
     }
   }
 
+  async createFromOrder(
+    orderId: string,
+    payload: CreateOrderDeliveryDto,
+    actor: DeliveryActor
+  ) {
+    const tenantId = this.resolveTenantId(actor);
+    const order = await this.loadOrderForDelivery(orderId, tenantId);
+    const branchId = this.resolveOrderDeliveryBranch(
+      order,
+      actor,
+      payload.branch_id
+    );
+    const deliveryAddress =
+      this.normalizeNullableText(payload.delivery_address) ??
+      this.normalizeNullableText(order.customer_address);
+
+    if (!deliveryAddress) {
+      throw new BadRequestException("delivery_address es requerido");
+    }
+
+    const metadata = this.normalizeMetadata(payload.metadata);
+    return this.create(
+      {
+        branch_id: branchId,
+        customer_id: order.customer_id ?? undefined,
+        order_id: order.id,
+        customer_name:
+          this.normalizeNullableText(payload.customer_name) ??
+          this.normalizeNullableText(order.customer_name) ??
+          undefined,
+        customer_phone:
+          this.normalizeNullableText(payload.customer_phone) ??
+          this.normalizeNullableText(order.customer_phone) ??
+          undefined,
+        delivery_address: deliveryAddress,
+        delivery_reference: payload.delivery_reference,
+        delivery_fee: payload.delivery_fee,
+        subtotal:
+          payload.subtotal ??
+          (order.order_total !== null ? Number(order.order_total) : undefined),
+        total:
+          payload.total ??
+          (order.order_total !== null ? Number(order.order_total) : undefined),
+        payment_method_id: payload.payment_method_id,
+        notes: payload.notes,
+        metadata: {
+          ...metadata,
+          source: "order",
+          source_order_id: order.id,
+        },
+      },
+      actor
+    );
+  }
+
   async getById(id: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
     const result = await this.db.query<DeliveryRecord>(
@@ -626,6 +823,37 @@ export class DeliveriesService {
       throw new NotFoundException("Domicilio no encontrado");
     }
 
+    return this.mapRecord(delivery);
+  }
+
+  async getByOrder(orderId: string, actor: DeliveryActor) {
+    const tenantId = this.resolveTenantId(actor);
+    const order = await this.loadOrderForDelivery(orderId, tenantId);
+    const orderBranchId = this.normalizeNullableText(order.branch_id);
+    const actorBranchId = this.normalizeNullableText(actor.branchId);
+
+    if (orderBranchId && actorBranchId && orderBranchId !== actorBranchId) {
+      throw new ForbiddenException("No autorizado para la sucursal del pedido");
+    }
+
+    const result = await this.db.query<DeliveryRecord>(
+      `
+        SELECT *
+        FROM public.deliveries
+        WHERE tenant_id = $1
+          AND order_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [tenantId, orderId]
+    );
+
+    const delivery = result.rows[0];
+    if (!delivery) {
+      return null;
+    }
+
+    this.assertDeliveryBranchScope(delivery, actor);
     return this.mapRecord(delivery);
   }
 

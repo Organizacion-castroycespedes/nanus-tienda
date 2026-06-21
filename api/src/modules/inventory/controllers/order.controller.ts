@@ -10,14 +10,20 @@ import {
   Query,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
 import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { DELIVERY_PERMISSION_ACTIONS } from "../../deliveries/deliveries.constants";
+import { DeliveriesService } from "../../deliveries/deliveries.service";
+import { CreateOrderDeliveryDto } from "../../deliveries/dto/create-order-delivery.dto";
 import { OrderService } from "../services/order.service";
 
 type AuthRequest = Request & {
@@ -74,12 +80,20 @@ type InvoiceOrderBody = {
   }>;
 };
 
+const orderDeliveryValidationPipe = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
+
 @Controller("orders")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class OrderController {
   constructor(
     @Inject(OrderService)
-    private readonly orderService: OrderService
+    private readonly orderService: OrderService,
+    @Inject(DeliveriesService)
+    private readonly deliveriesService: DeliveriesService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -150,6 +164,37 @@ export class OrderController {
         toDate,
         paymentMethod,
       },
+      this.buildActor(request)
+    );
+  }
+
+  @Get(":id/delivery")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "READ",
+    action: DELIVERY_PERMISSION_ACTIONS.VIEW,
+  })
+  getDelivery(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.deliveriesService.getByOrder(id, this.buildActor(request));
+  }
+
+  @Post(":id/delivery")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.CREATE,
+  })
+  @UsePipes(orderDeliveryValidationPipe)
+  createDelivery(
+    @Param("id") id: string,
+    @Body() body: CreateOrderDeliveryDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.deliveriesService.createFromOrder(
+      id,
+      body,
       this.buildActor(request)
     );
   }

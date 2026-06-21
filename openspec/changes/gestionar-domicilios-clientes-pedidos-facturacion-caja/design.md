@@ -471,6 +471,45 @@ Se agregan tests para:
 - `PermissionsGuard` permitiendo accion `DELIVERIES_*` cuando existe en `role_menu_permissions.actions`.
 - `PermissionsGuard` bloqueando accion `DELIVERIES_*` faltante.
 
+## Fase 6B - Integracion backend controlada con pedidos
+
+Fase 6B agrega una integracion limitada Domicilios + Pedidos sin cambiar creacion normal de pedidos, state machine, caja, facturacion, POS, inventario, frontend ni reporteria.
+
+### Decision tecnica
+
+Se implementan endpoints wrapper en el controller de pedidos:
+
+| Endpoint | Permiso | Responsable de reglas |
+| --- | --- | --- |
+| `GET /api/orders/:id/delivery` | `DELIVERIES_VIEW` | `DeliveriesService.getByOrder` |
+| `POST /api/orders/:id/delivery` | `DELIVERIES_CREATE` | `DeliveriesService.createFromOrder` |
+
+Motivo:
+- El consumidor operativo puede navegar desde el pedido.
+- `DeliveriesService` sigue siendo el duenio de reglas de domicilio.
+- `OrderService` no asume state machine ni reglas internas de Domicilios.
+- No se altera el flujo actual de creacion, confirmacion, despacho, factura o cancelacion de pedidos.
+
+### Reglas implementadas
+
+- El domicilio creado desde pedido inicia en `CREATED`.
+- El sistema carga el pedido por `id` y `tenant_id`.
+- Si el pedido tiene cliente, se usa snapshot de `customers.name`, `customers.phone` y `customers.address` cuando el payload no los trae.
+- Si no hay direccion suficiente, `delivery_address` es obligatorio en el DTO.
+- Se valida branch desde auditoria de pedido cuando existe; si no existe, se usa branch del contexto o del body.
+- Se rechaza otro branch cuando el contexto autenticado ya trae una sucursal.
+- Se rechaza cualquier segundo domicilio para el mismo pedido, incluso si el anterior esta en estado final, porque OpenSpec no habilita historico/reintentos en v0.0.1.
+- `POST /api/deliveries` tambien respeta la regla de no duplicar `order_id`.
+- `GET /api/deliveries` acepta filtro `order_id` como soporte operativo adicional.
+
+### Fuera de alcance
+
+- No se toca `invoice_id`.
+- No se toca `cash_session_id`.
+- No se crean movimientos financieros.
+- No se cambia estado de pedido al crear o consultar domicilio.
+- No se integran caja, facturacion, POS ni frontend.
+
 ## Risks / Trade-offs
 
 - [Riesgo] Doble fuente de verdad entre factura, domicilio y caja. -> [Mitigacion] definir una fuente financiera unica para valor de envio antes de implementar.
