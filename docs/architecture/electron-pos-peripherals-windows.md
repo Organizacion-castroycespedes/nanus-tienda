@@ -72,6 +72,8 @@ Recomendacion v0.0.1:
 - No implementar impresion silenciosa ni ESC/POS todavia.
 - No duplicar logica de venta en plantillas Electron. El contenido imprimible debe derivar de datos ya autorizados por web/API.
 
+Detalle posterior: la estrategia inicial de impresion web/Windows queda documentada en `electron-receipt-printing-windows.md`.
+
 ### Gaveta monedera
 
 Opciones analizadas:

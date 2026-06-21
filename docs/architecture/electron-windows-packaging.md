@@ -151,6 +151,8 @@ $env:MANUS_START_PATH="/login"
 
 Nota posterior: la estrategia futura de perifericos POS Windows se documenta en `electron-pos-peripherals-windows.md`. Esa fase es solo analisis y no cambia el empaquetado.
 
+Nota posterior: la impresion inicial de recibos/tickets para Electron Windows se documenta en `electron-receipt-printing-windows.md`; no cambia el empaquetado ni agrega impresion nativa.
+
 ## Riesgos
 
 | Riesgo | Mitigacion |
