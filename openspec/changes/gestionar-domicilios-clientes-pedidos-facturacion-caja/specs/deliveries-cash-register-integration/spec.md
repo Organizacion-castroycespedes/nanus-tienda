@@ -51,3 +51,40 @@ The system SHALL NOT modify cash sessions, payments, cash movements, cash report
 #### Scenario: Cash integration is validated
 - **WHEN** this change is validated
 - **THEN** cash behavior remains documentation-only and existing cash flows stay untouched
+
+### Requirement: Delivery cash fields are documented
+The system SHALL document future cash-related fields for deliveries without creating payment or cash movement behavior in this phase.
+
+#### Scenario: Cash session field is optional
+- **WHEN** a delivery has no collection, refund, adjustment or reconciliation
+- **THEN** `cash_session_id` remains absent and no cash impact is implied
+
+#### Scenario: Cash session field is required by collection
+- **WHEN** a future delivery records payment on delivery into an active turn
+- **THEN** the delivery or payment event must reference an authorized `cash_session_id`
+
+#### Scenario: Payment status is explicit
+- **WHEN** a delivery is paid before dispatch, paid on delivery or pending reconciliation
+- **THEN** `payment_status` documents that money state independently from the delivery status
+
+### Requirement: Delivery payment event table is conditional
+The system SHALL document `delivery_payment_events` as a candidate table for collection and reconciliation history.
+
+#### Scenario: Simple prepaid delivery
+- **WHEN** delivery is prepaid in POS or invoice
+- **THEN** a separate delivery payment event table is not required for v0.0.1 operation
+
+#### Scenario: Contraentrega is implemented
+- **WHEN** future implementation supports payment on delivery or courier collection
+- **THEN** `delivery_payment_events` should be considered for expected amount, collected amount, difference, actor, payment method and cash session
+
+### Requirement: Cash closing avoids duplicate delivery income
+The system SHALL require future cash design to distinguish billed delivery fees from separate delivery collections.
+
+#### Scenario: Delivery fee is already billed and paid
+- **WHEN** a delivery fee was included and paid through POS or invoice
+- **THEN** cash reports must not add it again as separate delivery income
+
+#### Scenario: Separate delivery collection exists
+- **WHEN** a delivery fee is collected outside the original sale or invoice
+- **THEN** the future cash flow must show the collection source and reconciliation status

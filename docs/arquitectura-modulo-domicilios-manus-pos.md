@@ -192,6 +192,7 @@ Permisos a evaluar:
 - `DELIVERIES_ASSIGN`
 - `DELIVERIES_DISPATCH`
 - `DELIVERIES_MARK_DELIVERED`
+- `DELIVERIES_MARK_NOT_DELIVERED`
 - `DELIVERIES_CANCEL`
 - `DELIVERIES_REPORTS`
 
@@ -205,6 +206,7 @@ Propuesta inicial por rol:
 | `DELIVERIES_ASSIGN` | Si | Si | Si | No por defecto |
 | `DELIVERIES_DISPATCH` | Si | Si | Si | No por defecto |
 | `DELIVERIES_MARK_DELIVERED` | Si | Si | Si | Solo si se aprueba rol operativo |
+| `DELIVERIES_MARK_NOT_DELIVERED` | Si | Si | Si | Solo si se aprueba rol operativo |
 | `DELIVERIES_CANCEL` | Si | Si | Si | No por defecto |
 | `DELIVERIES_REPORTS` | Si | Si | Si | Solo lectura limitada si se aprueba |
 
@@ -361,27 +363,44 @@ OpenSpec + arquitectura funcional.
 
 ### Fase 2
 
-Modelo de datos y migraciones.
+Diseno tecnico documental de modelo de datos, contratos API, DTOs conceptuales, permisos, indices, auditoria y reglas de caja.
 
 ### Fase 3
 
-Backend API y reglas de negocio.
+Modelo de datos y migraciones.
 
 ### Fase 4
 
-Frontend modulo Domicilios.
+Backend API y reglas de negocio.
 
 ### Fase 5
 
-Integracion con pedidos/facturacion/caja.
+Frontend modulo Domicilios.
 
 ### Fase 6
 
-Reporteria y auditoria.
+Integracion con pedidos/facturacion/caja.
 
 ### Fase 7
 
+Reporteria y auditoria.
+
+### Fase 8
+
 QA integral y hardening.
+
+## Extension tecnica Fase 2
+
+La extension tecnica queda documentada en `docs/architecture/domicilios-modelo-datos-api-permisos.md`.
+
+Incluye:
+- Modelo propuesto `deliveries`.
+- Tablas candidatas `delivery_status_history`, `delivery_payment_events`, `customer_delivery_addresses` y `delivery_assignments`.
+- Endpoints futuros `/api/deliveries`.
+- DTOs conceptuales.
+- Permisos `DELIVERIES_*`.
+- Indices y restricciones sugeridas.
+- Reglas de caja y auditoria minima.
 
 ## Confirmacion de alcance de esta fase
 

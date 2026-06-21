@@ -54,3 +54,18 @@ The system SHALL NOT modify order APIs, services, SQL functions, frontend pages 
 #### Scenario: Order integration is validated
 - **WHEN** this change is validated
 - **THEN** order behavior remains documentation-only and existing order flows stay untouched
+
+### Requirement: Order delivery technical relationship
+The system SHALL document a future `deliveries.order_id` relationship and same-tenant validation for order-linked deliveries.
+
+#### Scenario: Delivery references order
+- **WHEN** a future delivery is linked to an order
+- **THEN** `deliveries.order_id` references the order and both records must belong to the same tenant
+
+#### Scenario: Active delivery uniqueness is enforced in future design
+- **WHEN** a future order already has an active delivery in `PENDIENTE`, `EN_PREPARACION` or `DESPACHADO`
+- **THEN** the system must prevent creating another active delivery for that order in v0.0.1
+
+#### Scenario: Final delivery allows later design decision
+- **WHEN** a linked delivery is `ENTREGADO`, `CANCELADO` or `NO_ENTREGADO`
+- **THEN** any additional delivery or retry behavior requires an explicit future rule before implementation

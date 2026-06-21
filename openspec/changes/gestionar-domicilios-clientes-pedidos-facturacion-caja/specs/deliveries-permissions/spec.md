@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Delivery permission actions
-The system SHALL define future delivery permissions for viewing, creating, updating, assigning, dispatching, marking delivered, cancelling and reporting deliveries.
+The system SHALL define future delivery permissions for viewing, creating, updating, assigning, dispatching, marking delivered, marking not delivered, cancelling and reporting deliveries.
 
 #### Scenario: View permission is required
 - **WHEN** a user opens the future delivery list or detail
@@ -22,6 +22,10 @@ The system SHALL define future delivery permissions for viewing, creating, updat
 #### Scenario: Delivery completion permission is required
 - **WHEN** a user moves a delivery to `ENTREGADO`
 - **THEN** the user must have `DELIVERIES_MARK_DELIVERED`
+
+#### Scenario: Not-delivered permission is required
+- **WHEN** a user moves a delivery to `NO_ENTREGADO`
+- **THEN** the user must have `DELIVERIES_MARK_NOT_DELIVERED`
 
 #### Scenario: Cancel permission is required
 - **WHEN** a user moves a delivery to `CANCELADO`
@@ -49,6 +53,25 @@ The system SHALL document an initial role access proposal without applying it to
 #### Scenario: USER access proposal
 - **WHEN** `USER` uses the future Domicilios module
 - **THEN** the proposed access is limited to view, create and operational update actions within authorized tenant, branch and cash context unless a later decision grants more
+
+### Requirement: Delivery role permission matrix proposal
+The system SHALL document a future role matrix for `DELIVERIES_*` permissions without applying real permission records.
+
+#### Scenario: USER operational matrix is reviewed
+- **WHEN** USER permissions are reviewed
+- **THEN** USER can be proposed for view, create and basic pre-dispatch update, while dispatch, delivered and not-delivered actions remain explicit business decisions
+
+#### Scenario: ADMIN operational matrix is reviewed
+- **WHEN** ADMIN permissions are reviewed
+- **THEN** ADMIN can be proposed for view, create, update, assign, dispatch, mark delivered, mark not delivered, cancel and reports within authorized scope
+
+#### Scenario: SUPER_USER matrix is reviewed
+- **WHEN** SUPER_USER permissions are reviewed
+- **THEN** SUPER_USER can be proposed for ADMIN-equivalent delivery permissions within the authenticated tenant plus operational audit visibility
+
+#### Scenario: SUPER_ADMIN matrix is reviewed
+- **WHEN** SUPER_ADMIN permissions are reviewed
+- **THEN** SUPER_ADMIN can be proposed for all delivery permissions with global behavior constrained by existing multi-tenant rules
 
 ### Requirement: Permissions are not applied in this phase
 The system SHALL NOT modify `menu_items`, `role_menu_permissions`, frontend route permissions, backend decorators or guard logic during this OpenSpec-only phase.

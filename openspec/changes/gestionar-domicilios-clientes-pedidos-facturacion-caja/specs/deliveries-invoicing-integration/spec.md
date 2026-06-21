@@ -47,3 +47,33 @@ The system SHALL NOT modify invoicing APIs, SQL functions, invoice documents, fi
 #### Scenario: Invoicing integration is validated
 - **WHEN** this change is validated
 - **THEN** invoicing behavior remains documentation-only and existing billing flows stay untouched
+
+### Requirement: Invoice and sale technical references
+The system SHALL document future `sale_id` and `invoice_id` references without assuming the final fiscal storage model.
+
+#### Scenario: POS sale is the source document
+- **WHEN** a future delivery is linked to a POS sale
+- **THEN** the delivery can store `sale_id` as the source reference
+
+#### Scenario: Fiscal invoice is separate
+- **WHEN** the future fiscal model uses a separate invoice entity
+- **THEN** the delivery can store `invoice_id` after confirming same-tenant rules and fiscal traceability
+
+#### Scenario: Invoice model is unresolved
+- **WHEN** implementation starts before the fiscal invoice model is confirmed
+- **THEN** the design must not guess a foreign key that could break sales or electronic invoicing
+
+### Requirement: Delivery fee source is explicit
+The system SHALL document `delivery_fee_source` to prevent double counting between delivery, sale, invoice and cash.
+
+#### Scenario: Fee is included in invoice or sale
+- **WHEN** the delivery fee is included in the billed document
+- **THEN** the delivery records the source as `INVOICE` or `POS_SALE` and must not create a separate income movement for the same fee
+
+#### Scenario: Fee is operationally separate
+- **WHEN** the delivery fee is not part of sale or invoice totals
+- **THEN** the delivery records the source as `OPERATIVE_SEPARATE` and requires future financial handling before collection
+
+#### Scenario: No fee exists
+- **WHEN** the delivery has no fee
+- **THEN** the delivery records a no-fee source such as `NONE`

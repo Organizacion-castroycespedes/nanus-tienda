@@ -51,3 +51,14 @@ The system SHALL NOT modify `backend-reporteria`, report endpoints, report SQL, 
 #### Scenario: Reporting design is validated
 - **WHEN** this change is validated
 - **THEN** delivery reporting remains documentation-only and existing reports stay untouched
+
+### Requirement: Delivery summary API report proposal
+The system SHALL document a future delivery summary report contract for operational and cash-oriented metrics.
+
+#### Scenario: Summary endpoint is reviewed
+- **WHEN** the future endpoint `GET /api/deliveries/reports/summary` is reviewed
+- **THEN** the contract includes totals by state, delivery count, delivery fee totals, expected collection, collected amount, differences and average delivery times
+
+#### Scenario: Summary filters are reviewed
+- **WHEN** summary filters are reviewed
+- **THEN** the contract supports date range, status, customer, zone, responsible user, branch and cash session when applicable
