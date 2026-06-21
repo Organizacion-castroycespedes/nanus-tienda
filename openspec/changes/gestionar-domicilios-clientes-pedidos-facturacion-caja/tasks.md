@@ -38,10 +38,19 @@
 
 - [x] 5.1 Implementar endpoints `assign`, `dispatch`, `mark-delivered`, `mark-not-delivered` y `cancel`.
 - [x] 5.2 Implementar validaciones de estados y transiciones permitidas.
-- [ ] 5.3 Implementar permisos reales `DELIVERIES_*` cuando existan menu/seed aprobados.
+- [x] 5.3 Implementar permisos reales `DELIVERIES_*` cuando existan menu/seed aprobados.
 - [x] 5.4 Implementar trazabilidad de cambios de estado y acciones sensibles mas alla del historial inicial.
 - [x] 5.5 Agregar tests backend unitarios para state machine y transiciones.
-- [ ] 5.6 Agregar tests de autorizacion/permisos cuando `DELIVERIES_*` existan en menu/seed aprobados.
+- [x] 5.6 Agregar tests de autorizacion/permisos cuando `DELIVERIES_*` existan en menu/seed aprobados.
+
+## 6A. Fase 6A - Permisos backend Domicilios
+
+- [x] 6A.1 Definir `MENU_KEYS.DELIVERIES` y acciones backend `DELIVERIES_*`.
+- [x] 6A.2 Proteger endpoints existentes de Domicilios con `PermissionsGuard` y `@RequirePermission`.
+- [x] 6A.3 Agregar endpoint protegido `GET /api/deliveries/reports/summary` como placeholder sin logica de reportes avanzados.
+- [x] 6A.4 Crear SQL idempotente local/QA para menu backend-only y matriz por roles.
+- [x] 6A.5 Agregar tests de metadata controller y `PermissionsGuard` para acciones `DELIVERIES_*`.
+- [x] 6A.6 Documentar que el SQL no se aplica en produccion sin aprobacion.
 
 ## 6. Fase 6 - Frontend modulo Domicilios
 

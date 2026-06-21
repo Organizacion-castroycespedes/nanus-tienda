@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Delivery permission actions
-The system SHALL define future delivery permissions for viewing, creating, updating, assigning, dispatching, marking delivered, marking not delivered, cancelling and reporting deliveries.
+The system SHALL define and enforce backend delivery permissions for viewing, creating, updating, assigning, dispatching, marking delivered, marking not delivered, cancelling and reporting deliveries.
 
 #### Scenario: View permission is required
 - **WHEN** a user opens the future delivery list or detail
@@ -36,7 +36,7 @@ The system SHALL define future delivery permissions for viewing, creating, updat
 - **THEN** the user must have `DELIVERIES_REPORTS`
 
 ### Requirement: Initial role access proposal
-The system SHALL document an initial role access proposal without applying it to real permission data in this phase.
+The system SHALL document an initial role access proposal and SHALL use it for the Fase 6A local/QA permission SQL.
 
 #### Scenario: SUPER_ADMIN access proposal
 - **WHEN** `SUPER_ADMIN` uses the future Domicilios module
@@ -55,11 +55,11 @@ The system SHALL document an initial role access proposal without applying it to
 - **THEN** the proposed access is limited to view, create and operational update actions within authorized tenant, branch and cash context unless a later decision grants more
 
 ### Requirement: Delivery role permission matrix proposal
-The system SHALL document a future role matrix for `DELIVERIES_*` permissions without applying real permission records.
+The system SHALL document a role matrix for `DELIVERIES_*` permissions and SHALL keep production application gated by explicit approval.
 
 #### Scenario: USER operational matrix is reviewed
 - **WHEN** USER permissions are reviewed
-- **THEN** USER can be proposed for view, create and basic pre-dispatch update, while dispatch, delivered and not-delivered actions remain explicit business decisions
+- **THEN** USER can be proposed for view, create, basic update, dispatch, delivered and not-delivered actions, while assignment, cancellation and reports remain restricted
 
 #### Scenario: ADMIN operational matrix is reviewed
 - **WHEN** ADMIN permissions are reviewed
@@ -85,7 +85,7 @@ The system SHALL NOT modify `menu_items`, `role_menu_permissions`, frontend rout
 - **THEN** they use `JwtAuthGuard` and defer `DELIVERIES_*` enforcement until real menu/action permissions are seeded in a later phase
 
 ### Requirement: Backend permission implementation plan
-The system SHALL document future backend permission rollout without modifying guards, menus or seeds in this phase.
+The system SHALL document backend permission rollout before applying runtime permission enforcement.
 
 #### Scenario: Endpoint permission mapping is planned
 - **WHEN** future `DeliveriesController` endpoints are reviewed
@@ -95,6 +95,29 @@ The system SHALL document future backend permission rollout without modifying gu
 - **WHEN** future permission SQL is prepared
 - **THEN** it must be idempotent and reviewed separately before applying `DELIVERIES_*` to real roles
 
-#### Scenario: Permission guard rollout is deferred
-- **WHEN** this backend planning phase is completed
-- **THEN** no menu, route permission or seed file is modified for `DELIVERIES_*`
+#### Scenario: Permission guard rollout is deferred before Fase 6A
+- **WHEN** the backend planning phase is completed before Fase 6A
+- **THEN** no menu, route permission or seed file is modified for `DELIVERIES_*` until a dedicated permission phase is approved
+
+### Requirement: Delivery backend permissions are enforced in Fase 6A
+The system SHALL protect delivery backend endpoints with the existing `PermissionsGuard`, `MENU_KEYS.DELIVERIES` and explicit `DELIVERIES_*` action permissions.
+
+#### Scenario: CRUD endpoints require delivery permissions
+- **WHEN** Fase 6A is implemented
+- **THEN** list and detail require `DELIVERIES_VIEW`, create requires `DELIVERIES_CREATE`, and patch requires `DELIVERIES_UPDATE`
+
+#### Scenario: State endpoints require action permissions
+- **WHEN** Fase 6A is implemented
+- **THEN** assign, dispatch, mark-delivered, mark-not-delivered and cancel require `DELIVERIES_ASSIGN`, `DELIVERIES_DISPATCH`, `DELIVERIES_MARK_DELIVERED`, `DELIVERIES_MARK_NOT_DELIVERED` and `DELIVERIES_CANCEL`
+
+#### Scenario: Summary report endpoint is permission gated
+- **WHEN** Fase 6A is implemented
+- **THEN** `GET /api/deliveries/reports/summary` requires `DELIVERIES_REPORTS` but advanced report logic remains deferred
+
+#### Scenario: Missing permission is rejected
+- **WHEN** an authenticated actor calls a delivery endpoint without the required `DELIVERIES_*` action in `role_menu_permissions.actions`
+- **THEN** the backend rejects the request through the existing permission model
+
+#### Scenario: Local QA permission SQL is generated
+- **WHEN** Fase 6A is implemented
+- **THEN** an idempotent local/QA SQL file prepares `DELIVERIES` menu data and role action matrix without applying it automatically to production

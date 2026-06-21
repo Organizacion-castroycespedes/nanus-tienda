@@ -422,6 +422,55 @@ Se agregan tests unitarios de:
 - Rollback sin historial cuando falla la transicion.
 - Historial transaccional cuando la transicion es valida.
 
+## Fase 6A - Permisos backend
+
+Fase 6A activa control real de permisos backend para Domicilios sin tocar frontend, caja, facturacion, pedidos, ventas, inventario ni reporteria avanzada.
+
+### Patron aplicado
+
+- Se agrega `MENU_KEYS.DELIVERIES`.
+- Se definen acciones `DELIVERIES_*` en `api/src/modules/deliveries/deliveries.constants.ts`.
+- `DeliveriesController` usa `JwtAuthGuard` y `PermissionsGuard`.
+- Cada metodo del controller usa `@RequirePermission` con `menuKey: MENU_KEYS.DELIVERIES`, nivel `READ` o `WRITE`, y accion `DELIVERIES_*`.
+- `DeliveriesModule` importa `AccessControlModule` para resolver `PermissionsGuard`.
+
+### Mapeo de endpoints
+
+| Endpoint | Permiso |
+| --- | --- |
+| `GET /api/deliveries` | `DELIVERIES_VIEW` |
+| `POST /api/deliveries` | `DELIVERIES_CREATE` |
+| `GET /api/deliveries/:id` | `DELIVERIES_VIEW` |
+| `PATCH /api/deliveries/:id` | `DELIVERIES_UPDATE` |
+| `POST /api/deliveries/:id/assign` | `DELIVERIES_ASSIGN` |
+| `POST /api/deliveries/:id/dispatch` | `DELIVERIES_DISPATCH` |
+| `POST /api/deliveries/:id/mark-delivered` | `DELIVERIES_MARK_DELIVERED` |
+| `POST /api/deliveries/:id/mark-not-delivered` | `DELIVERIES_MARK_NOT_DELIVERED` |
+| `POST /api/deliveries/:id/cancel` | `DELIVERIES_CANCEL` |
+| `GET /api/deliveries/reports/summary` | `DELIVERIES_REPORTS` |
+
+El endpoint `GET /api/deliveries/reports/summary` queda como placeholder protegido con `NotImplementedException`. No calcula reportes ni toca `backend-reporteria`.
+
+### SQL local/QA
+
+Archivo:
+- `scripts/database/security/20260620_1730_deliveries_permissions_local_qa.sql`
+
+Este SQL:
+- Es idempotente.
+- Crea/actualiza `menu_items` con key `DELIVERIES`, visible `FALSE` y metadata `backendOnly`.
+- Crea/actualiza `role_menu_permissions` para `USER`, `ADMIN`, `SUPER_USER` y `SUPER_ADMIN`.
+- No se ejecuta automaticamente por `migrate_prd.sh`.
+- No debe aplicarse en produccion sin aprobacion explicita.
+
+### Tests
+
+Se agregan tests para:
+- Metadata de guards en `DeliveriesController`.
+- Mapeo de permisos por endpoint.
+- `PermissionsGuard` permitiendo accion `DELIVERIES_*` cuando existe en `role_menu_permissions.actions`.
+- `PermissionsGuard` bloqueando accion `DELIVERIES_*` faltante.
+
 ## Risks / Trade-offs
 
 - [Riesgo] Doble fuente de verdad entre factura, domicilio y caja. -> [Mitigacion] definir una fuente financiera unica para valor de envio antes de implementar.

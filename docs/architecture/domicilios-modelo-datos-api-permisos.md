@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-Este documento extiende el diseno OpenSpec del modulo Domicilios con modelo de datos, API y permisos. Fase 4 ya implementa la base real con SQL DDL directo y backend NestJS inicial. No usa Prisma, no toca frontend y no activa permisos reales.
+Este documento extiende el diseno OpenSpec del modulo Domicilios con modelo de datos, API y permisos. Fase 4 ya implementa la base real con SQL DDL directo y backend NestJS inicial. Fase 6A activa permisos backend con `PermissionsGuard`, sin usar Prisma, sin tocar frontend y sin aplicar SQL en produccion.
 
 La recomendacion tecnica es crear una entidad principal futura `deliveries`, acompanada desde el inicio por `delivery_status_history` para auditoria de estados. `delivery_payment_events`, `customer_delivery_addresses` y `delivery_assignments` quedan como tablas candidatas, pero no todas son obligatorias para v0.0.1.
 
@@ -12,13 +12,13 @@ Piedra grande aqui: dinero. Si el valor de domicilio se cobra al cliente, debe t
 
 - No usar Prisma.
 - No crear frontend.
-- No crear endpoints de acciones de estado todavia.
+- No crear reportes avanzados.
 - No integrar caja.
 - No integrar facturacion electronica.
 - No integrar pedidos de forma activa.
 - No modificar frontend funcional.
-- No modificar permisos reales.
-- No modificar menus reales.
+- No aplicar permisos reales en produccion sin aprobacion.
+- No modificar menus frontend reales.
 - No modificar pedidos, facturacion, POS, caja o reporteria.
 - No tocar produccion.
 - No hacer commit sin aprobacion expresa.
@@ -436,7 +436,7 @@ Matriz sugerida:
 | `DELIVERIES_CANCEL` | No por defecto | Si | Si | Si |
 | `DELIVERIES_REPORTS` | No o limitado | Si | Si | Si |
 
-No aplicar permisos reales en esta fase.
+Fase 6A aplica permisos backend en codigo y deja SQL idempotente para local/QA. No se aplica SQL en produccion sin aprobacion.
 
 ## Indices sugeridos
 
@@ -628,7 +628,7 @@ Seguridad:
 - Usa `JwtAuthGuard`.
 - `tenant_id` sale de JWT/contexto.
 - `branch_id` usa contexto autenticado si existe; si no, body/query.
-- No se sembraron ni aplicaron permisos `DELIVERIES_*`.
+- Fase 6A agrega `PermissionsGuard` y permisos `DELIVERIES_*` en backend.
 
 ## Fase 5 implementada
 
@@ -703,6 +703,59 @@ Cada transicion registra:
 - `metadata` con accion y datos auxiliares.
 - `created_at` por default de base de datos.
 
+## Fase 6A implementada - permisos backend
+
+### Constantes y guard
+
+Se agrega:
+
+```text
+api/src/common/constants/menu-keys.ts -> MENU_KEYS.DELIVERIES
+api/src/modules/deliveries/deliveries.constants.ts -> DELIVERY_PERMISSION_ACTIONS
+```
+
+`DeliveriesController` queda protegido con:
+
+```text
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+```
+
+`DeliveriesModule` importa `AccessControlModule` para resolver el guard.
+
+### Mapeo backend
+
+| Endpoint | Permiso |
+| --- | --- |
+| `GET /api/deliveries` | `DELIVERIES_VIEW` |
+| `POST /api/deliveries` | `DELIVERIES_CREATE` |
+| `GET /api/deliveries/:id` | `DELIVERIES_VIEW` |
+| `PATCH /api/deliveries/:id` | `DELIVERIES_UPDATE` |
+| `POST /api/deliveries/:id/assign` | `DELIVERIES_ASSIGN` |
+| `POST /api/deliveries/:id/dispatch` | `DELIVERIES_DISPATCH` |
+| `POST /api/deliveries/:id/mark-delivered` | `DELIVERIES_MARK_DELIVERED` |
+| `POST /api/deliveries/:id/mark-not-delivered` | `DELIVERIES_MARK_NOT_DELIVERED` |
+| `POST /api/deliveries/:id/cancel` | `DELIVERIES_CANCEL` |
+| `GET /api/deliveries/reports/summary` | `DELIVERIES_REPORTS` |
+
+El endpoint de summary existe como placeholder protegido y responde pendiente de implementacion. No calcula reportes.
+
+### SQL local/QA
+
+Archivo:
+
+```text
+scripts/database/security/20260620_1730_deliveries_permissions_local_qa.sql
+```
+
+Comportamiento:
+
+- Crea/actualiza `menu_items` con key `DELIVERIES`, `visible = FALSE`, `backendOnly = true`.
+- Crea/actualiza `role_menu_permissions.actions` con acciones `DELIVERIES_*`.
+- `USER` recibe view/create/update/dispatch/mark delivered/mark not delivered.
+- `ADMIN`, `SUPER_USER` y `SUPER_ADMIN` reciben acciones operativas y reportes.
+- No se ejecuta automaticamente por `migrate_prd.sh`.
+- No aplicar en produccion sin aprobacion explicita.
+
 ## UX tecnica futura
 
 Pantallas:
@@ -764,9 +817,10 @@ No crear estos archivos en esta fase.
 
 - Codigo backend tocado: SI, solo modulo de domicilios y registro en `AppModule`.
 - Codigo frontend tocado: NO.
-- SQL/migraciones tocadas: SI, `V063__deliveries_base.sql`.
-- Endpoints reales creados: SI, CRUD inicial y acciones de estado de Fase 5.
-- Permisos reales modificados: NO.
-- Menus reales modificados: NO.
+- SQL/migraciones tocadas: SI, `V063__deliveries_base.sql`; SQL local/QA de permisos en `scripts/database/security`.
+- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5 y placeholder protegido de summary.
+- Permisos backend modificados: SI, `DELIVERIES_*` via `PermissionsGuard`.
+- Menus frontend reales modificados: NO.
+- SQL aplicado en produccion: NO.
 - Logica de negocio existente modificada: NO.
 - Commit realizado: NO.

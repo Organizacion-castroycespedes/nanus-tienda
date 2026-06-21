@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-Este documento definio el plan tecnico para implementar el backend futuro del modulo Domicilios. Fase 4 ya implementa una primera base runtime acotada con SQL DDL directo y NestJS, sin Prisma, sin frontend y sin integraciones avanzadas.
+Este documento definio el plan tecnico para implementar el backend futuro del modulo Domicilios. Fase 4 ya implementa una primera base runtime acotada con SQL DDL directo y NestJS; Fase 5 implementa state machine; Fase 6A activa permisos backend. Sigue sin Prisma, sin frontend y sin integraciones avanzadas.
 
 El modulo debe nacer aislado en `/api/deliveries`, con `tenant_id` obligatorio, estado logistico controlado, auditoria minima, y reglas explicitas para no duplicar dinero entre factura, caja y domicilio.
 
@@ -27,10 +27,9 @@ La implementacion futura debe cubrir:
 - No crear modelos Prisma.
 - No crear frontend.
 - No crear integracion real con caja, facturacion electronica, pedidos o reporteria.
-- No crear endpoints de acciones de estado todavia.
-- No modificar guards reales.
-- No modificar permisos reales.
-- No modificar menus reales.
+- No crear reportes avanzados.
+- No aplicar SQL de permisos en produccion sin aprobacion.
+- No modificar menus frontend reales.
 - No modificar frontend funcional.
 - No tocar produccion.
 - No hacer commit sin aprobacion expresa.
@@ -535,7 +534,7 @@ Matriz propuesta:
 | SUPER_USER | Igual que ADMIN o superior dentro del tenant |
 | SUPER_ADMIN | Acceso global segun patron actual |
 
-No aplicar esta matriz en esta fase.
+Fase 6A aplica esta matriz en SQL local/QA y en metadata backend. No aplicar en produccion sin aprobacion.
 
 ## Tests backend futuros
 
@@ -783,6 +782,58 @@ api/src/modules/deliveries/deliveries.service.spec.ts
 
 Cubren transiciones validas, saltos invalidos, estados finales, rollback e historial transaccional.
 
+## Fase 6A implementada - permisos backend
+
+### Backend
+
+Se implementa control real de permisos sin cambiar state machine ni integrar caja, facturacion, pedidos, ventas, inventario o frontend.
+
+Archivos clave:
+
+```text
+api/src/common/constants/menu-keys.ts
+api/src/modules/deliveries/deliveries.constants.ts
+api/src/modules/deliveries/deliveries.controller.ts
+api/src/modules/deliveries/deliveries.module.ts
+api/src/modules/deliveries/deliveries.controller.spec.ts
+api/src/common/guards/permissions.guard.spec.ts
+```
+
+`DeliveriesController` usa:
+
+```text
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+```
+
+### Mapeo de permisos
+
+| Endpoint | Permiso |
+| --- | --- |
+| `GET /api/deliveries` | `DELIVERIES_VIEW` |
+| `POST /api/deliveries` | `DELIVERIES_CREATE` |
+| `GET /api/deliveries/:id` | `DELIVERIES_VIEW` |
+| `PATCH /api/deliveries/:id` | `DELIVERIES_UPDATE` |
+| `POST /api/deliveries/:id/assign` | `DELIVERIES_ASSIGN` |
+| `POST /api/deliveries/:id/dispatch` | `DELIVERIES_DISPATCH` |
+| `POST /api/deliveries/:id/mark-delivered` | `DELIVERIES_MARK_DELIVERED` |
+| `POST /api/deliveries/:id/mark-not-delivered` | `DELIVERIES_MARK_NOT_DELIVERED` |
+| `POST /api/deliveries/:id/cancel` | `DELIVERIES_CANCEL` |
+| `GET /api/deliveries/reports/summary` | `DELIVERIES_REPORTS` |
+
+`GET /api/deliveries/reports/summary` es placeholder protegido con `NotImplementedException`; no implementa reporte avanzado.
+
+### SQL local/QA
+
+Archivo:
+
+```text
+scripts/database/security/20260620_1730_deliveries_permissions_local_qa.sql
+```
+
+Este SQL es idempotente, crea/actualiza `menu_items` con key `DELIVERIES` visible `FALSE` y crea/actualiza `role_menu_permissions.actions` para `USER`, `ADMIN`, `SUPER_USER` y `SUPER_ADMIN`.
+
+No se ejecuta automaticamente por `migrate_prd.sh` y no debe aplicarse en produccion sin aprobacion explicita.
+
 ### Tenant, branch y seguridad
 
 - `tenant_id` se toma del JWT/contexto: `request.context.tenantId` o `request.user.tenantId`.
@@ -790,7 +841,7 @@ Cubren transiciones validas, saltos invalidos, estados finales, rollback e histo
 - Si contexto trae branch y el body/query intenta otro branch, la API rechaza la operacion.
 - Todas las consultas filtran por `tenant_id`.
 - Se usa `JwtAuthGuard`.
-- No se usa `PermissionsGuard` para `DELIVERIES_*` porque los permisos no estan sembrados.
+- Fase 6A agrega `PermissionsGuard` y acciones `DELIVERIES_*`.
 
 ### Numero de domicilio
 
@@ -818,9 +869,10 @@ Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal 
 6. Completado en Fase 5: crear `DeliveryStateMachineService`.
 7. Completado en Fase 5: implementar endpoints de acciones de estado.
 8. Completado en Fase 5: agregar tests unitarios de state machine y transiciones.
-9. Pendiente Fase 6A: agregar guards/permisos reales cuando existan seeds aprobados.
-10. Pendiente Fase 6: integrar caja/facturacion/pedidos.
-11. Pendiente Fase 7: disenar frontend runtime.
+9. Completado en Fase 6A: agregar guards/permisos backend `DELIVERIES_*`.
+10. Completado en Fase 6A: crear SQL local/QA de permisos.
+11. Pendiente Fase 6B/7: integrar caja/facturacion/pedidos.
+12. Pendiente Fase 7: disenar frontend runtime.
 
 ## Riesgos tecnicos
 
@@ -876,13 +928,14 @@ Este mecanismo queda reemplazable por un consecutivo formal por tenant/sucursal 
 
 - Codigo backend tocado: SI, solo modulo `api/src/modules/deliveries` y registro en `AppModule`.
 - Codigo frontend tocado: NO.
-- SQL/migraciones reales creadas: SI, `scripts/database/migrations/V063__deliveries_base.sql`.
+- SQL/migraciones reales creadas: SI, `scripts/database/migrations/V063__deliveries_base.sql`; SQL local/QA de permisos en `scripts/database/security`.
 - Tablas reales creadas: SI, cuando se aplique la migracion: `deliveries` y `delivery_status_history`.
-- Endpoints reales creados: SI, CRUD inicial y acciones de estado de Fase 5.
+- Endpoints reales creados: SI, CRUD inicial, acciones de estado de Fase 5 y placeholder protegido de summary.
 - DTOs reales creados: SI, DTOs iniciales y DTOs de acciones de estado.
 - Servicios reales creados: SI, `DeliveriesService`, `DeliveryNumberService` y `DeliveryStateMachineService`.
-- Guards reales modificados: NO.
-- Permisos reales modificados: NO.
-- Menus reales modificados: NO.
+- Guards reales modificados: SI, `DeliveriesController` usa `PermissionsGuard`.
+- Permisos backend modificados: SI, `DELIVERIES_*`.
+- Menus frontend reales modificados: NO.
+- SQL aplicado en produccion: NO.
 - Logica de negocio existente modificada: NO.
 - Commit realizado: NO.

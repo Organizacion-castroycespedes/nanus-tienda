@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Inject,
+  NotImplementedException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -15,7 +16,11 @@ import {
   ValidationPipe,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { MENU_KEYS } from "../../common/constants/menu-keys";
+import { RequirePermission } from "../../common/decorators/require-permission.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
+import { PermissionsGuard } from "../../common/guards/permissions.guard";
+import { DELIVERY_PERMISSION_ACTIONS } from "./deliveries.constants";
 import { DeliveriesService } from "./deliveries.service";
 import { AssignDeliveryDto } from "./dto/assign-delivery.dto";
 import { CancelDeliveryDto } from "./dto/cancel-delivery.dto";
@@ -46,7 +51,7 @@ const deliveriesValidationPipe = new ValidationPipe({
 });
 
 @Controller("deliveries")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @UsePipes(deliveriesValidationPipe)
 export class DeliveriesController {
   constructor(
@@ -69,16 +74,41 @@ export class DeliveriesController {
   }
 
   @Get()
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "READ",
+    action: DELIVERY_PERMISSION_ACTIONS.VIEW,
+  })
   list(@Query() query: QueryDeliveriesDto, @Req() request: DeliveriesRequest) {
     return this.deliveriesService.list(query, this.buildActor(request));
   }
 
   @Post()
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.CREATE,
+  })
   create(@Body() payload: CreateDeliveryDto, @Req() request: DeliveriesRequest) {
     return this.deliveriesService.create(payload, this.buildActor(request));
   }
 
+  @Get("reports/summary")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "READ",
+    action: DELIVERY_PERMISSION_ACTIONS.REPORTS,
+  })
+  getSummaryReport() {
+    throw new NotImplementedException("Reporte de domicilios pendiente");
+  }
+
   @Get(":id")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "READ",
+    action: DELIVERY_PERMISSION_ACTIONS.VIEW,
+  })
   getById(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() request: DeliveriesRequest
@@ -87,6 +117,11 @@ export class DeliveriesController {
   }
 
   @Patch(":id")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.UPDATE,
+  })
   update(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() payload: UpdateDeliveryDto,
@@ -96,6 +131,11 @@ export class DeliveriesController {
   }
 
   @Post(":id/assign")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
+  })
   assign(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() payload: AssignDeliveryDto,
@@ -105,6 +145,11 @@ export class DeliveriesController {
   }
 
   @Post(":id/dispatch")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.DISPATCH,
+  })
   dispatch(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() payload: DispatchDeliveryDto,
@@ -114,6 +159,11 @@ export class DeliveriesController {
   }
 
   @Post(":id/mark-delivered")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.MARK_DELIVERED,
+  })
   markDelivered(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() payload: MarkDeliveredDeliveryDto,
@@ -127,6 +177,11 @@ export class DeliveriesController {
   }
 
   @Post(":id/mark-not-delivered")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.MARK_NOT_DELIVERED,
+  })
   markNotDelivered(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() payload: MarkNotDeliveredDeliveryDto,
@@ -140,6 +195,11 @@ export class DeliveriesController {
   }
 
   @Post(":id/cancel")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.CANCEL,
+  })
   cancel(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() payload: CancelDeliveryDto,

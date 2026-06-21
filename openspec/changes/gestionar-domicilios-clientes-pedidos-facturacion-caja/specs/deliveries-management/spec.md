@@ -167,6 +167,10 @@ The system SHALL implement the initial delivery CRUD API endpoints in Fase 4 and
 - **WHEN** Fase 5 state machine implementation is completed
 - **THEN** `GET /api/deliveries/reports/summary` is still not implemented
 
+#### Scenario: Summary report placeholder is protected
+- **WHEN** Fase 6A backend permissions are implemented
+- **THEN** `GET /api/deliveries/reports/summary` exists only as a permission-gated placeholder and advanced reporting remains deferred
+
 ### Requirement: Delivery DTO contract
 The system SHALL document delivery DTO shapes and SHALL implement the Fase 5 action DTOs for assignment, dispatch, delivered, not-delivered and cancellation.
 
