@@ -3,8 +3,8 @@
 - Fecha: 2026-06-21
 - Rama: `feat/0.0.1/arquitectura-clientes-web-electron`
 - HEAD inicial: `ba9fbf9`
-- HEAD probado: `working tree sin commit`
-- Estado del worktree: sucio, cambios locales sin commit
+- HEAD probado: `2fe3cdf`
+- Estado del worktree: sucio, cambios locales sin commit en `web/.env.example` y `web/next.config.mjs`
 
 ## Contexto
 
@@ -19,30 +19,29 @@ Se preparo una ruta segura de QA para el login empaquetado de Electron sin crear
 
 ## Comandos ejecutados
 
-- `npm.cmd run lint`
-- `npm.cmd run build`
-- `npx.cmd tsx --test domains/auth/login-qa.spec.ts`
+- `npm.cmd run dev`
 - `Invoke-WebRequest -UseBasicParsing http://localhost:3001/login`
-- `chrome.exe --headless=new --disable-gpu --virtual-time-budget=5000 --dump-dom http://localhost:3001/login`
 - `Start-Process` para abrir Electron empaquetado
-- Captura de pantalla de Electron visible
+- `chrome.exe --headless=new --disable-gpu --virtual-time-budget=5000 --dump-dom http://localhost:3001/login`
 
 ## Resultado observado
 
 - La pagina de login carga en Electron empaquetado.
 - El checkbox de human-check no aparece en la ruta QA local.
 - El DOM en la web QA local ya no muestra el texto del captcha.
-- La pantalla Electron sigue en login durante la prueba manual automatizada de teclado/mouse.
+- La sesion activa previa se cierra con `Cerrar la otra sesion`.
+- Electron llega al dashboard de `/{tenant}/dashboard` con usuario QA.
 
 ## Resultado final
 
-`READY_FOR_RETRY`
+`PASS_QA_MANUAL_LOGIN_PATH`
 
 ## Riesgos y notas
 
 - La ruta QA solo vale en localhost y con `NEXT_PUBLIC_QA_LOGIN_ENABLED=true`.
 - No se toco backend, SQL, permisos ni logica de negocio.
 - No se introdujo bypass universal.
+- El siguiente bloqueo de scanner ya no es login. Es ausencia de caja abierta para el alcance POS actual.
 
 ## Evidencia visual
 
