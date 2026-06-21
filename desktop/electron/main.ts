@@ -1,7 +1,8 @@
 import { app, BrowserWindow, shell } from "electron";
 import path from "node:path";
 
-const DEFAULT_WEB_URL = "http://localhost:3000";
+import { resolveElectronConfig } from "./config.js";
+
 const DEFAULT_WINDOW_TITLE = "Manus POS";
 const DEFAULT_WINDOW_WIDTH = 1280;
 const DEFAULT_WINDOW_HEIGHT = 800;
@@ -27,18 +28,19 @@ const parseCloseBehavior = (value: string | undefined): CloseBehavior => {
   return value === "hide" ? "hide" : "quit";
 };
 
-const resolveWebUrl = () => {
-  const configuredUrl = process.env.MANUS_WEB_URL?.trim() || DEFAULT_WEB_URL;
-
+const loadElectronConfig = () => {
   try {
-    return new URL(configuredUrl);
-  } catch {
-    return new URL(DEFAULT_WEB_URL);
+    return resolveElectronConfig(process.env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[Manus Electron] ${message}`);
+    process.exit(1);
   }
 };
 
-const manusWebUrl = resolveWebUrl();
-const manusWebOrigin = manusWebUrl.origin;
+const electronConfig = loadElectronConfig();
+const manusWebUrl = electronConfig.initialUrl;
+const manusWebOrigin = electronConfig.webBaseUrl.origin;
 const closeBehavior = parseCloseBehavior(process.env.MANUS_ELECTRON_CLOSE_BEHAVIOR);
 
 const isSameOrigin = (candidateUrl: string) => {

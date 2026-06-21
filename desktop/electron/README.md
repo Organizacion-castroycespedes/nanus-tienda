@@ -10,6 +10,8 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 
 - Carga `MANUS_WEB_URL`.
 - Usa `http://localhost:3000` por defecto en desarrollo.
+- Puede resolver ruta inicial con `MANUS_START_PATH`.
+- Puede leer contexto local reservado de tenant, sucursal y terminal.
 - Mantiene Electron online-only.
 - Prioriza Windows para la primera validacion.
 - Aplica baseline basico de seguridad Electron.
@@ -67,25 +69,66 @@ http://localhost:3000
 
 | Variable | Default | Uso |
 | --- | --- | --- |
-| `MANUS_WEB_URL` | `http://localhost:3000` | URL web que Electron debe cargar. |
+| `MANUS_WEB_URL` | `http://localhost:3000` | URL base de la web que Electron debe cargar. |
+| `MANUS_START_PATH` | ninguno | Ruta inicial. Debe empezar con un solo `/`. Tiene prioridad sobre `MANUS_TENANT_ID`. |
+| `MANUS_TENANT_ID` | ninguno | Tenant inicial opcional. Si no hay `MANUS_START_PATH`, construye `/<tenantId>`. |
+| `MANUS_BRANCH_ID` | ninguno | Sucursal local reservada. No altera la URL en esta fase. |
+| `MANUS_TERMINAL_ID` | ninguno | Terminal local reservada. No altera la URL en esta fase. |
 | `MANUS_ELECTRON_WINDOW_TITLE` | `Manus POS` | Titulo inicial de ventana. |
 | `MANUS_ELECTRON_WINDOW_WIDTH` | `1280` | Ancho inicial. |
 | `MANUS_ELECTRON_WINDOW_HEIGHT` | `800` | Alto inicial. |
 | `MANUS_ELECTRON_CLOSE_BEHAVIOR` | `quit` | `quit` o `hide`. |
 | `MANUS_ELECTRON_OPEN_DEVTOOLS` | `false` | Abre DevTools si vale `true`. |
 
-Ejemplo:
+### Abrir `/login` en PowerShell
 
 ```powershell
 $env:MANUS_WEB_URL="http://localhost:3000"
+$env:MANUS_START_PATH="/login"
 npm run dev
 ```
+
+### Abrir ruta tenant en PowerShell
+
+```powershell
+$env:MANUS_WEB_URL="http://localhost:3000"
+$env:MANUS_TENANT_ID="00000000-0000-0000-0000-000000000001"
+Remove-Item Env:MANUS_START_PATH -ErrorAction SilentlyContinue
+npm run dev
+```
+
+### Abrir `/login` en Bash
+
+```bash
+MANUS_WEB_URL=http://localhost:3000 MANUS_START_PATH=/login npm run dev
+```
+
+### Configurar contexto reservado en Bash
+
+```bash
+MANUS_WEB_URL=http://localhost:3000 \
+MANUS_TENANT_ID=00000000-0000-0000-0000-000000000001 \
+MANUS_BRANCH_ID=branch-demo \
+MANUS_TERMINAL_ID=terminal-demo \
+npm run dev
+```
+
+## Que no hace esta configuracion
+
+- No autentica al usuario.
+- No cambia permisos.
+- No crea sesion POS.
+- No abre caja.
+- No envia `branchId` o `terminalId` por un canal nuevo al backend.
+- No crea almacenamiento local operativo.
+- No habilita offline.
 
 ## Scripts
 
 ```powershell
 npm run dev
 npm run build
+npm test
 npm run typecheck
 ```
 
