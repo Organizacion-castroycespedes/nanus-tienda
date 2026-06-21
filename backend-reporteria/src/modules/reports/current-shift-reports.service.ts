@@ -244,16 +244,13 @@ export class CurrentShiftReportsService {
       throw new ForbiddenException("No autorizado para otra caja");
     }
 
-    if (actor.role === "USER" && session.userId !== actor.userId) {
-      throw new ForbiddenException("No autorizado para caja ajena");
+    if (actor.role === "USER" && actor.branchId && session.branchId !== actor.branchId) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
     }
 
     if (actor.role === "ADMIN") {
       if (actor.branchId && session.branchId !== actor.branchId) {
         throw new ForbiddenException("No autorizado para otra sucursal");
-      }
-      if (!query.cashSessionId && session.userId !== actor.userId) {
-        throw new ForbiddenException("No autorizado para caja ajena");
       }
     }
 
@@ -310,9 +307,14 @@ export class CurrentShiftReportsService {
       "session.tenant_id = $1",
       "session.status = 'OPEN'",
     ];
+    const effectiveBranchId =
+      filters.branchId ??
+      ((actor.role === "USER" || actor.role === "ADMIN") && actor.branchId
+        ? actor.branchId
+        : undefined);
 
-    if (filters.branchId) {
-      params.push(filters.branchId);
+    if (effectiveBranchId) {
+      params.push(effectiveBranchId);
       where.push(`session.branch_id = $${params.length}`);
     }
 
@@ -326,17 +328,13 @@ export class CurrentShiftReportsService {
       where.push(`session.cash_register_id = $${params.length}`);
     }
 
-    if (actor.role === "USER") {
-      params.push(actor.userId);
-      where.push(`session.opened_by_user_id = $${params.length}`);
-    }
+    const requireOwnSession =
+      !effectiveBranchId &&
+      (actor.role === "USER" ||
+        actor.role === "ADMIN" ||
+        (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
 
-    if (actor.role === "ADMIN") {
-      if (actor.branchId) {
-        params.push(actor.branchId);
-        where.push(`session.branch_id = $${params.length}`);
-      }
-
+    if (requireOwnSession) {
       params.push(actor.userId);
       where.push(`session.opened_by_user_id = $${params.length}`);
     }
@@ -398,18 +396,24 @@ export class CurrentShiftReportsService {
       "session.tenant_id = $1",
       "session.status = 'OPEN'",
     ];
+    const effectiveBranchId =
+      branchId ??
+      ((actor.role === "USER" || actor.role === "ADMIN") && actor.branchId
+        ? actor.branchId
+        : undefined);
 
-    if (branchId) {
-      params.push(branchId);
+    if (effectiveBranchId) {
+      params.push(effectiveBranchId);
       where.push(`session.branch_id = $${params.length}`);
     }
 
     params.push(actor.userId);
     const actorUserParamIndex = params.length;
     const requireOwnSession =
-      actor.role === "USER" ||
-      actor.role === "ADMIN" ||
-      (!branchId && !this.isSuperAdmin(actor) && !this.isSuperUser(actor));
+      !effectiveBranchId &&
+      (actor.role === "USER" ||
+        actor.role === "ADMIN" ||
+        (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
 
     if (requireOwnSession) {
       where.push(`session.opened_by_user_id = $${actorUserParamIndex}`);
@@ -830,7 +834,7 @@ export class CurrentShiftReportsService {
   ): Promise<CurrentShiftResponse> {
     const actor = this.resolveActor(user);
     const tenantId = this.resolveTenant(actor, query);
-    const branchId = this.normalizeUuid(query.branchId, "branchId");
+    const branchId = this.normalizeUuid(query.branchId, "branchId") ?? actor.branchId ?? undefined;
     const terminalId = this.normalizeUuid(query.terminalId, "terminalId");
     const cashRegisterId = this.normalizeUuid(
       query.cashRegisterId,
