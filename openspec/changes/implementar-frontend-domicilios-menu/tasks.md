@@ -37,3 +37,11 @@
 - [x] 5.6 Ensure `/{tenant}/deliveries?order_id=...` and `/{tenant}/deliveries?sale_id=...` initialize filters.
 - [x] 5.7 Add focused tests and QA evidence for the orders/sales integration.
 - [x] 5.8 Run OpenSpec, frontend tests, lint, build and diff validations.
+
+## 6. Fase 7E - Frontend closure
+
+- [x] 6.1 Confirm branch, clean worktree and expected HEAD.
+- [x] 6.2 Confirm `origin/develop` has no new commits requiring merge.
+- [x] 6.3 Review OpenSpec and QA evidence for frontend closure.
+- [x] 6.4 Document that complete visual manual QA remains pending post-merge to `develop`.
+- [x] 6.5 Run final OpenSpec, frontend tests, lint, build and diff validations.

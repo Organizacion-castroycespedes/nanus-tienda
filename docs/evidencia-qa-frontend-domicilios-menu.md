@@ -55,6 +55,7 @@ Pendiente con navegador visual y usuario real:
 - Con usuario autorizado, validar carga inicial, filtros, detalle y acciones contra backend local con datos.
 - Con usuario sin permiso, validar bloqueo por permisos.
 - Validar mobile/responsive sin overflow global.
+- QA manual visual completo queda pendiente post-merge a `develop`.
 
 ## Pendientes
 

@@ -70,6 +70,7 @@ Pendiente con backend, datos locales y navegador visual:
 - Validar duplicado controlado por backend.
 - Validar usuario sin permisos o respuesta 403.
 - Validar vista movil sin overflow horizontal.
+- QA manual visual completo queda pendiente post-merge a `develop`.
 
 ## Limites y pendientes
 

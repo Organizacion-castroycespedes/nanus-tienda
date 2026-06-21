@@ -74,3 +74,4 @@ No hay migracion de datos. Rollback: revertir cambios de `web/modules/deliveries
 - El backend devolvera historial de `delivery_status_history` en detalle?
 - El menu `DELIVERIES` se sembrara visible en una fase posterior?
 - Habra una ruta operativa dedicada de ventas distinta a reporteria POS para ubicar esta relacion en una fase posterior?
+- QA manual visual completo queda pendiente post-merge a `develop`, con usuario real, backend local y datos disponibles.

@@ -151,3 +151,10 @@ The system SHALL initialize Domicilios filters from supported order and sale que
 #### Scenario: Sale filtered module link is opened
 - **WHEN** the user navigates to `/{tenant}/deliveries?sale_id={saleId}`
 - **THEN** the Domicilios screen initializes the `sale_id` filter and loads matching deliveries
+
+### Requirement: Delivery frontend QA closure
+The system SHALL keep frontend Domicilios ready for PR while documenting that complete visual manual QA remains pending after merge to `develop`.
+
+#### Scenario: Frontend closure is prepared
+- **WHEN** final technical validations pass on the feature branch
+- **THEN** the OpenSpec change stays active, QA evidence records technical validation results, and complete visual manual QA is documented as pending post-merge to `develop`
