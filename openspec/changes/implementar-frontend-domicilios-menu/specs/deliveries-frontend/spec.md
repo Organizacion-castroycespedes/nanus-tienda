@@ -110,3 +110,44 @@ The system SHALL not change caja, POS, financial movements, electronic invoicing
 #### Scenario: Delivery state action succeeds
 - **WHEN** a delivery state action completes
 - **THEN** the frontend refreshes delivery data only and does not create cash movements, POS changes, electronic invoicing changes or SQL changes
+
+### Requirement: Order delivery visual relation
+The system SHALL let users inspect and create a delivery associated with an order from the orders UI without changing the order flow.
+
+#### Scenario: Order has an associated delivery
+- **WHEN** the user opens the Domicilio action for an order with an associated delivery
+- **THEN** the system shows the delivery status, contact, address, a detail action and a link to `/{tenant}/deliveries?order_id={orderId}`
+
+#### Scenario: Order has no associated delivery
+- **WHEN** the user opens the Domicilio action for an order without a delivery
+- **THEN** the system shows a clear empty state and a create action when `DELIVERIES_CREATE` is allowed
+
+#### Scenario: Delivery is created from an order
+- **WHEN** the user submits the minimum delivery fields from an order
+- **THEN** the system calls `POST /api/orders/:id/delivery`, refreshes the relation view and does not modify order creation, invoicing, payment, caja, POS, totals or taxes
+
+### Requirement: Sale delivery visual relation
+The system SHALL let users inspect and create a delivery associated with a sale from the available sales UI without changing POS, caja, totals, taxes or electronic invoicing.
+
+#### Scenario: Sale has an associated delivery
+- **WHEN** the user opens the Domicilio action for a sale with an associated delivery
+- **THEN** the system shows the delivery status, contact, address, financial source when available, a detail action and a link to `/{tenant}/deliveries?sale_id={saleId}`
+
+#### Scenario: Sale has no associated delivery
+- **WHEN** the user opens the Domicilio action for a sale without a delivery
+- **THEN** the system shows a clear empty state and a create action when `DELIVERIES_CREATE` is allowed
+
+#### Scenario: Delivery is created from a sale
+- **WHEN** the user submits the minimum delivery fields from a sale
+- **THEN** the system calls `POST /api/sales/:id/delivery` with only allowed financial sources `INVOICE_INCLUDED` or `NO_FEE`, refreshes the relation view and does not modify POS, caja, totals, taxes or electronic invoicing
+
+### Requirement: Delivery module relation filters
+The system SHALL initialize Domicilios filters from supported order and sale query params.
+
+#### Scenario: Order filtered module link is opened
+- **WHEN** the user navigates to `/{tenant}/deliveries?order_id={orderId}`
+- **THEN** the Domicilios screen initializes the `order_id` filter and loads matching deliveries
+
+#### Scenario: Sale filtered module link is opened
+- **WHEN** the user navigates to `/{tenant}/deliveries?sale_id={saleId}`
+- **THEN** the Domicilios screen initializes the `sale_id` filter and loads matching deliveries

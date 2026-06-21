@@ -47,12 +47,21 @@ El backend de Domicilios ya expone `GET /api/deliveries`, `POST /api/deliveries`
    - Se agrega `MENU_KEYS.DELIVERIES` y route guard frontend para `/{tenant}/deliveries`.
    - La entrada visible del sidebar depende de `/me/menu`; si el backend/seed no envia `DELIVERIES`, la ruta existe pero no aparecera en menu.
 
+7. **Fase 7C usa integracion visual contextual**
+   - Pedidos agrega una accion `Domicilio` en el listado existente y abre un panel contextual. No modifica crear, entregar, facturar, abonar ni cancelar pedidos.
+   - Ventas usa la vista de reporteria de ventas POS como vista de venta disponible en el frontend actual; solo agrega consulta/creacion de domicilio por `sale_id`. No toca `web/modules/pos`, no cambia totales, impuestos, caja ni facturacion.
+   - El componente de relacion vive en `web/modules/deliveries` para compartir permisos, errores, creacion y navegacion filtrada entre pedidos y ventas.
+   - La navegacion al modulo usa query params reales: `order_id` y `sale_id`, que inicializan los filtros de Domicilios.
+
 ## Risks / Trade-offs
 
 - [Risk] Busqueda textual no es global porque backend no la soporta. -> Mitigacion: aplicar busqueda local sobre resultados cargados y documentar pendiente.
 - [Risk] Asignar requiere un usuario/repartidor y no existe selector de usuarios dedicado. -> Mitigacion: usar input UUID controlado para `assigned_courier_id`.
 - [Risk] El backend no devuelve historial ni nombre de repartidor. -> Mitigacion: mostrar IDs/campos disponibles y documentar pendiente.
 - [Risk] Menu puede no mostrar Domicilios si la DB no trae item visible. -> Mitigacion: no tocar SQL; documentar seed/menu pendiente.
+- [Risk] No existe ruta dedicada `/{tenant}/sales`; la vista de ventas disponible es reporteria POS. -> Mitigacion: integrar solo la tabla de reporteria de ventas y documentar que el flujo POS queda intacto.
+- [Risk] Backend puede devolver 404 cuando no existe domicilio relacionado. -> Mitigacion: tratarlo como estado vacio controlado y permitir crear si hay permiso.
+- [Risk] Crear domicilio desde venta acepta fuente financiera, pero no debe modificar totales. -> Mitigacion: enviar solo `INVOICE_INCLUDED` o `NO_FEE` como dato de domicilio y mostrarlo como informacion.
 
 ## Migration Plan
 
@@ -64,3 +73,4 @@ No hay migracion de datos. Rollback: revertir cambios de `web/modules/deliveries
 - El backend agregara busqueda textual global?
 - El backend devolvera historial de `delivery_status_history` en detalle?
 - El menu `DELIVERIES` se sembrara visible en una fase posterior?
+- Habra una ruta operativa dedicada de ventas distinta a reporteria POS para ubicar esta relacion en una fase posterior?

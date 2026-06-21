@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDeliveriesQuery } from "./delivery-query";
+import {
+  buildDeliveriesQuery,
+  buildOrderDeliveryEndpoint,
+  buildSaleDeliveryEndpoint,
+} from "./delivery-query";
 
 test("buildDeliveriesQuery includes only supported backend filters", () => {
   assert.equal(
@@ -27,4 +31,15 @@ test("buildDeliveriesQuery skips empty values", () => {
     }),
     "/deliveries?page=1&limit=10"
   );
+});
+
+test("order delivery endpoint targets relation wrapper", () => {
+  assert.equal(
+    buildOrderDeliveryEndpoint("order-1"),
+    "/orders/order-1/delivery"
+  );
+});
+
+test("sale delivery endpoint targets relation wrapper", () => {
+  assert.equal(buildSaleDeliveryEndpoint("sale-1"), "/sales/sale-1/delivery");
 });

@@ -9,11 +9,13 @@ import {
   Receipt,
   RefreshCw,
   Search,
+  Truck,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
+import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
@@ -24,6 +26,7 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { OrderDeliverForm } from "../../../modules/inventory/components/OrderDeliverForm";
 import { OrderForm } from "../../../modules/inventory/components/OrderForm";
 import { OrderInvoiceForm } from "../../../modules/inventory/components/OrderInvoiceForm";
+import { DeliveryRelationCard } from "../../../modules/deliveries/components/DeliveryRelationCard";
 import {
   DocumentPaymentForm,
   type DocumentPaymentSuccessContext,
@@ -53,6 +56,13 @@ type OrderFilters = {
   branchId: string;
   fromDate: string;
   toDate: string;
+};
+
+type OrderDeliveryRelation = {
+  id: string;
+  tenantId: string;
+  label: string;
+  customerName?: string | null;
 };
 
 const defaultFilters: OrderFilters = {
@@ -101,6 +111,8 @@ const OrdersPage = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
+  const [deliveryRelation, setDeliveryRelation] =
+    useState<OrderDeliveryRelation | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
@@ -109,6 +121,7 @@ const OrdersPage = () => {
   const canCreate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const canUpdate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const isGlobalRole = role === "SUPER_ADMIN";
+  const tenantSlug = authUser?.tenantId ?? currentTenant ?? "default";
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -333,6 +346,15 @@ const OrdersPage = () => {
     setFormMode("payment");
   };
 
+  const handleOpenDeliveryRelation = (order: OrderResponse) => {
+    setDeliveryRelation({
+      id: order.id,
+      tenantId: order.tenantId ?? tenantSlug,
+      label: `Pedido ${order.id.slice(0, 8)}`,
+      customerName: order.customerName,
+    });
+  };
+
   const handleCancel = async (order: OrderResponse) => {
     try {
       await confirm({
@@ -369,6 +391,8 @@ const OrdersPage = () => {
     order.billingStatus !== "INVOICED";
 
   const canAccessTicket = (status: OrderResponse["status"]) => status !== "DRAFT";
+
+  const canOpenDeliveryRelation = (order: OrderResponse) => Boolean(order.id);
 
   const isActionMode = formMode !== null;
 
@@ -590,6 +614,23 @@ const OrdersPage = () => {
         />
       ) : null}
 
+      {deliveryRelation ? (
+        <Modal
+          title="Domicilio"
+          description="Relacion visual del pedido con Domicilios. No toca caja, POS ni facturacion."
+          onClose={() => setDeliveryRelation(null)}
+          size="lg"
+        >
+          <DeliveryRelationCard
+            sourceType="order"
+            sourceId={deliveryRelation.id}
+            tenantId={deliveryRelation.tenantId}
+            sourceLabel={deliveryRelation.label}
+            defaultCustomerName={deliveryRelation.customerName}
+          />
+        </Modal>
+      ) : null}
+
       <PdfPreviewModal
         isOpen={Boolean(previewOrder)}
         title={previewOrder ? `Ticket de pedido ${previewOrder.id.slice(0, 8)}` : "Ticket de pedido"}
@@ -767,6 +808,7 @@ const OrdersPage = () => {
                     <td className="px-4 py-3">
                       {(() => {
                         const hasRowActions =
+                          canOpenDeliveryRelation(order) ||
                           (canUpdate &&
                             (canEditOrder(order.status) ||
                               canDeliverOrder(order.status) ||
@@ -836,6 +878,16 @@ const OrdersPage = () => {
                           >
                             <Eye className="h-4 w-4" />
                             Ver Ticket
+                          </Button>
+                        ) : null}
+                        {canOpenDeliveryRelation(order) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDeliveryRelation(order)}
+                          >
+                            <Truck className="h-4 w-4" />
+                            Domicilio
                           </Button>
                         ) : null}
                         {canAccessTicket(order.status) ? (

@@ -38,6 +38,8 @@ export type DeliveryRecord = {
   delivered_at: string | null;
 };
 
+export type DeliveryFeeSource = "INVOICE_INCLUDED" | "NO_FEE";
+
 export type DeliveryPagination = {
   page: number;
   limit: number;
@@ -74,6 +76,7 @@ export type CreateDeliveryPayload = {
   delivery_fee?: number;
   subtotal?: number;
   total?: number;
+  delivery_fee_source?: DeliveryFeeSource;
   payment_method_id?: string;
   notes?: string;
   metadata?: Record<string, unknown>;

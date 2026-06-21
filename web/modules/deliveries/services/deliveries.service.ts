@@ -10,9 +10,17 @@ import type {
   MarkDeliveryDeliveredPayload,
   MarkDeliveryNotDeliveredPayload,
 } from "../types";
-import { buildDeliveriesQuery } from "./delivery-query";
+import {
+  buildDeliveriesQuery,
+  buildOrderDeliveryEndpoint,
+  buildSaleDeliveryEndpoint,
+} from "./delivery-query";
 
-export { buildDeliveriesQuery };
+export {
+  buildDeliveriesQuery,
+  buildOrderDeliveryEndpoint,
+  buildSaleDeliveryEndpoint,
+};
 
 export const listDeliveries = (params: GetDeliveriesParams = {}) =>
   apiClient<DeliveryListResponse>(buildDeliveriesQuery(params));
@@ -81,25 +89,43 @@ export const cancelDelivery = (
   });
 
 export const getOrderDelivery = (orderId: string) =>
-  apiClient<DeliveryRecord | null>(`/orders/${orderId}/delivery`);
+  apiClient<DeliveryRecord | null>(buildOrderDeliveryEndpoint(orderId));
 
 export const createOrderDelivery = (
   orderId: string,
   payload: CreateDeliveryPayload
 ) =>
-  apiClient<DeliveryRecord>(`/orders/${orderId}/delivery`, {
+  apiClient<DeliveryRecord>(buildOrderDeliveryEndpoint(orderId), {
     method: "POST",
     body: JSON.stringify(payload),
   });
 
 export const getSaleDelivery = (saleId: string) =>
-  apiClient<DeliveryRecord | null>(`/sales/${saleId}/delivery`);
+  apiClient<DeliveryRecord | null>(buildSaleDeliveryEndpoint(saleId));
 
 export const createSaleDelivery = (
   saleId: string,
   payload: CreateDeliveryPayload
 ) =>
-  apiClient<DeliveryRecord>(`/sales/${saleId}/delivery`, {
+  apiClient<DeliveryRecord>(buildSaleDeliveryEndpoint(saleId), {
     method: "POST",
     body: JSON.stringify(payload),
   });
+
+export const getDeliveryByOrder = (_tenantId: string, orderId: string) =>
+  getOrderDelivery(orderId);
+
+export const createDeliveryFromOrder = (
+  _tenantId: string,
+  orderId: string,
+  payload: CreateDeliveryPayload
+) => createOrderDelivery(orderId, payload);
+
+export const getDeliveryBySale = (_tenantId: string, saleId: string) =>
+  getSaleDelivery(saleId);
+
+export const createDeliveryFromSale = (
+  _tenantId: string,
+  saleId: string,
+  payload: CreateDeliveryPayload
+) => createSaleDelivery(saleId, payload);

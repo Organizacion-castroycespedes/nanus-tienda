@@ -26,3 +26,9 @@ export const buildDeliveriesQuery = (params: GetDeliveriesParams = {}) => {
   const suffix = query.toString();
   return `/deliveries${suffix ? `?${suffix}` : ""}`;
 };
+
+export const buildOrderDeliveryEndpoint = (orderId: string) =>
+  `/orders/${encodeURIComponent(orderId)}/delivery`;
+
+export const buildSaleDeliveryEndpoint = (saleId: string) =>
+  `/sales/${encodeURIComponent(saleId)}/delivery`;

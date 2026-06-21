@@ -62,7 +62,7 @@ Pendiente con navegador visual y usuario real:
 - El backend no devuelve historial `delivery_status_history` en detalle; se muestra nota pendiente.
 - No hay selector de repartidores; asignar usa input `assigned_courier_id`.
 - La entrada visible del sidebar depende de que `/me/menu` devuelva `DELIVERIES`; no se modifico SQL ni seed.
-- Integracion visual desde listados/detalles de pedidos y ventas queda para fase posterior.
+- Integracion visual desde pedidos y ventas continua en `docs/evidencia-qa-frontend-domicilios-pedidos-ventas.md`.
 
 ## Exclusiones confirmadas
 

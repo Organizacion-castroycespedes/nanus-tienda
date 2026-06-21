@@ -14,8 +14,6 @@ import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Textarea } from "../../../components/design-system/Textarea";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
-import { MENU_KEYS } from "../../../domains/menu/constants";
-import type { PermissionSummary } from "../../../domains/menu/types";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { getApiErrorMessage } from "../../reporteria/utils";
 import { useAppSelector } from "../../../store/hooks";
@@ -27,6 +25,19 @@ import {
   getDeliveryFeeSource,
 } from "../delivery-helpers";
 import {
+  buildDeliveryActionPermissionMap,
+  canCreateDelivery,
+  canReadDeliveries,
+  findDeliveryPermission,
+} from "../delivery-permissions";
+import {
+  buildDeliveryFiltersFromSearchParams,
+  defaultDeliveryFilters as defaultFilters,
+  serializeDeliveryFilters,
+  type DeliveryFilters,
+  type DeliverySearchParamsInput,
+} from "../delivery-navigation";
+import {
   assignDelivery,
   cancelDelivery,
   createDelivery,
@@ -37,7 +48,6 @@ import {
   markDeliveryNotDelivered,
 } from "../services/deliveries.service";
 import {
-  DELIVERY_PERMISSION_ACTIONS,
   DELIVERY_STATUSES,
   type CreateDeliveryPayload,
   type DeliveryActionKey,
@@ -52,15 +62,6 @@ import { DeliveryActions } from "./DeliveryActions";
 import { DeliveryDetailPanel } from "./DeliveryDetailPanel";
 import { DeliveryStatusBadge } from "./DeliveryStatusBadge";
 
-type DeliveryFilters = {
-  query: string;
-  status: "" | DeliveryStatus;
-  orderId: string;
-  saleId: string;
-  dateFrom: string;
-  dateTo: string;
-};
-
 type ActionDraft = {
   assignedCourierId: string;
   reason: string;
@@ -71,15 +72,6 @@ type ActionDraft = {
 type ActionRequest = {
   action: DeliveryActionKey;
   delivery: DeliveryRecord;
-};
-
-const defaultFilters: DeliveryFilters = {
-  query: "",
-  status: "",
-  orderId: "",
-  saleId: "",
-  dateFrom: "",
-  dateTo: "",
 };
 
 const defaultPagination: DeliveryListResponse["pagination"] = {
@@ -123,42 +115,6 @@ const optionalText = (value: string) => {
   const normalized = value.trim();
   return normalized ? normalized : undefined;
 };
-
-const actionPermissionByKey: Record<DeliveryActionKey, string> = {
-  assign: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
-  dispatch: DELIVERY_PERMISSION_ACTIONS.DISPATCH,
-  "mark-delivered": DELIVERY_PERMISSION_ACTIONS.MARK_DELIVERED,
-  "mark-not-delivered": DELIVERY_PERMISSION_ACTIONS.MARK_NOT_DELIVERED,
-  cancel: DELIVERY_PERMISSION_ACTIONS.CANCEL,
-};
-
-const findDeliveryPermission = (permissions: PermissionSummary[]) =>
-  permissions.find((permission) => permission.key === MENU_KEYS.DELIVERIES);
-
-const actionAllowed = (
-  permission: PermissionSummary | undefined,
-  action: string,
-  role: string
-) => {
-  if (role === "SUPER_ADMIN") {
-    return true;
-  }
-  if (permission?.accessLevel !== "WRITE") {
-    return false;
-  }
-  const normalizedAction = action.trim().toLowerCase();
-  return Object.entries(permission.actions ?? {}).some(
-    ([key, allowed]) => key.trim().toLowerCase() === normalizedAction && allowed
-  );
-};
-
-const canReadDeliveries = (
-  permission: PermissionSummary | undefined,
-  role: string
-) =>
-  role === "SUPER_ADMIN" ||
-  permission?.accessLevel === "READ" ||
-  permission?.accessLevel === "WRITE";
 
 const buildListParams = (
   filters: DeliveryFilters,
@@ -350,7 +306,19 @@ const MobileDeliveryCard = ({
   </article>
 );
 
-export const DeliveriesScreen = () => {
+export const DeliveriesScreen = ({
+  initialSearchParams = {},
+}: {
+  initialSearchParams?: DeliverySearchParamsInput;
+}) => {
+  const initialFilters = useMemo(
+    () => buildDeliveryFiltersFromSearchParams(initialSearchParams),
+    [initialSearchParams]
+  );
+  const initialFiltersKey = useMemo(
+    () => serializeDeliveryFilters(initialFilters),
+    [initialFilters]
+  );
   const role = (
     useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "") ??
     ""
@@ -366,38 +334,18 @@ export const DeliveriesScreen = () => {
     [authPermissions]
   );
   const canView = canReadDeliveries(deliveryPermission, role);
-  const canCreate = actionAllowed(
-    deliveryPermission,
-    DELIVERY_PERMISSION_ACTIONS.CREATE,
-    role
-  );
+  const canCreate = canCreateDelivery(deliveryPermission, role);
   const actionPermissions = useMemo<DeliveryActionPermissionMap>(
-    () => ({
-      assign: actionAllowed(deliveryPermission, actionPermissionByKey.assign, role),
-      dispatch: actionAllowed(
-        deliveryPermission,
-        actionPermissionByKey.dispatch,
-        role
-      ),
-      "mark-delivered": actionAllowed(
-        deliveryPermission,
-        actionPermissionByKey["mark-delivered"],
-        role
-      ),
-      "mark-not-delivered": actionAllowed(
-        deliveryPermission,
-        actionPermissionByKey["mark-not-delivered"],
-        role
-      ),
-      cancel: actionAllowed(deliveryPermission, actionPermissionByKey.cancel, role),
-    }),
+    () => buildDeliveryActionPermissionMap(deliveryPermission, role),
     [deliveryPermission, role]
   );
 
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
-  const [draftFilters, setDraftFilters] = useState<DeliveryFilters>(defaultFilters);
+  const [lastInitialFiltersKey, setLastInitialFiltersKey] =
+    useState(initialFiltersKey);
+  const [draftFilters, setDraftFilters] = useState<DeliveryFilters>(initialFilters);
   const [appliedFilters, setAppliedFilters] =
-    useState<DeliveryFilters>(defaultFilters);
+    useState<DeliveryFilters>(initialFilters);
   const [pagination, setPagination] = useState(defaultPagination);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(false);
@@ -420,6 +368,18 @@ export const DeliveriesScreen = () => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  useEffect(() => {
+    if (lastInitialFiltersKey === initialFiltersKey) {
+      return;
+    }
+
+    setDraftFilters(initialFilters);
+    setAppliedFilters(initialFilters);
+    setPagination(defaultPagination);
+    setHasLoaded(false);
+    setLastInitialFiltersKey(initialFiltersKey);
+  }, [initialFilters, initialFiltersKey, lastInitialFiltersKey]);
 
   const loadDeliveries = useCallback(
     async (
@@ -452,8 +412,15 @@ export const DeliveriesScreen = () => {
     if (!permissionsLoaded || !canView || hasLoaded) {
       return;
     }
-    void loadDeliveries(defaultFilters, 1, pageSize);
-  }, [canView, hasLoaded, loadDeliveries, pageSize, permissionsLoaded]);
+    void loadDeliveries(appliedFilters, 1, pageSize);
+  }, [
+    appliedFilters,
+    canView,
+    hasLoaded,
+    loadDeliveries,
+    pageSize,
+    permissionsLoaded,
+  ]);
 
   const visibleDeliveries = useMemo(
     () => filterDeliveriesByQuery(deliveries, appliedFilters.query),
