@@ -109,3 +109,4 @@ Sucursal y terminal se leen pero no se usan para construir la URL. Esto evita cr
 - Permisos especificos por terminal.
 - Migraciones SQL si el modelo de terminal cambia.
 - Auditoria de cambio de configuracion local.
+- Configuracion futura de perifericos POS por terminal, documentada en `electron-pos-peripherals-windows.md`.

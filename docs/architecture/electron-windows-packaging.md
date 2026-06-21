@@ -149,6 +149,8 @@ $env:MANUS_START_PATH="/login"
 - Runtime depende de que la web/API online esten disponibles.
 - No se validan perifericos fisicos.
 
+Nota posterior: la estrategia futura de perifericos POS Windows se documenta en `electron-pos-peripherals-windows.md`. Esa fase es solo analisis y no cambia el empaquetado.
+
 ## Riesgos
 
 | Riesgo | Mitigacion |
