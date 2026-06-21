@@ -98,8 +98,11 @@ class FakeDb {
 const buildService = (db = new FakeDb()) =>
   new CurrentShiftReportsService(db as never);
 
-test("CurrentShiftReportsService: USER consulta caja abierta propia", async () => {
-  const service = buildService();
+test("CurrentShiftReportsService: USER consulta caja abierta de su sucursal aunque la abrio otro usuario", async () => {
+  const db = new FakeDb();
+  db.availableSessionRows = [buildSession({ opened_by_user_id: ids.otherUser })];
+  db.sessionRows = [buildSession({ opened_by_user_id: ids.otherUser })];
+  const service = buildService(db);
 
   const response = await service.getCurrentShift(
     { tenantId: ids.tenant },
@@ -113,6 +116,7 @@ test("CurrentShiftReportsService: USER consulta caja abierta propia", async () =
 
   assert.equal(response.hasOpenCashSession, true);
   assert.equal(response.cashSession?.id, ids.session);
+  assert.equal(response.cashSession?.userId, ids.otherUser);
   assert.equal(response.availableCashSessions.length, 1);
   assert.equal(response.tabs.sales.total, 1);
   assert.equal(response.tabs.tickets.rows[0]?.type, "POS_SALE");
@@ -141,7 +145,7 @@ test("CurrentShiftReportsService: responde controlado si no hay caja abierta", a
 
 test("CurrentShiftReportsService: USER no consulta caja ajena", async () => {
   const db = new FakeDb();
-  db.sessionRows = [buildSession({ opened_by_user_id: ids.otherUser })];
+  db.sessionRows = [buildSession({ branch_id: ids.otherBranch })];
   const service = buildService(db);
 
   await assert.rejects(
@@ -157,6 +161,26 @@ test("CurrentShiftReportsService: USER no consulta caja ajena", async () => {
       ),
     ForbiddenException
   );
+});
+
+test("CurrentShiftReportsService: ADMIN consulta caja de su sucursal aunque la abrio otro usuario", async () => {
+  const db = new FakeDb();
+  db.availableSessionRows = [buildSession({ opened_by_user_id: ids.otherUser })];
+  db.sessionRows = [buildSession({ opened_by_user_id: ids.otherUser })];
+  const service = buildService(db);
+
+  const response = await service.getCurrentShift(
+    { tenantId: ids.tenant },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["ADMIN"],
+    }
+  );
+
+  assert.equal(response.hasOpenCashSession, true);
+  assert.equal(response.cashSession?.userId, ids.otherUser);
 });
 
 test("CurrentShiftReportsService: USER no consulta otro tenant", async () => {

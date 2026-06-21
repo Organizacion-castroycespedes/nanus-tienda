@@ -51,8 +51,12 @@ export const requestRaw = async (
   });
 };
 
-export const requestJson = async <T>(url: string, options?: RequestInit): Promise<T> => {
-  const response = await requestRaw(url, options);
+export const requestJson = async <T>(
+  url: string,
+  options?: RequestInit,
+  customBaseUrl?: string
+): Promise<T> => {
+  const response = await requestRaw(url, options, customBaseUrl);
   if (!response.ok) {
     let payload: any = undefined;
     const contentType = response.headers.get("content-type") ?? "";

@@ -213,20 +213,16 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     setCashLoading(true);
     setError(null);
 
-    void Promise.all([
-      listCashRegisters({
-        tenantId: selectedTenant.id,
-        branchId,
-        activo: true,
-      }),
-      getCurrentCashSession(),
-    ])
-      .then(([registers, session]) => {
+    void listCashRegisters({
+      tenantId: selectedTenant.id,
+      branchId,
+      activo: true,
+    })
+      .then((registers) => {
         if (!active) {
           return;
         }
         setCashRegisters(registers.filter((register) => register.activo));
-        setCurrentCashSession(session);
       })
       .catch(() => {
         if (!active) {
@@ -246,6 +242,41 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
       active = false;
     };
   }, [branchId, selectedTenant, setError]);
+
+  useEffect(() => {
+    if (!selectedTenant || !branchId || !selectedCashRegister) {
+      setCurrentCashSession(null);
+      return;
+    }
+
+    let active = true;
+    setCashLoading(true);
+    setError(null);
+
+    void getCurrentCashSession(selectedCashRegister.id)
+      .then((session) => {
+        if (!active) {
+          return;
+        }
+        setCurrentCashSession(session);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setCurrentCashSession(null);
+        setError("No se pudo cargar el estado de caja para este contexto.");
+      })
+      .finally(() => {
+        if (active) {
+          setCashLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [branchId, selectedCashRegister, selectedTenant, setError]);
 
   const needsCashOpening = Boolean(
     tenantId &&
@@ -304,6 +335,7 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
         posSessionId: session.posSessionId,
         branchId: session.branchId,
         terminalId: session.terminalId,
+        cashRegisterId: selectedCashRegister.id,
       });
 
       router.push(`/${tenantSlug}/pos`);
@@ -429,7 +461,7 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
                     {currentCashMatchesSelection
-                      ? "Ya tienes caja abierta en este contexto."
+                      ? "Hay una caja abierta en este contexto."
                       : "Se abrira una caja en este contexto antes de entrar al POS."}
                   </p>
                 </div>

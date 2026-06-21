@@ -35,6 +35,11 @@ HEAD: `501f447`
 
 `BLOCKED`
 
+## Estado posterior
+
+Este bloqueo quedo resuelto en la ronda `corregir-scope-caja-terminal-pos-qa`.
+La evidencia de scanner HID empaquetado ya paso a `PASS_QA_MANUAL_ELECTRON_PACKAGED`.
+
 ## Recomendacion
 
 Usar una caja/terminal QA con sesion consistente, o resolver la incoherencia por UI autorizada en una fase separada. No tocar SQL en esta fase.
@@ -52,4 +57,3 @@ Usar una caja/terminal QA con sesion consistente, o resolver la incoherencia por
 | Electron main/preload tocado | NO |
 | Scanner HID tocado | NO |
 | Commit realizado | NO |
-

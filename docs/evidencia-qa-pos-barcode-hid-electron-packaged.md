@@ -8,7 +8,7 @@ OpenSpec change: `validar-lector-barras-hid-pos-electron`
 
 ## Estado del worktree
 
-Suelto. El bloqueo actual es de caja/sesion/terminal, no del scanner HID.
+Suelto. El bloqueo de caja/sesion/terminal fue resuelto en esta ronda.
 
 ## Sistema operativo usado
 
@@ -43,10 +43,14 @@ Start-Process -FilePath '.\desktop\electron\release\win-unpacked\Manus POS.exe' 
 
 ## Producto/codigo usado
 
-- No se llego a ejecutar scan en POS empaquetado.
-- Se valido login QA seguro con cuenta demo operativa.
-- Se alcanzo dashboard y luego POS, pero el flujo quedo bloqueado por caja/sesion.
-- No se documento password en esta evidencia.
+- Cuenta QA real: `icastror@hotmail.com`
+- Login seguro por Electron empaquetado: PASS
+- Dashboard electron empaquetado: PASS
+- Contexto POS: `Tenant Principal` -> `Sucursal Principal` -> `Terminal 1 Sucursal Principal (TERM-001)`
+- Caja asociada visible: `CAJA 1 TERM 001`
+- Codigo exacto usado: `LECHE-LITRO`
+- Segundo escaneo consecutivo: `LECHE-LITRO`
+- Codigo inexistente: `NO-EXISTE-123`
 
 ## Casos QA
 
@@ -60,28 +64,30 @@ Start-Process -FilePath '.\desktop\electron\release\win-unpacked\Manus POS.exe' 
 | Login UI completo en Electron | PASS |
 | Dashboard visible en Electron | PASS |
 | POS alcanzado en Electron empaquetado | PASS |
-| Contexto POS / caja abierta para este usuario | BLOCKED |
-| Busqueda manual en POS | NOT RUN |
-| Escaneo simulado codigo + Enter | NOT RUN |
-| Escaneos consecutivos | NOT RUN |
-| Codigo inexistente + Enter | NOT RUN |
+| Contexto POS / caja abierta para este usuario | PASS |
+| Busqueda manual en POS | PASS |
+| Escaneo simulado codigo + Enter | PASS |
+| Escaneos consecutivos | PASS |
+| Codigo inexistente + Enter | PASS |
 | Coincidencia multiple | NOT RUN |
 | Producto sin stock | NOT RUN |
 | Producto pesable | NOT RUN |
 
 ## Resultado final
 
-`BLOCKED`
+`PASS_QA_MANUAL_ELECTRON_PACKAGED`
 
-## Bloqueo
+## Notas de QA
 
-El runtime empaquetado abre, el login QA funciona y el dashboard carga, pero el POS queda bloqueado por una inconsistencia de caja/sesion/terminal para el usuario actual.
+El runtime empaquetado abre, el login QA funciona, el dashboard carga y el POS queda operativo en el contexto correcto.
 
-`pos/select-context` intenta abrir caja y responde `400` con `La caja ya tiene una sesion abierta`.
+- `pos/select-context` muestra caja asociada y estado consistente.
+- `Entrar al POS` mantiene la sesion operativa.
+- El buscador POS agrega producto por escaneo HID simulado con `Enter`.
+- El segundo escaneo consecutivo incrementa cantidad.
+- Un codigo inexistente no agrega producto.
 
-En paralelo, `finance/current-shift` reporta `No hay cajas abiertas para el alcance seleccionado.` y `finance/cash-sessions` muestra `No tienes una sesion abierta en este momento.`
-
-La lectura diagnostica apunta a un desajuste de scope entre usuario, tenant, branch, terminal, caja y sesion, no a un bug del scanner HID.
+La lectura diagnostica previa apuntaba a un desajuste de scope entre usuario, tenant, branch, terminal, caja y sesion. Ese desajuste quedo corregido en esta ronda.
 
 ## Confirmaciones
 
@@ -91,6 +97,7 @@ La lectura diagnostica apunta a un desajuste de scope entre usuario, tenant, bra
 | USB/serial implementado | NO |
 | SDK/libreria scanner instalada | NO |
 | Login QA seguro aplicado | SI |
+| POS operativo en Electron empaquetado | SI |
 | Backend tocado | NO |
 | SQL/migraciones tocadas | NO |
 | Permisos tocados | NO |
