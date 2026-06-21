@@ -35,6 +35,7 @@ import {
   ShoppingCart,
   Store,
   Tags,
+  Truck,
   User,
   UserCheck,
   UserPlus,
@@ -87,6 +88,7 @@ const iconByName: Record<string, LucideIcon> = {
   printer: Printer,
   grid3x3: Grid3X3,
   tags: Tags,
+  truck: Truck,
   calculator: Calculator,
   ruler: Ruler,
   shoppingcart: ShoppingCart,
@@ -521,6 +523,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     }
     if (key.includes("config")) {
       return Settings;
+    }
+    if (key.includes("domicilio") || key.includes("deliver")) {
+      return Truck;
     }
     return LayoutDashboard;
   };

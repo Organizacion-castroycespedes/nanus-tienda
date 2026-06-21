@@ -89,3 +89,15 @@ test("finance routes use canonical FINANCE permission", () => {
     }
   );
 });
+
+test("deliveries route uses canonical DELIVERIES permission", () => {
+  assert.deepEqual(
+    getRoutePermissionRequirement(
+      "/00000000-0000-0000-0000-000000000001/deliveries"
+    ),
+    {
+      module: MENU_KEYS.DELIVERIES,
+      action: "read",
+    }
+  );
+});

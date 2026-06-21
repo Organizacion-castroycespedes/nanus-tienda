@@ -1,0 +1,961 @@
+"use client";
+
+import {
+  Eye,
+  Plus,
+  RefreshCw,
+  Search,
+  Truck,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button } from "../../../components/design-system/Button";
+import { Input } from "../../../components/design-system/Input";
+import { Modal } from "../../../components/design-system/Modal";
+import { Select } from "../../../components/design-system/Select";
+import { Textarea } from "../../../components/design-system/Textarea";
+import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { useAutoClearState } from "../../../lib/useAutoClearState";
+import { getApiErrorMessage } from "../../reporteria/utils";
+import { useAppSelector } from "../../../store/hooks";
+import {
+  deliveryActionDescriptions,
+  deliveryActionLabels,
+  deliveryStatusLabels,
+  filterDeliveriesByQuery,
+  getDeliveryFeeSource,
+} from "../delivery-helpers";
+import {
+  buildDeliveryActionPermissionMap,
+  canCreateDelivery,
+  canReadDeliveries,
+  findDeliveryPermission,
+} from "../delivery-permissions";
+import {
+  buildDeliveryFiltersFromSearchParams,
+  defaultDeliveryFilters as defaultFilters,
+  serializeDeliveryFilters,
+  type DeliveryFilters,
+  type DeliverySearchParamsInput,
+} from "../delivery-navigation";
+import {
+  assignDelivery,
+  cancelDelivery,
+  createDelivery,
+  dispatchDelivery,
+  getDeliveryById,
+  listDeliveries,
+  markDeliveryDelivered,
+  markDeliveryNotDelivered,
+} from "../services/deliveries.service";
+import {
+  DELIVERY_STATUSES,
+  type CreateDeliveryPayload,
+  type DeliveryActionKey,
+  type DeliveryActionPermissionMap,
+  type DeliveryListResponse,
+  type DeliveryRecord,
+  type DeliveryStatus,
+  type GetDeliveriesParams,
+} from "../types";
+import { CreateDeliveryForm } from "./CreateDeliveryForm";
+import { DeliveryActions } from "./DeliveryActions";
+import { DeliveryDetailPanel } from "./DeliveryDetailPanel";
+import { DeliveryStatusBadge } from "./DeliveryStatusBadge";
+
+type ActionDraft = {
+  assignedCourierId: string;
+  reason: string;
+  receivedBy: string;
+  notes: string;
+};
+
+type ActionRequest = {
+  action: DeliveryActionKey;
+  delivery: DeliveryRecord;
+};
+
+const defaultPagination: DeliveryListResponse["pagination"] = {
+  page: 1,
+  limit: 10,
+  total: 0,
+  total_pages: 1,
+};
+
+const pageSizeOptions = [10, 25, 50];
+
+const emptyActionDraft: ActionDraft = {
+  assignedCourierId: "",
+  reason: "",
+  receivedBy: "",
+  notes: "",
+};
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(Number(value ?? 0));
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("es-CO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+};
+
+const optionalText = (value: string) => {
+  const normalized = value.trim();
+  return normalized ? normalized : undefined;
+};
+
+const buildListParams = (
+  filters: DeliveryFilters,
+  page: number,
+  limit: number
+): GetDeliveriesParams => ({
+  status: filters.status || undefined,
+  order_id: optionalText(filters.orderId),
+  sale_id: optionalText(filters.saleId),
+  date_from: optionalText(filters.dateFrom),
+  date_to: optionalText(filters.dateTo),
+  page,
+  limit,
+});
+
+const DeliveryActionModal = ({
+  request,
+  draft,
+  errorMessage,
+  saving,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  request: ActionRequest;
+  draft: ActionDraft;
+  errorMessage: string | null;
+  saving: boolean;
+  onChange: (draft: ActionDraft) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) => {
+  const { action, delivery } = request;
+  const isAssign = action === "assign";
+  const isFinal =
+    action === "cancel" ||
+    action === "mark-delivered" ||
+    action === "mark-not-delivered";
+  const requiresReason = action === "cancel" || action === "mark-not-delivered";
+
+  return (
+    <Modal
+      title={deliveryActionLabels[action]}
+      description={deliveryActionDescriptions[action]}
+      onClose={saving ? undefined : onClose}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button
+            variant={action === "cancel" ? "danger" : isFinal ? "warning" : "primary"}
+            onClick={onSubmit}
+            isLoading={saving}
+          >
+            Confirmar
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">
+            {delivery.delivery_number || delivery.id}
+          </p>
+          <p className="mt-1">
+            {delivery.customer_name || "Sin contacto"} - {delivery.delivery_address}
+          </p>
+        </div>
+
+        {isAssign ? (
+          <Input
+            label="assigned_courier_id"
+            required
+            value={draft.assignedCourierId}
+            onChange={(event) =>
+              onChange({ ...draft, assignedCourierId: event.target.value })
+            }
+            hint="UUID de usuario repartidor. Selector real queda pendiente."
+          />
+        ) : null}
+
+        {action === "mark-delivered" ? (
+          <Input
+            label="Recibido por"
+            value={draft.receivedBy}
+            onChange={(event) =>
+              onChange({ ...draft, receivedBy: event.target.value })
+            }
+          />
+        ) : null}
+
+        {requiresReason ? (
+          <Textarea
+            label="Motivo"
+            required
+            rows={3}
+            value={draft.reason}
+            onChange={(event) =>
+              onChange({ ...draft, reason: event.target.value })
+            }
+          />
+        ) : null}
+
+        <Textarea
+          label="Notas"
+          rows={3}
+          value={draft.notes}
+          onChange={(event) => onChange({ ...draft, notes: event.target.value })}
+        />
+
+        {isFinal ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Esta accion cambia estado operativo final o sensible. No toca caja.
+          </div>
+        ) : null}
+
+        {errorMessage ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            {errorMessage}
+          </div>
+        ) : null}
+      </div>
+    </Modal>
+  );
+};
+
+const DeliverySourceCell = ({ delivery }: { delivery: DeliveryRecord }) => (
+  <div className="space-y-1 text-xs text-slate-600">
+    <p>
+      Pedido:{" "}
+      <span className="font-medium text-slate-800">
+        {delivery.order_id ?? "-"}
+      </span>
+    </p>
+    <p>
+      Venta:{" "}
+      <span className="font-medium text-slate-800">
+        {delivery.sale_id ?? "-"}
+      </span>
+    </p>
+  </div>
+);
+
+const MobileDeliveryCard = ({
+  delivery,
+  permissions,
+  actionDisabled,
+  onDetail,
+  onAction,
+}: {
+  delivery: DeliveryRecord;
+  permissions: DeliveryActionPermissionMap;
+  actionDisabled: boolean;
+  onDetail: (delivery: DeliveryRecord) => void;
+  onAction: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
+}) => (
+  <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-900">
+          {delivery.customer_name || "Sin contacto"}
+        </p>
+        <p className="mt-1 break-words text-sm text-slate-600">
+          {delivery.delivery_address}
+        </p>
+      </div>
+      <DeliveryStatusBadge status={delivery.status} />
+    </div>
+    <div className="mt-3 grid gap-2 text-sm text-slate-600">
+      <p>Telefono: {delivery.customer_phone || "-"}</p>
+      <p>Repartidor: {delivery.assigned_courier_id || "-"}</p>
+      <p>Creado: {formatDateTime(delivery.created_at)}</p>
+      <p>Valor: {formatCurrency(delivery.delivery_fee)}</p>
+      <DeliverySourceCell delivery={delivery} />
+    </div>
+    <div className="mt-4 flex flex-wrap gap-2">
+      <Button variant="outline" size="sm" onClick={() => onDetail(delivery)}>
+        <Eye className="h-4 w-4" />
+        Detalle
+      </Button>
+      <DeliveryActions
+        delivery={delivery}
+        permissions={permissions}
+        disabled={actionDisabled}
+        onAction={onAction}
+      />
+    </div>
+  </article>
+);
+
+export const DeliveriesScreen = ({
+  initialSearchParams = {},
+}: {
+  initialSearchParams?: DeliverySearchParamsInput;
+}) => {
+  const initialFilters = useMemo(
+    () => buildDeliveryFiltersFromSearchParams(initialSearchParams),
+    [initialSearchParams]
+  );
+  const initialFiltersKey = useMemo(
+    () => serializeDeliveryFilters(initialFilters),
+    [initialFilters]
+  );
+  const role = (
+    useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "") ??
+    ""
+  )
+    .trim()
+    .toUpperCase();
+  const permissionsLoaded = useAppSelector(
+    (state) => state.auth.permissionsLoaded
+  );
+  const authPermissions = useAppSelector((state) => state.auth.permissions);
+  const deliveryPermission = useMemo(
+    () => findDeliveryPermission(authPermissions),
+    [authPermissions]
+  );
+  const canView = canReadDeliveries(deliveryPermission, role);
+  const canCreate = canCreateDelivery(deliveryPermission, role);
+  const actionPermissions = useMemo<DeliveryActionPermissionMap>(
+    () => buildDeliveryActionPermissionMap(deliveryPermission, role),
+    [deliveryPermission, role]
+  );
+
+  const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
+  const [lastInitialFiltersKey, setLastInitialFiltersKey] =
+    useState(initialFiltersKey);
+  const [draftFilters, setDraftFilters] = useState<DeliveryFilters>(initialFilters);
+  const [appliedFilters, setAppliedFilters] =
+    useState<DeliveryFilters>(initialFilters);
+  const [pagination, setPagination] = useState(defaultPagination);
+  const [pageSize, setPageSize] = useState(10);
+  const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
+  const [isCreating, setIsCreating] = useState(false);
+  const [savingCreate, setSavingCreate] = useState(false);
+  const [detailDelivery, setDetailDelivery] = useState<DeliveryRecord | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [actionRequest, setActionRequest] = useState<ActionRequest | null>(null);
+  const [actionDraft, setActionDraft] = useState<ActionDraft>(emptyActionDraft);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [savingAction, setSavingAction] = useState(false);
+
+  useAutoClearState(toastMessage, setToastMessage);
+
+  const showToast = useCallback((message: string, variant: ToastVariant) => {
+    setToastMessage(message);
+    setToastVariant(variant);
+  }, []);
+
+  useEffect(() => {
+    if (lastInitialFiltersKey === initialFiltersKey) {
+      return;
+    }
+
+    setDraftFilters(initialFilters);
+    setAppliedFilters(initialFilters);
+    setPagination(defaultPagination);
+    setHasLoaded(false);
+    setLastInitialFiltersKey(initialFiltersKey);
+  }, [initialFilters, initialFiltersKey, lastInitialFiltersKey]);
+
+  const loadDeliveries = useCallback(
+    async (
+      filters: DeliveryFilters,
+      targetPage: number,
+      targetPageSize = pageSize
+    ) => {
+      setLoading(true);
+      setErrorMessage(null);
+      try {
+        const response = await listDeliveries(
+          buildListParams(filters, targetPage, targetPageSize)
+        );
+        setDeliveries(response.data);
+        setPagination(response.pagination);
+        setHasLoaded(true);
+      } catch (error) {
+        setErrorMessage(
+          getApiErrorMessage(error, "No se pudieron cargar los domicilios.")
+        );
+        setHasLoaded(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [pageSize]
+  );
+
+  useEffect(() => {
+    if (!permissionsLoaded || !canView || hasLoaded) {
+      return;
+    }
+    void loadDeliveries(appliedFilters, 1, pageSize);
+  }, [
+    appliedFilters,
+    canView,
+    hasLoaded,
+    loadDeliveries,
+    pageSize,
+    permissionsLoaded,
+  ]);
+
+  const visibleDeliveries = useMemo(
+    () => filterDeliveriesByQuery(deliveries, appliedFilters.query),
+    [appliedFilters.query, deliveries]
+  );
+
+  const applyFilters = () => {
+    const nextFilters = draftFilters;
+    setAppliedFilters(nextFilters);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+    void loadDeliveries(nextFilters, 1, pageSize);
+  };
+
+  const resetFilters = () => {
+    setDraftFilters(defaultFilters);
+    setAppliedFilters(defaultFilters);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+    void loadDeliveries(defaultFilters, 1, pageSize);
+  };
+
+  const refreshCurrentPage = useCallback(async () => {
+    await loadDeliveries(appliedFilters, pagination.page, pageSize);
+  }, [appliedFilters, loadDeliveries, pageSize, pagination.page]);
+
+  const changePage = (nextPage: number) => {
+    setPagination((prev) => ({ ...prev, page: nextPage }));
+    void loadDeliveries(appliedFilters, nextPage, pageSize);
+  };
+
+  const changePageSize = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPagination((prev) => ({ ...prev, page: 1, limit: nextPageSize }));
+    void loadDeliveries(appliedFilters, 1, nextPageSize);
+  };
+
+  const openDetail = async (delivery: DeliveryRecord) => {
+    setDetailDelivery(delivery);
+    setDetailLoading(true);
+    try {
+      const detail = await getDeliveryById(delivery.id);
+      setDetailDelivery(detail);
+    } catch (error) {
+      showToast(
+        getApiErrorMessage(error, "No se pudo cargar el detalle."),
+        "error"
+      );
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const openAction = (action: DeliveryActionKey, delivery: DeliveryRecord) => {
+    setActionRequest({ action, delivery });
+    setActionDraft(emptyActionDraft);
+    setActionError(null);
+  };
+
+  const closeAction = () => {
+    if (savingAction) {
+      return;
+    }
+    setActionRequest(null);
+    setActionDraft(emptyActionDraft);
+    setActionError(null);
+  };
+
+  const refreshAfterMutation = async (message: string) => {
+    showToast(message, "success");
+    await refreshCurrentPage();
+    if (detailDelivery) {
+      try {
+        const detail = await getDeliveryById(detailDelivery.id);
+        setDetailDelivery(detail);
+      } catch {
+        setDetailDelivery(null);
+      }
+    }
+  };
+
+  const handleCreate = async (payload: CreateDeliveryPayload) => {
+    setSavingCreate(true);
+    setErrorMessage(null);
+    try {
+      await createDelivery(payload);
+      setIsCreating(false);
+      await refreshAfterMutation("Domicilio creado correctamente.");
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(error, "No se pudo crear el domicilio.")
+      );
+    } finally {
+      setSavingCreate(false);
+    }
+  };
+
+  const handleSubmitAction = async () => {
+    if (!actionRequest) {
+      return;
+    }
+
+    const { action, delivery } = actionRequest;
+    const assignedCourierId = actionDraft.assignedCourierId.trim();
+    const reason = actionDraft.reason.trim();
+    const notes = optionalText(actionDraft.notes);
+
+    if (action === "assign" && !assignedCourierId) {
+      setActionError("assigned_courier_id es requerido.");
+      return;
+    }
+    if ((action === "cancel" || action === "mark-not-delivered") && !reason) {
+      setActionError("Motivo es requerido.");
+      return;
+    }
+
+    setSavingAction(true);
+    setActionError(null);
+    try {
+      if (action === "assign") {
+        await assignDelivery(delivery.id, {
+          assigned_courier_id: assignedCourierId,
+          notes,
+          metadata: { source: "frontend" },
+        });
+      }
+      if (action === "dispatch") {
+        await dispatchDelivery(delivery.id, {
+          notes,
+          metadata: { source: "frontend" },
+        });
+      }
+      if (action === "mark-delivered") {
+        await markDeliveryDelivered(delivery.id, {
+          received_by: optionalText(actionDraft.receivedBy),
+          notes,
+          metadata: { source: "frontend", no_cash_integration: true },
+        });
+      }
+      if (action === "mark-not-delivered") {
+        await markDeliveryNotDelivered(delivery.id, {
+          reason,
+          notes,
+          metadata: { source: "frontend", no_cash_integration: true },
+        });
+      }
+      if (action === "cancel") {
+        await cancelDelivery(delivery.id, {
+          reason,
+          notes,
+          metadata: { source: "frontend", no_cash_integration: true },
+        });
+      }
+
+      setActionRequest(null);
+      setActionDraft(emptyActionDraft);
+      await refreshAfterMutation(
+        `Accion "${deliveryActionLabels[action]}" ejecutada correctamente.`
+      );
+    } catch (error) {
+      setActionError(
+        getApiErrorMessage(error, "No se pudo ejecutar la accion.")
+      );
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  if (!permissionsLoaded) {
+    return (
+      <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+        Cargando permisos...
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700 shadow-sm">
+        No tienes acceso a Domicilios.
+      </section>
+    );
+  }
+
+  const currentPage = pagination.page || 1;
+  const totalPages = Math.max(pagination.total_pages || 1, 1);
+  const actionDisabled = savingAction || loading;
+
+  return (
+    <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
+      {actionRequest ? (
+        <DeliveryActionModal
+          request={actionRequest}
+          draft={actionDraft}
+          errorMessage={actionError}
+          saving={savingAction}
+          onChange={setActionDraft}
+          onClose={closeAction}
+          onSubmit={() => void handleSubmitAction()}
+        />
+      ) : null}
+
+      {detailDelivery ? (
+        <DeliveryDetailPanel
+          delivery={detailDelivery}
+          loading={detailLoading}
+          onClose={() => setDetailDelivery(null)}
+        />
+      ) : null}
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-slate-500">
+              Operacion
+            </p>
+            <h1 className="text-2xl font-semibold text-slate-900">Domicilios</h1>
+            <p className="mt-2 max-w-3xl text-sm text-slate-600">
+              Consulta y actualiza el estado operativo de domicilios. Caja, POS
+              y facturacion electronica quedan fuera de esta pantalla.
+            </p>
+          </div>
+          {!isCreating ? (
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <Button
+                variant="ghost"
+                onClick={() => void refreshCurrentPage()}
+                isLoading={loading}
+                className="w-full sm:w-auto"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Actualizar
+              </Button>
+              {canCreate ? (
+                <Button
+                  onClick={() => setIsCreating(true)}
+                  className="w-full sm:w-auto"
+                >
+                  <Plus className="h-4 w-4" />
+                  Crear domicilio
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {isCreating ? (
+        <CreateDeliveryForm
+          isSaving={savingCreate}
+          onCancel={() => setIsCreating(false)}
+          onSubmit={(payload) => void handleCreate(payload)}
+        />
+      ) : null}
+
+      {!isCreating ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_180px_1fr_1fr_170px_170px_120px]">
+            <Input
+              label="Buscar"
+              placeholder="Contacto, telefono, direccion"
+              value={draftFilters.query}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  query: event.target.value,
+                }))
+              }
+              hint="Busqueda local sobre la pagina cargada."
+            />
+            <Select
+              label="Estado"
+              value={draftFilters.status}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  status: event.target.value as "" | DeliveryStatus,
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {DELIVERY_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {deliveryStatusLabels[status]}
+                </option>
+              ))}
+            </Select>
+            <Input
+              label="order_id"
+              value={draftFilters.orderId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  orderId: event.target.value,
+                }))
+              }
+            />
+            <Input
+              label="sale_id"
+              value={draftFilters.saleId}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  saleId: event.target.value,
+                }))
+              }
+            />
+            <Input
+              label="Desde"
+              type="date"
+              value={draftFilters.dateFrom}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  dateFrom: event.target.value,
+                }))
+              }
+            />
+            <Input
+              label="Hasta"
+              type="date"
+              value={draftFilters.dateTo}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  dateTo: event.target.value,
+                }))
+              }
+            />
+            <Select
+              label="Filas"
+              value={String(pageSize)}
+              onChange={(event) => changePageSize(Number(event.target.value))}
+            >
+              {pageSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={applyFilters} className="w-full sm:w-auto">
+              <Search className="h-4 w-4" />
+              Buscar
+            </Button>
+            <Button variant="ghost" onClick={resetFilters} className="w-full sm:w-auto">
+              Limpiar filtros
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      {errorMessage ? (
+        <section className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
+          {errorMessage}
+        </section>
+      ) : null}
+
+      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+
+      {!isCreating ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Listado de domicilios
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {pagination.total} registros backend. {visibleDeliveries.length} visibles
+                en esta pagina.
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+              <Truck className="h-4 w-4" />
+              Sin caja
+            </div>
+          </div>
+
+          <div className="mt-5 hidden overflow-x-auto lg:block">
+            <table className="min-w-[1180px] divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50 text-left text-slate-600">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Contacto</th>
+                  <th className="px-4 py-3 font-medium">Telefono</th>
+                  <th className="px-4 py-3 font-medium">Direccion</th>
+                  <th className="px-4 py-3 font-medium">Origen</th>
+                  <th className="px-4 py-3 font-medium">Repartidor</th>
+                  <th className="px-4 py-3 font-medium">Fechas</th>
+                  <th className="px-4 py-3 font-medium">Valor</th>
+                  <th className="px-4 py-3 font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                      Cargando domicilios...
+                    </td>
+                  </tr>
+                ) : !hasLoaded ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                      Usa Buscar para consultar domicilios.
+                    </td>
+                  </tr>
+                ) : visibleDeliveries.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                      No hay domicilios para mostrar.
+                    </td>
+                  </tr>
+                ) : (
+                  visibleDeliveries.map((delivery) => (
+                    <tr key={delivery.id}>
+                      <td className="px-4 py-3">
+                        <DeliveryStatusBadge status={delivery.status} />
+                      </td>
+                      <td className="px-4 py-3 text-slate-900">
+                        <div className="max-w-[180px]">
+                          <p className="truncate font-medium">
+                            {delivery.customer_name || "Sin contacto"}
+                          </p>
+                          <p className="truncate text-xs text-slate-500">
+                            {delivery.delivery_number}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {delivery.customer_phone || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <div className="max-w-[220px]">
+                          <p className="line-clamp-2">{delivery.delivery_address}</p>
+                          {delivery.delivery_reference ? (
+                            <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                              {delivery.delivery_reference}
+                            </p>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <DeliverySourceCell delivery={delivery} />
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {delivery.assigned_courier_id || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        <p>Creado: {formatDateTime(delivery.created_at)}</p>
+                        <p>Actualizado: {formatDateTime(delivery.updated_at)}</p>
+                        <p>Entregado: {formatDateTime(delivery.delivered_at)}</p>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <p className="font-medium text-slate-900">
+                          {formatCurrency(delivery.delivery_fee)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {getDeliveryFeeSource(delivery)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void openDetail(delivery)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            Detalle
+                          </Button>
+                          <DeliveryActions
+                            delivery={delivery}
+                            permissions={actionPermissions}
+                            disabled={actionDisabled}
+                            onAction={openAction}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:hidden">
+            {loading ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                Cargando domicilios...
+              </div>
+            ) : !hasLoaded ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                Usa Buscar para consultar domicilios.
+              </div>
+            ) : visibleDeliveries.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                No hay domicilios para mostrar.
+              </div>
+            ) : (
+              visibleDeliveries.map((delivery) => (
+                <MobileDeliveryCard
+                  key={delivery.id}
+                  delivery={delivery}
+                  permissions={actionPermissions}
+                  actionDisabled={actionDisabled}
+                  onDetail={(item) => void openDetail(item)}
+                  onAction={openAction}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Pagina {Math.min(currentPage, totalPages)} de {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => changePage(Math.max(currentPage - 1, 1))}
+                disabled={currentPage <= 1 || loading}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => changePage(Math.min(currentPage + 1, totalPages))}
+                disabled={currentPage >= totalPages || loading}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+};
