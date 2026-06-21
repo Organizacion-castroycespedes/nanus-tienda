@@ -74,6 +74,17 @@
 - [x] 6C.7 Agregar tests backend para creacion, consulta, duplicados, tenant, branch y permisos.
 - [x] 6C.8 Documentar evidencia QA backend en `docs/architecture/domicilios-integracion-facturacion-qa.md`.
 
+## 6D. Fase 6D - Smoke HTTP integral backend Domicilios
+
+- [x] 6D.1 Confirmar rama, HEAD, DB local/QA y API local no productiva antes del smoke.
+- [x] 6D.2 Ejecutar smoke HTTP de domicilios standalone con `GET /api/deliveries` y `POST /api/deliveries`.
+- [x] 6D.3 Ejecutar smoke HTTP de domicilios desde pedidos con `GET /api/orders/:id/delivery`, `POST /api/orders/:id/delivery` y filtro por `order_id`.
+- [x] 6D.4 Ejecutar smoke HTTP de domicilios desde ventas con `GET /api/sales/:id/delivery`, `POST /api/sales/:id/delivery` y filtro por `sale_id`.
+- [x] 6D.5 Ejecutar smoke HTTP de state machine real con `assign`, `dispatch`, `mark-delivered`, `mark-not-delivered` y `cancel`.
+- [x] 6D.6 Validar permisos `DELIVERIES_*` con usuario autorizado y usuario restringido.
+- [x] 6D.7 Verificar DB local/QA para historial, duplicados, aislamiento tenant/branch y ausencia de efectos en caja, POS o ventas.
+- [x] 6D.8 Documentar evidencia QA en `docs/architecture/domicilios-smoke-http-backend-qa.md`.
+
 ## 6. Fase 6 - Frontend modulo Domicilios
 
 - [ ] 6.1 Crear ruta futura `/{tenant}/deliveries` y dominio frontend de domicilios.
