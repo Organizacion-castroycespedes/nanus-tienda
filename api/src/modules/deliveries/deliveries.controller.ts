@@ -41,6 +41,8 @@ type DeliveriesRequest = Request & {
   context?: {
     tenantId?: string;
     branchId?: string;
+    terminalId?: string;
+    posSessionId?: string;
     userId?: string;
   };
 };
@@ -71,6 +73,8 @@ export class DeliveriesController {
       userId: request.context?.userId ?? request.user?.id,
       roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
       branchId: request.context?.branchId,
+      terminalId: request.context?.terminalId,
+      posSessionId: request.context?.posSessionId,
     };
   }
 

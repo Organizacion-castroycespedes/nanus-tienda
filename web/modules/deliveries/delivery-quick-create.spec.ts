@@ -136,5 +136,5 @@ test("buildDeliveryQuickCreatePayload maps visible choices to API fields", () =>
   assert.equal(payload.driver_id, "driver-1");
   assert.equal(payload.payment_method_id, "payment-1");
   assert.equal(payload.delivery_fee, 2500);
-  assert.equal(payload.metadata?.no_cash_integration, true);
+  assert.equal(payload.metadata?.cash_session_scope, "current");
 });

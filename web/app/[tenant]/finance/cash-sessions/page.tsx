@@ -341,7 +341,7 @@ const CashSessionsPage = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
       <FinancePageHeader
         eyebrow="Finance / Caja"
         title="Sesiones de caja"
@@ -374,7 +374,7 @@ const CashSessionsPage = () => {
 
       <FinanceSectionNav tenantSlug={tenantSlug} />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         <FinanceMetricCard
           label="Caja actual"
           value={currentSession ? currentSession.cashRegisterNombre ?? "Abierta" : "Sin sesion"}
@@ -389,14 +389,14 @@ const CashSessionsPage = () => {
         <FinanceMetricCard label="Sesiones cerradas" value={closedCount} accent="slate" />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+      <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.12fr)_minmax(380px,0.88fr)]">
+        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
                 Estado actual
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-900">
+              <h2 className="mt-2 text-xl font-semibold leading-tight text-slate-900">
                 Tu caja en este momento
               </h2>
             </div>
@@ -412,28 +412,28 @@ const CashSessionsPage = () => {
             </div>
           ) : (
             <div className="mt-6 space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Caja</p>
-                  <p className="mt-2 font-semibold text-slate-900">
+                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900">
                     {currentSession.cashRegisterNombre}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500">
                     {currentSession.cashRegisterCodigo}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Abierta</p>
-                  <p className="mt-2 font-semibold text-slate-900">
+                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900">
                     {formatDateTime(currentSession.openedAt)}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500">
                     {currentSession.openedByUserEmail ?? "Usuario actual"}
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
                 <FinanceMetricCard
                   label="Apertura"
                   value={formatCurrency(currentSession.openingAmount)}
@@ -465,11 +465,13 @@ const CashSessionsPage = () => {
               </div>
 
               {sessionSummary ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
                   <FinanceMetricCard
                     label="Ingresos"
                     value={formatCurrency(
-                      sessionSummary.totals.paymentsIn + sessionSummary.totals.adjustmentsIn
+                      sessionSummary.totals.paymentsIn +
+                        sessionSummary.totals.adjustmentsIn +
+                        (sessionSummary.totals.deliveryFees ?? 0)
                     )}
                     accent="emerald"
                   />
@@ -489,6 +491,11 @@ const CashSessionsPage = () => {
                     accent="blue"
                   />
                   <FinanceMetricCard
+                    label="Domicilios"
+                    value={formatCurrency(sessionSummary.totals.deliveryFees ?? 0)}
+                    accent="emerald"
+                  />
+                  <FinanceMetricCard
                     label="Ultimo arqueo"
                     value={
                       sessionSummary.lastCount
@@ -501,13 +508,13 @@ const CashSessionsPage = () => {
               ) : null}
 
               {sessionSummary ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
                         Gestion del turno
                       </p>
-                      <h3 className="mt-2 text-lg font-semibold text-slate-900">
+                      <h3 className="mt-2 text-lg font-semibold leading-tight text-slate-900">
                         Caja abierta actual
                       </h3>
                     </div>
@@ -524,7 +531,7 @@ const CashSessionsPage = () => {
                     </Button>
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
                     <FinanceMetricCard
                       label="Ventas POS"
                       value={formatCurrency(sessionSummary.totals.salesPayments)}
@@ -543,6 +550,13 @@ const CashSessionsPage = () => {
                       label="Compras"
                       value={formatCurrency(sessionSummary.totals.purchasePayments)}
                       accent="rose"
+                    />
+                    <FinanceMetricCard
+                      label="Domicilios"
+                      value={`${sessionSummary.deliverySummary?.deliveredCount ?? 0} / ${formatCurrency(
+                        sessionSummary.deliverySummary?.deliveredFeeTotal ?? 0
+                      )}`}
+                      accent="emerald"
                     />
                     <FinanceMetricCard
                       label="Movimientos"
@@ -598,8 +612,8 @@ const CashSessionsPage = () => {
           )}
         </article>
 
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2">
+        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Select
               label="Caja"
               value={registerFilter}
@@ -637,35 +651,35 @@ const CashSessionsPage = () => {
               filteredHistory.map((session) => (
                 <div
                   key={session.id}
-                  className="rounded-2xl border border-slate-200 px-4 py-4"
+                  className="min-w-0 rounded-2xl border border-slate-200 px-4 py-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="min-w-0 break-words font-semibold leading-tight text-slate-900">
                         {session.cashRegisterNombre ?? "Caja"}
                       </p>
-                      <p className="mt-1 text-sm text-slate-500">
+                      <p className="mt-1 min-w-0 break-words text-sm leading-snug text-slate-500">
                         Apertura {formatDateTime(session.openedAt)}
                       </p>
                     </div>
                     <FinanceStatusBadge value={session.status} kind="session" />
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Apertura</p>
-                      <p className="mt-1 font-semibold text-slate-900">
+                  <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Apertura</p>
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
                         {formatCurrency(session.openingAmount)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Cierre</p>
-                      <p className="mt-1 font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Cierre</p>
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
                         {formatCurrency(session.closingAmount ?? 0)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Diferencia</p>
-                      <p className="mt-1 font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Diferencia</p>
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
                         {formatCurrency(session.differenceAmount ?? 0)}
                       </p>
                     </div>

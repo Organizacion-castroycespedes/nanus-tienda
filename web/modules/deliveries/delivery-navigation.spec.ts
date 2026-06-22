@@ -41,6 +41,7 @@ test("buildDeliveryFiltersFromSearchParams reads supported relation filters", ()
       orderId: "order-1",
       saleId: "sale-1",
       driverId: "driver-1",
+      cashScope: "current",
       dateFrom: "2026-06-01",
       dateTo: "2026-06-21",
     }

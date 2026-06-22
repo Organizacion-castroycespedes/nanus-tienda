@@ -65,6 +65,7 @@ const buildSummary = (expectedAmount: number) => ({
     salesPayments: 0,
     purchasePayments: 0,
     refundPayments: 0,
+    deliveryFees: 0,
     expectedAmount,
     netAmount: expectedAmount,
     movementCount: 0,
@@ -74,6 +75,13 @@ const buildSummary = (expectedAmount: number) => ({
   movementBreakdown: [],
   recentMovements: [],
   lastCount: null,
+  deliverySummary: {
+    deliveredCount: 0,
+    pendingCount: 0,
+    excludedCount: 0,
+    deliveredFeeTotal: 0,
+    byPaymentMethod: [],
+  },
 });
 
 const buildHarness = (
@@ -169,6 +177,7 @@ const buildHarness = (
 
   const db = {
     getClient: async () => client,
+    query: async () => ({ rows: [{ has_schema: false }] }),
   };
 
   const auditService = {

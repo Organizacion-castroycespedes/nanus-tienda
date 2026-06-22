@@ -36,6 +36,14 @@ export class QueryDeliveriesDto {
   driver_id?: string;
 
   @IsOptional()
+  @IsUUID()
+  cash_session_id?: string;
+
+  @IsOptional()
+  @IsIn(["current", "all"])
+  cash_scope?: "current" | "all";
+
+  @IsOptional()
   @IsDateString()
   date_from?: string;
 

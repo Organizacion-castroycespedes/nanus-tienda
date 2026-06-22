@@ -19,6 +19,8 @@ export const buildDeliveriesQuery = (params: GetDeliveriesParams = {}) => {
   appendParam(query, "order_id", params.order_id);
   appendParam(query, "sale_id", params.sale_id);
   appendParam(query, "driver_id", params.driver_id);
+  appendParam(query, "cash_session_id", params.cash_session_id);
+  appendParam(query, "cash_scope", params.cash_scope);
   appendParam(query, "date_from", params.date_from);
   appendParam(query, "date_to", params.date_to);
   appendParam(query, "page", params.page);

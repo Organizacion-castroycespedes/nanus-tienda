@@ -28,7 +28,9 @@ export {
 };
 
 export const listDeliveries = (params: GetDeliveriesParams = {}) =>
-  apiClient<DeliveryListResponse>(buildDeliveriesQuery(params));
+  apiClient<DeliveryListResponse>(buildDeliveriesQuery(params), {
+    includePosSession: true,
+  });
 
 export const getDeliveryById = (deliveryId: string) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}`);
@@ -39,6 +41,7 @@ export const getDeliveryTicket = (deliveryId: string) =>
 export const createDelivery = (payload: CreateDeliveryPayload) =>
   apiClient<DeliveryRecord>("/deliveries", {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -48,6 +51,7 @@ export const updateDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}`, {
     method: "PATCH",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -57,6 +61,7 @@ export const assignDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/assign`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -75,6 +80,7 @@ export const prepareDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/prepare`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -84,6 +90,7 @@ export const dispatchDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/dispatch`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -93,6 +100,7 @@ export const markDeliveryDelivered = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/mark-delivered`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -102,6 +110,7 @@ export const markDeliveryNotDelivered = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/mark-not-delivered`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -111,6 +120,7 @@ export const cancelDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/cancel`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -123,6 +133,7 @@ export const createOrderDelivery = (
 ) =>
   apiClient<DeliveryRecord>(buildOrderDeliveryEndpoint(orderId), {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -135,6 +146,7 @@ export const createSaleDelivery = (
 ) =>
   apiClient<DeliveryRecord>(buildSaleDeliveryEndpoint(saleId), {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 

@@ -8,9 +8,10 @@ import { Select } from "../../../components/design-system/Select";
 import { Textarea } from "../../../components/design-system/Textarea";
 import { useAppSelector } from "../../../store/hooks";
 import {
+  getCurrentCashSession,
   listPaymentMethods,
 } from "../../finance/services/finance.service";
-import type { PaymentMethod } from "../../finance/types";
+import type { CashSession, PaymentMethod } from "../../finance/types";
 import {
   getCustomers,
   type CustomerResponse,
@@ -150,6 +151,8 @@ export const CreateDeliveryForm = ({
     (state) => state.auth.user?.tenantId ?? state.auth.tenantId ?? undefined
   );
   const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
+  const posSessionId = useAppSelector((state) => state.pos.posSessionId);
   const authBranchId = authUser?.branchId ?? null;
   const tenantSlug =
     getParamValue(params?.tenant) ??
@@ -163,10 +166,13 @@ export const CreateDeliveryForm = ({
     useState<CustomerResponse | null>(null);
   const [branches, setBranches] = useState<BranchResponse[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [currentCashSession, setCurrentCashSession] =
+    useState<CashSession | null>(null);
   const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
   const [orders, setOrders] = useState<OrderResponse[]>([]);
   const [sales, setSales] = useState<SaleResponse[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [cashSessionLoading, setCashSessionLoading] = useState(false);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [driversLoading, setDriversLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -314,6 +320,32 @@ export const CreateDeliveryForm = ({
       isActive = false;
     };
   }, [tenantId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setCashSessionLoading(true);
+    getCurrentCashSession(posCashRegisterId ?? undefined)
+      .then((session) => {
+        if (isActive) {
+          setCurrentCashSession(session);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setCurrentCashSession(null);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setCashSessionLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [posCashRegisterId, posSessionId]);
 
   useEffect(() => {
     let isActive = true;
@@ -753,6 +785,13 @@ export const CreateDeliveryForm = ({
       return;
     }
 
+    if ((totals.deliveryFee > 0 || form.paymentMethodId) && !currentCashSession) {
+      setValidationMessage(
+        "Abre una caja antes de crear domicilios con valor o metodo de pago."
+      );
+      return;
+    }
+
     const nextValidationMessage = validateDeliveryQuickCreate({
       branchId: form.branchId,
       customerId: form.customerId,
@@ -801,6 +840,37 @@ export const CreateDeliveryForm = ({
           {catalogError}
         </div>
       ) : null}
+
+      <div
+        className={`mt-5 rounded-lg border p-3 text-sm ${
+          currentCashSession
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+        }`}
+      >
+        <p>
+          {currentCashSession
+            ? `Caja actual: ${
+                currentCashSession.cashRegisterNombre ??
+                currentCashSession.cashRegisterCodigo ??
+                currentCashSession.id
+              }. Los domicilios con valor se asociaran a esta caja.`
+            : cashSessionLoading
+              ? "Verificando caja actual..."
+              : "No tienes una caja abierta. Solo puedes crear domicilios sin valor y sin metodo de pago."}
+        </p>
+        {!currentCashSession && !cashSessionLoading ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
+            disabled={isSaving}
+          >
+            Ir a POS / Seleccionar caja
+          </Button>
+        ) : null}
+      </div>
 
       <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <Input

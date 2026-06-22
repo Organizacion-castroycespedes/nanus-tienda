@@ -95,6 +95,19 @@ type CashCountRow = QueryResultRow & {
   notes: string | null;
 };
 
+type DeliverySummaryRow = QueryResultRow & {
+  delivered_count: string | number;
+  pending_count: string | number;
+  excluded_count: string | number;
+  delivered_fee_total: string | number;
+  by_payment_method: Array<{
+    paymentMethodId: string | null;
+    paymentMethodNombre: string | null;
+    count: string | number;
+    total: string | number;
+  }>;
+};
+
 type PageOptions = {
   page: number;
   pageSize: number;
@@ -197,6 +210,140 @@ export class CurrentShiftReportsService {
       movements: { total: 0, rows: [] },
       cashCount: { total: 0, rows: [] },
       tickets: { total: 0, rows: [] },
+    };
+  }
+
+  private emptyDeliverySummary(): CurrentShiftSummary["deliverySummary"] {
+    return {
+      deliveredCount: 0,
+      pendingCount: 0,
+      excludedCount: 0,
+      deliveredFeeTotal: 0,
+      byPaymentMethod: [],
+    };
+  }
+
+  private async hasDeliveryCashSchema() {
+    const result = await this.db.query<{ has_schema: boolean }>(
+      `
+        SELECT (
+          SELECT COUNT(*) = 5
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'deliveries'
+            AND column_name IN (
+              'cash_session_id',
+              'cash_register_id',
+              'terminal_id',
+              'cash_impact_amount',
+              'cash_impact_recorded_at'
+            )
+        ) AS has_schema
+      `
+    );
+
+    return Boolean(result.rows[0]?.has_schema);
+  }
+
+  private async getDeliveryCashSummary(
+    tenantId: string,
+    cashSessionId: string
+  ): Promise<CurrentShiftSummary["deliverySummary"]> {
+    if (!(await this.hasDeliveryCashSchema())) {
+      return this.emptyDeliverySummary();
+    }
+
+    const result = await this.db.query<DeliverySummaryRow>(
+      `
+        WITH delivery_scope AS (
+          SELECT
+            delivery.status,
+            delivery.delivery_fee,
+            delivery.payment_method_id,
+            method.nombre AS payment_method_nombre
+          FROM public.deliveries AS delivery
+          LEFT JOIN public.payment_methods AS method
+            ON method.id = delivery.payment_method_id
+            AND method.tenant_id = delivery.tenant_id
+          WHERE delivery.tenant_id = $1
+            AND delivery.cash_session_id = $2
+        ),
+        payment_breakdown AS (
+          SELECT COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'paymentMethodId', item.payment_method_id,
+                'paymentMethodNombre', item.payment_method_nombre,
+                'count', item.total_count,
+                'total', item.total_amount
+              )
+              ORDER BY item.payment_method_nombre NULLS LAST
+            ),
+            '[]'::jsonb
+          ) AS data
+          FROM (
+            SELECT
+              payment_method_id,
+              payment_method_nombre,
+              COUNT(*)::integer AS total_count,
+              ROUND(SUM(delivery_fee), 2) AS total_amount
+            FROM delivery_scope
+            WHERE status IN ('ENTREGADO', 'DELIVERED')
+              AND delivery_fee > 0
+            GROUP BY payment_method_id, payment_method_nombre
+          ) AS item
+        ),
+        summary AS (
+          SELECT
+            COUNT(*) FILTER (
+              WHERE status IN ('ENTREGADO', 'DELIVERED')
+            ) AS delivered_count,
+            COUNT(*) FILTER (
+              WHERE status IN (
+                'CREADO',
+                'CREATED',
+                'EN_PREPARACION',
+                'ASSIGNED',
+                'DESPACHADO',
+                'DISPATCHED'
+              )
+            ) AS pending_count,
+            COUNT(*) FILTER (
+              WHERE status IN ('CANCELADO', 'CANCELLED', 'NO_ENTREGADO', 'NOT_DELIVERED')
+            ) AS excluded_count,
+            COALESCE(SUM(delivery_fee) FILTER (
+              WHERE status IN ('ENTREGADO', 'DELIVERED')
+            ), 0) AS delivered_fee_total
+          FROM delivery_scope
+        )
+        SELECT
+          summary.delivered_count,
+          summary.pending_count,
+          summary.excluded_count,
+          summary.delivered_fee_total,
+          payment_breakdown.data AS by_payment_method
+        FROM summary
+        CROSS JOIN payment_breakdown
+      `,
+      [tenantId, cashSessionId]
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return this.emptyDeliverySummary();
+    }
+
+    return {
+      deliveredCount: this.toNumber(row.delivered_count),
+      pendingCount: this.toNumber(row.pending_count),
+      excludedCount: this.toNumber(row.excluded_count),
+      deliveredFeeTotal: this.toNumber(row.delivered_fee_total),
+      byPaymentMethod: (row.by_payment_method ?? []).map((item) => ({
+        paymentMethodId: item.paymentMethodId,
+        paymentMethodNombre: item.paymentMethodNombre,
+        count: this.toNumber(item.count),
+        total: this.toNumber(item.total),
+      })),
     };
   }
 
@@ -722,7 +869,8 @@ export class CurrentShiftReportsService {
     orders: CurrentShiftOrderRow[],
     purchases: CurrentShiftPurchaseRow[],
     movements: CurrentShiftMovementRow[],
-    cashCount: CurrentShiftCashCountRow[]
+    cashCount: CurrentShiftCashCountRow[],
+    deliverySummary: CurrentShiftSummary["deliverySummary"]
   ): CurrentShiftSummary {
     const totals = (rawSummary?.totals ?? {}) as Record<string, unknown>;
     const paymentsIn = this.toNumber(totals.paymentsIn);
@@ -732,6 +880,15 @@ export class CurrentShiftReportsService {
     const expenses = this.toNumber(totals.expenses);
     const withdrawals = this.toNumber(totals.withdrawals);
     const latestCount = cashCount[0] ?? null;
+    const deliveryFees = this.toNumber(deliverySummary.deliveredFeeTotal);
+    const expectedAmount = this.toNumber(
+      (totals.expectedAmount ??
+        cashSession.openingAmount +
+          movements.reduce(
+            (sum, row) => sum + (row.direction === "OUT" ? -row.amount : row.amount),
+            0
+          )) as number
+    ) + deliveryFees;
 
     return {
       openingAmount: this.toNumber(totals.openingAmount ?? cashSession.openingAmount),
@@ -748,21 +905,17 @@ export class CurrentShiftReportsService {
         totals.purchasePayments ??
           purchases.reduce((sum, row) => sum + row.paidAmount, 0)
       ),
+      deliveryFees,
+      deliverySummary,
       cashInTotal: this.toNumber(
         (paymentsIn || sales.reduce((sum, row) => sum + row.paidAmount, 0)) +
-          adjustmentsIn
+          adjustmentsIn +
+          deliveryFees
       ),
       cashOutTotal: this.toNumber(paymentsOut + expenses + withdrawals + adjustmentsOut),
-      expectedAmount: this.toNumber(
-        totals.expectedAmount ??
-          cashSession.openingAmount +
-            movements.reduce(
-              (sum, row) => sum + (row.direction === "OUT" ? -row.amount : row.amount),
-              0
-            )
-      ),
+      expectedAmount,
       currentCountAmount: latestCount ? latestCount.countedAmount : null,
-      difference: latestCount ? latestCount.difference : null,
+      difference: latestCount ? this.toNumber(latestCount.countedAmount - expectedAmount) : null,
     };
   }
 
@@ -906,7 +1059,7 @@ export class CurrentShiftReportsService {
       };
     }
 
-    const [rawSummary, sales, orders, purchases, movements, cashCount] =
+    const [rawSummary, sales, orders, purchases, movements, cashCount, deliverySummary] =
       await Promise.all([
         this.getRawSummary(session.tenantId, session.id),
         this.listSales(session.tenantId, session.id, page),
@@ -914,6 +1067,7 @@ export class CurrentShiftReportsService {
         this.listPurchases(session.tenantId, session.id, page),
         this.listMovements(session.tenantId, session.id, page),
         this.listCashCounts(session.tenantId, session.id, page),
+        this.getDeliveryCashSummary(session.tenantId, session.id),
       ]);
     const tickets = this.buildTickets({ sales, orders, purchases, cashCount });
 
@@ -928,7 +1082,8 @@ export class CurrentShiftReportsService {
         orders,
         purchases,
         movements,
-        cashCount
+        cashCount,
+        deliverySummary
       ),
       filters: {
         tenantId: session.tenantId,

@@ -66,6 +66,11 @@ export type DeliveryRecord = {
   total: number;
   payment_method_id: string | null;
   assigned_courier_id: string | null;
+  cash_session_id: string | null;
+  cash_register_id: string | null;
+  terminal_id: string | null;
+  cash_impact_amount: number;
+  cash_impact_recorded_at: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
   created_by_user_id: string | null;
@@ -124,6 +129,8 @@ export type GetDeliveriesParams = {
   order_id?: string;
   sale_id?: string;
   driver_id?: string;
+  cash_session_id?: string;
+  cash_scope?: "current" | "all";
   date_from?: string;
   date_to?: string;
   page?: number;

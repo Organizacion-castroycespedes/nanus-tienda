@@ -22,6 +22,14 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { getApiErrorMessage } from "../../reporteria/utils";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { useAppSelector } from "../../../store/hooks";
+import { getCurrentCashSession } from "../../finance/services/finance.service";
+import type { CashSession } from "../../finance/types";
+import {
+  getDeliveryCashScope,
+  getDeliveryCashScopeLabel,
+  shouldBlockCashImpactAction,
+  type DeliveryCashScope,
+} from "../delivery-cash-scope";
 import {
   deliveryActionDescriptions,
   deliveryStatusLabels,
@@ -123,12 +131,17 @@ const optionalText = (value: string) => {
 const buildListParams = (
   filters: DeliveryFilters,
   page: number,
-  limit: number
+  limit: number,
+  currentCashSessionId?: string | null
 ): GetDeliveriesParams => ({
   status: filters.status || undefined,
   order_id: optionalText(filters.orderId),
   sale_id: optionalText(filters.saleId),
   driver_id: optionalText(filters.driverId),
+  cash_scope:
+    filters.cashScope === "current" && currentCashSessionId
+      ? "current"
+      : undefined,
   date_from: optionalText(filters.dateFrom),
   date_to: optionalText(filters.dateTo),
   page,
@@ -148,6 +161,29 @@ const getDriverActionLabel = (delivery: DeliveryRecord) =>
 
 const getDeliveryTicketFileName = (deliveryId: string) =>
   `ticket-domicilio-${deliveryId}.pdf`;
+
+const cashScopeClassName: Record<DeliveryCashScope, string> = {
+  current: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  none: "border-slate-200 bg-slate-50 text-slate-600",
+  other: "border-amber-200 bg-amber-50 text-amber-700",
+};
+
+const DeliveryCashBadge = ({
+  delivery,
+  currentCashSessionId,
+}: {
+  delivery: DeliveryRecord;
+  currentCashSessionId?: string | null;
+}) => {
+  const scope = getDeliveryCashScope(delivery, currentCashSessionId);
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${cashScopeClassName[scope]}`}
+    >
+      {getDeliveryCashScopeLabel(scope)}
+    </span>
+  );
+};
 
 const getParamValue = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -370,6 +406,7 @@ const MobileDeliveryCard = ({
   onAssignDriver,
   onTicket,
   canAssignDriver,
+  currentCashSessionId,
 }: {
   delivery: DeliveryRecord;
   permissions: DeliveryActionPermissionMap;
@@ -379,6 +416,7 @@ const MobileDeliveryCard = ({
   onAssignDriver: (delivery: DeliveryRecord) => void;
   onTicket: (delivery: DeliveryRecord) => void;
   canAssignDriver: boolean;
+  currentCashSessionId?: string | null;
 }) => (
   <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -395,6 +433,9 @@ const MobileDeliveryCard = ({
     <div className="mt-3 grid gap-2 text-sm text-slate-600">
       <p>Telefono: {delivery.customer_phone || "-"}</p>
       <p>Repartidor: {getDriverLabel(delivery)}</p>
+      <p>
+        Caja: <DeliveryCashBadge delivery={delivery} currentCashSessionId={currentCashSessionId} />
+      </p>
       <p>Creado: {formatDateTime(delivery.created_at)}</p>
       <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
       <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
@@ -410,7 +451,7 @@ const MobileDeliveryCard = ({
         variant="ghost"
         size="sm"
         onClick={() => onAssignDriver(delivery)}
-        disabled={actionDisabled || !canAssignDriver}
+        disabled={!canAssignDriver}
       >
         <UserCheck className="h-4 w-4" />
         {getDriverActionLabel(delivery)}
@@ -457,6 +498,8 @@ export const DeliveriesScreen = ({
   const authTenantId = useAppSelector(
     (state) => state.auth.user?.tenantId ?? state.auth.tenantId
   );
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
+  const posSessionId = useAppSelector((state) => state.pos.posSessionId);
   const tenantSlug =
     getParamValue(params?.tenant) ??
     authTenantId ??
@@ -467,6 +510,7 @@ export const DeliveriesScreen = ({
   );
   const canView = canReadDeliveries(deliveryPermission, role);
   const canCreate = canCreateDelivery(deliveryPermission, role);
+  const isAdminRole = ["SUPER_ADMIN", "SUPER_USER", "ADMIN"].includes(role);
   const actionPermissions = useMemo<DeliveryActionPermissionMap>(
     () => buildDeliveryActionPermissionMap(deliveryPermission, role),
     [deliveryPermission, role]
@@ -474,7 +518,10 @@ export const DeliveriesScreen = ({
 
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
+  const [currentCashSession, setCurrentCashSession] =
+    useState<CashSession | null>(null);
   const [driversLoading, setDriversLoading] = useState(false);
+  const [cashSessionLoading, setCashSessionLoading] = useState(true);
   const [lastInitialFiltersKey, setLastInitialFiltersKey] =
     useState(initialFiltersKey);
   const [draftFilters, setDraftFilters] = useState<DeliveryFilters>(initialFilters);
@@ -529,6 +576,35 @@ export const DeliveriesScreen = ({
   }, [showToast]);
 
   useEffect(() => {
+    if (!permissionsLoaded || !canView) {
+      return;
+    }
+
+    let isActive = true;
+    setCashSessionLoading(true);
+    getCurrentCashSession(posCashRegisterId ?? undefined)
+      .then((session) => {
+        if (isActive) {
+          setCurrentCashSession(session);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setCurrentCashSession(null);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setCashSessionLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [canView, permissionsLoaded, posCashRegisterId, posSessionId]);
+
+  useEffect(() => {
     if (lastInitialFiltersKey === initialFiltersKey) {
       return;
     }
@@ -550,7 +626,12 @@ export const DeliveriesScreen = ({
       setErrorMessage(null);
       try {
         const response = await listDeliveries(
-          buildListParams(filters, targetPage, targetPageSize)
+          buildListParams(
+            filters,
+            targetPage,
+            targetPageSize,
+            currentCashSession?.id
+          )
         );
         setDeliveries(response.data);
         setPagination(response.pagination);
@@ -564,17 +645,18 @@ export const DeliveriesScreen = ({
         setLoading(false);
       }
     },
-    [pageSize]
+    [currentCashSession?.id, pageSize]
   );
 
   useEffect(() => {
-    if (!permissionsLoaded || !canView || hasLoaded) {
+    if (!permissionsLoaded || !canView || cashSessionLoading || hasLoaded) {
       return;
     }
     void loadDeliveries(appliedFilters, 1, pageSize);
   }, [
     appliedFilters,
     canView,
+    cashSessionLoading,
     hasLoaded,
     loadDeliveries,
     pageSize,
@@ -639,6 +721,13 @@ export const DeliveriesScreen = ({
   };
 
   const openAction = (action: DeliveryActionKey, delivery: DeliveryRecord) => {
+    if (shouldBlockCashImpactAction(delivery, currentCashSession?.id)) {
+      showToast(
+        "Abre la caja actual de este domicilio antes de ejecutar acciones operativas.",
+        "error"
+      );
+      return;
+    }
     setActionRequest({ action, delivery });
     setActionDraft(emptyActionDraft);
     setActionError(null);
@@ -802,6 +891,10 @@ export const DeliveriesScreen = ({
   const totalPages = Math.max(pagination.total_pages || 1, 1);
   const actionDisabled = savingAction || loading;
   const canAssignDriver = actionPermissions.prepare;
+  const getRowActionDisabled = (delivery: DeliveryRecord) =>
+    actionDisabled ||
+    shouldBlockCashImpactAction(delivery, currentCashSession?.id);
+  const currentCashSessionId = currentCashSession?.id ?? null;
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
@@ -835,7 +928,10 @@ export const DeliveriesScreen = ({
           delivery={detailDelivery}
           loading={detailLoading}
           permissions={actionPermissions}
-          actionDisabled={actionDisabled}
+          actionDisabled={
+            actionDisabled || shouldBlockCashImpactAction(detailDelivery, currentCashSessionId)
+          }
+          currentCashSessionId={currentCashSessionId}
           onClose={() => setDetailDelivery(null)}
           onAction={openAction}
           onAssignDriver={canAssignDriver ? openDriverAssignment : undefined}
@@ -898,8 +994,39 @@ export const DeliveriesScreen = ({
         </div>
       </section>
 
+      <section
+        className={`rounded-lg border p-4 text-sm shadow-sm ${
+          currentCashSession
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p>
+            {currentCashSession
+              ? `Caja actual: ${
+                  currentCashSession.cashRegisterNombre ??
+                  currentCashSession.cashRegisterCodigo ??
+                  currentCashSession.id
+                }. La vista operativa usa esta caja cuando filtras por caja actual.`
+              : cashSessionLoading
+                ? "Verificando caja actual..."
+                : "No tienes una caja abierta. La gestion operativa de domicilios con valor esta limitada."}
+          </p>
+          {!currentCashSession && !cashSessionLoading ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
+            >
+              Ir a POS / Seleccionar caja
+            </Button>
+          ) : null}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_170px_1fr_1fr_190px_155px_155px_110px]">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_170px_1fr_1fr_190px_155px_155px_170px_110px]">
             <Input
               label="Buscar"
               placeholder="Contacto, telefono, direccion"
@@ -990,6 +1117,24 @@ export const DeliveriesScreen = ({
               }
             />
             <Select
+              label="Caja"
+              value={draftFilters.cashScope}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  cashScope: event.target.value === "all" ? "all" : "current",
+                }))
+              }
+              disabled={!isAdminRole && !currentCashSession}
+            >
+              <option value="current">
+                {currentCashSession ? "Caja actual" : "Sin caja actual"}
+              </option>
+              <option value="all">
+                {isAdminRole ? "Todas" : "Consulta general"}
+              </option>
+            </Select>
+            <Select
               label="Filas"
               value={String(pageSize)}
               onChange={(event) => changePageSize(Number(event.target.value))}
@@ -1034,7 +1179,9 @@ export const DeliveriesScreen = ({
             </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
               <Truck className="h-4 w-4" />
-              Sin caja
+              {appliedFilters.cashScope === "current" && currentCashSession
+                ? "Caja actual"
+                : "Consulta general"}
             </div>
           </div>
 
@@ -1043,6 +1190,7 @@ export const DeliveriesScreen = ({
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
                   <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Caja</th>
                   <th className="px-4 py-3 font-medium">Contacto</th>
                   <th className="px-4 py-3 font-medium">Telefono</th>
                   <th className="px-4 py-3 font-medium">Direccion</th>
@@ -1056,19 +1204,19 @@ export const DeliveriesScreen = ({
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       Cargando domicilios...
                     </td>
                   </tr>
                 ) : !hasLoaded ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       Usa Buscar para consultar domicilios.
                     </td>
                   </tr>
                 ) : visibleDeliveries.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       No hay domicilios para mostrar.
                     </td>
                   </tr>
@@ -1077,6 +1225,12 @@ export const DeliveriesScreen = ({
                     <tr key={delivery.id}>
                       <td className="px-4 py-3">
                         <DeliveryStatusBadge status={delivery.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <DeliveryCashBadge
+                          delivery={delivery}
+                          currentCashSessionId={currentCashSessionId}
+                        />
                       </td>
                       <td className="px-4 py-3 text-slate-900">
                         <div className="max-w-[180px]">
@@ -1137,7 +1291,7 @@ export const DeliveriesScreen = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => openDriverAssignment(delivery)}
-                            disabled={actionDisabled || !canAssignDriver}
+                            disabled={savingAction || loading || !canAssignDriver}
                           >
                             <UserCheck className="h-4 w-4" />
                             {getDriverActionLabel(delivery)}
@@ -1153,7 +1307,7 @@ export const DeliveriesScreen = ({
                           <DeliveryActions
                             delivery={delivery}
                             permissions={actionPermissions}
-                            disabled={actionDisabled}
+                            disabled={getRowActionDisabled(delivery)}
                             onAction={openAction}
                           />
                         </div>
@@ -1184,12 +1338,13 @@ export const DeliveriesScreen = ({
                   key={delivery.id}
                   delivery={delivery}
                   permissions={actionPermissions}
-                  actionDisabled={actionDisabled}
+                  actionDisabled={getRowActionDisabled(delivery)}
                   onDetail={(item) => void openDetail(item)}
                   onAction={openAction}
                   onAssignDriver={openDriverAssignment}
                   onTicket={openDeliveryTicket}
                   canAssignDriver={canAssignDriver}
+                  currentCashSessionId={currentCashSessionId}
                 />
               ))
             )}

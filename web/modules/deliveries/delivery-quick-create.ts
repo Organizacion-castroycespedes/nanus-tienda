@@ -239,7 +239,7 @@ export const buildDeliveryQuickCreatePayload = (
       : form.orderId
         ? "order_quick_create_frontend"
         : "manual_quick_create_frontend",
-    no_cash_integration: true,
+    cash_session_scope: "current",
     quick_create: true,
   },
 });

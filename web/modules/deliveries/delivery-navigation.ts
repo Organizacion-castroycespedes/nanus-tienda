@@ -6,6 +6,7 @@ export type DeliveryFilters = {
   orderId: string;
   saleId: string;
   driverId: string;
+  cashScope: "current" | "all";
   dateFrom: string;
   dateTo: string;
 };
@@ -24,6 +25,7 @@ export const defaultDeliveryFilters: DeliveryFilters = {
   orderId: "",
   saleId: "",
   driverId: "",
+  cashScope: "current",
   dateFrom: "",
   dateTo: "",
 };
@@ -60,6 +62,7 @@ export const buildDeliveryFiltersFromSearchParams = (
   orderId: readSearchParam(params, "order_id"),
   saleId: readSearchParam(params, "sale_id"),
   driverId: readSearchParam(params, "driver_id"),
+  cashScope: readSearchParam(params, "cash_scope") === "all" ? "all" : "current",
   dateFrom: readSearchParam(params, "date_from"),
   dateTo: readSearchParam(params, "date_to"),
 });
@@ -71,6 +74,7 @@ export const serializeDeliveryFilters = (filters: DeliveryFilters) =>
     filters.orderId,
     filters.saleId,
     filters.driverId,
+    filters.cashScope,
     filters.dateFrom,
     filters.dateTo,
   ].join("|");

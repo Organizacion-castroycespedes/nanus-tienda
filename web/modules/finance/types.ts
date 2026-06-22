@@ -130,6 +130,19 @@ export type CashSessionLastCount = {
   countedAt: string;
 } | null;
 
+export type CashSessionDeliverySummary = {
+  deliveredCount: number;
+  pendingCount: number;
+  excludedCount: number;
+  deliveredFeeTotal: number;
+  byPaymentMethod: Array<{
+    paymentMethodId: string | null;
+    paymentMethodNombre: string | null;
+    count: number;
+    total: number;
+  }>;
+};
+
 export type CashSessionSummary = {
   sessionId: string;
   tenantId: string;
@@ -158,6 +171,7 @@ export type CashSessionSummary = {
     salesPayments: number;
     purchasePayments: number;
     refundPayments: number;
+    deliveryFees: number;
     expectedAmount: number;
     netAmount: number;
     movementCount: number;
@@ -167,6 +181,7 @@ export type CashSessionSummary = {
   movementBreakdown: CashSessionMovementBreakdown[];
   recentMovements: CashSessionRecentMovement[];
   lastCount: CashSessionLastCount;
+  deliverySummary: CashSessionDeliverySummary;
 };
 
 export type CashMovementType =

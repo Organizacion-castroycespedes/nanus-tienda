@@ -114,6 +114,8 @@ export class SaleController {
       userId: context.userId,
       tenantId: context.tenantId,
       branchId: context.branchId,
+      terminalId: context.terminalId,
+      posSessionId: context.posSessionId,
     };
   }
 

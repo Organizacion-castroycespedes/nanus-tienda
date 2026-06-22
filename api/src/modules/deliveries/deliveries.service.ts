@@ -34,6 +34,8 @@ type DeliveryActor = {
   userId?: string;
   roles: string[];
   branchId?: string;
+  terminalId?: string;
+  posSessionId?: string;
 };
 
 type DeliveryRecord = {
@@ -59,6 +61,11 @@ type DeliveryRecord = {
   driver_phone?: string | null;
   driver_document_number?: string | null;
   driver_active?: boolean | null;
+  cash_session_id?: string | null;
+  cash_register_id?: string | null;
+  terminal_id?: string | null;
+  cash_impact_amount?: string | number | null;
+  cash_impact_recorded_at?: Date | string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
   created_by_user_id: string | null;
@@ -93,6 +100,19 @@ type SaleDeliverySourceRecord = {
   customer_name: string | null;
   customer_phone: string | null;
   customer_address: string | null;
+};
+
+type DeliveryCashSchema = {
+  has_cash_columns: boolean;
+  has_cash_tables: boolean;
+};
+
+type DeliveryCashContext = {
+  cashSessionId: string;
+  cashRegisterId: string;
+  terminalId: string | null;
+  cashImpactAmount: number;
+  recordedAt: Date;
 };
 
 const DELIVERY_SELECT_FIELDS = `
@@ -163,6 +183,22 @@ const DELIVERY_SELECT_FIELDS_WITHOUT_DRIVER = `
           d.cancelled_at,
           d.delivered_at,
           d.failed_at
+`;
+
+const DELIVERY_CASH_SELECT_FIELDS = `,
+          d.cash_session_id,
+          d.cash_register_id,
+          d.terminal_id,
+          d.cash_impact_amount,
+          d.cash_impact_recorded_at
+`;
+
+const DELIVERY_CASH_SELECT_FIELDS_PENDING_MIGRATION = `,
+          NULL::uuid AS cash_session_id,
+          NULL::uuid AS cash_register_id,
+          NULL::uuid AS terminal_id,
+          0::numeric AS cash_impact_amount,
+          NULL::timestamptz AS cash_impact_recorded_at
 `;
 
 type TransitionOptions = {
@@ -273,17 +309,55 @@ export class DeliveriesService {
     return Boolean(row?.has_driver_table && row?.has_driver_column);
   }
 
-  private getDeliverySelect(hasDriverCatalog: boolean) {
+  private async hasCashScopeSchema(): Promise<DeliveryCashSchema> {
+    const result = await this.db.query<DeliveryCashSchema>(
+      `
+        SELECT
+          (
+            SELECT COUNT(*) = 5
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'deliveries'
+              AND column_name IN (
+                'cash_session_id',
+                'cash_register_id',
+                'terminal_id',
+                'cash_impact_amount',
+                'cash_impact_recorded_at'
+              )
+          ) AS has_cash_columns,
+          (
+            to_regclass('public.cash_sessions') IS NOT NULL
+            AND to_regclass('public.cash_registers') IS NOT NULL
+          ) AS has_cash_tables
+      `
+    );
+
+    const row = result.rows[0];
+    return {
+      has_cash_columns: Boolean(row?.has_cash_columns),
+      has_cash_tables: Boolean(row?.has_cash_tables),
+    };
+  }
+
+  private getDeliverySelect(
+    hasDriverCatalog: boolean,
+    hasCashScope: boolean
+  ) {
+    const cashFields = hasCashScope
+      ? DELIVERY_CASH_SELECT_FIELDS
+      : DELIVERY_CASH_SELECT_FIELDS_PENDING_MIGRATION;
+
     return hasDriverCatalog
       ? {
-          fields: DELIVERY_SELECT_FIELDS,
+          fields: `${DELIVERY_SELECT_FIELDS}${cashFields}`,
           join: `
         LEFT JOIN public.delivery_drivers driver
           ON driver.id = d.driver_id
           AND driver.tenant_id = d.tenant_id`,
         }
       : {
-          fields: DELIVERY_SELECT_FIELDS_WITHOUT_DRIVER,
+          fields: `${DELIVERY_SELECT_FIELDS_WITHOUT_DRIVER}${cashFields}`,
           join: "",
         };
   }
@@ -317,6 +391,11 @@ export class DeliveriesService {
             active: record.driver_active ?? null,
           }
         : null,
+      cash_session_id: record.cash_session_id ?? null,
+      cash_register_id: record.cash_register_id ?? null,
+      terminal_id: record.terminal_id ?? null,
+      cash_impact_amount: Number(record.cash_impact_amount ?? 0),
+      cash_impact_recorded_at: record.cash_impact_recorded_at ?? null,
       notes: record.notes,
       metadata: record.metadata ?? {},
       created_by_user_id: record.created_by_user_id,
@@ -679,6 +758,163 @@ export class DeliveriesService {
     }
   }
 
+  private isAdminCashScope(actor: DeliveryActor) {
+    return actor.roles.some((role) =>
+      ["SUPER_ADMIN", "SUPER_USER", "ADMIN"].includes(role.toUpperCase())
+    );
+  }
+
+  private hasDeliveryCashImpact(
+    deliveryFee: number | string | null | undefined,
+    paymentMethodId?: string | null
+  ) {
+    return Number(deliveryFee ?? 0) > 0 || Boolean(paymentMethodId);
+  }
+
+  private async queryCurrentCashContext(
+    tenantId: string,
+    branchId: string,
+    actor: DeliveryActor,
+    cashImpactAmount: number,
+    client?: PoolClient
+  ): Promise<DeliveryCashContext | null> {
+    if (!actor.userId) {
+      throw new UnauthorizedException("Usuario no encontrado en la sesion");
+    }
+
+    const params: unknown[] = [tenantId, actor.userId, branchId];
+    const conditions = [
+      "session.tenant_id = $1",
+      "session.opened_by_user_id = $2",
+      "session.branch_id = $3",
+      "session.status = 'OPEN'",
+    ];
+
+    if (actor.terminalId) {
+      params.push(actor.terminalId);
+      conditions.push(`register.terminal_id = $${params.length}`);
+    }
+
+    const sql = `
+        SELECT
+          session.id AS cash_session_id,
+          session.cash_register_id,
+          register.terminal_id
+        FROM public.cash_sessions AS session
+        INNER JOIN public.cash_registers AS register
+          ON register.id = session.cash_register_id
+          AND register.tenant_id = session.tenant_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY session.opened_at DESC
+        LIMIT 1
+      `;
+    const result = client
+      ? await client.query<{
+          cash_session_id: string;
+          cash_register_id: string;
+          terminal_id: string | null;
+        }>(sql, params)
+      : await this.db.query<{
+          cash_session_id: string;
+          cash_register_id: string;
+          terminal_id: string | null;
+        }>(sql, params);
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      cashSessionId: row.cash_session_id,
+      cashRegisterId: row.cash_register_id,
+      terminalId: row.terminal_id,
+      cashImpactAmount,
+      recordedAt: new Date(),
+    };
+  }
+
+  private async resolveRequiredCashContext(
+    tenantId: string,
+    branchId: string,
+    actor: DeliveryActor,
+    cashImpactAmount: number,
+    schema: DeliveryCashSchema,
+    client?: PoolClient
+  ) {
+    if (!schema.has_cash_columns || !schema.has_cash_tables) {
+      throw new BadRequestException(
+        "Migracion de caja para domicilios pendiente: ejecute V067__deliveries_current_cash_session.sql"
+      );
+    }
+
+    const cashContext = await this.queryCurrentCashContext(
+      tenantId,
+      branchId,
+      actor,
+      cashImpactAmount,
+      client
+    );
+
+    if (!cashContext) {
+      throw new BadRequestException(
+        "Abre una caja antes de registrar domicilios con valor o metodo de pago"
+      );
+    }
+
+    return cashContext;
+  }
+
+  private appendCashAssignments(
+    params: unknown[],
+    assignments: string[],
+    cashContext: DeliveryCashContext
+  ) {
+    params.push(cashContext.cashSessionId);
+    assignments.push(`cash_session_id = $${params.length}`);
+    params.push(cashContext.cashRegisterId);
+    assignments.push(`cash_register_id = $${params.length}`);
+    params.push(cashContext.terminalId);
+    assignments.push(`terminal_id = $${params.length}`);
+    params.push(cashContext.cashImpactAmount);
+    assignments.push(`cash_impact_amount = $${params.length}`);
+    params.push(cashContext.recordedAt);
+    assignments.push(`cash_impact_recorded_at = $${params.length}`);
+  }
+
+  private async enforceCashScopeForTransition(
+    client: PoolClient,
+    delivery: DeliveryRecord,
+    actor: DeliveryActor,
+    params: unknown[],
+    assignments: string[]
+  ) {
+    if (!this.hasDeliveryCashImpact(delivery.delivery_fee, delivery.payment_method_id)) {
+      return;
+    }
+
+    const schema = await this.hasCashScopeSchema();
+    const cashContext = await this.resolveRequiredCashContext(
+      delivery.tenant_id,
+      delivery.branch_id,
+      actor,
+      Number(delivery.delivery_fee ?? 0),
+      schema,
+      client
+    );
+
+    const existingCashSessionId = delivery.cash_session_id ?? null;
+    if (existingCashSessionId && existingCashSessionId !== cashContext.cashSessionId) {
+      throw new ForbiddenException(
+        "El domicilio pertenece a otra sesion de caja"
+      );
+    }
+
+    if (!existingCashSessionId) {
+      this.appendCashAssignments(params, assignments, cashContext);
+    }
+  }
+
   private assertDeliveryBranchScope(delivery: DeliveryRecord, actor: DeliveryActor) {
     const actorBranchId = actor.branchId?.trim();
     if (actorBranchId && actorBranchId !== delivery.branch_id) {
@@ -802,7 +1038,9 @@ export class DeliveriesService {
       await this.assertBranchScope(tenantId, branchId);
     }
     const hasDriverCatalog = await this.hasDriverCatalogSchema();
-    const deliverySelect = this.getDeliverySelect(hasDriverCatalog);
+    const cashSchema = await this.hasCashScopeSchema();
+    const hasCashScope = cashSchema.has_cash_columns && cashSchema.has_cash_tables;
+    const deliverySelect = this.getDeliverySelect(hasDriverCatalog, hasCashScope);
 
     const page = Math.max(Number(filters.page ?? 1), 1);
     const limit = Math.min(Math.max(Number(filters.limit ?? 25), 1), 100);
@@ -855,6 +1093,65 @@ export class DeliveriesService {
     if (filters.driver_id) {
       params.push(filters.driver_id);
       conditions.push(`d.driver_id = $${params.length}`);
+    }
+
+    if (filters.cash_session_id) {
+      if (!hasCashScope) {
+        return {
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            total_pages: 0,
+          },
+        };
+      }
+      if (!this.isAdminCashScope(actor)) {
+        const currentBranchId = branchId ?? actor.branchId;
+        if (!currentBranchId) {
+          throw new ForbiddenException("No autorizado para otra sesion de caja");
+        }
+        const currentCash = await this.queryCurrentCashContext(
+          tenantId,
+          currentBranchId,
+          actor,
+          0
+        );
+        if (!currentCash || currentCash.cashSessionId !== filters.cash_session_id) {
+          throw new ForbiddenException("No autorizado para otra sesion de caja");
+        }
+      }
+      params.push(filters.cash_session_id);
+      conditions.push(`d.cash_session_id = $${params.length}`);
+    } else if (filters.cash_scope === "current") {
+      if (!hasCashScope) {
+        return {
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            total_pages: 0,
+          },
+        };
+      }
+      const currentCash = branchId
+        ? await this.queryCurrentCashContext(tenantId, branchId, actor, 0)
+        : null;
+      if (!currentCash) {
+        return {
+          data: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            total_pages: 0,
+          },
+        };
+      }
+      params.push(currentCash.cashSessionId);
+      conditions.push(`d.cash_session_id = $${params.length}`);
     }
 
     if (filters.date_from) {
@@ -941,6 +1238,11 @@ ${deliverySelect.join}
     const total = this.normalizeAmount(payload.total);
     const metadata = this.normalizeMetadata(payload.metadata);
     const driverId = payload.driver_id ?? null;
+    const cashSchema = await this.hasCashScopeSchema();
+    const hasCashImpact = this.hasDeliveryCashImpact(
+      deliveryFee,
+      payload.payment_method_id
+    );
 
     if (driverId && !(await this.hasDriverCatalogSchema())) {
       throw new BadRequestException(
@@ -976,112 +1278,47 @@ ${deliverySelect.join}
       if (driverId) {
         await this.assertActiveDriverForAssignment(client, tenantId, driverId);
       }
+      const cashContext = hasCashImpact
+        ? await this.resolveRequiredCashContext(
+            tenantId,
+            branchId,
+            actor,
+            deliveryFee,
+            cashSchema,
+            client
+          )
+        : null;
 
       const deliveryNumber = await this.deliveryNumberService.generate(
         tenantId,
         branchId,
         client
       );
-      const insertSql = driverId
-        ? `
-          INSERT INTO public.deliveries (
-            tenant_id,
-            branch_id,
-            customer_id,
-            order_id,
-            sale_id,
-            delivery_number,
-            status,
-            customer_name,
-            customer_phone,
-            delivery_address,
-            delivery_reference,
-            delivery_fee,
-            subtotal,
-            total,
-            payment_method_id,
-            driver_id,
-            notes,
-            metadata,
-            created_by_user_id,
-            updated_by_user_id
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            'CREATED',
-            $7,
-            $8,
-            $9,
-            $10,
-            $11,
-            $12,
-            $13,
-            $14,
-            $15::uuid,
-            $16,
-            $17::jsonb,
-            $18,
-            $18
-          )
-          RETURNING *
-        `
-        : `
-          INSERT INTO public.deliveries (
-            tenant_id,
-            branch_id,
-            customer_id,
-            order_id,
-            sale_id,
-            delivery_number,
-            status,
-            customer_name,
-            customer_phone,
-            delivery_address,
-            delivery_reference,
-            delivery_fee,
-            subtotal,
-            total,
-            payment_method_id,
-            notes,
-            metadata,
-            created_by_user_id,
-            updated_by_user_id
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            'CREATED',
-            $7,
-            $8,
-            $9,
-            $10,
-            $11,
-            $12,
-            $13,
-            $14,
-            $15,
-            $16::jsonb,
-            $17,
-            $17
-          )
-          RETURNING *
-        `;
-      const insertParams = [
+      const columns: string[] = [
+        "tenant_id",
+        "branch_id",
+        "customer_id",
+        "order_id",
+        "sale_id",
+        "delivery_number",
+        "status",
+        "customer_name",
+        "customer_phone",
+        "delivery_address",
+        "delivery_reference",
+        "delivery_fee",
+        "subtotal",
+        "total",
+        "payment_method_id",
+      ];
+      const insertParams: unknown[] = [
         tenantId,
         branchId,
         payload.customer_id ?? null,
         effectiveOrderId ?? null,
         payload.sale_id ?? null,
         deliveryNumber,
+        "CREATED",
         this.normalizeNullableText(payload.customer_name),
         this.normalizeNullableText(payload.customer_phone),
         deliveryAddress,
@@ -1090,11 +1327,43 @@ ${deliverySelect.join}
         subtotal,
         total,
         payload.payment_method_id ?? null,
-        ...(driverId ? [driverId] : []),
-        this.normalizeNullableText(payload.notes),
-        JSON.stringify(metadata),
-        actor.userId ?? null,
       ];
+      const values = insertParams.map((_, index) => `$${index + 1}`);
+      const addInsertColumn = (
+        column: string,
+        value: unknown,
+        cast?: string
+      ) => {
+        insertParams.push(value);
+        columns.push(column);
+        values.push(`$${insertParams.length}${cast ?? ""}`);
+      };
+
+      if (driverId) {
+        addInsertColumn("driver_id", driverId, "::uuid");
+      }
+      if (cashContext) {
+        addInsertColumn("cash_session_id", cashContext.cashSessionId);
+        addInsertColumn("cash_register_id", cashContext.cashRegisterId);
+        addInsertColumn("terminal_id", cashContext.terminalId);
+        addInsertColumn("cash_impact_amount", cashContext.cashImpactAmount);
+        addInsertColumn("cash_impact_recorded_at", cashContext.recordedAt);
+      }
+
+      addInsertColumn("notes", this.normalizeNullableText(payload.notes));
+      addInsertColumn("metadata", JSON.stringify(metadata), "::jsonb");
+      addInsertColumn("created_by_user_id", actor.userId ?? null);
+      addInsertColumn("updated_by_user_id", actor.userId ?? null);
+
+      const insertSql = `
+          INSERT INTO public.deliveries (
+            ${columns.join(",\n            ")}
+          )
+          VALUES (
+            ${values.join(",\n            ")}
+          )
+          RETURNING *
+        `;
       const result = await client.query<DeliveryRecord>(insertSql, insertParams);
 
       const created = result.rows[0];
@@ -1246,8 +1515,10 @@ ${deliverySelect.join}
 
   async getById(id: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
+    const cashSchema = await this.hasCashScopeSchema();
     const deliverySelect = this.getDeliverySelect(
-      await this.hasDriverCatalogSchema()
+      await this.hasDriverCatalogSchema(),
+      cashSchema.has_cash_columns && cashSchema.has_cash_tables
     );
     const result = await this.db.query<DeliveryRecord>(
       `
@@ -1272,8 +1543,10 @@ ${deliverySelect.join}
 
   async getByOrder(orderId: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
+    const cashSchema = await this.hasCashScopeSchema();
     const deliverySelect = this.getDeliverySelect(
-      await this.hasDriverCatalogSchema()
+      await this.hasDriverCatalogSchema(),
+      cashSchema.has_cash_columns && cashSchema.has_cash_tables
     );
     const order = await this.loadOrderForDelivery(orderId, tenantId);
     const orderBranchId = this.normalizeNullableText(order.branch_id);
@@ -1308,8 +1581,10 @@ ${deliverySelect.join}
 
   async getBySale(saleId: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
+    const cashSchema = await this.hasCashScopeSchema();
     const deliverySelect = this.getDeliverySelect(
-      await this.hasDriverCatalogSchema()
+      await this.hasDriverCatalogSchema(),
+      cashSchema.has_cash_columns && cashSchema.has_cash_tables
     );
     const sale = await this.loadSaleForDelivery(saleId, tenantId);
     const saleBranchId = this.normalizeNullableText(sale.branch_id);
@@ -1385,6 +1660,14 @@ ${deliverySelect.join}
         params.push(JSON.stringify(metadata));
         assignments.push(`metadata = metadata || $${params.length}::jsonb`);
       }
+
+      await this.enforceCashScopeForTransition(
+        client,
+        current,
+        actor,
+        params,
+        assignments
+      );
 
       options.buildAssignments?.(params, assignments, current);
 
@@ -1471,6 +1754,7 @@ ${deliverySelect.join}
   ) {
     const tenantId = this.resolveTenantId(actor);
     const hasDriverCatalog = await this.hasDriverCatalogSchema();
+    const cashSchema = await this.hasCashScopeSchema();
     if (!hasDriverCatalog) {
       throw new BadRequestException(
         "Migracion de repartidores pendiente: ejecute V066__delivery_drivers.sql"
@@ -1489,6 +1773,10 @@ ${deliverySelect.join}
       if (driverId) {
         await this.assertActiveDriverForAssignment(client, tenantId, driverId);
       }
+      const deliverySelect = this.getDeliverySelect(
+        true,
+        cashSchema.has_cash_columns && cashSchema.has_cash_tables
+      );
 
       const result = await client.query<DeliveryRecord>(
         `
@@ -1502,7 +1790,7 @@ ${deliverySelect.join}
             RETURNING *
           )
           SELECT
-${DELIVERY_SELECT_FIELDS}
+${deliverySelect.fields}
           FROM updated d
           LEFT JOIN public.delivery_drivers driver
             ON driver.id = d.driver_id
@@ -1615,6 +1903,10 @@ ${DELIVERY_SELECT_FIELDS}
 
     const params: unknown[] = [];
     const assignments: string[] = [];
+    const nextDeliveryFee =
+      payload.delivery_fee !== undefined
+        ? this.normalizeAmount(payload.delivery_fee)
+        : undefined;
 
     const addAssignment = (column: string, value: unknown) => {
       params.push(value);
@@ -1647,7 +1939,7 @@ ${DELIVERY_SELECT_FIELDS}
     }
 
     if (payload.delivery_fee !== undefined) {
-      addAssignment("delivery_fee", this.normalizeAmount(payload.delivery_fee));
+      addAssignment("delivery_fee", nextDeliveryFee);
     }
 
     if (payload.subtotal !== undefined) {
@@ -1675,30 +1967,73 @@ ${DELIVERY_SELECT_FIELDS}
       throw new BadRequestException("No hay campos editables para actualizar");
     }
 
-    addAssignment("updated_by_user_id", actor.userId ?? null);
-    assignments.push("updated_at = now()");
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const current = await this.findByIdForUpdate(client, id, tenantId);
+      this.assertDeliveryBranchScope(current, actor);
 
-    params.push(id);
-    const idParam = params.length;
-    params.push(tenantId);
-    const tenantParam = params.length;
+      const effectiveDeliveryFee =
+        nextDeliveryFee ?? Number(current.delivery_fee ?? 0);
+      const effectivePaymentMethodId =
+        payload.payment_method_id !== undefined
+          ? payload.payment_method_id ?? null
+          : current.payment_method_id;
 
-    const result = await this.db.query<DeliveryRecord>(
-      `
-        UPDATE public.deliveries
-        SET ${assignments.join(", ")}
-        WHERE id = $${idParam}
-          AND tenant_id = $${tenantParam}
-        RETURNING *
-      `,
-      params
-    );
+      if (this.hasDeliveryCashImpact(effectiveDeliveryFee, effectivePaymentMethodId)) {
+        const schema = await this.hasCashScopeSchema();
+        const cashContext = await this.resolveRequiredCashContext(
+          current.tenant_id,
+          current.branch_id,
+          actor,
+          effectiveDeliveryFee,
+          schema,
+          client
+        );
 
-    const updated = result.rows[0];
-    if (!updated) {
-      throw new NotFoundException("Domicilio no encontrado");
+        if (
+          current.cash_session_id &&
+          current.cash_session_id !== cashContext.cashSessionId
+        ) {
+          throw new ForbiddenException(
+            "El domicilio pertenece a otra sesion de caja"
+          );
+        }
+
+        this.appendCashAssignments(params, assignments, cashContext);
+      }
+
+      addAssignment("updated_by_user_id", actor.userId ?? null);
+      assignments.push("updated_at = now()");
+
+      params.push(id);
+      const idParam = params.length;
+      params.push(tenantId);
+      const tenantParam = params.length;
+
+      const result = await client.query<DeliveryRecord>(
+        `
+          UPDATE public.deliveries
+          SET ${assignments.join(", ")}
+          WHERE id = $${idParam}
+            AND tenant_id = $${tenantParam}
+          RETURNING *
+        `,
+        params
+      );
+
+      const updated = result.rows[0];
+      if (!updated) {
+        throw new NotFoundException("Domicilio no encontrado");
+      }
+
+      await client.query("COMMIT");
+      return this.mapRecord(updated);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-
-    return this.mapRecord(updated);
   }
 }

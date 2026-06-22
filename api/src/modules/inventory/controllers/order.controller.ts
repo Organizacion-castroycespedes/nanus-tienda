@@ -123,6 +123,8 @@ export class OrderController {
       userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
+      terminalId: request.context?.terminalId,
+      posSessionId: request.context?.posSessionId,
     };
   }
 

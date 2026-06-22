@@ -89,6 +89,18 @@ export type CashClosingTicketDataset = {
     count: number;
     total: number;
   }>;
+  deliverySummary: {
+    deliveredCount: number;
+    pendingCount: number;
+    excludedCount: number;
+    deliveredFeeTotal: number;
+    byPaymentMethod: Array<{
+      paymentMethodId: string | null;
+      paymentMethodNombre: string | null;
+      count: number;
+      total: number;
+    }>;
+  };
   movementBreakdown: Array<{
     movementType: string;
     direction: string;

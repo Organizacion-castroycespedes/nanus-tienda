@@ -72,6 +72,14 @@ export const buildCashClosingTicketTemplate = (
         [item.paymentMethodNombre.toUpperCase(), formatCurrency(item.total)] as [string, string]
     );
 
+  const deliveryBreakdownRows = dataset.deliverySummary.byPaymentMethod.map(
+    (item) =>
+      [
+        item.paymentMethodNombre?.toUpperCase() ?? "SIN METODO",
+        `${item.count} / ${formatCurrency(item.total)}`,
+      ] as [string, string]
+  );
+
   if (dataset.lastCount) {
     sections.push({
       stack: [
@@ -95,6 +103,21 @@ export const buildCashClosingTicketTemplate = (
           `${item.count} / ${formatCurrency(item.total)}`,
         ])
       ),
+    ],
+  });
+
+  sections.push({
+    stack: [
+      buildThermalSectionTitle("Domicilios"),
+      buildMiniTable([
+        ["Entregados", String(dataset.deliverySummary.deliveredCount)],
+        ["Pendientes/despachados", String(dataset.deliverySummary.pendingCount)],
+        ["Cancelados/no entregados", String(dataset.deliverySummary.excludedCount)],
+        ["Total valor domicilio", formatCurrency(dataset.deliverySummary.deliveredFeeTotal)],
+      ]),
+      ...(deliveryBreakdownRows.length > 0
+        ? [buildMiniTable(deliveryBreakdownRows)]
+        : []),
     ],
   });
 

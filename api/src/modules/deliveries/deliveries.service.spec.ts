@@ -17,6 +17,9 @@ const deliveryId = "00000000-0000-0000-0000-000000000005";
 const orderId = "00000000-0000-0000-0000-000000000006";
 const customerId = "00000000-0000-0000-0000-000000000007";
 const driverId = "00000000-0000-0000-0000-000000000010";
+const cashSessionId = "00000000-0000-0000-0000-000000000011";
+const cashRegisterId = "00000000-0000-0000-0000-000000000012";
+const terminalId = "00000000-0000-0000-0000-000000000013";
 
 const actor = {
   tenantId,
@@ -29,9 +32,18 @@ const driverSchemaRow = {
   has_driver_column: true,
 };
 
+const cashSchemaRow = {
+  has_cash_columns: true,
+  has_cash_tables: true,
+};
+
 const isDriverSchemaQuery = (queryText: string) =>
   queryText.includes("information_schema.tables") &&
   queryText.includes("delivery_drivers");
+
+const isCashSchemaQuery = (queryText: string) =>
+  queryText.includes("information_schema.columns") &&
+  queryText.includes("cash_session_id");
 
 const buildDelivery = (overrides: Record<string, unknown> = {}) => ({
   id: deliveryId,
@@ -56,6 +68,11 @@ const buildDelivery = (overrides: Record<string, unknown> = {}) => ({
   driver_phone: null,
   driver_document_number: null,
   driver_active: null,
+  cash_session_id: null,
+  cash_register_id: null,
+  terminal_id: null,
+  cash_impact_amount: "0",
+  cash_impact_recorded_at: null,
   notes: null,
   metadata: {},
   created_by_user_id: actorUserId,
@@ -190,6 +207,9 @@ const buildHarness = (initialDelivery: Record<string, unknown>) => {
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
       }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
+      }
       return { rows: [{ id: courierId }] };
     },
     getClient: async () => client,
@@ -214,6 +234,110 @@ const buildHarness = (initialDelivery: Record<string, unknown>) => {
     },
     historyParams,
     queries,
+  };
+};
+
+const buildUpdateHarness = (options: {
+  initialDelivery?: Record<string, unknown>;
+  cashRows?: Record<string, unknown>[];
+  cashSchema?: Record<string, unknown>;
+} = {}) => {
+  const initialDelivery =
+    options.initialDelivery ?? buildDelivery({ delivery_fee: "0" });
+  const cashRows =
+    options.cashRows ??
+    [
+      {
+        cash_session_id: cashSessionId,
+        cash_register_id: cashRegisterId,
+        terminal_id: terminalId,
+      },
+    ];
+  const queries: string[] = [];
+  let released = false;
+  let rolledBack = false;
+  let committed = false;
+
+  const client = {
+    query: async (queryText: string, params: unknown[] = []) => {
+      queries.push(queryText);
+
+      if (queryText === "BEGIN") {
+        return { rows: [] };
+      }
+      if (queryText === "COMMIT") {
+        committed = true;
+        return { rows: [] };
+      }
+      if (queryText === "ROLLBACK") {
+        rolledBack = true;
+        return { rows: [] };
+      }
+      if (queryText.includes("FROM public.deliveries") && queryText.includes("FOR UPDATE")) {
+        return { rows: [initialDelivery] };
+      }
+      if (queryText.includes("FROM public.cash_sessions AS session")) {
+        return { rows: cashRows };
+      }
+      if (queryText.includes("UPDATE public.deliveries")) {
+        const cashSessionParamIndex = params.indexOf(cashSessionId);
+        return {
+          rows: [
+            buildDelivery({
+              ...initialDelivery,
+              delivery_fee: params[0],
+              cash_session_id: cashSessionParamIndex >= 0 ? cashSessionId : null,
+              cash_register_id: cashSessionParamIndex >= 0 ? cashRegisterId : null,
+              terminal_id: cashSessionParamIndex >= 0 ? terminalId : null,
+              cash_impact_amount:
+                cashSessionParamIndex >= 0 ? params[cashSessionParamIndex + 3] : "0",
+              cash_impact_recorded_at: cashSessionParamIndex >= 0
+                ? "2026-06-20T00:00:00.000Z"
+                : null,
+            }),
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected client query: ${queryText}`);
+    },
+    release: () => {
+      released = true;
+    },
+  };
+
+  const db = {
+    query: async (queryText: string) => {
+      queries.push(queryText);
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [options.cashSchema ?? cashSchemaRow] };
+      }
+      return { rows: [] };
+    },
+    getClient: async () => client,
+  };
+
+  const service = new DeliveriesService(
+    db as never,
+    {} as never,
+    new DeliveryStateMachineService()
+  );
+
+  return {
+    service,
+    queries,
+    get committed() {
+      return committed;
+    },
+    get rolledBack() {
+      return rolledBack;
+    },
+    get released() {
+      return released;
+    },
   };
 };
 
@@ -256,9 +380,23 @@ const buildOrderCreateHarness = (options: {
         assert.deepEqual(params, [driverId, tenantId]);
         return { rows: driverRows };
       }
+      if (queryText.includes("FROM public.cash_sessions AS session")) {
+        return {
+          rows: [
+            {
+              cash_session_id: cashSessionId,
+              cash_register_id: cashRegisterId,
+              terminal_id: terminalId,
+            },
+          ],
+        };
+      }
       if (queryText.includes("INSERT INTO public.deliveries")) {
         const hasDriverInsert = queryText.includes("driver_id");
-        const offset = hasDriverInsert ? 1 : 0;
+        const cashSessionParamIndex = params.indexOf(cashSessionId);
+        const metadataParam = params.find(
+          (item) => typeof item === "string" && item.startsWith("{")
+        );
         return {
           rows: [
             buildDelivery({
@@ -269,20 +407,27 @@ const buildOrderCreateHarness = (options: {
               order_id: params[3],
               sale_id: params[4],
               delivery_number: params[5],
-              status: "CREATED",
-              customer_name: params[6],
-              customer_phone: params[7],
-              delivery_address: params[8],
-              delivery_reference: params[9],
-              delivery_fee: params[10],
-              subtotal: params[11],
-              total: params[12],
-              payment_method_id: params[13],
-              driver_id: hasDriverInsert ? params[14] : null,
-              notes: params[14 + offset],
-              metadata: JSON.parse(String(params[15 + offset])),
-              created_by_user_id: params[16 + offset],
-              updated_by_user_id: params[16 + offset],
+              status: params[6],
+              customer_name: params[7],
+              customer_phone: params[8],
+              delivery_address: params[9],
+              delivery_reference: params[10],
+              delivery_fee: params[11],
+              subtotal: params[12],
+              total: params[13],
+              payment_method_id: params[14],
+              driver_id: hasDriverInsert ? driverId : null,
+              cash_session_id: cashSessionParamIndex >= 0 ? cashSessionId : null,
+              cash_register_id: cashSessionParamIndex >= 0 ? cashRegisterId : null,
+              terminal_id: cashSessionParamIndex >= 0 ? terminalId : null,
+              cash_impact_amount:
+                cashSessionParamIndex >= 0 ? params[cashSessionParamIndex + 3] : "0",
+              cash_impact_recorded_at: cashSessionParamIndex >= 0
+                ? "2026-06-20T00:00:00.000Z"
+                : null,
+              metadata: metadataParam ? JSON.parse(String(metadataParam)) : {},
+              created_by_user_id: actorUserId,
+              updated_by_user_id: actorUserId,
             }),
           ],
         };
@@ -305,6 +450,9 @@ const buildOrderCreateHarness = (options: {
 
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
       }
       if (queryText.includes("FROM public.orders o")) {
         return { rows: order && params[1] === tenantId ? [order] : [] };
@@ -405,9 +553,23 @@ const buildSaleCreateHarness = (options: {
         assert.deepEqual(params, [driverId, tenantId]);
         return { rows: driverRows };
       }
+      if (queryText.includes("FROM public.cash_sessions AS session")) {
+        return {
+          rows: [
+            {
+              cash_session_id: cashSessionId,
+              cash_register_id: cashRegisterId,
+              terminal_id: terminalId,
+            },
+          ],
+        };
+      }
       if (queryText.includes("INSERT INTO public.deliveries")) {
         const hasDriverInsert = queryText.includes("driver_id");
-        const offset = hasDriverInsert ? 1 : 0;
+        const cashSessionParamIndex = params.indexOf(cashSessionId);
+        const metadataParam = params.find(
+          (item) => typeof item === "string" && item.startsWith("{")
+        );
         return {
           rows: [
             buildDelivery({
@@ -418,20 +580,27 @@ const buildSaleCreateHarness = (options: {
               order_id: params[3],
               sale_id: params[4],
               delivery_number: params[5],
-              status: "CREATED",
-              customer_name: params[6],
-              customer_phone: params[7],
-              delivery_address: params[8],
-              delivery_reference: params[9],
-              delivery_fee: params[10],
-              subtotal: params[11],
-              total: params[12],
-              payment_method_id: params[13],
-              driver_id: hasDriverInsert ? params[14] : null,
-              notes: params[14 + offset],
-              metadata: JSON.parse(String(params[15 + offset])),
-              created_by_user_id: params[16 + offset],
-              updated_by_user_id: params[16 + offset],
+              status: params[6],
+              customer_name: params[7],
+              customer_phone: params[8],
+              delivery_address: params[9],
+              delivery_reference: params[10],
+              delivery_fee: params[11],
+              subtotal: params[12],
+              total: params[13],
+              payment_method_id: params[14],
+              driver_id: hasDriverInsert ? driverId : null,
+              cash_session_id: cashSessionParamIndex >= 0 ? cashSessionId : null,
+              cash_register_id: cashSessionParamIndex >= 0 ? cashRegisterId : null,
+              terminal_id: cashSessionParamIndex >= 0 ? terminalId : null,
+              cash_impact_amount:
+                cashSessionParamIndex >= 0 ? params[cashSessionParamIndex + 3] : "0",
+              cash_impact_recorded_at: cashSessionParamIndex >= 0
+                ? "2026-06-20T00:00:00.000Z"
+                : null,
+              metadata: metadataParam ? JSON.parse(String(metadataParam)) : {},
+              created_by_user_id: actorUserId,
+              updated_by_user_id: actorUserId,
             }),
           ],
         };
@@ -454,6 +623,9 @@ const buildSaleCreateHarness = (options: {
 
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
       }
       if (queryText.includes("FROM public.sales s")) {
         return { rows: sale && params[1] === tenantId ? [sale] : [] };
@@ -517,6 +689,9 @@ const buildOrderLookupHarness = (options: {
 
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
       }
       if (queryText.includes("FROM public.orders o")) {
         return { rows: order && params[1] === tenantId ? [order] : [] };
@@ -631,10 +806,13 @@ test("DeliveriesService.assignDriver rejects inactive or cross-tenant driver", a
     return new DeliveriesService(
       {
         query: async (queryText: string) => {
-          if (isDriverSchemaQuery(queryText)) {
-            return { rows: [driverSchemaRow] };
-          }
-          throw new Error(`Unexpected db query: ${queryText}`);
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
+      }
+      throw new Error(`Unexpected db query: ${queryText}`);
         },
         getClient: async () => client,
       } as never,
@@ -743,6 +921,42 @@ test("DeliveriesService rejects invalid state changes and rolls back", async () 
   );
   assert.equal(cancelDelivered.rolledBack, true);
   assert.equal(cancelDelivered.historyParams.length, 0);
+});
+
+test("DeliveriesService.update attaches current cash for cash-impact edits", async () => {
+  const harness = buildUpdateHarness();
+
+  const result = await harness.service.update(
+    deliveryId,
+    { delivery_fee: 2500 },
+    actor
+  );
+
+  assert.equal(result.delivery_fee, 2500);
+  assert.equal(result.cash_session_id, cashSessionId);
+  assert.equal(result.cash_register_id, cashRegisterId);
+  assert.equal(result.terminal_id, terminalId);
+  assert.equal(result.cash_impact_amount, 2500);
+  assert.equal(harness.committed, true);
+  assert.equal(harness.rolledBack, false);
+  assert.equal(
+    harness.queries.join("\n").toLowerCase().includes("cash_movements"),
+    false
+  );
+  assert.equal(harness.queries.join("\n").toLowerCase().includes("payments"), false);
+});
+
+test("DeliveriesService.update rejects cash-impact edits without open cash", async () => {
+  const harness = buildUpdateHarness({ cashRows: [] });
+
+  await assert.rejects(
+    () => harness.service.update(deliveryId, { delivery_fee: 2500 }, actor),
+    BadRequestException
+  );
+
+  assert.equal(harness.committed, false);
+  assert.equal(harness.rolledBack, true);
+  assert.equal(harness.released, true);
 });
 
 test("DeliveriesService.createFromOrder creates CREADO delivery with order snapshot", async () => {
@@ -877,7 +1091,8 @@ test("DeliveriesService order integration does not touch invoice or cash tables"
   await harness.service.createFromOrder(orderId, {}, actor);
 
   const joinedQueries = harness.queries.join("\n").toLowerCase();
-  assert.equal(joinedQueries.includes("cash_session"), false);
+  assert.equal(joinedQueries.includes("cash_movements"), false);
+  assert.equal(joinedQueries.includes("payments"), false);
   assert.equal(joinedQueries.includes("invoice"), false);
 });
 
@@ -1023,6 +1238,9 @@ test("DeliveriesService.getBySale returns delivery by sale or linked order", asy
         if (isDriverSchemaQuery(queryText)) {
           return { rows: [driverSchemaRow] };
         }
+        if (isCashSchemaQuery(queryText)) {
+          return { rows: [cashSchemaRow] };
+        }
         if (queryText.includes("FROM public.sales s")) {
           return { rows: [buildSaleSource()] };
         }
@@ -1055,6 +1273,9 @@ test("DeliveriesService.list filters by sale_id", async () => {
 
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
       }
       if (queryText.includes("FROM public.deliveries")) {
         assert.equal(params[0], tenantId);
@@ -1101,6 +1322,9 @@ test("DeliveriesService.list filters by driver_id and maps driver summary", asyn
 
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
       }
       if (queryText.includes("FROM public.deliveries")) {
         assert.equal(params[0], tenantId);
@@ -1155,6 +1379,9 @@ test("DeliveriesService.list works when driver migration is pending", async () =
           rows: [{ has_driver_table: false, has_driver_column: false }],
         };
       }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
+      }
       if (queryText.includes("FROM public.deliveries")) {
         assert.equal(queryText.includes("public.delivery_drivers"), false);
         assert.equal(queryText.includes("NULL::uuid AS driver_id"), true);
@@ -1189,6 +1416,9 @@ test("DeliveriesService.list maps operational status filter to compatible DB val
     query: async (queryText: string, params: unknown[] = []) => {
       if (isDriverSchemaQuery(queryText)) {
         return { rows: [driverSchemaRow] };
+      }
+      if (isCashSchemaQuery(queryText)) {
+        return { rows: [cashSchemaRow] };
       }
       if (queryText.includes("FROM public.deliveries")) {
         assert.deepEqual(params[1], ["CREADO", "CREATED"]);

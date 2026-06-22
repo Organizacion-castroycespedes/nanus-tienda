@@ -152,6 +152,177 @@ export class CashSessionsService {
     return Number(amount.toFixed(2));
   }
 
+  private emptyDeliverySummary() {
+    return {
+      deliveredCount: 0,
+      pendingCount: 0,
+      excludedCount: 0,
+      deliveredFeeTotal: 0,
+      byPaymentMethod: [],
+    };
+  }
+
+  private async hasDeliveryCashSchema() {
+    const result = await this.db.query<{ has_schema: boolean }>(
+      `
+        SELECT (
+          SELECT COUNT(*) = 5
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'deliveries'
+            AND column_name IN (
+              'cash_session_id',
+              'cash_register_id',
+              'terminal_id',
+              'cash_impact_amount',
+              'cash_impact_recorded_at'
+            )
+        ) AS has_schema
+      `
+    );
+
+    return Boolean(result.rows[0]?.has_schema);
+  }
+
+  private async getDeliveryCashSummary(tenantId: string, cashSessionId: string) {
+    if (!(await this.hasDeliveryCashSchema())) {
+      return this.emptyDeliverySummary();
+    }
+
+    const result = await this.db.query<{
+      delivered_count: string | number;
+      pending_count: string | number;
+      excluded_count: string | number;
+      delivered_fee_total: string | number;
+      by_payment_method: Array<{
+        paymentMethodId: string | null;
+        paymentMethodNombre: string | null;
+        count: number | string;
+        total: number | string;
+      }>;
+    }>(
+      `
+        WITH delivery_scope AS (
+          SELECT
+            d.status,
+            d.delivery_fee,
+            d.payment_method_id,
+            method.nombre AS payment_method_nombre
+          FROM public.deliveries AS d
+          LEFT JOIN public.payment_methods AS method
+            ON method.id = d.payment_method_id
+            AND method.tenant_id = d.tenant_id
+          WHERE d.tenant_id = $1
+            AND d.cash_session_id = $2
+        ),
+        payment_breakdown AS (
+          SELECT COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'paymentMethodId', item.payment_method_id,
+                'paymentMethodNombre', item.payment_method_nombre,
+                'count', item.total_count,
+                'total', item.total_amount
+              )
+              ORDER BY item.payment_method_nombre NULLS LAST
+            ),
+            '[]'::jsonb
+          ) AS data
+          FROM (
+            SELECT
+              payment_method_id,
+              payment_method_nombre,
+              COUNT(*)::integer AS total_count,
+              ROUND(SUM(delivery_fee), 2) AS total_amount
+            FROM delivery_scope
+            WHERE status IN ('ENTREGADO', 'DELIVERED')
+              AND delivery_fee > 0
+            GROUP BY payment_method_id, payment_method_nombre
+          ) AS item
+        ),
+        summary AS (
+          SELECT
+            COUNT(*) FILTER (
+              WHERE status IN ('ENTREGADO', 'DELIVERED')
+            ) AS delivered_count,
+            COUNT(*) FILTER (
+              WHERE status IN (
+                'CREADO',
+                'CREATED',
+                'EN_PREPARACION',
+                'ASSIGNED',
+                'DESPACHADO',
+                'DISPATCHED'
+              )
+            ) AS pending_count,
+            COUNT(*) FILTER (
+              WHERE status IN ('CANCELADO', 'CANCELLED', 'NO_ENTREGADO', 'NOT_DELIVERED')
+            ) AS excluded_count,
+            COALESCE(SUM(delivery_fee) FILTER (
+              WHERE status IN ('ENTREGADO', 'DELIVERED')
+            ), 0) AS delivered_fee_total
+          FROM delivery_scope
+        )
+        SELECT
+          summary.delivered_count,
+          summary.pending_count,
+          summary.excluded_count,
+          summary.delivered_fee_total,
+          payment_breakdown.data AS by_payment_method
+        FROM summary
+        CROSS JOIN payment_breakdown
+      `,
+      [tenantId, cashSessionId]
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return this.emptyDeliverySummary();
+    }
+
+    return {
+      deliveredCount: Number(row.delivered_count ?? 0),
+      pendingCount: Number(row.pending_count ?? 0),
+      excludedCount: Number(row.excluded_count ?? 0),
+      deliveredFeeTotal: Number(row.delivered_fee_total ?? 0),
+      byPaymentMethod: (row.by_payment_method ?? []).map((item) => ({
+        paymentMethodId: item.paymentMethodId,
+        paymentMethodNombre: item.paymentMethodNombre,
+        count: Number(item.count ?? 0),
+        total: Number(item.total ?? 0),
+      })),
+    };
+  }
+
+  private async withDeliverySummary(
+    summary: CashSessionSummaryResponseDto,
+    tenantId: string,
+    cashSessionId: string
+  ): Promise<CashSessionSummaryResponseDto> {
+    const deliverySummary = await this.getDeliveryCashSummary(
+      tenantId,
+      cashSessionId
+    );
+    const deliveryFees = this.normalizeExpectedAmount(
+      deliverySummary.deliveredFeeTotal
+    );
+
+    return {
+      ...summary,
+      totals: {
+        ...summary.totals,
+        deliveryFees,
+        expectedAmount: this.normalizeExpectedAmount(
+          Number(summary.totals.expectedAmount ?? 0) + deliveryFees
+        ),
+        netAmount: this.normalizeExpectedAmount(
+          Number(summary.totals.netAmount ?? 0) + deliveryFees
+        ),
+      },
+      deliverySummary,
+    };
+  }
+
   async open(payload: OpenCashSessionDto, actor: FinanceActor) {
     if (!this.canOpenCash(actor)) {
       throw new ForbiddenException("No autorizado");
@@ -269,10 +440,15 @@ export class CashSessionsService {
       throw new ForbiddenException("Solo puedes cerrar tu propia caja");
     }
 
-    const summary = await this.repository.getSummary(cashSessionId, tenantId);
-    if (!summary) {
+    const rawSummary = await this.repository.getSummary(cashSessionId, tenantId);
+    if (!rawSummary) {
       throw new NotFoundException("No se pudo resumir la sesion de caja");
     }
+    const summary = await this.withDeliverySummary(
+      rawSummary,
+      tenantId,
+      cashSessionId
+    );
 
     const expectedAmount = this.normalizeExpectedAmount(
       summary.totals.expectedAmount
@@ -441,11 +617,11 @@ export class CashSessionsService {
       throw new ForbiddenException("Solo puedes consultar tu propia caja");
     }
 
-    const summary = await this.repository.getSummary(cashSessionId, tenantId);
-    if (!summary) {
+    const rawSummary = await this.repository.getSummary(cashSessionId, tenantId);
+    if (!rawSummary) {
       throw new NotFoundException("No se pudo resumir la sesion de caja");
     }
 
-    return summary;
+    return this.withDeliverySummary(rawSummary, tenantId, cashSessionId);
   }
 }

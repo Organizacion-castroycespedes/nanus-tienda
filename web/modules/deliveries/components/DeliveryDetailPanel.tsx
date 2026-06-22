@@ -5,6 +5,10 @@ import {
   deliveryStatusLabels,
   getDeliveryFeeSource,
 } from "../delivery-helpers";
+import {
+  getDeliveryCashScope,
+  getDeliveryCashScopeLabel,
+} from "../delivery-cash-scope";
 import type {
   DeliveryActionKey,
   DeliveryActionPermissionMap,
@@ -60,6 +64,7 @@ export const DeliveryDetailPanel = ({
   onAction,
   onAssignDriver,
   onTicket,
+  currentCashSessionId,
 }: {
   delivery: DeliveryRecord | null;
   loading: boolean;
@@ -69,6 +74,7 @@ export const DeliveryDetailPanel = ({
   onAction?: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
   onAssignDriver?: (delivery: DeliveryRecord) => void;
   onTicket?: (delivery: DeliveryRecord) => void;
+  currentCashSessionId?: string | null;
 }) => (
   <Modal
     title={
@@ -76,7 +82,7 @@ export const DeliveryDetailPanel = ({
         ? `Domicilio ${delivery.delivery_number || delivery.id.slice(0, 8)}`
         : "Detalle de domicilio"
     }
-    description="Consulta operativa. No registra caja ni movimientos financieros."
+    description="Consulta operativa. El valor domicilio se controla por caja actual cuando aplica."
     onClose={onClose}
     size="xl"
     className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
@@ -96,6 +102,11 @@ export const DeliveryDetailPanel = ({
           <DeliveryStatusBadge status={delivery.status} />
           <span className="text-sm text-slate-500">
             Estado: {deliveryStatusLabels[delivery.status] ?? delivery.status}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
+            {getDeliveryCashScopeLabel(
+              getDeliveryCashScope(delivery, currentCashSessionId)
+            )}
           </span>
         </div>
 
@@ -161,6 +172,13 @@ export const DeliveryDetailPanel = ({
             value={delivery.assigned_courier_id}
           />
           <DetailItem label="Metodo pago" value={delivery.payment_method_id} />
+          <DetailItem label="Caja sesion" value={delivery.cash_session_id} />
+          <DetailItem label="Caja registradora" value={delivery.cash_register_id} />
+          <DetailItem label="Terminal" value={delivery.terminal_id} />
+          <DetailItem
+            label="Impacto caja"
+            value={formatCurrency(delivery.cash_impact_amount)}
+          />
           <DetailItem label="Valor domicilio" value={formatCurrency(delivery.delivery_fee)} />
           <DetailItem label="Subtotal" value={formatCurrency(delivery.subtotal)} />
           <DetailItem label="Total" value={formatCurrency(delivery.total)} />
