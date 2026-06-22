@@ -317,7 +317,10 @@ export const DeliveryRelationCard = ({
 
           <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
             <p>Telefono: {delivery.customer_phone || "-"}</p>
-            <p>Repartidor: {delivery.assigned_courier_id || "-"}</p>
+            <p>
+              Repartidor:{" "}
+              {delivery.driver?.name ?? delivery.driver_id ?? delivery.assigned_courier_id ?? "-"}
+            </p>
             <p>Valor domicilio: {formatCurrency(delivery.delivery_fee)}</p>
             <p>Fuente financiera: {getDeliveryFeeSource(delivery)}</p>
           </div>

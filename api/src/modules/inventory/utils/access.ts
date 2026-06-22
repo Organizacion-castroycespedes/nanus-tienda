@@ -13,6 +13,7 @@ export type BranchScopedFilters = {
   fromDate?: string;
   toDate?: string;
   paymentMethod?: string;
+  customerId?: string;
 };
 
 export const canViewAllBranches = (actor: BranchScopedActor) =>

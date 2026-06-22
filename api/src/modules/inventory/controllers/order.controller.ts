@@ -154,6 +154,7 @@ export class OrderController {
     @Query("fromDate") fromDate: string | undefined,
     @Query("toDate") toDate: string | undefined,
     @Query("paymentMethod") paymentMethod: string | undefined,
+    @Query("customerId") customerId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.orderService.getOrders(
@@ -163,6 +164,7 @@ export class OrderController {
         fromDate,
         toDate,
         paymentMethod,
+        customerId,
       },
       this.buildActor(request)
     );

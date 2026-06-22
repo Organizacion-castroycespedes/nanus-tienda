@@ -636,6 +636,34 @@ test("OrderService.createOrder uses product price from PricingService instead of
   assert.equal(client.insertedItems[0].subtotal, 500);
 });
 
+test("OrderService.getOrders filters by customerId", async () => {
+  const queries: RecordedQuery[] = [];
+  const service = new OrderService(
+    {
+      query: async (text: string, params: unknown[] = []) => {
+        queries.push({ text, params });
+        return { rows: [] };
+      },
+    } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    {} as never,
+    {} as never
+  );
+
+  await service.getOrders(
+    {
+      tenantId: ids.tenant,
+      customerId: ids.customer,
+    },
+    actor
+  );
+
+  assert.match(queries[0].text, /o\.customer_id = \$2::uuid/);
+  assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
+});
+
 test("OrderService.invoiceOrder rejects POS session from another order branch", async () => {
   let saleCreated = false;
   const queries: RecordedQuery[] = [];

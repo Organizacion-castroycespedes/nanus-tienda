@@ -32,6 +32,10 @@ export class QueryDeliveriesDto {
   sale_id?: string;
 
   @IsOptional()
+  @IsUUID()
+  driver_id?: string;
+
+  @IsOptional()
   @IsDateString()
   date_from?: string;
 

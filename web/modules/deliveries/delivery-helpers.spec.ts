@@ -65,6 +65,14 @@ test("local delivery query filters contact phone and address", () => {
     customer_id: null,
     order_id: null,
     sale_id: null,
+    driver_id: "driver-1",
+    driver: {
+      id: "driver-1",
+      name: "Carlos Repartidor",
+      phone: "3111111111",
+      document_number: "123",
+      active: true,
+    },
     delivery_number: "D-001",
     status: "CREADO",
     customer_name: "Maria Perez",
@@ -91,5 +99,6 @@ test("local delivery query filters contact phone and address", () => {
   assert.equal(filterDeliveriesByQuery([baseDelivery], "maria").length, 1);
   assert.equal(filterDeliveriesByQuery([baseDelivery], "300123").length, 1);
   assert.equal(filterDeliveriesByQuery([baseDelivery], "calle 10").length, 1);
+  assert.equal(filterDeliveriesByQuery([baseDelivery], "carlos").length, 1);
   assert.equal(filterDeliveriesByQuery([baseDelivery], "no existe").length, 0);
 });

@@ -1,5 +1,6 @@
-import { apiClient } from "../../../lib/http";
+import { apiBlobClientWithBaseUrl, apiClient } from "../../../lib/http";
 import type {
+  AssignDeliveryDriverPayload,
   AssignDeliveryPayload,
   CancelDeliveryPayload,
   CreateDeliveryPayload,
@@ -11,12 +12,16 @@ import type {
   MarkDeliveryNotDeliveredPayload,
 } from "../types";
 import {
+  buildDeliveryTicketPath,
   buildDeliveriesQuery,
   buildOrderDeliveryEndpoint,
   buildSaleDeliveryEndpoint,
 } from "./delivery-query";
 
+const reportsBaseUrl = process.env.NEXT_PUBLIC_REPORTS_API_BASE_URL;
+
 export {
+  buildDeliveryTicketPath,
   buildDeliveriesQuery,
   buildOrderDeliveryEndpoint,
   buildSaleDeliveryEndpoint,
@@ -27,6 +32,9 @@ export const listDeliveries = (params: GetDeliveriesParams = {}) =>
 
 export const getDeliveryById = (deliveryId: string) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}`);
+
+export const getDeliveryTicket = (deliveryId: string) =>
+  apiBlobClientWithBaseUrl(reportsBaseUrl, buildDeliveryTicketPath(deliveryId));
 
 export const createDelivery = (payload: CreateDeliveryPayload) =>
   apiClient<DeliveryRecord>("/deliveries", {
@@ -48,6 +56,15 @@ export const assignDelivery = (
   payload: AssignDeliveryPayload
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/assign`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const assignDeliveryDriver = (
+  deliveryId: string,
+  payload: AssignDeliveryDriverPayload
+) =>
+  apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/assign-driver`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

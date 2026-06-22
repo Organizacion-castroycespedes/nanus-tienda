@@ -27,6 +27,7 @@ import { QueryDeliveriesDto } from "./dto/query-deliveries.dto";
 import { UpdateDeliveryDto } from "./dto/update-delivery.dto";
 import { DeliveryNumberService } from "./services/delivery-number.service";
 import { DeliveryStateMachineService } from "./services/delivery-state-machine.service";
+import { AssignDeliveryDriverDto } from "./dto/assign-delivery-driver.dto";
 
 type DeliveryActor = {
   tenantId?: string;
@@ -53,6 +54,11 @@ type DeliveryRecord = {
   total: string | number;
   payment_method_id: string | null;
   assigned_courier_id: string | null;
+  driver_id: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
+  driver_document_number?: string | null;
+  driver_active?: boolean | null;
   notes: string | null;
   metadata: Record<string, unknown>;
   created_by_user_id: string | null;
@@ -88,6 +94,76 @@ type SaleDeliverySourceRecord = {
   customer_phone: string | null;
   customer_address: string | null;
 };
+
+const DELIVERY_SELECT_FIELDS = `
+          d.id,
+          d.tenant_id,
+          d.branch_id,
+          d.customer_id,
+          d.order_id,
+          d.sale_id,
+          d.delivery_number,
+          d.status,
+          d.customer_name,
+          d.customer_phone,
+          d.delivery_address,
+          d.delivery_reference,
+          d.delivery_fee,
+          d.subtotal,
+          d.total,
+          d.payment_method_id,
+          d.assigned_courier_id,
+          d.driver_id,
+          driver.name AS driver_name,
+          driver.phone AS driver_phone,
+          driver.document_number AS driver_document_number,
+          driver.active AS driver_active,
+          d.notes,
+          d.metadata,
+          d.created_by_user_id,
+          d.updated_by_user_id,
+          d.created_at,
+          d.updated_at,
+          d.dispatched_at,
+          d.cancelled_at,
+          d.delivered_at,
+          d.failed_at
+`;
+
+const DELIVERY_SELECT_FIELDS_WITHOUT_DRIVER = `
+          d.id,
+          d.tenant_id,
+          d.branch_id,
+          d.customer_id,
+          d.order_id,
+          d.sale_id,
+          d.delivery_number,
+          d.status,
+          d.customer_name,
+          d.customer_phone,
+          d.delivery_address,
+          d.delivery_reference,
+          d.delivery_fee,
+          d.subtotal,
+          d.total,
+          d.payment_method_id,
+          d.assigned_courier_id,
+          NULL::uuid AS driver_id,
+          NULL::text AS driver_name,
+          NULL::text AS driver_phone,
+          NULL::text AS driver_document_number,
+          NULL::boolean AS driver_active,
+          d.notes,
+          d.metadata,
+          d.created_by_user_id,
+          d.updated_by_user_id,
+          d.created_at,
+          d.updated_at,
+          d.dispatched_at,
+          d.cancelled_at,
+          d.delivered_at,
+          d.failed_at
+`;
 
 type TransitionOptions = {
   action: DeliveryAction;
@@ -170,6 +246,48 @@ export class DeliveriesService {
     return value;
   }
 
+  private async hasDriverCatalogSchema() {
+    const result = await this.db.query<{
+      has_driver_table: boolean;
+      has_driver_column: boolean;
+    }>(
+      `
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'delivery_drivers'
+          ) AS has_driver_table,
+          EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'deliveries'
+              AND column_name = 'driver_id'
+          ) AS has_driver_column
+      `
+    );
+
+    const row = result.rows[0];
+    return Boolean(row?.has_driver_table && row?.has_driver_column);
+  }
+
+  private getDeliverySelect(hasDriverCatalog: boolean) {
+    return hasDriverCatalog
+      ? {
+          fields: DELIVERY_SELECT_FIELDS,
+          join: `
+        LEFT JOIN public.delivery_drivers driver
+          ON driver.id = d.driver_id
+          AND driver.tenant_id = d.tenant_id`,
+        }
+      : {
+          fields: DELIVERY_SELECT_FIELDS_WITHOUT_DRIVER,
+          join: "",
+        };
+  }
+
   private mapRecord(record: DeliveryRecord) {
     return {
       id: record.id,
@@ -189,6 +307,16 @@ export class DeliveriesService {
       total: Number(record.total),
       payment_method_id: record.payment_method_id,
       assigned_courier_id: record.assigned_courier_id,
+      driver_id: record.driver_id ?? null,
+      driver: record.driver_id
+        ? {
+            id: record.driver_id,
+            name: record.driver_name ?? null,
+            phone: record.driver_phone ?? null,
+            document_number: record.driver_document_number ?? null,
+            active: record.driver_active ?? null,
+          }
+        : null,
       notes: record.notes,
       metadata: record.metadata ?? {},
       created_by_user_id: record.created_by_user_id,
@@ -642,23 +770,62 @@ export class DeliveriesService {
     return delivery;
   }
 
+  private async assertActiveDriverForAssignment(
+    client: PoolClient,
+    tenantId: string,
+    driverId: string
+  ) {
+    const result = await client.query<{ id: string; active: boolean }>(
+      `
+        SELECT id, active
+        FROM public.delivery_drivers
+        WHERE id = $1
+          AND tenant_id = $2
+        LIMIT 1
+      `,
+      [driverId, tenantId]
+    );
+
+    const driver = result.rows[0];
+    if (!driver) {
+      throw new BadRequestException("Repartidor invalido para el tenant");
+    }
+    if (!driver.active) {
+      throw new BadRequestException("Repartidor inactivo no disponible");
+    }
+  }
+
   async list(filters: QueryDeliveriesDto, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
     const branchId = this.resolveBranchId(actor, filters.branch_id);
     if (branchId) {
       await this.assertBranchScope(tenantId, branchId);
     }
+    const hasDriverCatalog = await this.hasDriverCatalogSchema();
+    const deliverySelect = this.getDeliverySelect(hasDriverCatalog);
 
     const page = Math.max(Number(filters.page ?? 1), 1);
     const limit = Math.min(Math.max(Number(filters.limit ?? 25), 1), 100);
     const offset = (page - 1) * limit;
 
+    if (filters.driver_id && !hasDriverCatalog) {
+      return {
+        data: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          total_pages: 0,
+        },
+      };
+    }
+
     const params: unknown[] = [tenantId];
-    const conditions = ["tenant_id = $1"];
+    const conditions = ["d.tenant_id = $1"];
 
     if (branchId) {
       params.push(branchId);
-      conditions.push(`branch_id = $${params.length}`);
+      conditions.push(`d.branch_id = $${params.length}`);
     }
 
     if (filters.status) {
@@ -667,32 +834,37 @@ export class DeliveriesService {
         throw new BadRequestException("Estado de domicilio invalido");
       }
       params.push(statusValues);
-      conditions.push(`status = ANY($${params.length}::text[])`);
+      conditions.push(`d.status = ANY($${params.length}::text[])`);
     }
 
     if (filters.customer_id) {
       params.push(filters.customer_id);
-      conditions.push(`customer_id = $${params.length}`);
+      conditions.push(`d.customer_id = $${params.length}`);
     }
 
     if (filters.order_id) {
       params.push(filters.order_id);
-      conditions.push(`order_id = $${params.length}`);
+      conditions.push(`d.order_id = $${params.length}`);
     }
 
     if (filters.sale_id) {
       params.push(filters.sale_id);
-      conditions.push(`sale_id = $${params.length}`);
+      conditions.push(`d.sale_id = $${params.length}`);
+    }
+
+    if (filters.driver_id) {
+      params.push(filters.driver_id);
+      conditions.push(`d.driver_id = $${params.length}`);
     }
 
     if (filters.date_from) {
       params.push(filters.date_from);
-      conditions.push(`created_at >= $${params.length}::timestamptz`);
+      conditions.push(`d.created_at >= $${params.length}::timestamptz`);
     }
 
     if (filters.date_to) {
       params.push(filters.date_to);
-      conditions.push(`created_at <= $${params.length}::timestamptz`);
+      conditions.push(`d.created_at <= $${params.length}::timestamptz`);
     }
 
     params.push(limit);
@@ -703,37 +875,12 @@ export class DeliveriesService {
     const result = await this.db.query<DeliveryRecord>(
       `
         SELECT
-          id,
-          tenant_id,
-          branch_id,
-          customer_id,
-          order_id,
-          sale_id,
-          delivery_number,
-          status,
-          customer_name,
-          customer_phone,
-          delivery_address,
-          delivery_reference,
-          delivery_fee,
-          subtotal,
-          total,
-          payment_method_id,
-          assigned_courier_id,
-          notes,
-          metadata,
-          created_by_user_id,
-          updated_by_user_id,
-          created_at,
-          updated_at,
-          dispatched_at,
-          cancelled_at,
-          delivered_at,
-          failed_at,
+${deliverySelect.fields},
           COUNT(*) OVER() AS total_count
-        FROM public.deliveries
+        FROM public.deliveries d
+${deliverySelect.join}
         WHERE ${conditions.join(" AND ")}
-        ORDER BY created_at DESC, id DESC
+        ORDER BY d.created_at DESC, d.id DESC
         LIMIT $${limitParam}
         OFFSET $${offsetParam}
       `,
@@ -793,6 +940,13 @@ export class DeliveriesService {
     const subtotal = this.normalizeAmount(payload.subtotal);
     const total = this.normalizeAmount(payload.total);
     const metadata = this.normalizeMetadata(payload.metadata);
+    const driverId = payload.driver_id ?? null;
+
+    if (driverId && !(await this.hasDriverCatalogSchema())) {
+      throw new BadRequestException(
+        "Migracion de repartidores pendiente: ejecute V066__delivery_drivers.sql"
+      );
+    }
 
     this.assertCustomerIdentity(payload);
     await this.assertBranchScope(tenantId, branchId);
@@ -819,14 +973,64 @@ export class DeliveriesService {
         await this.lockOrderForDelivery(client, tenantId, effectiveOrderId);
         await this.assertNoOrderDelivery(client, tenantId, effectiveOrderId);
       }
+      if (driverId) {
+        await this.assertActiveDriverForAssignment(client, tenantId, driverId);
+      }
 
       const deliveryNumber = await this.deliveryNumberService.generate(
         tenantId,
         branchId,
         client
       );
-      const result = await client.query<DeliveryRecord>(
+      const insertSql = driverId
+        ? `
+          INSERT INTO public.deliveries (
+            tenant_id,
+            branch_id,
+            customer_id,
+            order_id,
+            sale_id,
+            delivery_number,
+            status,
+            customer_name,
+            customer_phone,
+            delivery_address,
+            delivery_reference,
+            delivery_fee,
+            subtotal,
+            total,
+            payment_method_id,
+            driver_id,
+            notes,
+            metadata,
+            created_by_user_id,
+            updated_by_user_id
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            'CREATED',
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            $13,
+            $14,
+            $15::uuid,
+            $16,
+            $17::jsonb,
+            $18,
+            $18
+          )
+          RETURNING *
         `
+        : `
           INSERT INTO public.deliveries (
             tenant_id,
             branch_id,
@@ -870,27 +1074,28 @@ export class DeliveriesService {
             $17
           )
           RETURNING *
-        `,
-        [
-          tenantId,
-          branchId,
-          payload.customer_id ?? null,
-          effectiveOrderId ?? null,
-          payload.sale_id ?? null,
-          deliveryNumber,
-          this.normalizeNullableText(payload.customer_name),
-          this.normalizeNullableText(payload.customer_phone),
-          deliveryAddress,
-          this.normalizeNullableText(payload.delivery_reference),
-          deliveryFee,
-          subtotal,
-          total,
-          payload.payment_method_id ?? null,
-          this.normalizeNullableText(payload.notes),
-          JSON.stringify(metadata),
-          actor.userId ?? null,
-        ]
-      );
+        `;
+      const insertParams = [
+        tenantId,
+        branchId,
+        payload.customer_id ?? null,
+        effectiveOrderId ?? null,
+        payload.sale_id ?? null,
+        deliveryNumber,
+        this.normalizeNullableText(payload.customer_name),
+        this.normalizeNullableText(payload.customer_phone),
+        deliveryAddress,
+        this.normalizeNullableText(payload.delivery_reference),
+        deliveryFee,
+        subtotal,
+        total,
+        payload.payment_method_id ?? null,
+        ...(driverId ? [driverId] : []),
+        this.normalizeNullableText(payload.notes),
+        JSON.stringify(metadata),
+        actor.userId ?? null,
+      ];
+      const result = await client.query<DeliveryRecord>(insertSql, insertParams);
 
       const created = result.rows[0];
       await this.insertHistory(
@@ -960,6 +1165,7 @@ export class DeliveriesService {
           payload.total ??
           (order.order_total !== null ? Number(order.order_total) : undefined),
         payment_method_id: payload.payment_method_id,
+        driver_id: payload.driver_id,
         notes: payload.notes,
         metadata: {
           ...metadata,
@@ -1024,6 +1230,7 @@ export class DeliveriesService {
           payload.total ??
           (sale.total !== null ? Number(sale.total) : undefined),
         payment_method_id: payload.payment_method_id,
+        driver_id: payload.driver_id,
         notes: payload.notes,
         metadata: {
           ...metadata,
@@ -1039,12 +1246,17 @@ export class DeliveriesService {
 
   async getById(id: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
+    const deliverySelect = this.getDeliverySelect(
+      await this.hasDriverCatalogSchema()
+    );
     const result = await this.db.query<DeliveryRecord>(
       `
-        SELECT *
-        FROM public.deliveries
-        WHERE id = $1
-          AND tenant_id = $2
+        SELECT
+${deliverySelect.fields}
+        FROM public.deliveries d
+${deliverySelect.join}
+        WHERE d.id = $1
+          AND d.tenant_id = $2
         LIMIT 1
       `,
       [id, tenantId]
@@ -1060,6 +1272,9 @@ export class DeliveriesService {
 
   async getByOrder(orderId: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
+    const deliverySelect = this.getDeliverySelect(
+      await this.hasDriverCatalogSchema()
+    );
     const order = await this.loadOrderForDelivery(orderId, tenantId);
     const orderBranchId = this.normalizeNullableText(order.branch_id);
     const actorBranchId = this.normalizeNullableText(actor.branchId);
@@ -1070,11 +1285,13 @@ export class DeliveriesService {
 
     const result = await this.db.query<DeliveryRecord>(
       `
-        SELECT *
-        FROM public.deliveries
-        WHERE tenant_id = $1
-          AND order_id = $2
-        ORDER BY created_at DESC
+        SELECT
+${deliverySelect.fields}
+        FROM public.deliveries d
+${deliverySelect.join}
+        WHERE d.tenant_id = $1
+          AND d.order_id = $2
+        ORDER BY d.created_at DESC
         LIMIT 1
       `,
       [tenantId, orderId]
@@ -1091,6 +1308,9 @@ export class DeliveriesService {
 
   async getBySale(saleId: string, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
+    const deliverySelect = this.getDeliverySelect(
+      await this.hasDriverCatalogSchema()
+    );
     const sale = await this.loadSaleForDelivery(saleId, tenantId);
     const saleBranchId = this.normalizeNullableText(sale.branch_id);
     const actorBranchId = this.normalizeNullableText(actor.branchId);
@@ -1101,11 +1321,13 @@ export class DeliveriesService {
 
     const result = await this.db.query<DeliveryRecord>(
       `
-        SELECT *
-        FROM public.deliveries
-        WHERE tenant_id = $1
-          AND (sale_id = $2 OR order_id = $3)
-        ORDER BY created_at DESC
+        SELECT
+${deliverySelect.fields}
+        FROM public.deliveries d
+${deliverySelect.join}
+        WHERE d.tenant_id = $1
+          AND (d.sale_id = $2 OR d.order_id = $3)
+        ORDER BY d.created_at DESC
         LIMIT 1
       `,
       [tenantId, saleId, sale.order_id]
@@ -1240,6 +1462,63 @@ export class DeliveriesService {
 
   async prepare(id: string, payload: AssignDeliveryDto, actor: DeliveryActor) {
     return this.assign(id, payload, actor);
+  }
+
+  async assignDriver(
+    id: string,
+    payload: AssignDeliveryDriverDto,
+    actor: DeliveryActor
+  ) {
+    const tenantId = this.resolveTenantId(actor);
+    const hasDriverCatalog = await this.hasDriverCatalogSchema();
+    if (!hasDriverCatalog) {
+      throw new BadRequestException(
+        "Migracion de repartidores pendiente: ejecute V066__delivery_drivers.sql"
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(payload, "driver_id")) {
+      throw new BadRequestException("driver_id es requerido");
+    }
+
+    const driverId = payload.driver_id ?? null;
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const current = await this.findByIdForUpdate(client, id, tenantId);
+      this.assertDeliveryBranchScope(current, actor);
+      if (driverId) {
+        await this.assertActiveDriverForAssignment(client, tenantId, driverId);
+      }
+
+      const result = await client.query<DeliveryRecord>(
+        `
+          WITH updated AS (
+            UPDATE public.deliveries
+            SET driver_id = $1::uuid,
+                updated_by_user_id = $2,
+                updated_at = now()
+            WHERE id = $3
+              AND tenant_id = $4
+            RETURNING *
+          )
+          SELECT
+${DELIVERY_SELECT_FIELDS}
+          FROM updated d
+          LEFT JOIN public.delivery_drivers driver
+            ON driver.id = d.driver_id
+            AND driver.tenant_id = d.tenant_id
+        `,
+        [driverId, actor.userId ?? null, id, tenantId]
+      );
+
+      await client.query("COMMIT");
+      return this.mapRecord(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async dispatch(id: string, payload: DispatchDeliveryDto, actor: DeliveryActor) {

@@ -1408,13 +1408,14 @@ export class SaleService {
       client.release();
     }
   }
-  async getSales(actor: BranchScopedActor) {
+  async getSales(actor: BranchScopedActor, filters: BranchScopedFilters = {}) {
     const scope = await this.resolveSaleScope(actor, {
       tenantId: actor.tenantId,
-      branchId: actor.branchId,
+      branchId: filters.branchId ?? actor.branchId,
     });
     const params: unknown[] = [scope.tenantId];
     const where = [`s.tenant_id = $1`];
+    const customerId = normalizeOptionalFilter(filters.customerId);
 
     if (scope.branchId) {
       params.push(scope.branchId);
@@ -1422,6 +1423,11 @@ export class SaleService {
     } else if ((scope.branchIds?.length ?? 0) > 0) {
       params.push(scope.branchIds);
       where.push(`s.branch_id = ANY($${params.length}::uuid[])`);
+    }
+
+    if (customerId) {
+      params.push(customerId);
+      where.push(`s.customer_id = $${params.length}::uuid`);
     }
 
     const result = (await this.db.query(

@@ -40,6 +40,7 @@ export type DeliveryQuickCreateFormLike = {
   customerId: string;
   orderId: string;
   saleId: string;
+  driverId: string;
   customerName: string;
   customerPhone: string;
   deliveryAddress: string;
@@ -192,13 +193,16 @@ export const validateDeliveryQuickCreate = ({
     return "Selecciona una sucursal para el domicilio.";
   }
 
-  const hasIdentity =
+  const hasCustomerOrContact =
     Boolean(optionalQuickCreateText(customerId)) ||
-    Boolean(optionalQuickCreateText(customerName)) ||
-    Boolean(optionalQuickCreateText(customerPhone));
+    Boolean(optionalQuickCreateText(customerName));
 
-  if (!hasIdentity) {
-    return "Selecciona un cliente o escribe contacto y telefono.";
+  if (!hasCustomerOrContact) {
+    return "Selecciona un cliente o escribe el contacto.";
+  }
+
+  if (!optionalQuickCreateText(customerPhone)) {
+    return "Escribe el telefono de contacto.";
   }
 
   if (!optionalQuickCreateText(deliveryAddress)) {
@@ -219,6 +223,7 @@ export const buildDeliveryQuickCreatePayload = (
   customer_id: optionalQuickCreateText(form.customerId),
   order_id: optionalQuickCreateText(form.orderId),
   sale_id: optionalQuickCreateText(form.saleId),
+  driver_id: optionalQuickCreateText(form.driverId),
   customer_name: optionalQuickCreateText(form.customerName),
   customer_phone: optionalQuickCreateText(form.customerPhone),
   delivery_address: form.deliveryAddress.trim(),

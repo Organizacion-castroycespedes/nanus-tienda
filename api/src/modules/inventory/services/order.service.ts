@@ -78,6 +78,7 @@ type OrderListRow = OrderRow & {
   branch_name: string | null;
   terminal_id: string | null;
   terminal_name: string | null;
+  generated_sale_id: string | null;
   billing_status: "UNBILLED" | "PARTIAL" | "INVOICED";
 };
 
@@ -984,6 +985,7 @@ export class OrderService {
     const fromDate = normalizeOptionalFilter(filters.fromDate);
     const toDate = normalizeOptionalFilter(filters.toDate);
     const paymentMethod = normalizeOptionalFilter(filters.paymentMethod);
+    const customerId = normalizeOptionalFilter(filters.customerId);
 
     if (resolvedFilters.tenantId) {
       params.push(resolvedFilters.tenantId);
@@ -1006,6 +1008,11 @@ export class OrderService {
     if (toDate) {
       params.push(toDate);
       where.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (customerId) {
+      params.push(customerId);
+      where.push(`o.customer_id = $${params.length}::uuid`);
     }
 
     if (paymentMethod) {
@@ -1055,6 +1062,7 @@ export class OrderService {
           branch.nombre AS branch_name,
           audit_context.terminal_id::text AS terminal_id,
           terminal.name AS terminal_name,
+          sale_context.generated_sale_id::text AS generated_sale_id,
           CASE
             WHEN COALESCE(item_totals.delivered_total, 0) <= 0
               OR COALESCE(item_totals.billed_total, 0) <= 0 THEN 'UNBILLED'
@@ -1087,6 +1095,15 @@ export class OrderService {
           ON terminal.id = audit_context.terminal_id
          AND terminal.tenant_id = o.tenant_id
         LEFT JOIN LATERAL (
+          SELECT s.id AS generated_sale_id
+          FROM sales s
+          WHERE s.tenant_id = o.tenant_id
+            AND s.order_id = o.id
+            AND s.status <> 'CANCELLED'
+          ORDER BY s.created_at DESC, s.id DESC
+          LIMIT 1
+        ) AS sale_context ON TRUE
+        LEFT JOIN LATERAL (
           SELECT
             COALESCE(SUM(oi.delivered_quantity), 0) AS delivered_total,
             COALESCE(SUM(COALESCE(oi.billed_quantity, 0)), 0) AS billed_total
@@ -1107,6 +1124,7 @@ export class OrderService {
       branchName: row.branch_name,
       terminalId: row.terminal_id,
       terminalName: row.terminal_name,
+      generatedSaleId: row.generated_sale_id,
       billingStatus: row.billing_status,
     }));
   }

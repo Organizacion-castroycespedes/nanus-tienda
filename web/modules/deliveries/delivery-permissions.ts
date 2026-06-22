@@ -15,6 +15,7 @@ const actionPermissionByKey: Record<DeliveryActionKey, string> = {
 };
 
 const normalizeRole = (role: string) => role.trim().toUpperCase();
+const deliveryDriverManagerRoles = new Set(["SUPER_ADMIN", "SUPER_USER", "ADMIN"]);
 
 export const findDeliveryPermission = (permissions: PermissionSummary[]) =>
   permissions.find((permission) => permission.key === MENU_KEYS.DELIVERIES);
@@ -55,6 +56,13 @@ export const canCreateDelivery = (
   permission: PermissionSummary | undefined,
   role: string
 ) => canUseDeliveryAction(permission, DELIVERY_PERMISSION_ACTIONS.CREATE, role);
+
+export const canManageDeliveryDrivers = (
+  permission: PermissionSummary | undefined,
+  role: string
+) =>
+  deliveryDriverManagerRoles.has(normalizeRole(role)) &&
+  canUseDeliveryAction(permission, DELIVERY_PERMISSION_ACTIONS.UPDATE, role);
 
 export const buildDeliveryActionPermissionMap = (
   permission: PermissionSummary | undefined,

@@ -67,6 +67,10 @@ export class CreateSaleDeliveryDto {
   payment_method_id?: string;
 
   @IsOptional()
+  @IsUUID()
+  driver_id?: string;
+
+  @IsOptional()
   @Transform(trimString)
   @IsString()
   notes?: string;

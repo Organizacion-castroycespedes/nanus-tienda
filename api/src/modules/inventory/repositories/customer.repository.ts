@@ -145,8 +145,29 @@ export class CustomerRepository {
 
   async findAllByTenant(
     tenantId: string,
+    options: { query?: string; limit?: number } = {},
     client?: PoolClient
   ): Promise<CustomerEntity[]> {
+    const params: unknown[] = [tenantId];
+    const where = ["tenant_id = $1"];
+    const normalizedQuery = options.query?.trim();
+    const limit =
+      options.limit === undefined
+        ? undefined
+        : Math.max(1, Math.min(options.limit, 100));
+
+    if (normalizedQuery) {
+      params.push(`%${normalizedQuery.toLowerCase()}%`);
+      where.push(`(
+        lower(name) LIKE $${params.length}
+        OR lower(COALESCE(document_number, '')) LIKE $${params.length}
+        OR lower(COALESCE(phone, '')) LIKE $${params.length}
+        OR lower(COALESCE(email, '')) LIKE $${params.length}
+      )`);
+    }
+
+    const limitClause =
+      limit === undefined ? "" : `LIMIT $${params.push(limit)}`;
     const result = await this.query<CustomerRow>(
       `
         SELECT
@@ -166,10 +187,11 @@ export class CustomerRepository {
           created_at,
           updated_at
         FROM customers
-        WHERE tenant_id = $1
+        WHERE ${where.join(" AND ")}
         ORDER BY created_at DESC
+        ${limitClause}
       `,
-      [tenantId],
+      params,
       client
     );
 

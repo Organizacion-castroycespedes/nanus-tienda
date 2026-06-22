@@ -10,6 +10,7 @@ export type OrderResponse = {
   branchName?: string | null;
   terminalId?: string | null;
   terminalName?: string | null;
+  generatedSaleId?: string | null;
   billingStatus?: "UNBILLED" | "PARTIAL" | "INVOICED";
   type: "CASH" | "CREDIT";
   status: "DRAFT" | "CONFIRMED" | "PARTIAL" | "COMPLETED" | "CANCELLED";
@@ -52,6 +53,7 @@ export type OrderDetailResponse = OrderResponse & {
 export type GetOrdersParams = {
   tenantId?: string;
   branchId?: string;
+  customerId?: string;
   fromDate?: string;
   toDate?: string;
 };
@@ -100,6 +102,9 @@ export const getOrders = (
   }
   if (params.branchId) {
     query.set("branchId", params.branchId);
+  }
+  if (params.customerId) {
+    query.set("customerId", params.customerId);
   }
   if (params.fromDate) {
     query.set("fromDate", params.fromDate);

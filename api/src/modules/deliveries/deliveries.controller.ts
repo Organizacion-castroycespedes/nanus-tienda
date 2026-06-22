@@ -23,6 +23,7 @@ import { PermissionsGuard } from "../../common/guards/permissions.guard";
 import { DELIVERY_PERMISSION_ACTIONS } from "./deliveries.constants";
 import { DeliveriesService } from "./deliveries.service";
 import { AssignDeliveryDto } from "./dto/assign-delivery.dto";
+import { AssignDeliveryDriverDto } from "./dto/assign-delivery-driver.dto";
 import { CancelDeliveryDto } from "./dto/cancel-delivery.dto";
 import { CreateDeliveryDto } from "./dto/create-delivery.dto";
 import { DispatchDeliveryDto } from "./dto/dispatch-delivery.dto";
@@ -156,6 +157,24 @@ export class DeliveriesController {
     @Req() request: DeliveriesRequest
   ) {
     return this.deliveriesService.prepare(id, payload, this.buildActor(request));
+  }
+
+  @Post(":id/assign-driver")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
+  })
+  assignDriver(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() payload: AssignDeliveryDriverDto,
+    @Req() request: DeliveriesRequest
+  ) {
+    return this.deliveriesService.assignDriver(
+      id,
+      payload,
+      this.buildActor(request)
+    );
   }
 
   @Post(":id/dispatch")

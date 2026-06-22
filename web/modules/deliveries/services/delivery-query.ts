@@ -18,6 +18,7 @@ export const buildDeliveriesQuery = (params: GetDeliveriesParams = {}) => {
   appendParam(query, "customer_id", params.customer_id);
   appendParam(query, "order_id", params.order_id);
   appendParam(query, "sale_id", params.sale_id);
+  appendParam(query, "driver_id", params.driver_id);
   appendParam(query, "date_from", params.date_from);
   appendParam(query, "date_to", params.date_to);
   appendParam(query, "page", params.page);
@@ -32,3 +33,6 @@ export const buildOrderDeliveryEndpoint = (orderId: string) =>
 
 export const buildSaleDeliveryEndpoint = (saleId: string) =>
   `/sales/${encodeURIComponent(saleId)}/delivery`;
+
+export const buildDeliveryTicketPath = (deliveryId: string) =>
+  `/reports/deliveries/${encodeURIComponent(deliveryId)}/ticket`;

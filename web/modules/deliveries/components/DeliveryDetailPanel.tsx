@@ -1,5 +1,6 @@
 import { Modal } from "../../../components/design-system/Modal";
 import { Button } from "../../../components/design-system/Button";
+import { FileText, UserCheck } from "lucide-react";
 import {
   deliveryStatusLabels,
   getDeliveryFeeSource,
@@ -57,6 +58,8 @@ export const DeliveryDetailPanel = ({
   actionDisabled,
   onClose,
   onAction,
+  onAssignDriver,
+  onTicket,
 }: {
   delivery: DeliveryRecord | null;
   loading: boolean;
@@ -64,6 +67,8 @@ export const DeliveryDetailPanel = ({
   actionDisabled?: boolean;
   onClose: () => void;
   onAction?: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
+  onAssignDriver?: (delivery: DeliveryRecord) => void;
+  onTicket?: (delivery: DeliveryRecord) => void;
 }) => (
   <Modal
     title={
@@ -105,6 +110,29 @@ export const DeliveryDetailPanel = ({
               disabled={Boolean(actionDisabled)}
               onAction={onAction}
             />
+            {onAssignDriver ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={Boolean(actionDisabled)}
+                onClick={() => onAssignDriver(delivery)}
+              >
+                <UserCheck className="h-4 w-4" />
+                {delivery.driver_id ? "Cambiar repartidor" : "Asignar repartidor"}
+              </Button>
+            ) : null}
+            {onTicket ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => onTicket(delivery)}
+              >
+                <FileText className="h-4 w-4" />
+                Ticket domicilio
+              </Button>
+            ) : null}
           </div>
         ) : null}
 
@@ -119,7 +147,19 @@ export const DeliveryDetailPanel = ({
           <DetailItem label="Referencia" value={delivery.delivery_reference} />
           <DetailItem label="Pedido" value={delivery.order_id} />
           <DetailItem label="Venta" value={delivery.sale_id} />
-          <DetailItem label="Repartidor" value={delivery.assigned_courier_id} />
+          <DetailItem
+            label="Repartidor"
+            value={delivery.driver?.name ?? delivery.driver_id}
+          />
+          <DetailItem label="Telefono repartidor" value={delivery.driver?.phone} />
+          <DetailItem
+            label="Documento repartidor"
+            value={delivery.driver?.document_number}
+          />
+          <DetailItem
+            label="Repartidor legacy"
+            value={delivery.assigned_courier_id}
+          />
           <DetailItem label="Metodo pago" value={delivery.payment_method_id} />
           <DetailItem label="Valor domicilio" value={formatCurrency(delivery.delivery_fee)} />
           <DetailItem label="Subtotal" value={formatCurrency(delivery.subtotal)} />

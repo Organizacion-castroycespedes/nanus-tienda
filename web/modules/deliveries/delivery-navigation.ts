@@ -5,6 +5,7 @@ export type DeliveryFilters = {
   status: "" | DeliveryStatus;
   orderId: string;
   saleId: string;
+  driverId: string;
   dateFrom: string;
   dateTo: string;
 };
@@ -22,6 +23,7 @@ export const defaultDeliveryFilters: DeliveryFilters = {
   status: "",
   orderId: "",
   saleId: "",
+  driverId: "",
   dateFrom: "",
   dateTo: "",
 };
@@ -57,6 +59,7 @@ export const buildDeliveryFiltersFromSearchParams = (
   status: normalizeStatus(readSearchParam(params, "status")),
   orderId: readSearchParam(params, "order_id"),
   saleId: readSearchParam(params, "sale_id"),
+  driverId: readSearchParam(params, "driver_id"),
   dateFrom: readSearchParam(params, "date_from"),
   dateTo: readSearchParam(params, "date_to"),
 });
@@ -67,6 +70,7 @@ export const serializeDeliveryFilters = (filters: DeliveryFilters) =>
     filters.status,
     filters.orderId,
     filters.saleId,
+    filters.driverId,
     filters.dateFrom,
     filters.dateTo,
   ].join("|");

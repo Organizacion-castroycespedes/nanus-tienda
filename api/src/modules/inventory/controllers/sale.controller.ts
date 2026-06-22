@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
   UsePipes,
@@ -131,8 +132,15 @@ export class SaleController {
 
   @Get()
   @RequirePermission({ menuKey: "POS", level: "READ" })
-  list(@Req() request: AuthRequest) {
-    return this.saleService.getSales(this.buildActor(request));
+  list(
+    @Query("customerId") customerId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.saleService.getSales(this.buildActor(request), {
+      customerId,
+      branchId,
+    });
   }
 
   @Get(":id")

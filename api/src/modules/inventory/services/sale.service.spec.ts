@@ -785,3 +785,36 @@ test("SaleService.normalizeSaleContext preserves roles when POS context is resol
   assert.deepEqual(normalized.roles, ["ADMIN", "USER"]);
   assert.equal(normalized.sessionId, "10000000-0000-0000-0000-000000000016");
 });
+
+test("SaleService.getSales filters by customerId", async () => {
+  const queries: RecordedQuery[] = [];
+  const service = new SaleService(
+    {
+      query: async (text: string, params: unknown[] = []) => {
+        queries.push({ text, params });
+        return { rows: [] };
+      },
+    } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    {} as never,
+    new FakePricingService() as never
+  );
+
+  await service.getSales(
+    {
+      roles: ["SUPER_ADMIN"],
+      tenantId: ids.tenant,
+      userId: ids.user,
+    },
+    {
+      customerId: ids.customer,
+    }
+  );
+
+  assert.match(queries[0].text, /s\.customer_id = \$2::uuid/);
+  assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
+});

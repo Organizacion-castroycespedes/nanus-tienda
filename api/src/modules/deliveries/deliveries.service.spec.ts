@@ -16,12 +16,22 @@ const courierId = "00000000-0000-0000-0000-000000000004";
 const deliveryId = "00000000-0000-0000-0000-000000000005";
 const orderId = "00000000-0000-0000-0000-000000000006";
 const customerId = "00000000-0000-0000-0000-000000000007";
+const driverId = "00000000-0000-0000-0000-000000000010";
 
 const actor = {
   tenantId,
   userId: actorUserId,
   roles: ["ADMIN"],
 };
+
+const driverSchemaRow = {
+  has_driver_table: true,
+  has_driver_column: true,
+};
+
+const isDriverSchemaQuery = (queryText: string) =>
+  queryText.includes("information_schema.tables") &&
+  queryText.includes("delivery_drivers");
 
 const buildDelivery = (overrides: Record<string, unknown> = {}) => ({
   id: deliveryId,
@@ -41,6 +51,11 @@ const buildDelivery = (overrides: Record<string, unknown> = {}) => ({
   total: "0",
   payment_method_id: null,
   assigned_courier_id: null,
+  driver_id: null,
+  driver_name: null,
+  driver_phone: null,
+  driver_document_number: null,
+  driver_active: null,
   notes: null,
   metadata: {},
   created_by_user_id: actorUserId,
@@ -104,6 +119,31 @@ const buildHarness = (initialDelivery: Record<string, unknown>) => {
       if (queryText.includes("FROM public.deliveries") && queryText.includes("FOR UPDATE")) {
         return { rows: [initialDelivery] };
       }
+      if (queryText.includes("FROM public.delivery_drivers")) {
+        return {
+          rows: [
+            {
+              id: driverId,
+              active: true,
+            },
+          ],
+        };
+      }
+      if (queryText.includes("WITH updated AS") && queryText.includes("driver_id =")) {
+        return {
+          rows: [
+            {
+              ...initialDelivery,
+              driver_id: params[0],
+              driver_name: params[0] ? "Carlos Repartidor" : null,
+              driver_phone: params[0] ? "3001234567" : null,
+              driver_document_number: params[0] ? "123456" : null,
+              driver_active: params[0] ? true : null,
+              updated_by_user_id: params[1],
+            },
+          ],
+        };
+      }
       if (queryText.includes("UPDATE public.deliveries")) {
         const nextStatus = params[0] as string;
         const updated = {
@@ -146,7 +186,12 @@ const buildHarness = (initialDelivery: Record<string, unknown>) => {
   };
 
   const db = {
-    query: async () => ({ rows: [{ id: courierId }] }),
+    query: async (queryText: string) => {
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
+      return { rows: [{ id: courierId }] };
+    },
     getClient: async () => client,
   };
 
@@ -175,9 +220,11 @@ const buildHarness = (initialDelivery: Record<string, unknown>) => {
 const buildOrderCreateHarness = (options: {
   order?: Record<string, unknown> | null;
   duplicate?: Record<string, unknown> | null;
+  driverRows?: Record<string, unknown>[];
 } = {}) => {
   const order = options.order === undefined ? buildOrderSource() : options.order;
   const duplicate = options.duplicate ?? null;
+  const driverRows = options.driverRows ?? [{ id: driverId, active: true }];
   const queries: string[] = [];
   const historyParams: unknown[][] = [];
   let released = false;
@@ -205,7 +252,13 @@ const buildOrderCreateHarness = (options: {
       if (queryText.includes("FROM public.deliveries") && queryText.includes("order_id")) {
         return { rows: duplicate ? [duplicate] : [] };
       }
+      if (queryText.includes("FROM public.delivery_drivers")) {
+        assert.deepEqual(params, [driverId, tenantId]);
+        return { rows: driverRows };
+      }
       if (queryText.includes("INSERT INTO public.deliveries")) {
+        const hasDriverInsert = queryText.includes("driver_id");
+        const offset = hasDriverInsert ? 1 : 0;
         return {
           rows: [
             buildDelivery({
@@ -225,10 +278,11 @@ const buildOrderCreateHarness = (options: {
               subtotal: params[11],
               total: params[12],
               payment_method_id: params[13],
-              notes: params[14],
-              metadata: JSON.parse(String(params[15])),
-              created_by_user_id: params[16],
-              updated_by_user_id: params[16],
+              driver_id: hasDriverInsert ? params[14] : null,
+              notes: params[14 + offset],
+              metadata: JSON.parse(String(params[15 + offset])),
+              created_by_user_id: params[16 + offset],
+              updated_by_user_id: params[16 + offset],
             }),
           ],
         };
@@ -249,6 +303,9 @@ const buildOrderCreateHarness = (options: {
     query: async (queryText: string, params: unknown[] = []) => {
       queries.push(queryText);
 
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
       if (queryText.includes("FROM public.orders o")) {
         return { rows: order && params[1] === tenantId ? [order] : [] };
       }
@@ -295,9 +352,11 @@ const buildOrderCreateHarness = (options: {
 const buildSaleCreateHarness = (options: {
   sale?: Record<string, unknown> | null;
   duplicate?: Record<string, unknown> | null;
+  driverRows?: Record<string, unknown>[];
 } = {}) => {
   const sale = options.sale === undefined ? buildSaleSource() : options.sale;
   const duplicate = options.duplicate ?? null;
+  const driverRows = options.driverRows ?? [{ id: driverId, active: true }];
   const queries: string[] = [];
   const historyParams: unknown[][] = [];
   let released = false;
@@ -342,7 +401,13 @@ const buildSaleCreateHarness = (options: {
       if (queryText.includes("FROM public.deliveries") && queryText.includes("sale_id")) {
         return { rows: duplicate ? [duplicate] : [] };
       }
+      if (queryText.includes("FROM public.delivery_drivers")) {
+        assert.deepEqual(params, [driverId, tenantId]);
+        return { rows: driverRows };
+      }
       if (queryText.includes("INSERT INTO public.deliveries")) {
+        const hasDriverInsert = queryText.includes("driver_id");
+        const offset = hasDriverInsert ? 1 : 0;
         return {
           rows: [
             buildDelivery({
@@ -362,10 +427,11 @@ const buildSaleCreateHarness = (options: {
               subtotal: params[11],
               total: params[12],
               payment_method_id: params[13],
-              notes: params[14],
-              metadata: JSON.parse(String(params[15])),
-              created_by_user_id: params[16],
-              updated_by_user_id: params[16],
+              driver_id: hasDriverInsert ? params[14] : null,
+              notes: params[14 + offset],
+              metadata: JSON.parse(String(params[15 + offset])),
+              created_by_user_id: params[16 + offset],
+              updated_by_user_id: params[16 + offset],
             }),
           ],
         };
@@ -386,6 +452,9 @@ const buildSaleCreateHarness = (options: {
     query: async (queryText: string, params: unknown[] = []) => {
       queries.push(queryText);
 
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
       if (queryText.includes("FROM public.sales s")) {
         return { rows: sale && params[1] === tenantId ? [sale] : [] };
       }
@@ -446,6 +515,9 @@ const buildOrderLookupHarness = (options: {
     query: async (queryText: string, params: unknown[] = []) => {
       queries.push(queryText);
 
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
       if (queryText.includes("FROM public.orders o")) {
         return { rows: order && params[1] === tenantId ? [order] : [] };
       }
@@ -489,6 +561,99 @@ test("DeliveriesService.assign prepares delivery and writes history transactiona
     actorUserId,
     null,
   ]);
+});
+
+test("DeliveriesService.assignDriver assigns active driver without changing status", async () => {
+  const harness = buildHarness(buildDelivery({ status: "CREATED" }));
+
+  const result = await harness.service.assignDriver(
+    deliveryId,
+    { driver_id: driverId },
+    actor
+  );
+
+  assert.equal(result.status, "CREADO");
+  assert.equal(result.driver_id, driverId);
+  assert.equal(result.driver?.name, "Carlos Repartidor");
+  assert.equal(harness.committed, true);
+  assert.equal(harness.rolledBack, false);
+  assert.equal(harness.historyParams.length, 0);
+  assert.equal(
+    harness.queries.some((query) => query.includes("status =")),
+    false
+  );
+});
+
+test("DeliveriesService.assignDriver clears driver without changing status", async () => {
+  const harness = buildHarness(
+    buildDelivery({ status: "ASSIGNED", driver_id: driverId })
+  );
+
+  const result = await harness.service.assignDriver(
+    deliveryId,
+    { driver_id: null },
+    actor
+  );
+
+  assert.equal(result.status, "EN_PREPARACION");
+  assert.equal(result.driver_id, null);
+  assert.equal(harness.committed, true);
+  assert.equal(harness.historyParams.length, 0);
+});
+
+test("DeliveriesService.assignDriver rejects inactive or cross-tenant driver", async () => {
+  const buildDriverHarness = (driverRows: Record<string, unknown>[]) => {
+    const harness = buildHarness(buildDelivery());
+    const client = {
+      query: async (queryText: string, params: unknown[] = []) => {
+        harness.queries.push(queryText);
+        if (queryText === "BEGIN") {
+          return { rows: [] };
+        }
+        if (queryText === "COMMIT") {
+          return { rows: [] };
+        }
+        if (queryText === "ROLLBACK") {
+          return { rows: [] };
+        }
+        if (queryText.includes("FROM public.deliveries") && queryText.includes("FOR UPDATE")) {
+          return { rows: [buildDelivery()] };
+        }
+        if (queryText.includes("FROM public.delivery_drivers")) {
+          assert.deepEqual(params, [driverId, tenantId]);
+          return { rows: driverRows };
+        }
+        throw new Error(`Unexpected query: ${queryText}`);
+      },
+      release: () => undefined,
+    };
+
+    return new DeliveriesService(
+      {
+        query: async (queryText: string) => {
+          if (isDriverSchemaQuery(queryText)) {
+            return { rows: [driverSchemaRow] };
+          }
+          throw new Error(`Unexpected db query: ${queryText}`);
+        },
+        getClient: async () => client,
+      } as never,
+      {} as never,
+      new DeliveryStateMachineService()
+    );
+  };
+
+  const inactiveService = buildDriverHarness([{ id: driverId, active: false }]);
+  await assert.rejects(
+    () => inactiveService.assignDriver(deliveryId, { driver_id: driverId }, actor),
+    BadRequestException
+  );
+
+  const otherTenantService = buildDriverHarness([]);
+  await assert.rejects(
+    () => otherTenantService.assignDriver(deliveryId, { driver_id: driverId }, actor),
+    BadRequestException
+  );
 });
 
 test("DeliveriesService dispatch delivered not-delivered and cancel valid flows", async () => {
@@ -610,6 +775,46 @@ test("DeliveriesService.createFromOrder creates CREADO delivery with order snaps
     actorUserId,
     null,
   ]);
+});
+
+test("DeliveriesService.createFromOrder stores active driver without changing status", async () => {
+  const harness = buildOrderCreateHarness();
+
+  const result = await harness.service.createFromOrder(
+    orderId,
+    { delivery_fee: 1500, driver_id: driverId },
+    actor
+  );
+
+  assert.equal(result.status, "CREADO");
+  assert.equal(result.driver_id, driverId);
+  assert.equal(harness.committed, true);
+  assert.equal(harness.historyParams.length, 1);
+  assert.equal(harness.historyParams[0][2], "CREATED");
+  assert.equal(
+    harness.queries.some((query) => query.includes("UPDATE public.deliveries")),
+    false
+  );
+});
+
+test("DeliveriesService.createFromOrder rejects inactive driver", async () => {
+  const harness = buildOrderCreateHarness({
+    driverRows: [{ id: driverId, active: false }],
+  });
+
+  await assert.rejects(
+    () =>
+      harness.service.createFromOrder(
+        orderId,
+        { driver_id: driverId },
+        actor
+      ),
+    BadRequestException
+  );
+
+  assert.equal(harness.committed, false);
+  assert.equal(harness.rolledBack, true);
+  assert.equal(harness.historyParams.length, 0);
 });
 
 test("DeliveriesService.createFromOrder rejects missing order or wrong tenant", async () => {
@@ -815,6 +1020,9 @@ test("DeliveriesService.getBySale returns delivery by sale or linked order", asy
   const lookupHarness = new DeliveriesService(
     {
       query: async (queryText: string) => {
+        if (isDriverSchemaQuery(queryText)) {
+          return { rows: [driverSchemaRow] };
+        }
         if (queryText.includes("FROM public.sales s")) {
           return { rows: [buildSaleSource()] };
         }
@@ -845,6 +1053,9 @@ test("DeliveriesService.list filters by sale_id", async () => {
     query: async (queryText: string, params: unknown[] = []) => {
       queries.push(queryText);
 
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
       if (queryText.includes("FROM public.deliveries")) {
         assert.equal(params[0], tenantId);
         assert.equal(params[1], "00000000-0000-0000-0000-000000000008");
@@ -882,9 +1093,103 @@ test("DeliveriesService.list filters by sale_id", async () => {
   assert.equal(queries.join("\n").includes("sale_id ="), true);
 });
 
+test("DeliveriesService.list filters by driver_id and maps driver summary", async () => {
+  const queries: string[] = [];
+  const db = {
+    query: async (queryText: string, params: unknown[] = []) => {
+      queries.push(queryText);
+
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
+      if (queryText.includes("FROM public.deliveries")) {
+        assert.equal(params[0], tenantId);
+        assert.equal(params[1], driverId);
+        return {
+          rows: [
+            buildDelivery({
+              driver_id: driverId,
+              driver_name: "Carlos Repartidor",
+              driver_phone: "3001234567",
+              driver_document_number: "123456",
+              driver_active: true,
+              total_count: "1",
+            }),
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected db query: ${queryText}`);
+    },
+  };
+
+  const service = new DeliveriesService(
+    db as never,
+    {} as never,
+    new DeliveryStateMachineService()
+  );
+
+  const result = await service.list(
+    {
+      driver_id: driverId,
+      page: 1,
+      limit: 25,
+    },
+    actor
+  );
+
+  assert.equal(result.data.length, 1);
+  assert.equal(result.data[0].driver_id, driverId);
+  assert.equal(result.data[0].driver?.name, "Carlos Repartidor");
+  assert.equal(queries.join("\n").includes("d.driver_id ="), true);
+});
+
+test("DeliveriesService.list works when driver migration is pending", async () => {
+  const queries: string[] = [];
+  const db = {
+    query: async (queryText: string) => {
+      queries.push(queryText);
+
+      if (isDriverSchemaQuery(queryText)) {
+        return {
+          rows: [{ has_driver_table: false, has_driver_column: false }],
+        };
+      }
+      if (queryText.includes("FROM public.deliveries")) {
+        assert.equal(queryText.includes("public.delivery_drivers"), false);
+        assert.equal(queryText.includes("NULL::uuid AS driver_id"), true);
+        return {
+          rows: [
+            buildDelivery({
+              total_count: "1",
+            }),
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected db query: ${queryText}`);
+    },
+  };
+
+  const service = new DeliveriesService(
+    db as never,
+    {} as never,
+    new DeliveryStateMachineService()
+  );
+
+  const result = await service.list({ page: 1, limit: 25 }, actor);
+
+  assert.equal(result.data.length, 1);
+  assert.equal(result.data[0].driver_id, null);
+  assert.equal(queries.some((query) => isDriverSchemaQuery(query)), true);
+});
+
 test("DeliveriesService.list maps operational status filter to compatible DB values", async () => {
   const db = {
     query: async (queryText: string, params: unknown[] = []) => {
+      if (isDriverSchemaQuery(queryText)) {
+        return { rows: [driverSchemaRow] };
+      }
       if (queryText.includes("FROM public.deliveries")) {
         assert.deepEqual(params[1], ["CREADO", "CREATED"]);
         assert.equal(queryText.includes("status = ANY"), true);
