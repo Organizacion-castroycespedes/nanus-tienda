@@ -36,12 +36,19 @@ test("buildDeliveryFiltersFromSearchParams reads supported relation filters", ()
     }),
     {
       query: "",
-      status: "CREATED",
+      status: "CREADO",
       orderId: "order-1",
       saleId: "sale-1",
       dateFrom: "2026-06-01",
       dateTo: "2026-06-21",
     }
+  );
+});
+
+test("buildDeliveryFiltersFromSearchParams reads operational status", () => {
+  assert.equal(
+    buildDeliveryFiltersFromSearchParams({ status: "en_preparacion" }).status,
+    "EN_PREPARACION"
   );
 });
 

@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import {
-  deliveryActionLabels,
+  getDeliveryActionLabel,
   getDeliveryAvailableActions,
 } from "../delivery-helpers";
 import type {
@@ -18,7 +18,7 @@ import type {
 } from "../types";
 
 const actionIcons: Record<DeliveryActionKey, typeof UserCheck> = {
-  assign: UserCheck,
+  prepare: UserCheck,
   dispatch: Send,
   "mark-delivered": CheckCircle2,
   "mark-not-delivered": Ban,
@@ -36,7 +36,11 @@ export const DeliveryActions = ({
   disabled?: boolean;
   onAction: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
 }) => {
-  const actions = getDeliveryAvailableActions(delivery.status, permissions);
+  const actions = getDeliveryAvailableActions(
+    delivery.status,
+    permissions,
+    delivery
+  );
 
   if (actions.length === 0) {
     return <span className="text-xs text-slate-400">Sin acciones</span>;
@@ -56,7 +60,7 @@ export const DeliveryActions = ({
             onClick={() => onAction(action, delivery)}
           >
             <Icon className="h-4 w-4" />
-            {deliveryActionLabels[action]}
+            {getDeliveryActionLabel(action, delivery)}
           </Button>
         );
       })}

@@ -8,7 +8,7 @@ import {
 import type { DeliveryActionPermissionMap, DeliveryRecord } from "./types";
 
 const allPermissions: DeliveryActionPermissionMap = {
-  assign: true,
+  prepare: true,
   dispatch: true,
   "mark-delivered": true,
   "mark-not-delivered": true,
@@ -16,34 +16,44 @@ const allPermissions: DeliveryActionPermissionMap = {
 };
 
 test("delivery actions follow allowed state transitions", () => {
-  assert.deepEqual(getDeliveryAvailableActions("CREATED", allPermissions), [
-    "assign",
-    "cancel",
-  ]);
-  assert.deepEqual(getDeliveryAvailableActions("ASSIGNED", allPermissions), [
+  assert.deepEqual(getDeliveryAvailableActions("CREADO", allPermissions), [
+    "prepare",
     "dispatch",
     "cancel",
   ]);
-  assert.deepEqual(getDeliveryAvailableActions("DISPATCHED", allPermissions), [
+  assert.deepEqual(getDeliveryAvailableActions("EN_PREPARACION", allPermissions), [
+    "dispatch",
+    "cancel",
+  ]);
+  assert.deepEqual(getDeliveryAvailableActions("DESPACHADO", allPermissions), [
     "mark-delivered",
     "mark-not-delivered",
   ]);
+  assert.deepEqual(getDeliveryAvailableActions("NO_ENTREGADO", allPermissions), [
+    "dispatch",
+  ]);
+  assert.deepEqual(
+    getDeliveryAvailableActions("NOT_DELIVERED", allPermissions, {
+      metadata: { retry_allowed: false },
+    }),
+    []
+  );
 });
 
 test("final delivery states have no actions", () => {
-  assert.equal(isFinalDeliveryStatus("DELIVERED"), true);
-  assert.deepEqual(getDeliveryAvailableActions("DELIVERED", allPermissions), []);
-  assert.deepEqual(getDeliveryAvailableActions("NOT_DELIVERED", allPermissions), []);
-  assert.deepEqual(getDeliveryAvailableActions("CANCELLED", allPermissions), []);
+  assert.equal(isFinalDeliveryStatus("ENTREGADO"), true);
+  assert.equal(isFinalDeliveryStatus("CANCELADO"), true);
+  assert.deepEqual(getDeliveryAvailableActions("ENTREGADO", allPermissions), []);
+  assert.deepEqual(getDeliveryAvailableActions("CANCELADO", allPermissions), []);
 });
 
 test("delivery actions respect permission map", () => {
   assert.deepEqual(
-    getDeliveryAvailableActions("CREATED", {
+    getDeliveryAvailableActions("CREADO", {
       ...allPermissions,
-      assign: false,
+      prepare: false,
     }),
-    ["cancel"]
+    ["dispatch", "cancel"]
   );
 });
 
@@ -56,7 +66,7 @@ test("local delivery query filters contact phone and address", () => {
     order_id: null,
     sale_id: null,
     delivery_number: "D-001",
-    status: "CREATED",
+    status: "CREADO",
     customer_name: "Maria Perez",
     customer_phone: "3001234567",
     delivery_address: "Calle 10 # 20-30",
@@ -72,8 +82,10 @@ test("local delivery query filters contact phone and address", () => {
     updated_by_user_id: null,
     created_at: "2026-06-21T10:00:00.000Z",
     updated_at: "2026-06-21T10:00:00.000Z",
+    dispatched_at: null,
     cancelled_at: null,
     delivered_at: null,
+    failed_at: null,
   };
 
   assert.equal(filterDeliveriesByQuery([baseDelivery], "maria").length, 1);

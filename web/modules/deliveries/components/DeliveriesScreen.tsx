@@ -20,9 +20,9 @@ import { getApiErrorMessage } from "../../reporteria/utils";
 import { useAppSelector } from "../../../store/hooks";
 import {
   deliveryActionDescriptions,
-  deliveryActionLabels,
   deliveryStatusLabels,
   filterDeliveriesByQuery,
+  getDeliveryActionLabel,
   getDeliveryFeeSource,
 } from "../delivery-helpers";
 import {
@@ -39,13 +39,13 @@ import {
   type DeliverySearchParamsInput,
 } from "../delivery-navigation";
 import {
-  assignDelivery,
   cancelDelivery,
   dispatchDelivery,
   getDeliveryById,
   listDeliveries,
   markDeliveryDelivered,
   markDeliveryNotDelivered,
+  prepareDelivery,
 } from "../services/deliveries.service";
 import {
   DELIVERY_STATUSES,
@@ -61,7 +61,6 @@ import { DeliveryDetailPanel } from "./DeliveryDetailPanel";
 import { DeliveryStatusBadge } from "./DeliveryStatusBadge";
 
 type ActionDraft = {
-  assignedCourierId: string;
   reason: string;
   receivedBy: string;
   notes: string;
@@ -82,7 +81,6 @@ const defaultPagination: DeliveryListResponse["pagination"] = {
 const pageSizeOptions = [10, 25, 50];
 
 const emptyActionDraft: ActionDraft = {
-  assignedCourierId: "",
   reason: "",
   receivedBy: "",
   notes: "",
@@ -149,7 +147,6 @@ const DeliveryActionModal = ({
   onSubmit: () => void;
 }) => {
   const { action, delivery } = request;
-  const isAssign = action === "assign";
   const isFinal =
     action === "cancel" ||
     action === "mark-delivered" ||
@@ -158,7 +155,7 @@ const DeliveryActionModal = ({
 
   return (
     <Modal
-      title={deliveryActionLabels[action]}
+      title={getDeliveryActionLabel(action, delivery)}
       description={deliveryActionDescriptions[action]}
       onClose={saving ? undefined : onClose}
       footer={
@@ -185,18 +182,6 @@ const DeliveryActionModal = ({
             {delivery.customer_name || "Sin contacto"} - {delivery.delivery_address}
           </p>
         </div>
-
-        {isAssign ? (
-          <Input
-            label="assigned_courier_id"
-            required
-            value={draft.assignedCourierId}
-            onChange={(event) =>
-              onChange({ ...draft, assignedCourierId: event.target.value })
-            }
-            hint="UUID de usuario repartidor. Selector real queda pendiente."
-          />
-        ) : null}
 
         {action === "mark-delivered" ? (
           <Input
@@ -289,6 +274,8 @@ const MobileDeliveryCard = ({
       <p>Telefono: {delivery.customer_phone || "-"}</p>
       <p>Repartidor: {delivery.assigned_courier_id || "-"}</p>
       <p>Creado: {formatDateTime(delivery.created_at)}</p>
+      <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
+      <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
       <p>Valor: {formatCurrency(delivery.delivery_fee)}</p>
       <DeliverySourceCell delivery={delivery} />
     </div>
@@ -514,14 +501,9 @@ export const DeliveriesScreen = ({
     }
 
     const { action, delivery } = actionRequest;
-    const assignedCourierId = actionDraft.assignedCourierId.trim();
     const reason = actionDraft.reason.trim();
     const notes = optionalText(actionDraft.notes);
 
-    if (action === "assign" && !assignedCourierId) {
-      setActionError("assigned_courier_id es requerido.");
-      return;
-    }
     if ((action === "cancel" || action === "mark-not-delivered") && !reason) {
       setActionError("Motivo es requerido.");
       return;
@@ -530,9 +512,8 @@ export const DeliveriesScreen = ({
     setSavingAction(true);
     setActionError(null);
     try {
-      if (action === "assign") {
-        await assignDelivery(delivery.id, {
-          assigned_courier_id: assignedCourierId,
+      if (action === "prepare") {
+        await prepareDelivery(delivery.id, {
           notes,
           metadata: { source: "frontend" },
         });
@@ -568,7 +549,7 @@ export const DeliveriesScreen = ({
       setActionRequest(null);
       setActionDraft(emptyActionDraft);
       await refreshAfterMutation(
-        `Accion "${deliveryActionLabels[action]}" ejecutada correctamente.`
+        `Accion "${getDeliveryActionLabel(action, delivery)}" ejecutada correctamente.`
       );
     } catch (error) {
       setActionError(
@@ -617,7 +598,10 @@ export const DeliveriesScreen = ({
         <DeliveryDetailPanel
           delivery={detailDelivery}
           loading={detailLoading}
+          permissions={actionPermissions}
+          actionDisabled={actionDisabled}
           onClose={() => setDetailDelivery(null)}
+          onAction={openAction}
         />
       ) : null}
 
@@ -850,7 +834,10 @@ export const DeliveriesScreen = ({
                       <td className="px-4 py-3 text-xs text-slate-600">
                         <p>Creado: {formatDateTime(delivery.created_at)}</p>
                         <p>Actualizado: {formatDateTime(delivery.updated_at)}</p>
+                        <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
                         <p>Entregado: {formatDateTime(delivery.delivered_at)}</p>
+                        <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
+                        <p>Cancelado: {formatDateTime(delivery.cancelled_at)}</p>
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         <p className="font-medium text-slate-900">

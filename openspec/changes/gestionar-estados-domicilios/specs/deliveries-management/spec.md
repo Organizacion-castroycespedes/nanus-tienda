@@ -205,7 +205,7 @@ The change SHALL document technical and manual QA evidence for operational deliv
 
 #### Scenario: QA evidence file is updated
 - **WHEN** implementation is completed or validation is blocked
-- **THEN** `docs/evidencia-qa-gestionar-estados-domicilios.md` records executed checks, pending manual checks and known blockers
+- **THEN** `docs/evidencia-qa-gestion-estados-domicilios.md` records executed checks, pending manual checks and known blockers
 
 #### Scenario: Excluded modules are documented
 - **WHEN** QA evidence is written

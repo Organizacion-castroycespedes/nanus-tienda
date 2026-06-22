@@ -73,4 +73,4 @@ Este cambio no integra recaudo contraentrega, caja, POS, facturacion electronica
 
 ## QA Evidence
 
-Crear `docs/evidencia-qa-gestionar-estados-domicilios.md` con resultados de validacion tecnica y checklist manual. No marcar PASS visual/manual si no se ejecuta.
+Crear `docs/evidencia-qa-gestion-estados-domicilios.md` con resultados de validacion tecnica y checklist manual. No marcar PASS visual/manual si no se ejecuta.
