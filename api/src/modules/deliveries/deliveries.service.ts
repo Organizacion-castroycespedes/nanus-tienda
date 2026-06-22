@@ -451,18 +451,19 @@ export class DeliveriesService {
     orderId?: string | null
   ) {
     const params: unknown[] = [tenantId, saleId];
-    const conditions = ["tenant_id = $1", "sale_id = $2"];
+    const relationConditions = ["sale_id = $2"];
 
     if (orderId) {
       params.push(orderId);
-      conditions.push(`order_id = $${params.length}`);
+      relationConditions.push(`order_id = $${params.length}`);
     }
 
     const result = await client.query<{ id: string; status: string }>(
       `
         SELECT id, status
         FROM public.deliveries
-        WHERE ${conditions.join(" AND ")}
+        WHERE tenant_id = $1
+          AND (${relationConditions.join(" OR ")})
         LIMIT 1
       `,
       params
@@ -758,6 +759,8 @@ export class DeliveriesService {
       throw new BadRequestException("branch_id es requerido");
     }
 
+    let saleForDelivery: SaleDeliverySourceRecord | null = null;
+
     if (payload.order_id) {
       const order = await this.loadOrderForDelivery(payload.order_id, tenantId);
       const orderBranchId = this.normalizeNullableText(order.branch_id);
@@ -767,14 +770,20 @@ export class DeliveriesService {
     }
 
     if (payload.sale_id) {
-      const sale = await this.loadSaleForDelivery(payload.sale_id, tenantId);
-      if (sale.branch_id !== branchId) {
+      saleForDelivery = await this.loadSaleForDelivery(payload.sale_id, tenantId);
+      if (saleForDelivery.branch_id !== branchId) {
         throw new BadRequestException("branch_id no coincide con la factura");
       }
-      if (payload.order_id && sale.order_id && payload.order_id !== sale.order_id) {
+      if (
+        payload.order_id &&
+        saleForDelivery.order_id &&
+        payload.order_id !== saleForDelivery.order_id
+      ) {
         throw new BadRequestException("order_id no coincide con la factura");
       }
     }
+    const effectiveOrderId =
+      payload.order_id ?? saleForDelivery?.order_id ?? undefined;
 
     const deliveryAddress = this.normalizeRequiredText(
       payload.delivery_address,
@@ -788,7 +797,7 @@ export class DeliveriesService {
     this.assertCustomerIdentity(payload);
     await this.assertBranchScope(tenantId, branchId);
     await this.assertCustomerScope(tenantId, payload.customer_id);
-    await this.assertOrderScope(tenantId, payload.order_id);
+    await this.assertOrderScope(tenantId, effectiveOrderId);
     await this.assertSaleScope(tenantId, branchId, payload.sale_id);
     await this.assertPaymentMethodScope(tenantId, payload.payment_method_id);
 
@@ -796,18 +805,19 @@ export class DeliveriesService {
     try {
       await client.query("BEGIN");
       if (payload.sale_id) {
-        const sale = await this.loadSaleForDelivery(payload.sale_id, tenantId);
+        const sale =
+          saleForDelivery ?? (await this.loadSaleForDelivery(payload.sale_id, tenantId));
         await this.lockSaleForDelivery(client, tenantId, sale.id);
         await this.assertNoSaleDelivery(
           client,
           tenantId,
           sale.id,
-          sale.order_id
+          sale.order_id ?? effectiveOrderId
         );
       }
-      if (payload.order_id) {
-        await this.lockOrderForDelivery(client, tenantId, payload.order_id);
-        await this.assertNoOrderDelivery(client, tenantId, payload.order_id);
+      if (effectiveOrderId) {
+        await this.lockOrderForDelivery(client, tenantId, effectiveOrderId);
+        await this.assertNoOrderDelivery(client, tenantId, effectiveOrderId);
       }
 
       const deliveryNumber = await this.deliveryNumberService.generate(
@@ -865,7 +875,7 @@ export class DeliveriesService {
           tenantId,
           branchId,
           payload.customer_id ?? null,
-          payload.order_id ?? null,
+          effectiveOrderId ?? null,
           payload.sale_id ?? null,
           deliveryNumber,
           this.normalizeNullableText(payload.customer_name),

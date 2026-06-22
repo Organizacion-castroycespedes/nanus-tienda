@@ -1065,6 +1065,52 @@ export class SaleService {
     return itemsResult.rows;
   }
 
+  private async linkOrderDeliveryToSale(
+    tenantId: string,
+    orderId: string | null | undefined,
+    saleId: string,
+    userId: string | undefined,
+    client: PoolClient
+  ) {
+    if (!orderId) {
+      return null;
+    }
+
+    const existingSaleDelivery = await client.query<{ id: string }>(
+      `
+        SELECT id
+        FROM public.deliveries
+        WHERE tenant_id = $1::uuid
+          AND sale_id = $2::uuid
+        LIMIT 1
+      `,
+      [tenantId, saleId]
+    );
+    if (existingSaleDelivery.rows[0]) {
+      return existingSaleDelivery.rows[0].id;
+    }
+
+    const result = await client.query<{ id: string }>(
+      `
+        UPDATE public.deliveries
+        SET sale_id = $3::uuid,
+            updated_by_user_id = COALESCE($4::uuid, updated_by_user_id),
+            updated_at = now(),
+            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+              'source_sale_id', ($3::uuid)::text,
+              'sale_link_source', 'order_sale_creation'
+            )
+        WHERE tenant_id = $1::uuid
+          AND order_id = $2::uuid
+          AND sale_id IS NULL
+        RETURNING id
+      `,
+      [tenantId, orderId, saleId, userId ?? null]
+    );
+
+    return result.rows[0]?.id ?? null;
+  }
+
   private async createSaleItemsFromOrderDelivery(
     saleId: string,
     tenantId: string,
@@ -1272,6 +1318,13 @@ export class SaleService {
         this.toNumber(saleRow.total),
         client
       );
+      await this.linkOrderDeliveryToSale(
+        saleContext.tenantId,
+        saleRow.order_id ?? data.orderId ?? null,
+        saleRow.id,
+        saleContext.userId,
+        client
+      );
 
       await client.query("COMMIT");
       this.auditService.logEvent({
@@ -1329,6 +1382,13 @@ export class SaleService {
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
       }
+      await this.linkOrderDeliveryToSale(
+        saleContext.tenantId,
+        saleRow.order_id ?? data.orderId,
+        saleRow.id,
+        saleContext.userId,
+        client
+      );
 
       await client.query("COMMIT");
       this.auditService.logEvent({

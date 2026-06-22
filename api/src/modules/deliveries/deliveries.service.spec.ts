@@ -697,6 +697,26 @@ test("DeliveriesService.createFromSale creates CREADO delivery with sale snapsho
   assert.equal(result.metadata.delivery_fee_source, "NO_FEE");
 });
 
+test("DeliveriesService.create with sale_id keeps linked order_id", async () => {
+  const harness = buildSaleCreateHarness();
+
+  const result = await harness.service.create(
+    {
+      branch_id: branchId,
+      sale_id: "00000000-0000-0000-0000-000000000008",
+      customer_name: "Cliente factura",
+      customer_phone: "3222222222",
+      delivery_address: "Carrera factura 99",
+    },
+    actor
+  );
+
+  assert.equal(result.sale_id, "00000000-0000-0000-0000-000000000008");
+  assert.equal(result.order_id, orderId);
+  assert.equal(harness.committed, true);
+  assert.equal(harness.rolledBack, false);
+});
+
 test("DeliveriesService.createFromSale rejects missing address or branch mismatch", async () => {
   const missingAddress = buildSaleCreateHarness({
     sale: buildSaleSource({ customer_address: null }),

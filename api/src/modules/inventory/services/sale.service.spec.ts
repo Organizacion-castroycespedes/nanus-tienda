@@ -28,6 +28,8 @@ const ids = {
   promotion: "10000000-0000-0000-0000-000000000017",
   tax: "10000000-0000-0000-0000-000000000018",
   productTwo: "10000000-0000-0000-0000-000000000019",
+  order: "10000000-0000-0000-0000-000000000020",
+  delivery: "10000000-0000-0000-0000-000000000021",
 };
 
 type Scenario = {
@@ -142,6 +144,26 @@ class FakeCreateSaleClient {
       return { rows: [{ total_paid: 360 }] as T[] };
     }
 
+    if (sql.includes("FROM orders") && sql.includes("status IN")) {
+      return {
+        rows: [
+          {
+            id: ids.order,
+            customer_id: ids.customer,
+            type: "CASH",
+          },
+        ] as T[],
+      };
+    }
+
+    if (sql.includes("FROM public.deliveries") && sql.includes("sale_id = $2")) {
+      return { rows: [] as T[] };
+    }
+
+    if (sql.startsWith("UPDATE public.deliveries")) {
+      return { rows: [{ id: ids.delivery }] as T[] };
+    }
+
     throw new Error(`Unexpected SQL in create sale test: ${sql}`);
   }
 
@@ -159,6 +181,7 @@ class FakeCreateSaleRepository {
       reference?: string | null;
     }>;
   }> = [];
+  readonly invoiceOrderCalls: unknown[] = [];
   readonly statusUpdates: unknown[] = [];
 
   async validateActivePosSession() {
@@ -197,6 +220,25 @@ class FakeCreateSaleRepository {
         (sum, item) => sum + (item.lineTotal ?? item.subtotal ?? 0),
         0
       ),
+      balance: 0,
+      created_at: new Date("2026-06-02T00:00:00.000Z"),
+    };
+  }
+
+  async invoiceOrderWithFunction(data: {
+    tenantId: string;
+    orderId: string;
+    type: "CASH" | "CREDIT";
+  }) {
+    this.invoiceOrderCalls.push(data);
+    return {
+      id: ids.sale,
+      tenant_id: data.tenantId,
+      customer_id: ids.customer,
+      order_id: data.orderId,
+      type: data.type,
+      status: "CONFIRMED" as const,
+      total: 3000,
       balance: 0,
       created_at: new Date("2026-06-02T00:00:00.000Z"),
     };
@@ -465,6 +507,56 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
     (pricedItem.pricingSnapshot?.result as LinePricePreview).finalUnitPrice,
     180
   );
+});
+
+test("SaleService.createSaleFromOrderDelivery links existing order delivery to sale", async () => {
+  const { service, client, repository } = buildCreateSaleService([]);
+
+  const result = await service.createSaleFromOrderDelivery(
+    {
+      orderId: ids.order,
+      type: "CASH",
+      payments: [],
+    },
+    posContext
+  );
+
+  assert.equal(repository.invoiceOrderCalls.length, 1);
+  const invoiceCall = repository.invoiceOrderCalls[0] as {
+    tenantId: string;
+    userId: string;
+    branchId: string;
+    terminalId: string;
+    posSessionId: string;
+    orderId: string;
+    type: string;
+    payments: unknown[];
+  };
+  assert.equal(invoiceCall.tenantId, ids.tenant);
+  assert.equal(invoiceCall.userId, ids.user);
+  assert.equal(invoiceCall.branchId, ids.branch);
+  assert.equal(invoiceCall.terminalId, ids.terminal);
+  assert.equal(invoiceCall.posSessionId, ids.posSession);
+  assert.equal(invoiceCall.orderId, ids.order);
+  assert.equal(invoiceCall.type, "CASH");
+  assert.deepEqual(invoiceCall.payments, []);
+  const deliveryUpdate = client.queries.find((query) =>
+    query.text.includes("UPDATE public.deliveries")
+  );
+  assert.ok(deliveryUpdate);
+  assert.deepEqual(deliveryUpdate.params, [
+    ids.tenant,
+    ids.order,
+    ids.sale,
+    ids.user,
+  ]);
+  assert.equal(deliveryUpdate.text.includes("sale_id = $3"), true);
+  assert.equal(deliveryUpdate.text.includes("sale_id = $3::uuid"), true);
+  assert.equal(deliveryUpdate.text.includes("($3::uuid)::text"), true);
+  assert(
+    client.queries.some((query) => query.text.replace(/\s+/g, " ").trim() === "COMMIT")
+  );
+  assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
 });
 
 test("SaleService.createSale rejects CASH mismatch using backend lineTotal and skips repository", async () => {
