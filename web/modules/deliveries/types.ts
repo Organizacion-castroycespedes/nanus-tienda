@@ -1,4 +1,15 @@
 export const DELIVERY_STATUSES = [
+  "CREADO",
+  "EN_PREPARACION",
+  "DESPACHADO",
+  "ENTREGADO",
+  "NO_ENTREGADO",
+  "CANCELADO",
+] as const;
+
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+
+export const LEGACY_DELIVERY_STATUSES = [
   "DRAFT",
   "CREATED",
   "ASSIGNED",
@@ -8,7 +19,32 @@ export const DELIVERY_STATUSES = [
   "CANCELLED",
 ] as const;
 
-export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
+export type LegacyDeliveryStatus = (typeof LEGACY_DELIVERY_STATUSES)[number];
+
+export type DeliveryStatusValue = DeliveryStatus | LegacyDeliveryStatus;
+
+const legacyToOperationalStatus: Record<LegacyDeliveryStatus, DeliveryStatus> = {
+  DRAFT: "CREADO",
+  CREATED: "CREADO",
+  ASSIGNED: "EN_PREPARACION",
+  DISPATCHED: "DESPACHADO",
+  DELIVERED: "ENTREGADO",
+  NOT_DELIVERED: "NO_ENTREGADO",
+  CANCELLED: "CANCELADO",
+};
+
+export const normalizeDeliveryStatus = (
+  value: string
+): DeliveryStatus | null => {
+  const normalized = value.trim().toUpperCase();
+  if ((DELIVERY_STATUSES as readonly string[]).includes(normalized)) {
+    return normalized as DeliveryStatus;
+  }
+  if ((LEGACY_DELIVERY_STATUSES as readonly string[]).includes(normalized)) {
+    return legacyToOperationalStatus[normalized as LegacyDeliveryStatus];
+  }
+  return null;
+};
 
 export type DeliveryRecord = {
   id: string;
@@ -34,8 +70,10 @@ export type DeliveryRecord = {
   updated_by_user_id: string | null;
   created_at: string;
   updated_at: string;
+  dispatched_at: string | null;
   cancelled_at: string | null;
   delivered_at: string | null;
+  failed_at: string | null;
 };
 
 export type DeliveryFeeSource = "INVOICE_INCLUDED" | "NO_FEE";
@@ -83,7 +121,7 @@ export type CreateDeliveryPayload = {
 };
 
 export type AssignDeliveryPayload = {
-  assigned_courier_id: string;
+  assigned_courier_id?: string;
   notes?: string;
   metadata?: Record<string, unknown>;
 };
@@ -128,7 +166,7 @@ export type DeliveryPermissionAction =
   (typeof DELIVERY_PERMISSION_ACTIONS)[keyof typeof DELIVERY_PERMISSION_ACTIONS];
 
 export type DeliveryActionKey =
-  | "assign"
+  | "prepare"
   | "dispatch"
   | "mark-delivered"
   | "mark-not-delivered"

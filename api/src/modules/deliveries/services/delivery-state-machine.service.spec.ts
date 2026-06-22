@@ -8,39 +8,51 @@ test("DeliveryStateMachineService allows documented transitions", () => {
   const service = new DeliveryStateMachineService();
 
   assert.doesNotThrow(() =>
-    service.assertCanTransition("CREATED", "ASSIGNED", "ASSIGN")
+    service.assertCanTransition("CREADO", "EN_PREPARACION", "PREPARE")
   );
   assert.doesNotThrow(() =>
-    service.assertCanTransition("ASSIGNED", "DISPATCHED", "DISPATCH")
+    service.assertCanTransition("CREADO", "DESPACHADO", "DISPATCH")
   );
   assert.doesNotThrow(() =>
-    service.assertCanTransition("DISPATCHED", "DELIVERED", "MARK_DELIVERED")
+    service.assertCanTransition("EN_PREPARACION", "DESPACHADO", "DISPATCH")
+  );
+  assert.doesNotThrow(() =>
+    service.assertCanTransition("DESPACHADO", "ENTREGADO", "MARK_DELIVERED")
   );
   assert.doesNotThrow(() =>
     service.assertCanTransition(
-      "DISPATCHED",
-      "NOT_DELIVERED",
+      "DESPACHADO",
+      "NO_ENTREGADO",
       "MARK_NOT_DELIVERED"
     )
   );
   assert.doesNotThrow(() =>
-    service.assertCanTransition("CREATED", "CANCELLED", "CANCEL")
+    service.assertCanTransition("NO_ENTREGADO", "DESPACHADO", "DISPATCH", {
+      retryAllowed: true,
+    })
+  );
+  assert.doesNotThrow(() =>
+    service.assertCanTransition("CREADO", "CANCELADO", "CANCEL")
   );
 });
 
-test("DeliveryStateMachineService rejects invalid skips and final states", () => {
+test("DeliveryStateMachineService accepts legacy values and rejects invalid transitions", () => {
   const service = new DeliveryStateMachineService();
 
+  assert.doesNotThrow(() =>
+    service.assertCanTransition("CREATED", "EN_PREPARACION", "PREPARE")
+  );
+
   assert.throws(
-    () => service.assertCanTransition("CREATED", "DISPATCHED", "DISPATCH"),
+    () => service.assertCanTransition("EN_PREPARACION", "ENTREGADO", "MARK_DELIVERED"),
     BadRequestException
   );
   assert.throws(
-    () => service.assertCanTransition("ASSIGNED", "DELIVERED", "MARK_DELIVERED"),
+    () => service.assertCanTransition("NO_ENTREGADO", "DESPACHADO", "DISPATCH"),
     BadRequestException
   );
   assert.throws(
-    () => service.assertCanTransition("DELIVERED", "CANCELLED", "CANCEL"),
+    () => service.assertCanTransition("ENTREGADO", "CANCELADO", "CANCEL"),
     BadRequestException
   );
 });

@@ -8,11 +8,11 @@ import {
   Max,
   Min,
 } from "class-validator";
-import { DELIVERY_STATUSES } from "../deliveries.constants";
+import { DELIVERY_QUERY_STATUSES } from "../deliveries.constants";
 
 export class QueryDeliveriesDto {
   @IsOptional()
-  @IsIn(DELIVERY_STATUSES)
+  @IsIn(DELIVERY_QUERY_STATUSES)
   status?: string;
 
   @IsOptional()

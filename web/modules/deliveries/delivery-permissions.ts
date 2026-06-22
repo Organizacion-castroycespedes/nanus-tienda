@@ -7,7 +7,7 @@ import {
 } from "./types";
 
 const actionPermissionByKey: Record<DeliveryActionKey, string> = {
-  assign: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
+  prepare: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
   dispatch: DELIVERY_PERMISSION_ACTIONS.DISPATCH,
   "mark-delivered": DELIVERY_PERMISSION_ACTIONS.MARK_DELIVERED,
   "mark-not-delivered": DELIVERY_PERMISSION_ACTIONS.MARK_NOT_DELIVERED,
@@ -60,7 +60,7 @@ export const buildDeliveryActionPermissionMap = (
   permission: PermissionSummary | undefined,
   role: string
 ): DeliveryActionPermissionMap => ({
-  assign: canUseDeliveryAction(permission, actionPermissionByKey.assign, role),
+  prepare: canUseDeliveryAction(permission, actionPermissionByKey.prepare, role),
   dispatch: canUseDeliveryAction(permission, actionPermissionByKey.dispatch, role),
   "mark-delivered": canUseDeliveryAction(
     permission,

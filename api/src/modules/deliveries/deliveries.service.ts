@@ -8,7 +8,13 @@ import {
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../common/db/database.service";
-import { type DeliveryAction, type DeliveryStatus } from "./deliveries.constants";
+import {
+  getDeliveryStatusFilterValues,
+  normalizeDeliveryStatus,
+  toStoredDeliveryStatus,
+  type DeliveryAction,
+  type DeliveryStatus,
+} from "./deliveries.constants";
 import { AssignDeliveryDto } from "./dto/assign-delivery.dto";
 import { CancelDeliveryDto } from "./dto/cancel-delivery.dto";
 import { CreateDeliveryDto } from "./dto/create-delivery.dto";
@@ -53,8 +59,10 @@ type DeliveryRecord = {
   updated_by_user_id: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  dispatched_at: Date | string | null;
   cancelled_at: Date | string | null;
   delivered_at: Date | string | null;
+  failed_at: Date | string | null;
   total_count?: string | number;
 };
 
@@ -171,7 +179,7 @@ export class DeliveriesService {
       order_id: record.order_id,
       sale_id: record.sale_id,
       delivery_number: record.delivery_number,
-      status: record.status,
+      status: normalizeDeliveryStatus(record.status) ?? record.status,
       customer_name: record.customer_name,
       customer_phone: record.customer_phone,
       delivery_address: record.delivery_address,
@@ -187,8 +195,10 @@ export class DeliveriesService {
       updated_by_user_id: record.updated_by_user_id,
       created_at: record.created_at,
       updated_at: record.updated_at,
+      dispatched_at: record.dispatched_at,
       cancelled_at: record.cancelled_at,
       delivered_at: record.delivered_at,
+      failed_at: record.failed_at,
     };
   }
 
@@ -651,8 +661,12 @@ export class DeliveriesService {
     }
 
     if (filters.status) {
-      params.push(filters.status);
-      conditions.push(`status = $${params.length}`);
+      const statusValues = getDeliveryStatusFilterValues(filters.status);
+      if (statusValues.length === 0) {
+        throw new BadRequestException("Estado de domicilio invalido");
+      }
+      params.push(statusValues);
+      conditions.push(`status = ANY($${params.length}::text[])`);
     }
 
     if (filters.customer_id) {
@@ -711,8 +725,10 @@ export class DeliveriesService {
           updated_by_user_id,
           created_at,
           updated_at,
+          dispatched_at,
           cancelled_at,
           delivered_at,
+          failed_at,
           COUNT(*) OVER() AS total_count
         FROM public.deliveries
         WHERE ${conditions.join(" AND ")}
@@ -1109,14 +1125,19 @@ export class DeliveriesService {
       await client.query("BEGIN");
       const current = await this.findByIdForUpdate(client, id, tenantId);
       this.assertDeliveryBranchScope(current, actor);
+      const retryAllowed =
+        normalizeDeliveryStatus(current.status) !== "NO_ENTREGADO" ||
+        current.metadata?.retry_allowed !== false;
       this.stateMachine.assertCanTransition(
         current.status,
         options.nextStatus,
-        options.action
+        options.action,
+        { retryAllowed }
       );
       options.beforeUpdate?.(current);
 
-      const params: unknown[] = [options.nextStatus, actor.userId ?? null];
+      const storedNextStatus = toStoredDeliveryStatus(options.nextStatus);
+      const params: unknown[] = [storedNextStatus, actor.userId ?? null];
       const assignments = [
         "status = $1",
         "updated_by_user_id = $2",
@@ -1160,7 +1181,7 @@ export class DeliveriesService {
         client,
         current.id,
         current.status,
-        options.nextStatus,
+        storedNextStatus,
         actor.userId ?? null,
         reason,
         this.buildHistoryMetadata(
@@ -1183,35 +1204,44 @@ export class DeliveriesService {
 
   async assign(id: string, payload: AssignDeliveryDto, actor: DeliveryActor) {
     const tenantId = this.resolveTenantId(actor);
-    await this.assertUserScope(tenantId, payload.assigned_courier_id);
+    if (payload.assigned_courier_id) {
+      await this.assertUserScope(tenantId, payload.assigned_courier_id);
+    }
 
     return this.transitionDelivery(id, actor, {
-      action: "ASSIGN",
-      nextStatus: "ASSIGNED",
+      action: "PREPARE",
+      nextStatus: "EN_PREPARACION",
       notes: payload.notes,
       metadata: payload.metadata,
-      extraHistoryMetadata: {
-        assigned_courier_id: payload.assigned_courier_id,
-      },
+      extraHistoryMetadata: payload.assigned_courier_id
+        ? {
+            assigned_courier_id: payload.assigned_courier_id,
+          }
+        : undefined,
       buildAssignments: (params, assignments) => {
+        if (!payload.assigned_courier_id) {
+          return;
+        }
         params.push(payload.assigned_courier_id);
         assignments.push(`assigned_courier_id = $${params.length}`);
       },
     });
   }
 
+  async prepare(id: string, payload: AssignDeliveryDto, actor: DeliveryActor) {
+    return this.assign(id, payload, actor);
+  }
+
   async dispatch(id: string, payload: DispatchDeliveryDto, actor: DeliveryActor) {
     return this.transitionDelivery(id, actor, {
       action: "DISPATCH",
-      nextStatus: "DISPATCHED",
+      nextStatus: "DESPACHADO",
       notes: payload.notes,
       metadata: payload.metadata,
-      beforeUpdate: (delivery) => {
-        if (!delivery.assigned_courier_id) {
-          throw new BadRequestException(
-            "No se puede despachar sin domiciliario asignado"
-          );
-        }
+      buildAssignments: (params, assignments) => {
+        const dispatchedAt = new Date();
+        params.push(dispatchedAt);
+        assignments.push(`dispatched_at = $${params.length}`);
       },
     });
   }
@@ -1230,7 +1260,7 @@ export class DeliveriesService {
 
     return this.transitionDelivery(id, actor, {
       action: "MARK_DELIVERED",
-      nextStatus: "DELIVERED",
+      nextStatus: "ENTREGADO",
       notes: payload.notes,
       metadata: payload.metadata,
       extraHistoryMetadata: {
@@ -1256,10 +1286,15 @@ export class DeliveriesService {
 
     return this.transitionDelivery(id, actor, {
       action: "MARK_NOT_DELIVERED",
-      nextStatus: "NOT_DELIVERED",
+      nextStatus: "NO_ENTREGADO",
       reason,
       notes: payload.notes,
       metadata: payload.metadata,
+      buildAssignments: (params, assignments) => {
+        const failedAt = new Date();
+        params.push(failedAt);
+        assignments.push(`failed_at = $${params.length}`);
+      },
     });
   }
 
@@ -1271,7 +1306,7 @@ export class DeliveriesService {
 
     return this.transitionDelivery(id, actor, {
       action: "CANCEL",
-      nextStatus: "CANCELLED",
+      nextStatus: "CANCELADO",
       reason,
       notes: payload.notes,
       metadata: payload.metadata,

@@ -144,6 +144,20 @@ export class DeliveriesController {
     return this.deliveriesService.assign(id, payload, this.buildActor(request));
   }
 
+  @Post(":id/prepare")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
+  })
+  prepare(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() payload: AssignDeliveryDto,
+    @Req() request: DeliveriesRequest
+  ) {
+    return this.deliveriesService.prepare(id, payload, this.buildActor(request));
+  }
+
   @Post(":id/dispatch")
   @RequirePermission({
     menuKey: MENU_KEYS.DELIVERIES,

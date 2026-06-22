@@ -1,4 +1,4 @@
-import { DELIVERY_STATUSES, type DeliveryStatus } from "./types";
+import { normalizeDeliveryStatus, type DeliveryStatus } from "./types";
 
 export type DeliveryFilters = {
   query: string;
@@ -47,10 +47,7 @@ const readSearchParam = (
 };
 
 const normalizeStatus = (value: string): "" | DeliveryStatus => {
-  const candidate = value.toUpperCase();
-  return DELIVERY_STATUSES.includes(candidate as DeliveryStatus)
-    ? (candidate as DeliveryStatus)
-    : "";
+  return normalizeDeliveryStatus(value) ?? "";
 };
 
 export const buildDeliveryFiltersFromSearchParams = (

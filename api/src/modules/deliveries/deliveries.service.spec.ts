@@ -47,8 +47,10 @@ const buildDelivery = (overrides: Record<string, unknown> = {}) => ({
   updated_by_user_id: actorUserId,
   created_at: "2026-06-20T00:00:00.000Z",
   updated_at: "2026-06-20T00:00:00.000Z",
+  dispatched_at: null,
   cancelled_at: null,
   delivered_at: null,
+  failed_at: null,
   ...overrides,
 });
 
@@ -109,11 +111,25 @@ const buildHarness = (initialDelivery: Record<string, unknown>) => {
           status: nextStatus,
           updated_by_user_id: params[1],
           assigned_courier_id:
-            nextStatus === "ASSIGNED" ? params[2] : initialDelivery.assigned_courier_id,
+            queryText.includes("assigned_courier_id =")
+              ? params[2]
+              : initialDelivery.assigned_courier_id,
+          dispatched_at:
+            queryText.includes("dispatched_at =")
+              ? params[2]
+              : initialDelivery.dispatched_at,
           delivered_at:
-            nextStatus === "DELIVERED" ? params[2] : initialDelivery.delivered_at,
+            queryText.includes("delivered_at =")
+              ? params[2]
+              : initialDelivery.delivered_at,
           cancelled_at:
-            nextStatus === "CANCELLED" ? params[2] : initialDelivery.cancelled_at,
+            queryText.includes("cancelled_at =")
+              ? params[2]
+              : initialDelivery.cancelled_at,
+          failed_at:
+            queryText.includes("failed_at =")
+              ? params[2]
+              : initialDelivery.failed_at,
         };
         return { rows: [updated] };
       }
@@ -451,17 +467,17 @@ const buildOrderLookupHarness = (options: {
   };
 };
 
-test("DeliveriesService.assign updates status and writes history transactionally", async () => {
+test("DeliveriesService.assign prepares delivery and writes history transactionally", async () => {
   const harness = buildHarness(buildDelivery());
 
   const result = await harness.service.assign(
     deliveryId,
-    { assigned_courier_id: courierId },
+    {},
     actor
   );
 
-  assert.equal(result.status, "ASSIGNED");
-  assert.equal(result.assigned_courier_id, courierId);
+  assert.equal(result.status, "EN_PREPARACION");
+  assert.equal(result.assigned_courier_id, null);
   assert.equal(harness.committed, true);
   assert.equal(harness.rolledBack, false);
   assert.equal(harness.released, true);
@@ -476,33 +492,45 @@ test("DeliveriesService.assign updates status and writes history transactionally
 });
 
 test("DeliveriesService dispatch delivered not-delivered and cancel valid flows", async () => {
+  const directDispatch = buildHarness(buildDelivery());
+  const directDispatchResult = await directDispatch.service.dispatch(
+    deliveryId,
+    {},
+    actor
+  );
+  assert.equal(directDispatchResult.status, "DESPACHADO");
+  assert.ok(directDispatchResult.dispatched_at);
+  assert.equal(directDispatch.historyParams[0][2], "DISPATCHED");
+
   const assigned = buildHarness(
-    buildDelivery({ status: "ASSIGNED", assigned_courier_id: courierId })
+    buildDelivery({ status: "ASSIGNED" })
   );
   const dispatched = await assigned.service.dispatch(deliveryId, {}, actor);
-  assert.equal(dispatched.status, "DISPATCHED");
+  assert.equal(dispatched.status, "DESPACHADO");
+  assert.ok(dispatched.dispatched_at);
   assert.equal(assigned.historyParams[0][2], "DISPATCHED");
 
   const delivered = buildHarness(
-    buildDelivery({ status: "DISPATCHED", assigned_courier_id: courierId })
+    buildDelivery({ status: "DISPATCHED" })
   );
   const deliveredResult = await delivered.service.markDelivered(
     deliveryId,
     { received_by: "Cliente prueba" },
     actor
   );
-  assert.equal(deliveredResult.status, "DELIVERED");
+  assert.equal(deliveredResult.status, "ENTREGADO");
   assert.equal(delivered.historyParams[0][2], "DELIVERED");
 
   const notDelivered = buildHarness(
-    buildDelivery({ status: "DISPATCHED", assigned_courier_id: courierId })
+    buildDelivery({ status: "DISPATCHED" })
   );
   const notDeliveredResult = await notDelivered.service.markNotDelivered(
     deliveryId,
     { reason: "No estaba en casa" },
     actor
   );
-  assert.equal(notDeliveredResult.status, "NOT_DELIVERED");
+  assert.equal(notDeliveredResult.status, "NO_ENTREGADO");
+  assert.ok(notDeliveredResult.failed_at);
   assert.equal(notDelivered.historyParams[0][4], "No estaba en casa");
 
   const cancel = buildHarness(buildDelivery());
@@ -511,22 +539,28 @@ test("DeliveriesService dispatch delivered not-delivered and cancel valid flows"
     { reason: "Cliente cancela" },
     actor
   );
-  assert.equal(cancelResult.status, "CANCELLED");
+  assert.equal(cancelResult.status, "CANCELADO");
   assert.equal(cancel.historyParams[0][4], "Cliente cancela");
+
+  const retry = buildHarness(buildDelivery({ status: "NOT_DELIVERED" }));
+  const retryResult = await retry.service.dispatch(deliveryId, {}, actor);
+  assert.equal(retryResult.status, "DESPACHADO");
 });
 
 test("DeliveriesService rejects invalid state changes and rolls back", async () => {
-  const dispatchWithoutCourier = buildHarness(buildDelivery({ status: "ASSIGNED" }));
+  const retryBlocked = buildHarness(
+    buildDelivery({ status: "NOT_DELIVERED", metadata: { retry_allowed: false } })
+  );
   await assert.rejects(
-    () => dispatchWithoutCourier.service.dispatch(deliveryId, {}, actor),
+    () => retryBlocked.service.dispatch(deliveryId, {}, actor),
     BadRequestException
   );
-  assert.equal(dispatchWithoutCourier.committed, false);
-  assert.equal(dispatchWithoutCourier.rolledBack, true);
-  assert.equal(dispatchWithoutCourier.historyParams.length, 0);
+  assert.equal(retryBlocked.committed, false);
+  assert.equal(retryBlocked.rolledBack, true);
+  assert.equal(retryBlocked.historyParams.length, 0);
 
   const deliveredWithoutDispatch = buildHarness(
-    buildDelivery({ status: "ASSIGNED", assigned_courier_id: courierId })
+    buildDelivery({ status: "ASSIGNED" })
   );
   await assert.rejects(
     () => deliveredWithoutDispatch.service.markDelivered(deliveryId, {}, actor),
@@ -536,7 +570,7 @@ test("DeliveriesService rejects invalid state changes and rolls back", async () 
   assert.equal(deliveredWithoutDispatch.historyParams.length, 0);
 
   const cancelDelivered = buildHarness(
-    buildDelivery({ status: "DELIVERED", assigned_courier_id: courierId })
+    buildDelivery({ status: "DELIVERED" })
   );
   await assert.rejects(
     () => cancelDelivered.service.cancel(deliveryId, { reason: "No" }, actor),
@@ -546,7 +580,7 @@ test("DeliveriesService rejects invalid state changes and rolls back", async () 
   assert.equal(cancelDelivered.historyParams.length, 0);
 });
 
-test("DeliveriesService.createFromOrder creates CREATED delivery with order snapshot", async () => {
+test("DeliveriesService.createFromOrder creates CREADO delivery with order snapshot", async () => {
   const harness = buildOrderCreateHarness();
 
   const result = await harness.service.createFromOrder(
@@ -555,7 +589,7 @@ test("DeliveriesService.createFromOrder creates CREATED delivery with order snap
     actor
   );
 
-  assert.equal(result.status, "CREATED");
+  assert.equal(result.status, "CREADO");
   assert.equal(result.order_id, orderId);
   assert.equal(result.customer_id, customerId);
   assert.equal(result.customer_name, "Cliente pedido");
@@ -642,7 +676,7 @@ test("DeliveriesService order integration does not touch invoice or cash tables"
   assert.equal(joinedQueries.includes("invoice"), false);
 });
 
-test("DeliveriesService.createFromSale creates CREATED delivery with sale snapshot", async () => {
+test("DeliveriesService.createFromSale creates CREADO delivery with sale snapshot", async () => {
   const harness = buildSaleCreateHarness();
 
   const result = await harness.service.createFromSale(
@@ -651,7 +685,7 @@ test("DeliveriesService.createFromSale creates CREATED delivery with sale snapsh
     actor
   );
 
-  assert.equal(result.status, "CREATED");
+  assert.equal(result.status, "CREADO");
   assert.equal(result.sale_id, "00000000-0000-0000-0000-000000000008");
   assert.equal(result.order_id, orderId);
   assert.equal(result.customer_id, customerId);
@@ -826,4 +860,42 @@ test("DeliveriesService.list filters by sale_id", async () => {
   assert.equal(result.data.length, 1);
   assert.equal(result.data[0].sale_id, "00000000-0000-0000-0000-000000000008");
   assert.equal(queries.join("\n").includes("sale_id ="), true);
+});
+
+test("DeliveriesService.list maps operational status filter to compatible DB values", async () => {
+  const db = {
+    query: async (queryText: string, params: unknown[] = []) => {
+      if (queryText.includes("FROM public.deliveries")) {
+        assert.deepEqual(params[1], ["CREADO", "CREATED"]);
+        assert.equal(queryText.includes("status = ANY"), true);
+        return {
+          rows: [
+            buildDelivery({
+              status: "CREATED",
+              total_count: "1",
+            }),
+          ],
+        };
+      }
+
+      throw new Error(`Unexpected db query: ${queryText}`);
+    },
+  };
+
+  const service = new DeliveriesService(
+    db as never,
+    {} as never,
+    new DeliveryStateMachineService()
+  );
+
+  const result = await service.list(
+    {
+      status: "CREADO",
+      page: 1,
+      limit: 25,
+    },
+    actor
+  );
+
+  assert.equal(result.data[0].status, "CREADO");
 });

@@ -4,7 +4,12 @@ import {
   deliveryStatusLabels,
   getDeliveryFeeSource,
 } from "../delivery-helpers";
-import type { DeliveryRecord } from "../types";
+import type {
+  DeliveryActionKey,
+  DeliveryActionPermissionMap,
+  DeliveryRecord,
+} from "../types";
+import { DeliveryActions } from "./DeliveryActions";
 import { DeliveryStatusBadge } from "./DeliveryStatusBadge";
 
 const formatCurrency = (value: number) =>
@@ -48,11 +53,17 @@ const DetailItem = ({
 export const DeliveryDetailPanel = ({
   delivery,
   loading,
+  permissions,
+  actionDisabled,
   onClose,
+  onAction,
 }: {
   delivery: DeliveryRecord | null;
   loading: boolean;
+  permissions?: DeliveryActionPermissionMap;
+  actionDisabled?: boolean;
   onClose: () => void;
+  onAction?: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
 }) => (
   <Modal
     title={
@@ -78,9 +89,23 @@ export const DeliveryDetailPanel = ({
         <div className="flex flex-wrap items-center gap-3">
           <DeliveryStatusBadge status={delivery.status} />
           <span className="text-sm text-slate-500">
-            Estado tecnico: {deliveryStatusLabels[delivery.status] ?? delivery.status}
+            Estado: {deliveryStatusLabels[delivery.status] ?? delivery.status}
           </span>
         </div>
+
+        {permissions && onAction ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Acciones
+            </p>
+            <DeliveryActions
+              delivery={delivery}
+              permissions={permissions}
+              disabled={Boolean(actionDisabled)}
+              onAction={onAction}
+            />
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <DetailItem label="ID" value={delivery.id} />
@@ -88,7 +113,7 @@ export const DeliveryDetailPanel = ({
           <DetailItem label="Sucursal" value={delivery.branch_id} />
           <DetailItem label="Contacto" value={delivery.customer_name} />
           <DetailItem label="Telefono" value={delivery.customer_phone} />
-          <DetailItem label="Cliente ID" value={delivery.customer_id} />
+          <DetailItem label="Cliente" value={delivery.customer_id} />
           <DetailItem label="Direccion" value={delivery.delivery_address} />
           <DetailItem label="Referencia" value={delivery.delivery_reference} />
           <DetailItem label="Pedido" value={delivery.order_id} />
@@ -101,7 +126,9 @@ export const DeliveryDetailPanel = ({
           <DetailItem label="Fuente financiera" value={getDeliveryFeeSource(delivery)} />
           <DetailItem label="Creado" value={formatDateTime(delivery.created_at)} />
           <DetailItem label="Actualizado" value={formatDateTime(delivery.updated_at)} />
+          <DetailItem label="Despachado" value={formatDateTime(delivery.dispatched_at)} />
           <DetailItem label="Entregado" value={formatDateTime(delivery.delivered_at)} />
+          <DetailItem label="No entregado" value={formatDateTime(delivery.failed_at)} />
           <DetailItem label="Cancelado" value={formatDateTime(delivery.cancelled_at)} />
           <DetailItem label="Creado por" value={delivery.created_by_user_id} />
           <DetailItem label="Actualizado por" value={delivery.updated_by_user_id} />

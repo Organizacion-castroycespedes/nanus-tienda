@@ -10,8 +10,9 @@ const trimString = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
 
 export class AssignDeliveryDto {
+  @IsOptional()
   @IsUUID()
-  assigned_courier_id!: string;
+  assigned_courier_id?: string;
 
   @IsOptional()
   @Transform(trimString)

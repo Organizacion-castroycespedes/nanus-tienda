@@ -52,6 +52,11 @@ test("DeliveriesController: maps state endpoints to delivery permissions", () =>
     level: "WRITE",
     action: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
   });
+  assert.deepEqual(getPermission("prepare"), {
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.ASSIGN,
+  });
   assert.deepEqual(getPermission("dispatch"), {
     menuKey: MENU_KEYS.DELIVERIES,
     level: "WRITE",

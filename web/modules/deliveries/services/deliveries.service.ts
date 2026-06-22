@@ -52,6 +52,15 @@ export const assignDelivery = (
     body: JSON.stringify(payload),
   });
 
+export const prepareDelivery = (
+  deliveryId: string,
+  payload: AssignDeliveryPayload = {}
+) =>
+  apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/prepare`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
 export const dispatchDelivery = (
   deliveryId: string,
   payload: DispatchDeliveryPayload = {}
