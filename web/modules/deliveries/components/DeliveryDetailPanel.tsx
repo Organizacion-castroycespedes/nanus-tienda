@@ -74,6 +74,7 @@ export const DeliveryDetailPanel = ({
     description="Consulta operativa. No registra caja ni movimientos financieros."
     onClose={onClose}
     size="xl"
+    className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
     footer={
       <Button variant="outline" onClick={onClose}>
         Cerrar
@@ -81,11 +82,11 @@ export const DeliveryDetailPanel = ({
     }
   >
     {loading ? (
-      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)]">
         Cargando detalle...
       </div>
     ) : delivery ? (
-      <div className="space-y-5">
+      <div className="max-h-[calc(100dvh-10rem)] min-w-0 space-y-5 overflow-y-auto overflow-x-hidden pr-1 sm:max-h-[calc(100dvh-12rem)]">
         <div className="flex flex-wrap items-center gap-3">
           <DeliveryStatusBadge status={delivery.status} />
           <span className="text-sm text-slate-500">
@@ -94,7 +95,7 @@ export const DeliveryDetailPanel = ({
         </div>
 
         {permissions && onAction ? (
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="sticky top-0 z-10 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
               Acciones
             </p>
@@ -150,7 +151,7 @@ export const DeliveryDetailPanel = ({
         </div>
       </div>
     ) : (
-      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)]">
         No se encontro el domicilio.
       </div>
     )}
