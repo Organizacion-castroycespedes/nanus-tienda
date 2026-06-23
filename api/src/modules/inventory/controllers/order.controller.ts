@@ -16,6 +16,7 @@ import {
 import type { Request } from "express";
 import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
@@ -129,6 +130,7 @@ export class OrderController {
   }
 
   @Post()
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   create(@Body() body: CreateOrderBody, @Req() request: AuthRequest) {
@@ -215,6 +217,7 @@ export class OrderController {
   }
 
   @Put(":id")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   update(
@@ -238,6 +241,7 @@ export class OrderController {
   }
 
   @Post(":id/deliver")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   deliver(
@@ -258,6 +262,7 @@ export class OrderController {
   }
 
   @Post(":id/confirm")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   confirm(@Param("id") id: string, @Req() request: AuthRequest) {
@@ -270,6 +275,7 @@ export class OrderController {
   }
 
   @Post(":id/invoice")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePosSession()
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
@@ -291,6 +297,7 @@ export class OrderController {
   }
 
   @Post(":id/cancel")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {

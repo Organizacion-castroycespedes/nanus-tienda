@@ -16,6 +16,7 @@ import {
 import type { Request } from "express";
 import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
@@ -120,6 +121,7 @@ export class SaleController {
   }
 
   @Post()
+  @RequireOpenCashSession()
   @RequirePosSession()
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
   create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
@@ -181,6 +183,7 @@ export class SaleController {
   }
 
   @Post(":id/cancel")
+  @RequireOpenCashSession()
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.saleService.cancelSale(id, this.buildActor(request));

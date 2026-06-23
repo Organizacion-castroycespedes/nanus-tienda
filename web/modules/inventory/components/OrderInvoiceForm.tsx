@@ -353,22 +353,14 @@ export const OrderInvoiceForm = ({
       return "La referencia es obligatoria para los metodos que la requieren.";
     }
 
-    if (
-      parsedPayments.some(
-        (payment) =>
-          payment.numericAmount > 0 &&
-          payment.method?.tipo === "CASH" &&
-          !cashSession?.id
-      )
-    ) {
-      return "Necesitas una caja abierta para registrar pagos en efectivo.";
+    if (!cashSession?.id) {
+      return "Debes tener una caja abierta para facturar el pedido.";
     }
 
     if (
       parsedPayments.some(
         (payment) =>
           payment.numericAmount > 0 &&
-          payment.method?.tipo === "CASH" &&
           cashSession?.id &&
           cashSession.branchId !== order?.branchId
       )

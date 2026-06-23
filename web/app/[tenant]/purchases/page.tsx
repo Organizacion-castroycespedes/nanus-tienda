@@ -21,6 +21,8 @@ import {
   DocumentPaymentForm,
   type DocumentPaymentSuccessContext,
 } from "../../../modules/finance/components/DocumentPaymentForm";
+import { getCurrentCashSession } from "../../../modules/finance/services/finance.service";
+import type { CashSession } from "../../../modules/finance/types";
 import { PurchaseActionHeader } from "../../../modules/inventory/components/PurchaseActionHeader";
 import { PurchaseForm } from "../../../modules/inventory/components/PurchaseForm";
 import {
@@ -202,6 +204,8 @@ const PurchasesPage = () => {
   const [cancellationError, setCancellationError] = useState<string | null>(null);
   const [liquidationReason, setLiquidationReason] = useState("");
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
+  const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
+  const [cashSessionChecked, setCashSessionChecked] = useState(false);
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
@@ -234,6 +238,7 @@ const PurchasesPage = () => {
   const canCancel = canManagePurchases && hasPermission("inventory.cancel");
   const canSettlePartial =
     canManagePurchases && hasPermission("inventory.settle_partial");
+  const hasOpenCashSession = Boolean(currentCashSession);
 
   const showApiConfirmError = useCallback(
     async (error: unknown, fallbackMessage: string) => {
@@ -271,21 +276,39 @@ const PurchasesPage = () => {
 
   const openPurchasePanel = useCallback(
     (action: PurchasePanelAction, purchaseId: string) => {
+      if (
+        action !== "detail" &&
+        action !== "ticket" &&
+        !hasOpenCashSession
+      ) {
+        notice.showWarning(
+          "Caja requerida",
+          "Debes tener una caja abierta para realizar esta operacion."
+        );
+        return;
+      }
       const params = new URLSearchParams(searchParams.toString());
       params.set("purchaseId", purchaseId);
       params.set("action", action);
       router.push(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [pathname, router, searchParams]
+    [hasOpenCashSession, notice, pathname, router, searchParams]
   );
 
   const openCreateForm = useCallback(() => {
+    if (!hasOpenCashSession) {
+      notice.showWarning(
+        "Caja requerida",
+        "Debes tener una caja abierta para realizar esta operacion."
+      );
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("purchaseId");
     params.set("action", "create");
     const nextQuery = params.toString();
     router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+  }, [hasOpenCashSession, notice, pathname, router, searchParams]);
 
   const handleBackToList = useCallback(() => {
     setCreateHasUnsavedChanges(false);
@@ -364,6 +387,52 @@ const PurchasesPage = () => {
     setPage(getPageFromQuery(params));
     setPageSize(getPageSizeFromQuery(params));
   }, [filterQuerySignature]);
+
+  useEffect(() => {
+    let active = true;
+    setCashSessionChecked(false);
+    void getCurrentCashSession()
+      .then((session) => {
+        if (active) {
+          setCurrentCashSession(session);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCurrentCashSession(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCashSessionChecked(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authUser?.tenantId]);
+
+  useEffect(() => {
+    if (!cashSessionChecked || hasOpenCashSession || !activeViewMode) {
+      return;
+    }
+    if (activeViewMode === "detail" || activeViewMode === "ticket") {
+      return;
+    }
+
+    notice.showWarning(
+      "Caja requerida",
+      "Debes tener una caja abierta para realizar esta operacion."
+    );
+    handleBackToList();
+  }, [
+    activeViewMode,
+    cashSessionChecked,
+    handleBackToList,
+    hasOpenCashSession,
+    notice,
+  ]);
 
   useEffect(() => {
     if (!activePurchaseId || !activeAction) {
@@ -1085,7 +1154,10 @@ const PurchasesPage = () => {
                 Actualizar
               </Button>
               {canCreate ? (
-                <Button onClick={openCreateForm}>
+                <Button
+                  onClick={openCreateForm}
+                  disabled={cashSessionChecked && !hasOpenCashSession}
+                >
                   <Plus className="h-4 w-4" />
                   Crear compra
                 </Button>
@@ -1094,6 +1166,13 @@ const PurchasesPage = () => {
           ) : null}
         </div>
       </section>
+
+      {cashSessionChecked && !hasOpenCashSession ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
+          Debes tener una caja abierta para crear, recibir, pagar, liquidar o
+          cancelar compras. La consulta sigue disponible.
+        </section>
+      ) : null}
 
       {isActionMode && actionHeaderCopy ? (
         <PurchaseActionHeader
@@ -1348,6 +1427,7 @@ const PurchasesPage = () => {
                             <Button
                               variant="ghost"
                               onClick={() => openPurchasePanel("receive", purchase.id)}
+                              disabled={!hasOpenCashSession}
                             >
                               <PackageCheck className="h-4 w-4" />
                               Recibir
@@ -1360,6 +1440,7 @@ const PurchasesPage = () => {
                             <Button
                               variant="ghost"
                               onClick={() => openPurchasePanel("pay", purchase.id)}
+                              disabled={!hasOpenCashSession}
                             >
                               Pagar
                             </Button>
@@ -1369,6 +1450,7 @@ const PurchasesPage = () => {
                               variant="ghost"
                               size="sm"
                               onClick={() => openPurchasePanel("settle-partial", purchase.id)}
+                              disabled={!hasOpenCashSession}
                             >
                               Liquidar
                             </Button>
@@ -1378,6 +1460,7 @@ const PurchasesPage = () => {
                               variant="ghost"
                               size="sm"
                               onClick={() => openPurchasePanel("cancel", purchase.id)}
+                              disabled={!hasOpenCashSession}
                             >
                               <XCircle className="h-4 w-4" />
                               Cancelar compra

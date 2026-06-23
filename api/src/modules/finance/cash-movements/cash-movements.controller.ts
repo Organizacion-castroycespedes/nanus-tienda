@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import { Roles } from "../../../common/decorators/roles.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
 import type { FinanceAuthRequest } from "../common/finance.types";
@@ -40,6 +41,7 @@ export class CashMovementsController {
   }
 
   @Post()
+  @RequireOpenCashSession()
   create(@Body() payload: CreateCashMovementDto, @Req() request: Request) {
     return this.cashMovementsService.create(payload, this.buildActor(request));
   }

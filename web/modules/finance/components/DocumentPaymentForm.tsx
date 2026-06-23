@@ -243,17 +243,12 @@ export const DocumentPaymentForm = ({
     ) {
       return "Los metodos que exigen referencia deben llevar numero de referencia.";
     }
-    if (
-      parsedPayments.some(
-        (payment) => payment.method?.tipo === "CASH" && !cashSession?.id
-      )
-    ) {
-      return "Necesitas una caja abierta para registrar pagos en efectivo.";
+    if (!cashSession?.id) {
+      return "Debes tener una caja abierta para registrar pagos.";
     }
     if (
       parsedPayments.some(
         (payment) =>
-          payment.method?.tipo === "CASH" &&
           cashSession?.id &&
           cashSession.branchId !== branchId
       )
