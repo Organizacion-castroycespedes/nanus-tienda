@@ -90,6 +90,7 @@ type OrderDeliverySourceRecord = {
   customer_address: string | null;
   branch_id: string | null;
   cash_session_id: string | null;
+  generated_sale_id: string | null;
 };
 
 type SaleDeliverySourceRecord = {
@@ -487,7 +488,8 @@ export class DeliveriesService {
           c.name AS customer_name,
           c.phone AS customer_phone,
           c.address AS customer_address,
-          order_context.branch_id
+          order_context.branch_id,
+          sale_context.generated_sale_id
         FROM public.orders o
         LEFT JOIN public.customers c
           ON c.id = o.customer_id
@@ -502,6 +504,15 @@ export class DeliveriesService {
           ORDER BY ae.created_at DESC, ae.id DESC
           LIMIT 1
         ) order_context ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT s.id AS generated_sale_id
+          FROM public.sales s
+          WHERE s.tenant_id = o.tenant_id
+            AND s.order_id = o.id
+            AND s.status <> 'CANCELLED'
+          ORDER BY s.created_at DESC, s.id DESC
+          LIMIT 1
+        ) sale_context ON TRUE
         WHERE o.id = $1
           AND o.tenant_id = $2
         LIMIT 1
@@ -732,7 +743,22 @@ export class DeliveriesService {
         );
       }
 
-      if (existing.cash_session_id === cashContext.cashSessionId) {
+      if (
+        existing.sale_id &&
+        order.generated_sale_id &&
+        existing.sale_id !== order.generated_sale_id
+      ) {
+        throw new ForbiddenException(
+          "El domicilio pertenece a otra venta o factura"
+        );
+      }
+
+      const needsSaleCompletion =
+        !existing.sale_id && Boolean(order.generated_sale_id);
+      if (
+        existing.cash_session_id === cashContext.cashSessionId &&
+        !needsSaleCompletion
+      ) {
         await client.query("COMMIT");
         return this.mapRecord(existing);
       }
@@ -752,7 +778,8 @@ export class DeliveriesService {
             cash_impact_recorded_at = $7,
             updated_by_user_id = $8,
             updated_at = now(),
-            metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb
+            metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb,
+            sale_id = COALESCE(sale_id, $10::uuid)
           WHERE id = $1
             AND tenant_id = $2
           RETURNING *
@@ -767,6 +794,7 @@ export class DeliveriesService {
           cashContext.recordedAt,
           actor.userId ?? null,
           JSON.stringify(updateMetadata),
+          order.generated_sale_id ?? null,
         ]
       );
 
@@ -1573,6 +1601,7 @@ ${deliverySelect.join}
         branch_id: branchId,
         customer_id: order.customer_id ?? undefined,
         order_id: order.id,
+        sale_id: order.generated_sale_id ?? undefined,
         customer_name:
           this.normalizeNullableText(payload.customer_name) ??
           this.normalizeNullableText(order.customer_name) ??
@@ -1597,6 +1626,7 @@ ${deliverySelect.join}
           ...metadata,
           source: "order",
           source_order_id: order.id,
+          source_sale_id: order.generated_sale_id ?? undefined,
           source_order_without_cash_session: !order.cash_session_id,
         },
       },

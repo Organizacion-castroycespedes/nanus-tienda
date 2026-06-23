@@ -64,7 +64,11 @@ type OrderDeliveryRelation = {
   id: string;
   tenantId: string;
   label: string;
+  customerId?: string | null;
   customerName?: string | null;
+  branchId?: string | null;
+  generatedSaleId?: string | null;
+  total?: number | null;
 };
 
 const defaultFilters: OrderFilters = {
@@ -415,7 +419,11 @@ const OrdersPage = () => {
       id: order.id,
       tenantId: order.tenantId ?? tenantSlug,
       label: `Pedido ${order.id.slice(0, 8)}`,
+      customerId: order.customerId,
       customerName: order.customerName,
+      branchId: order.branchId,
+      generatedSaleId: order.generatedSaleId,
+      total: order.total,
     });
   };
 
@@ -732,15 +740,20 @@ const OrdersPage = () => {
       {deliveryRelation ? (
         <Modal
           title="Domicilio"
-          description="Relacion visual del pedido con Domicilios. No toca caja, POS ni facturacion."
+          description="Relacion operativa del pedido con Domicilios. No modifica POS ni facturacion."
           onClose={() => setDeliveryRelation(null)}
-          size="lg"
+          size="xl"
+          className="max-h-[calc(100dvh-1rem)] overflow-y-auto overflow-x-hidden sm:max-h-[calc(100dvh-3rem)]"
         >
           <DeliveryRelationCard
             sourceType="order"
             sourceId={deliveryRelation.id}
             tenantId={deliveryRelation.tenantId}
             sourceLabel={deliveryRelation.label}
+            sourceBranchId={deliveryRelation.branchId}
+            sourceCustomerId={deliveryRelation.customerId}
+            sourceSaleId={deliveryRelation.generatedSaleId}
+            sourceTotal={deliveryRelation.total}
             defaultCustomerName={deliveryRelation.customerName}
           />
         </Modal>

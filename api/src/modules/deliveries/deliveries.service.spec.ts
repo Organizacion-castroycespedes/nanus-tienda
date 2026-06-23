@@ -97,6 +97,7 @@ const buildOrderSource = (overrides: Record<string, unknown> = {}) => ({
   customer_phone: "3111111111",
   customer_address: "Calle pedido 45",
   branch_id: branchId,
+  generated_sale_id: null,
   ...overrides,
 });
 
@@ -375,6 +376,14 @@ const buildOrderCreateHarness = (options: {
       if (queryText.includes("FROM public.orders") && queryText.includes("FOR UPDATE")) {
         return { rows: order && params[1] === tenantId ? [{ id: order.id }] : [] };
       }
+      if (queryText.includes("FROM public.sales") && queryText.includes("FOR UPDATE")) {
+        return {
+          rows:
+            order && params[1] === tenantId && order.generated_sale_id
+              ? [{ id: order.generated_sale_id }]
+              : [],
+        };
+      }
       if (queryText.includes("FROM public.deliveries") && queryText.includes("order_id")) {
         return { rows: duplicate ? [duplicate] : [] };
       }
@@ -482,6 +491,23 @@ const buildOrderCreateHarness = (options: {
       }
       if (queryText.includes("FROM public.orders o")) {
         return { rows: order && params[1] === tenantId ? [order] : [] };
+      }
+      if (
+        queryText.includes("FROM public.sales s") ||
+        queryText.includes("FROM public.sales")
+      ) {
+        if (!order?.generated_sale_id || params[1] !== tenantId) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            buildSaleSource({
+              id: order.generated_sale_id,
+              order_id: order.id,
+              branch_id: order.branch_id,
+            }),
+          ],
+        };
       }
       if (queryText.includes("FROM public.tenant_branches")) {
         return { rows: params[0] === branchId && params[1] === tenantId ? [{ id: branchId }] : [] };
@@ -1052,6 +1078,19 @@ test("DeliveriesService.createFromOrder marks historical order without cash sess
   assert.equal(result.cash_session_id, cashSessionId);
   assert.equal(result.cash_impact_amount, 0);
   assert.equal(result.metadata.source_order_without_cash_session, true);
+});
+
+test("DeliveriesService.createFromOrder links generated sale when order has invoice", async () => {
+  const saleId = "00000000-0000-0000-0000-000000000088";
+  const harness = buildOrderCreateHarness({
+    order: buildOrderSource({ generated_sale_id: saleId }),
+  });
+
+  const result = await harness.service.createFromOrder(orderId, {}, actor);
+
+  assert.equal(result.order_id, orderId);
+  assert.equal(result.sale_id, saleId);
+  assert.equal(result.metadata.source_sale_id, saleId);
 });
 
 test("DeliveriesService.createFromOrder rejects order from another cash session", async () => {
