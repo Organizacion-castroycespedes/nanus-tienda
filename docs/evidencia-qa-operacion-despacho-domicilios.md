@@ -13,61 +13,78 @@ OpenSpec: `cerrar-operacion-despacho-domicilios`
 
 ## Casos QA manual
 
+Estado general: QA MANUAL PASS.
+
+Fecha de registro: 2026-06-23.
+
+Fuente: PASS reportado por usuario durante cierre de rama.
+
+Rutas probadas reportadas:
+
+- `/{tenant}/deliveries`
+- `/{tenant}/deliveries/new`
+- `/{tenant}/deliveries/drivers`
+- Detalle de domicilio y ticket operativo.
+
+Rol/contexto reportado:
+
+- Usuario operativo autenticado.
+
 1. Crear repartidor activo.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: repartidor aparece activo en `/{tenant}/deliveries/drivers`.
 
 2. Crear domicilio manual seleccionando repartidor.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: domicilio queda creado con `driver_id` y estado `CREADO`.
 
 3. Confirmar domicilio creado con repartidor.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: listado y detalle muestran nombre/telefono del repartidor.
 
 4. Crear domicilio desde pedido seleccionando repartidor.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: conserva `order_id`, guarda `driver_id`, no crea duplicado.
 
 5. Confirmar estado no cambia por asignacion.
-   - Estado: cubierto por test backend; pendiente de QA manual visual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: asignar repartidor no cambia estado operativo.
 
 6. Cambiar repartidor desde detalle.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: detalle muestra `Cambiar repartidor` y actualiza el repartidor.
 
 7. Quitar repartidor.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: seleccionar `Sin repartidor` limpia `driver_id`.
 
 8. Confirmar repartidor visible en listado.
-   - Estado: pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: columna Repartidor muestra nombre o `-`.
 
 9. Confirmar filtro por repartidor.
-   - Estado: cubierto por test backend/frontend previo; pendiente de QA manual.
+   - Estado: QA MANUAL PASS reportado.
    - Resultado esperado: `driver_id` filtra la lista.
 
 10. Generar ticket de domicilio.
-    - Estado: pendiente de QA manual.
+    - Estado: QA MANUAL PASS reportado.
     - Resultado esperado: boton `Ticket domicilio` abre PDF con opciones Descargar/Imprimir.
 
 11. Ticket muestra cliente, telefono, direccion, pedido/venta, repartidor y valor.
-    - Estado: cubierto por test backend-reporteria de dataset; pendiente de inspeccion PDF manual.
+    - Estado: QA MANUAL PASS reportado.
 
 12. Generar ticket para domicilio con pedido.
-    - Estado: cubierto por test backend-reporteria de dataset; pendiente de QA manual.
+    - Estado: QA MANUAL PASS reportado.
 
 13. Generar ticket para domicilio con venta.
-    - Estado: cubierto por test backend-reporteria de dataset; pendiente de QA manual.
+    - Estado: QA MANUAL PASS reportado.
 
 14. Confirmar ticket de pedido/venta existente sigue funcionando.
-    - Estado: pendiente de QA manual.
+    - Estado: QA MANUAL PASS reportado.
     - Resultado esperado: tickets existentes no cambian; se imprimen en secuencia con ticket domicilio.
 
 15. Confirmar que caja/recaudo/pagos/fiscal no cambian.
-    - Estado: cubierto por alcance tecnico y tests de no mutacion; pendiente de QA manual integral.
+    - Estado: QA MANUAL PASS reportado.
 
 ## Validaciones tecnicas
 

@@ -38,3 +38,8 @@
 - [x] 5.5 Run backend-reporteria focused tests and build.
 - [x] 5.6 Run web focused tests, lint, and build.
 - [x] 5.7 Run `git diff --check`.
+
+## Cierre QA
+
+- [x] QA MANUAL PASS registrado el 2026-06-23 segun reporte de usuario.
+- [x] Fuera de alcance confirmado: caja/recaudo, pagos contraentrega, liquidacion de repartidores, fiscal/electronica, POS, inventario, ESC/POS y geolocalizacion.

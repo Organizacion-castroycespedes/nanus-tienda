@@ -31,21 +31,36 @@
 | API build | PASS |
 | `git diff --check` | PASS con warnings CRLF de Git |
 
-## QA manual esperado
+## QA manual
+
+Estado general: QA MANUAL PASS.
+
+Fecha de registro: 2026-06-23.
+
+Fuente: PASS reportado por usuario durante cierre de rama.
+
+Rutas probadas reportadas:
+
+- `/{tenant}/deliveries`
+- Detalle de domicilio desde listado.
+
+Rol/contexto reportado:
+
+- Usuario operativo autenticado.
 
 | Caso | Estado |
 | --- | --- |
-| Crear domicilio desde pedido | Pendiente manual |
-| Ver estado inicial `CREADO` | Pendiente manual |
-| Cambiar `CREADO -> EN_PREPARACION` | Pendiente manual |
-| Cambiar `EN_PREPARACION -> DESPACHADO` | Pendiente manual |
-| Cambiar `DESPACHADO -> ENTREGADO` | Pendiente manual |
-| Confirmar `ENTREGADO` sin acciones | Pendiente manual |
-| Cancelar desde `CREADO` | Pendiente manual |
-| Confirmar `CANCELADO` sin acciones | Pendiente manual |
-| Intentar transicion invalida y ver error | Pendiente manual |
-| Filtro por estado funciona | Pendiente manual |
-| Detalle refleja estado y timestamps | Pendiente manual |
+| Crear domicilio desde pedido | QA MANUAL PASS reportado |
+| Ver estado inicial `CREADO` | QA MANUAL PASS reportado |
+| Cambiar `CREADO -> EN_PREPARACION` | QA MANUAL PASS reportado |
+| Cambiar `EN_PREPARACION -> DESPACHADO` | QA MANUAL PASS reportado |
+| Cambiar `DESPACHADO -> ENTREGADO` | QA MANUAL PASS reportado |
+| Confirmar `ENTREGADO` sin acciones | QA MANUAL PASS reportado |
+| Cancelar desde `CREADO` | QA MANUAL PASS reportado |
+| Confirmar `CANCELADO` sin acciones | QA MANUAL PASS reportado |
+| Intentar transicion invalida y ver error | QA MANUAL PASS reportado |
+| Filtro por estado funciona | QA MANUAL PASS reportado |
+| Detalle refleja estado y timestamps | QA MANUAL PASS reportado |
 
 ## Modulos fuera de alcance
 
