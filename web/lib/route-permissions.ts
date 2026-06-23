@@ -102,6 +102,10 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.ORDERS, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/deliveries\/?$/i,
+    requirement: { module: MENU_KEYS.DELIVERIES, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/purchases\/?$/i,
     requirement: { module: MENU_KEYS.INVENTORY_PURCHASES, action: "read" },
   },

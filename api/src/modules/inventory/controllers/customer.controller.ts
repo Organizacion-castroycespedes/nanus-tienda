@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -87,8 +88,16 @@ export class CustomerController {
     level: "READ",
     operationalRoles: customerOperationalRoles,
   })
-  list(@Req() request: AuthRequest) {
-    return this.customerService.listCustomers(this.getTenantId(request));
+  list(
+    @Query("query") query: string | undefined,
+    @Query("limit") limit: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    const parsedLimit = limit ? Number(limit) : NaN;
+    return this.customerService.searchCustomers(this.getTenantId(request), {
+      query,
+      limit: Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    });
   }
 
   @Get(":id")

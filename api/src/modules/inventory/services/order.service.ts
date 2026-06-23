@@ -62,6 +62,7 @@ type OrderRow = {
   id: string;
   tenant_id: string;
   customer_id: string;
+  cash_session_id?: string | null;
   type: OrderType;
   status: OrderStatus;
   total: string | number;
@@ -78,6 +79,7 @@ type OrderListRow = OrderRow & {
   branch_name: string | null;
   terminal_id: string | null;
   terminal_name: string | null;
+  generated_sale_id: string | null;
   billing_status: "UNBILLED" | "PARTIAL" | "INVOICED";
 };
 
@@ -144,6 +146,10 @@ type OrderAuditContextRow = {
   branch_name: string | null;
   terminal_id: string | null;
   terminal_name: string | null;
+};
+
+type CurrentCashSessionRow = {
+  id: string;
 };
 
 @Injectable()
@@ -304,6 +310,89 @@ export class OrderService {
       branchId,
       branchIds: allowedBranchIds,
     };
+  }
+
+  private canUseAllCashScope(actor: BranchScopedActor) {
+    return (
+      actor.roles.includes("SUPER_ADMIN") ||
+      actor.roles.includes("SUPER_USER") ||
+      actor.roles.includes("ADMIN")
+    );
+  }
+
+  private async resolveCurrentCashSessionId(
+    actor: BranchScopedActor,
+    tenantId: string
+  ) {
+    if (actor.cashSessionId) {
+      return actor.cashSessionId;
+    }
+    if (!actor.userId) {
+      return null;
+    }
+
+    const params: unknown[] = [actor.userId, tenantId];
+    const conditions = [
+      "session.opened_by_user_id = $1",
+      "session.tenant_id = $2",
+      "session.status = 'OPEN'",
+    ];
+
+    if (actor.branchId) {
+      params.push(actor.branchId);
+      conditions.push(`session.branch_id = $${params.length}`);
+    }
+
+    if (actor.terminalId) {
+      params.push(actor.terminalId);
+      conditions.push(`register.terminal_id = $${params.length}`);
+    }
+
+    const result = await this.db.query<CurrentCashSessionRow>(
+      `
+        SELECT session.id
+        FROM cash_sessions AS session
+        INNER JOIN cash_registers AS register
+          ON register.id = session.cash_register_id
+         AND register.tenant_id = session.tenant_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY session.opened_at DESC
+        LIMIT 1
+      `,
+      params
+    );
+
+    return result.rows[0]?.id ?? null;
+  }
+
+  private async resolveOrderCashScope(
+    filters: BranchScopedFilters,
+    actor: BranchScopedActor,
+    tenantId: string | undefined
+  ) {
+    const scope = filters.cashScope === "all" ? "all" : "current";
+    if (scope === "all") {
+      if (!this.canUseAllCashScope(actor)) {
+        throw new ForbiddenException("No autorizado para consultar historico completo");
+      }
+      return { scope, cashSessionId: null as string | null };
+    }
+
+    const resolvedTenantId = tenantId ?? actor.tenantId;
+    if (!resolvedTenantId) {
+      return { scope, cashSessionId: null as string | null };
+    }
+
+    const currentCashSessionId = await this.resolveCurrentCashSessionId(
+      actor,
+      resolvedTenantId
+    );
+    const requestedCashSessionId = normalizeOptionalFilter(filters.cashSessionId);
+    if (requestedCashSessionId && requestedCashSessionId !== currentCashSessionId) {
+      throw new ForbiddenException("La caja solicitada no corresponde a la caja actual");
+    }
+
+    return { scope, cashSessionId: currentCashSessionId };
   }
 
   private mapOrderPayment(row: OrderPaymentRow) {
@@ -714,6 +803,7 @@ export class OrderService {
             id,
             tenant_id,
             customer_id,
+            cash_session_id,
             type,
             status,
             total,
@@ -722,12 +812,13 @@ export class OrderService {
             balance_due,
             created_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
           )
           RETURNING
             id,
             tenant_id,
             customer_id,
+            cash_session_id,
             type,
             status,
             total,
@@ -740,6 +831,7 @@ export class OrderService {
           order.id,
           order.tenantId,
           order.customerId,
+          data.context?.cashSessionId ?? null,
           order.type,
           order.status,
           order.total,
@@ -768,11 +860,13 @@ export class OrderService {
           terminalId: orderTerminalId,
           posSessionId:
             data.context?.branchId === orderBranchId ? data.context?.posSessionId ?? null : null,
+          cashSessionId: data.context?.cashSessionId ?? null,
         },
       });
 
       return {
         ...this.mapOrder(orderResult.rows[0]),
+        cashSessionId: orderResult.rows[0].cash_session_id ?? null,
         branchId: orderBranchId,
         terminalId: orderTerminalId,
         terminalName: orderTerminal?.name ?? null,
@@ -979,11 +1073,17 @@ export class OrderService {
 
   async getOrders(filters: BranchScopedFilters, actor: BranchScopedActor) {
     const resolvedFilters = await this.resolveOrderScope(actor, filters);
+    const cashScope = await this.resolveOrderCashScope(
+      filters,
+      actor,
+      resolvedFilters.tenantId
+    );
     const params: unknown[] = [];
     const where: string[] = [];
     const fromDate = normalizeOptionalFilter(filters.fromDate);
     const toDate = normalizeOptionalFilter(filters.toDate);
     const paymentMethod = normalizeOptionalFilter(filters.paymentMethod);
+    const customerId = normalizeOptionalFilter(filters.customerId);
 
     if (resolvedFilters.tenantId) {
       params.push(resolvedFilters.tenantId);
@@ -1006,6 +1106,20 @@ export class OrderService {
     if (toDate) {
       params.push(toDate);
       where.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (customerId) {
+      params.push(customerId);
+      where.push(`o.customer_id = $${params.length}::uuid`);
+    }
+
+    if (cashScope.scope === "current") {
+      if (!cashScope.cashSessionId) {
+        where.push("FALSE");
+      } else {
+        params.push(cashScope.cashSessionId);
+        where.push(`o.cash_session_id = $${params.length}::uuid`);
+      }
     }
 
     if (paymentMethod) {
@@ -1043,6 +1157,7 @@ export class OrderService {
           o.tenant_id,
           t.nombre AS tenant_name,
           o.customer_id,
+          o.cash_session_id,
           o.type,
           o.status,
           o.total,
@@ -1055,6 +1170,7 @@ export class OrderService {
           branch.nombre AS branch_name,
           audit_context.terminal_id::text AS terminal_id,
           terminal.name AS terminal_name,
+          sale_context.generated_sale_id::text AS generated_sale_id,
           CASE
             WHEN COALESCE(item_totals.delivered_total, 0) <= 0
               OR COALESCE(item_totals.billed_total, 0) <= 0 THEN 'UNBILLED'
@@ -1087,6 +1203,15 @@ export class OrderService {
           ON terminal.id = audit_context.terminal_id
          AND terminal.tenant_id = o.tenant_id
         LEFT JOIN LATERAL (
+          SELECT s.id AS generated_sale_id
+          FROM sales s
+          WHERE s.tenant_id = o.tenant_id
+            AND s.order_id = o.id
+            AND s.status <> 'CANCELLED'
+          ORDER BY s.created_at DESC, s.id DESC
+          LIMIT 1
+        ) AS sale_context ON TRUE
+        LEFT JOIN LATERAL (
           SELECT
             COALESCE(SUM(oi.delivered_quantity), 0) AS delivered_total,
             COALESCE(SUM(COALESCE(oi.billed_quantity, 0)), 0) AS billed_total
@@ -1101,12 +1226,14 @@ export class OrderService {
 
     return result.rows.map((row) => ({
       ...this.mapOrder(row),
+      cashSessionId: row.cash_session_id ?? null,
       tenantName: row.tenant_name,
       customerName: row.customer_name,
       branchId: row.branch_id,
       branchName: row.branch_name,
       terminalId: row.terminal_id,
       terminalName: row.terminal_name,
+      generatedSaleId: row.generated_sale_id,
       billingStatus: row.billing_status,
     }));
   }
@@ -1124,6 +1251,7 @@ export class OrderService {
           id,
           tenant_id,
           customer_id,
+          cash_session_id,
           type,
           status,
           total,
@@ -1224,6 +1352,7 @@ export class OrderService {
 
     return {
       ...this.mapOrderWithItems(orderRow, itemsResult.rows),
+      cashSessionId: orderRow.cash_session_id ?? null,
       branchId: orderAuditContext.branch_id,
       branchName: orderAuditContext.branch_name,
       terminalName: orderAuditContext.terminal_name,

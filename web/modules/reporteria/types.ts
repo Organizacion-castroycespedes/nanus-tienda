@@ -258,6 +258,19 @@ export type CurrentShiftSummary = {
   posSalesTotal: number;
   orderSalesTotal: number;
   purchasesTotal: number;
+  deliveryFees: number;
+  deliverySummary: {
+    deliveredCount: number;
+    pendingCount: number;
+    excludedCount: number;
+    deliveredFeeTotal: number;
+    byPaymentMethod: Array<{
+      paymentMethodId: string | null;
+      paymentMethodNombre: string | null;
+      count: number;
+      total: number;
+    }>;
+  };
   cashInTotal: number;
   cashOutTotal: number;
   expectedAmount: number;

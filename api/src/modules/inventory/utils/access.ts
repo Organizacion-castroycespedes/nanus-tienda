@@ -5,6 +5,8 @@ export type BranchScopedActor = {
   userId?: string;
   tenantId?: string;
   branchId?: string;
+  terminalId?: string;
+  cashSessionId?: string;
 };
 
 export type BranchScopedFilters = {
@@ -13,6 +15,9 @@ export type BranchScopedFilters = {
   fromDate?: string;
   toDate?: string;
   paymentMethod?: string;
+  customerId?: string;
+  cashScope?: "current" | "all";
+  cashSessionId?: string;
 };
 
 export const canViewAllBranches = (actor: BranchScopedActor) =>

@@ -10,14 +10,21 @@ import {
   Query,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { DELIVERY_PERMISSION_ACTIONS } from "../../deliveries/deliveries.constants";
+import { DeliveriesService } from "../../deliveries/deliveries.service";
+import { CreateOrderDeliveryDto } from "../../deliveries/dto/create-order-delivery.dto";
 import { OrderService } from "../services/order.service";
 
 type AuthRequest = Request & {
@@ -32,6 +39,7 @@ type AuthRequest = Request & {
     terminalId?: string;
     posSessionId?: string;
     userId?: string;
+    cashSessionId?: string;
   };
 };
 
@@ -74,12 +82,20 @@ type InvoiceOrderBody = {
   }>;
 };
 
+const orderDeliveryValidationPipe = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
+
 @Controller("orders")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class OrderController {
   constructor(
     @Inject(OrderService)
-    private readonly orderService: OrderService
+    private readonly orderService: OrderService,
+    @Inject(DeliveriesService)
+    private readonly deliveriesService: DeliveriesService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -100,6 +116,7 @@ export class OrderController {
       terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
+      cashSessionId: request.context?.cashSessionId ?? null,
     };
   }
 
@@ -109,10 +126,14 @@ export class OrderController {
       userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
+      terminalId: request.context?.terminalId,
+      posSessionId: request.context?.posSessionId,
+      cashSessionId: request.context?.cashSessionId,
     };
   }
 
   @Post()
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   create(@Body() body: CreateOrderBody, @Req() request: AuthRequest) {
@@ -140,6 +161,9 @@ export class OrderController {
     @Query("fromDate") fromDate: string | undefined,
     @Query("toDate") toDate: string | undefined,
     @Query("paymentMethod") paymentMethod: string | undefined,
+    @Query("customerId") customerId: string | undefined,
+    @Query("cashScope") cashScope: "current" | "all" | undefined,
+    @Query("cashSessionId") cashSessionId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.orderService.getOrders(
@@ -149,7 +173,42 @@ export class OrderController {
         fromDate,
         toDate,
         paymentMethod,
+        customerId,
+        cashScope,
+        cashSessionId,
       },
+      this.buildActor(request)
+    );
+  }
+
+  @Get(":id/delivery")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "READ",
+    action: DELIVERY_PERMISSION_ACTIONS.VIEW,
+  })
+  getDelivery(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.deliveriesService.getByOrder(id, this.buildActor(request));
+  }
+
+  @Post(":id/delivery")
+  @RequireOpenCashSession()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.CREATE,
+  })
+  @UsePipes(orderDeliveryValidationPipe)
+  createDelivery(
+    @Param("id") id: string,
+    @Body() body: CreateOrderDeliveryDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.deliveriesService.createFromOrder(
+      id,
+      body,
       this.buildActor(request)
     );
   }
@@ -166,6 +225,7 @@ export class OrderController {
   }
 
   @Put(":id")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   update(
@@ -189,6 +249,7 @@ export class OrderController {
   }
 
   @Post(":id/deliver")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   deliver(
@@ -209,6 +270,7 @@ export class OrderController {
   }
 
   @Post(":id/confirm")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   confirm(@Param("id") id: string, @Req() request: AuthRequest) {
@@ -221,6 +283,7 @@ export class OrderController {
   }
 
   @Post(":id/invoice")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePosSession()
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
@@ -242,6 +305,7 @@ export class OrderController {
   }
 
   @Post(":id/cancel")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {

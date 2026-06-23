@@ -9,11 +9,13 @@ import {
   Receipt,
   RefreshCw,
   Search,
+  Truck,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
+import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
@@ -24,10 +26,13 @@ import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { OrderDeliverForm } from "../../../modules/inventory/components/OrderDeliverForm";
 import { OrderForm } from "../../../modules/inventory/components/OrderForm";
 import { OrderInvoiceForm } from "../../../modules/inventory/components/OrderInvoiceForm";
+import { DeliveryRelationCard } from "../../../modules/deliveries/components/DeliveryRelationCard";
 import {
   DocumentPaymentForm,
   type DocumentPaymentSuccessContext,
 } from "../../../modules/finance/components/DocumentPaymentForm";
+import { getCurrentCashSession } from "../../../modules/finance/services/finance.service";
+import type { CashSession } from "../../../modules/finance/types";
 import {
   cancelOrder,
   getOrderById,
@@ -53,6 +58,17 @@ type OrderFilters = {
   branchId: string;
   fromDate: string;
   toDate: string;
+};
+
+type OrderDeliveryRelation = {
+  id: string;
+  tenantId: string;
+  label: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  branchId?: string | null;
+  generatedSaleId?: string | null;
+  total?: number | null;
 };
 
 const defaultFilters: OrderFilters = {
@@ -101,6 +117,11 @@ const OrdersPage = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
+  const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
+  const [cashSessionChecked, setCashSessionChecked] = useState(false);
+  const [cashScope, setCashScope] = useState<"current" | "all">("current");
+  const [deliveryRelation, setDeliveryRelation] =
+    useState<OrderDeliveryRelation | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
   const { currentTenant } = useInventoryScope();
 
@@ -108,7 +129,11 @@ const OrdersPage = () => {
     role === "ADMIN" || role === "USER" || role === "SUPER_ADMIN" || role === "SUPER_USER";
   const canCreate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const canUpdate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
+  const hasOpenCashSession = Boolean(currentCashSession);
+  const canUseAllCashScope =
+    role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
   const isGlobalRole = role === "SUPER_ADMIN";
+  const tenantSlug = authUser?.tenantId ?? currentTenant ?? "default";
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -177,6 +202,37 @@ const OrdersPage = () => {
     setLoadingOrder(false);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setCashSessionChecked(false);
+    void getCurrentCashSession()
+      .then((session) => {
+        if (active) {
+          setCurrentCashSession(session);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCurrentCashSession(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCashSessionChecked(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authUser?.tenantId]);
+
+  useEffect(() => {
+    if (!canUseAllCashScope && cashScope !== "current") {
+      setCashScope("current");
+    }
+  }, [canUseAllCashScope, cashScope]);
+
   const loadOrders = useCallback(
     async (filters?: OrderFilters) => {
       const activeFilters = filters ?? appliedFilters;
@@ -190,12 +246,17 @@ const OrdersPage = () => {
                 branchId: activeFilters.branchId || undefined,
                 fromDate: activeFilters.fromDate || undefined,
                 toDate: activeFilters.toDate || undefined,
+                cashScope,
+                cashSessionId:
+                  cashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
               }
             : {
                 tenantId: currentTenant ?? undefined,
                 branchId: activeFilters.branchId || undefined,
                 fromDate: activeFilters.fromDate || undefined,
                 toDate: activeFilters.toDate || undefined,
+                cashScope: "current",
+                cashSessionId: currentCashSession?.id ?? undefined,
               }
         );
         setOrders(result);
@@ -207,7 +268,7 @@ const OrdersPage = () => {
         setLoading(false);
       }
     },
-    [appliedFilters, currentTenant, isGlobalRole]
+    [appliedFilters, cashScope, currentCashSession?.id, currentTenant, isGlobalRole]
   );
 
   const tenantOptions = useMemo(() => {
@@ -294,12 +355,20 @@ const OrdersPage = () => {
   };
 
   const openCreateForm = () => {
+    if (!hasOpenCashSession) {
+      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
+      return;
+    }
     setSelectedOrder(null);
     setSelectedOrderId(null);
     setFormMode("create");
   };
 
   const handleEdit = async (orderId: string) => {
+    if (!hasOpenCashSession) {
+      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
+      return;
+    }
     setLoadingOrder(true);
     setErrorMessage(null);
     try {
@@ -315,25 +384,54 @@ const OrdersPage = () => {
   };
 
   const handleOpenDeliver = (orderId: string) => {
+    if (!hasOpenCashSession) {
+      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
+      return;
+    }
     setSelectedOrder(null);
     setSelectedOrderId(orderId);
     setFormMode("deliver");
   };
 
   const handleOpenInvoice = (orderId: string) => {
+    if (!hasOpenCashSession) {
+      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
+      return;
+    }
     setSelectedOrder(null);
     setSelectedOrderId(orderId);
     setFormMode("invoice");
   };
 
   const handleOpenPayment = (order: OrderResponse) => {
+    if (!hasOpenCashSession) {
+      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
+      return;
+    }
     setSelectedOrder(null);
     setSelectedOrderId(order.id);
     setSelectedPaymentOrder(order);
     setFormMode("payment");
   };
 
+  const handleOpenDeliveryRelation = (order: OrderResponse) => {
+    setDeliveryRelation({
+      id: order.id,
+      tenantId: order.tenantId ?? tenantSlug,
+      label: `Pedido ${order.id.slice(0, 8)}`,
+      customerId: order.customerId,
+      customerName: order.customerName,
+      branchId: order.branchId,
+      generatedSaleId: order.generatedSaleId,
+      total: order.total,
+    });
+  };
+
   const handleCancel = async (order: OrderResponse) => {
+    if (!hasOpenCashSession) {
+      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
+      return;
+    }
     try {
       await confirm({
         title: "Cancelar pedido",
@@ -369,6 +467,8 @@ const OrdersPage = () => {
     order.billingStatus !== "INVOICED";
 
   const canAccessTicket = (status: OrderResponse["status"]) => status !== "DRAFT";
+
+  const canOpenDeliveryRelation = (order: OrderResponse) => Boolean(order.id);
 
   const isActionMode = formMode !== null;
 
@@ -447,7 +547,10 @@ const OrdersPage = () => {
               Actualizar
             </Button>
             {canCreate ? (
-              <Button onClick={openCreateForm}>
+              <Button
+                onClick={openCreateForm}
+                disabled={cashSessionChecked && !hasOpenCashSession}
+              >
                 <Plus className="h-4 w-4" />
                 Crear pedido
               </Button>
@@ -456,6 +559,50 @@ const OrdersPage = () => {
           ) : null}
         </div>
       </section>
+
+      {cashSessionChecked && !hasOpenCashSession ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
+          No tienes una caja abierta. Abre caja para ver la operacion actual
+          de pedidos. Crear, editar, entregar, abonar, facturar o cancelar sigue
+          bloqueado.
+        </section>
+      ) : null}
+
+      {!isActionMode ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">
+                Alcance: {cashScope === "all" ? "Todas" : "Caja actual"}
+              </p>
+              <p className="mt-1 text-emerald-800">
+                {cashScope === "all"
+                  ? "Mostrando historico autorizado de pedidos."
+                  : currentCashSession
+                    ? `Mostrando operacion de caja actual: ${
+                        currentCashSession.cashRegisterNombre ??
+                        currentCashSession.cashRegisterCodigo ??
+                        "Caja"
+                      }.`
+                    : "No se mezcla historico con la operacion actual."}
+              </p>
+            </div>
+            {canUseAllCashScope ? (
+              <Select
+                label="Alcance"
+                value={cashScope}
+                onChange={(event) =>
+                  setCashScope(event.target.value === "all" ? "all" : "current")
+                }
+                className="min-w-[180px]"
+              >
+                <option value="current">Caja actual</option>
+                <option value="all">Todas</option>
+              </Select>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {isActionMode && actionHeaderCopy ? (
         <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4 shadow-sm sm:p-6">
@@ -588,6 +735,28 @@ const OrdersPage = () => {
             })()
           }
         />
+      ) : null}
+
+      {deliveryRelation ? (
+        <Modal
+          title="Domicilio"
+          description="Relacion operativa del pedido con Domicilios. No modifica POS ni facturacion."
+          onClose={() => setDeliveryRelation(null)}
+          size="xl"
+          className="max-h-[calc(100dvh-1rem)] overflow-y-auto overflow-x-hidden sm:max-h-[calc(100dvh-3rem)]"
+        >
+          <DeliveryRelationCard
+            sourceType="order"
+            sourceId={deliveryRelation.id}
+            tenantId={deliveryRelation.tenantId}
+            sourceLabel={deliveryRelation.label}
+            sourceBranchId={deliveryRelation.branchId}
+            sourceCustomerId={deliveryRelation.customerId}
+            sourceSaleId={deliveryRelation.generatedSaleId}
+            sourceTotal={deliveryRelation.total}
+            defaultCustomerName={deliveryRelation.customerName}
+          />
+        </Modal>
       ) : null}
 
       <PdfPreviewModal
@@ -767,6 +936,7 @@ const OrdersPage = () => {
                     <td className="px-4 py-3">
                       {(() => {
                         const hasRowActions =
+                          canOpenDeliveryRelation(order) ||
                           (canUpdate &&
                             (canEditOrder(order.status) ||
                               canDeliverOrder(order.status) ||
@@ -782,7 +952,7 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => void handleEdit(order.id)}
-                            disabled={loadingOrder}
+                            disabled={loadingOrder || !hasOpenCashSession}
                           >
                             <Pencil className="h-4 w-4" />
                             Editar
@@ -793,6 +963,7 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenDeliver(order.id)}
+                            disabled={!hasOpenCashSession}
                           >
                             <PackageCheck className="h-4 w-4" />
                             Entregar
@@ -803,6 +974,7 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenInvoice(order.id)}
+                            disabled={!hasOpenCashSession}
                           >
                             <Receipt className="h-4 w-4" />
                             Facturar
@@ -813,6 +985,7 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenPayment(order)}
+                            disabled={!hasOpenCashSession}
                           >
                             <Receipt className="h-4 w-4" />
                             Abonar
@@ -823,6 +996,7 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => void handleCancel(order)}
+                            disabled={!hasOpenCashSession}
                           >
                             <XCircle className="h-4 w-4" />
                             Cancelar
@@ -836,6 +1010,16 @@ const OrdersPage = () => {
                           >
                             <Eye className="h-4 w-4" />
                             Ver Ticket
+                          </Button>
+                        ) : null}
+                        {canOpenDeliveryRelation(order) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDeliveryRelation(order)}
+                          >
+                            <Truck className="h-4 w-4" />
+                            Domicilio
                           </Button>
                         ) : null}
                         {canAccessTicket(order.status) ? (

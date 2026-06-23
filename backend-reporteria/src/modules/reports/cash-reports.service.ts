@@ -104,6 +104,36 @@ export class CashReportsService {
     }));
   }
 
+  private emptyDeliverySummary(): CashClosingTicketDataset["deliverySummary"] {
+    return {
+      deliveredCount: 0,
+      pendingCount: 0,
+      excludedCount: 0,
+      deliveredFeeTotal: 0,
+      byPaymentMethod: [],
+    };
+  }
+
+  private normalizeDeliverySummary(
+    summary: CashClosingTicketDataset["deliverySummary"] | null | undefined
+  ): CashClosingTicketDataset["deliverySummary"] {
+    const fallback = this.emptyDeliverySummary();
+    return {
+      deliveredCount: this.toNumber(summary?.deliveredCount ?? fallback.deliveredCount),
+      pendingCount: this.toNumber(summary?.pendingCount ?? fallback.pendingCount),
+      excludedCount: this.toNumber(summary?.excludedCount ?? fallback.excludedCount),
+      deliveredFeeTotal: this.toNumber(
+        summary?.deliveredFeeTotal ?? fallback.deliveredFeeTotal
+      ),
+      byPaymentMethod: (summary?.byPaymentMethod ?? []).map((item) => ({
+        paymentMethodId: item.paymentMethodId ?? null,
+        paymentMethodNombre: item.paymentMethodNombre ?? null,
+        count: this.toNumber(item.count),
+        total: this.toNumber(item.total),
+      })),
+    };
+  }
+
   private normalizeCashClosingRow(row: CashClosingListRow): CashClosingListRow {
     return {
       ...row,
@@ -205,11 +235,33 @@ export class CashReportsService {
   }
 
   private normalizeCashClosingTicketDataset(
-    payload: CashClosingTicketDataset | null
+    payload: CashClosingTicketDataset | null,
+    deliverySummaryInput?: CashClosingTicketDataset["deliverySummary"],
+    paymentSummaryInput?: Pick<
+      CashClosingTicketDataset,
+      "cashControl" | "sourceBreakdown" | "paymentMethodDetails" | "auditSummary"
+    > | null
   ): CashClosingTicketDataset {
     if (!payload) {
       throw new NotFoundException("cash session not found");
     }
+
+    const deliverySummary = this.normalizeDeliverySummary(
+      deliverySummaryInput ?? payload.deliverySummary
+    );
+    const deliveryFees = this.toNumber(deliverySummary.deliveredFeeTotal);
+    const closingAmount = this.toNumber(payload.totals?.closingAmount);
+    const fallbackExpected = this.toNumber(payload.totals?.expectedAmount) + deliveryFees;
+    const expectedAmount =
+      paymentSummaryInput?.cashControl?.expectedCashAmount ?? fallbackExpected;
+    const difference = closingAmount - expectedAmount;
+    const cashControl = paymentSummaryInput?.cashControl
+      ? {
+          ...paymentSummaryInput.cashControl,
+          countedCashAmount: closingAmount,
+          differenceAmount: difference,
+        }
+      : undefined;
 
     return {
       ...payload,
@@ -217,7 +269,7 @@ export class CashReportsService {
         openingAmount: this.toNumber(payload.totals?.openingAmount),
         posSalesPayments: this.toNumber(payload.totals?.posSalesPayments),
         orderSalesPayments: this.toNumber(payload.totals?.orderSalesPayments),
-        totalIn: this.toNumber(payload.totals?.totalIn),
+        totalIn: this.toNumber(payload.totals?.totalIn) + deliveryFees,
         paymentsIn: this.toNumber(payload.totals?.paymentsIn),
         paymentsOut: this.toNumber(payload.totals?.paymentsOut),
         refundPayments: this.toNumber(payload.totals?.refundPayments),
@@ -228,11 +280,31 @@ export class CashReportsService {
         adjustmentsOut: this.toNumber(payload.totals?.adjustmentsOut),
         closingRecorded: this.toNumber(payload.totals?.closingRecorded),
         totalOut: this.toNumber(payload.totals?.totalOut),
-        expectedAmount: this.toNumber(payload.totals?.expectedAmount),
-        closingAmount: this.toNumber(payload.totals?.closingAmount),
-        difference: this.toNumber(payload.totals?.difference),
+        expectedAmount,
+        closingAmount,
+        difference,
       },
       paymentBreakdown: this.normalizePaymentBreakdown(payload.paymentBreakdown),
+      paymentMethodDetails: paymentSummaryInput?.paymentMethodDetails?.map((item) => ({
+        ...item,
+        count: this.toNumber(item.count),
+        sales: this.toNumber(item.sales),
+        orders: this.toNumber(item.orders),
+        purchases: this.toNumber(item.purchases),
+        refunds: this.toNumber(item.refunds),
+        deliveries: this.toNumber(item.deliveries),
+        manualIn: this.toNumber(item.manualIn),
+        manualOut: this.toNumber(item.manualOut),
+        otherIn: this.toNumber(item.otherIn),
+        otherOut: this.toNumber(item.otherOut),
+        totalIn: this.toNumber(item.totalIn),
+        totalOut: this.toNumber(item.totalOut),
+        net: this.toNumber(item.net),
+      })),
+      sourceBreakdown: paymentSummaryInput?.sourceBreakdown,
+      cashControl,
+      auditSummary: paymentSummaryInput?.auditSummary,
+      deliverySummary,
       movementBreakdown: (payload.movementBreakdown ?? []).map((item) => ({
         ...item,
         count: this.toNumber(item.count),
@@ -296,7 +368,17 @@ export class CashReportsService {
   async getCashClosingTicket(cashSessionId: string, user?: ReportUser) {
     const actor = this.resolveActor(user);
     const payload = await this.cashReportAdapter.getCashClosingTicket(actor, cashSessionId);
-    return this.normalizeCashClosingTicketDataset(payload);
+    const deliverySummary = payload
+      ? await this.cashReportAdapter.getDeliveryClosingSummary(actor, cashSessionId)
+      : this.emptyDeliverySummary();
+    const paymentSummary = payload
+      ? await this.cashReportAdapter.getPaymentMethodClosingSummary(actor, cashSessionId)
+      : null;
+    return this.normalizeCashClosingTicketDataset(
+      payload,
+      deliverySummary,
+      paymentSummary
+    );
   }
 
   async getCashClosingTicketPdf(cashSessionId: string, user?: ReportUser) {

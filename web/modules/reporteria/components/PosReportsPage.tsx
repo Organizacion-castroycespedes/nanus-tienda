@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Download } from "lucide-react";
+import { Eye, Download, Truck } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { Modal } from "../../../components/design-system/Modal";
+import { DeliveryRelationCard } from "../../deliveries/components/DeliveryRelationCard";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
 import { usePosReports } from "../hooks/use-pos-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
@@ -28,10 +30,19 @@ type PdfConfig = {
   getPdf: () => Promise<Blob>;
 };
 
+type SaleDeliveryRelation = {
+  id: string;
+  tenantId: string;
+  label: string;
+  customerName?: string | null;
+};
+
 const PosReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
+  const [deliveryRelation, setDeliveryRelation] =
+    useState<SaleDeliveryRelation | null>(null);
   const {
     canViewReports,
     showTenantSelector,
@@ -130,7 +141,7 @@ const PosReportsPage = () => {
       {
         key: "actions",
         header: "Acciones",
-        cellClassName: "min-w-[200px]",
+        cellClassName: "min-w-[260px]",
         render: (row) => (
           <div className="flex flex-wrap gap-2">
             <Button
@@ -158,11 +169,26 @@ const PosReportsPage = () => {
               <Download className="h-4 w-4" />
               Descargar
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setDeliveryRelation({
+                  id: row.saleId,
+                  tenantId: tenantId || "default",
+                  label: `Venta ${row.saleId.slice(0, 8)}`,
+                  customerName: row.customerName,
+                })
+              }
+            >
+              <Truck className="h-4 w-4" />
+              Domicilio
+            </Button>
           </div>
         ),
       },
     ],
-    []
+    [tenantId]
   );
 
   const canExport = Boolean(dataset?.rows.length);
@@ -307,6 +333,23 @@ const PosReportsPage = () => {
           getPdf={pdfConfig.getPdf}
           onClose={() => setPdfConfig(null)}
         />
+      ) : null}
+
+      {deliveryRelation ? (
+        <Modal
+          title="Domicilio"
+          description="Relacion visual de la venta con Domicilios. No toca POS, caja, totales, impuestos ni facturacion."
+          onClose={() => setDeliveryRelation(null)}
+          size="lg"
+        >
+          <DeliveryRelationCard
+            sourceType="sale"
+            sourceId={deliveryRelation.id}
+            tenantId={deliveryRelation.tenantId}
+            sourceLabel={deliveryRelation.label}
+            defaultCustomerName={deliveryRelation.customerName}
+          />
+        </Modal>
       ) : null}
     </div>
   );

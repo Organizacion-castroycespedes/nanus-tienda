@@ -6,17 +6,27 @@ import { clearSession } from "./session-manager";
 import { getStoredRefreshToken } from "./session";
 import type { MenuResponse } from "../menu/types";
 
+const authBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
+
 export const login = (payload: LoginDto) =>
-  requestJson<AuthTokens>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  requestJson<AuthTokens>(
+    "/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    authBaseUrl
+  );
 
 export const forceLogin = (payload: LoginDto) =>
-  requestJson<AuthTokens>("/auth/login/force", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  requestJson<AuthTokens>(
+    "/auth/login/force",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    authBaseUrl
+  );
 
 export const fetchMenu = () => apiClient<MenuResponse>("/me/menu");
 
@@ -55,19 +65,27 @@ export const updatePassword = (password: string, headers?: HeadersInit) =>
   });
 
 export const forgotPassword = (payload: ForgotPasswordDto) =>
-  requestJson<void>("/auth/forgot-password", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  requestJson<void>(
+    "/auth/forgot-password",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    authBaseUrl
+  );
 
 export const logout = async () => {
   try {
     const refreshToken = getStoredRefreshToken();
-    await requestJson<{ ok: true }>("/auth/logout", {
-      method: "POST",
-      credentials: "include",
-      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-    });
+    await requestJson<{ ok: true }>(
+      "/auth/logout",
+      {
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+      },
+      authBaseUrl
+    );
   } catch {
     // Intentionally ignore logout failures to ensure local cleanup.
   } finally {

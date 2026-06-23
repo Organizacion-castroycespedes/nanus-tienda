@@ -94,6 +94,16 @@ export class CustomerService {
     return this.customerRepository.findAllByTenant(tenantId);
   }
 
+  searchCustomers(
+    tenantId: string,
+    options: { query?: string; limit?: number } = {}
+  ) {
+    return this.customerRepository.findAllByTenant(tenantId, {
+      query: options.query,
+      limit: options.limit,
+    });
+  }
+
   async getCustomerById(id: string, tenantId: string) {
     const customer = await this.customerRepository.findById(id, tenantId);
     if (!customer) {

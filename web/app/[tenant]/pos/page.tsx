@@ -61,6 +61,7 @@ const PosPage = () => {
   const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
   const tenantSlug = useAppSelector((state) => state.auth.user?.tenantId ?? "default");
   const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
   const [loadingCashSession, setLoadingCashSession] = useState(true);
   const [cashSessionError, setCashSessionError] = useState<string | null>(null);
@@ -76,7 +77,7 @@ const PosPage = () => {
     setLoadingCashSession(true);
     setCashSessionError(null);
 
-    void getCurrentCashSession()
+    void getCurrentCashSession(posCashRegisterId ?? undefined)
       .then((session) => {
         if (!active) {
           return;
@@ -99,7 +100,7 @@ const PosPage = () => {
     return () => {
       active = false;
     };
-  }, [authStatus, bootstrapped, hasSession]);
+  }, [authStatus, bootstrapped, hasSession, posCashRegisterId]);
 
   if (!bootstrapped || authStatus === "refreshing") {
     return (
