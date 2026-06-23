@@ -121,6 +121,7 @@ const buildHarness = (
       });
     },
     getSummary: async () => buildSummary(expectedAmount),
+    listCashCounts: async () => [],
     close: async (
       _client: unknown,
       _cashSessionId: string,
@@ -177,7 +178,19 @@ const buildHarness = (
 
   const db = {
     getClient: async () => client,
-    query: async () => ({ rows: [{ has_schema: false }] }),
+    query: async (query: string) => {
+      if (query.includes("information_schema.columns")) {
+        return { rows: [{ has_schema: false }] };
+      }
+      if (
+        query.includes("FROM public.payments") ||
+        query.includes("FROM public.cash_movements") ||
+        query.includes("FROM public.deliveries")
+      ) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    },
   };
 
   const auditService = {
@@ -204,7 +217,7 @@ const buildHarness = (
   };
 };
 
-test("close normalizes negative expected amount before persistence", async () => {
+test("close uses physical cash expected amount before persistence", async () => {
   const harness = buildHarness(-15000);
 
   const response = await harness.service.close(
@@ -216,19 +229,20 @@ test("close normalizes negative expected amount before persistence", async () =>
     actor
   );
 
-  assert.equal(harness.getCloseInput()?.expectedAmount, 0);
-  assert.equal(harness.getCloseInput()?.differenceAmount, 219000);
-  assert.equal(harness.getCashCountInput()?.expectedAmount, 0);
-  assert.equal(harness.getCashCountInput()?.differenceAmount, 219000);
+  assert.equal(harness.getCloseInput()?.expectedAmount, 100000);
+  assert.equal(harness.getCloseInput()?.differenceAmount, 119000);
+  assert.equal(harness.getCashCountInput()?.expectedAmount, 100000);
+  assert.equal(harness.getCashCountInput()?.differenceAmount, 119000);
+  assert.equal(harness.getCashCountInput()?.countType, "CLOSING");
   assert.equal(harness.getMovementInput()?.movementType, "CLOSING");
   assert.equal(harness.getMovementInput()?.amount, 219000);
   assert.deepEqual(harness.getQueries(), ["BEGIN", "COMMIT"]);
   assert.equal(harness.wasReleased(), true);
-  assert.equal(response.expectedAmount, 0);
-  assert.equal(response.differenceAmount, 219000);
+  assert.equal(response.expectedAmount, 100000);
+  assert.equal(response.differenceAmount, 119000);
 });
 
-test("close keeps non-negative expected amount unchanged", async () => {
+test("close ignores non-cash legacy expected amount for physical cash", async () => {
   const harness = buildHarness(123456.78);
 
   await harness.service.close(
@@ -240,10 +254,10 @@ test("close keeps non-negative expected amount unchanged", async () => {
     actor
   );
 
-  assert.equal(harness.getCloseInput()?.expectedAmount, 123456.78);
-  assert.equal(harness.getCloseInput()?.differenceAmount, 95543.22);
-  assert.equal(harness.getCashCountInput()?.expectedAmount, 123456.78);
-  assert.equal(harness.getCashCountInput()?.differenceAmount, 95543.22);
+  assert.equal(harness.getCloseInput()?.expectedAmount, 100000);
+  assert.equal(harness.getCloseInput()?.differenceAmount, 119000);
+  assert.equal(harness.getCashCountInput()?.expectedAmount, 100000);
+  assert.equal(harness.getCashCountInput()?.differenceAmount, 119000);
   assert.deepEqual(harness.getQueries(), ["BEGIN", "COMMIT"]);
   assert.equal(harness.wasReleased(), true);
 });
@@ -260,17 +274,17 @@ test("close with zero amount skips invalid closing cash movement insert", async 
     actor
   );
 
-  assert.equal(harness.getCloseInput()?.expectedAmount, 0);
-  assert.equal(harness.getCloseInput()?.differenceAmount, 0);
+  assert.equal(harness.getCloseInput()?.expectedAmount, 100000);
+  assert.equal(harness.getCloseInput()?.differenceAmount, -100000);
   assert.equal(harness.getCashCountInput()?.countedCashAmount, 0);
-  assert.equal(harness.getCashCountInput()?.expectedAmount, 0);
-  assert.equal(harness.getCashCountInput()?.differenceAmount, 0);
+  assert.equal(harness.getCashCountInput()?.expectedAmount, 100000);
+  assert.equal(harness.getCashCountInput()?.differenceAmount, -100000);
   assert.equal(harness.getMovementInput(), null);
   assert.deepEqual(harness.getQueries(), ["BEGIN", "COMMIT"]);
   assert.equal(harness.wasReleased(), true);
   assert.equal(response.closingAmount, 0);
-  assert.equal(response.expectedAmount, 0);
-  assert.equal(response.differenceAmount, 0);
+  assert.equal(response.expectedAmount, 100000);
+  assert.equal(response.differenceAmount, -100000);
 });
 
 test("open with zero amount skips invalid opening cash movement insert", async () => {

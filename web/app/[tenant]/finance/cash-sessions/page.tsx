@@ -1,6 +1,14 @@
 "use client";
 
-import { Download, Eye, Plus, Printer, Receipt, RefreshCw } from "lucide-react";
+import {
+  ClipboardCheck,
+  Download,
+  Eye,
+  Plus,
+  Printer,
+  Receipt,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
@@ -13,6 +21,7 @@ import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { CloseCashSessionForm } from "../../../../modules/finance/components/CloseCashSessionForm";
+import { CashSessionAuditForm } from "../../../../modules/finance/components/CashSessionAuditForm";
 import { FinanceAccessNotice } from "../../../../modules/finance/components/FinanceAccessNotice";
 import { FinanceMetricCard } from "../../../../modules/finance/components/FinanceMetricCard";
 import { FinancePageHeader } from "../../../../modules/finance/components/FinancePageHeader";
@@ -25,8 +34,10 @@ import type {
   CashSession,
   CashSessionSummary,
   CloseCashSessionPayload,
+  CreateCashSessionAuditPayload,
 } from "../../../../modules/finance/types";
 import { formatCurrency, formatDateTime } from "../../../../modules/finance/utils";
+import { createCashSessionAudit } from "../../../../modules/finance/services/finance.service";
 import { PdfPreviewModal } from "../../../../modules/reporteria/components/PdfPreviewModal";
 import { getCashClosingTicket } from "../../../../modules/reporteria/services/reporting.service";
 import {
@@ -38,6 +49,11 @@ import { useAppSelector } from "../../../../store/hooks";
 const closeFormInitial: CloseCashSessionPayload = {
   closingAmount: 0,
   description: "",
+};
+
+const auditFormInitial: CreateCashSessionAuditPayload = {
+  countedCashAmount: 0,
+  notes: "",
 };
 
 type PdfConfig = {
@@ -153,7 +169,11 @@ const CashSessionsPage = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [registerFilter, setRegisterFilter] = useState("");
   const [closeModal, setCloseModal] = useState(false);
+  const [auditModal, setAuditModal] = useState(false);
   const [closeForm, setCloseForm] = useState<CloseCashSessionPayload>(closeFormInitial);
+  const [auditForm, setAuditForm] =
+    useState<CreateCashSessionAuditPayload>(auditFormInitial);
+  const [auditSaving, setAuditSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [closeNotice, setCloseNotice] = useState<CloseNoticeState | null>(null);
@@ -221,7 +241,8 @@ const CashSessionsPage = () => {
   }, [history, registerFilter, statusFilter]);
 
   const expectedCurrent = currentSession
-    ? sessionSummary?.totals.expectedAmount ??
+    ? sessionSummary?.cashControl?.expectedCashAmount ??
+      sessionSummary?.totals.expectedAmount ??
       currentSession.expectedAmount ??
       currentSession.openingAmount
     : 0;
@@ -320,6 +341,47 @@ const CashSessionsPage = () => {
         title: "No se pudo cerrar la caja",
         message: getApiErrorMessage(error, "No se pudo cerrar la caja."),
       });
+    }
+  };
+
+  const handleOpenAuditModal = async () => {
+    if (!currentSession) {
+      return;
+    }
+    const summary = sessionSummary ?? (await loadSessionSummary(currentSession.id));
+    if (!summary) {
+      setToastMessage("No se pudo cargar el resumen para arqueo.");
+      setToastVariant("error");
+      return;
+    }
+    setAuditForm({
+      countedCashAmount:
+        summary.cashControl?.countedCashAmount ??
+        summary.lastCount?.countedCashAmount ??
+        expectedCurrent,
+      notes: "",
+    });
+    setAuditModal(true);
+  };
+
+  const handleSaveAudit = async () => {
+    if (!currentSession) {
+      return;
+    }
+
+    try {
+      setAuditSaving(true);
+      await createCashSessionAudit(currentSession.id, auditForm);
+      await loadSessionSummary(currentSession.id);
+      setAuditModal(false);
+      setAuditForm(auditFormInitial);
+      setToastMessage("Arqueo guardado. La caja sigue abierta.");
+      setToastVariant("success");
+    } catch (error) {
+      setToastMessage(getApiErrorMessage(error, "No se pudo guardar el arqueo."));
+      setToastVariant("error");
+    } finally {
+      setAuditSaving(false);
     }
   };
 
@@ -452,10 +514,19 @@ const CashSessionsPage = () => {
                   label="Accion"
                   value={
                     canOperateCashSessions ? (
-                      <Button variant="warning" onClick={() => setCloseModal(true)}>
-                        <Receipt className="h-4 w-4" />
-                        Cerrar caja
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => void handleOpenAuditModal()}
+                        >
+                          <ClipboardCheck className="h-4 w-4" />
+                          Arqueo
+                        </Button>
+                        <Button variant="warning" onClick={() => setCloseModal(true)}>
+                          <Receipt className="h-4 w-4" />
+                          Cerrar caja
+                        </Button>
+                      </div>
                     ) : (
                       "Solo lectura"
                     )
@@ -529,6 +600,16 @@ const CashSessionsPage = () => {
                     >
                       Ver movimientos
                     </Button>
+                    {canOperateCashSessions ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleOpenAuditModal()}
+                      >
+                        <ClipboardCheck className="h-4 w-4" />
+                        Arqueo
+                      </Button>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
@@ -734,7 +815,7 @@ const CashSessionsPage = () => {
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {closeModal && currentSession ? (
-        <Modal title="Cerrar caja" className="max-w-2xl">
+        <Modal title="Cerrar caja" className="max-w-5xl" size="xl">
           <CloseCashSessionForm
             value={closeForm}
             expectedAmount={expectedCurrent}
@@ -743,6 +824,25 @@ const CashSessionsPage = () => {
             onCancel={() => setCloseModal(false)}
             onSubmit={() => void handleCloseSession()}
             isSaving={saving}
+          />
+        </Modal>
+      ) : null}
+
+      {auditModal && currentSession && sessionSummary ? (
+        <Modal
+          title="Arqueo de caja"
+          description="Revision preliminar. No cierra la caja."
+          className="max-w-5xl"
+          size="xl"
+          onClose={() => setAuditModal(false)}
+        >
+          <CashSessionAuditForm
+            summary={sessionSummary}
+            value={auditForm}
+            onChange={setAuditForm}
+            onCancel={() => setAuditModal(false)}
+            onSubmit={() => void handleSaveAudit()}
+            isSaving={auditSaving}
           />
         </Modal>
       ) : null}

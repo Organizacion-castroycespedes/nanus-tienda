@@ -5,6 +5,7 @@ import { Button } from "../../../components/design-system/Button";
 import { Textarea } from "../../../components/design-system/Textarea";
 import type { CashSessionSummary, CloseCashSessionPayload } from "../types";
 import { formatCurrency } from "../utils";
+import { CashSessionBreakdownPanel } from "./CashSessionBreakdownPanel";
 import {
   formatCashAmountForInput,
   parseCashAmountInput,
@@ -57,7 +58,9 @@ export const CloseCashSessionForm = ({
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-xs uppercase tracking-[0.25em] text-amber-700">Esperado</p>
+          <p className="text-xs uppercase tracking-[0.25em] text-amber-700">
+            Efectivo esperado
+          </p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">
             {formatCurrency(expectedAmount)}
           </p>
@@ -79,37 +82,7 @@ export const CloseCashSessionForm = ({
       </div>
 
       {summary ? (
-        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Ingresos</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {formatCurrency(summary.totals.paymentsIn + summary.totals.adjustmentsIn)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Egresos</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {formatCurrency(
-                summary.totals.paymentsOut +
-                  summary.totals.expenses +
-                  summary.totals.withdrawals +
-                  summary.totals.adjustmentsOut
-              )}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Ventas cobradas</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {formatCurrency(summary.totals.salesPayments)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Movimientos</p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {summary.totals.movementCount} registros
-            </p>
-          </div>
-        </div>
+        <CashSessionBreakdownPanel summary={summary} />
       ) : null}
 
       <div className="grid gap-4">

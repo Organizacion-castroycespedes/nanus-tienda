@@ -89,6 +89,58 @@ export type CashClosingTicketDataset = {
     count: number;
     total: number;
   }>;
+  paymentMethodDetails?: Array<{
+    paymentMethodId: string | null;
+    paymentMethodNombre: string;
+    paymentMethodTipo: string | null;
+    category: "CASH" | "CARD" | "TRANSFER" | "DIGITAL" | "OTHER";
+    isCash: boolean;
+    count: number;
+    sales: number;
+    orders: number;
+    purchases: number;
+    refunds: number;
+    deliveries: number;
+    manualIn: number;
+    manualOut: number;
+    otherIn: number;
+    otherOut: number;
+    totalIn: number;
+    totalOut: number;
+    net: number;
+  }>;
+  sourceBreakdown?: {
+    opening: number;
+    posSales: number;
+    orders: number;
+    purchases: number;
+    refunds: number;
+    deliveries: number;
+    manualIn: number;
+    manualOut: number;
+    otherIn: number;
+    otherOut: number;
+    totalIn: number;
+    totalOut: number;
+    net: number;
+  };
+  cashControl?: {
+    openingCash: number;
+    cashPaymentsIn: number;
+    cashPaymentsOut: number;
+    cashDeliveryFees: number;
+    cashManualIn: number;
+    cashManualOut: number;
+    expectedCashAmount: number;
+    countedCashAmount: number | null;
+    differenceAmount: number | null;
+    nonCashNet: number;
+    totalNetAmount: number;
+  };
+  auditSummary?: {
+    auditCount: number;
+    lastAuditAt: string | null;
+  };
   deliverySummary: {
     deliveredCount: number;
     pendingCount: number;

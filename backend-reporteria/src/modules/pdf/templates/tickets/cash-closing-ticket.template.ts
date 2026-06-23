@@ -34,6 +34,14 @@ const buildMiniTable = (rows: Array<[string, string]>): Content => ({
   layout: "noBorders",
 });
 
+const paymentCategoryLabel: Record<string, string> = {
+  CASH: "EFECTIVO",
+  CARD: "TARJETA",
+  TRANSFER: "TRANSFERENCIA",
+  DIGITAL: "DIGITAL",
+  OTHER: "OTRO",
+};
+
 export const buildCashClosingTicketTemplate = (
   dataset: CashClosingTicketDataset
 ): TDocumentDefinitions => {
@@ -64,6 +72,8 @@ export const buildCashClosingTicketTemplate = (
       ],
     },
   ];
+  const cashControl = dataset.cashControl;
+  const sourceBreakdown = dataset.sourceBreakdown;
 
   const paymentBreakdownRows = dataset.paymentBreakdown
     .filter((item) => item.direction === "IN" && item.total > 0)
@@ -79,6 +89,57 @@ export const buildCashClosingTicketTemplate = (
         `${item.count} / ${formatCurrency(item.total)}`,
       ] as [string, string]
   );
+
+  if (cashControl) {
+    sections.push({
+      stack: [
+        buildThermalSectionTitle("Resumen efectivo"),
+        buildMiniTable([
+          ["Apertura efectivo", formatCurrency(cashControl.openingCash)],
+          ["Ingresos efectivo", formatCurrency(cashControl.cashPaymentsIn)],
+          ["Domicilios efectivo", formatCurrency(cashControl.cashDeliveryFees)],
+          ["Salidas efectivo", formatCurrency(cashControl.cashPaymentsOut + cashControl.cashManualOut)],
+          ["Esperado caja", formatCurrency(cashControl.expectedCashAmount)],
+          ["Contado", formatCurrency(cashControl.countedCashAmount ?? dataset.totals.closingAmount)],
+          ["Diferencia", formatCurrency(cashControl.differenceAmount ?? dataset.totals.difference)],
+        ]),
+      ],
+    });
+  }
+
+  if (sourceBreakdown) {
+    sections.push({
+      stack: [
+        buildThermalSectionTitle("Resumen operativo"),
+        buildMiniTable([
+          ["Ventas POS", formatCurrency(sourceBreakdown.posSales)],
+          ["Pedidos", formatCurrency(sourceBreakdown.orders)],
+          ["Compras", formatCurrency(sourceBreakdown.purchases)],
+          ["Domicilios", formatCurrency(sourceBreakdown.deliveries)],
+          ["Movimientos IN", formatCurrency(sourceBreakdown.manualIn)],
+          ["Movimientos OUT", formatCurrency(sourceBreakdown.manualOut)],
+          ["Arqueos realizados", String(dataset.auditSummary?.auditCount ?? 0)],
+        ]),
+      ],
+    });
+  }
+
+  const methodRows = (dataset.paymentMethodDetails ?? []).map(
+    (item) =>
+      [
+        `${item.paymentMethodNombre.toUpperCase()} (${paymentCategoryLabel[item.category] ?? item.category})`,
+        formatCurrency(item.net),
+      ] as [string, string]
+  );
+
+  if (methodRows.length > 0) {
+    sections.push({
+      stack: [
+        buildThermalSectionTitle("Resumen por medio de pago"),
+        buildMiniTable(methodRows),
+      ],
+    });
+  }
 
   if (dataset.lastCount) {
     sections.push({
@@ -121,7 +182,7 @@ export const buildCashClosingTicketTemplate = (
     ],
   });
 
-  if (paymentBreakdownRows.length > 0) {
+  if (methodRows.length === 0 && paymentBreakdownRows.length > 0) {
     sections.push({
       stack: [
         buildThermalSectionTitle("Resumen por medio de pago"),
@@ -139,8 +200,8 @@ export const buildCashClosingTicketTemplate = (
       ["Apertura", formatCurrency(dataset.totals.openingAmount)],
       ["Entradas", formatCurrency(dataset.totals.totalIn)],
       ["Salidas", formatCurrency(dataset.totals.totalOut)],
-      ["Esperado", formatCurrency(dataset.totals.expectedAmount)],
-      ["Real", formatCurrency(dataset.totals.closingAmount)],
+      ["Efectivo esperado", formatCurrency(dataset.totals.expectedAmount)],
+      ["Efectivo contado", formatCurrency(dataset.totals.closingAmount)],
       ["Diferencia", formatCurrency(dataset.totals.difference)],
     ].map(([label, value]) => ({ label, value })),
     footerText: "Documento de cierre generado por backend-reporteria.",
