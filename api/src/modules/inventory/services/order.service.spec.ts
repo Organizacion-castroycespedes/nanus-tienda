@@ -20,6 +20,7 @@ const ids = {
   tax: "10000000-0000-0000-0000-000000000009",
   otherBranch: "10000000-0000-0000-0000-000000000010",
   terminal: "10000000-0000-0000-0000-000000000011",
+  cashSession: "10000000-0000-0000-0000-000000000012",
 };
 
 type RecordedQuery = {
@@ -30,6 +31,7 @@ type RecordedQuery = {
 type InsertedOrder = {
   total: number;
   balanceDue: number;
+  cashSessionId: unknown;
 };
 
 type InsertedItem = {
@@ -191,8 +193,9 @@ class FakeOrderClient {
 
     if (sql.startsWith("INSERT INTO orders")) {
       this.insertedOrder = {
-        total: Number(params[5]),
-        balanceDue: Number(params[8]),
+        total: Number(params[6]),
+        balanceDue: Number(params[9]),
+        cashSessionId: params[3],
       };
       return {
         rows: [
@@ -200,13 +203,14 @@ class FakeOrderClient {
             id: params[0],
             tenant_id: params[1],
             customer_id: params[2],
-            type: params[3],
-            status: params[4],
-            total: params[5],
-            payment_status: params[6],
-            total_paid: params[7],
-            balance_due: params[8],
-            created_at: params[9],
+            cash_session_id: params[3],
+            type: params[4],
+            status: params[5],
+            total: params[6],
+            payment_status: params[7],
+            total_paid: params[8],
+            balance_due: params[9],
+            created_at: params[10],
           },
         ] as T[],
       };
@@ -444,7 +448,7 @@ test("OrderService.createOrder persists snapshot with promotion", async () => {
 });
 
 test("OrderService.createOrder persists terminal context in audit payload and response", async () => {
-  const { service, auditEvents } = buildService([makePreview()]);
+  const { service, client, auditEvents } = buildService([makePreview()]);
 
   const result = await service.createOrder({
     ...createPayload(),
@@ -453,14 +457,18 @@ test("OrderService.createOrder persists terminal context in audit payload and re
       branchId: ids.branch,
       terminalId: ids.terminal,
       userId: ids.user,
+      cashSessionId: ids.cashSession,
     },
   });
 
   assert.equal(result.branchId, ids.branch);
   assert.equal(result.terminalId, ids.terminal);
   assert.equal(result.terminalName, "Terminal QA");
+  assert.equal(result.cashSessionId, ids.cashSession);
+  assert.equal(client.insertedOrder?.cashSessionId, ids.cashSession);
   assert.equal((auditEvents[0] as any).after.terminalId, ids.terminal);
   assert.equal((auditEvents[0] as any).after.branchId, ids.branch);
+  assert.equal((auditEvents[0] as any).after.cashSessionId, ids.cashSession);
 });
 
 test("OrderService.createOrder rejects terminal outside tenant branch", async () => {
@@ -656,12 +664,46 @@ test("OrderService.getOrders filters by customerId", async () => {
     {
       tenantId: ids.tenant,
       customerId: ids.customer,
+      cashScope: "all",
     },
     actor
   );
 
   assert.match(queries[0].text, /o\.customer_id = \$2::uuid/);
   assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
+});
+
+test("OrderService.getOrders current scope filters by current cash session", async () => {
+  const queries: RecordedQuery[] = [];
+  const service = new OrderService(
+    {
+      query: async (text: string, params: unknown[] = []) => {
+        queries.push({ text, params });
+        if (text.includes("FROM cash_sessions")) {
+          return { rows: [{ id: ids.cashSession }] };
+        }
+        return { rows: [] };
+      },
+    } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    {} as never,
+    {} as never
+  );
+
+  await service.getOrders(
+    {
+      tenantId: ids.tenant,
+      cashScope: "current",
+    },
+    actor
+  );
+
+  const listQuery = queries.find((query) => query.text.includes("FROM orders o"));
+  assert.ok(listQuery);
+  assert.match(listQuery.text, /o\.cash_session_id = \$2::uuid/);
+  assert.deepEqual(listQuery.params, [ids.tenant, ids.cashSession]);
 });
 
 test("OrderService.invoiceOrder rejects POS session from another order branch", async () => {

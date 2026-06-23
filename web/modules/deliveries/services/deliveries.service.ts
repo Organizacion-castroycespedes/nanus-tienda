@@ -125,7 +125,9 @@ export const cancelDelivery = (
   });
 
 export const getOrderDelivery = (orderId: string) =>
-  apiClient<DeliveryRecord | null>(buildOrderDeliveryEndpoint(orderId));
+  apiClient<DeliveryRecord | null>(buildOrderDeliveryEndpoint(orderId), {
+    includePosSession: true,
+  });
 
 export const createOrderDelivery = (
   orderId: string,

@@ -200,7 +200,7 @@ export const DeliveryRelationCard = ({
       notes: optionalText(form.notes),
       metadata: {
         source: `${sourceType}_relation_frontend`,
-        no_cash_integration: true,
+        no_cash_integration: sourceType === "sale" ? true : undefined,
         no_pos_flow_change: true,
         no_electronic_invoice_change: true,
       },
@@ -223,7 +223,7 @@ export const DeliveryRelationCard = ({
           : await createDeliveryFromSale(tenantId, sourceId, buildPayload());
       setDelivery(created);
       setIsCreating(false);
-      setSuccessMessage("Domicilio creado correctamente. No toca caja.");
+      setSuccessMessage("Domicilio creado correctamente.");
     } catch (error) {
       setErrorMessage(
         getApiErrorMessage(
@@ -269,8 +269,8 @@ export const DeliveryRelationCard = ({
           </p>
           <h3 className="text-lg font-semibold text-slate-900">{relationLabel}</h3>
           <p className="mt-1 text-sm text-slate-600">
-            Consulta o crea un domicilio sin modificar caja, POS, facturacion,
-            totales ni impuestos.
+            Consulta o crea un domicilio sin modificar POS, facturacion, totales
+            ni impuestos.
           </p>
         </div>
         <Button
@@ -446,7 +446,7 @@ export const DeliveryRelationCard = ({
               hint={
                 sourceType === "sale"
                   ? "Informativo. No modifica total ni impuestos."
-                  : "Informativo. No crea movimientos de caja."
+                  : "Informativo. Solo afecta valor operativo del domicilio."
               }
               onChange={(event) => updateField("deliveryFee", event.target.value)}
             />

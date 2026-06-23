@@ -35,6 +35,7 @@ type AuthRequest = Request & {
     terminalId?: string;
     posSessionId?: string;
     userId?: string;
+    cashSessionId?: string;
   };
 };
 
@@ -105,6 +106,7 @@ export class PurchaseController {
       terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
+      cashSessionId: request.context?.cashSessionId ?? null,
     };
   }
 
@@ -114,6 +116,8 @@ export class PurchaseController {
       userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
+      terminalId: request.context?.terminalId,
+      cashSessionId: request.context?.cashSessionId,
     };
   }
 
@@ -166,6 +170,8 @@ export class PurchaseController {
     @Query("fromDate") fromDate: string | undefined,
     @Query("toDate") toDate: string | undefined,
     @Query("paymentMethod") paymentMethod: string | undefined,
+    @Query("cashScope") cashScope: "current" | "all" | undefined,
+    @Query("cashSessionId") cashSessionId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.purchaseService.getPurchases(
@@ -175,6 +181,8 @@ export class PurchaseController {
         fromDate,
         toDate,
         paymentMethod,
+        cashScope,
+        cashSessionId,
       },
       this.buildActor(request)
     );

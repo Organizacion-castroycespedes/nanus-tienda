@@ -206,6 +206,7 @@ const PurchasesPage = () => {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [cashSessionChecked, setCashSessionChecked] = useState(false);
+  const [cashScope, setCashScope] = useState<"current" | "all">("current");
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
@@ -239,6 +240,8 @@ const PurchasesPage = () => {
   const canSettlePartial =
     canManagePurchases && hasPermission("inventory.settle_partial");
   const hasOpenCashSession = Boolean(currentCashSession);
+  const canUseAllCashScope =
+    role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
 
   const showApiConfirmError = useCallback(
     async (error: unknown, fallbackMessage: string) => {
@@ -331,6 +334,7 @@ const PurchasesPage = () => {
 
   const resolvePurchaseFilters = useCallback(
     (filters?: PurchaseFilters) => {
+      const resolvedCashScope = canUseAllCashScope ? cashScope : "current";
       if (canViewAllTenants) {
         return {
           tenantId: filters?.tenantId || undefined,
@@ -338,6 +342,11 @@ const PurchasesPage = () => {
           fromDate: filters?.fromDate || undefined,
           toDate: filters?.toDate || undefined,
           status: filters?.status || undefined,
+          cashScope: resolvedCashScope,
+          cashSessionId:
+            resolvedCashScope === "current"
+              ? currentCashSession?.id ?? undefined
+              : undefined,
         };
       }
 
@@ -347,9 +356,12 @@ const PurchasesPage = () => {
         fromDate: filters?.fromDate || undefined,
         toDate: filters?.toDate || undefined,
         status: filters?.status || undefined,
+        cashScope: resolvedCashScope,
+        cashSessionId:
+          resolvedCashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
       };
     },
-    [canViewAllTenants, currentTenant]
+    [canUseAllCashScope, canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
   );
 
   const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
@@ -412,6 +424,12 @@ const PurchasesPage = () => {
       active = false;
     };
   }, [authUser?.tenantId]);
+
+  useEffect(() => {
+    if (!canUseAllCashScope && cashScope !== "current") {
+      setCashScope("current");
+    }
+  }, [canUseAllCashScope, cashScope]);
 
   useEffect(() => {
     if (!cashSessionChecked || hasOpenCashSession || !activeViewMode) {
@@ -1169,8 +1187,44 @@ const PurchasesPage = () => {
 
       {cashSessionChecked && !hasOpenCashSession ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          Debes tener una caja abierta para crear, recibir, pagar, liquidar o
-          cancelar compras. La consulta sigue disponible.
+          No tienes una caja abierta. Abre caja para ver la operacion actual
+          de compras. Crear, recibir, pagar, liquidar o cancelar sigue bloqueado.
+        </section>
+      ) : null}
+
+      {!isActionMode ? (
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">
+                Alcance: {cashScope === "all" ? "Todas" : "Caja actual"}
+              </p>
+              <p className="mt-1 text-emerald-800">
+                {cashScope === "all"
+                  ? "Mostrando historico autorizado de compras."
+                  : currentCashSession
+                    ? `Mostrando operacion de caja actual: ${
+                        currentCashSession.cashRegisterNombre ??
+                        currentCashSession.cashRegisterCodigo ??
+                        "Caja"
+                      }.`
+                    : "No se mezcla historico con la operacion actual."}
+              </p>
+            </div>
+            {canUseAllCashScope ? (
+              <Select
+                label="Alcance"
+                value={cashScope}
+                onChange={(event) =>
+                  setCashScope(event.target.value === "all" ? "all" : "current")
+                }
+                className="min-w-[180px]"
+              >
+                <option value="current">Caja actual</option>
+                <option value="all">Todas</option>
+              </Select>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

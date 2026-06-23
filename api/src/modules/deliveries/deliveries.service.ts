@@ -36,6 +36,7 @@ type DeliveryActor = {
   branchId?: string;
   terminalId?: string;
   posSessionId?: string;
+  cashSessionId?: string | null;
 };
 
 type DeliveryRecord = {
@@ -88,6 +89,7 @@ type OrderDeliverySourceRecord = {
   customer_phone: string | null;
   customer_address: string | null;
   branch_id: string | null;
+  cash_session_id: string | null;
 };
 
 type SaleDeliverySourceRecord = {
@@ -113,6 +115,11 @@ type DeliveryCashContext = {
   terminalId: string | null;
   cashImpactAmount: number;
   recordedAt: Date;
+};
+
+type CreateDeliveryOptions = {
+  attachCurrentCashContext?: boolean;
+  sourceOrderCashSessionId?: string | null;
 };
 
 const DELIVERY_SELECT_FIELDS = `
@@ -475,6 +482,7 @@ export class DeliveriesService {
           o.id,
           o.tenant_id,
           o.customer_id,
+          o.cash_session_id,
           o.total AS order_total,
           c.name AS customer_name,
           c.phone AS customer_phone,
@@ -651,6 +659,127 @@ export class DeliveriesService {
     }
   }
 
+  private assertOrderCashSessionMatchesCurrent(
+    orderCashSessionId: string | null | undefined,
+    currentCashSessionId: string
+  ) {
+    if (orderCashSessionId && orderCashSessionId !== currentCashSessionId) {
+      throw new ForbiddenException(
+        "El pedido pertenece a otra caja o sesion. No puede gestionarse como domicilio de la caja actual."
+      );
+    }
+  }
+
+  private async completeExistingOrderDeliveryCashContext(
+    order: OrderDeliverySourceRecord,
+    branchId: string,
+    actor: DeliveryActor
+  ) {
+    const tenantId = order.tenant_id;
+    const schema = await this.hasCashScopeSchema();
+    const client = await this.db.getClient();
+
+    try {
+      await client.query("BEGIN");
+      const existingResult = await client.query<DeliveryRecord>(
+        `
+          SELECT *
+          FROM public.deliveries
+          WHERE tenant_id = $1
+            AND order_id = $2
+          ORDER BY created_at DESC
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [tenantId, order.id]
+      );
+
+      const existing = existingResult.rows[0];
+      if (!existing) {
+        await client.query("COMMIT");
+        return null;
+      }
+
+      this.assertDeliveryBranchScope(existing, actor);
+
+      const normalizedStatus = normalizeDeliveryStatus(existing.status);
+      if (!existing.cash_session_id && normalizedStatus !== "CREADO") {
+        throw new BadRequestException(
+          "El domicilio existente no puede cambiar de caja"
+        );
+      }
+
+      const cashContext = await this.resolveRequiredCashContext(
+        tenantId,
+        branchId,
+        actor,
+        Number(existing.delivery_fee ?? 0),
+        schema,
+        client
+      );
+
+      this.assertOrderCashSessionMatchesCurrent(
+        order.cash_session_id,
+        cashContext.cashSessionId
+      );
+
+      if (
+        existing.cash_session_id &&
+        existing.cash_session_id !== cashContext.cashSessionId
+      ) {
+        throw new ForbiddenException(
+          "El domicilio pertenece a otra sesion de caja"
+        );
+      }
+
+      if (existing.cash_session_id === cashContext.cashSessionId) {
+        await client.query("COMMIT");
+        return this.mapRecord(existing);
+      }
+
+      const updateMetadata = {
+        cash_context_completed_from_order: true,
+        source_order_without_cash_session: !order.cash_session_id,
+      };
+      const updateResult = await client.query<DeliveryRecord>(
+        `
+          UPDATE public.deliveries
+          SET
+            cash_session_id = $3,
+            cash_register_id = $4,
+            terminal_id = $5,
+            cash_impact_amount = $6,
+            cash_impact_recorded_at = $7,
+            updated_by_user_id = $8,
+            updated_at = now(),
+            metadata = COALESCE(metadata, '{}'::jsonb) || $9::jsonb
+          WHERE id = $1
+            AND tenant_id = $2
+          RETURNING *
+        `,
+        [
+          existing.id,
+          tenantId,
+          cashContext.cashSessionId,
+          cashContext.cashRegisterId,
+          cashContext.terminalId,
+          Number(existing.delivery_fee ?? 0),
+          cashContext.recordedAt,
+          actor.userId ?? null,
+          JSON.stringify(updateMetadata),
+        ]
+      );
+
+      await client.query("COMMIT");
+      return this.mapRecord(updateResult.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async assertNoSaleDelivery(
     client: PoolClient,
     tenantId: string,
@@ -793,6 +922,11 @@ export class DeliveriesService {
     if (actor.terminalId) {
       params.push(actor.terminalId);
       conditions.push(`register.terminal_id = $${params.length}`);
+    }
+
+    if (actor.cashSessionId) {
+      params.push(actor.cashSessionId);
+      conditions.push(`session.id = $${params.length}`);
     }
 
     const sql = `
@@ -1196,7 +1330,11 @@ ${deliverySelect.join}
     };
   }
 
-  async create(payload: CreateDeliveryDto, actor: DeliveryActor) {
+  async create(
+    payload: CreateDeliveryDto,
+    actor: DeliveryActor,
+    options: CreateDeliveryOptions = {}
+  ) {
     const tenantId = this.resolveTenantId(actor);
     const branchId = this.resolveBranchId(actor, payload.branch_id);
     if (!branchId) {
@@ -1243,6 +1381,8 @@ ${deliverySelect.join}
       deliveryFee,
       payload.payment_method_id
     );
+    const shouldAttachCurrentCashContext =
+      options.attachCurrentCashContext === true;
 
     if (driverId && !(await this.hasDriverCatalogSchema())) {
       throw new BadRequestException(
@@ -1278,16 +1418,24 @@ ${deliverySelect.join}
       if (driverId) {
         await this.assertActiveDriverForAssignment(client, tenantId, driverId);
       }
-      const cashContext = hasCashImpact
-        ? await this.resolveRequiredCashContext(
-            tenantId,
-            branchId,
-            actor,
-            deliveryFee,
-            cashSchema,
-            client
-          )
-        : null;
+      const cashContext =
+        hasCashImpact || shouldAttachCurrentCashContext
+          ? await this.resolveRequiredCashContext(
+              tenantId,
+              branchId,
+              actor,
+              deliveryFee,
+              cashSchema,
+              client
+            )
+          : null;
+
+      if (cashContext) {
+        this.assertOrderCashSessionMatchesCurrent(
+          options.sourceOrderCashSessionId,
+          cashContext.cashSessionId
+        );
+      }
 
       const deliveryNumber = await this.deliveryNumberService.generate(
         tenantId,
@@ -1402,6 +1550,15 @@ ${deliverySelect.join}
       actor,
       payload.branch_id
     );
+    const existing = await this.completeExistingOrderDeliveryCashContext(
+      order,
+      branchId,
+      actor
+    );
+    if (existing) {
+      return existing;
+    }
+
     const deliveryAddress =
       this.normalizeNullableText(payload.delivery_address) ??
       this.normalizeNullableText(order.customer_address);
@@ -1440,9 +1597,14 @@ ${deliverySelect.join}
           ...metadata,
           source: "order",
           source_order_id: order.id,
+          source_order_without_cash_session: !order.cash_session_id,
         },
       },
-      actor
+      actor,
+      {
+        attachCurrentCashContext: true,
+        sourceOrderCashSessionId: order.cash_session_id,
+      }
     );
   }
 

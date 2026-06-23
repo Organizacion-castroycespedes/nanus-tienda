@@ -25,6 +25,7 @@ const actor = {
   tenantId,
   userId: actorUserId,
   roles: ["ADMIN"],
+  cashSessionId,
 };
 
 const driverSchemaRow = {
@@ -90,6 +91,7 @@ const buildOrderSource = (overrides: Record<string, unknown> = {}) => ({
   id: orderId,
   tenant_id: tenantId,
   customer_id: customerId,
+  cash_session_id: cashSessionId,
   order_total: "12500.00",
   customer_name: "Cliente pedido",
   customer_phone: "3111111111",
@@ -388,6 +390,30 @@ const buildOrderCreateHarness = (options: {
               cash_register_id: cashRegisterId,
               terminal_id: terminalId,
             },
+          ],
+        };
+      }
+      if (queryText.includes("UPDATE public.deliveries")) {
+        const metadataParam = params.find(
+          (item) => typeof item === "string" && item.startsWith("{")
+        );
+        return {
+          rows: [
+            buildDelivery({
+              ...(duplicate ?? {}),
+              id: params[0],
+              tenant_id: params[1],
+              cash_session_id: params[2],
+              cash_register_id: params[3],
+              terminal_id: params[4],
+              cash_impact_amount: params[5],
+              cash_impact_recorded_at: params[6],
+              updated_by_user_id: params[7],
+              metadata: {
+                ...((duplicate?.metadata as Record<string, unknown> | undefined) ?? {}),
+                ...(metadataParam ? JSON.parse(String(metadataParam)) : {}),
+              },
+            }),
           ],
         };
       }
@@ -976,8 +1002,13 @@ test("DeliveriesService.createFromOrder creates CREADO delivery with order snaps
   assert.equal(result.delivery_address, "Calle pedido 45");
   assert.equal(result.delivery_fee, 1500);
   assert.equal(result.total, 12500);
+  assert.equal(result.cash_session_id, cashSessionId);
+  assert.equal(result.cash_register_id, cashRegisterId);
+  assert.equal(result.terminal_id, terminalId);
+  assert.equal(result.cash_impact_amount, 1500);
   assert.equal(result.metadata.source, "order");
   assert.equal(result.metadata.source_order_id, orderId);
+  assert.equal(result.metadata.source_order_without_cash_session, false);
   assert.equal(harness.committed, true);
   assert.equal(harness.rolledBack, false);
   assert.equal(harness.released, true);
@@ -989,6 +1020,77 @@ test("DeliveriesService.createFromOrder creates CREADO delivery with order snaps
     actorUserId,
     null,
   ]);
+});
+
+test("DeliveriesService.createFromOrder stores current cash context with zero delivery fee", async () => {
+  const harness = buildOrderCreateHarness();
+
+  const result = await harness.service.createFromOrder(orderId, {}, actor);
+
+  assert.equal(result.status, "CREADO");
+  assert.equal(result.order_id, orderId);
+  assert.equal(result.delivery_fee, 0);
+  assert.equal(result.cash_session_id, cashSessionId);
+  assert.equal(result.cash_register_id, cashRegisterId);
+  assert.equal(result.terminal_id, terminalId);
+  assert.equal(result.cash_impact_amount, 0);
+  assert.equal(result.metadata.source_order_without_cash_session, false);
+  assert.equal(
+    harness.queries.join("\n").toLowerCase().includes("cash_movements"),
+    false
+  );
+  assert.equal(harness.queries.join("\n").toLowerCase().includes("payments"), false);
+});
+
+test("DeliveriesService.createFromOrder marks historical order without cash session", async () => {
+  const harness = buildOrderCreateHarness({
+    order: buildOrderSource({ cash_session_id: null }),
+  });
+
+  const result = await harness.service.createFromOrder(orderId, {}, actor);
+
+  assert.equal(result.cash_session_id, cashSessionId);
+  assert.equal(result.cash_impact_amount, 0);
+  assert.equal(result.metadata.source_order_without_cash_session, true);
+});
+
+test("DeliveriesService.createFromOrder rejects order from another cash session", async () => {
+  const harness = buildOrderCreateHarness({
+    order: buildOrderSource({
+      cash_session_id: "00000000-0000-0000-0000-000000000099",
+    }),
+  });
+
+  await assert.rejects(
+    () => harness.service.createFromOrder(orderId, {}, actor),
+    ForbiddenException
+  );
+
+  assert.equal(harness.rolledBack, true);
+  assert.equal(harness.historyParams.length, 0);
+});
+
+test("DeliveriesService.createFromOrder completes existing CREADO delivery without cash context", async () => {
+  const harness = buildOrderCreateHarness({
+    duplicate: buildDelivery({
+      order_id: orderId,
+      status: "CREATED",
+      cash_session_id: null,
+      delivery_fee: "0",
+      metadata: { source: "order" },
+    }),
+  });
+
+  const result = await harness.service.createFromOrder(orderId, {}, actor);
+
+  assert.equal(result.id, deliveryId);
+  assert.equal(result.cash_session_id, cashSessionId);
+  assert.equal(result.cash_impact_amount, 0);
+  assert.equal(result.metadata.cash_context_completed_from_order, true);
+  assert.equal(
+    harness.queries.some((query) => query.includes("INSERT INTO public.deliveries")),
+    false
+  );
 });
 
 test("DeliveriesService.createFromOrder stores active driver without changing status", async () => {
@@ -1026,9 +1128,12 @@ test("DeliveriesService.createFromOrder rejects inactive driver", async () => {
     BadRequestException
   );
 
-  assert.equal(harness.committed, false);
   assert.equal(harness.rolledBack, true);
   assert.equal(harness.historyParams.length, 0);
+  assert.equal(
+    harness.queries.some((query) => query.includes("INSERT INTO public.deliveries")),
+    false
+  );
 });
 
 test("DeliveriesService.createFromOrder rejects missing order or wrong tenant", async () => {

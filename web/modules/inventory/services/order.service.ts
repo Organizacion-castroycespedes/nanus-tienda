@@ -10,6 +10,7 @@ export type OrderResponse = {
   branchName?: string | null;
   terminalId?: string | null;
   terminalName?: string | null;
+  cashSessionId?: string | null;
   generatedSaleId?: string | null;
   billingStatus?: "UNBILLED" | "PARTIAL" | "INVOICED";
   type: "CASH" | "CREDIT";
@@ -56,6 +57,8 @@ export type GetOrdersParams = {
   customerId?: string;
   fromDate?: string;
   toDate?: string;
+  cashScope?: "current" | "all";
+  cashSessionId?: string;
 };
 
 export type CreateOrderPayload = {
@@ -111,6 +114,12 @@ export const getOrders = (
   }
   if (params.toDate) {
     query.set("toDate", params.toDate);
+  }
+  if (params.cashScope) {
+    query.set("cashScope", params.cashScope);
+  }
+  if (params.cashSessionId) {
+    query.set("cashSessionId", params.cashSessionId);
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<OrderResponse[]>(`/orders${suffix}`, { headers });

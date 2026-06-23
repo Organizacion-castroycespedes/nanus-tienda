@@ -16,6 +16,7 @@ const ids = {
   otherBranch: "30000000-0000-0000-0000-000000000099",
   terminal: "30000000-0000-0000-0000-000000000002",
   user: "40000000-0000-0000-0000-000000000001",
+  cashSession: "40000000-0000-0000-0000-000000000002",
   purchaseItem: "50000000-0000-0000-0000-000000000001",
   purchaseItem2: "50000000-0000-0000-0000-000000000002",
   product: "60000000-0000-0000-0000-000000000001",
@@ -51,6 +52,7 @@ type Scenario = {
   terminalBranchId?: string | null;
   auditTerminalName?: string | null;
   purchaseItems?: FakePurchaseItem[];
+  currentCashSessionId?: string;
 };
 
 const buildPurchaseRow = (scenario: Scenario = {}) => ({
@@ -185,14 +187,15 @@ class FakeClient {
             id: params[0],
             tenant_id: params[1],
             supplier_id: params[2],
-            type: params[3],
-            status: params[4],
-            total: params[5],
-            balance: params[6],
-            payment_status: params[7],
-            total_paid: params[8],
-            balance_due: params[9],
-            created_at: params[10],
+            cash_session_id: params[3],
+            type: params[4],
+            status: params[5],
+            total: params[6],
+            balance: params[7],
+            payment_status: params[8],
+            total_paid: params[9],
+            balance_due: params[10],
+            created_at: params[11],
           },
         ],
       };
@@ -295,6 +298,8 @@ class FakeClient {
 
 class FakeDatabaseService {
   readonly client: FakeClient;
+  readonly queries: string[] = [];
+  readonly params: unknown[][] = [];
 
   constructor(scenario: Scenario = {}) {
     this.client = new FakeClient(scenario);
@@ -304,7 +309,16 @@ class FakeDatabaseService {
     return this.client;
   }
 
-  async query() {
+  async query(text: string, params: unknown[] = []) {
+    this.queries.push(text);
+    this.params.push(params);
+    if (text.includes("FROM cash_sessions")) {
+      return {
+        rows: this.client.scenario.currentCashSessionId
+          ? [{ id: this.client.scenario.currentCashSessionId }]
+          : [],
+      };
+    }
     if (this.client.scenario?.auditTerminalName !== undefined) {
       return {
         rows: [
@@ -483,7 +497,7 @@ test("PurchaseService.createPurchase: guarda terminal valida en audit payload y 
 });
 
 test("PurchaseService.createPurchase: usa terminal desde contexto operativo cuando no viene en payload", async () => {
-  const { service, auditEvents } = buildService();
+  const { service, db, auditEvents } = buildService();
 
   const result = await service.createPurchase({
     ...createPurchasePayload(),
@@ -493,11 +507,15 @@ test("PurchaseService.createPurchase: usa terminal desde contexto operativo cuan
       branchId: ids.branch,
       terminalId: ids.terminal,
       userId: ids.user,
+      cashSessionId: ids.cashSession,
     },
   });
 
   assert.equal(result.terminalId, ids.terminal);
+  assert.equal(result.cashSessionId, ids.cashSession);
+  assert.equal(db.client.insertedPurchase?.[3], ids.cashSession);
   assert.equal((auditEvents[0] as any).after.terminalId, ids.terminal);
+  assert.equal((auditEvents[0] as any).after.cashSessionId, ids.cashSession);
 });
 
 test("PurchaseService.createPurchase: rechaza compra sin terminal resoluble", async () => {
@@ -531,10 +549,23 @@ test("PurchaseService.createPurchase: rechaza terminal de otra sucursal", async 
 test("PurchaseService.getPurchases: devuelve terminalName cuando audit trae terminal valida", async () => {
   const { service } = buildService({ auditTerminalName: "Terminal QA" });
 
-  const result = await service.getPurchases({ tenantId: ids.tenant }, actor);
+  const result = await service.getPurchases({ tenantId: ids.tenant, cashScope: "all" }, actor);
 
   assert.equal(result[0].terminalId, ids.terminal);
   assert.equal(result[0].terminalName, "Terminal QA");
+});
+
+test("PurchaseService.getPurchases: current scope filtra por caja actual", async () => {
+  const { service, db } = buildService({
+    currentCashSessionId: ids.cashSession,
+  });
+
+  await service.getPurchases({ tenantId: ids.tenant, cashScope: "current" }, actor);
+
+  const listQuery = db.queries.find((query) => query.includes("FROM purchases p"));
+  assert.ok(listQuery);
+  assert.match(listQuery, /p\.cash_session_id = \$2::uuid/);
+  assert.deepEqual(db.params[db.params.length - 1], [ids.tenant, ids.cashSession]);
 });
 
 test("PurchaseService.cancelPurchase: cancela compra en estado permitido y registra historial", async () => {

@@ -39,6 +39,7 @@ type AuthRequest = Request & {
     terminalId?: string;
     posSessionId?: string;
     userId?: string;
+    cashSessionId?: string;
   };
 };
 
@@ -115,6 +116,7 @@ export class OrderController {
       terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
+      cashSessionId: request.context?.cashSessionId ?? null,
     };
   }
 
@@ -126,6 +128,7 @@ export class OrderController {
       branchId: request.context?.branchId,
       terminalId: request.context?.terminalId,
       posSessionId: request.context?.posSessionId,
+      cashSessionId: request.context?.cashSessionId,
     };
   }
 
@@ -159,6 +162,8 @@ export class OrderController {
     @Query("toDate") toDate: string | undefined,
     @Query("paymentMethod") paymentMethod: string | undefined,
     @Query("customerId") customerId: string | undefined,
+    @Query("cashScope") cashScope: "current" | "all" | undefined,
+    @Query("cashSessionId") cashSessionId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.orderService.getOrders(
@@ -169,6 +174,8 @@ export class OrderController {
         toDate,
         paymentMethod,
         customerId,
+        cashScope,
+        cashSessionId,
       },
       this.buildActor(request)
     );
@@ -186,6 +193,7 @@ export class OrderController {
   }
 
   @Post(":id/delivery")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({
     menuKey: MENU_KEYS.DELIVERIES,

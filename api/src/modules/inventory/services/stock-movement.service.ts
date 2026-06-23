@@ -35,6 +35,7 @@ export type InventoryContext = {
   terminalId?: string | null;
   posSessionId?: string | null;
   userId?: string | null;
+  cashSessionId?: string | null;
 };
 
 @Injectable()
