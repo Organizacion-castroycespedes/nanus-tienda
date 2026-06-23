@@ -815,7 +815,11 @@ const CashSessionsPage = () => {
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {closeModal && currentSession ? (
-        <Modal title="Cerrar caja" className="max-w-5xl" size="xl">
+        <Modal
+          title="Cerrar caja"
+          className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
+          size="xl"
+        >
           <CloseCashSessionForm
             value={closeForm}
             expectedAmount={expectedCurrent}
