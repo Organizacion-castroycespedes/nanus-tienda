@@ -538,7 +538,7 @@ const CurrentShiftPage = () => {
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
                   Apertura
@@ -579,6 +579,11 @@ const CurrentShiftPage = () => {
                 label="Compras"
                 value={formatCurrency(summary?.purchasesTotal ?? 0)}
                 accent="rose"
+              />
+              <FinanceMetricCard
+                label="Domicilios"
+                value={formatCurrency(summary?.deliveryFees ?? 0)}
+                accent="emerald"
               />
               <FinanceMetricCard
                 label="Esperado"

@@ -98,6 +98,10 @@ export const filterDeliveriesByQuery = (
       delivery.delivery_number,
       delivery.order_id,
       delivery.sale_id,
+      delivery.driver_id,
+      delivery.driver?.name,
+      delivery.driver?.phone,
+      delivery.driver?.document_number,
       delivery.assigned_courier_id,
       delivery.notes,
     ]

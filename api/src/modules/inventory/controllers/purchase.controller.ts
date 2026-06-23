@@ -14,6 +14,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
@@ -34,6 +35,7 @@ type AuthRequest = Request & {
     terminalId?: string;
     posSessionId?: string;
     userId?: string;
+    cashSessionId?: string;
   };
 };
 
@@ -104,6 +106,7 @@ export class PurchaseController {
       terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
+      cashSessionId: request.context?.cashSessionId ?? null,
     };
   }
 
@@ -113,10 +116,13 @@ export class PurchaseController {
       userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
+      terminalId: request.context?.terminalId,
+      cashSessionId: request.context?.cashSessionId,
     };
   }
 
   @Post()
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   create(@Body() body: CreatePurchaseBody, @Req() request: AuthRequest) {
@@ -138,6 +144,7 @@ export class PurchaseController {
   }
 
   @Put(":id")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   update(
@@ -163,6 +170,8 @@ export class PurchaseController {
     @Query("fromDate") fromDate: string | undefined,
     @Query("toDate") toDate: string | undefined,
     @Query("paymentMethod") paymentMethod: string | undefined,
+    @Query("cashScope") cashScope: "current" | "all" | undefined,
+    @Query("cashSessionId") cashSessionId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.purchaseService.getPurchases(
@@ -172,6 +181,8 @@ export class PurchaseController {
         fromDate,
         toDate,
         paymentMethod,
+        cashScope,
+        cashSessionId,
       },
       this.buildActor(request)
     );
@@ -188,6 +199,7 @@ export class PurchaseController {
   }
 
   @Post(":id/receive")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
   receive(
@@ -220,6 +232,7 @@ export class PurchaseController {
   }
 
   @Patch(":id/cancel")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "cancel" })
   cancel(
@@ -239,6 +252,7 @@ export class PurchaseController {
   }
 
   @Patch(":id/settle-partial")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE", action: "settle_partial" })
   settlePartial(

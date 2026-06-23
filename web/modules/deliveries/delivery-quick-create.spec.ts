@@ -96,7 +96,19 @@ test("validateDeliveryQuickCreate returns non-technical messages", () => {
       deliveryAddress: "Calle 1",
       deliveryFee: "",
     }),
-    "Selecciona un cliente o escribe contacto y telefono."
+    "Selecciona un cliente o escribe el contacto."
+  );
+
+  assert.equal(
+    validateDeliveryQuickCreate({
+      branchId: "branch-1",
+      customerId: "customer-1",
+      customerName: "Maria Perez",
+      customerPhone: "",
+      deliveryAddress: "Calle 1",
+      deliveryFee: "",
+    }),
+    "Escribe el telefono de contacto."
   );
 });
 
@@ -106,6 +118,7 @@ test("buildDeliveryQuickCreatePayload maps visible choices to API fields", () =>
     customerId: "customer-1",
     orderId: "order-1",
     saleId: "",
+    driverId: "driver-1",
     customerName: "Maria Perez",
     customerPhone: "3001234567",
     deliveryAddress: "Calle 1",
@@ -120,7 +133,8 @@ test("buildDeliveryQuickCreatePayload maps visible choices to API fields", () =>
   assert.equal(payload.branch_id, "branch-1");
   assert.equal(payload.customer_id, "customer-1");
   assert.equal(payload.order_id, "order-1");
+  assert.equal(payload.driver_id, "driver-1");
   assert.equal(payload.payment_method_id, "payment-1");
   assert.equal(payload.delivery_fee, 2500);
-  assert.equal(payload.metadata?.no_cash_integration, true);
+  assert.equal(payload.metadata?.cash_session_scope, "current");
 });

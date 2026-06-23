@@ -16,6 +16,7 @@ import {
 import type { Request } from "express";
 import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
@@ -38,6 +39,7 @@ type AuthRequest = Request & {
     terminalId?: string;
     posSessionId?: string;
     userId?: string;
+    cashSessionId?: string;
   };
 };
 
@@ -114,6 +116,7 @@ export class OrderController {
       terminalId: request.context?.terminalId ?? fallback?.terminalId ?? null,
       posSessionId: request.context?.posSessionId ?? null,
       userId: request.context?.userId ?? request.user?.id ?? null,
+      cashSessionId: request.context?.cashSessionId ?? null,
     };
   }
 
@@ -123,10 +126,14 @@ export class OrderController {
       userId: request.context?.userId ?? request.user?.id,
       tenantId: this.getTenantId(request),
       branchId: request.context?.branchId,
+      terminalId: request.context?.terminalId,
+      posSessionId: request.context?.posSessionId,
+      cashSessionId: request.context?.cashSessionId,
     };
   }
 
   @Post()
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   create(@Body() body: CreateOrderBody, @Req() request: AuthRequest) {
@@ -154,6 +161,9 @@ export class OrderController {
     @Query("fromDate") fromDate: string | undefined,
     @Query("toDate") toDate: string | undefined,
     @Query("paymentMethod") paymentMethod: string | undefined,
+    @Query("customerId") customerId: string | undefined,
+    @Query("cashScope") cashScope: "current" | "all" | undefined,
+    @Query("cashSessionId") cashSessionId: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.orderService.getOrders(
@@ -163,6 +173,9 @@ export class OrderController {
         fromDate,
         toDate,
         paymentMethod,
+        customerId,
+        cashScope,
+        cashSessionId,
       },
       this.buildActor(request)
     );
@@ -180,6 +193,7 @@ export class OrderController {
   }
 
   @Post(":id/delivery")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({
     menuKey: MENU_KEYS.DELIVERIES,
@@ -211,6 +225,7 @@ export class OrderController {
   }
 
   @Put(":id")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   update(
@@ -234,6 +249,7 @@ export class OrderController {
   }
 
   @Post(":id/deliver")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   deliver(
@@ -254,6 +270,7 @@ export class OrderController {
   }
 
   @Post(":id/confirm")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   confirm(@Param("id") id: string, @Req() request: AuthRequest) {
@@ -266,6 +283,7 @@ export class OrderController {
   }
 
   @Post(":id/invoice")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePosSession()
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
@@ -287,6 +305,7 @@ export class OrderController {
   }
 
   @Post(":id/cancel")
+  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {

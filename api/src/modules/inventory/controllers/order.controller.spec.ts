@@ -3,6 +3,7 @@ import test from "node:test";
 import "reflect-metadata";
 import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { MENU_KEYS } from "../../../common/constants/menu-keys";
+import { REQUIRE_OPEN_CASH_SESSION_KEY } from "../../../common/decorators/require-open-cash-session.decorator";
 import { PERMISSION_KEY } from "../../../common/decorators/require-permission.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
@@ -12,6 +13,12 @@ import { OrderController } from "./order.controller";
 
 const getPermission = (methodName: keyof OrderController) =>
   Reflect.getMetadata(PERMISSION_KEY, OrderController.prototype[methodName]);
+
+const requiresOpenCashSession = (methodName: keyof OrderController) =>
+  Reflect.getMetadata(
+    REQUIRE_OPEN_CASH_SESSION_KEY,
+    OrderController.prototype[methodName]
+  );
 
 test("OrderController: uses auth, roles and permissions guards", () => {
   const guards = Reflect.getMetadata(GUARDS_METADATA, OrderController);
@@ -30,6 +37,8 @@ test("OrderController: maps order delivery endpoints to DELIVERIES permissions",
     level: "WRITE",
     action: DELIVERY_PERMISSION_ACTIONS.CREATE,
   });
+  assert.equal(requiresOpenCashSession("createDelivery"), true);
+  assert.equal(requiresOpenCashSession("getDelivery"), undefined);
 });
 
 test("OrderController: normal order creation does not call deliveries service", async () => {

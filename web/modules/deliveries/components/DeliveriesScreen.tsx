@@ -2,10 +2,13 @@
 
 import {
   Eye,
+  FileText,
   Plus,
   RefreshCw,
   Search,
   Truck,
+  UserCheck,
+  Users,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -17,7 +20,16 @@ import { Textarea } from "../../../components/design-system/Textarea";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { getApiErrorMessage } from "../../reporteria/utils";
+import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { useAppSelector } from "../../../store/hooks";
+import { getCurrentCashSession } from "../../finance/services/finance.service";
+import type { CashSession } from "../../finance/types";
+import {
+  getDeliveryCashScope,
+  getDeliveryCashScopeLabel,
+  shouldBlockCashImpactAction,
+  type DeliveryCashScope,
+} from "../delivery-cash-scope";
 import {
   deliveryActionDescriptions,
   deliveryStatusLabels,
@@ -39,17 +51,21 @@ import {
   type DeliverySearchParamsInput,
 } from "../delivery-navigation";
 import {
+  assignDeliveryDriver,
   cancelDelivery,
   dispatchDelivery,
   getDeliveryById,
+  getDeliveryTicket,
   listDeliveries,
   markDeliveryDelivered,
   markDeliveryNotDelivered,
   prepareDelivery,
 } from "../services/deliveries.service";
+import { listDeliveryDrivers } from "../services/delivery-drivers.service";
 import {
   DELIVERY_STATUSES,
   type DeliveryActionKey,
+  type DeliveryDriver,
   type DeliveryActionPermissionMap,
   type DeliveryListResponse,
   type DeliveryRecord,
@@ -115,16 +131,59 @@ const optionalText = (value: string) => {
 const buildListParams = (
   filters: DeliveryFilters,
   page: number,
-  limit: number
+  limit: number,
+  currentCashSessionId?: string | null
 ): GetDeliveriesParams => ({
   status: filters.status || undefined,
   order_id: optionalText(filters.orderId),
   sale_id: optionalText(filters.saleId),
+  driver_id: optionalText(filters.driverId),
+  cash_scope:
+    filters.cashScope === "current" && currentCashSessionId
+      ? "current"
+      : undefined,
   date_from: optionalText(filters.dateFrom),
   date_to: optionalText(filters.dateTo),
   page,
   limit,
 });
+
+const getDriverLabel = (delivery: DeliveryRecord) => {
+  const driverName = delivery.driver?.name?.trim();
+  if (driverName) {
+    return driverName;
+  }
+  return delivery.driver_id ?? delivery.assigned_courier_id ?? "-";
+};
+
+const getDriverActionLabel = (delivery: DeliveryRecord) =>
+  delivery.driver_id ? "Cambiar repartidor" : "Asignar repartidor";
+
+const getDeliveryTicketFileName = (deliveryId: string) =>
+  `ticket-domicilio-${deliveryId}.pdf`;
+
+const cashScopeClassName: Record<DeliveryCashScope, string> = {
+  current: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  none: "border-slate-200 bg-slate-50 text-slate-600",
+  other: "border-amber-200 bg-amber-50 text-amber-700",
+};
+
+const DeliveryCashBadge = ({
+  delivery,
+  currentCashSessionId,
+}: {
+  delivery: DeliveryRecord;
+  currentCashSessionId?: string | null;
+}) => {
+  const scope = getDeliveryCashScope(delivery, currentCashSessionId);
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${cashScopeClassName[scope]}`}
+    >
+      {getDeliveryCashScopeLabel(scope)}
+    </span>
+  );
+};
 
 const getParamValue = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -228,6 +287,99 @@ const DeliveryActionModal = ({
   );
 };
 
+const DeliveryDriverAssignmentModal = ({
+  delivery,
+  drivers,
+  selectedDriverId,
+  saving,
+  errorMessage,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  delivery: DeliveryRecord;
+  drivers: DeliveryDriver[];
+  selectedDriverId: string;
+  saving: boolean;
+  errorMessage: string | null;
+  onChange: (driverId: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) => {
+  const currentDriver = delivery.driver;
+  const hasCurrentDriver =
+    currentDriver?.id &&
+    !drivers.some((driver) => driver.id === currentDriver.id);
+
+  return (
+    <Modal
+      title={getDriverActionLabel(delivery)}
+      description="Asignacion operativa. No cambia estado, caja ni pagos."
+      onClose={saving ? undefined : onClose}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={onSubmit} isLoading={saving}>
+            Guardar
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">
+            {delivery.delivery_number || delivery.id}
+          </p>
+          <p className="mt-1">
+            {delivery.customer_name || "Sin contacto"} - {delivery.delivery_address}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Estado actual: {deliveryStatusLabels[delivery.status] ?? delivery.status}
+          </p>
+        </div>
+
+        <Select
+          label="Repartidor"
+          value={selectedDriverId}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Sin repartidor</option>
+          {hasCurrentDriver && currentDriver ? (
+            <option value={currentDriver.id}>
+              {currentDriver.name || currentDriver.id} (inactivo)
+            </option>
+          ) : null}
+          {drivers.map((driver) => (
+            <option key={driver.id} value={driver.id}>
+              {driver.name}
+              {driver.phone ? ` - ${driver.phone}` : ""}
+            </option>
+          ))}
+        </Select>
+
+        {drivers.length === 0 && !hasCurrentDriver ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            No hay repartidores activos para asignar.
+          </div>
+        ) : null}
+
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
+          Esta accion solo cambia el repartidor asignado. El estado del domicilio
+          queda igual.
+        </div>
+
+        {errorMessage ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            {errorMessage}
+          </div>
+        ) : null}
+      </div>
+    </Modal>
+  );
+};
+
 const DeliverySourceCell = ({ delivery }: { delivery: DeliveryRecord }) => (
   <div className="space-y-1 text-xs text-slate-600">
     <p>
@@ -251,12 +403,20 @@ const MobileDeliveryCard = ({
   actionDisabled,
   onDetail,
   onAction,
+  onAssignDriver,
+  onTicket,
+  canAssignDriver,
+  currentCashSessionId,
 }: {
   delivery: DeliveryRecord;
   permissions: DeliveryActionPermissionMap;
   actionDisabled: boolean;
   onDetail: (delivery: DeliveryRecord) => void;
   onAction: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
+  onAssignDriver: (delivery: DeliveryRecord) => void;
+  onTicket: (delivery: DeliveryRecord) => void;
+  canAssignDriver: boolean;
+  currentCashSessionId?: string | null;
 }) => (
   <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -272,7 +432,10 @@ const MobileDeliveryCard = ({
     </div>
     <div className="mt-3 grid gap-2 text-sm text-slate-600">
       <p>Telefono: {delivery.customer_phone || "-"}</p>
-      <p>Repartidor: {delivery.assigned_courier_id || "-"}</p>
+      <p>Repartidor: {getDriverLabel(delivery)}</p>
+      <p>
+        Caja: <DeliveryCashBadge delivery={delivery} currentCashSessionId={currentCashSessionId} />
+      </p>
       <p>Creado: {formatDateTime(delivery.created_at)}</p>
       <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
       <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
@@ -283,6 +446,19 @@ const MobileDeliveryCard = ({
       <Button variant="outline" size="sm" onClick={() => onDetail(delivery)}>
         <Eye className="h-4 w-4" />
         Detalle
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onAssignDriver(delivery)}
+        disabled={!canAssignDriver}
+      >
+        <UserCheck className="h-4 w-4" />
+        {getDriverActionLabel(delivery)}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => onTicket(delivery)}>
+        <FileText className="h-4 w-4" />
+        Ticket domicilio
       </Button>
       <DeliveryActions
         delivery={delivery}
@@ -322,6 +498,8 @@ export const DeliveriesScreen = ({
   const authTenantId = useAppSelector(
     (state) => state.auth.user?.tenantId ?? state.auth.tenantId
   );
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
+  const posSessionId = useAppSelector((state) => state.pos.posSessionId);
   const tenantSlug =
     getParamValue(params?.tenant) ??
     authTenantId ??
@@ -332,12 +510,18 @@ export const DeliveriesScreen = ({
   );
   const canView = canReadDeliveries(deliveryPermission, role);
   const canCreate = canCreateDelivery(deliveryPermission, role);
+  const isAdminRole = ["SUPER_ADMIN", "SUPER_USER", "ADMIN"].includes(role);
   const actionPermissions = useMemo<DeliveryActionPermissionMap>(
     () => buildDeliveryActionPermissionMap(deliveryPermission, role),
     [deliveryPermission, role]
   );
 
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
+  const [drivers, setDrivers] = useState<DeliveryDriver[]>([]);
+  const [currentCashSession, setCurrentCashSession] =
+    useState<CashSession | null>(null);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [cashSessionLoading, setCashSessionLoading] = useState(true);
   const [lastInitialFiltersKey, setLastInitialFiltersKey] =
     useState(initialFiltersKey);
   const [draftFilters, setDraftFilters] = useState<DeliveryFilters>(initialFilters);
@@ -356,6 +540,18 @@ export const DeliveriesScreen = ({
   const [actionDraft, setActionDraft] = useState<ActionDraft>(emptyActionDraft);
   const [actionError, setActionError] = useState<string | null>(null);
   const [savingAction, setSavingAction] = useState(false);
+  const [driverAssignmentDelivery, setDriverAssignmentDelivery] =
+    useState<DeliveryRecord | null>(null);
+  const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [driverAssignmentError, setDriverAssignmentError] = useState<string | null>(
+    null
+  );
+  const [savingDriverAssignment, setSavingDriverAssignment] = useState(false);
+  const [ticketPreview, setTicketPreview] = useState<{
+    deliveryId: string;
+    title: string;
+    fileName: string;
+  } | null>(null);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -363,6 +559,50 @@ export const DeliveriesScreen = ({
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  const loadDrivers = useCallback(async () => {
+    setDriversLoading(true);
+    try {
+      const response = await listDeliveryDrivers({ active: true });
+      setDrivers(response);
+    } catch (error) {
+      showToast(
+        getApiErrorMessage(error, "No se pudieron cargar los repartidores."),
+        "error"
+      );
+    } finally {
+      setDriversLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (!permissionsLoaded || !canView) {
+      return;
+    }
+
+    let isActive = true;
+    setCashSessionLoading(true);
+    getCurrentCashSession(posCashRegisterId ?? undefined)
+      .then((session) => {
+        if (isActive) {
+          setCurrentCashSession(session);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setCurrentCashSession(null);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setCashSessionLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [canView, permissionsLoaded, posCashRegisterId, posSessionId]);
 
   useEffect(() => {
     if (lastInitialFiltersKey === initialFiltersKey) {
@@ -386,7 +626,12 @@ export const DeliveriesScreen = ({
       setErrorMessage(null);
       try {
         const response = await listDeliveries(
-          buildListParams(filters, targetPage, targetPageSize)
+          buildListParams(
+            filters,
+            targetPage,
+            targetPageSize,
+            currentCashSession?.id
+          )
         );
         setDeliveries(response.data);
         setPagination(response.pagination);
@@ -400,22 +645,30 @@ export const DeliveriesScreen = ({
         setLoading(false);
       }
     },
-    [pageSize]
+    [currentCashSession?.id, pageSize]
   );
 
   useEffect(() => {
-    if (!permissionsLoaded || !canView || hasLoaded) {
+    if (!permissionsLoaded || !canView || cashSessionLoading || hasLoaded) {
       return;
     }
     void loadDeliveries(appliedFilters, 1, pageSize);
   }, [
     appliedFilters,
     canView,
+    cashSessionLoading,
     hasLoaded,
     loadDeliveries,
     pageSize,
     permissionsLoaded,
   ]);
+
+  useEffect(() => {
+    if (!permissionsLoaded || !canView) {
+      return;
+    }
+    void loadDrivers();
+  }, [canView, loadDrivers, permissionsLoaded]);
 
   const visibleDeliveries = useMemo(
     () => filterDeliveriesByQuery(deliveries, appliedFilters.query),
@@ -468,9 +721,31 @@ export const DeliveriesScreen = ({
   };
 
   const openAction = (action: DeliveryActionKey, delivery: DeliveryRecord) => {
+    if (shouldBlockCashImpactAction(delivery, currentCashSession?.id)) {
+      showToast(
+        "Abre la caja actual de este domicilio antes de ejecutar acciones operativas.",
+        "error"
+      );
+      return;
+    }
     setActionRequest({ action, delivery });
     setActionDraft(emptyActionDraft);
     setActionError(null);
+  };
+
+  const openDriverAssignment = (delivery: DeliveryRecord) => {
+    setDriverAssignmentDelivery(delivery);
+    setSelectedDriverId(delivery.driver_id ?? "");
+    setDriverAssignmentError(null);
+  };
+
+  const openDeliveryTicket = (delivery: DeliveryRecord) => {
+    const label = delivery.delivery_number || delivery.id.slice(0, 8);
+    setTicketPreview({
+      deliveryId: delivery.id,
+      title: `Ticket domicilio ${label}`,
+      fileName: getDeliveryTicketFileName(delivery.id),
+    });
   };
 
   const closeAction = () => {
@@ -480,6 +755,15 @@ export const DeliveriesScreen = ({
     setActionRequest(null);
     setActionDraft(emptyActionDraft);
     setActionError(null);
+  };
+
+  const closeDriverAssignment = () => {
+    if (savingDriverAssignment) {
+      return;
+    }
+    setDriverAssignmentDelivery(null);
+    setSelectedDriverId("");
+    setDriverAssignmentError(null);
   };
 
   const refreshAfterMutation = async (message: string) => {
@@ -560,6 +844,33 @@ export const DeliveriesScreen = ({
     }
   };
 
+  const handleSubmitDriverAssignment = async () => {
+    if (!driverAssignmentDelivery) {
+      return;
+    }
+
+    setSavingDriverAssignment(true);
+    setDriverAssignmentError(null);
+    try {
+      await assignDeliveryDriver(driverAssignmentDelivery.id, {
+        driver_id: selectedDriverId || null,
+      });
+      setDriverAssignmentDelivery(null);
+      setSelectedDriverId("");
+      await refreshAfterMutation(
+        selectedDriverId
+          ? "Repartidor asignado correctamente."
+          : "Repartidor removido correctamente."
+      );
+    } catch (error) {
+      setDriverAssignmentError(
+        getApiErrorMessage(error, "No se pudo asignar el repartidor.")
+      );
+    } finally {
+      setSavingDriverAssignment(false);
+    }
+  };
+
   if (!permissionsLoaded) {
     return (
       <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
@@ -579,6 +890,11 @@ export const DeliveriesScreen = ({
   const currentPage = pagination.page || 1;
   const totalPages = Math.max(pagination.total_pages || 1, 1);
   const actionDisabled = savingAction || loading;
+  const canAssignDriver = actionPermissions.prepare;
+  const getRowActionDisabled = (delivery: DeliveryRecord) =>
+    actionDisabled ||
+    shouldBlockCashImpactAction(delivery, currentCashSession?.id);
+  const currentCashSessionId = currentCashSession?.id ?? null;
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
@@ -594,16 +910,46 @@ export const DeliveriesScreen = ({
         />
       ) : null}
 
+      {driverAssignmentDelivery ? (
+        <DeliveryDriverAssignmentModal
+          delivery={driverAssignmentDelivery}
+          drivers={drivers}
+          selectedDriverId={selectedDriverId}
+          saving={savingDriverAssignment}
+          errorMessage={driverAssignmentError}
+          onChange={setSelectedDriverId}
+          onClose={closeDriverAssignment}
+          onSubmit={() => void handleSubmitDriverAssignment()}
+        />
+      ) : null}
+
       {detailDelivery ? (
         <DeliveryDetailPanel
           delivery={detailDelivery}
           loading={detailLoading}
           permissions={actionPermissions}
-          actionDisabled={actionDisabled}
+          actionDisabled={
+            actionDisabled || shouldBlockCashImpactAction(detailDelivery, currentCashSessionId)
+          }
+          currentCashSessionId={currentCashSessionId}
           onClose={() => setDetailDelivery(null)}
           onAction={openAction}
+          onAssignDriver={canAssignDriver ? openDriverAssignment : undefined}
+          onTicket={openDeliveryTicket}
         />
       ) : null}
+
+      <PdfPreviewModal
+        isOpen={Boolean(ticketPreview)}
+        title={ticketPreview?.title ?? "Ticket domicilio"}
+        fileName={ticketPreview?.fileName ?? "ticket-domicilio.pdf"}
+        onClose={() => setTicketPreview(null)}
+        getPdf={() =>
+          ticketPreview
+            ? getDeliveryTicket(ticketPreview.deliveryId)
+            : Promise.reject(new Error("delivery ticket not selected"))
+        }
+      />
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -618,6 +964,14 @@ export const DeliveriesScreen = ({
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${tenantSlug}/deliveries/drivers`)}
+              className="w-full sm:w-auto"
+            >
+              <Users className="h-4 w-4" />
+              Repartidores
+            </Button>
             <Button
               variant="ghost"
               onClick={() => void refreshCurrentPage()}
@@ -640,8 +994,39 @@ export const DeliveriesScreen = ({
         </div>
       </section>
 
+      <section
+        className={`rounded-lg border p-4 text-sm shadow-sm ${
+          currentCashSession
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p>
+            {currentCashSession
+              ? `Caja actual: ${
+                  currentCashSession.cashRegisterNombre ??
+                  currentCashSession.cashRegisterCodigo ??
+                  currentCashSession.id
+                }. La vista operativa usa esta caja cuando filtras por caja actual.`
+              : cashSessionLoading
+                ? "Verificando caja actual..."
+                : "No tienes una caja abierta. La gestion operativa de domicilios con valor esta limitada."}
+          </p>
+          {!currentCashSession && !cashSessionLoading ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
+            >
+              Ir a POS / Seleccionar caja
+            </Button>
+          ) : null}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_180px_1fr_1fr_170px_170px_120px]">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_170px_1fr_1fr_190px_155px_155px_170px_110px]">
             <Input
               label="Buscar"
               placeholder="Contacto, telefono, direccion"
@@ -691,6 +1076,24 @@ export const DeliveriesScreen = ({
                 }))
               }
             />
+            <Select
+              label="Repartidor"
+              value={draftFilters.driverId}
+              disabled={driversLoading}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  driverId: event.target.value,
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {drivers.map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {driver.name}
+                </option>
+              ))}
+            </Select>
             <Input
               label="Desde"
               type="date"
@@ -713,6 +1116,24 @@ export const DeliveriesScreen = ({
                 }))
               }
             />
+            <Select
+              label="Caja"
+              value={draftFilters.cashScope}
+              onChange={(event) =>
+                setDraftFilters((prev) => ({
+                  ...prev,
+                  cashScope: event.target.value === "all" ? "all" : "current",
+                }))
+              }
+              disabled={!isAdminRole && !currentCashSession}
+            >
+              <option value="current">
+                {currentCashSession ? "Caja actual" : "Sin caja actual"}
+              </option>
+              <option value="all">
+                {isAdminRole ? "Todas" : "Consulta general"}
+              </option>
+            </Select>
             <Select
               label="Filas"
               value={String(pageSize)}
@@ -758,7 +1179,9 @@ export const DeliveriesScreen = ({
             </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
               <Truck className="h-4 w-4" />
-              Sin caja
+              {appliedFilters.cashScope === "current" && currentCashSession
+                ? "Caja actual"
+                : "Consulta general"}
             </div>
           </div>
 
@@ -767,6 +1190,7 @@ export const DeliveriesScreen = ({
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
                   <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Caja</th>
                   <th className="px-4 py-3 font-medium">Contacto</th>
                   <th className="px-4 py-3 font-medium">Telefono</th>
                   <th className="px-4 py-3 font-medium">Direccion</th>
@@ -780,19 +1204,19 @@ export const DeliveriesScreen = ({
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       Cargando domicilios...
                     </td>
                   </tr>
                 ) : !hasLoaded ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       Usa Buscar para consultar domicilios.
                     </td>
                   </tr>
                 ) : visibleDeliveries.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                       No hay domicilios para mostrar.
                     </td>
                   </tr>
@@ -801,6 +1225,12 @@ export const DeliveriesScreen = ({
                     <tr key={delivery.id}>
                       <td className="px-4 py-3">
                         <DeliveryStatusBadge status={delivery.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <DeliveryCashBadge
+                          delivery={delivery}
+                          currentCashSessionId={currentCashSessionId}
+                        />
                       </td>
                       <td className="px-4 py-3 text-slate-900">
                         <div className="max-w-[180px]">
@@ -829,7 +1259,7 @@ export const DeliveriesScreen = ({
                         <DeliverySourceCell delivery={delivery} />
                       </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {delivery.assigned_courier_id || "-"}
+                        {getDriverLabel(delivery)}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
                         <p>Creado: {formatDateTime(delivery.created_at)}</p>
@@ -857,10 +1287,27 @@ export const DeliveriesScreen = ({
                             <Eye className="h-4 w-4" />
                             Detalle
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openDriverAssignment(delivery)}
+                            disabled={savingAction || loading || !canAssignDriver}
+                          >
+                            <UserCheck className="h-4 w-4" />
+                            {getDriverActionLabel(delivery)}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openDeliveryTicket(delivery)}
+                          >
+                            <FileText className="h-4 w-4" />
+                            Ticket domicilio
+                          </Button>
                           <DeliveryActions
                             delivery={delivery}
                             permissions={actionPermissions}
-                            disabled={actionDisabled}
+                            disabled={getRowActionDisabled(delivery)}
                             onAction={openAction}
                           />
                         </div>
@@ -891,9 +1338,13 @@ export const DeliveriesScreen = ({
                   key={delivery.id}
                   delivery={delivery}
                   permissions={actionPermissions}
-                  actionDisabled={actionDisabled}
+                  actionDisabled={getRowActionDisabled(delivery)}
                   onDetail={(item) => void openDetail(item)}
                   onAction={openAction}
+                  onAssignDriver={openDriverAssignment}
+                  onTicket={openDeliveryTicket}
+                  canAssignDriver={canAssignDriver}
+                  currentCashSessionId={currentCashSessionId}
                 />
               ))
             )}

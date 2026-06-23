@@ -42,3 +42,8 @@
 - [x] 5.4 Run `cd web && npm run lint`.
 - [x] 5.5 Run `cd web && npm run build`.
 - [x] 5.6 Run `git diff --check`.
+
+## Cierre QA
+
+- [x] QA MANUAL PASS registrado el 2026-06-23 segun reporte de usuario.
+- [x] Fuera de alcance confirmado: caja, POS, facturacion electronica, pagos y reglas funcionales de pedidos.

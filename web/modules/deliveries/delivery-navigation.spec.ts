@@ -31,6 +31,7 @@ test("buildDeliveryFiltersFromSearchParams reads supported relation filters", ()
       status: "created",
       order_id: "order-1",
       sale_id: "sale-1",
+      driver_id: "driver-1",
       date_from: "2026-06-01",
       date_to: "2026-06-21",
     }),
@@ -39,6 +40,8 @@ test("buildDeliveryFiltersFromSearchParams reads supported relation filters", ()
       status: "CREADO",
       orderId: "order-1",
       saleId: "sale-1",
+      driverId: "driver-1",
+      cashScope: "current",
       dateFrom: "2026-06-01",
       dateTo: "2026-06-21",
     }

@@ -31,6 +31,10 @@ export class CreateDeliveryDto {
   sale_id?: string;
 
   @IsOptional()
+  @IsUUID()
+  driver_id?: string;
+
+  @IsOptional()
   @Transform(trimString)
   @IsString()
   @MaxLength(160)

@@ -1,9 +1,14 @@
 import { Modal } from "../../../components/design-system/Modal";
 import { Button } from "../../../components/design-system/Button";
+import { FileText, UserCheck } from "lucide-react";
 import {
   deliveryStatusLabels,
   getDeliveryFeeSource,
 } from "../delivery-helpers";
+import {
+  getDeliveryCashScope,
+  getDeliveryCashScopeLabel,
+} from "../delivery-cash-scope";
 import type {
   DeliveryActionKey,
   DeliveryActionPermissionMap,
@@ -57,6 +62,9 @@ export const DeliveryDetailPanel = ({
   actionDisabled,
   onClose,
   onAction,
+  onAssignDriver,
+  onTicket,
+  currentCashSessionId,
 }: {
   delivery: DeliveryRecord | null;
   loading: boolean;
@@ -64,6 +72,9 @@ export const DeliveryDetailPanel = ({
   actionDisabled?: boolean;
   onClose: () => void;
   onAction?: (action: DeliveryActionKey, delivery: DeliveryRecord) => void;
+  onAssignDriver?: (delivery: DeliveryRecord) => void;
+  onTicket?: (delivery: DeliveryRecord) => void;
+  currentCashSessionId?: string | null;
 }) => (
   <Modal
     title={
@@ -71,9 +82,10 @@ export const DeliveryDetailPanel = ({
         ? `Domicilio ${delivery.delivery_number || delivery.id.slice(0, 8)}`
         : "Detalle de domicilio"
     }
-    description="Consulta operativa. No registra caja ni movimientos financieros."
+    description="Consulta operativa. El valor domicilio se controla por caja actual cuando aplica."
     onClose={onClose}
     size="xl"
+    className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
     footer={
       <Button variant="outline" onClick={onClose}>
         Cerrar
@@ -81,20 +93,25 @@ export const DeliveryDetailPanel = ({
     }
   >
     {loading ? (
-      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)]">
         Cargando detalle...
       </div>
     ) : delivery ? (
-      <div className="space-y-5">
+      <div className="max-h-[calc(100dvh-10rem)] min-w-0 space-y-5 overflow-y-auto overflow-x-hidden pr-1 sm:max-h-[calc(100dvh-12rem)]">
         <div className="flex flex-wrap items-center gap-3">
           <DeliveryStatusBadge status={delivery.status} />
           <span className="text-sm text-slate-500">
             Estado: {deliveryStatusLabels[delivery.status] ?? delivery.status}
           </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
+            {getDeliveryCashScopeLabel(
+              getDeliveryCashScope(delivery, currentCashSessionId)
+            )}
+          </span>
         </div>
 
         {permissions && onAction ? (
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="sticky top-0 z-10 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
               Acciones
             </p>
@@ -104,6 +121,29 @@ export const DeliveryDetailPanel = ({
               disabled={Boolean(actionDisabled)}
               onAction={onAction}
             />
+            {onAssignDriver ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={Boolean(actionDisabled)}
+                onClick={() => onAssignDriver(delivery)}
+              >
+                <UserCheck className="h-4 w-4" />
+                {delivery.driver_id ? "Cambiar repartidor" : "Asignar repartidor"}
+              </Button>
+            ) : null}
+            {onTicket ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => onTicket(delivery)}
+              >
+                <FileText className="h-4 w-4" />
+                Ticket domicilio
+              </Button>
+            ) : null}
           </div>
         ) : null}
 
@@ -118,8 +158,27 @@ export const DeliveryDetailPanel = ({
           <DetailItem label="Referencia" value={delivery.delivery_reference} />
           <DetailItem label="Pedido" value={delivery.order_id} />
           <DetailItem label="Venta" value={delivery.sale_id} />
-          <DetailItem label="Repartidor" value={delivery.assigned_courier_id} />
+          <DetailItem
+            label="Repartidor"
+            value={delivery.driver?.name ?? delivery.driver_id}
+          />
+          <DetailItem label="Telefono repartidor" value={delivery.driver?.phone} />
+          <DetailItem
+            label="Documento repartidor"
+            value={delivery.driver?.document_number}
+          />
+          <DetailItem
+            label="Repartidor legacy"
+            value={delivery.assigned_courier_id}
+          />
           <DetailItem label="Metodo pago" value={delivery.payment_method_id} />
+          <DetailItem label="Caja sesion" value={delivery.cash_session_id} />
+          <DetailItem label="Caja registradora" value={delivery.cash_register_id} />
+          <DetailItem label="Terminal" value={delivery.terminal_id} />
+          <DetailItem
+            label="Impacto caja"
+            value={formatCurrency(delivery.cash_impact_amount)}
+          />
           <DetailItem label="Valor domicilio" value={formatCurrency(delivery.delivery_fee)} />
           <DetailItem label="Subtotal" value={formatCurrency(delivery.subtotal)} />
           <DetailItem label="Total" value={formatCurrency(delivery.total)} />
@@ -150,7 +209,7 @@ export const DeliveryDetailPanel = ({
         </div>
       </div>
     ) : (
-      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)]">
         No se encontro el domicilio.
       </div>
     )}

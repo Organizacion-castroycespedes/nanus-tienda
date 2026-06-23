@@ -10,6 +10,7 @@ import "reflect-metadata";
 import jwt from "jsonwebtoken";
 import { DatabaseService } from "../db/database.service";
 import { resolveJwtSecret } from "../config/auth-env";
+import { REQUIRE_OPEN_CASH_SESSION_KEY } from "../decorators/require-open-cash-session.decorator";
 import { REQUIRE_POS_SESSION_KEY } from "../decorators/require-pos-session.decorator";
 
 type TokenPayload = {
@@ -27,6 +28,14 @@ type PosSessionContextRow = {
   user_id: string;
 };
 
+type OpenCashSessionContextRow = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  terminal_id: string | null;
+  opened_by_user_id: string;
+};
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -41,6 +50,10 @@ export class JwtAuthGuard implements CanActivate {
     const requiresPosSession = Boolean(
       Reflect.getMetadata(REQUIRE_POS_SESSION_KEY, context.getHandler()) ??
         Reflect.getMetadata(REQUIRE_POS_SESSION_KEY, context.getClass())
+    );
+    const requiresOpenCashSession = Boolean(
+      Reflect.getMetadata(REQUIRE_OPEN_CASH_SESSION_KEY, context.getHandler()) ??
+        Reflect.getMetadata(REQUIRE_OPEN_CASH_SESSION_KEY, context.getClass())
     );
     const authorization = request.headers["authorization"];
     const token =
@@ -183,6 +196,72 @@ export class JwtAuthGuard implements CanActivate {
         terminalId: contextRow.terminal_id,
         posSessionId: contextRow.id,
         userId: contextRow.user_id,
+      };
+    }
+
+    if (requiresOpenCashSession) {
+      const requestContext = request.context as
+        | {
+            tenantId?: string;
+            branchId?: string;
+            terminalId?: string;
+            posSessionId?: string;
+            userId?: string;
+            cashSessionId?: string;
+          }
+        | undefined;
+      const params: unknown[] = [payload.sub, payload.tenant_id];
+      const conditions = [
+        "session.opened_by_user_id = $1",
+        "session.tenant_id = $2",
+        "session.status = 'OPEN'",
+      ];
+
+      if (requestContext?.branchId) {
+        params.push(requestContext.branchId);
+        conditions.push(`session.branch_id = $${params.length}`);
+      }
+
+      if (requestContext?.terminalId) {
+        params.push(requestContext.terminalId);
+        conditions.push(`register.terminal_id = $${params.length}`);
+      }
+
+      const cashSession = await this.db.query<OpenCashSessionContextRow>(
+        `
+        SELECT
+          session.id,
+          session.tenant_id,
+          session.branch_id,
+          register.terminal_id,
+          session.opened_by_user_id
+        FROM cash_sessions AS session
+        INNER JOIN cash_registers AS register
+          ON register.id = session.cash_register_id
+         AND register.tenant_id = session.tenant_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY session.opened_at DESC
+        LIMIT 1
+        `,
+        params
+      );
+
+      const cashContext = cashSession.rows?.[0];
+      if (!cashContext) {
+        throw new ForbiddenException(
+          requestContext?.posSessionId
+            ? "La operacion requiere la caja actual del usuario."
+            : "Debes tener una caja abierta para realizar esta operacion."
+        );
+      }
+
+      request.context = {
+        ...(requestContext ?? {}),
+        tenantId: cashContext.tenant_id,
+        branchId: cashContext.branch_id,
+        terminalId: cashContext.terminal_id ?? requestContext?.terminalId,
+        userId: cashContext.opened_by_user_id,
+        cashSessionId: cashContext.id,
       };
     }
 

@@ -41,6 +41,7 @@ class FakeDb {
   queries: Array<{ text: string; params: unknown[] }> = [];
   availableSessionRows: unknown[] = [buildSession()];
   sessionRows: unknown[] = [buildSession()];
+  hasDeliverySchema = false;
   summary = {
     totals: {
       openingAmount: 10000,
@@ -65,6 +66,22 @@ class FakeDb {
       paid_amount: "20000",
     },
   ];
+  deliverySummaryRows: unknown[] = [
+    {
+      delivered_count: "1",
+      pending_count: "2",
+      excluded_count: "1",
+      delivered_fee_total: "5000",
+      by_payment_method: [
+        {
+          paymentMethodId: "70000000-0000-0000-0000-000000000001",
+          paymentMethodNombre: "Efectivo",
+          count: 1,
+          total: "5000",
+        },
+      ],
+    },
+  ];
 
   async query(text: string, params: unknown[] = []) {
     this.queries.push({ text, params });
@@ -79,6 +96,15 @@ class FakeDb {
     }
     if (text.includes("current-shift: summary")) {
       return { rows: [{ summary: this.summary }] };
+    }
+    if (
+      text.includes("information_schema.columns") &&
+      text.includes("cash_session_id")
+    ) {
+      return { rows: [{ has_schema: this.hasDeliverySchema }] };
+    }
+    if (text.includes("FROM public.deliveries AS delivery")) {
+      return { rows: this.deliverySummaryRows };
     }
     if (text.includes("current-shift: sales")) {
       return { rows: this.salesRows };
@@ -120,6 +146,27 @@ test("CurrentShiftReportsService: USER consulta caja abierta de su sucursal aunq
   assert.equal(response.availableCashSessions.length, 1);
   assert.equal(response.tabs.sales.total, 1);
   assert.equal(response.tabs.tickets.rows[0]?.type, "POS_SALE");
+});
+
+test("CurrentShiftReportsService: suma domicilios entregados al resumen vivo", async () => {
+  const db = new FakeDb();
+  db.hasDeliverySchema = true;
+  const service = buildService(db);
+
+  const response = await service.getCurrentShift(
+    { tenantId: ids.tenant },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["USER"],
+    }
+  );
+
+  assert.equal(response.summary?.deliveryFees, 5000);
+  assert.equal(response.summary?.deliverySummary.deliveredCount, 1);
+  assert.equal(response.summary?.cashInTotal, 25000);
+  assert.equal(response.summary?.expectedAmount, 35000);
 });
 
 test("CurrentShiftReportsService: responde controlado si no hay caja abierta", async () => {

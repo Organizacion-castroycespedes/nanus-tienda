@@ -93,6 +93,7 @@ type PurchaseRow = {
   id: string;
   tenant_id: string;
   supplier_id: string;
+  cash_session_id?: string | null;
   type: PurchaseType;
   status: PurchaseStatus;
   total: string | number;
@@ -185,6 +186,10 @@ type PurchaseStatusHistoryRow = {
   usuario_id: string | null;
   usuario_nombre: string | null;
   created_at: string | Date;
+};
+
+type CurrentCashSessionRow = {
+  id: string;
 };
 
 const PURCHASE_STATUS = {
@@ -331,6 +336,89 @@ export class PurchaseService {
       branchId,
       branchIds: allowedBranchIds,
     };
+  }
+
+  private canUseAllCashScope(actor: BranchScopedActor) {
+    return (
+      actor.roles.includes("SUPER_ADMIN") ||
+      actor.roles.includes("SUPER_USER") ||
+      actor.roles.includes("ADMIN")
+    );
+  }
+
+  private async resolveCurrentCashSessionId(
+    actor: BranchScopedActor,
+    tenantId: string
+  ) {
+    if (actor.cashSessionId) {
+      return actor.cashSessionId;
+    }
+    if (!actor.userId) {
+      return null;
+    }
+
+    const params: unknown[] = [actor.userId, tenantId];
+    const conditions = [
+      "session.opened_by_user_id = $1",
+      "session.tenant_id = $2",
+      "session.status = 'OPEN'",
+    ];
+
+    if (actor.branchId) {
+      params.push(actor.branchId);
+      conditions.push(`session.branch_id = $${params.length}`);
+    }
+
+    if (actor.terminalId) {
+      params.push(actor.terminalId);
+      conditions.push(`register.terminal_id = $${params.length}`);
+    }
+
+    const result = await this.db.query<CurrentCashSessionRow>(
+      `
+        SELECT session.id
+        FROM cash_sessions AS session
+        INNER JOIN cash_registers AS register
+          ON register.id = session.cash_register_id
+         AND register.tenant_id = session.tenant_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY session.opened_at DESC
+        LIMIT 1
+      `,
+      params
+    );
+
+    return result.rows[0]?.id ?? null;
+  }
+
+  private async resolvePurchaseCashScope(
+    filters: BranchScopedFilters,
+    actor: BranchScopedActor,
+    tenantId: string | undefined
+  ) {
+    const scope = filters.cashScope === "all" ? "all" : "current";
+    if (scope === "all") {
+      if (!this.canUseAllCashScope(actor)) {
+        throw new ForbiddenException("No autorizado para consultar historico completo");
+      }
+      return { scope, cashSessionId: null as string | null };
+    }
+
+    const resolvedTenantId = tenantId ?? actor.tenantId;
+    if (!resolvedTenantId) {
+      return { scope, cashSessionId: null as string | null };
+    }
+
+    const currentCashSessionId = await this.resolveCurrentCashSessionId(
+      actor,
+      resolvedTenantId
+    );
+    const requestedCashSessionId = normalizeOptionalFilter(filters.cashSessionId);
+    if (requestedCashSessionId && requestedCashSessionId !== currentCashSessionId) {
+      throw new ForbiddenException("La caja solicitada no corresponde a la caja actual");
+    }
+
+    return { scope, cashSessionId: currentCashSessionId };
   }
 
   private mapPurchaseItem(row: PurchaseItemRow) {
@@ -647,6 +735,7 @@ export class PurchaseService {
             id,
             tenant_id,
             supplier_id,
+            cash_session_id,
             type,
             status,
             total,
@@ -656,12 +745,13 @@ export class PurchaseService {
             balance_due,
             created_at
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
           )
           RETURNING
             id,
             tenant_id,
             supplier_id,
+            cash_session_id,
             type,
             status,
             total,
@@ -675,6 +765,7 @@ export class PurchaseService {
           purchase.id,
           purchase.tenantId,
           purchase.supplierId,
+          data.context?.cashSessionId ?? null,
           purchase.type,
           purchase.status,
           purchase.total,
@@ -706,11 +797,13 @@ export class PurchaseService {
           terminalId: purchaseTerminalId,
           posSessionId:
             data.context?.branchId === purchaseBranchId ? data.context?.posSessionId ?? null : null,
+          cashSessionId: data.context?.cashSessionId ?? null,
         },
       });
 
       return {
         ...this.mapPurchase(purchaseResult.rows[0]),
+        cashSessionId: purchaseResult.rows[0].cash_session_id ?? null,
         branchId: purchaseBranchId,
         terminalId: purchaseTerminalId,
         terminalName: purchaseTerminal?.name ?? null,
@@ -877,6 +970,11 @@ export class PurchaseService {
 
   async getPurchases(filters: BranchScopedFilters, actor: BranchScopedActor) {
     const resolvedFilters = await this.resolvePurchaseScope(actor, filters);
+    const cashScope = await this.resolvePurchaseCashScope(
+      filters,
+      actor,
+      resolvedFilters.tenantId
+    );
     const params: unknown[] = [];
     const where: string[] = [];
     const fromDate = normalizeOptionalFilter(filters.fromDate);
@@ -921,6 +1019,15 @@ export class PurchaseService {
       `);
     }
 
+    if (cashScope.scope === "current") {
+      if (!cashScope.cashSessionId) {
+        where.push("FALSE");
+      } else {
+        params.push(cashScope.cashSessionId);
+        where.push(`p.cash_session_id = $${params.length}::uuid`);
+      }
+    }
+
     const result = await this.db.query<PurchaseListRow>(
       `
         SELECT
@@ -928,6 +1035,7 @@ export class PurchaseService {
           p.tenant_id,
           t.nombre AS tenant_name,
           p.supplier_id,
+          p.cash_session_id,
           p.type,
           p.status,
           p.total,
@@ -1012,6 +1120,7 @@ export class PurchaseService {
     return result.rows.map((row) => ({
       ...this.mapPurchase(row),
       ...this.mapPurchaseCancellation(row),
+      cashSessionId: row.cash_session_id ?? null,
       tenantName: row.tenant_name,
       supplierName: row.supplier_name,
       branchId: row.branch_id,
@@ -1034,6 +1143,7 @@ export class PurchaseService {
           p.id,
           p.tenant_id,
           p.supplier_id,
+          p.cash_session_id,
           p.type,
           p.status,
           p.total,
@@ -1150,6 +1260,7 @@ export class PurchaseService {
 
     return {
       ...this.mapPurchaseWithItems(purchaseRow, itemsResult.rows),
+      cashSessionId: purchaseRow.cash_session_id ?? null,
       supplierName: purchaseRow.supplier_name,
       branchId: purchaseAuditContext.branch_id,
       branchName: purchaseAuditContext.branch_name,

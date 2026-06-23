@@ -1,5 +1,6 @@
-import { apiClient } from "../../../lib/http";
+import { apiBlobClientWithBaseUrl, apiClient } from "../../../lib/http";
 import type {
+  AssignDeliveryDriverPayload,
   AssignDeliveryPayload,
   CancelDeliveryPayload,
   CreateDeliveryPayload,
@@ -11,26 +12,36 @@ import type {
   MarkDeliveryNotDeliveredPayload,
 } from "../types";
 import {
+  buildDeliveryTicketPath,
   buildDeliveriesQuery,
   buildOrderDeliveryEndpoint,
   buildSaleDeliveryEndpoint,
 } from "./delivery-query";
 
+const reportsBaseUrl = process.env.NEXT_PUBLIC_REPORTS_API_BASE_URL;
+
 export {
+  buildDeliveryTicketPath,
   buildDeliveriesQuery,
   buildOrderDeliveryEndpoint,
   buildSaleDeliveryEndpoint,
 };
 
 export const listDeliveries = (params: GetDeliveriesParams = {}) =>
-  apiClient<DeliveryListResponse>(buildDeliveriesQuery(params));
+  apiClient<DeliveryListResponse>(buildDeliveriesQuery(params), {
+    includePosSession: true,
+  });
 
 export const getDeliveryById = (deliveryId: string) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}`);
 
+export const getDeliveryTicket = (deliveryId: string) =>
+  apiBlobClientWithBaseUrl(reportsBaseUrl, buildDeliveryTicketPath(deliveryId));
+
 export const createDelivery = (payload: CreateDeliveryPayload) =>
   apiClient<DeliveryRecord>("/deliveries", {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -40,6 +51,7 @@ export const updateDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}`, {
     method: "PATCH",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -48,6 +60,16 @@ export const assignDelivery = (
   payload: AssignDeliveryPayload
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/assign`, {
+    method: "POST",
+    includePosSession: true,
+    body: JSON.stringify(payload),
+  });
+
+export const assignDeliveryDriver = (
+  deliveryId: string,
+  payload: AssignDeliveryDriverPayload
+) =>
+  apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/assign-driver`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -58,6 +80,7 @@ export const prepareDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/prepare`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -67,6 +90,7 @@ export const dispatchDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/dispatch`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -76,6 +100,7 @@ export const markDeliveryDelivered = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/mark-delivered`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -85,6 +110,7 @@ export const markDeliveryNotDelivered = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/mark-not-delivered`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -94,11 +120,14 @@ export const cancelDelivery = (
 ) =>
   apiClient<DeliveryRecord>(`/deliveries/${deliveryId}/cancel`, {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
 export const getOrderDelivery = (orderId: string) =>
-  apiClient<DeliveryRecord | null>(buildOrderDeliveryEndpoint(orderId));
+  apiClient<DeliveryRecord | null>(buildOrderDeliveryEndpoint(orderId), {
+    includePosSession: true,
+  });
 
 export const createOrderDelivery = (
   orderId: string,
@@ -106,6 +135,7 @@ export const createOrderDelivery = (
 ) =>
   apiClient<DeliveryRecord>(buildOrderDeliveryEndpoint(orderId), {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 
@@ -118,6 +148,7 @@ export const createSaleDelivery = (
 ) =>
   apiClient<DeliveryRecord>(buildSaleDeliveryEndpoint(saleId), {
     method: "POST",
+    includePosSession: true,
     body: JSON.stringify(payload),
   });
 

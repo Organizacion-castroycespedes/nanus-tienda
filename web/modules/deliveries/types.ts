@@ -53,6 +53,8 @@ export type DeliveryRecord = {
   customer_id: string | null;
   order_id: string | null;
   sale_id: string | null;
+  driver_id: string | null;
+  driver: DeliveryDriverSummary | null;
   delivery_number: string;
   status: DeliveryStatus;
   customer_name: string | null;
@@ -64,6 +66,11 @@ export type DeliveryRecord = {
   total: number;
   payment_method_id: string | null;
   assigned_courier_id: string | null;
+  cash_session_id: string | null;
+  cash_register_id: string | null;
+  terminal_id: string | null;
+  cash_impact_amount: number;
+  cash_impact_recorded_at: string | null;
   notes: string | null;
   metadata: Record<string, unknown>;
   created_by_user_id: string | null;
@@ -90,12 +97,40 @@ export type DeliveryListResponse = {
   pagination: DeliveryPagination;
 };
 
+export type DeliveryDriverSummary = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  document_number: string | null;
+  active: boolean | null;
+};
+
+export type DeliveryDriver = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  phone: string | null;
+  document_number: string | null;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GetDeliveryDriversParams = {
+  query?: string;
+  active?: boolean;
+};
+
 export type GetDeliveriesParams = {
   status?: DeliveryStatus | "";
   branch_id?: string;
   customer_id?: string;
   order_id?: string;
   sale_id?: string;
+  driver_id?: string;
+  cash_session_id?: string;
+  cash_scope?: "current" | "all";
   date_from?: string;
   date_to?: string;
   page?: number;
@@ -107,6 +142,7 @@ export type CreateDeliveryPayload = {
   customer_id?: string;
   order_id?: string;
   sale_id?: string;
+  driver_id?: string;
   customer_name?: string;
   customer_phone?: string;
   delivery_address: string;
@@ -125,6 +161,20 @@ export type AssignDeliveryPayload = {
   notes?: string;
   metadata?: Record<string, unknown>;
 };
+
+export type AssignDeliveryDriverPayload = {
+  driver_id: string | null;
+};
+
+export type CreateDeliveryDriverPayload = {
+  name: string;
+  phone?: string | null;
+  document_number?: string | null;
+  active?: boolean;
+  notes?: string | null;
+};
+
+export type UpdateDeliveryDriverPayload = Partial<CreateDeliveryDriverPayload>;
 
 export type DispatchDeliveryPayload = {
   notes?: string;
