@@ -44,7 +44,9 @@ export const FinanceStatusBadge = ({
   }
 
   return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}>
+    <span
+      className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-center text-xs font-semibold leading-tight whitespace-normal break-words ${className}`}
+    >
       {typeof value === "boolean" ? (value ? "Activo" : "Inactivo") : normalized}
     </span>
   );

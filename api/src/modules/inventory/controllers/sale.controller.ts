@@ -7,16 +7,24 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { RequirePermission } from "../../../common/decorators/require-permission.decorator";
+import { RequireOpenCashSession } from "../../../common/decorators/require-open-cash-session.decorator";
 import { RequirePosSession } from "../../../common/decorators/require-pos-session.decorator";
 import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { DELIVERY_PERMISSION_ACTIONS } from "../../deliveries/deliveries.constants";
+import { DeliveriesService } from "../../deliveries/deliveries.service";
+import { CreateSaleDeliveryDto } from "../../deliveries/dto/create-sale-delivery.dto";
 import { SaleService } from "../services/sale.service";
 
 type AuthRequest = Request & {
@@ -56,13 +64,21 @@ type CreateSaleBody = {
   }>;
 };
 
+const saleDeliveryValidationPipe = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
+
 @Controller("sales")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class SaleController {
   constructor(
     @Inject(SaleService)
-    private readonly saleService: SaleService
+    private readonly saleService: SaleService,
+    @Inject(DeliveriesService)
+    private readonly deliveriesService: DeliveriesService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -99,10 +115,13 @@ export class SaleController {
       userId: context.userId,
       tenantId: context.tenantId,
       branchId: context.branchId,
+      terminalId: context.terminalId,
+      posSessionId: context.posSessionId,
     };
   }
 
   @Post()
+  @RequireOpenCashSession()
   @RequirePosSession()
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
   create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
@@ -117,8 +136,15 @@ export class SaleController {
 
   @Get()
   @RequirePermission({ menuKey: "POS", level: "READ" })
-  list(@Req() request: AuthRequest) {
-    return this.saleService.getSales(this.buildActor(request));
+  list(
+    @Query("customerId") customerId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.saleService.getSales(this.buildActor(request), {
+      customerId,
+      branchId,
+    });
   }
 
   @Get(":id")
@@ -127,7 +153,37 @@ export class SaleController {
     return this.saleService.getSaleById(id, this.buildActor(request));
   }
 
+  @Get(":id/delivery")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "READ",
+    action: DELIVERY_PERMISSION_ACTIONS.VIEW,
+  })
+  getDelivery(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.deliveriesService.getBySale(id, this.buildActor(request));
+  }
+
+  @Post(":id/delivery")
+  @RequirePermission({
+    menuKey: MENU_KEYS.DELIVERIES,
+    level: "WRITE",
+    action: DELIVERY_PERMISSION_ACTIONS.CREATE,
+  })
+  @UsePipes(saleDeliveryValidationPipe)
+  createDelivery(
+    @Param("id") id: string,
+    @Body() body: CreateSaleDeliveryDto,
+    @Req() request: AuthRequest
+  ) {
+    return this.deliveriesService.createFromSale(
+      id,
+      body,
+      this.buildActor(request)
+    );
+  }
+
   @Post(":id/cancel")
+  @RequireOpenCashSession()
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
   cancel(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.saleService.cancelSale(id, this.buildActor(request));

@@ -10,6 +10,7 @@ export type PurchaseResponse = {
   branchName?: string | null;
   terminalId?: string | null;
   terminalName?: string | null;
+  cashSessionId?: string | null;
   type: "CASH" | "CREDIT";
   status: "DRAFT" | "PENDING" | "PARTIAL" | "RECEIVED" | "CERRADA_PARCIAL" | "CANCELLED";
   total: number;
@@ -38,6 +39,8 @@ export type GetPurchasesParams = {
   fromDate?: string;
   toDate?: string;
   status?: PurchaseResponse["status"] | string;
+  cashScope?: "current" | "all";
+  cashSessionId?: string;
 };
 
 export type PurchaseItemResponse = {
@@ -152,6 +155,12 @@ export const getPurchases = (
   }
   if (params.status) {
     query.set("status", params.status);
+  }
+  if (params.cashScope) {
+    query.set("cashScope", params.cashScope);
+  }
+  if (params.cashSessionId) {
+    query.set("cashSessionId", params.cashSessionId);
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<PurchaseResponse[]>(`/purchases${suffix}`, { headers });

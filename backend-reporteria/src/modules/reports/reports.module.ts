@@ -8,6 +8,8 @@ import { CustomersReportsController } from "./customers-reports.controller";
 import { CustomersReportsService } from "./customers-reports.service";
 import { CurrentShiftReportsController } from "./current-shift-reports.controller";
 import { CurrentShiftReportsService } from "./current-shift-reports.service";
+import { DeliveriesReportsController } from "./deliveries-reports.controller";
+import { DeliveriesReportsService } from "./deliveries-reports.service";
 import { OrdersReportsController } from "./orders-reports.controller";
 import { OrdersReportsService } from "./orders-reports.service";
 import { PurchasesReportsController } from "./purchases-reports.controller";
@@ -18,6 +20,7 @@ import { SalesReportsController } from "./sales-reports.controller";
 import { SalesReportsService } from "./sales-reports.service";
 import { CashReportAdapter } from "./sql-adapters/cash-report.adapter";
 import { CustomersReportAdapter } from "./sql-adapters/customers-report.adapter";
+import { DeliveriesReportAdapter } from "./sql-adapters/deliveries-report.adapter";
 import { OrdersReportAdapter } from "./sql-adapters/orders-report.adapter";
 import { PurchasesReportAdapter } from "./sql-adapters/purchases-report.adapter";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
@@ -30,6 +33,7 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     CashReportsController,
     PurchasesReportsController,
     OrdersReportsController,
+    DeliveriesReportsController,
     CustomersReportsController,
     CurrentShiftReportsController,
   ],
@@ -39,12 +43,14 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     CashReportsService,
     PurchasesReportsService,
     OrdersReportsService,
+    DeliveriesReportsService,
     CustomersReportsService,
     CurrentShiftReportsService,
     SalesReportAdapter,
     CashReportAdapter,
     PurchasesReportAdapter,
     OrdersReportAdapter,
+    DeliveriesReportAdapter,
     CustomersReportAdapter,
   ],
 })

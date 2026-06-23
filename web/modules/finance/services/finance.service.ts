@@ -6,9 +6,11 @@ import type {
   CashRegister,
   CashRegisterFilters,
   CashSession,
+  CashSessionAuditRecord,
   CashSessionSummary,
   CashSessionHistoryFilters,
   CloseCashSessionPayload,
+  CreateCashSessionAuditPayload,
   CreateCashMovementPayload,
   CreateCashRegisterPayload,
   CreatePaymentPayload,
@@ -125,6 +127,28 @@ export const listCashSessionHistory = (
 
 export const getCashSessionSummary = (cashSessionId: string) =>
   apiClient<CashSessionSummary>(`/finance/cash-sessions/${cashSessionId}/summary`);
+
+export const getCashSessionAuditPreview = (cashSessionId: string) =>
+  apiClient<CashSessionSummary>(
+    `/finance/cash-sessions/${cashSessionId}/audit-preview`
+  );
+
+export const listCashSessionAudits = (cashSessionId: string) =>
+  apiClient<CashSessionAuditRecord[]>(
+    `/finance/cash-sessions/${cashSessionId}/audits`
+  );
+
+export const createCashSessionAudit = (
+  cashSessionId: string,
+  payload: CreateCashSessionAuditPayload
+) =>
+  apiClient<CashSessionAuditRecord>(
+    `/finance/cash-sessions/${cashSessionId}/audits`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
 
 export const listCashMovements = (filters: CashMovementFilters = {}) =>
   apiClient<CashMovement[] | CashMovementListResponse>(

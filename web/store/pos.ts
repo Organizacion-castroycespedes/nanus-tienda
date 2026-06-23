@@ -8,6 +8,7 @@ export const initialPosState: PosState = {
   tenantId: null,
   branchId: null,
   terminalId: null,
+  cashRegisterId: null,
   posSessionId: null,
   loading: false,
   error: null,
@@ -17,12 +18,14 @@ type PosContextPayload = {
   tenantId?: string | null;
   branchId?: string | null;
   terminalId?: string | null;
+  cashRegisterId?: string | null;
 };
 
 type PosSessionPayload = {
   posSessionId: string | null;
   branchId?: string | null;
   terminalId?: string | null;
+  cashRegisterId?: string | null;
 };
 
 const posSlice = createSlice({
@@ -40,6 +43,7 @@ const posSlice = createSlice({
         state.tenantId = nextTenantId;
         state.branchId = action.payload.branchId ?? null;
         state.terminalId = action.payload.terminalId ?? null;
+        state.cashRegisterId = action.payload.cashRegisterId ?? null;
         state.posSessionId = null;
         state.error = null;
         return;
@@ -48,12 +52,14 @@ const posSlice = createSlice({
       if (action.payload.branchId !== undefined && action.payload.branchId !== state.branchId) {
         state.branchId = action.payload.branchId;
         state.terminalId = null;
+        state.cashRegisterId = null;
         state.posSessionId = null;
       }
 
       if (action.payload.terminalId !== undefined) {
         if (action.payload.terminalId !== state.terminalId) {
           state.terminalId = action.payload.terminalId;
+          state.cashRegisterId = null;
           state.posSessionId = null;
         }
       }
@@ -70,6 +76,9 @@ const posSlice = createSlice({
       }
       if (action.payload.terminalId !== undefined) {
         state.terminalId = action.payload.terminalId;
+      }
+      if (action.payload.cashRegisterId !== undefined) {
+        state.cashRegisterId = action.payload.cashRegisterId;
       }
       state.loading = false;
       state.error = null;
@@ -93,6 +102,7 @@ const posSlice = createSlice({
       state.tenantId = action.payload.tenantId ?? null;
       state.branchId = action.payload.branchId ?? null;
       state.terminalId = action.payload.terminalId ?? null;
+      state.cashRegisterId = action.payload.cashRegisterId ?? null;
       state.posSessionId = action.payload.posSessionId ?? null;
       state.loading = false;
       state.error = null;
@@ -128,6 +138,7 @@ export const persistPosState = (state: PosState) => {
         tenantId: state.tenantId,
         branchId: state.branchId,
         terminalId: state.terminalId,
+        cashRegisterId: state.cashRegisterId,
         posSessionId: state.posSessionId,
       })
     );
@@ -161,6 +172,7 @@ export const rehydratePosContextFromStorage = (
       tenantId: persisted.tenantId ?? null,
       branchId: persisted.branchId ?? null,
       terminalId: persisted.terminalId ?? null,
+      cashRegisterId: persisted.cashRegisterId ?? null,
     })
   );
 
@@ -170,6 +182,7 @@ export const rehydratePosContextFromStorage = (
         posSessionId: persisted.posSessionId,
         branchId: persisted.branchId ?? null,
         terminalId: persisted.terminalId ?? null,
+        cashRegisterId: persisted.cashRegisterId ?? null,
       })
     );
   }

@@ -24,6 +24,11 @@ build/
 !scripts/build/*.sh
 coverage/
 
+# Electron local packaging artifacts
+desktop/electron/dist/
+desktop/electron/release/
+desktop/electron/out/
+
 # TypeScript
 *.tsbuildinfo
 

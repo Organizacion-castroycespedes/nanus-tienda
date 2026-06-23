@@ -99,6 +99,64 @@ export type CashSessionPaymentBreakdown = {
   total: number;
 };
 
+export type CashSessionPaymentCategory =
+  | "CASH"
+  | "CARD"
+  | "TRANSFER"
+  | "DIGITAL"
+  | "OTHER";
+
+export type CashSessionPaymentMethodDetail = {
+  paymentMethodId: string | null;
+  paymentMethodNombre: string;
+  paymentMethodTipo: string | null;
+  category: CashSessionPaymentCategory;
+  isCash: boolean;
+  count: number;
+  sales: number;
+  orders: number;
+  purchases: number;
+  refunds: number;
+  deliveries: number;
+  manualIn: number;
+  manualOut: number;
+  otherIn: number;
+  otherOut: number;
+  totalIn: number;
+  totalOut: number;
+  net: number;
+};
+
+export type CashSessionSourceBreakdown = {
+  opening: number;
+  posSales: number;
+  orders: number;
+  purchases: number;
+  refunds: number;
+  deliveries: number;
+  manualIn: number;
+  manualOut: number;
+  otherIn: number;
+  otherOut: number;
+  totalIn: number;
+  totalOut: number;
+  net: number;
+};
+
+export type CashSessionCashControl = {
+  openingCash: number;
+  cashPaymentsIn: number;
+  cashPaymentsOut: number;
+  cashDeliveryFees: number;
+  cashManualIn: number;
+  cashManualOut: number;
+  expectedCashAmount: number;
+  countedCashAmount: number | null;
+  differenceAmount: number | null;
+  nonCashNet: number;
+  totalNetAmount: number;
+};
+
 export type CashSessionMovementBreakdown = {
   movementType: CashMovementType | string;
   direction: CashMovementDirection;
@@ -121,6 +179,7 @@ export type CashSessionRecentMovement = {
 
 export type CashSessionLastCount = {
   id: string;
+  countType?: "AUDIT" | "CLOSING";
   countedCashAmount: number;
   expectedAmount: number;
   differenceAmount: number;
@@ -129,6 +188,32 @@ export type CashSessionLastCount = {
   countedByUserEmail: string | null;
   countedAt: string;
 } | null;
+
+export type CashSessionDeliverySummary = {
+  deliveredCount: number;
+  pendingCount: number;
+  excludedCount: number;
+  deliveredFeeTotal: number;
+  byPaymentMethod: Array<{
+    paymentMethodId: string | null;
+    paymentMethodNombre: string | null;
+    paymentMethodTipo?: string | null;
+    count: number;
+    total: number;
+  }>;
+};
+
+export type CashSessionAuditRecord = {
+  id: string;
+  countType: "AUDIT" | "CLOSING";
+  countedCashAmount: number;
+  expectedAmount: number;
+  differenceAmount: number;
+  notes: string | null;
+  countedByUserId: string;
+  countedByUserEmail: string | null;
+  countedAt: string;
+};
 
 export type CashSessionSummary = {
   sessionId: string;
@@ -158,15 +243,21 @@ export type CashSessionSummary = {
     salesPayments: number;
     purchasePayments: number;
     refundPayments: number;
+    deliveryFees: number;
     expectedAmount: number;
     netAmount: number;
     movementCount: number;
     paymentCount: number;
   };
   paymentBreakdown: CashSessionPaymentBreakdown[];
+  paymentMethodDetails: CashSessionPaymentMethodDetail[];
+  sourceBreakdown: CashSessionSourceBreakdown;
+  cashControl: CashSessionCashControl;
   movementBreakdown: CashSessionMovementBreakdown[];
   recentMovements: CashSessionRecentMovement[];
   lastCount: CashSessionLastCount;
+  auditRecords: CashSessionAuditRecord[];
+  deliverySummary: CashSessionDeliverySummary;
 };
 
 export type CashMovementType =
@@ -342,6 +433,11 @@ export type OpenCashSessionPayload = {
 export type CloseCashSessionPayload = {
   closingAmount: number;
   description?: string;
+};
+
+export type CreateCashSessionAuditPayload = {
+  countedCashAmount: number;
+  notes?: string;
 };
 
 export type CreateCashMovementPayload = {

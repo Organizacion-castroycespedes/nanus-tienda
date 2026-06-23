@@ -66,8 +66,27 @@ export type CreateCustomerPayload = {
 
 export type UpdateCustomerPayload = Partial<CreateCustomerPayload>;
 
-export const getCustomers = (headers?: HeadersInit) =>
-  apiClient<CustomerResponse[]>("/customers", { headers });
+export type GetCustomersParams = {
+  query?: string;
+  limit?: number;
+};
+
+export const buildCustomersQuery = (params: GetCustomersParams = {}) => {
+  const query = new URLSearchParams();
+  if (params.query?.trim()) {
+    query.set("query", params.query.trim());
+  }
+  if (params.limit) {
+    query.set("limit", String(params.limit));
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return `/customers${suffix}`;
+};
+
+export const getCustomers = (
+  params: GetCustomersParams = {},
+  headers?: HeadersInit
+) => apiClient<CustomerResponse[]>(buildCustomersQuery(params), { headers });
 
 export const getCustomerById = (customerId: string, headers?: HeadersInit) =>
   apiClient<CustomerResponse>(`/customers/${customerId}`, { headers });

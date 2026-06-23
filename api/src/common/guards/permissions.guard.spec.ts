@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MENU_KEYS } from "../constants/menu-keys";
+import { DELIVERY_PERMISSION_ACTIONS } from "../../modules/deliveries/deliveries.constants";
 import { PermissionsGuard } from "./permissions.guard";
 
 const buildContext = (user: { id?: string; tenantId?: string; roles?: string[] }) =>
@@ -604,6 +605,80 @@ test("PermissionsGuard: allows explicit action permission", async () => {
   const guard = new PermissionsGuard(reflector, accessControlService);
   const allowed = await guard.canActivate(buildContext({ id: "user", tenantId: "tenant" }));
   assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: allows delivery endpoint with explicit DELIVERIES action", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.DELIVERIES,
+      level: "WRITE",
+      action: DELIVERY_PERMISSION_ACTIONS.DISPATCH,
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () =>
+      new Map([
+        [
+          MENU_KEYS.DELIVERIES,
+          {
+            key: MENU_KEYS.DELIVERIES,
+            accessLevel: "WRITE",
+            actions: { [DELIVERY_PERMISSION_ACTIONS.DISPATCH]: true },
+          },
+        ],
+      ]),
+    findPermission: (permissions: Map<string, unknown>, menuKey: string) =>
+      permissions.get(menuKey),
+    isActionAllowed: (permission: any, required: any, action: string) =>
+      required === "WRITE" &&
+      permission?.accessLevel === "WRITE" &&
+      permission?.actions?.[action] === true,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  const allowed = await guard.canActivate(buildContext({
+    id: "user",
+    tenantId: "tenant",
+    roles: ["USER"],
+  }));
+  assert.equal(allowed, true);
+});
+
+test("PermissionsGuard: blocks delivery endpoint when DELIVERIES action is missing", async () => {
+  const reflector = {
+    getAllAndOverride: () => ({
+      menuKey: MENU_KEYS.DELIVERIES,
+      level: "WRITE",
+      action: DELIVERY_PERMISSION_ACTIONS.CANCEL,
+    }),
+  } as any;
+  const accessControlService = {
+    getPermissionsForRequest: async () =>
+      new Map([
+        [
+          MENU_KEYS.DELIVERIES,
+          {
+            key: MENU_KEYS.DELIVERIES,
+            accessLevel: "WRITE",
+            actions: { [DELIVERY_PERMISSION_ACTIONS.DISPATCH]: true },
+          },
+        ],
+      ]),
+    findPermission: (permissions: Map<string, unknown>, menuKey: string) =>
+      permissions.get(menuKey),
+    isActionAllowed: () => false,
+  } as any;
+
+  const guard = new PermissionsGuard(reflector, accessControlService);
+  await assert.rejects(
+    () =>
+      guard.canActivate(buildContext({
+        id: "user",
+        tenantId: "tenant",
+        roles: ["USER"],
+      })),
+    /Permisos insuficientes/
+  );
 });
 
 test("PermissionsGuard: blocks missing explicit action permission", async () => {

@@ -61,3 +61,23 @@ describe("CustomerService final consumer guards", () => {
     );
   });
 });
+
+describe("CustomerService search", () => {
+  it("passes query and limit to repository", async () => {
+    const calls: unknown[] = [];
+    const repository = {
+      findAllByTenant: async (...args: unknown[]) => {
+        calls.push(args);
+        return [];
+      },
+    };
+    const service = new CustomerService(repository as never);
+
+    await service.searchCustomers(tenantId, {
+      query: "maria",
+      limit: 25,
+    });
+
+    assert.deepEqual(calls, [[tenantId, { query: "maria", limit: 25 }]]);
+  });
+});

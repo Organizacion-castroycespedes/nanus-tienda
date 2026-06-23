@@ -1,6 +1,14 @@
 "use client";
 
-import { Download, Eye, Plus, Printer, Receipt, RefreshCw } from "lucide-react";
+import {
+  ClipboardCheck,
+  Download,
+  Eye,
+  Plus,
+  Printer,
+  Receipt,
+  RefreshCw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
@@ -13,6 +21,7 @@ import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { CloseCashSessionForm } from "../../../../modules/finance/components/CloseCashSessionForm";
+import { CashSessionAuditForm } from "../../../../modules/finance/components/CashSessionAuditForm";
 import { FinanceAccessNotice } from "../../../../modules/finance/components/FinanceAccessNotice";
 import { FinanceMetricCard } from "../../../../modules/finance/components/FinanceMetricCard";
 import { FinancePageHeader } from "../../../../modules/finance/components/FinancePageHeader";
@@ -25,8 +34,10 @@ import type {
   CashSession,
   CashSessionSummary,
   CloseCashSessionPayload,
+  CreateCashSessionAuditPayload,
 } from "../../../../modules/finance/types";
 import { formatCurrency, formatDateTime } from "../../../../modules/finance/utils";
+import { createCashSessionAudit } from "../../../../modules/finance/services/finance.service";
 import { PdfPreviewModal } from "../../../../modules/reporteria/components/PdfPreviewModal";
 import { getCashClosingTicket } from "../../../../modules/reporteria/services/reporting.service";
 import {
@@ -38,6 +49,11 @@ import { useAppSelector } from "../../../../store/hooks";
 const closeFormInitial: CloseCashSessionPayload = {
   closingAmount: 0,
   description: "",
+};
+
+const auditFormInitial: CreateCashSessionAuditPayload = {
+  countedCashAmount: 0,
+  notes: "",
 };
 
 type PdfConfig = {
@@ -153,7 +169,11 @@ const CashSessionsPage = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [registerFilter, setRegisterFilter] = useState("");
   const [closeModal, setCloseModal] = useState(false);
+  const [auditModal, setAuditModal] = useState(false);
   const [closeForm, setCloseForm] = useState<CloseCashSessionPayload>(closeFormInitial);
+  const [auditForm, setAuditForm] =
+    useState<CreateCashSessionAuditPayload>(auditFormInitial);
+  const [auditSaving, setAuditSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [closeNotice, setCloseNotice] = useState<CloseNoticeState | null>(null);
@@ -221,7 +241,8 @@ const CashSessionsPage = () => {
   }, [history, registerFilter, statusFilter]);
 
   const expectedCurrent = currentSession
-    ? sessionSummary?.totals.expectedAmount ??
+    ? sessionSummary?.cashControl?.expectedCashAmount ??
+      sessionSummary?.totals.expectedAmount ??
       currentSession.expectedAmount ??
       currentSession.openingAmount
     : 0;
@@ -323,6 +344,47 @@ const CashSessionsPage = () => {
     }
   };
 
+  const handleOpenAuditModal = async () => {
+    if (!currentSession) {
+      return;
+    }
+    const summary = sessionSummary ?? (await loadSessionSummary(currentSession.id));
+    if (!summary) {
+      setToastMessage("No se pudo cargar el resumen para arqueo.");
+      setToastVariant("error");
+      return;
+    }
+    setAuditForm({
+      countedCashAmount:
+        summary.cashControl?.countedCashAmount ??
+        summary.lastCount?.countedCashAmount ??
+        expectedCurrent,
+      notes: "",
+    });
+    setAuditModal(true);
+  };
+
+  const handleSaveAudit = async () => {
+    if (!currentSession) {
+      return;
+    }
+
+    try {
+      setAuditSaving(true);
+      await createCashSessionAudit(currentSession.id, auditForm);
+      await loadSessionSummary(currentSession.id);
+      setAuditModal(false);
+      setAuditForm(auditFormInitial);
+      setToastMessage("Arqueo guardado. La caja sigue abierta.");
+      setToastVariant("success");
+    } catch (error) {
+      setToastMessage(getApiErrorMessage(error, "No se pudo guardar el arqueo."));
+      setToastVariant("error");
+    } finally {
+      setAuditSaving(false);
+    }
+  };
+
   if (!canViewFinance) {
     return (
       <FinanceAccessNotice description="No tienes acceso a sesiones de caja." />
@@ -341,7 +403,7 @@ const CashSessionsPage = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
       <FinancePageHeader
         eyebrow="Finance / Caja"
         title="Sesiones de caja"
@@ -374,7 +436,7 @@ const CashSessionsPage = () => {
 
       <FinanceSectionNav tenantSlug={tenantSlug} />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         <FinanceMetricCard
           label="Caja actual"
           value={currentSession ? currentSession.cashRegisterNombre ?? "Abierta" : "Sin sesion"}
@@ -389,14 +451,14 @@ const CashSessionsPage = () => {
         <FinanceMetricCard label="Sesiones cerradas" value={closedCount} accent="slate" />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+      <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.12fr)_minmax(380px,0.88fr)]">
+        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0">
               <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
                 Estado actual
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-900">
+              <h2 className="mt-2 text-xl font-semibold leading-tight text-slate-900">
                 Tu caja en este momento
               </h2>
             </div>
@@ -412,28 +474,28 @@ const CashSessionsPage = () => {
             </div>
           ) : (
             <div className="mt-6 space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Caja</p>
-                  <p className="mt-2 font-semibold text-slate-900">
+                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900">
                     {currentSession.cashRegisterNombre}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500">
                     {currentSession.cashRegisterCodigo}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Abierta</p>
-                  <p className="mt-2 font-semibold text-slate-900">
+                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900">
                     {formatDateTime(currentSession.openedAt)}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500">
                     {currentSession.openedByUserEmail ?? "Usuario actual"}
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
                 <FinanceMetricCard
                   label="Apertura"
                   value={formatCurrency(currentSession.openingAmount)}
@@ -452,10 +514,19 @@ const CashSessionsPage = () => {
                   label="Accion"
                   value={
                     canOperateCashSessions ? (
-                      <Button variant="warning" onClick={() => setCloseModal(true)}>
-                        <Receipt className="h-4 w-4" />
-                        Cerrar caja
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => void handleOpenAuditModal()}
+                        >
+                          <ClipboardCheck className="h-4 w-4" />
+                          Arqueo
+                        </Button>
+                        <Button variant="warning" onClick={() => setCloseModal(true)}>
+                          <Receipt className="h-4 w-4" />
+                          Cerrar caja
+                        </Button>
+                      </div>
                     ) : (
                       "Solo lectura"
                     )
@@ -465,11 +536,13 @@ const CashSessionsPage = () => {
               </div>
 
               {sessionSummary ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
                   <FinanceMetricCard
                     label="Ingresos"
                     value={formatCurrency(
-                      sessionSummary.totals.paymentsIn + sessionSummary.totals.adjustmentsIn
+                      sessionSummary.totals.paymentsIn +
+                        sessionSummary.totals.adjustmentsIn +
+                        (sessionSummary.totals.deliveryFees ?? 0)
                     )}
                     accent="emerald"
                   />
@@ -489,6 +562,11 @@ const CashSessionsPage = () => {
                     accent="blue"
                   />
                   <FinanceMetricCard
+                    label="Domicilios"
+                    value={formatCurrency(sessionSummary.totals.deliveryFees ?? 0)}
+                    accent="emerald"
+                  />
+                  <FinanceMetricCard
                     label="Ultimo arqueo"
                     value={
                       sessionSummary.lastCount
@@ -501,13 +579,13 @@ const CashSessionsPage = () => {
               ) : null}
 
               {sessionSummary ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
                         Gestion del turno
                       </p>
-                      <h3 className="mt-2 text-lg font-semibold text-slate-900">
+                      <h3 className="mt-2 text-lg font-semibold leading-tight text-slate-900">
                         Caja abierta actual
                       </h3>
                     </div>
@@ -522,9 +600,19 @@ const CashSessionsPage = () => {
                     >
                       Ver movimientos
                     </Button>
+                    {canOperateCashSessions ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleOpenAuditModal()}
+                      >
+                        <ClipboardCheck className="h-4 w-4" />
+                        Arqueo
+                      </Button>
+                    ) : null}
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
                     <FinanceMetricCard
                       label="Ventas POS"
                       value={formatCurrency(sessionSummary.totals.salesPayments)}
@@ -543,6 +631,13 @@ const CashSessionsPage = () => {
                       label="Compras"
                       value={formatCurrency(sessionSummary.totals.purchasePayments)}
                       accent="rose"
+                    />
+                    <FinanceMetricCard
+                      label="Domicilios"
+                      value={`${sessionSummary.deliverySummary?.deliveredCount ?? 0} / ${formatCurrency(
+                        sessionSummary.deliverySummary?.deliveredFeeTotal ?? 0
+                      )}`}
+                      accent="emerald"
                     />
                     <FinanceMetricCard
                       label="Movimientos"
@@ -598,8 +693,8 @@ const CashSessionsPage = () => {
           )}
         </article>
 
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-2">
+        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Select
               label="Caja"
               value={registerFilter}
@@ -637,35 +732,35 @@ const CashSessionsPage = () => {
               filteredHistory.map((session) => (
                 <div
                   key={session.id}
-                  className="rounded-2xl border border-slate-200 px-4 py-4"
+                  className="min-w-0 rounded-2xl border border-slate-200 px-4 py-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="min-w-0 break-words font-semibold leading-tight text-slate-900">
                         {session.cashRegisterNombre ?? "Caja"}
                       </p>
-                      <p className="mt-1 text-sm text-slate-500">
+                      <p className="mt-1 min-w-0 break-words text-sm leading-snug text-slate-500">
                         Apertura {formatDateTime(session.openedAt)}
                       </p>
                     </div>
                     <FinanceStatusBadge value={session.status} kind="session" />
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Apertura</p>
-                      <p className="mt-1 font-semibold text-slate-900">
+                  <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Apertura</p>
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
                         {formatCurrency(session.openingAmount)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Cierre</p>
-                      <p className="mt-1 font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Cierre</p>
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
                         {formatCurrency(session.closingAmount ?? 0)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Diferencia</p>
-                      <p className="mt-1 font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Diferencia</p>
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
                         {formatCurrency(session.differenceAmount ?? 0)}
                       </p>
                     </div>
@@ -720,7 +815,11 @@ const CashSessionsPage = () => {
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {closeModal && currentSession ? (
-        <Modal title="Cerrar caja" className="max-w-2xl">
+        <Modal
+          title="Cerrar caja"
+          className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
+          size="xl"
+        >
           <CloseCashSessionForm
             value={closeForm}
             expectedAmount={expectedCurrent}
@@ -729,6 +828,25 @@ const CashSessionsPage = () => {
             onCancel={() => setCloseModal(false)}
             onSubmit={() => void handleCloseSession()}
             isSaving={saving}
+          />
+        </Modal>
+      ) : null}
+
+      {auditModal && currentSession && sessionSummary ? (
+        <Modal
+          title="Arqueo de caja"
+          description="Revision preliminar. No cierra la caja."
+          className="max-w-5xl"
+          size="xl"
+          onClose={() => setAuditModal(false)}
+        >
+          <CashSessionAuditForm
+            summary={sessionSummary}
+            value={auditForm}
+            onChange={setAuditForm}
+            onCancel={() => setAuditModal(false)}
+            onSubmit={() => void handleSaveAudit()}
+            isSaving={auditSaving}
           />
         </Modal>
       ) : null}

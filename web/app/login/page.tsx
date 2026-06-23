@@ -9,6 +9,7 @@ import { Modal } from "../../components/design-system/Modal";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { forceLogin, login } from "../../domains/auth/api";
 import { decodeTokenPayload } from "../../domains/auth/jwt";
+import { isQaLoginEnabled } from "../../domains/auth/login-qa";
 import {
   startSessionFromLogin,
 } from "../../domains/auth/session-manager";
@@ -31,6 +32,7 @@ const LoginPageContent = () => {
     email: string;
     password: string;
   } | null>(null);
+  const [qaLoginEnabled, setQaLoginEnabled] = useState(false);
   const [status, setStatus] = useState<{
     message: string;
     variant: ToastVariant;
@@ -41,6 +43,21 @@ const LoginPageContent = () => {
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const tenantId = useAppSelector((state) => state.auth.tenantId);
   useAutoClearState(status, setStatus, 12000);
+
+  useEffect(() => {
+    setQaLoginEnabled(
+      isQaLoginEnabled(
+        window.location.hostname,
+        process.env.NEXT_PUBLIC_QA_LOGIN_ENABLED
+      )
+    );
+  }, []);
+
+  useEffect(() => {
+    if (qaLoginEnabled) {
+      setIsHuman(true);
+    }
+  }, [qaLoginEnabled]);
 
   const setStatusMessage = (message: string, variant: ToastVariant) => {
     setStatus({ message, variant });
@@ -87,7 +104,7 @@ const LoginPageContent = () => {
       setStatusWarning("Ingresa tu email y contrasena.");
       return;
     }
-    if (!isHuman) {
+    if (!qaLoginEnabled && !isHuman) {
       setStatusWarning("Confirma el reCAPTCHA antes de continuar.");
       return;
     }
@@ -293,6 +310,7 @@ const LoginPageContent = () => {
                 id="email"
                 name="email"
                 type="email"
+                autoFocus
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -356,19 +374,23 @@ const LoginPageContent = () => {
             </div>
 
             {/* CAPTCHA */}
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={isHuman}
-                onChange={(e) => setIsHuman(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 accent-blue-600"
-              />
-              No soy un robot
-            </label>
-            {hasSubmitted && !isHuman ? (
-              <p className="text-xs text-red-500">
-                Debes confirmar que no eres un robot.
-              </p>
+            {!qaLoginEnabled ? (
+              <>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={isHuman}
+                    onChange={(e) => setIsHuman(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                  />
+                  No soy un robot
+                </label>
+                {hasSubmitted && !isHuman ? (
+                  <p className="text-xs text-red-500">
+                    Debes confirmar que no eres un robot.
+                  </p>
+                ) : null}
+              </>
             ) : null}
 
             {/* Submit */}

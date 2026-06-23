@@ -19,6 +19,7 @@ import { FinanceAuthzGuard } from "../common/guards/finance-authz.guard";
 import { financeValidationPipe } from "../common/pipes/finance-validation.pipe";
 import { CashSessionsService } from "./cash-sessions.service";
 import { CloseCashSessionDto } from "./dto/close-cash-session.dto";
+import { CreateCashSessionAuditDto } from "./dto/create-cash-session-audit.dto";
 import { CurrentCashSessionQueryDto } from "./dto/current-cash-session-query.dto";
 import { ListCashSessionHistoryDto } from "./dto/list-cash-session-history.dto";
 import { OpenCashSessionDto } from "./dto/open-cash-session.dto";
@@ -69,6 +70,35 @@ export class CashSessionsController {
     @Req() request: Request
   ) {
     return this.cashSessionsService.getHistory(query, this.buildActor(request));
+  }
+
+  @Get(":id/audit-preview")
+  getAuditPreview(@Param("id") cashSessionId: string, @Req() request: Request) {
+    return this.cashSessionsService.getAuditPreview(
+      cashSessionId,
+      this.buildActor(request)
+    );
+  }
+
+  @Get(":id/audits")
+  listAudits(@Param("id") cashSessionId: string, @Req() request: Request) {
+    return this.cashSessionsService.listAudits(
+      cashSessionId,
+      this.buildActor(request)
+    );
+  }
+
+  @Post(":id/audits")
+  createAudit(
+    @Param("id") cashSessionId: string,
+    @Body() payload: CreateCashSessionAuditDto,
+    @Req() request: Request
+  ) {
+    return this.cashSessionsService.createAudit(
+      cashSessionId,
+      payload,
+      this.buildActor(request)
+    );
   }
 
   @Get(":id/summary")

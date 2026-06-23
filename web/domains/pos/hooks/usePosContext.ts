@@ -18,6 +18,7 @@ export const usePosContext = () => {
       tenantId?: string | null;
       branchId?: string | null;
       terminalId?: string | null;
+      cashRegisterId?: string | null;
     }) => dispatch(setContext(payload)),
     [dispatch]
   );
@@ -26,6 +27,7 @@ export const usePosContext = () => {
       posSessionId: string | null;
       branchId?: string | null;
       terminalId?: string | null;
+      cashRegisterId?: string | null;
     }) => dispatch(setSession(payload)),
     [dispatch]
   );

@@ -3,6 +3,8 @@ import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import type { CashSessionSummaryResponseDto } from "./dto/cash-session-summary-response.dto";
 
+export type CashCountType = "AUDIT" | "CLOSING";
+
 export type CashSessionRecord = {
   id: string;
   tenant_id: string;
@@ -51,6 +53,24 @@ type CreateCashCountInput = {
   expectedAmount: number;
   differenceAmount: number;
   notes?: string | null;
+  countType?: CashCountType;
+  breakdownJson?: unknown;
+};
+
+export type CashCountRecord = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  cash_session_id: string;
+  counted_by_user_id: string;
+  counted_by_user_email: string | null;
+  counted_at: string;
+  counted_cash_amount: string;
+  expected_amount: string;
+  difference_amount: string;
+  notes: string | null;
+  count_type: CashCountType;
+  breakdown_json: unknown | null;
 };
 
 @Injectable()
@@ -231,7 +251,7 @@ export class CashSessionsRepository {
   }
 
   async createCashCount(client: PoolClient, data: CreateCashCountInput) {
-    await this.query<QueryResultRow>(
+    const result = await this.query<CashCountRecord>(
       `INSERT INTO cash_counts (
         tenant_id,
         branch_id,
@@ -241,9 +261,25 @@ export class CashSessionsRepository {
         counted_cash_amount,
         expected_amount,
         difference_amount,
-        notes
+        notes,
+        count_type,
+        breakdown_json
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+      RETURNING
+        id,
+        tenant_id,
+        branch_id,
+        cash_session_id,
+        counted_by_user_id,
+        NULL::text AS counted_by_user_email,
+        counted_at,
+        counted_cash_amount::text AS counted_cash_amount,
+        expected_amount::text AS expected_amount,
+        difference_amount::text AS difference_amount,
+        notes,
+        count_type,
+        breakdown_json`,
       [
         data.tenantId,
         data.branchId,
@@ -254,9 +290,55 @@ export class CashSessionsRepository {
         data.expectedAmount,
         data.differenceAmount,
         data.notes ?? null,
+        data.countType ?? "CLOSING",
+        data.breakdownJson === undefined ? null : JSON.stringify(data.breakdownJson),
       ],
       client
     );
+    return result.rows[0] ?? null;
+  }
+
+  async listCashCounts(
+    cashSessionId: string,
+    tenantId: string,
+    countType?: CashCountType
+  ) {
+    const params: unknown[] = [cashSessionId, tenantId];
+    const where = [
+      "count_data.cash_session_id = $1",
+      "count_data.tenant_id = $2",
+    ];
+
+    if (countType) {
+      params.push(countType);
+      where.push(`count_data.count_type = $${params.length}`);
+    }
+
+    const result = await this.query<CashCountRecord>(
+      `SELECT
+        count_data.id,
+        count_data.tenant_id,
+        count_data.branch_id,
+        count_data.cash_session_id,
+        count_data.counted_by_user_id,
+        counter.email AS counted_by_user_email,
+        count_data.counted_at,
+        count_data.counted_cash_amount::text AS counted_cash_amount,
+        count_data.expected_amount::text AS expected_amount,
+        count_data.difference_amount::text AS difference_amount,
+        count_data.notes,
+        count_data.count_type,
+        count_data.breakdown_json
+      FROM cash_counts AS count_data
+      LEFT JOIN users AS counter
+        ON counter.id = count_data.counted_by_user_id
+       AND counter.tenant_id = count_data.tenant_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY count_data.counted_at DESC, count_data.id DESC`,
+      params
+    );
+
+    return result.rows ?? [];
   }
 
   async getSummary(
