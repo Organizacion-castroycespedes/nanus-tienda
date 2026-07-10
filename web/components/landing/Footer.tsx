@@ -6,18 +6,15 @@ const Footer = () => (
     <div className="mx-auto max-w-6xl">
       <div className="grid gap-8 md:grid-cols-[1.4fr_0.8fr_0.8fr]">
         <div>
-          <Link href="/" className="inline-flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 shadow-sm ring-1 ring-slate-200">
+          <Link href="/" className="inline-flex items-center">
+            <span className="flex h-20 shrink-0 items-center justify-center overflow-hidden bg-white">
               <Image
                 src="/LogoManus.png.jpeg"
                 alt="Manus POS"
-                width={40}
-                height={40}
-                className="h-full w-full object-contain"
+                width={236}
+                height={84}
+                className="h-16 w-auto object-contain"
               />
-            </span>
-            <span className="text-lg font-bold text-slate-950">
-              Manus <span className="text-blue-700">POS</span>
             </span>
           </Link>
           <p className="mt-4 max-w-sm text-sm leading-6 text-slate-600">

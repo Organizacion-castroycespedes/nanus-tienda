@@ -16,22 +16,17 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-slate-950/85 text-white backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="flex items-center gap-3" onClick={() => setOpen(false)}>
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-1 shadow-lg shadow-blue-950/25">
-            <Image
-              src="/LogoManus.png.jpeg"
-              alt="Manus POS"
-              width={40}
-              height={40}
-              className="h-full w-full object-contain"
-              priority
-            />
-          </span>
-          <span className="text-lg font-bold tracking-tight">
-            Manus <span className="text-blue-300">POS</span>
-          </span>
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[rgba(8,18,32,0.92)] text-white shadow-[0_18px_45px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+      <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 sm:px-6">
+        <Link href="/" className="flex min-w-0 items-center" onClick={() => setOpen(false)}>
+          <Image
+            src="/LogoManus.png.jpeg"
+            alt="Manus POS"
+            width={178}
+            height={64}
+            className="h-14 w-auto max-w-[176px] object-contain sm:h-16 sm:max-w-[196px]"
+            priority
+          />
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex" aria-label="Navegación pública">
