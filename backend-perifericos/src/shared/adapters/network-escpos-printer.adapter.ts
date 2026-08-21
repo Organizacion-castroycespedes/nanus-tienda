@@ -2,13 +2,16 @@ import { BadRequestException } from "@nestjs/common";
 import { Socket } from "node:net";
 import type {
   EscPosMockCommand,
-  EscPosMockCommandName,
 } from "../escpos-mock/escpos-mock.types";
-import { EscPosMockCommandName as CommandName } from "../escpos-mock/escpos-mock.types";
+import { EscPosMockCommandName } from "../escpos-mock/escpos-mock.types";
 import {
   buildTestPrintDocument,
   buildTicketPrintDocument,
 } from "../escpos-mock/thermal-ticket.formatter";
+import {
+  renderThermalEscPos,
+  type EscPosTextEncoding,
+} from "../escpos/thermal-escpos.renderer";
 import { ConnectionType, DeviceType, type PeripheralDevice } from "../types/peripheral.types";
 import { validateNetworkOptions } from "../utils/network-device-validation.util";
 import type { DeviceProfile } from "../profiles/device-profiles";
@@ -32,21 +35,7 @@ export type NetworkEscposSocket = {
 
 export type NetworkEscposSocketFactory = () => NetworkEscposSocket;
 
-export type EscPosEncoding = "utf8" | "latin1";
-
-const commandBytes: Record<EscPosMockCommandName, Buffer> = {
-  INIT: Buffer.from([0x1b, 0x40]),
-  ALIGN_LEFT: Buffer.from([0x1b, 0x61, 0x00]),
-  ALIGN_CENTER: Buffer.from([0x1b, 0x61, 0x01]),
-  ALIGN_RIGHT: Buffer.from([0x1b, 0x61, 0x02]),
-  BOLD_ON: Buffer.from([0x1b, 0x45, 0x01]),
-  BOLD_OFF: Buffer.from([0x1b, 0x45, 0x00]),
-  DOUBLE_HEIGHT_ON: Buffer.from([0x1d, 0x21, 0x01]),
-  DOUBLE_HEIGHT_OFF: Buffer.from([0x1d, 0x21, 0x00]),
-  FEED: Buffer.from([0x0a, 0x0a]),
-  CUT: Buffer.from([0x1d, 0x56, 0x00]),
-  CASH_DRAWER_PULSE: Buffer.from([0x1b, 0x70, 0x00, 0x32, 0xfa]),
-};
+export type EscPosEncoding = EscPosTextEncoding;
 
 export class NetworkEscposPrinterAdapter implements PrinterAdapter {
   readonly type = DeviceType.PRINTER;
@@ -85,7 +74,8 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       paperWidthMm: input.profile.paperWidthMm,
       timestamp: input.timestamp,
     });
-    const payload = this.buildEscPosBuffer(document.commands, document.preview);
+    const commands = this.resolveRawCommands(document.commands, input.profile);
+    const payload = this.buildEscPosBuffer(commands, document.preview);
     const bytesSent = await this.send(input.device, payload);
 
     return {
@@ -93,7 +83,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       profile: input.profile,
       capabilities: this.getCapabilities(input.profile),
       preview: document.preview,
-      commands: document.commands,
+      commands,
       bytesSent,
     };
   }
@@ -108,7 +98,8 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       widthChars: input.profile.widthChars,
       timestamp: input.timestamp,
     });
-    const payload = this.buildEscPosBuffer(document.commands, document.preview);
+    const commands = this.resolveRawCommands(document.commands, input.profile);
+    const payload = this.buildEscPosBuffer(commands, document.preview);
     const bytesSent = await this.send(input.device, payload);
 
     return {
@@ -116,7 +107,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       profile: input.profile,
       capabilities: this.getCapabilities(input.profile),
       preview: document.preview,
-      commands: document.commands,
+      commands,
       bytesSent,
     };
   }
@@ -126,22 +117,19 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
     preview: string,
     encoding: EscPosEncoding = this.encoding
   ): Buffer {
-    const prefix: Buffer[] = [];
-    const suffix: Buffer[] = [];
+    return renderThermalEscPos(commands, preview, {
+      encoding,
+      includePhysicalCut: true,
+    });
+  }
 
-    for (const command of commands) {
-      const target =
-        command.name === CommandName.Feed || command.name === CommandName.Cut
-          ? suffix
-          : prefix;
-      target.push(commandBytes[command.name]);
-    }
-
-    return Buffer.concat([
-      ...prefix,
-      Buffer.from(preview + "\n", encoding),
-      ...suffix,
-    ]);
+  private resolveRawCommands(
+    commands: EscPosMockCommand[],
+    profile: DeviceProfile
+  ): EscPosMockCommand[] {
+    return profile.supportsCut
+      ? commands
+      : commands.filter((command) => command.name !== EscPosMockCommandName.Cut);
   }
 
   private validateDevice(device: PeripheralDevice): void {

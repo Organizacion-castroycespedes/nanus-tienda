@@ -295,3 +295,127 @@ impresa físicamente.
 **QA hardware impresion directa:** sigue PENDIENTE. Repetir primero DevTools:
 debe verse `GET /pos-terminals/resolve-current` y despues
 `POST http://127.0.0.1:4050/printer/print-ticket`. Solo despues validar papel.
+
+## USB RAW ESC/POS / THERMAL_80MM
+
+### Estado previo confirmado
+
+- Reporteria POS -> Peripheral Agent -> XP-80 USB: **PASS fisico**.
+- Terminal: `HYBRID`.
+- Device: `usb-printer-1f0028d1fa5243c2`.
+- `POST /printer/print-ticket`: `201`.
+- El camino directo no usa Browser, PDF ni dialogo Chrome.
+- Hallazgos fisicos previos: clipping derecho y ausencia de corte automatico.
+
+### Causa raiz
+
+El adapter USB entregaba texto a `System.Drawing.Printing.PrintDocument` con
+`Consolas` 8 y coordenadas GDI. Ese camino no controlaba el ancho termico RAW
+ni enviaba bytes ESC/POS, aunque la respuesta mostrara comandos conceptuales.
+Por eso no habia garantia de margen derecho ni comando fisico `CUT`.
+
+### Cambio tecnico - 2026-08-21
+
+- Se agrego renderer ESC/POS compartido. NETWORK RAW y USB RAW consumen el
+  mismo preview termico y los mismos bytes.
+- `THERMAL_80MM` conserva 48 columnas monoespacio como limite seguro, alineado
+  con 80 mm nominales, aproximadamente 72 mm imprimibles y 68 mm seguros.
+  Items/tokens largos envuelven; importes no exceden la linea.
+- En Windows, `UsbRawPrinterAdapter` usa la cola descubierta y el spooler RAW:
+  `OpenPrinter`, `StartDocPrinter`, `StartPagePrinter`, `WritePrinter`,
+  `EndPagePrinter`, `EndDocPrinter`, `ClosePrinter`.
+- Definir `PERIPHERALS_USB_PRINT_TRANSPORT=RAW` para este camino. No existe
+  fallback automatico si RAW falla.
+- `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=false` es el valor inicial. RAW
+  manda `CUT` para esta QA, pero `supportsPhysicalCut` no pasa a `true` hasta
+  observar corte fisico y habilitar esa certificacion.
+- `PERIPHERALS_USB_PRINT_TRANSPORT=GDI` conserva el fallback legado solo de
+  forma explicita. En GDI, `supportsPhysicalCut=false`.
+- En RAW `THERMAL_80MM`, el payload termina con feed y `GS V 0`. El Agent
+  informa soporte de corte fisico por adapter, no certificacion de papel.
+
+### QA tecnico
+
+| Comando | Resultado |
+| --- | --- |
+| `cd backend-perifericos && npm.cmd test` | PASS - 46 tests |
+| `cd backend-perifericos && npm.cmd run build` | PASS |
+
+### QA hardware RAW/CUT requerida
+
+1. Definir `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`,
+   `PERIPHERALS_USB_PRINT_TRANSPORT=RAW` y
+   `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=false`; reiniciar el Agent actualizado.
+2. Confirmar que `GET /health` responde desde el proceso actualizado y que
+   discovery muestra la cola `XP-80` con
+   `usb-printer-1f0028d1fa5243c2`.
+3. Desde `/reporteria/pos`, usar `Imprimir`. No debe abrir PDF ni Chrome.
+4. Validar todos los bordes, importes, items, footer, avance y corte fisico.
+   Solo tras corte observado, habilitar
+   `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=true`, reiniciar y confirmar
+   `supportsPhysicalCut=true` en la respuesta siguiente.
+5. Desconectar USB: el Agent debe producir error controlado, sin exito falso.
+6. Reconectar, redescubrir si aplica y reintentar.
+
+**Estado:** PASS tecnico + QA hardware RAW/CUT pendiente.
+**USB physical CUT:** PENDING hasta observacion fisica real.
+
+### QA hardware RAW inicial - 2026-08-21
+
+- Impresion directa: PASS.
+- `UsbRawPrinterAdapter`: PASS.
+- ESC/POS RAW fisico: PASS.
+- `THERMAL_80MM`, clipping derecho, importes e informacion completa: PASS.
+- Corte fisico: la cuchilla funciona, pero **FAIL de posicionamiento**. El
+  footer `Gracias por su compra` quedo despues del corte, en una segunda pieza.
+
+### Correccion de secuencia final
+
+- Causa: el renderer cerraba con solo dos saltos de linea (`LF LF`) antes de
+  `GS V 0`. En la XP-80 ese avance no dio margen suficiente para el buffer
+  fisico de papel.
+- Fix: el final RAW ahora es exactamente
+  `BODY -> FOOTER -> ESC d 6 -> GS V 0`.
+- `ESC d 6` ordena avance de seis lineas debajo del footer antes del corte.
+- No se tocaron 48 columnas, layout, frontend, ventas, pagos, impuestos,
+  inventario, terminales ni configuracion de perifericos.
+- `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED` permanece `false` hasta repetir
+  y observar esta QA final.
+
+### QA hardware final requerida
+
+1. Reiniciar el Agent actualizado con RAW y
+   `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=false`.
+2. Imprimir desde `/reporteria/pos` hacia XP-80 USB.
+3. Confirmar que `Gracias por su compra` queda en el ticket principal.
+4. Confirmar avance bajo el footer y corte debajo de todo el contenido.
+5. Solo si pasa, habilitar la certificacion de corte, reiniciar y confirmar
+   `supportsPhysicalCut=true`.
+
+**Estado posterior al fix:** PASS tecnico + QA hardware final CUT position
+pendiente.
+
+### QA hardware final - XP-80 USB RAW
+
+- Impresion directa desde Reporteria POS: PASS.
+- `UsbRawPrinterAdapter`: PASS.
+- ESC/POS RAW USB: PASS.
+- `THERMAL_80MM`, clipping derecho, importes e informacion completa: PASS.
+- Footer `Gracias por su compra` dentro del ticket principal: PASS.
+- Feed final debajo de todo el contenido: PASS.
+- Corte fisico automatico debajo del ticket: PASS.
+
+**QA HARDWARE XP-80 USB RAW = PASS**
+
+**PHYSICAL CUT = PASS**
+
+Confirmacion runtime final ejecutada con
+`PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=true`:
+
+- `supportsPhysicalCut=true`: PASS.
+- Ticket completo: PASS.
+- Sin clipping: PASS.
+- Footer completo: PASS.
+- Corte automatico: PASS.
+
+**Estado final: PASS tecnico + PASS hardware XP-80 USB RAW + PASS physical CUT.**

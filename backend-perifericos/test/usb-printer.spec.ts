@@ -21,6 +21,7 @@ import {
   DeviceType,
   type PeripheralDevice,
 } from "../src/shared/types/peripheral.types";
+import { EscPosMockCommandName } from "../src/shared/escpos-mock/escpos-mock.types";
 import {
   buildUsbPrinterDescriptor,
   type UsbPrinterDiscovery,
@@ -120,11 +121,11 @@ test("real adapters disabled blocks USB printer", () => {
   );
 });
 
-test("resolver selects USB system adapter when real adapters are enabled", () => {
+test("resolver selects USB RAW adapter when real adapters are enabled", () => {
   const resolver = new PeripheralAdapterResolver(true);
   const adapter = resolver.resolvePrinter(buildUsbPrinter(), "MOCK");
 
-  assert.equal(adapter.adapterName, "UsbSystemPrinterAdapter");
+  assert.equal(adapter.adapterName, "UsbRawPrinterAdapter");
   assert.equal(adapter.mode, "REAL");
 });
 
@@ -133,7 +134,7 @@ test("USB system adapter prints through CUPS queue with a fake command runner", 
   const runner: UsbPrintCommandRunner = (command, args, input) => {
     commands.push({ command, args, input });
   };
-  const adapter = new UsbSystemPrinterAdapter("linux", runner);
+  const adapter = new UsbSystemPrinterAdapter("linux", runner, "GDI");
   const result = adapter.printTest({
     agentName: "manus-pos-peripheral-agent",
     mode: "REAL",
@@ -155,12 +156,79 @@ test("USB system adapter prints through CUPS queue with a fake command runner", 
   assert.match(result.preview, /USB/);
   assert.match(result.preview, /IMPRESION OK/);
   assert.equal(result.capabilities.supportsPhysicalCut, false);
+  assert.equal(
+    result.commands.some((command) => command.name === EscPosMockCommandName.Cut),
+    false
+  );
+});
+
+test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () => {
+  const commands: Array<{ command: string; args: string[] }> = [];
+  const adapter = new UsbSystemPrinterAdapter("win32", (command, args) => {
+    commands.push({ command, args });
+  }, "RAW", true);
+
+  const result = adapter.printTicket({
+    agentName: "manus-pos-peripheral-agent",
+    mode: "REAL",
+    terminalId: "local-terminal",
+    device: buildUsbPrinter(),
+    profile: DEVICE_PROFILES.THERMAL_80MM,
+    jobId: "usb-raw-ticket-job",
+    timestamp: "2026-08-21T00:00:00.000Z",
+    ticketType: "SALE",
+    content: {
+      header: "MANUS POS",
+      items: [{ name: "Producto con nombre largo que debe envolver seguro", quantity: 1, total: 40000 }],
+      total: 40000,
+    },
+  });
+
+  assert.equal(commands[0]?.command, "powershell.exe");
+  assert.equal(commands[0]?.args[2], "-EncodedCommand");
+  const script = Buffer.from(commands[0]?.args[3] ?? "", "base64").toString("utf16le");
+  assert.match(script, /OpenPrinter/);
+  assert.match(script, /StartDocPrinter/);
+  assert.match(script, /WritePrinter/);
+  assert.match(script, /pDatatype = 'RAW'/);
+  assert.equal(result.adapterName, "UsbRawPrinterAdapter");
+  assert.equal(result.capabilities.supportsPhysicalCut, true);
+  assert.ok((result.bytesSent ?? 0) > 0);
+});
+
+test("USB RAW failure remains controlled and does not fall back to GDI", () => {
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {
+    throw new Error("spooler rejected RAW job");
+  }, "RAW");
+
+  assert.throws(
+    () =>
+      adapter.printTest({
+        agentName: "manus-pos-peripheral-agent",
+        mode: "REAL",
+        terminalId: "local-terminal",
+        device: buildUsbPrinter(),
+        profile: DEVICE_PROFILES.THERMAL_80MM,
+        jobId: "usb-raw-fail",
+        timestamp: "2026-08-21T00:00:00.000Z",
+      }),
+    /USB RAW printer print failed: spooler rejected RAW job/
+  );
+});
+
+test("USB RAW keeps physical-cut capability false until physical certification", () => {
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW", false);
+
+  assert.equal(
+    adapter.getCapabilities(DEVICE_PROFILES.THERMAL_80MM).supportsPhysicalCut,
+    false
+  );
 });
 
 test("USB adapter returns a controlled print error", () => {
   const adapter = new UsbSystemPrinterAdapter("linux", () => {
     throw new Error("queue rejected job");
-  });
+  }, "GDI");
 
   assert.throws(
     () =>
@@ -175,7 +243,7 @@ test("USB adapter returns a controlled print error", () => {
       }),
     (error) => {
       assert.ok(error instanceof BadRequestException);
-      assert.match((error as Error).message, /USB printer print failed: queue rejected job/);
+      assert.match((error as Error).message, /USB GDI printer print failed: queue rejected job/);
       return true;
     }
   );

@@ -1,10 +1,13 @@
 export type PeripheralsMode = "MOCK";
+export type UsbPrintTransport = "RAW" | "GDI";
 
 export type PeripheralsConfig = {
   port: number;
   mode: PeripheralsMode;
   agentName: string;
   realAdaptersEnabled: boolean;
+  usbPrintTransport: UsbPrintTransport;
+  usbRawPhysicalCutCertified: boolean;
   allowedOrigins: string[];
   logLimit: number;
   printerWidthChars: number;
@@ -54,6 +57,9 @@ const parseMode = (value: string | undefined): PeripheralsMode => {
 const parseRealAdaptersEnabled = (value: string | undefined): boolean =>
   value?.trim().toLowerCase() === "true";
 
+const parseUsbPrintTransport = (value: string | undefined): UsbPrintTransport =>
+  value?.trim().toUpperCase() === "GDI" ? "GDI" : "RAW";
+
 export const isOriginAllowed = (
   origin: string | undefined,
   allowedOrigins: string[]
@@ -99,6 +105,12 @@ export const getPeripheralsConfig = (): PeripheralsConfig => ({
   realAdaptersEnabled: parseRealAdaptersEnabled(
     process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS
   ),
+  usbPrintTransport: parseUsbPrintTransport(
+    process.env.PERIPHERALS_USB_PRINT_TRANSPORT
+  ),
+  usbRawPhysicalCutCertified:
+    process.env.PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED?.trim().toLowerCase() ===
+    "true",
   allowedOrigins: parseAllowedOrigins(process.env.PERIPHERALS_ALLOWED_ORIGINS),
   logLimit: parseLogLimit(process.env.PERIPHERALS_LOG_LIMIT),
   printerWidthChars: parsePrinterWidthChars(
