@@ -3,14 +3,17 @@ import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 import { PosTerminalsService } from "./pos-terminals.service";
 import type {
+  OperationalTerminalRecord,
   PosTerminalPeripheralSettingsRecord,
   PosTerminalRecord,
 } from "./pos-terminals.repository";
 
 const tenantId = randomUUID();
+const otherTenantId = randomUUID();
 const branchId = randomUUID();
 const otherBranchId = randomUUID();
 const terminalId = randomUUID();
+const operationalTerminalId = randomUUID();
 
 const actor = {
   roles: ["ADMIN"],
@@ -25,6 +28,10 @@ const buildTerminal = (
   tenant_id: tenantId,
   branch_id: branchId,
   branch_name: "Sucursal Principal",
+  operational_terminal_id: null,
+  operational_terminal_code: null,
+  operational_terminal_name: null,
+  operational_terminal_active: null,
   code: "local-terminal",
   name: "Terminal local",
   description: null,
@@ -32,6 +39,19 @@ const buildTerminal = (
   mode: "MOCK",
   created_at: "2026-06-05T00:00:00.000Z",
   updated_at: "2026-06-05T00:00:00.000Z",
+  ...overrides,
+});
+
+const buildOperationalTerminal = (
+  overrides: Partial<OperationalTerminalRecord> = {}
+): OperationalTerminalRecord => ({
+  id: operationalTerminalId,
+  tenant_id: tenantId,
+  branch_id: branchId,
+  branch_name: "Sucursal Principal",
+  code: "TERM-001",
+  name: "Terminal 1 Sucursal Principal",
+  is_active: true,
   ...overrides,
 });
 
@@ -58,6 +78,7 @@ const buildSettings = (
 const buildService = (
   options: {
     terminals?: PosTerminalRecord[];
+    operationalTerminals?: OperationalTerminalRecord[];
     settings?: PosTerminalPeripheralSettingsRecord | null;
     branchExists?: boolean;
     allowedBranchIds?: string[];
@@ -65,6 +86,7 @@ const buildService = (
   } = {}
 ) => {
   const terminals = options.terminals ?? [buildTerminal()];
+  const operationalTerminals = options.operationalTerminals ?? [];
   let settings = options.settings ?? buildSettings();
   const calls: string[] = [];
   const lookupCalls: string[] = [];
@@ -90,6 +112,32 @@ const buildService = (
     findByCode: async (_tenantId: string, _branchId: string, code: string) => {
       lookupCalls.push(`findByCode:${code}`);
       return terminals.find((terminal) => terminal.code === code) ?? null;
+    },
+    findOperationalTerminalById: async (id: string, requestedTenantId: string) => {
+      lookupCalls.push(`findOperationalTerminalById:${id}`);
+      return (
+        operationalTerminals.find(
+          (terminal) =>
+            terminal.id === id && terminal.tenant_id === requestedTenantId
+        ) ?? null
+      );
+    },
+    findByOperationalTerminalId: async (
+      requestedTenantId: string,
+      requestedBranchId: string,
+      requestedOperationalTerminalId: string
+    ) => {
+      lookupCalls.push(
+        `findByOperationalTerminalId:${requestedOperationalTerminalId}`
+      );
+      return (
+        terminals.find(
+          (terminal) =>
+            terminal.tenant_id === requestedTenantId &&
+            terminal.branch_id === requestedBranchId &&
+            terminal.operational_terminal_id === requestedOperationalTerminalId
+        ) ?? null
+      );
     },
     findDefaultForBranch: async () => terminals[0] ?? null,
     create: async (data: any) => {
@@ -292,6 +340,190 @@ describe("PosTerminalsService", () => {
     assert.equal(result.source, "CONFIGURED");
     assert.equal(result.terminalId, "local-terminal");
     assert.deepEqual(lookupCalls, ["findByCode:local-terminal"]);
+  });
+
+  it("resolves TERM-001 through its linked HYBRID profile and XP-80", async () => {
+    const xp80DeviceId = "usb-printer-1f0028d1fa5243c2";
+    const { service, lookupCalls } = buildService({
+      operationalTerminals: [buildOperationalTerminal()],
+      terminals: [
+        buildTerminal({
+          code: "local-terminal",
+          mode: "HYBRID",
+          operational_terminal_id: operationalTerminalId,
+          operational_terminal_code: "TERM-001",
+          operational_terminal_name: "Terminal 1 Sucursal Principal",
+          operational_terminal_active: true,
+        }),
+      ],
+      settings: buildSettings({ printer_device_id: xp80DeviceId }),
+    });
+
+    const result = await service.resolveCurrent(
+      { tenantId, branchId, terminalId: operationalTerminalId },
+      actor
+    );
+
+    assert.equal(result.source, "CONFIGURED");
+    assert.equal(result.operationalTerminalId, operationalTerminalId);
+    assert.equal(result.operationalTerminalCode, "TERM-001");
+    assert.equal(result.posTerminalId, terminalId);
+    assert.equal(result.agentTerminalCode, "local-terminal");
+    assert.equal(result.printerDeviceId, xp80DeviceId);
+    assert.deepEqual(lookupCalls, [
+      `findOperationalTerminalById:${operationalTerminalId}`,
+      `findByOperationalTerminalId:${operationalTerminalId}`,
+    ]);
+  });
+
+  it("returns TERM-002 as unconfigured without inheriting TERM-001 XP-80", async () => {
+    const term002Id = randomUUID();
+    const { service, lookupCalls } = buildService({
+      operationalTerminals: [
+        buildOperationalTerminal({ id: term002Id, code: "TERM-002" }),
+      ],
+      terminals: [buildTerminal()],
+      settings: null,
+    });
+
+    const result = await service.resolveCurrent(
+      { tenantId, branchId, terminalId: term002Id },
+      actor
+    );
+
+    assert.equal(result.source, "OPERATIONAL_UNCONFIGURED");
+    assert.equal(result.operationalTerminalId, term002Id);
+    assert.equal(result.operationalTerminalCode, "TERM-002");
+    assert.equal(result.posTerminalId, null);
+    assert.equal(result.agentTerminalCode, null);
+    assert.equal(result.printerDeviceId, null);
+    assert.equal(result.terminalId, null);
+    assert.deepEqual(lookupCalls, [
+      `findOperationalTerminalById:${term002Id}`,
+      `findByOperationalTerminalId:${term002Id}`,
+    ]);
+  });
+
+  it("does not fall back to local-terminal for an unknown operational UUID", async () => {
+    const unknownOperationalTerminalId = randomUUID();
+    const { service, lookupCalls } = buildService({
+      terminals: [buildTerminal({ code: "local-terminal", mode: "HYBRID" })],
+    });
+
+    await assert.rejects(
+      () =>
+        service.resolveCurrent(
+          {
+            tenantId,
+            branchId,
+            terminalId: unknownOperationalTerminalId,
+          },
+          actor
+        ),
+      /Operational terminal not found/
+    );
+
+    assert.deepEqual(lookupCalls, [
+      `findOperationalTerminalById:${unknownOperationalTerminalId}`,
+    ]);
+  });
+
+  it("does not resolve another tenant operational UUID through the local profile", async () => {
+    const otherTenantOperationalTerminalId = randomUUID();
+    const { service, lookupCalls } = buildService({
+      operationalTerminals: [
+        buildOperationalTerminal({
+          id: otherTenantOperationalTerminalId,
+          tenant_id: otherTenantId,
+        }),
+      ],
+      terminals: [buildTerminal({ code: "local-terminal", mode: "HYBRID" })],
+    });
+
+    await assert.rejects(
+      () =>
+        service.resolveCurrent(
+          {
+            tenantId,
+            branchId,
+            terminalId: otherTenantOperationalTerminalId,
+          },
+          actor
+        ),
+      /Operational terminal not found/
+    );
+
+    assert.deepEqual(lookupCalls, [
+      `findOperationalTerminalById:${otherTenantOperationalTerminalId}`,
+    ]);
+  });
+
+  it("rejects an operational terminal from another branch", async () => {
+    const { service } = buildService({
+      operationalTerminals: [
+        buildOperationalTerminal({ branch_id: otherBranchId }),
+      ],
+      allowedBranchIds: [branchId],
+    });
+
+    await assert.rejects(
+      () =>
+        service.resolveCurrent(
+          { tenantId, terminalId: operationalTerminalId },
+          actor
+        ),
+      /Branch scope mismatch/
+    );
+  });
+
+  it("rejects a peripheral profile link outside its branch", async () => {
+    const { service } = buildService({
+      terminals: [],
+      operationalTerminals: [
+        buildOperationalTerminal({ branch_id: otherBranchId }),
+      ],
+    });
+
+    await assert.rejects(
+      () =>
+        service.createTerminal(
+          {
+            tenantId,
+            branchId,
+            operationalTerminalId,
+            code: "agent-term-001",
+            name: "Perfil TERM-001",
+            mode: "REAL",
+          },
+          actor
+        ),
+      /operationalTerminalId does not belong to POS terminal branch/
+    );
+  });
+
+  it("rejects a peripheral profile link from another tenant", async () => {
+    const { service } = buildService({
+      terminals: [],
+      operationalTerminals: [
+        buildOperationalTerminal({ tenant_id: otherTenantId }),
+      ],
+    });
+
+    await assert.rejects(
+      () =>
+        service.createTerminal(
+          {
+            tenantId,
+            branchId,
+            operationalTerminalId,
+            code: "agent-term-001",
+            name: "Perfil TERM-001",
+            mode: "REAL",
+          },
+          actor
+        ),
+      /operationalTerminalId does not belong to tenant/
+    );
   });
 
   it("resolves fallback MOCK when terminal is not configured", async () => {

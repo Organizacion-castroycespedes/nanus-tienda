@@ -19,6 +19,10 @@ fi
 
 RUN_OPTIONAL_QA_FIXTURES="${RUN_OPTIONAL_QA_FIXTURES:-${APPLY_OPTIONAL_FIXTURES:-NO}}"
 RUN_REPORTING_QA_FIXTURES="${RUN_REPORTING_QA_FIXTURES:-NO}"
+ONLY_INCREMENTAL_MIGRATION="${ONLY_INCREMENTAL_MIGRATION:-}"
+ONLY_INCREMENTAL_DRY_RUN="${ONLY_INCREMENTAL_DRY_RUN:-NO}"
+MIGRATION_DB_USER="${MIGRATION_DB_USER:-$DB_USER}"
+MIGRATION_DB_PASSWORD="${MIGRATION_DB_PASSWORD:-$DB_PASSWORD}"
 
 required_vars=(DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD)
 for var_name in "${required_vars[@]}"; do
@@ -56,9 +60,18 @@ if [[ "$RUN_REPORTING_QA_FIXTURES" != "NO" && "$RUN_REPORTING_QA_FIXTURES" != "Y
   exit 1
 fi
 
+if [[ "$ONLY_INCREMENTAL_DRY_RUN" != "NO" && "$ONLY_INCREMENTAL_DRY_RUN" != "YES" ]]; then
+  echo "[prd] ONLY_INCREMENTAL_DRY_RUN must be YES or NO." >&2
+  exit 1
+fi
+
 export PGPASSWORD="$DB_PASSWORD"
 export PGCLIENTENCODING="${PGCLIENTENCODING:-UTF8}"
 PSQL_APP=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q)
+if [[ -n "$ONLY_INCREMENTAL_MIGRATION" ]]; then
+  export PGPASSWORD="$MIGRATION_DB_PASSWORD"
+  PSQL_APP=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$MIGRATION_DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q)
+fi
 DB_ADMIN_USER="${DB_ADMIN_USER:-$DB_USER}"
 DB_ADMIN_PASSWORD="${DB_ADMIN_PASSWORD:-$DB_PASSWORD}"
 PSQL_ADMIN=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -X -q)
@@ -100,11 +113,13 @@ ensure_database_exists() {
     "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";" >/dev/null
 }
 
-ensure_database_exists
+if [[ -z "$ONLY_INCREMENTAL_MIGRATION" ]]; then
+  ensure_database_exists
 
-if ! "${PSQL_APP[@]}" -tAc "SELECT 1;" >/dev/null 2>&1; then
-  echo "[prd] Could not connect to database ${DB_NAME} with application user ${DB_USER}." >&2
-  exit 1
+  if ! "${PSQL_APP[@]}" -tAc "SELECT 1;" >/dev/null 2>&1; then
+    echo "[prd] Could not connect to database ${DB_NAME} with application user ${DB_USER}." >&2
+    exit 1
+  fi
 fi
 
 ensure_migrations_history_schema() {
@@ -124,7 +139,9 @@ ensure_migrations_history_schema() {
     ADD COLUMN IF NOT EXISTS execution_time_ms integer NULL;"
 }
 
-ensure_migrations_history_schema
+if [[ -z "$ONLY_INCREMENTAL_MIGRATION" ]]; then
+  ensure_migrations_history_schema
+fi
 
 if [[ ! -d "$MIGRATIONS_DIR" ]]; then
   echo "[prd] Missing migrations directory: ${MIGRATIONS_DIR}" >&2
@@ -279,6 +296,153 @@ apply_sql_file_with_args() {
 apply_sql_file() {
   apply_sql_file_with_args "$1"
 }
+
+validate_only_incremental_migration_name() {
+  local version="$1"
+
+  if [[ "$version" == */* || "$version" == *\\* || "$version" == *..* ]]; then
+    echo "[single-incremental] Path traversal is not allowed: ${version}" >&2
+    exit 1
+  fi
+
+  if [[ ! "$version" =~ ^V[0-9]{3}__[A-Za-z0-9][A-Za-z0-9._-]*\.sql$ ]]; then
+    echo "[single-incremental] Invalid selected migration '${version}'." >&2
+    echo "[single-incremental] Only V###__description.sql files are allowed." >&2
+    exit 1
+  fi
+}
+
+assert_single_incremental_hard_guard() {
+  local expected_schema="${DB_SCHEMA:-public}"
+  local expected_migration_user="$MIGRATION_DB_USER"
+  local connection_identity
+  local actual_database
+  local actual_user
+  local actual_schema
+  local actual_search_path
+  local database_lower
+
+  if [[ "${ENVIRONMENT:-}" != "qa" ]]; then
+    echo "[single-incremental] ENVIRONMENT must be qa." >&2
+    exit 1
+  fi
+
+  connection_identity="$("${PSQL_APP[@]}" -F $'\t' -Atc \
+    "SELECT current_database(), current_user, current_schema(), current_setting('search_path');")"
+  IFS=$'\t' read -r actual_database actual_user actual_schema actual_search_path <<< "$connection_identity"
+
+  if [[ "$actual_database" != "$DB_NAME" ]]; then
+    echo "[single-incremental] Database mismatch: expected ${DB_NAME}, got ${actual_database}." >&2
+    exit 1
+  fi
+  if [[ "$actual_user" != "$expected_migration_user" ]]; then
+    echo "[single-incremental] User mismatch: expected ${expected_migration_user}, got ${actual_user}." >&2
+    exit 1
+  fi
+  if [[ "$actual_schema" != "$expected_schema" ]]; then
+    echo "[single-incremental] Schema mismatch: expected ${expected_schema}, got ${actual_schema}." >&2
+    exit 1
+  fi
+
+  database_lower="$(printf '%s' "$actual_database" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$database_lower" == *prd* || "$database_lower" == *prod* || "$database_lower" != *qa* ]]; then
+    echo "[single-incremental] QA environment refuses target database ${actual_database}." >&2
+    exit 1
+  fi
+
+  local history_relation
+  history_relation="$("${PSQL_APP[@]}" -Atc "SELECT to_regclass('public.migrations_history');")"
+  if [[ "$history_relation" != "migrations_history" && "$history_relation" != "public.migrations_history" ]]; then
+    echo "[single-incremental] public.migrations_history must exist before a selected migration runs." >&2
+    exit 1
+  fi
+
+  echo "[single-incremental] Database: ${actual_database}"
+  echo "[single-incremental] Migration user: ${actual_user}"
+  echo "[single-incremental] Schema: ${actual_schema}"
+  echo "[single-incremental] Search path: ${actual_search_path}"
+}
+
+selected_incremental_status() {
+  local version="$1"
+  local checksum="$2"
+  local migration_row
+  local stored_checksum
+  local stored_success
+
+  migration_row="$(get_migration_row "$version")"
+  if [[ -z "$migration_row" ]]; then
+    printf '%s' "PENDING"
+    return
+  fi
+
+  IFS=$'\t' read -r stored_checksum stored_success <<< "$migration_row"
+  if [[ "$stored_success" != "true" ]]; then
+    echo "[single-incremental] ${version} is registered with success=false." >&2
+    exit 1
+  fi
+  if [[ -n "$stored_checksum" && "$stored_checksum" != "$checksum" ]]; then
+    echo "[single-incremental] Checksum mismatch for ${version}." >&2
+    echo "[single-incremental] Execution aborted to avoid running an altered migration." >&2
+    exit 1
+  fi
+
+  printf '%s' "ALREADY_APPLIED"
+}
+
+run_only_incremental_migration() {
+  local version="$ONLY_INCREMENTAL_MIGRATION"
+  local migration_path
+  local checksum
+  local status
+  local start_time_ms
+  local end_time_ms
+  local execution_time_ms
+
+  validate_only_incremental_migration_name "$version"
+  migration_path="${MIGRATIONS_DIR}/${version}"
+  if [[ ! -f "$migration_path" ]]; then
+    echo "[single-incremental] Selected migration does not exist: ${version}" >&2
+    exit 1
+  fi
+
+  assert_single_incremental_hard_guard
+  checksum="$(checksum_for_file "$migration_path")"
+  status="$(selected_incremental_status "$version" "$checksum")"
+
+  echo "[single-incremental] Migration: ${version}"
+  echo "[single-incremental] Selected migrations: 1"
+  echo "[single-incremental] Other pending migrations: NOT EXECUTED"
+  echo "[single-incremental] Status: ${status}"
+
+  if [[ "$ONLY_INCREMENTAL_DRY_RUN" == "YES" ]]; then
+    echo "[single-incremental] Dry run: YES"
+    return
+  fi
+
+  if [[ "$status" == "ALREADY_APPLIED" ]]; then
+    echo "[single-incremental] ALREADY_APPLIED"
+    return
+  fi
+
+  start_time_ms="$(current_time_ms)"
+  echo "[single-incremental] Applying selected migration only: ${version}"
+  if "${PSQL_APP[@]}" --single-transaction -f "$migration_path"; then
+    end_time_ms="$(current_time_ms)"
+    execution_time_ms="$((end_time_ms - start_time_ms))"
+    record_migration "$version" "$checksum" "true" "applied by migrate_prd.sh single-incremental mode" "$execution_time_ms"
+    echo "[single-incremental] ${version} | ${execution_time_ms} ms | OK"
+    return
+  fi
+
+  echo "[single-incremental] Failed while running ${version}; success was not recorded." >&2
+  exit 1
+}
+
+if [[ -n "$ONLY_INCREMENTAL_MIGRATION" ]]; then
+  run_only_incremental_migration
+  exit 0
+fi
 
 schema_files=(
   "001_initial_schema.sql"

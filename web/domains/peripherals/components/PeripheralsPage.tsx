@@ -25,6 +25,10 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import {
+  listTerminals as listOperationalTerminals,
+  type TerminalResponse,
+} from "../../../modules/terminals/services/terminals.service";
+import {
   createDevice,
   discoverPeripheralDevices,
   fetchCurrentWeight,
@@ -776,6 +780,9 @@ const TerminalPosPanel = ({
   onToast: (message: string, variant: ToastVariant, detail?: string) => void;
 }) => {
   const [terminals, setTerminals] = useState<PosTerminalResponse[]>([]);
+  const [operationalTerminals, setOperationalTerminals] = useState<
+    TerminalResponse[]
+  >([]);
   const [resolved, setResolved] = useState<PosTerminalResolvedConfig | null>(null);
   const [selectedTerminalId, setSelectedTerminalId] = useState("");
   const [terminalForm, setTerminalForm] = useState<PosTerminalFormState>({
@@ -800,10 +807,12 @@ const TerminalPosPanel = ({
   const loadTerminalSnapshot = useCallback(async () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     try {
-      const [resolvedResult, terminalsResult] = await Promise.allSettled([
-        resolveCurrentPosTerminalConfig({ tenantId }),
-        listPosTerminals({ tenantId }),
-      ]);
+      const [resolvedResult, terminalsResult, operationalTerminalsResult] =
+        await Promise.allSettled([
+          resolveCurrentPosTerminalConfig({ tenantId }),
+          listPosTerminals({ tenantId }),
+          listOperationalTerminals({ tenantId: tenantId ?? undefined }),
+        ]);
 
       if (resolvedResult.status === "fulfilled") {
         setResolved(resolvedResult.value);
@@ -813,7 +822,7 @@ const TerminalPosPanel = ({
           branchId: resolvedResult.value.branchId ?? prev.branchId,
           code: resolvedResult.value.code || prev.code,
           name: resolvedResult.value.name || prev.name,
-          mode: resolvedResult.value.mode,
+          mode: resolvedResult.value.mode ?? prev.mode,
         }));
         setSelectedTerminalId(resolvedResult.value.posTerminalId ?? "");
         setStatus({
@@ -822,7 +831,9 @@ const TerminalPosPanel = ({
           message:
             resolvedResult.value.source === "CONFIGURED"
               ? "Terminal POS configurada encontrada."
-              : "Sin terminal configurada. Se usa fallback MOCK seguro.",
+              : resolvedResult.value.source === "OPERATIONAL_UNCONFIGURED"
+                ? "Terminal operativa sin configuracion de perifericos."
+                : "Sin terminal configurada. Se usa fallback MOCK seguro.",
         });
       } else {
         setStatus({
@@ -833,6 +844,9 @@ const TerminalPosPanel = ({
 
       if (terminalsResult.status === "fulfilled") {
         setTerminals(terminalsResult.value);
+      }
+      if (operationalTerminalsResult.status === "fulfilled") {
+        setOperationalTerminals(operationalTerminalsResult.value);
       }
     } finally {
       setLoading((prev) => ({ ...prev, snapshot: false }));
@@ -919,10 +933,10 @@ const TerminalPosPanel = ({
     try {
       const settings = await getPosTerminalPeripheralSettings(nextTerminalId);
       setSettingsForm({
-        printerDeviceId: settings.printerDeviceId,
-        cashDrawerDeviceId: settings.cashDrawerDeviceId,
-        scaleDeviceId: settings.scaleDeviceId,
-        scannerDeviceId: settings.scannerDeviceId,
+        printerDeviceId: settings.printerDeviceId ?? "",
+        cashDrawerDeviceId: settings.cashDrawerDeviceId ?? "",
+        scaleDeviceId: settings.scaleDeviceId ?? "",
+        scannerDeviceId: settings.scannerDeviceId ?? "",
         enablePrintSale: settings.features.printSale,
         enablePrintPurchase: settings.features.printPurchase,
         enablePrintOrder: settings.features.printOrder,
@@ -980,6 +994,18 @@ const TerminalPosPanel = ({
           ? "border-amber-200 bg-amber-50 text-amber-800"
           : "border-slate-200 bg-slate-50 text-slate-700";
 
+  const operationalTerminalLabel = (terminal?: PosTerminalResponse | null) => {
+    if (!terminal?.operationalTerminalId) {
+      return "Sin terminal operativa asociada";
+    }
+    const operational = operationalTerminals.find(
+      (item) => item.id === terminal.operationalTerminalId
+    );
+    const code = operational?.code ?? terminal.operationalTerminalCode ?? "-";
+    const name = operational?.name ?? terminal.operationalTerminalName ?? "-";
+    return `${code} - ${name}`;
+  };
+
   const renderDeviceDatalist = (
     id: string,
     type: PeripheralDevice["type"]
@@ -1013,8 +1039,19 @@ const TerminalPosPanel = ({
           <span className="font-medium">{status.message}</span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <InfoField label="Terminal resuelta" value={resolved?.terminalId ?? terminalId} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <InfoField
+            label="Terminal operativa"
+            value={
+              resolved?.operationalTerminalCode
+                ? `${resolved.operationalTerminalCode} - ${resolved.operationalTerminalName ?? ""}`.trim()
+                : "Sin asociar"
+            }
+          />
+          <InfoField
+            label="Agent code"
+            value={resolved?.agentTerminalCode ?? terminalId}
+          />
           <InfoField
             label="Origen"
             value={resolved?.source ?? "FALLBACK_MOCK"}
@@ -1034,13 +1071,13 @@ const TerminalPosPanel = ({
               onChange={(event) => updateTerminalForm("branchId", event.target.value)}
             />
             <Input
-              label="code"
+              label="Agent code"
               value={terminalForm.code}
               required
               onChange={(event) => updateTerminalForm("code", event.target.value)}
             />
             <Input
-              label="name"
+              label="Nombre perfil perifericos"
               value={terminalForm.name}
               required
               onChange={(event) => updateTerminalForm("name", event.target.value)}
@@ -1068,14 +1105,14 @@ const TerminalPosPanel = ({
           <div className="flex justify-end">
             <Button type="submit" isLoading={loading.create}>
               <Terminal className="h-4 w-4" />
-              Crear terminal
+              Crear perfil perifericos
             </Button>
           </div>
         </form>
 
         <form className="space-y-4" onSubmit={handleSaveSettings}>
           <label className="flex flex-col gap-2 text-sm text-slate-700">
-            <span className="font-medium">Terminal configurada</span>
+            <span className="font-medium">Perfil de perifericos configurado</span>
             <select
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
               value={selectedTerminalId}
@@ -1084,11 +1121,23 @@ const TerminalPosPanel = ({
               <option value="">Fallback MOCK / sin seleccion</option>
               {terminals.map((terminal) => (
                 <option key={terminal.id} value={terminal.id}>
-                  {terminal.code} - {terminal.name}
+                  {operationalTerminalLabel(terminal)} · Agent: {terminal.code}
                 </option>
               ))}
             </select>
           </label>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <span className="font-medium">Terminal operativa asociada: </span>
+            {operationalTerminalLabel(
+              terminals.find((terminal) => terminal.id === selectedTerminalId)
+            )}
+            {selectedTerminalId ? (
+              <span className="ml-2 text-slate-500">
+                `local-terminal` es solo Agent code/compatibilidad; no es otra caja comercial.
+              </span>
+            ) : null}
+          </div>
 
           {renderDeviceDatalist("printer-device-options", "PRINTER")}
           {renderDeviceDatalist("cash-drawer-device-options", "CASH_DRAWER")}

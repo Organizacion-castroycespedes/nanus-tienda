@@ -47,6 +47,10 @@ export const buildFallbackPosTerminalConfig = (
   input: ResolveConfigInput = {}
 ): PosTerminalResolvedConfig => ({
   terminalId: input.terminalId?.trim() || DEFAULT_POS_TERMINAL_ID,
+  agentTerminalCode: DEFAULT_POS_TERMINAL_ID,
+  operationalTerminalId: null,
+  operationalTerminalCode: null,
+  operationalTerminalName: null,
   posTerminalId: null,
   tenantId: input.tenantId?.trim() || getTenantFromPath(),
   branchId: input.branchId?.trim() || null,
@@ -131,6 +135,16 @@ export const resolvePeripheralTerminalConfig = async (
   try {
     return await resolveCurrentPosTerminalConfig(input);
   } catch {
+    const requestedTerminalId = input.terminalId?.trim();
+    const isOperationalTerminalId = Boolean(
+      requestedTerminalId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          requestedTerminalId
+        )
+    );
+    if (isOperationalTerminalId) {
+      throw new Error("No se pudo resolver la configuracion de la terminal operativa.");
+    }
     return buildFallbackPosTerminalConfig(input);
   }
 };

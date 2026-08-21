@@ -419,3 +419,79 @@ Confirmacion runtime final ejecutada con
 - Corte automatico: PASS.
 
 **Estado final: PASS tecnico + PASS hardware XP-80 USB RAW + PASS physical CUT.**
+
+## Alineación terminal operativa / periféricos QA - 2026-08-21
+
+- La identidad operativa canónica es `terminals.id`; `pos_terminals` es el
+  perfil periférico opcional enlazado de forma explícita.
+- V071 fue aplicada exclusivamente a `manus_tienda_qa` mediante el runner
+  incremental seleccionado, con `manus_qa_user` como identidad DDL y
+  `manus_user` preservado como usuario runtime de API.
+- Mapping QA aplicado:
+  - `TERM-001` / `693921eb-d28d-4c1b-af17-087b589c6467`
+  - perfil `local-terminal` / `e186b5bd-4873-49bb-9450-f141570cce80`
+  - modo `HYBRID`
+  - impresora `usb-printer-1f0028d1fa5243c2`
+- V071 creó FK `ON DELETE RESTRICT`, índice lookup, unicidad parcial y
+  trigger tenant/sucursal/activo. La segunda ejecución devolvió
+  `ALREADY_APPLIED`.
+- TERM-002 no recibió perfil: una sucursal puede tener varias terminales y no
+  se infiere configuración por tenant/sucursal.
+- `sales.terminal_id`, `cash_registers.terminal_id` y
+  `pos_user_sessions.terminal_id` conservaron sus conteos QA previos.
+- Deuda separada: V046--V061 continúan ausentes de `migrations_history`; no
+  fueron ejecutadas ni se alteró su historial.
+
+**QA MANUAL: resolución TERM-001 -> XP-80 PASS.**
+
+### Resolución canónica - validación técnica posterior a V071
+
+- `resolve-current` ahora trata cualquier `terminalId` UUID como identidad
+  operativa primero. Busca `terminals.id` dentro del tenant y luego el perfil
+  por `pos_terminals.operational_terminal_id`.
+- Prueba técnica `TERM-001`: resuelve el perfil `HYBRID`
+  `e186b5bd-4873-49bb-9450-f141570cce80`, conserva
+  `agentTerminalCode=local-terminal` y devuelve
+  `printerDeviceId=usb-printer-1f0028d1fa5243c2`.
+- Prueba técnica `TERM-002`: devuelve `OPERATIONAL_UNCONFIGURED` sin perfil,
+  sin impresora y sin heredar la XP-80 de `TERM-001`.
+- Un UUID operativo inexistente o de otro tenant devuelve error controlado;
+  no puede continuar al default legacy `local-terminal`.
+- Compatibilidad: `terminalId=local-terminal` de texto sigue resolviendo solo
+  como flujo legacy/MOCK explícito.
+- QA físico canónico: PASS. Reportería POS recibió la configuración ligada a
+  `TERM-001`, mandó el `deviceId` configurado al Agent y la XP-80 imprimió por
+  USB RAW con corte físico.
+- Validación de Agent local: `POST /devices/discover` sigue encontrando
+  `XP-80` con `usb-printer-1f0028d1fa5243c2`, `USB` y
+  `THERMAL_80MM`. El proceso existente en `127.0.0.1:4050` pertenece a otra
+  identidad de Windows y rechazó su reinicio con `Access denied`; por eso esta
+  validación no declara que el proceso en ejecución sea el Agent actualizado.
+
+### QA física canónica TERM-001 / XP-80 USB RAW - PASS
+
+- `TERM-001 CANONICAL RESOLUTION`: PASS.
+- `DIRECT PRINT`: PASS.
+- `XP-80 USB RAW`: PASS.
+- `PHYSICAL CUT`: PASS.
+- `LEGACY FALLBACK`: NOT USED. `local-terminal` quedó únicamente como
+  `agentTerminalCode` del perfil enlazado, no como criterio de resolución.
+
+Topología QA ejecutada:
+
+```text
+Browser client      192.168.1.18
+Manus services      192.168.1.14
+Peripheral Agent    192.168.1.14
+XP-80               USB en host del Agent
+```
+
+Topología objetivo para QA tipo producción:
+
+```text
+POS workstation     Browser + Peripheral Agent + XP-80 en 192.168.1.18
+Remote/cloud        Manus Web + API + Reports
+```
+
+La impresora debe continuar conectada al host que ejecuta el Peripheral Agent;
+el navegador no accede al USB directamente.

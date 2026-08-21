@@ -7,7 +7,11 @@ import {
 import type { PosTerminalResolvedConfig, SaleTicketInput } from "./types";
 
 const configured = (printerDeviceId: string): PosTerminalResolvedConfig => ({
-  terminalId: "caja-1", posTerminalId: "terminal-1", tenantId: "tenant-1",
+  terminalId: "caja-1", agentTerminalCode: "caja-1",
+  operationalTerminalId: "operational-terminal-1",
+  operationalTerminalCode: "TERM-001",
+  operationalTerminalName: "Terminal 1 Sucursal Principal",
+  posTerminalId: "terminal-1", tenantId: "tenant-1",
   branchId: "branch-1", code: "caja-1", name: "Caja 1", mode: "REAL",
   active: true, source: "CONFIGURED", printerDeviceId,
   cashDrawerDeviceId: "mock-cashdrawer-001", scaleDeviceId: "mock-scale-001",
@@ -106,6 +110,42 @@ test("report direct print never sends a fallback mock terminal to the Agent", as
     const result = await printReporteriaSaleTicket(saleTicket, {
       tenantId: "tenant-1",
       branchId: "branch-1",
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.error.code, "PRINTER_NOT_CONFIGURED");
+    assert.equal(agentCalled, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("report direct print does not send an unconfigured operational terminal to the Agent", async () => {
+  const previousFetch = globalThis.fetch;
+  let agentCalled = false;
+
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/pos-terminals/resolve-current")) {
+      return jsonResponse({
+        ...configured("usb-printer-1f0028d1fa5243c2"),
+        terminalId: null,
+        agentTerminalCode: null,
+        posTerminalId: null,
+        mode: null,
+        source: "OPERATIONAL_UNCONFIGURED",
+        printerDeviceId: null,
+      });
+    }
+    agentCalled = true;
+    throw new Error(`Agent must not be called: ${url}`);
+  };
+
+  try {
+    const result = await printReporteriaSaleTicket(saleTicket, {
+      tenantId: "tenant-1",
+      branchId: "branch-1",
+      terminalId: "11111111-1111-1111-1111-111111111111",
     });
 
     assert.equal(result.success, false);

@@ -26,10 +26,10 @@ async function bootstrap() {
     app.get(DevicesService).discoverOnStartup();
   }
 
-  await app.listen(config.port, "127.0.0.1");
+  await app.listen(config.port, "0.0.0.0");
 
   console.log(
-    `${config.agentName} running in ${config.mode} mode on http://localhost:${config.port}`
+    `${config.agentName} running in ${config.mode} mode on http://0.0.0.0:${config.port}`,
   );
 }
 

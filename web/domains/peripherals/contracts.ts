@@ -196,19 +196,29 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
     !input.deviceId || input.deviceId === defaultDeviceId;
   const terminalId =
     config.source === "CONFIGURED"
-      ? config.terminalId
-      : input.terminalId ?? config.terminalId ?? DEFAULT_POS_TERMINAL_ID;
+      ? config.agentTerminalCode ?? undefined
+      : input.terminalId ??
+        config.agentTerminalCode ??
+        config.terminalId ??
+        DEFAULT_POS_TERMINAL_ID;
 
   return {
     ...input,
     terminalId,
-    deviceId: shouldUseConfiguredDevice ? configuredDeviceId : input.deviceId,
+    deviceId: shouldUseConfiguredDevice
+      ? configuredDeviceId ?? undefined
+      : input.deviceId,
   };
 };
 
 const requireRealPrinterConfig = async (
   input: DirectPrintTerminalContext
-): Promise<PosTerminalResolvedConfig> => {
+): Promise<
+  PosTerminalResolvedConfig & {
+    agentTerminalCode: string;
+    printerDeviceId: string;
+  }
+> => {
   const config = await resolvePeripheralTerminalConfig(input);
   if (!isRealPrinterConfig(config)) {
     throw new PeripheralAgentRequestError(
@@ -224,7 +234,18 @@ const requireRealPrinterConfig = async (
     );
   }
 
-  return config;
+  if (!config.agentTerminalCode || !config.printerDeviceId) {
+    throw new PeripheralAgentRequestError(
+      "PRINTER_NOT_CONFIGURED",
+      "La terminal POS actual no tiene una impresora real configurada."
+    );
+  }
+
+  return {
+    ...config,
+    agentTerminalCode: config.agentTerminalCode,
+    printerDeviceId: config.printerDeviceId,
+  };
 };
 
 export const isRealPrinterConfig = (config: PosTerminalResolvedConfig) =>
@@ -336,7 +357,7 @@ export const printReporteriaSaleTicket = (
       return printTicket(
         buildSaleTicketPayload({
           ...input,
-          terminalId: config.terminalId,
+          terminalId: config.agentTerminalCode ?? undefined,
           deviceId: config.printerDeviceId,
         })
       );

@@ -221,6 +221,10 @@ export type PosTerminalResponse = {
   tenantId: string;
   branchId: string;
   branchName?: string | null;
+  operationalTerminalId: string | null;
+  operationalTerminalCode: string | null;
+  operationalTerminalName: string | null;
+  operationalTerminalActive: boolean | null;
   code: string;
   name: string;
   description?: string | null;
@@ -240,31 +244,37 @@ export type PosTerminalFeatureFlags = {
 };
 
 export type PosTerminalPeripheralSettings = {
-  printerDeviceId: string;
-  cashDrawerDeviceId: string;
-  scaleDeviceId: string;
-  scannerDeviceId: string;
+  printerDeviceId: string | null;
+  cashDrawerDeviceId: string | null;
+  scaleDeviceId: string | null;
+  scannerDeviceId: string | null;
   features: PosTerminalFeatureFlags;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
 
 export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
-  terminalId: string;
+  /** @deprecated Legacy alias for agentTerminalCode. */
+  terminalId: string | null;
+  agentTerminalCode: string | null;
+  operationalTerminalId: string | null;
+  operationalTerminalCode: string | null;
+  operationalTerminalName: string | null;
   posTerminalId: string | null;
   tenantId: string | null;
   branchId: string | null;
   branchName?: string | null;
   code: string;
   name: string;
-  mode: PosTerminalMode;
+  mode: PosTerminalMode | null;
   active: boolean;
-  source: "CONFIGURED" | "FALLBACK_MOCK";
+  source: "CONFIGURED" | "FALLBACK_MOCK" | "OPERATIONAL_UNCONFIGURED";
 };
 
 export type CreatePosTerminalRequest = {
   tenantId?: string;
   branchId: string;
+  operationalTerminalId?: string | null;
   code: string;
   name: string;
   description?: string | null;
