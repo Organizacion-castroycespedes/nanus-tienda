@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import {
   ConnectionType,
@@ -11,6 +12,7 @@ import {
   LogLevel,
   PeripheralEventName,
   type PeripheralDevice,
+  type UsbPrinterConnectionOptions,
 } from "../../shared/types/peripheral.types";
 import { createId } from "../../shared/utils/id.util";
 import {
@@ -28,6 +30,11 @@ import {
   validateShortText,
 } from "../../shared/utils/request-validation.util";
 import { resolveNetworkOptionsForConnection } from "../../shared/utils/network-device-validation.util";
+import {
+  SystemUsbPrinterDiscovery,
+  type UsbPrinterDescriptor,
+  type UsbPrinterDiscovery,
+} from "../../shared/usb/usb-printer-discovery";
 import { EventsService } from "../events/events.service";
 import { LogsService } from "../logs/logs.service";
 import type {
@@ -78,10 +85,13 @@ const MOCK_DEVICES: PeripheralDevice[] = [
 @Injectable()
 export class DevicesService {
   private devices = MOCK_DEVICES.map((device) => ({ ...device }));
+  private usbDevices = new Map<string, UsbPrinterDescriptor>();
 
   constructor(
     @Inject(LogsService) private readonly logsService: LogsService,
-    @Inject(EventsService) private readonly eventsService: EventsService
+    @Inject(EventsService) private readonly eventsService: EventsService,
+    @Optional()
+    private readonly usbDiscovery: UsbPrinterDiscovery = new SystemUsbPrinterDiscovery()
   ) {}
 
   list(): PeripheralDevice[] {
@@ -90,10 +100,30 @@ export class DevicesService {
 
   discover(): DiscoverDevicesResponse {
     const discoveredAt = new Date().toISOString();
-    this.devices = MOCK_DEVICES.map((device) => ({
-      ...device,
+    const usbDescriptors = this.usbDiscovery.list();
+    this.usbDevices = new Map(
+      usbDescriptors.map((descriptor) => [descriptor.deviceId, descriptor])
+    );
+    const systemUsbDevices = usbDescriptors.map((descriptor): PeripheralDevice => ({
+      id: descriptor.id,
+      type: DeviceType.PRINTER,
+      name: descriptor.name,
       status: DeviceStatus.CONNECTED,
+      connectionType: ConnectionType.USB,
+      terminalId: LOCAL_TERMINAL_ID,
+      profileId: "THERMAL_80MM",
+      usb: {
+        deviceId: descriptor.deviceId,
+        printerName: descriptor.printerName,
+      },
+      metadata: { discoverySource: "USB_SYSTEM" },
     }));
+    this.devices = [
+      ...this.devices.filter(
+        (device) => device.metadata?.discoverySource !== "USB_SYSTEM"
+      ),
+      ...systemUsbDevices,
+    ];
 
     this.logsService.append({
       source: "devices",
@@ -101,7 +131,8 @@ export class DevicesService {
       message: "Mock device discovery completed",
       metadata: {
         count: this.devices.length,
-        mode: "MOCK",
+        usbPrinterCount: systemUsbDevices.length,
+        mode: systemUsbDevices.length > 0 ? "HYBRID" : "MOCK",
       },
     });
 
@@ -148,6 +179,7 @@ export class DevicesService {
       record.network,
       connectionType
     );
+    const usb = this.resolveUsbOptions(record.usb, connectionType, type);
 
     if (this.devices.some((device) => device.id === id)) {
       this.logsService.append({
@@ -169,6 +201,7 @@ export class DevicesService {
       terminalId,
       profileId,
       network,
+      usb,
       metadata,
     };
 
@@ -232,6 +265,12 @@ export class DevicesService {
       connectionType,
       current.network
     );
+    const usb = this.resolveUsbOptions(
+      record.usb,
+      connectionType,
+      current.type,
+      current.usb
+    );
     const updated: PeripheralDevice = {
       ...current,
       name,
@@ -240,6 +279,7 @@ export class DevicesService {
       connectionType,
       profileId,
       network,
+      usb,
       metadata: optionalMetadata(record) ?? current.metadata,
     };
 
@@ -342,6 +382,24 @@ export class DevicesService {
     return this.cloneDevice(device);
   }
 
+  assertUsbPrinterAvailable(device: PeripheralDevice): void {
+    if (device.connectionType !== ConnectionType.USB) {
+      return;
+    }
+
+    const usbDeviceId = device.usb?.deviceId;
+    if (!usbDeviceId) {
+      throw new BadRequestException("USB printer deviceId is required");
+    }
+
+    const available = this.usbDiscovery
+      .list()
+      .some((descriptor) => descriptor.deviceId === usbDeviceId);
+    if (!available) {
+      throw new NotFoundException("USB printer device not found");
+    }
+  }
+
   private safeRecord(value: unknown, context: string) {
     try {
       return asRecord(value, context);
@@ -374,10 +432,49 @@ export class DevicesService {
     return profileId;
   }
 
+  private resolveUsbOptions(
+    value: unknown,
+    connectionType: ConnectionType,
+    deviceType: DeviceType,
+    current?: UsbPrinterConnectionOptions
+  ): UsbPrinterConnectionOptions | undefined {
+    if (connectionType !== ConnectionType.USB) {
+      if (value !== undefined && value !== null) {
+        throw new BadRequestException("usb is only supported for USB devices");
+      }
+      return undefined;
+    }
+    if (deviceType !== DeviceType.PRINTER) {
+      throw new BadRequestException("USB connection is only supported for PRINTER devices");
+    }
+    if (value === undefined || value === null) {
+      if (current) {
+        return { ...current };
+      }
+      throw new BadRequestException("usb is required for USB printers");
+    }
+
+    const record = asRecord(value, "usb");
+    const deviceId = validateIdentifier(
+      optionalString(record, "deviceId", ""),
+      "usb.deviceId"
+    );
+    const descriptor = this.usbDevices.get(deviceId);
+    if (!descriptor) {
+      throw new NotFoundException("USB printer device not found; run discovery and select a discovered device");
+    }
+
+    return {
+      deviceId: descriptor.deviceId,
+      printerName: descriptor.printerName,
+    };
+  }
+
   private cloneDevice(device: PeripheralDevice): PeripheralDevice {
     return {
       ...device,
       network: device.network ? { ...device.network } : undefined,
+      usb: device.usb ? { ...device.usb } : undefined,
       metadata: device.metadata ? { ...device.metadata } : undefined,
     };
   }

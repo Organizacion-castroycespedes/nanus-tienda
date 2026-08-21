@@ -2,7 +2,7 @@
 
 Servicio local para perifericos de Manus POS.
 
-El comportamiento por defecto sigue siendo `MOCK`. La impresion real ESC/POS por red existe solo como primera integracion controlada y queda apagada si `PERIPHERALS_ENABLE_REAL_ADAPTERS` no es exactamente `true`.
+El comportamiento por defecto sigue siendo `MOCK`. La impresion real `NETWORK` ESC/POS y la impresion `USB` por cola del sistema quedan apagadas si `PERIPHERALS_ENABLE_REAL_ADAPTERS` no es exactamente `true`.
 
 ## Proposito
 
@@ -66,8 +66,9 @@ Seleccion actual:
 - `MOCK + PRINTER + MOCK` usa `MockPrinterAdapter`.
 - `MOCK + CASH_DRAWER + MOCK` usa `MockCashDrawerAdapter`.
 - `NETWORK + PRINTER` usa `NetworkEscposPrinterAdapter` solo si `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`.
+- `USB + PRINTER` usa `UsbSystemPrinterAdapter` y una cola local descubierta del SO solo si `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`.
 - `NETWORK`, `USB`, `SERIAL`, `HID` y cualquier adapter real quedan bloqueados si `PERIPHERALS_ENABLE_REAL_ADAPTERS` no es `true`.
-- `USB`, `SERIAL`, `HID` y `BLUETOOTH` siguen fuera de alcance y responden `Adapter for connection type ... is not implemented yet.` cuando el flag real esta activo.
+- `SERIAL`, `HID` y `BLUETOOTH` siguen fuera de alcance y responden `Adapter for connection type ... is not implemented yet.` cuando el flag real esta activo.
 
 Los dispositivos MOCK incluyen `profileId`. Las respuestas de impresion y apertura de caja agregan `profile` y `capabilities` sin remover campos existentes.
 
@@ -84,8 +85,8 @@ Reglas:
 Real peripheral adapters are disabled. Enable PERIPHERALS_ENABLE_REAL_ADAPTERS=true to use them.
 ```
 
-- Solo se implementa `NETWORK + PRINTER`.
-- No se implementa USB, serialport, HID, Bluetooth, Electron ni Capacitor.
+- Se implementan `NETWORK + PRINTER` y `USB + PRINTER`.
+- USB usa la cola de impresion del sistema; no usa WebUSB, `serialport`, HID, Electron ni Capacitor.
 - No se conecta hardware automaticamente.
 - No se usa `node-escpos`.
 - No se imprime si falta `network.host` o `network.port`.
@@ -132,9 +133,9 @@ Seguridad:
 - Retorna comandos ESC/POS conceptuales sin bytes reales.
 - Retorna `profile` y `capabilities` en acciones de impresora y caja.
 - Selecciona adapters MOCK mediante resolver interno.
-- Permite registrar temporalmente un dispositivo `NETWORK` en memoria.
+- Permite registrar temporalmente dispositivos `NETWORK` y `USB` en memoria.
 - Bloquea adapters reales por defecto con `PERIPHERALS_ENABLE_REAL_ADAPTERS=false`.
-- Envia bytes ESC/POS basicos solo para `NETWORK + PRINTER` cuando `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`.
+- Envia bytes ESC/POS basicos para `NETWORK + PRINTER` y envía documento a la cola del SO para `USB + PRINTER` cuando `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`.
 
 ## Que NO hace todavia
 
@@ -143,7 +144,7 @@ Seguridad:
 - No conecta cajas reales.
 - No usa ESC/POS real salvo `NETWORK + PRINTER` con feature flag explicito.
 - No usa `serialport`.
-- No usa USB/HID real.
+- No usa HID real. USB requiere una cola de impresora/driver instalado en el SO.
 - No envia bytes ESC/POS reales si el feature flag esta apagado.
 - No descubre hardware automaticamente.
 - No implementa Electron.
@@ -221,7 +222,7 @@ Si el flag queda apagado, cualquier intento de usar el device `NETWORK` devuelve
 | --- | --- | --- |
 | `PERIPHERALS_PORT` | `4050` | Puerto HTTP local. |
 | `PERIPHERALS_MODE` | `MOCK` | Modo del agent. En esta fase debe ser `MOCK`. |
-| `PERIPHERALS_ENABLE_REAL_ADAPTERS` | `false` | Habilita adapters reales. Debe ser exactamente `true` para usar `NETWORK + PRINTER`. |
+| `PERIPHERALS_ENABLE_REAL_ADAPTERS` | `false` | Habilita adapters reales. Debe ser exactamente `true` para usar `NETWORK + PRINTER` o `USB + PRINTER`. |
 | `PERIPHERALS_AGENT_NAME` | `manus-pos-peripheral-agent` | Nombre reportado por health. |
 | `PERIPHERALS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:3029,http://localhost:5173` | Origenes permitidos para CORS y WebSocket. |
 | `PERIPHERALS_LOG_LIMIT` | `500` | Maximo de logs en memoria. |
@@ -308,7 +309,7 @@ Devuelve impresora, caja, balanza y scanner mock. Impresora y caja incluyen `pro
 curl -X POST http://localhost:4050/devices/discover
 ```
 
-Redetecta dispositivos simulados, registra log tecnico y emite eventos `device.connected`.
+Redetecta dispositivos simulados y colas USB locales. En Windows consulta `Get-Printer` con puertos USB/DOT4USB; en Linux/macOS consulta CUPS con `lpstat -v`. Registra log tecnico y emite eventos `device.connected`.
 
 ### `POST /devices`
 
@@ -608,10 +609,10 @@ Las respuestas no incluyen stack trace.
 - Preview termico: `48`, `32` o `40` caracteres segun `profileId`.
 - No hay persistencia.
 - No hay autenticacion local fuerte todavia.
-- No hay descubrimiento real de hardware.
+- Hay descubrimiento de colas USB locales. No hay escaneo automatico de red ni identificacion garantizada de modelo/fabricante.
 - No hay drivers nativos.
-- `NETWORK + PRINTER` es el unico adapter real implementado y esta apagado por defecto.
-- Adapters reales `USB`, `SERIAL`, `HID` y `BLUETOOTH` no estan implementados.
+- `NETWORK + PRINTER` y `USB + PRINTER` son adapters reales implementados y estan apagados por defecto.
+- Adapters reales `SERIAL`, `HID` y `BLUETOOTH` no estan implementados.
 
 ## Guardrails
 
@@ -621,4 +622,4 @@ Las respuestas no incluyen stack trace.
 - Mantener `PERIPHERALS_ENABLE_REAL_ADAPTERS=false` como default.
 - No introducir drivers nativos.
 - No importar codigo de `api/`, `web/` ni `backend-reporteria/`.
-- No usar USB, serialport, HID, Electron ni Capacitor en esta fase.
+- No usar WebUSB, serialport, HID, Electron ni Capacitor; USB se limita a colas de impresion del SO.

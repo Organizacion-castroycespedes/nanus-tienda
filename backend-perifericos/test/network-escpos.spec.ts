@@ -89,7 +89,10 @@ class FakeNetworkSocket implements NetworkEscposSocket {
   private errorListener?: (error: Error) => void;
   private timeoutListener?: () => void;
 
-  constructor(private readonly failOnConnect = false) {}
+  constructor(
+    private readonly failOnConnect = false,
+    private readonly timeoutOnConnect = false
+  ) {}
 
   setTimeout(timeoutMs: number): void {
     this.timeoutMs = timeoutMs;
@@ -102,6 +105,10 @@ class FakeNetworkSocket implements NetworkEscposSocket {
     this.connectedTo = options;
     if (this.failOnConnect) {
       this.errorListener?.(new Error("socket refused"));
+      return;
+    }
+    if (this.timeoutOnConnect) {
+      this.timeoutListener?.();
       return;
     }
     listener?.();
@@ -285,5 +292,24 @@ test("NetworkEscposPrinterAdapter socket error returns controlled error", async 
       );
       return true;
     }
+  );
+});
+
+test("NetworkEscposPrinterAdapter timeout returns controlled error", async () => {
+  const adapter = new NetworkEscposPrinterAdapter(() => {
+    return new FakeNetworkSocket(false, true);
+  });
+
+  await assert.rejects(
+    adapter.printTest({
+    agentName: "manus-pos-peripheral-agent",
+    mode: "REAL",
+    terminalId: "local-terminal",
+    device: networkPrinter,
+    profile: DEVICE_PROFILES.THERMAL_80MM,
+    jobId: "real-print-job-timeout",
+    timestamp: "2026-08-19T00:00:00.000Z",
+    }),
+    /Network ESC\/POS printer connection timed out/
   );
 });

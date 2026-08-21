@@ -46,6 +46,13 @@ import {
   resolveCurrentPosTerminalConfig,
   savePosTerminalPeripheralSettings,
 } from "../terminal-config";
+import {
+  buildPrinterPayload,
+  printerDefaults,
+  printerProfiles,
+  validatePrinterForm,
+  type PrinterRegistrationForm,
+} from "../printer-registration";
 import type {
   CreateDeviceRequest,
   CreatePosTerminalRequest,
@@ -92,21 +99,6 @@ const realAdaptersDisabledMessage =
   "Real peripheral adapters are disabled. Enable PERIPHERALS_ENABLE_REAL_ADAPTERS=true to use them.";
 const realAdaptersDisabledUiDetail =
   "El adapter real esta desactivado por seguridad. Para pruebas reales debe habilitarse PERIPHERALS_ENABLE_REAL_ADAPTERS=true en backend-perifericos.";
-const networkPrinterProfiles = [
-  "THERMAL_80MM",
-  "THERMAL_58MM",
-  "GENERIC_TEXT",
-] as const;
-const networkPrinterDefaults = {
-  id: "network-printer-001",
-  name: "Impresora red ESC/POS",
-  host: "192.168.1.50",
-  port: "9100",
-  timeoutMs: "3000",
-  profileId: "THERMAL_80MM",
-  terminalId,
-  status: "CONNECTED",
-} as const;
 
 type PosTerminalFormState = {
   branchId: string;
@@ -549,97 +541,53 @@ const PeripheralAgentStatusCard = ({
   );
 };
 
-type NetworkPrinterFormState = {
-  id: string;
-  name: string;
-  host: string;
-  port: string;
-  timeoutMs: string;
-  profileId: (typeof networkPrinterProfiles)[number];
-  terminalId: string;
-  status: "CONNECTED";
-};
-
-const buildNetworkPrinterPayload = (
-  form: NetworkPrinterFormState
-): CreateDeviceRequest => ({
-  id: form.id.trim(),
-  type: "PRINTER",
-  name: form.name.trim(),
-  status: form.status,
-  connectionType: "NETWORK",
-  terminalId: form.terminalId.trim(),
-  profileId: form.profileId,
-  network: {
-    host: form.host.trim(),
-    port: Number(form.port),
-    timeoutMs: Number(form.timeoutMs),
-  },
-});
-
-const validateNetworkPrinterForm = (form: NetworkPrinterFormState) => {
-  const port = Number(form.port);
-  const timeoutMs = Number(form.timeoutMs);
-
-  if (!form.id.trim()) {
-    return "id requerido";
-  }
-  if (!form.name.trim()) {
-    return "name requerido";
-  }
-  if (!form.host.trim()) {
-    return "host requerido";
-  }
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return "port debe estar entre 1 y 65535";
-  }
-  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    return "timeoutMs debe ser mayor a 0";
-  }
-  if (!form.terminalId.trim()) {
-    return "terminalId requerido";
-  }
-
-  return null;
-};
-
-const NetworkPrinterRegistrationPanel = ({
+const PrinterRegistrationPanel = ({
   loading,
   onRegister,
+  devices,
 }: {
   loading: boolean;
   onRegister: (payload: CreateDeviceRequest) => Promise<PeripheralDevice>;
+  devices: PeripheralDevice[];
 }) => {
-  const [form, setForm] = useState<NetworkPrinterFormState>({
-    ...networkPrinterDefaults,
-  });
+  const [form, setForm] = useState<PrinterRegistrationForm>(printerDefaults);
   const [state, setState] = useState<{
     status: "idle" | "success" | "error";
     message: string;
     detail?: string;
   }>({
     status: "idle",
-    message: "NETWORK temporal listo para registro.",
+    message: "Seleccione una conexión para registrar la impresora.",
   });
 
-  const updateForm = (field: keyof NetworkPrinterFormState, value: string) => {
+  const usbPrinters = devices.filter(
+    (device) => device.type === "PRINTER" && device.connectionType === "USB" && device.usb
+  );
+  const selectedUsbPrinter = usbPrinters.find(
+    (device) => device.usb?.deviceId === form.usbDeviceId
+  );
+
+  const updateForm = (field: keyof PrinterRegistrationForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const submitForm = async (candidate: NetworkPrinterFormState) => {
-    const error = validateNetworkPrinterForm(candidate);
+  const submitForm = async (candidate: PrinterRegistrationForm) => {
+    const error = validatePrinterForm(candidate);
     if (error) {
       setState({ status: "error", message: error });
       return;
     }
 
     try {
-      const payload = buildNetworkPrinterPayload(candidate);
+      const payload = buildPrinterPayload(candidate, selectedUsbPrinter);
       const device = await onRegister(payload);
       setState({
         status: "success",
-        message: "Impresora NETWORK registrada.",
-        detail: `${device.id} ${getNetworkEndpoint(device)}`,
+        message: `Impresora ${device.connectionType} registrada.`,
+        detail:
+          device.connectionType === "NETWORK"
+            ? `${device.id} ${getNetworkEndpoint(device)}`
+            : `${device.id} ${device.usb?.printerName ?? ""}`,
       });
     } catch (errorValue) {
       setState({
@@ -654,12 +602,6 @@ const NetworkPrinterRegistrationPanel = ({
     void submitForm(form);
   };
 
-  const handleRegisterDemo = () => {
-    const demo = { ...networkPrinterDefaults };
-    setForm(demo);
-    void submitForm(demo);
-  };
-
   const statusClass =
     state.status === "success"
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -669,18 +611,12 @@ const NetworkPrinterRegistrationPanel = ({
 
   return (
     <SectionCard
-      title="Registrar impresora NETWORK"
-      eyebrow="ESC/POS red"
-      actions={
-        <Button variant="ghost" onClick={handleRegisterDemo} isLoading={loading}>
-          <Printer className="h-4 w-4" />
-          Registrar demo NETWORK
-        </Button>
-      }
+      title="Registrar impresora"
+      eyebrow="Xprinter XP-80T / THERMAL_80MM"
     >
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="flex flex-wrap gap-2">
-          <Badge className={connectionTone.NETWORK}>NETWORK</Badge>
+          <Badge className={connectionTone[form.connectionType]}>{form.connectionType}</Badge>
           <Badge className="border-slate-200 bg-slate-50 text-slate-700">
             PRINTER
           </Badge>
@@ -700,30 +636,62 @@ const NetworkPrinterRegistrationPanel = ({
             required
             onChange={(event) => updateForm("name", event.target.value)}
           />
-          <Input
-            label="host"
-            value={form.host}
-            required
-            placeholder="192.168.1.50"
-            onChange={(event) => updateForm("host", event.target.value)}
-          />
-          <Input
-            label="port"
-            type="number"
-            min={1}
-            max={65535}
-            value={form.port}
-            required
-            onChange={(event) => updateForm("port", event.target.value)}
-          />
-          <Input
-            label="timeoutMs"
-            type="number"
-            min={1}
-            value={form.timeoutMs}
-            required
-            onChange={(event) => updateForm("timeoutMs", event.target.value)}
-          />
+          <label className="flex flex-col gap-2 text-sm text-slate-700">
+            <span className="font-medium">Conexión</span>
+            <select
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              value={form.connectionType}
+              onChange={(event) => updateForm("connectionType", event.target.value)}
+            >
+              <option value="NETWORK">NETWORK</option>
+              <option value="USB">USB</option>
+            </select>
+          </label>
+          {form.connectionType === "NETWORK" ? (
+            <>
+              <Input
+                label="host"
+                value={form.host}
+                required
+                placeholder="IP o hostname de la impresora"
+                onChange={(event) => updateForm("host", event.target.value)}
+              />
+              <Input
+                label="port"
+                type="number"
+                min={1}
+                max={65535}
+                value={form.port}
+                required
+                placeholder="Puerto RAW configurado"
+                onChange={(event) => updateForm("port", event.target.value)}
+              />
+              <Input
+                label="timeoutMs"
+                type="number"
+                min={250}
+                value={form.timeoutMs}
+                required
+                onChange={(event) => updateForm("timeoutMs", event.target.value)}
+              />
+            </>
+          ) : (
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-medium">Dispositivo USB descubierto</span>
+              <select
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                value={form.usbDeviceId}
+                onChange={(event) => updateForm("usbDeviceId", event.target.value)}
+              >
+                <option value="">Seleccione después de Buscar dispositivos</option>
+                {usbPrinters.map((device) => (
+                  <option key={device.usb?.deviceId} value={device.usb?.deviceId}>
+                    {device.name} ({device.usb?.deviceId})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-2 text-sm text-slate-700">
             <span className="font-medium">profileId</span>
             <select
@@ -732,11 +700,11 @@ const NetworkPrinterRegistrationPanel = ({
               onChange={(event) =>
                 updateForm(
                   "profileId",
-                  event.target.value as NetworkPrinterFormState["profileId"]
+                  event.target.value as PrinterRegistrationForm["profileId"]
                 )
               }
             >
-              {networkPrinterProfiles.map((profileId) => (
+              {printerProfiles.map((profileId) => (
                 <option key={profileId} value={profileId}>
                   {profileId}
                 </option>
@@ -1859,7 +1827,10 @@ const PeripheralsPage = () => {
       const discovered = await discoverPeripheralDevices();
       setDevices(discovered.devices);
       await loadLogs();
-      showToast("Busqueda simulada completada.", "success");
+      showToast(
+        `Busqueda completada: ${discovered.devices.filter((device) => device.connectionType === "USB").length} USB detectado(s).`,
+        "success"
+      );
     } catch (error) {
       showToast(getErrorMessage(error), "error", getErrorDetail(error));
     } finally {
@@ -1867,7 +1838,7 @@ const PeripheralsPage = () => {
     }
   }, [loadLogs, showToast]);
 
-  const handleRegisterNetworkPrinter = useCallback(
+  const handleRegisterPrinter = useCallback(
     async (payload: CreateDeviceRequest) => {
       setLoading((prev) => ({ ...prev, networkRegistration: true }));
       try {
@@ -1875,9 +1846,11 @@ const PeripheralsPage = () => {
         await refreshDevices();
         await loadLogs();
         showToast(
-          "Impresora NETWORK registrada.",
+          `Impresora ${created.connectionType} registrada.`,
           "success",
-          `${created.id} ${getNetworkEndpoint(created)}`
+          created.connectionType === "NETWORK"
+            ? `${created.id} ${getNetworkEndpoint(created)}`
+            : `${created.id} ${created.usb?.printerName ?? ""}`
         );
         return created;
       } finally {
@@ -2044,10 +2017,10 @@ const PeripheralsPage = () => {
               Administracion tecnica
             </p>
             <h1 className="text-2xl font-semibold text-slate-900">
-              Perifericos POS MOCK
+              Perifericos POS
             </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Diagnostico local de agent, dispositivos, logs y eventos simulados.
+              Diagnostico local de agent, dispositivos, logs y eventos. USB se descubre por el agent local.
             </p>
           </div>
           {headerActions}
@@ -2086,9 +2059,10 @@ const PeripheralsPage = () => {
             onToast={showToast}
           />
 
-          <NetworkPrinterRegistrationPanel
+          <PrinterRegistrationPanel
             loading={loading.networkRegistration}
-            onRegister={handleRegisterNetworkPrinter}
+            onRegister={handleRegisterPrinter}
+            devices={devices}
           />
           <PeripheralDevicesTable
             devices={devices}

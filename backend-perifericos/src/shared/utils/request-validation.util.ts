@@ -69,7 +69,7 @@ export const validateIdentifier = (value: string, field: string): string => {
 };
 
 export const validateShortText = (value: string, field: string): string => {
-  if (!SHORT_TEXT_PATTERN.test(value)) {
+  if (!isSupportedShortText(value)) {
     throw new BadRequestException(
       `${field} contains unsupported characters or is too long`
     );
@@ -77,6 +77,9 @@ export const validateShortText = (value: string, field: string): string => {
 
   return value;
 };
+
+const isSupportedShortText = (value: string): boolean =>
+  /^[\p{L}\p{N} ._:/#-]{1,160}$/u.test(value);
 
 export const validateCode = (value: string, field = "code"): string => {
   if (!CODE_PATTERN.test(value)) {

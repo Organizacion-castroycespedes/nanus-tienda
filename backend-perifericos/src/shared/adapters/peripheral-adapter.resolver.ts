@@ -5,6 +5,7 @@ import { getDeviceProfile, type DeviceProfile } from "../profiles/device-profile
 import { MockCashDrawerAdapter } from "./mock-cash-drawer.adapter";
 import { MockPrinterAdapter } from "./mock-printer.adapter";
 import { NetworkEscposPrinterAdapter } from "./network-escpos-printer.adapter";
+import { UsbSystemPrinterAdapter } from "./usb-system-printer.adapter";
 import type { CashDrawerAdapter, PrinterAdapter } from "./peripheral-adapter.types";
 
 export const REAL_ADAPTERS_DISABLED_MESSAGE =
@@ -14,6 +15,7 @@ export class PeripheralAdapterResolver {
   private readonly mockPrinterAdapter = new MockPrinterAdapter();
   private readonly mockCashDrawerAdapter = new MockCashDrawerAdapter();
   private readonly networkEscposPrinterAdapter = new NetworkEscposPrinterAdapter();
+  private readonly usbSystemPrinterAdapter = new UsbSystemPrinterAdapter();
 
   constructor(
     private readonly realAdaptersEnabled =
@@ -37,6 +39,10 @@ export class PeripheralAdapterResolver {
 
     if (device.connectionType === ConnectionType.NETWORK) {
       return this.networkEscposPrinterAdapter;
+    }
+
+    if (device.connectionType === ConnectionType.USB) {
+      return this.usbSystemPrinterAdapter;
     }
 
     throw new BadRequestException(

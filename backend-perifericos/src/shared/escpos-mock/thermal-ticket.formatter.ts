@@ -10,6 +10,9 @@ type TestPrintInput = {
   mode: string;
   terminalId: string;
   deviceId: string;
+  printerName?: string;
+  profileId?: string;
+  connectionType?: string;
   widthChars: number;
   paperWidthMm: number | null;
   timestamp: string;
@@ -55,13 +58,16 @@ export const buildTestPrintDocument = (
 ): ThermalMockDocument => {
   const writer = new ThermalTextWriter(input.widthChars);
   writer.center("MANUS POS");
-  writer.center("ESC/POS MOCK TEST");
+  writer.center("PRUEBA DE IMPRESION");
   writer.separator();
-  writer.pair("Agent", input.agentName);
-  writer.pair("Mode", input.mode);
-  writer.pair("Timestamp", input.timestamp);
+  writer.pair("Modelo", input.printerName ?? "Impresora POS");
+  writer.pair("Perfil", input.profileId ?? "-");
+  writer.pair("Conexion", input.connectionType ?? "-");
   writer.pair("Terminal", input.terminalId);
   writer.pair("Device", input.deviceId);
+  writer.pair("Agente", input.agentName);
+  writer.pair("Modo", input.mode);
+  writer.pair("Fecha", input.timestamp);
   writer.pair(
     "Width",
     (input.paperWidthMm === null ? "generic" : input.paperWidthMm + "mm") +
@@ -70,8 +76,7 @@ export const buildTestPrintDocument = (
       " chars"
   );
   writer.separator();
-  writer.center("Print test simulated");
-  writer.center("No bytes sent to hardware");
+  writer.center("IMPRESION OK");
   writer.blank();
   writer.center("Conceptual cut below");
   writer.separator();

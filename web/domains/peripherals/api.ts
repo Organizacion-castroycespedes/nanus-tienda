@@ -21,6 +21,10 @@ export type PeripheralAgentRequestErrorCode =
   | "INVALID_CONFIG"
   | "AGENT_OFFLINE"
   | "NETWORK_ERROR"
+  | "DEVICE_NOT_FOUND"
+  | "TIMEOUT"
+  | "CONNECTION_REFUSED"
+  | "PRINT_ERROR"
   | "HTTP_ERROR";
 
 export type PeripheralAgentConfig = {
@@ -314,9 +318,10 @@ export const requestPeripheral = async <T>(
   }
 
   if (!response.ok) {
+    const message = await parseErrorMessage(response);
     throw new PeripheralAgentRequestError(
-      "HTTP_ERROR",
-      await parseErrorMessage(response),
+      classifyAgentHttpError(response.status, message),
+      message,
       {
         endpoint: url,
         status: response.status,
@@ -325,6 +330,26 @@ export const requestPeripheral = async <T>(
   }
 
   return (await response.json()) as T;
+};
+
+const classifyAgentHttpError = (
+  status: number,
+  message: string
+): PeripheralAgentRequestErrorCode => {
+  const normalized = message.toLowerCase();
+  if (status === 404 || normalized.includes("device not found")) {
+    return "DEVICE_NOT_FOUND";
+  }
+  if (normalized.includes("timed out")) {
+    return "TIMEOUT";
+  }
+  if (normalized.includes("refused") || normalized.includes("socket error")) {
+    return "CONNECTION_REFUSED";
+  }
+  if (normalized.includes("printer") && normalized.includes("failed")) {
+    return "PRINT_ERROR";
+  }
+  return "HTTP_ERROR";
 };
 
 export const fetchPeripheralHealth = () =>

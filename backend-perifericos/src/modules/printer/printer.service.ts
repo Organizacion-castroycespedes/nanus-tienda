@@ -67,6 +67,7 @@ export class PrinterService {
     const timestamp = new Date().toISOString();
     let result: PrinterAdapterResult;
     try {
+      this.devicesService.assertUsbPrinterAvailable(printer);
       result = await adapter.printTest({
         agentName: config.agentName,
         mode: adapter.mode,
@@ -212,6 +213,7 @@ export class PrinterService {
     const timestamp = new Date().toISOString();
     let result: PrinterAdapterResult;
     try {
+      this.devicesService.assertUsbPrinterAvailable(printer);
       result = await adapter.printTicket({
         agentName: config.agentName,
         ticketType,

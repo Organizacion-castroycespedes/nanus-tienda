@@ -148,7 +148,7 @@ test("mock printer adapter generates test print with profile preview", () => {
 
   assert.equal(result.adapterName, "MockPrinterAdapter");
   assert.equal(result.profile.id, DeviceProfileId.Thermal80mm);
-  assert.match(result.preview, /ESC\/POS MOCK TEST/);
+  assert.match(result.preview, /PRUEBA DE IMPRESION/);
   assert.match(result.preview, /80mm \/ 48 chars/);
   assert.equal(result.capabilities.supportsCut, true);
   assert.equal(
@@ -305,7 +305,7 @@ test("test print simulates job logs and events", async () => {
   assert.equal(result.bytesSent, undefined);
   assert.equal(result.deviceId, "mock-printer-001");
   assert.equal(result.terminalId, "local-terminal");
-  assert.match(result.preview, /ESC\/POS MOCK TEST/);
+  assert.match(result.preview, /PRUEBA DE IMPRESION/);
   assert.match(result.preview, /80mm \/ 48 chars/);
   assert.equal(
     result.commands.some((command) => command.name === EscPosMockCommandName.Init),

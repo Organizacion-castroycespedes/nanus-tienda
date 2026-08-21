@@ -30,6 +30,11 @@ export type DeviceNetworkConfig = {
   timeoutMs?: number;
 };
 
+export type DeviceUsbConfig = {
+  deviceId: string;
+  printerName: string;
+};
+
 export type PeripheralDevice = {
   id: string;
   type: PeripheralDeviceType;
@@ -40,6 +45,7 @@ export type PeripheralDevice = {
   profileId?: string;
   profile?: DeviceProfile;
   network?: DeviceNetworkConfig;
+  usb?: DeviceUsbConfig;
 };
 
 export type CreateDeviceRequest = {
@@ -51,6 +57,7 @@ export type CreateDeviceRequest = {
   terminalId: string;
   profileId?: string;
   network?: DeviceNetworkConfig;
+  usb?: DeviceUsbConfig;
 };
 
 export type PeripheralTicketItem = {
@@ -165,6 +172,10 @@ export type PeripheralOperationError = {
     | "MISSING_CONFIG"
     | "INVALID_CONFIG"
     | "AGENT_OFFLINE"
+    | "DEVICE_NOT_FOUND"
+    | "TIMEOUT"
+    | "CONNECTION_REFUSED"
+    | "PRINT_ERROR"
     | "NETWORK_ERROR"
     | "HTTP_ERROR"
     | "AGENT_ERROR"
