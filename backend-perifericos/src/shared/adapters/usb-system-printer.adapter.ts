@@ -19,12 +19,13 @@ import type {
   PrinterAdapterInput,
   PrinterAdapterResult,
 } from "./peripheral-adapter.types";
+import {
+  WindowsRawSpoolerTransport,
+  type WindowsPrintCommandRunner,
+} from "../../platform/windows/windows-raw-spooler.transport";
+import { WindowsGdiSpoolerTransport } from "../../platform/windows/windows-gdi-spooler.transport";
 
-export type UsbPrintCommandRunner = (
-  command: string,
-  args: string[],
-  input?: string
-) => void;
+export type UsbPrintCommandRunner = WindowsPrintCommandRunner;
 
 const systemPrintCommandRunner: UsbPrintCommandRunner = (command, args, input) => {
   execFileSync(command, args, {
@@ -46,7 +47,11 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     private readonly commandRunner: UsbPrintCommandRunner = systemPrintCommandRunner,
     private readonly transport: UsbPrintTransport = getPeripheralsConfig().usbPrintTransport,
     private readonly physicalCutCertified =
-      getPeripheralsConfig().usbRawPhysicalCutCertified
+      getPeripheralsConfig().usbRawPhysicalCutCertified,
+    private readonly rawTransport: WindowsRawSpoolerTransport =
+      new WindowsRawSpoolerTransport(commandRunner),
+    private readonly gdiTransport: WindowsGdiSpoolerTransport =
+      new WindowsGdiSpoolerTransport(commandRunner)
   ) {}
 
   get adapterName(): string {
@@ -161,13 +166,11 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
             (command) => command.name === EscPosMockCommandName.Cut
           ),
         });
-        this.commandRunner("powershell.exe", [
-          "-NoProfile",
-          "-NonInteractive",
-          "-EncodedCommand",
-          encodePowerShellRawPrint(queueName, payload),
-        ]);
-        return payload.length;
+        return this.rawTransport.send({
+          nativeIdentifier: queueName,
+          payload,
+          jobName: "Manus POS ESC/POS",
+        }).bytesSent;
       }
 
       this.printGdi(queueName, preview);
@@ -184,12 +187,7 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
 
   private printGdi(queueName: string, document: string): void {
     if (this.platform === "win32") {
-      this.commandRunner("powershell.exe", [
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        encodePowerShellGdiPrint(queueName, document),
-      ]);
+      this.gdiTransport.print(queueName, document);
       return;
     }
 
@@ -201,55 +199,3 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     throw new BadRequestException(`USB printer transport is not supported on ${this.platform}`);
   }
 }
-
-const encodePowerShellGdiPrint = (queueName: string, document: string): string => {
-  const queueBase64 = Buffer.from(queueName, "utf8").toString("base64");
-  const documentBase64 = Buffer.from(document, "utf8").toString("base64");
-  const script = [
-    "Add-Type -AssemblyName System.Drawing",
-    `$queue = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${queueBase64}'))`,
-    `$documentText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${documentBase64}'))`,
-    "$printDocument = New-Object System.Drawing.Printing.PrintDocument",
-    "$printDocument.PrinterSettings.PrinterName = $queue",
-    "if (-not $printDocument.PrinterSettings.IsValid) { throw 'USB printer queue not found' }",
-    "$printDocument.add_PrintPage({ param($sender, $event) $font = New-Object System.Drawing.Font('Consolas', 8); $event.Graphics.DrawString($documentText, $font, [System.Drawing.Brushes]::Black, 0, 0); $event.HasMorePages = $false })",
-    "$printDocument.Print()",
-  ].join("; ");
-
-  return Buffer.from(script, "utf16le").toString("base64");
-};
-
-const encodePowerShellRawPrint = (queueName: string, payload: Buffer): string => {
-  const queueBase64 = Buffer.from(queueName, "utf8").toString("base64");
-  const payloadBase64 = payload.toString("base64");
-  const script = [
-    "Add-Type -TypeDefinition @'",
-    "using System; using System.Runtime.InteropServices;",
-    "[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public class MANUS_DOC_INFO_1 { public string pDocName; public string pOutputFile; public string pDatatype; }",
-    "public static class MANUS_RAW_PRINTER {",
-    "[DllImport(\"winspool.drv\", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool OpenPrinter(string name, out IntPtr handle, IntPtr defaults);",
-    "[DllImport(\"winspool.drv\", SetLastError=true)] public static extern bool ClosePrinter(IntPtr handle);",
-    "[DllImport(\"winspool.drv\", CharSet=CharSet.Unicode, SetLastError=true)] public static extern int StartDocPrinter(IntPtr handle, int level, [In] MANUS_DOC_INFO_1 docInfo);",
-    "[DllImport(\"winspool.drv\", SetLastError=true)] public static extern bool EndDocPrinter(IntPtr handle);",
-    "[DllImport(\"winspool.drv\", SetLastError=true)] public static extern bool StartPagePrinter(IntPtr handle);",
-    "[DllImport(\"winspool.drv\", SetLastError=true)] public static extern bool EndPagePrinter(IntPtr handle);",
-    "[DllImport(\"winspool.drv\", SetLastError=true)] public static extern bool WritePrinter(IntPtr handle, byte[] bytes, int count, out int written);",
-    "}",
-    "'@",
-    `$queue = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${queueBase64}'))`,
-    `$payload = [Convert]::FromBase64String('${payloadBase64}')`,
-    "$handle = [IntPtr]::Zero; $docStarted = $false; $pageStarted = $false",
-    "try {",
-    "if (-not [MANUS_RAW_PRINTER]::OpenPrinter($queue, [ref]$handle, [IntPtr]::Zero)) { throw ('OpenPrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }",
-    "$doc = New-Object MANUS_DOC_INFO_1; $doc.pDocName = 'Manus POS ESC/POS'; $doc.pDatatype = 'RAW'",
-    "if ([MANUS_RAW_PRINTER]::StartDocPrinter($handle, 1, $doc) -le 0) { throw ('StartDocPrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }; $docStarted = $true",
-    "if (-not [MANUS_RAW_PRINTER]::StartPagePrinter($handle)) { throw ('StartPagePrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }; $pageStarted = $true",
-    "$written = 0; if (-not [MANUS_RAW_PRINTER]::WritePrinter($handle, $payload, $payload.Length, [ref]$written)) { throw ('WritePrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }",
-    "if ($written -ne $payload.Length) { throw ('WritePrinter partial write: ' + $written + '/' + $payload.Length) }",
-    "} finally {",
-    "if ($pageStarted) { [void][MANUS_RAW_PRINTER]::EndPagePrinter($handle) }; if ($docStarted) { [void][MANUS_RAW_PRINTER]::EndDocPrinter($handle) }; if ($handle -ne [IntPtr]::Zero) { [void][MANUS_RAW_PRINTER]::ClosePrinter($handle) }",
-    "}",
-  ].join("\n");
-
-  return Buffer.from(script, "utf16le").toString("base64");
-};

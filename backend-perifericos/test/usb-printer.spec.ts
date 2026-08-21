@@ -26,6 +26,7 @@ import {
   buildUsbPrinterDescriptor,
   type UsbPrinterDiscovery,
 } from "../src/shared/usb/usb-printer-discovery";
+import { renderThermalEscPos } from "../src/shared/escpos/thermal-escpos.renderer";
 
 const discoveredUsbPrinter = buildUsbPrinterDescriptor("Xprinter XP-80T USB");
 
@@ -191,9 +192,39 @@ test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () =>
   assert.match(script, /StartDocPrinter/);
   assert.match(script, /WritePrinter/);
   assert.match(script, /pDatatype = 'RAW'/);
+  const encodedPayload = script.match(/FromBase64String\('([^']+)'\)/g)?.[1]
+    ?.match(/'([^']+)'/)?.[1];
+  assert.ok(encodedPayload);
+  assert.deepEqual(
+    Buffer.from(encodedPayload, "base64"),
+    renderThermalEscPos(result.commands, result.preview, {
+      encoding: "latin1",
+      includePhysicalCut: true,
+    })
+  );
+  assert.equal(Buffer.from(encodedPayload, "base64").includes(Buffer.from([0x1d, 0x56, 0x00])), true);
   assert.equal(result.adapterName, "UsbRawPrinterAdapter");
   assert.equal(result.capabilities.supportsPhysicalCut, true);
   assert.ok((result.bytesSent ?? 0) > 0);
+});
+
+test("portable USB descriptor keeps legacy deviceId and serializes identity fields", () => {
+  const descriptor = buildUsbPrinterDescriptor("XP-80", {
+    nativeIdentifier: "XP-80",
+    fingerprint: { source: "WINDOWS_PRINT_QUEUE", values: { queueName: "XP-80" } },
+    platform: "WINDOWS",
+    architecture: "x64",
+  }, "agent-installation-001");
+
+  assert.equal(descriptor.deviceId, "usb-printer-1f0028d1fa5243c2");
+  assert.deepEqual(JSON.parse(JSON.stringify(descriptor)).descriptor, {
+    agentInstallationId: "agent-installation-001",
+    deviceId: "usb-printer-1f0028d1fa5243c2",
+    nativeIdentifier: "XP-80",
+    fingerprint: { source: "WINDOWS_PRINT_QUEUE", values: { queueName: "XP-80" } },
+    platform: "WINDOWS",
+    architecture: "x64",
+  });
 });
 
 test("USB RAW failure remains controlled and does not fall back to GDI", () => {

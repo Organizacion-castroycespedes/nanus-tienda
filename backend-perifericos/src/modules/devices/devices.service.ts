@@ -31,10 +31,10 @@ import {
 } from "../../shared/utils/request-validation.util";
 import { resolveNetworkOptionsForConnection } from "../../shared/utils/network-device-validation.util";
 import {
-  SystemUsbPrinterDiscovery,
   type UsbPrinterDescriptor,
   type UsbPrinterDiscovery,
 } from "../../shared/usb/usb-printer-discovery";
+import { SystemUsbPrinterDiscovery } from "../../platform/system-usb-printer-discovery";
 import { EventsService } from "../events/events.service";
 import { LogsService } from "../logs/logs.service";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
@@ -147,6 +147,7 @@ export class DevicesService {
         deviceId: descriptor.deviceId,
         printerName: descriptor.printerName,
       },
+      descriptor: descriptor.descriptor,
       metadata: { discoverySource: "USB_SYSTEM" },
     }));
     this.devices = [
@@ -506,6 +507,17 @@ export class DevicesService {
       ...device,
       network: device.network ? { ...device.network } : undefined,
       usb: device.usb ? { ...device.usb } : undefined,
+      descriptor: device.descriptor
+        ? {
+            ...device.descriptor,
+            fingerprint: {
+              ...device.descriptor.fingerprint,
+              values: device.descriptor.fingerprint.values
+                ? { ...device.descriptor.fingerprint.values }
+                : undefined,
+            },
+          }
+        : undefined,
       metadata: device.metadata ? { ...device.metadata } : undefined,
     };
   }

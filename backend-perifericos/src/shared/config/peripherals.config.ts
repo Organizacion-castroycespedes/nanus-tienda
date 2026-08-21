@@ -1,14 +1,17 @@
 export type PeripheralsMode = "MOCK";
 export type UsbPrintTransport = "RAW" | "GDI";
+export type AgentLogLevel = "INFO" | "WARN" | "ERROR";
 
 export type PeripheralsConfig = {
   port: number;
+  bind: string;
   mode: PeripheralsMode;
   agentName: string;
   realAdaptersEnabled: boolean;
   usbPrintTransport: UsbPrintTransport;
   usbRawPhysicalCutCertified: boolean;
   allowedOrigins: string[];
+  logLevel: AgentLogLevel;
   logLimit: number;
   printerWidthChars: number;
   version: string;
@@ -26,6 +29,14 @@ const STARTED_AT = Date.now();
 const parsePort = (value: string | undefined): number => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 4050;
+};
+
+const parseBind = (value: string | undefined): string =>
+  value?.trim() || "127.0.0.1";
+
+const parseLogLevel = (value: string | undefined): AgentLogLevel => {
+  const level = value?.trim().toUpperCase();
+  return level === "WARN" || level === "ERROR" ? level : "INFO";
 };
 
 const parseLogLimit = (value: string | undefined): number => {
@@ -98,6 +109,7 @@ export const buildPeripheralsCorsOptions = (allowedOrigins: string[]) => ({
 
 export const getPeripheralsConfig = (): PeripheralsConfig => ({
   port: parsePort(process.env.PERIPHERALS_PORT),
+  bind: parseBind(process.env.PERIPHERALS_BIND),
   mode: parseMode(process.env.PERIPHERALS_MODE),
   agentName:
     process.env.PERIPHERALS_AGENT_NAME?.trim() ||
@@ -112,6 +124,7 @@ export const getPeripheralsConfig = (): PeripheralsConfig => ({
     process.env.PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED?.trim().toLowerCase() ===
     "true",
   allowedOrigins: parseAllowedOrigins(process.env.PERIPHERALS_ALLOWED_ORIGINS),
+  logLevel: parseLogLevel(process.env.PERIPHERALS_LOG_LEVEL),
   logLimit: parseLogLimit(process.env.PERIPHERALS_LOG_LIMIT),
   printerWidthChars: parsePrinterWidthChars(
     process.env.PERIPHERALS_PRINTER_WIDTH_CHARS

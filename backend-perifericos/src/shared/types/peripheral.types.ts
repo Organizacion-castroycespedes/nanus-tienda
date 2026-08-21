@@ -58,6 +58,22 @@ export type UsbPrinterConnectionOptions = {
   printerName: string;
 };
 
+export type DevicePlatform = "WINDOWS" | "LINUX" | "MACOS" | "UNKNOWN";
+
+export type DeviceFingerprint = {
+  source: string;
+  values?: Record<string, string>;
+};
+
+export type PortableDeviceDescriptor = {
+  agentInstallationId: string;
+  deviceId: string;
+  nativeIdentifier: string;
+  fingerprint: DeviceFingerprint;
+  platform: DevicePlatform;
+  architecture: string;
+};
+
 export type PeripheralDevice = {
   id: string;
   type: DeviceType;
@@ -68,6 +84,7 @@ export type PeripheralDevice = {
   profileId?: string;
   network?: NetworkConnectionOptions;
   usb?: UsbPrinterConnectionOptions;
+  descriptor?: PortableDeviceDescriptor;
   metadata?: Record<string, unknown>;
 };
 

@@ -34,11 +34,22 @@ import {
   DEVICE_PROFILES,
   DeviceProfileId,
 } from "../src/shared/profiles/device-profiles";
+import type { UsbPrinterDiscovery } from "../src/shared/usb/usb-printer-discovery";
+
+const emptyUsbDiscovery: UsbPrinterDiscovery = {
+  list: () => [],
+};
 
 const buildServices = () => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
-  const devicesService = new DevicesService(logsService, eventsService);
+  // MOCK tests must not call the real Windows spooler. Physical discovery is
+  // covered independently by the Windows provider and packaged-Agent smoke.
+  const devicesService = new DevicesService(
+    logsService,
+    eventsService,
+    emptyUsbDiscovery
+  );
   const printerService = new PrinterService(
     devicesService,
     logsService,

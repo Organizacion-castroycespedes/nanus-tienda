@@ -495,3 +495,52 @@ Remote/cloud        Manus Web + API + Reports
 
 La impresora debe continuar conectada al host que ejecuta el Peripheral Agent;
 el navegador no accede al USB directamente.
+
+## QA P0 - Peripheral Agent portable Windows x64 - 2026-08-21
+
+### Topologia certificada
+
+```text
+192.168.1.14  Manus Web :3000, API :4020, Reports :4021
+192.168.1.18  Browser + Peripheral Agent portable local :4050 + XP-80 USB
+```
+
+- El Browser continuo consumiendo Manus desde `192.168.1.14`.
+- Todas las llamadas del Agent usaron `http://127.0.0.1:4050` y
+  `ws://127.0.0.1:4050/peripherals`, resueltos en el workstation
+  `192.168.1.18`.
+- No se uso `192.168.1.14:4050`.
+- El paquete validado fue `ManusPeripheralAgent-win-x64-0.1.0`, con runtime
+  Node embebido, bind loopback, allow-list de origen
+  `http://192.168.1.14:3000`, RAW y corte certificado habilitados.
+
+### Resultado de impresion directa
+
+`POST http://127.0.0.1:4050/printer/print-ticket` confirmo:
+
+```text
+success                              true
+mode                                 REAL
+adapterName                          UsbRawPrinterAdapter
+deviceId                             usb-printer-1f0028d1fa5243c2
+connectionType                       USB
+capabilities.supportsPhysicalCut     true
+bytesSent                            1245
+```
+
+- `WINDOWS X64 PORTABLE AGENT = HARDWARE CERTIFIED`.
+- `LOCALHOST AGENT TOPOLOGY = PASS`.
+- `WEB REMOTE + LOCAL HARDWARE = PASS`.
+- `XP-80 USB RAW = HARDWARE CERTIFIED`.
+- `PHYSICAL CUT = HARDWARE CERTIFIED`.
+- Impresion, ticket completo, layout `THERMAL_80MM`, importes, footer, feed y
+  corte fisico: PASS.
+
+### Resolucion de periferico
+
+- `TERM-001` mantuvo su asociacion canonica hacia el perfil periferico y el
+  `printerDeviceId` existente `usb-printer-1f0028d1fa5243c2`.
+- No se modificaron DB, V071, ventas, caja, sesiones ni configuracion de
+  perifericos durante esta QA.
+- `local-terminal` no fue fallback de resolucion. Permanece solo como
+  `agentTerminalCode` transitorio.

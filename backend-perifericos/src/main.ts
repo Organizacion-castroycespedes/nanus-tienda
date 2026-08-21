@@ -9,8 +9,10 @@ import {
 import { SanitizedHttpExceptionFilter } from "./shared/filters/sanitized-http-exception.filter";
 import { EventsService } from "./modules/events/events.service";
 import { DevicesService } from "./modules/devices/devices.service";
+import { loadAgentLocalConfig } from "./platform/agent-local-config";
 
 loadEnv();
+loadAgentLocalConfig();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -26,11 +28,25 @@ async function bootstrap() {
     app.get(DevicesService).discoverOnStartup();
   }
 
-  await app.listen(config.port, "0.0.0.0");
+  await app.listen(config.port, config.bind);
 
   console.log(
-    `${config.agentName} running in ${config.mode} mode on http://0.0.0.0:${config.port}`,
+    `${config.agentName} running in ${config.mode} mode on http://${config.bind}:${config.port}`,
   );
+
+  let stopping = false;
+  const shutdown = async (signal: string) => {
+    if (stopping) {
+      return;
+    }
+    stopping = true;
+    console.log(`${config.agentName} stopping after ${signal}.`);
+    await app.close();
+    process.exit(0);
+  };
+
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 void bootstrap();

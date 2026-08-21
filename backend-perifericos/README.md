@@ -153,7 +153,7 @@ Seguridad:
 - No usa base de datos.
 - No depende del frontend ni del Backend API principal para simular hardware local.
 
-## Instalacion
+## Instalacion de desarrollo
 
 ```bash
 npm install
@@ -182,6 +182,45 @@ ws://localhost:4050/peripherals
 ```bash
 npm run build
 ```
+
+## Windows x64 portable P0
+
+El artefacto P0 es una carpeta portable para Windows x64. Lleva `node.exe`,
+dependencias de runtime, Agent compilado, launcher y configuraciÃ³n local sin
+secretos. El runtime Node va embebido; no requiere npm ni Git global en la
+estaciÃ³n POS.
+
+Crear y validar el artefacto desde un host Windows x64 de build:
+
+```bash
+npm run package:windows-x64
+npm run validate:package:windows-x64
+```
+
+Salida:
+
+```text
+dist-package/windows-x64/ManusPeripheralAgent-win-x64-<version>/
+```
+
+El launcher `start-agent.cmd` usa `config/agent.config.local.json`. Por
+defecto del artefacto QA:
+
+- bind `127.0.0.1`;
+- port `4050`;
+- CORS solo para `http://192.168.1.14:3000`;
+- adapters reales habilitados;
+- USB RAW y corte certificado habilitados.
+
+No contiene secrets. Logs y estado, incluido `agentInstallationId`, viven en:
+
+```text
+%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs
+%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state
+```
+
+Para este P0, abrir `start-agent.cmd` con doble clic. Tray, autostart y MSI
+quedan fuera de alcance hasta el siguiente spike de lifecycle/packaging.
 
 ## Tests
 
@@ -221,10 +260,12 @@ Si el flag queda apagado, cualquier intento de usar el device `NETWORK` devuelve
 | Variable | Default | Uso |
 | --- | --- | --- |
 | `PERIPHERALS_PORT` | `4050` | Puerto HTTP local. |
+| `PERIPHERALS_BIND` | `127.0.0.1` | Bind HTTP local. No usar `0.0.0.0` salvo una entrega separada con hardening. |
 | `PERIPHERALS_MODE` | `MOCK` | Modo del agent. En esta fase debe ser `MOCK`. |
 | `PERIPHERALS_ENABLE_REAL_ADAPTERS` | `false` | Habilita adapters reales. Debe ser exactamente `true` para usar `NETWORK + PRINTER` o `USB + PRINTER`. |
 | `PERIPHERALS_AGENT_NAME` | `manus-pos-peripheral-agent` | Nombre reportado por health. |
 | `PERIPHERALS_ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:3029,http://localhost:5173` | Origenes permitidos para CORS y WebSocket. |
+| `PERIPHERALS_LOG_LEVEL` | `INFO` | Nivel minimo conservado en logs tecnicos en memoria: `INFO`, `WARN`, `ERROR`. |
 | `PERIPHERALS_LOG_LIMIT` | `500` | Maximo de logs en memoria. |
 | `PERIPHERALS_PRINTER_WIDTH_CHARS` | `48` | Valor historico de ancho 80mm. En Fase 4.2 el ancho efectivo sale del `profileId` del dispositivo. |
 
