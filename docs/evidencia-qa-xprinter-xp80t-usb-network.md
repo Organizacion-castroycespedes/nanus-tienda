@@ -130,3 +130,83 @@ impresa físicamente.
 - No hay escaneo LAN automático ni identificación garantizada de marca/modelo por driver.
 - USB CUPS y Windows requieren QA física por SO/driver.
 - `CONNECTED` refleja discovery/registro, no monitoreo permanente.
+
+## QA Reporteria POS / THERMAL_80MM
+
+### Hardware y flujo confirmado
+
+- Impresora usada: `XP-80` / Xprinter XP-80T compatible.
+- Conexion: USB en Windows, mediante cola/driver `XP-80` y puerto USB real.
+- Flujo probado: `Manus -> PDF backend-reporteria -> iframe PDF Chrome -> Windows spooler/driver -> XP-80`.
+- El Peripheral Agent no participa en este flujo. Su prueba USB independiente
+  `POST /printer/test-print` ya genero papel fisico correctamente.
+
+### Resultado previo de hardware
+
+- Vista previa PDF: PASS.
+- Seleccion manual de `XP-80` en Chrome/Windows: PASS.
+- Ticket fisico de venta POS: PASS funcional.
+- Layout fisico `THERMAL_80MM`: PARTIAL. Se observo clipping en el borde
+  derecho: importes como `$ 40.000` quedaron parcialmente cortados y las
+  columnas `Item` / `Valor` llegaron demasiado cerca del borde.
+- No se declara PASS del layout corregido sin una nueva impresion fisica.
+
+### Causa raiz y correccion tecnica
+
+- El PDF usaba ancho nominal de 80 mm (`226 pt`) y margenes horizontales de
+  `12 pt` (4.2 mm). Su contenido de 71.3 mm casi agotaba el ancho imprimible
+  comun de 72 mm de una termica 80 mm; no habia tolerancia real para driver,
+  spooler ni borde fisico.
+- Las columnas de item y pagos usaban valores `auto`, sin reservar presupuesto
+  estable para importes.
+- `thermal-layout.ts` ahora declara `THERMAL_80MM_LAYOUT`: papel de 80 mm,
+  referencia imprimible de 72 mm, contenido seguro de 68 mm y margenes de
+  6 mm por lado.
+- Items, pagos y totales reservan una columna de importe alineada a la derecha.
+  UUIDs, SKU/tokens y nombres sin espacios reciben puntos de corte invisibles;
+  no se borran datos ni se cambian calculos.
+
+### QA tecnico posterior
+
+| Comando | Resultado |
+| --- | --- |
+| `cd backend-reporteria && npx tsx --test src/modules/pdf/templates/base/thermal-layout.spec.ts` | PASS - 4 tests |
+| `cd backend-reporteria && npm run build` | PASS |
+
+### QA fisico posterior requerido
+
+1. Abrir `/00000000-0000-0000-0000-000000000001/reporteria/pos`.
+2. Abrir la misma venta, pulsar `Imprimir` y seleccionar `XP-80`.
+3. Usar papel 80 mm y escala estandar/100 %, sin workaround manual.
+4. Verificar encabezado, items, cantidades, precios, pagos, caja, subtotal,
+   impuestos, total, pagado, cambio, saldo y footer.
+5. Confirmar que no hay clipping izquierdo/derecho ni caracteres fuera del
+   papel. Confirmar corte solo si el dialogo/driver lo ejecuta; Browser PDF no
+   manda un comando ESC/POS de corte.
+
+**Estado actual:** PASS tecnico. QA fisico THERMAL_80MM posterior pendiente.
+
+### Discovery posterior: POS -> Peripheral Agent (sin implementacion)
+
+- El cierre de venta vive en `web/modules/pos/components/PosScreen.tsx`.
+  `submitSale()` llama `createSale()` y, despues de confirmar, construye
+  `PosSalePeripheralContext` y ejecuta `handleSalePeripheralFeedback()`.
+- No existe un boton POS visible `Imprimir ticket`. La llamada actual es un
+  efecto asincrono post-venta, gobernado por feature flags de perifericos.
+- `runSalePeripheralOperations()` ya forma un payload para
+  `POST /printer/print-ticket` mediante `buildSaleTicketPayload()`. Ese
+  payload reutiliza items, totales y pagos ya confirmados; no reutiliza el PDF
+  de Reporteria como bytes.
+- La resolucion web prevista usa `resolvePeripheralTerminalConfig()` para
+  obtener `terminalId` y `printerDeviceId`. Si falla, cae a
+  `local-terminal` / `mock-printer-001`. El Agent, por su parte, busca por
+  `deviceId` exacto; actualmente no resuelve ni valida la asociacion por
+  `terminalId` durante `findRequired()`.
+- Para USB real sin dialogo Chrome falta una asociacion duradera y confiable
+  terminal -> deviceId disponible para el Agent despues de reinicio, UX de
+  operacion real en vez de mensajes `MOCK`, y contrato de resultado/errores
+  operacional. El registro del Agent sigue en memoria.
+- El adapter USB actual entrega texto a `System.Drawing.Printing.PrintDocument`.
+  Aunque el documento conceptual incluye `CUT`, este camino no envia bytes
+  ESC/POS RAW; por tanto el corte USB directo requiere un futuro adapter/raw
+  spooler o soporte confirmado del driver. No se implemento en este change.

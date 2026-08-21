@@ -24,9 +24,56 @@ type ThermalLayoutOptions = {
   footerText?: string;
 };
 
+const pointsPerMillimeter = 72 / 25.4;
+
+/**
+ * Thermal paper is nominally 80 mm wide, but common 203 dpi printers expose
+ * about 72 mm of dots. Keep a further 2 mm guard area inside that printable
+ * width so browser/driver printing does not place content at the paper edge.
+ */
+export const THERMAL_80MM_LAYOUT = {
+  profileId: "THERMAL_80MM",
+  paperWidthPt: 80 * pointsPerMillimeter,
+  printableWidthPt: 72 * pointsPerMillimeter,
+  safeContentWidthPt: 68 * pointsPerMillimeter,
+  safeHorizontalMarginPt: 6 * pointsPerMillimeter,
+  safeVerticalMarginPt: 4 * pointsPerMillimeter,
+  itemAmountColumnWidthPt: 60,
+  totalsAmountColumnWidthPt: 64,
+  metadataLabelColumnWidthPt: 48,
+} as const;
+
+const thermalSoftBreakInterval = 16;
+
+/**
+ * PDF line breaking does not always split a UUID, SKU or other long token.
+ * Add invisible break points without removing or changing its visible value.
+ */
+export const addThermalSoftBreaks = (value: string) =>
+  value
+    .split(/(\s+)/)
+    .map((token) =>
+      /^\s+$/.test(token)
+        ? token
+        : token.replace(
+            new RegExp(`(.{${thermalSoftBreakInterval}})(?=.)`, "g"),
+            "$1\u200B"
+          )
+    )
+    .join("");
+
 export const buildThermalDivider = (): Content => ({
   margin: [0, 6, 0, 6],
-  canvas: [{ type: "line", x1: 0, y1: 0, x2: 180, y2: 0, lineWidth: 0.5 }],
+  canvas: [
+    {
+      type: "line",
+      x1: 0,
+      y1: 0,
+      x2: THERMAL_80MM_LAYOUT.safeContentWidthPt,
+      y2: 0,
+      lineWidth: 0.5,
+    },
+  ],
 });
 
 export const buildThermalHeader = (
@@ -46,15 +93,22 @@ export const buildThermalSectionTitle = (title: string): Content => ({
 });
 
 export const buildThermalMetadata = (rows: MetadataRow[] = []): Content => ({
-  fontSize: 8.5,
-  stack: rows.map((row) => ({
-    text: `${row.label}: ${row.value}`,
-  })),
+  table: {
+    widths: [THERMAL_80MM_LAYOUT.metadataLabelColumnWidthPt, "*"],
+    body: rows.map(
+      (row) =>
+        [
+          { text: `${row.label}:`, style: "metadataLabel" },
+          { text: addThermalSoftBreaks(row.value), style: "metadataValue" },
+        ] as TableCell[]
+    ),
+  },
+  layout: "noBorders",
 });
 
 export const buildThermalTotals = (rows: TotalsRow[] = []): Content => ({
   table: {
-    widths: ["*", "auto"],
+    widths: ["*", THERMAL_80MM_LAYOUT.totalsAmountColumnWidthPt],
     body: rows.map(
       (row) =>
         [
@@ -92,6 +146,13 @@ export const thermalStyles: StyleDictionary = {
     fillColor: "#e2e8f0",
     fontSize: 8.5,
   },
+  metadataLabel: {
+    fontSize: 8.5,
+    bold: true,
+  },
+  metadataValue: {
+    fontSize: 8.5,
+  },
   totalsLabel: {
     fontSize: 8.5,
     bold: true,
@@ -110,10 +171,15 @@ export const buildThermalDocument = (
   options: ThermalLayoutOptions
 ): TDocumentDefinitions => ({
   pageSize: {
-    width: 226,
+    width: THERMAL_80MM_LAYOUT.paperWidthPt,
     height: "auto",
   },
-  pageMargins: [12, 12, 12, 16],
+  pageMargins: [
+    THERMAL_80MM_LAYOUT.safeHorizontalMarginPt,
+    THERMAL_80MM_LAYOUT.safeVerticalMarginPt,
+    THERMAL_80MM_LAYOUT.safeHorizontalMarginPt,
+    THERMAL_80MM_LAYOUT.safeVerticalMarginPt,
+  ],
   content: [
     buildThermalHeader(options.title, options.subtitle),
     ...(options.metadata && options.metadata.length > 0
