@@ -210,3 +210,88 @@ impresa físicamente.
   Aunque el documento conceptual incluye `CUT`, este camino no envia bytes
   ESC/POS RAW; por tanto el corte USB directo requiere un futuro adapter/raw
   spooler o soporte confirmado del driver. No se implemento en este change.
+
+## Impresion directa Reporteria POS
+
+### Cambio tecnico - 2026-08-20
+
+- La tabla de `/reporteria/pos` ahora separa `Ver ticket` e `Imprimir`.
+- `Ver ticket` abre solamente el PDF. El modal conserva `Cerrar` y
+  `Descargar`; no tiene accion `Imprimir`.
+- `Imprimir` solicita el dataset canonico autorizado con
+  `GET /reports/pos-sales/:saleId/ticket-data` y manda un trabajo a
+  `POST /printer/print-ticket` mediante el Peripheral Agent. No abre PDF,
+  dialogo Chrome ni selector de impresora.
+- La politica de reimpresion usa la terminal POS actual del operador. Una
+  venta historica no obliga a usar una terminal historica posiblemente remota
+  o apagada.
+- Se exige una configuracion persistida real de terminal con
+  `printerDeviceId`; una terminal real sin impresora retorna
+  `PRINTER_NOT_CONFIGURED`. No cae silenciosamente a `mock-printer-001`.
+- El contenido directo reutiliza items, totales y pagos canonicos. No toma
+  HTML, imagenes ni recalcula la venta.
+- Cuando los adapters reales estan habilitados, el Agent ejecuta discovery USB
+  al startup. El `deviceId` sigue siendo el identificador estable derivado de
+  la cola Windows, por ejemplo `XP-80`.
+- El adapter USB de Windows envia el documento a
+  `System.Drawing.Printing.PrintDocument`. Declara
+  `supportsPhysicalCut = false`; `USB RAW ESC/POS + physical CUT` sigue
+  pendiente.
+
+### QA tecnico
+
+| Comando | Resultado |
+| --- | --- |
+| `cd backend-perifericos && npm.cmd test` | PASS - 42 tests |
+| `cd backend-perifericos && npm.cmd run build` | PASS |
+| `cd backend-reporteria && npx.cmd tsx --test src/modules/reports/sales-reports.service.spec.ts` | PASS - 7 tests |
+| `cd backend-reporteria && npm.cmd run build:bin` | PASS |
+| `cd web && npx.cmd tsx --test modules/reporteria/direct-print.spec.ts domains/peripherals/contracts.spec.ts` | PASS - 2 tests |
+| `cd web && npm.cmd run lint` | PASS con warnings preexistentes |
+| `cd web && npm.cmd run build` | PASS con warnings preexistentes |
+
+### QA hardware requerida
+
+- Impresora: `XP-80`, USB Windows, cola/driver `XP-80`.
+- Discovery USB fisico ya confirmado: terminal `local-terminal`, deviceId
+  `usb-printer-1f0028d1fa5243c2`, perfil `THERMAL_80MM` y conexion `USB`.
+  La configuracion persistida usada para esta QA debe apuntar a ese deviceId
+  mientras el nombre de la cola no cambie.
+- Abrir una venta en `/reporteria/pos` y probar `Ver ticket`: preview,
+  `Cerrar`, `Descargar`, sin boton `Imprimir` dentro del modal.
+- Cerrar el modal y pulsar la accion de tabla `Imprimir`: no debe abrir Chrome
+  ni preview; el Agent debe enviar el trabajo al `deviceId` configurado de la
+  terminal actual.
+- Validar papel fisico, layout `THERMAL_80MM`, error al desconectar USB y
+  recuperacion al reconectar.
+- El resultado correcto de software es `Ticket enviado a la impresora`: no
+  confirma que el papel salio. No declarar PASS hardware hasta validar el
+  papel.
+
+**Estado:** PASS tecnico. QA hardware impresion directa XP-80 USB pendiente.
+**USB physical CUT:** PENDING.
+
+### Regresion QA manual: Agent no invocado - 2026-08-20
+
+- Resultado manual: FAIL antes de hardware. Al pulsar `Imprimir`, DevTools solo
+  mostro `OPTIONS` y `GET ticket-data`; no hubo `POST /printer/print-ticket`.
+- Causa raiz: `PosReportsPage` pasaba `posContext.terminalId` nulo cuando
+  Reporteria se abria sin contexto POS hidratado. `requireRealPrinterConfig()`
+  rechazaba ese valor antes de llamar a `resolve-current` o al Agent.
+- Fix: se elimina ese early return. Ahora la accion resuelve primero
+  `GET /pos-terminals/resolve-current` con tenant/sucursal. El API selecciona
+  la terminal activa por defecto de la sucursal; solo si devuelve una terminal
+  `CONFIGURED`, `REAL` o `HYBRID`, activa y con deviceId no mock se manda
+  `POST http://127.0.0.1:4050/printer/print-ticket`.
+- En desarrollo, si no existe `NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL`, el
+  default web ahora es `http://127.0.0.1:4050` (y WebSocket
+  `ws://127.0.0.1:4050/peripherals`), no `localhost`.
+- Device previsto para XP-80: `usb-printer-1f0028d1fa5243c2`. Si falta
+  configuracion real retorna `PRINTER_NOT_CONFIGURED`; Agent caido retorna
+  `AGENT_OFFLINE`; device ausente retorna `DEVICE_NOT_FOUND`.
+- Pruebas nuevas: terminal de sucursal -> Agent POST, fallback mock bloqueado,
+  Agent offline y device not found. PASS tecnico, 4 escenarios.
+
+**QA hardware impresion directa:** sigue PENDIENTE. Repetir primero DevTools:
+debe verse `GET /pos-terminals/resolve-current` y despues
+`POST http://127.0.0.1:4050/printer/print-ticket`. Solo despues validar papel.

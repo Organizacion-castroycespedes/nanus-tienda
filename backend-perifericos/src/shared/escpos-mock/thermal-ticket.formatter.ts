@@ -157,6 +157,9 @@ export const buildTicketPrintDocument = (
     writer.separator();
     writer.amount("TOTAL", content.total);
   }
+  writer.amount("Pagado", content.paid);
+  writer.amount("Cambio", content.change);
+  writer.amount("Saldo", content.balance);
 
   if (content.payments?.length) {
     writer.separator();
@@ -168,7 +171,6 @@ export const buildTicketPrintDocument = (
 
   writer.separator();
   writer.center(content.footer || "Gracias por su compra");
-  writer.center("ESC/POS MOCK - no hardware");
 
   return {
     preview: writer.toString(),

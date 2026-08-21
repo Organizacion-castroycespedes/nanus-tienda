@@ -13,6 +13,7 @@ import { buildSaleCancelTicketTemplate } from "../pdf/templates/tickets/sale-can
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import type {
   PosSaleCancelTicketDataset,
+  PosSaleTicketPrintDataset,
   PosSaleTicketDataset,
   PosSalesListDataset,
   PosSalesListRow,
@@ -234,6 +235,16 @@ export class SalesReportsService {
   async getSaleTicketPdf(saleId: string, user?: ReportUser) {
     const dataset = await this.getSaleTicket(saleId, user);
     return this.pdfEngine.generatePdf(buildPosSaleTicketTemplate(dataset));
+  }
+
+  async getSaleTicketPrintData(
+    saleId: string,
+    user?: ReportUser
+  ): Promise<PosSaleTicketPrintDataset> {
+    const actor = this.resolveActor(user);
+    const ticket = await this.getSaleTicket(saleId, user);
+
+    return { tenantId: actor.tenantId, ticket };
   }
 
   async getSaleCancelTicket(saleId: string, user?: ReportUser) {

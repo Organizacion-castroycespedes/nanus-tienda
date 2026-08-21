@@ -154,6 +154,7 @@ test("USB system adapter prints through CUPS queue with a fake command runner", 
   assert.match(result.preview, /THERMAL_80MM/);
   assert.match(result.preview, /USB/);
   assert.match(result.preview, /IMPRESION OK/);
+  assert.equal(result.capabilities.supportsPhysicalCut, false);
 });
 
 test("USB adapter returns a controlled print error", () => {

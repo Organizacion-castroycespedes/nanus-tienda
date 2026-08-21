@@ -98,6 +98,11 @@ export type PosSaleTicketDataset = {
   } | null;
 };
 
+export type PosSaleTicketPrintDataset = {
+  tenantId: string;
+  ticket: PosSaleTicketDataset;
+};
+
 export type PosSaleCancelTicketDataset = {
   header: {
     saleId: string;

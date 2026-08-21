@@ -124,7 +124,7 @@ export class PrinterService {
       event: "printer.test_print.started",
       message:
         mode === "REAL"
-          ? "Test print network ESC/POS job started"
+          ? "Test print job started"
           : "Test print simulation started",
       metadata,
     });
@@ -150,7 +150,7 @@ export class PrinterService {
           : "printer.test_print.simulated",
       message:
         mode === "REAL"
-          ? "Test print sent to network ESC/POS printer"
+          ? "Test print sent to configured printer"
           : "Test print simulated successfully",
       metadata,
     });
@@ -169,7 +169,7 @@ export class PrinterService {
       bytesSent: result.bytesSent,
       message:
         mode === "REAL"
-          ? "Print job sent to network ESC/POS printer"
+          ? "Print job sent to configured printer"
           : "Test print simulated successfully",
     };
   }
@@ -275,7 +275,7 @@ export class PrinterService {
       event: "printer.ticket_print.started",
       message:
         mode === "REAL"
-          ? "Ticket print network ESC/POS job started"
+          ? "Ticket print job started"
           : "Ticket print simulation started",
       metadata,
     });
@@ -301,7 +301,7 @@ export class PrinterService {
           : "printer.ticket_print.simulated",
       message:
         mode === "REAL"
-          ? "Ticket print sent to network ESC/POS printer"
+          ? "Ticket print sent to configured printer"
           : "Ticket print simulated successfully",
       metadata,
     });
@@ -320,7 +320,7 @@ export class PrinterService {
       bytesSent: result.bytesSent,
       message:
         mode === "REAL"
-          ? "Print job sent to network ESC/POS printer"
+          ? "Print job sent to configured printer"
           : "Ticket print simulated successfully",
     };
   }
@@ -392,6 +392,9 @@ export class PrinterService {
       taxes: optionalTicketNumber(record, "taxes"),
       discounts: optionalTicketNumber(record, "discounts"),
       total: optionalTicketNumber(record, "total"),
+      paid: optionalTicketNumber(record, "paid"),
+      change: optionalTicketNumber(record, "change"),
+      balance: optionalTicketNumber(record, "balance"),
       payments,
     };
   }

@@ -8,6 +8,7 @@ import {
 } from "./shared/config/peripherals.config";
 import { SanitizedHttpExceptionFilter } from "./shared/filters/sanitized-http-exception.filter";
 import { EventsService } from "./modules/events/events.service";
+import { DevicesService } from "./modules/devices/devices.service";
 
 loadEnv();
 
@@ -20,6 +21,10 @@ async function bootstrap() {
 
   const eventsService = app.get(EventsService);
   eventsService.attach(app.getHttpServer(), config.allowedOrigins);
+
+  if (config.realAdaptersEnabled) {
+    app.get(DevicesService).discoverOnStartup();
+  }
 
   await app.listen(config.port, "127.0.0.1");
 

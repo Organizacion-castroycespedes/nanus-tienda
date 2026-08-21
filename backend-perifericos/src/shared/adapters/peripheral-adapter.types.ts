@@ -16,6 +16,7 @@ export type AdapterCapabilities = {
   mode: AdapterMode;
   connectionType: ConnectionType;
   supportsCut: boolean;
+  supportsPhysicalCut: boolean;
   supportsCashDrawerPulse: boolean;
 };
 

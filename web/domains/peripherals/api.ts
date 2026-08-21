@@ -25,6 +25,7 @@ export type PeripheralAgentRequestErrorCode =
   | "TIMEOUT"
   | "CONNECTION_REFUSED"
   | "PRINT_ERROR"
+  | "PRINTER_NOT_CONFIGURED"
   | "HTTP_ERROR";
 
 export type PeripheralAgentConfig = {
@@ -68,8 +69,8 @@ export const isPeripheralAgentRequestError = (
 ): error is PeripheralAgentRequestError =>
   error instanceof PeripheralAgentRequestError;
 
-const developmentHttpUrl = "http://localhost:4050";
-const developmentWsUrl = "ws://localhost:4050/peripherals";
+const developmentHttpUrl = "http://127.0.0.1:4050";
+const developmentWsUrl = "ws://127.0.0.1:4050/peripherals";
 
 const productionHttpsRequiredMessage =
   "NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL debe ser una URL HTTPS publica en produccion.";

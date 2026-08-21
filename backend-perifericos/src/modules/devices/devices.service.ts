@@ -37,6 +37,7 @@ import {
 } from "../../shared/usb/usb-printer-discovery";
 import { EventsService } from "../events/events.service";
 import { LogsService } from "../logs/logs.service";
+import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
 import type {
   CreateMockDeviceRequest,
   DiscoverDevicesResponse,
@@ -93,6 +94,36 @@ export class DevicesService {
     @Optional()
     private readonly usbDiscovery: UsbPrinterDiscovery = new SystemUsbPrinterDiscovery()
   ) {}
+
+  discoverOnStartup(): void {
+    if (!getPeripheralsConfig().realAdaptersEnabled) {
+      return;
+    }
+
+    try {
+      const discovery = this.discover();
+      this.logsService.append({
+        source: "devices",
+        event: "devices.discover.startup",
+        message: "USB printer discovery completed during agent startup",
+        metadata: {
+          usbPrinterCount: discovery.devices.filter(
+            (device) => device.connectionType === ConnectionType.USB
+          ).length,
+        },
+      });
+    } catch (error) {
+      this.logsService.append({
+        level: LogLevel.WARN,
+        source: "devices",
+        event: "devices.discover.startup_failed",
+        message: "USB printer discovery failed during agent startup",
+        metadata: {
+          errorMessage: error instanceof Error ? error.message : "unknown error",
+        },
+      });
+    }
+  }
 
   list(): PeripheralDevice[] {
     return this.devices.map((device) => this.cloneDevice(device));

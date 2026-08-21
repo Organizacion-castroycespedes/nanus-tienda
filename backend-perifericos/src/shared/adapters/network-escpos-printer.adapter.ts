@@ -66,6 +66,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       mode: this.mode,
       connectionType: this.connectionType,
       supportsCut: profile.supportsCut,
+      supportsPhysicalCut: profile.supportsCut,
       supportsCashDrawerPulse: false,
     };
   }

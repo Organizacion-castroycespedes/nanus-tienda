@@ -86,6 +86,9 @@ export type PeripheralTicketContent = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: PeripheralTicketPayment[];
   footer?: string;
   title?: string;
@@ -117,6 +120,9 @@ export type BaseTicketInput = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: PeripheralTicketPayment[];
   footer?: string;
   notes?: string[];
@@ -176,6 +182,7 @@ export type PeripheralOperationError = {
     | "TIMEOUT"
     | "CONNECTION_REFUSED"
     | "PRINT_ERROR"
+    | "PRINTER_NOT_CONFIGURED"
     | "NETWORK_ERROR"
     | "HTTP_ERROR"
     | "AGENT_ERROR"
@@ -312,6 +319,7 @@ export type PeripheralCapabilities = {
   mode?: string;
   connectionType?: PeripheralConnectionType | string;
   supportsCut?: boolean;
+  supportsPhysicalCut?: boolean;
   supportsCashDrawerPulse?: boolean;
   [key: string]: unknown;
 };
