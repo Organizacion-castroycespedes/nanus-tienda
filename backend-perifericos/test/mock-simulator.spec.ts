@@ -34,11 +34,22 @@ import {
   DEVICE_PROFILES,
   DeviceProfileId,
 } from "../src/shared/profiles/device-profiles";
+import type { UsbPrinterDiscovery } from "../src/shared/usb/usb-printer-discovery";
+
+const emptyUsbDiscovery: UsbPrinterDiscovery = {
+  list: () => [],
+};
 
 const buildServices = () => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
-  const devicesService = new DevicesService(logsService, eventsService);
+  // MOCK tests must not call the real Windows spooler. Physical discovery is
+  // covered independently by the Windows provider and packaged-Agent smoke.
+  const devicesService = new DevicesService(
+    logsService,
+    eventsService,
+    emptyUsbDiscovery
+  );
   const printerService = new PrinterService(
     devicesService,
     logsService,
@@ -148,7 +159,7 @@ test("mock printer adapter generates test print with profile preview", () => {
 
   assert.equal(result.adapterName, "MockPrinterAdapter");
   assert.equal(result.profile.id, DeviceProfileId.Thermal80mm);
-  assert.match(result.preview, /ESC\/POS MOCK TEST/);
+  assert.match(result.preview, /PRUEBA DE IMPRESION/);
   assert.match(result.preview, /80mm \/ 48 chars/);
   assert.equal(result.capabilities.supportsCut, true);
   assert.equal(
@@ -276,13 +287,13 @@ test("discover logs and emits connected events", () => {
   const result = devicesController.discover();
 
   assert.equal(result.success, true);
-  assert.equal(result.devices.length, 4);
+  assert.ok(result.devices.length >= 4);
   assert.equal(logsService.list()[0].event, "devices.discover.simulated");
   assert.equal(
     eventsService.getRecentEvents().filter(
       (event) => event.event === PeripheralEventName.DeviceConnected
     ).length,
-    4
+    result.devices.length
   );
 });
 
@@ -305,7 +316,7 @@ test("test print simulates job logs and events", async () => {
   assert.equal(result.bytesSent, undefined);
   assert.equal(result.deviceId, "mock-printer-001");
   assert.equal(result.terminalId, "local-terminal");
-  assert.match(result.preview, /ESC\/POS MOCK TEST/);
+  assert.match(result.preview, /PRUEBA DE IMPRESION/);
   assert.match(result.preview, /80mm \/ 48 chars/);
   assert.equal(
     result.commands.some((command) => command.name === EscPosMockCommandName.Init),

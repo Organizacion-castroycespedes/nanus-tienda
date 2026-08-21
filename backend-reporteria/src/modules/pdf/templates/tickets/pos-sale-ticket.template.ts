@@ -1,8 +1,10 @@
 import type { Content, TableCell } from "pdfmake/interfaces";
 import type { PosSaleTicketDataset } from "../../../reports/types/sales-report.types";
 import {
+  addThermalSoftBreaks,
   buildThermalDocument,
   buildThermalSectionTitle,
+  THERMAL_80MM_LAYOUT,
 } from "../base/thermal-layout";
 
 const formatCurrency = (value: number) =>
@@ -42,7 +44,7 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
           buildThermalSectionTitle("Items"),
           {
             table: {
-              widths: ["*", "auto"],
+              widths: ["*", THERMAL_80MM_LAYOUT.itemAmountColumnWidthPt],
               body: [
                 [
                   { text: "Item", style: "tableHeader" },
@@ -53,7 +55,10 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
                     [
                       {
                         stack: [
-                          { text: item.productName, bold: true },
+                          {
+                            text: addThermalSoftBreaks(item.productName),
+                            bold: true,
+                          },
                           {
                             text: `${item.quantity} x ${formatCurrency(item.unitPrice)}`,
                             color: "#475569",
@@ -80,13 +85,14 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
                 (payment): Content => ({
                   columns: [
                     {
-                      width: "*",
+                      width: THERMAL_80MM_LAYOUT.safeContentWidthPt -
+                        THERMAL_80MM_LAYOUT.itemAmountColumnWidthPt,
                       text: payment.method,
                       fontSize: 8.5,
                       bold: true,
                     },
                     {
-                      width: "auto",
+                      width: THERMAL_80MM_LAYOUT.itemAmountColumnWidthPt,
                       text: formatCurrency(payment.amount),
                       fontSize: 8.5,
                       alignment: "right",

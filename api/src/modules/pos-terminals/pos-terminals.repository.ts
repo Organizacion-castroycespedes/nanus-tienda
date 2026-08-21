@@ -9,6 +9,10 @@ export type PosTerminalRecord = {
   tenant_id: string;
   branch_id: string;
   branch_name: string | null;
+  operational_terminal_id: string | null;
+  operational_terminal_code: string | null;
+  operational_terminal_name: string | null;
+  operational_terminal_active: boolean | null;
   code: string;
   name: string;
   description: string | null;
@@ -16,6 +20,16 @@ export type PosTerminalRecord = {
   mode: PosTerminalMode;
   created_at: string;
   updated_at: string;
+};
+
+export type OperationalTerminalRecord = {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  branch_name: string | null;
+  code: string;
+  name: string;
+  is_active: boolean;
 };
 
 export type PosTerminalPeripheralSettingsRecord = {
@@ -44,6 +58,7 @@ export type BranchRecord = {
 export type CreatePosTerminalInput = {
   tenantId: string;
   branchId: string;
+  operationalTerminalId: string | null;
   code: string;
   name: string;
   description: string | null;
@@ -52,7 +67,16 @@ export type CreatePosTerminalInput = {
 };
 
 export type UpdatePosTerminalInput = Partial<
-  Pick<CreatePosTerminalInput, "branchId" | "code" | "name" | "description" | "active" | "mode">
+  Pick<
+    CreatePosTerminalInput,
+    | "branchId"
+    | "operationalTerminalId"
+    | "code"
+    | "name"
+    | "description"
+    | "active"
+    | "mode"
+  >
 >;
 
 export type UpsertPeripheralSettingsInput = {
@@ -90,6 +114,10 @@ export class PosTerminalsRepository {
         terminal.tenant_id,
         terminal.branch_id,
         branch.nombre AS branch_name,
+        terminal.operational_terminal_id,
+        operational_terminal.code AS operational_terminal_code,
+        operational_terminal.name AS operational_terminal_name,
+        operational_terminal.is_active AS operational_terminal_active,
         terminal.code,
         terminal.name,
         terminal.description,
@@ -101,6 +129,8 @@ export class PosTerminalsRepository {
       LEFT JOIN public.tenant_branches AS branch
         ON branch.id = terminal.branch_id
        AND branch.tenant_id = terminal.tenant_id
+      LEFT JOIN public.terminals AS operational_terminal
+        ON operational_terminal.id = terminal.operational_terminal_id
     `;
   }
 
@@ -201,6 +231,44 @@ export class PosTerminalsRepository {
     return result.rows[0] ?? null;
   }
 
+  async findOperationalTerminalById(id: string, tenantId: string) {
+    const result = await this.query<OperationalTerminalRecord>(
+      `SELECT
+        terminal.id,
+        terminal.tenant_id,
+        terminal.branch_id,
+        branch.nombre AS branch_name,
+        terminal.code,
+        terminal.name,
+        terminal.is_active
+      FROM public.terminals AS terminal
+      LEFT JOIN public.tenant_branches AS branch
+        ON branch.id = terminal.branch_id
+       AND branch.tenant_id = terminal.tenant_id
+      WHERE terminal.id = $1
+        AND terminal.tenant_id = $2
+      LIMIT 1`,
+      [id, tenantId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async findByOperationalTerminalId(
+    tenantId: string,
+    branchId: string,
+    operationalTerminalId: string
+  ) {
+    const result = await this.query<PosTerminalRecord>(
+      `${this.selectTerminalSql()}
+      WHERE terminal.tenant_id = $1
+        AND terminal.branch_id = $2
+        AND terminal.operational_terminal_id = $3
+      LIMIT 1`,
+      [tenantId, branchId, operationalTerminalId]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async findDefaultForBranch(tenantId: string, branchId: string) {
     const result = await this.query<PosTerminalRecord>(
       `${this.selectTerminalSql()}
@@ -221,17 +289,19 @@ export class PosTerminalsRepository {
       `INSERT INTO public.pos_terminals (
         tenant_id,
         branch_id,
+        operational_terminal_id,
         code,
         name,
         description,
         active,
         mode
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id`,
       [
         data.tenantId,
         data.branchId,
+        data.operationalTerminalId,
         data.code,
         data.name,
         data.description,
@@ -252,6 +322,9 @@ export class PosTerminalsRepository {
     };
 
     if (data.branchId !== undefined) addUpdate("branch_id", data.branchId);
+    if (data.operationalTerminalId !== undefined) {
+      addUpdate("operational_terminal_id", data.operationalTerminalId);
+    }
     if (data.code !== undefined) addUpdate("code", data.code);
     if (data.name !== undefined) addUpdate("name", data.name);
     if (data.description !== undefined) addUpdate("description", data.description);

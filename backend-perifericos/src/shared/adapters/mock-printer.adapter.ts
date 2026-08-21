@@ -24,6 +24,7 @@ export class MockPrinterAdapter implements PrinterAdapter {
       mode: this.mode,
       connectionType: this.connectionType,
       supportsCut: profile.supportsCut,
+      supportsPhysicalCut: false,
       supportsCashDrawerPulse: profile.supportsCashDrawerPulse,
     };
   }
@@ -34,6 +35,9 @@ export class MockPrinterAdapter implements PrinterAdapter {
       mode: input.mode,
       terminalId: input.terminalId,
       deviceId: input.device.id,
+      printerName: input.device.name,
+      profileId: input.profile.id,
+      connectionType: input.device.connectionType,
       widthChars: input.profile.widthChars,
       paperWidthMm: input.profile.paperWidthMm,
       timestamp: input.timestamp,

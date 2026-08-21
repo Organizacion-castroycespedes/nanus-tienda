@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Modal } from "../../../components/design-system/Modal";
 import { downloadBlob, getApiErrorMessage } from "../utils";
@@ -23,7 +23,6 @@ export const PdfPreviewModal = ({
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -100,12 +99,6 @@ export const PdfPreviewModal = ({
           >
             Descargar
           </Button>
-          <Button
-            onClick={() => iframeRef.current?.contentWindow?.print()}
-            disabled={!objectUrl || loading}
-          >
-            Imprimir
-          </Button>
         </>
       }
     >
@@ -120,7 +113,6 @@ export const PdfPreviewModal = ({
           </div>
         ) : objectUrl ? (
           <iframe
-            ref={iframeRef}
             src={objectUrl}
             title={title}
             className="h-[520px] w-full bg-white"

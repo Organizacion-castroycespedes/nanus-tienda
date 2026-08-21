@@ -30,6 +30,11 @@ export type DeviceNetworkConfig = {
   timeoutMs?: number;
 };
 
+export type DeviceUsbConfig = {
+  deviceId: string;
+  printerName: string;
+};
+
 export type PeripheralDevice = {
   id: string;
   type: PeripheralDeviceType;
@@ -40,6 +45,7 @@ export type PeripheralDevice = {
   profileId?: string;
   profile?: DeviceProfile;
   network?: DeviceNetworkConfig;
+  usb?: DeviceUsbConfig;
 };
 
 export type CreateDeviceRequest = {
@@ -51,6 +57,7 @@ export type CreateDeviceRequest = {
   terminalId: string;
   profileId?: string;
   network?: DeviceNetworkConfig;
+  usb?: DeviceUsbConfig;
 };
 
 export type PeripheralTicketItem = {
@@ -79,6 +86,9 @@ export type PeripheralTicketContent = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: PeripheralTicketPayment[];
   footer?: string;
   title?: string;
@@ -110,6 +120,9 @@ export type BaseTicketInput = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: PeripheralTicketPayment[];
   footer?: string;
   notes?: string[];
@@ -165,6 +178,11 @@ export type PeripheralOperationError = {
     | "MISSING_CONFIG"
     | "INVALID_CONFIG"
     | "AGENT_OFFLINE"
+    | "DEVICE_NOT_FOUND"
+    | "TIMEOUT"
+    | "CONNECTION_REFUSED"
+    | "PRINT_ERROR"
+    | "PRINTER_NOT_CONFIGURED"
     | "NETWORK_ERROR"
     | "HTTP_ERROR"
     | "AGENT_ERROR"
@@ -203,6 +221,10 @@ export type PosTerminalResponse = {
   tenantId: string;
   branchId: string;
   branchName?: string | null;
+  operationalTerminalId: string | null;
+  operationalTerminalCode: string | null;
+  operationalTerminalName: string | null;
+  operationalTerminalActive: boolean | null;
   code: string;
   name: string;
   description?: string | null;
@@ -222,31 +244,37 @@ export type PosTerminalFeatureFlags = {
 };
 
 export type PosTerminalPeripheralSettings = {
-  printerDeviceId: string;
-  cashDrawerDeviceId: string;
-  scaleDeviceId: string;
-  scannerDeviceId: string;
+  printerDeviceId: string | null;
+  cashDrawerDeviceId: string | null;
+  scaleDeviceId: string | null;
+  scannerDeviceId: string | null;
   features: PosTerminalFeatureFlags;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
 
 export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
-  terminalId: string;
+  /** @deprecated Legacy alias for agentTerminalCode. */
+  terminalId: string | null;
+  agentTerminalCode: string | null;
+  operationalTerminalId: string | null;
+  operationalTerminalCode: string | null;
+  operationalTerminalName: string | null;
   posTerminalId: string | null;
   tenantId: string | null;
   branchId: string | null;
   branchName?: string | null;
   code: string;
   name: string;
-  mode: PosTerminalMode;
+  mode: PosTerminalMode | null;
   active: boolean;
-  source: "CONFIGURED" | "FALLBACK_MOCK";
+  source: "CONFIGURED" | "FALLBACK_MOCK" | "OPERATIONAL_UNCONFIGURED";
 };
 
 export type CreatePosTerminalRequest = {
   tenantId?: string;
   branchId: string;
+  operationalTerminalId?: string | null;
   code: string;
   name: string;
   description?: string | null;
@@ -301,6 +329,7 @@ export type PeripheralCapabilities = {
   mode?: string;
   connectionType?: PeripheralConnectionType | string;
   supportsCut?: boolean;
+  supportsPhysicalCut?: boolean;
   supportsCashDrawerPulse?: boolean;
   [key: string]: unknown;
 };
