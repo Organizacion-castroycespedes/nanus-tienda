@@ -92,6 +92,12 @@ import {
   findUniquePosScannerProduct,
   normalizePosScannerCode,
 } from "../utils/pos-scanner";
+import {
+  capturePosScannerWedgeChar,
+  createPosScannerWedgeState,
+  DEFAULT_POS_SCANNER_WEDGE_OPTIONS,
+  shouldCommitPosScannerWedge,
+} from "../utils/pos-scanner-wedge";
 import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
 import {
@@ -558,6 +564,7 @@ export const PosScreen = () => {
   const productsRef = useRef(products);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scannerErrorToastShownRef = useRef(false);
+  const scannerWedgeStateRef = useRef(createPosScannerWedgeState());
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -1473,6 +1480,8 @@ export const PosScreen = () => {
       }
 
       setScannerMockStatus("connected");
+      setQuery("");
+      scannerWedgeStateRef.current = createPosScannerWedgeState();
       setScannerLastCode(code);
       const product = findUniquePosScannerProduct(code, productsRef.current);
 
@@ -1718,15 +1727,46 @@ export const PosScreen = () => {
         if (query.trim()) {
           event.preventDefault();
           setQuery("");
+          scannerWedgeStateRef.current = createPosScannerWedgeState();
         }
         return;
+      }
+
+      if (scannerMockEnabled) {
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          scannerWedgeStateRef.current = capturePosScannerWedgeChar(
+            scannerWedgeStateRef.current,
+            event.key,
+            event.timeStamp,
+            DEFAULT_POS_SCANNER_WEDGE_OPTIONS
+          );
+        }
+
+        if (event.key === "Enter") {
+          const wedgeState = scannerWedgeStateRef.current;
+          if (
+            shouldCommitPosScannerWedge(
+              wedgeState,
+              event.timeStamp,
+              DEFAULT_POS_SCANNER_WEDGE_OPTIONS
+            )
+          ) {
+            event.preventDefault();
+            handleScannerCodeRead({
+              success: true,
+              code: wedgeState.buffer,
+              format: "CODE128",
+              timestamp: new Date().toISOString(),
+            });
+            return;
+          }
+        }
       }
 
       if (event.key !== "Enter") {
         return;
       }
 
-      const firstProduct = filteredProducts[0];
       const exactMatch = findUniquePosScannerProduct(query, filteredProducts);
       if (!exactMatch) {
         return;
@@ -1735,7 +1775,13 @@ export const PosScreen = () => {
       event.preventDefault();
       handleProductCardAction(exactMatch);
     },
-    [filteredProducts, handleProductCardAction, query]
+    [
+      filteredProducts,
+      handleProductCardAction,
+      handleScannerCodeRead,
+      query,
+      scannerMockEnabled,
+    ]
   );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {

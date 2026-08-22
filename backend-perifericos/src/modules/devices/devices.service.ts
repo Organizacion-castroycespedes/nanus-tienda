@@ -131,7 +131,20 @@ export class DevicesService {
 
   discover(): DiscoverDevicesResponse {
     const discoveredAt = new Date().toISOString();
-    const usbDescriptors = this.usbDiscovery.list();
+    let usbDescriptors: UsbPrinterDescriptor[] = [];
+    try {
+      usbDescriptors = this.usbDiscovery.list();
+    } catch (error) {
+      this.logsService.append({
+        level: LogLevel.WARN,
+        source: "devices",
+        event: "devices.discover.usb_failed",
+        message: "USB printer discovery failed; keeping mock device list",
+        metadata: {
+          errorMessage: error instanceof Error ? error.message : "unknown error",
+        },
+      });
+    }
     this.usbDevices = new Map(
       usbDescriptors.map((descriptor) => [descriptor.deviceId, descriptor])
     );

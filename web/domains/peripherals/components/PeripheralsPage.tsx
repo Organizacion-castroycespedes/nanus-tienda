@@ -188,6 +188,7 @@ const connectionTone: Record<string, string> = {
   USB: "border-amber-200 bg-amber-50 text-amber-800",
   SERIAL: "border-amber-200 bg-amber-50 text-amber-800",
   HID: "border-amber-200 bg-amber-50 text-amber-800",
+  USB_HID: "border-amber-200 bg-amber-50 text-amber-800",
   NETWORK: "border-blue-200 bg-blue-50 text-blue-800",
   BLUETOOTH: "border-blue-200 bg-blue-50 text-blue-800",
 };
@@ -308,6 +309,14 @@ const getNetworkEndpoint = (device: PeripheralDevice) => {
   }
 
   return `${device.network.host}:${device.network.port}`;
+};
+
+const getResponseNetworkEndpoint = (response?: PeripheralActionResponse) => {
+  if (!response?.network) {
+    return "-";
+  }
+
+  return `${response.network.host}:${response.network.port}`;
 };
 
 const isRealAdapterDisabledError = (message: string) =>
@@ -433,6 +442,7 @@ const PeripheralCapabilitiesList = ({
         />
         <InfoField label="widthChars" value={profile?.widthChars ?? "-"} />
         <InfoField label="connectionType" value={capabilities?.connectionType ?? "-"} />
+        <InfoField label="network" value={getResponseNetworkEndpoint(response)} />
         <InfoField label="commandCount" value={commandCount} />
       </div>
     </div>

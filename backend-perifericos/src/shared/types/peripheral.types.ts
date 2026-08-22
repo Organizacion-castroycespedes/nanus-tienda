@@ -19,6 +19,7 @@ export enum ConnectionType {
   USB = "USB",
   SERIAL = "SERIAL",
   HID = "HID",
+  USB_HID = "USB_HID",
   NETWORK = "NETWORK",
   BLUETOOTH = "BLUETOOTH",
 }

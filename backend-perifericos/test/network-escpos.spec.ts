@@ -267,6 +267,102 @@ test("NetworkEscposPrinterAdapter reports bytesSent with socket mock", async () 
   assert.equal(socket.ended, true);
 });
 
+test("network printer service response exposes host port bytes and cut capability", async () => {
+  const previous = process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;
+  process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS = "true";
+
+  try {
+    const logsService = new LogsService();
+    const eventsService = new EventsService();
+    const devicesService = new DevicesService(logsService, eventsService);
+    const printerService = new PrinterService(
+      devicesService,
+      logsService,
+      eventsService
+    );
+
+    (printerService as unknown as {
+      adapterResolver: {
+        resolveProfile: (device: PeripheralDevice) => typeof DEVICE_PROFILES.THERMAL_80MM;
+        resolvePrinter: () => {
+          adapterName: string;
+          mode: "REAL";
+          printTest: (input: {
+            agentName: string;
+            mode: "REAL";
+            terminalId: string;
+            device: PeripheralDevice;
+            profile: typeof DEVICE_PROFILES.THERMAL_80MM;
+            jobId: string;
+            timestamp: string;
+          }) => Promise<{
+            adapterName: string;
+            profile: typeof DEVICE_PROFILES.THERMAL_80MM;
+            capabilities: {
+              adapterName: string;
+              mode: "REAL";
+              connectionType: ConnectionType.NETWORK;
+              supportsCut: true;
+              supportsPhysicalCut: true;
+              supportsCashDrawerPulse: false;
+            };
+            preview: string;
+            commands: [];
+            bytesSent: number;
+          }>;
+        };
+      };
+    }).adapterResolver = {
+      resolveProfile: () => DEVICE_PROFILES.THERMAL_80MM,
+      resolvePrinter: () => ({
+        adapterName: "NetworkEscposPrinterAdapter",
+        mode: "REAL" as const,
+        printTest: async () => ({
+          adapterName: "NetworkEscposPrinterAdapter",
+          profile: DEVICE_PROFILES.THERMAL_80MM,
+          capabilities: {
+            adapterName: "NetworkEscposPrinterAdapter",
+            mode: "REAL" as const,
+            connectionType: ConnectionType.NETWORK,
+            supportsCut: true,
+            supportsPhysicalCut: true,
+            supportsCashDrawerPulse: false,
+          },
+          preview: "LAN TEST",
+          commands: [],
+          bytesSent: 123,
+        }),
+      }),
+    };
+
+    devicesService.create({
+      ...networkPrinter,
+    });
+
+    const result = await printerService.testPrint({
+      terminalId: "local-terminal",
+      deviceId: networkPrinter.id,
+    });
+
+    assert.equal(result.adapterName, "NetworkEscposPrinterAdapter");
+    assert.equal(result.mode, "REAL");
+    assert.deepEqual(result.network, {
+      host: "192.168.1.50",
+      port: 9100,
+      timeoutMs: 3000,
+    });
+    assert.equal(result.capabilities.connectionType, ConnectionType.NETWORK);
+    assert.equal(result.capabilities.supportsPhysicalCut, true);
+    assert.equal(result.bytesSent, 123);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;
+    } else {
+      process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS = previous;
+    }
+  }
+});
+
 test("NetworkEscposPrinterAdapter socket error returns controlled error", async () => {
   const adapter = new NetworkEscposPrinterAdapter(
     () => new FakeNetworkSocket(true)
