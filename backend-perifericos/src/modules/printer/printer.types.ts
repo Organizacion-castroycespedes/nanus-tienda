@@ -7,6 +7,7 @@ import type {
   AdapterMode,
 } from "../../shared/adapters/peripheral-adapter.types";
 import type { DeviceProfile } from "../../shared/profiles/device-profiles";
+import type { NetworkConnectionOptions } from "../../shared/types/peripheral.types";
 
 export type TestPrintRequest = {
   terminalId?: string;
@@ -27,6 +28,7 @@ export type PrinterJobResponse = {
   adapterName: string;
   deviceId: string;
   terminalId: string;
+  network?: NetworkConnectionOptions;
   preview: string;
   commands: EscPosMockCommand[];
   profile: DeviceProfile;

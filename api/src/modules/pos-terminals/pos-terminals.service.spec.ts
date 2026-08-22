@@ -308,6 +308,22 @@ describe("PosTerminalsService", () => {
     assert.deepEqual(calls, ["upsertSettings"]);
   });
 
+  it("allows clearing printer association with null", async () => {
+    const { service } = buildService({
+      settings: buildSettings({ printer_device_id: "network-printer-001" }),
+    });
+
+    const settings = await service.savePeripheralSettings(
+      terminalId,
+      {
+        printerDeviceId: null,
+      },
+      actor
+    );
+
+    assert.equal(settings.printerDeviceId, null);
+  });
+
   it("resolves configured terminal with peripheral settings", async () => {
     const { service } = buildService({
       settings: buildSettings({

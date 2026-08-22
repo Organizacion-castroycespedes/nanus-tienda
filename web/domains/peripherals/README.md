@@ -253,3 +253,13 @@ Restricciones de scanner:
 - No conecta scanner fisico.
 - No usa USB, HID, serial, drivers, Electron ni Capacitor.
 - No cambia inventario core ni facturacion.
+
+## Integracion scanner HID real
+
+La ruta real del scanner HID no usa `POST /scanner/simulate`. El POS lee el
+teclado wedge en el campo global de busqueda y solo convierte la secuencia en
+scan si llega rapida y termina con `Enter`.
+
+El scanner real se representa en la terminal como capability de teclado wedge
+para `TERM-001`. Si no necesita `deviceId` fisico, la configuracion debe dejar
+eso claro y no reutilizar `mock-scanner-001`.

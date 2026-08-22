@@ -144,6 +144,20 @@ export class PosTerminalsService {
     return normalized ? normalized : null;
   }
 
+  private normalizeOptionalSetting(
+    value: string | null | undefined,
+    fallback: string | null
+  ) {
+    if (value === undefined) {
+      return fallback;
+    }
+    if (value === null) {
+      return null;
+    }
+    const normalized = value.trim();
+    return normalized ? normalized : null;
+  }
+
   private normalizeMode(mode: PosTerminalMode | undefined) {
     const normalized = mode ?? "MOCK";
     if (!allowedModes.includes(normalized)) {
@@ -160,18 +174,22 @@ export class PosTerminalsService {
     payload: PosTerminalSettingsDto = {}
   ): UpsertPeripheralSettingsInput {
     return {
-      printerDeviceId:
-        this.normalizeOptionalText(payload.printerDeviceId) ??
-        fallbackSettings.printerDeviceId,
-      cashDrawerDeviceId:
-        this.normalizeOptionalText(payload.cashDrawerDeviceId) ??
-        fallbackSettings.cashDrawerDeviceId,
-      scaleDeviceId:
-        this.normalizeOptionalText(payload.scaleDeviceId) ??
-        fallbackSettings.scaleDeviceId,
-      scannerDeviceId:
-        this.normalizeOptionalText(payload.scannerDeviceId) ??
-        fallbackSettings.scannerDeviceId,
+      printerDeviceId: this.normalizeOptionalSetting(
+        payload.printerDeviceId,
+        fallbackSettings.printerDeviceId
+      ),
+      cashDrawerDeviceId: this.normalizeOptionalSetting(
+        payload.cashDrawerDeviceId,
+        fallbackSettings.cashDrawerDeviceId
+      ),
+      scaleDeviceId: this.normalizeOptionalSetting(
+        payload.scaleDeviceId,
+        fallbackSettings.scaleDeviceId
+      ),
+      scannerDeviceId: this.normalizeOptionalSetting(
+        payload.scannerDeviceId,
+        fallbackSettings.scannerDeviceId
+      ),
       enablePrintSale: payload.enablePrintSale ?? true,
       enablePrintPurchase: payload.enablePrintPurchase ?? true,
       enablePrintOrder: payload.enablePrintOrder ?? true,
@@ -522,7 +540,7 @@ export class PosTerminalsService {
       throw new NotFoundException("POS terminal not found");
     }
     this.resolveTenantId(actor, current.tenant_id);
-    return this.mapSettings(await this.repository.findSettingsByTerminalId(id));
+    return this.mapSettings(await this.repository.findSettingsByTerminalId(id), false);
   }
 
   async savePeripheralSettings(
@@ -539,7 +557,7 @@ export class PosTerminalsService {
       id,
       this.normalizeSettings(payload)
     );
-    return this.mapSettings(saved);
+    return this.mapSettings(saved, false);
   }
 
   async resolveCurrent(

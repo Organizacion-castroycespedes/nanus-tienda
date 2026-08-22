@@ -262,6 +262,7 @@ test("adapter resolver selects mock adapters and rejects real connection types",
     ConnectionType.USB,
     ConnectionType.SERIAL,
     ConnectionType.HID,
+    ConnectionType.USB_HID,
   ]) {
     assert.throws(
       () =>
@@ -545,6 +546,21 @@ test("POST /devices validates type and connection fields", () => {
 
   assert.equal(created.id, "mock-printer-extra");
   assert.equal(created.connectionType, ConnectionType.MOCK);
+});
+
+test("SCANNER devices can use USB_HID without usb payload", () => {
+  const { devicesController } = buildServices();
+
+  const created = devicesController.create({
+    type: DeviceType.SCANNER,
+    id: "usb-hid-scanner-001",
+    name: "Scanner HID USB",
+    connectionType: ConnectionType.USB_HID,
+    terminalId: "local-terminal",
+  });
+
+  assert.equal(created.type, DeviceType.SCANNER);
+  assert.equal(created.connectionType, ConnectionType.USB_HID);
 });
 
 test("PATCH /devices/:id validates status and updates state", () => {

@@ -151,6 +151,7 @@ export const parseConnectionType = (
     value === ConnectionType.USB ||
     value === ConnectionType.SERIAL ||
     value === ConnectionType.HID ||
+    value === ConnectionType.USB_HID ||
     value === ConnectionType.NETWORK ||
     value === ConnectionType.BLUETOOTH
   ) {
@@ -158,6 +159,6 @@ export const parseConnectionType = (
   }
 
   throw new BadRequestException(
-    "connectionType must be MOCK, USB, SERIAL, HID, NETWORK or BLUETOOTH"
+    "connectionType must be MOCK, USB, SERIAL, HID, USB_HID, NETWORK or BLUETOOTH"
   );
 };

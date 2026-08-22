@@ -72,6 +72,7 @@ import type {
   PosTerminalResolvedConfig,
   PosTerminalResponse,
 } from "../types";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type ConnectionState =
   | "loading"
@@ -188,6 +189,7 @@ const connectionTone: Record<string, string> = {
   USB: "border-amber-200 bg-amber-50 text-amber-800",
   SERIAL: "border-amber-200 bg-amber-50 text-amber-800",
   HID: "border-amber-200 bg-amber-50 text-amber-800",
+  USB_HID: "border-amber-200 bg-amber-50 text-amber-800",
   NETWORK: "border-blue-200 bg-blue-50 text-blue-800",
   BLUETOOTH: "border-blue-200 bg-blue-50 text-blue-800",
 };
@@ -308,6 +310,14 @@ const getNetworkEndpoint = (device: PeripheralDevice) => {
   }
 
   return `${device.network.host}:${device.network.port}`;
+};
+
+const getResponseNetworkEndpoint = (response?: PeripheralActionResponse) => {
+  if (!response?.network) {
+    return "-";
+  }
+
+  return `${response.network.host}:${response.network.port}`;
 };
 
 const isRealAdapterDisabledError = (message: string) =>
@@ -433,6 +443,7 @@ const PeripheralCapabilitiesList = ({
         />
         <InfoField label="widthChars" value={profile?.widthChars ?? "-"} />
         <InfoField label="connectionType" value={capabilities?.connectionType ?? "-"} />
+        <InfoField label="network" value={getResponseNetworkEndpoint(response)} />
         <InfoField label="commandCount" value={commandCount} />
       </div>
     </div>
@@ -779,12 +790,16 @@ const TerminalPosPanel = ({
   devices: PeripheralDevice[];
   onToast: (message: string, variant: ToastVariant, detail?: string) => void;
 }) => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const queryTerminalId = searchParams.get("terminalId")?.trim() ?? "";
   const [terminals, setTerminals] = useState<PosTerminalResponse[]>([]);
   const [operationalTerminals, setOperationalTerminals] = useState<
     TerminalResponse[]
   >([]);
   const [resolved, setResolved] = useState<PosTerminalResolvedConfig | null>(null);
-  const [selectedTerminalId, setSelectedTerminalId] = useState("");
+  const [selectedTerminalId, setSelectedTerminalId] = useState(queryTerminalId);
   const [terminalForm, setTerminalForm] = useState<PosTerminalFormState>({
     ...defaultPosTerminalForm,
   });
@@ -801,15 +816,39 @@ const TerminalPosPanel = ({
     message: string;
   }>({
     variant: "info",
-    message: "Configuracion terminal POS en modo fallback MOCK.",
+    message: "Selecciona una terminal canónica para cargar sus periféricos.",
   });
+
+  const syncQueryTerminalId = useCallback(
+    (nextTerminalId: string) => {
+      if (!pathname) {
+        return;
+      }
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextTerminalId) {
+        params.set("terminalId", nextTerminalId);
+      } else {
+        params.delete("terminalId");
+      }
+
+      const query = params.toString();
+      const nextUrl = query ? `${pathname}?${query}` : pathname;
+      router.replace(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   const loadTerminalSnapshot = useCallback(async () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     try {
+      const requestedTerminalId = queryTerminalId || undefined;
       const [resolvedResult, terminalsResult, operationalTerminalsResult] =
         await Promise.allSettled([
-          resolveCurrentPosTerminalConfig({ tenantId }),
+          resolveCurrentPosTerminalConfig({
+            tenantId,
+            terminalId: requestedTerminalId,
+          }),
           listPosTerminals({ tenantId }),
           listOperationalTerminals({ tenantId: tenantId ?? undefined }),
         ]);
@@ -824,21 +863,26 @@ const TerminalPosPanel = ({
           name: resolvedResult.value.name || prev.name,
           mode: resolvedResult.value.mode ?? prev.mode,
         }));
-        setSelectedTerminalId(resolvedResult.value.posTerminalId ?? "");
+        const canonicalTerminalId =
+          resolvedResult.value.operationalTerminalId ?? requestedTerminalId ?? "";
+        setSelectedTerminalId(canonicalTerminalId);
+        if (!requestedTerminalId && canonicalTerminalId) {
+          syncQueryTerminalId(canonicalTerminalId);
+        }
         setStatus({
           variant:
             resolvedResult.value.source === "CONFIGURED" ? "success" : "warning",
           message:
             resolvedResult.value.source === "CONFIGURED"
-              ? "Terminal POS configurada encontrada."
+              ? "Terminal canónica con perifericos configurados."
               : resolvedResult.value.source === "OPERATIONAL_UNCONFIGURED"
                 ? "Terminal operativa sin configuracion de perifericos."
-                : "Sin terminal configurada. Se usa fallback MOCK seguro.",
+                : "Perifericos no configurados para la terminal seleccionada.",
         });
       } else {
         setStatus({
           variant: "warning",
-          message: "No se pudo resolver terminal. Fallback MOCK sigue activo.",
+          message: "No se pudo resolver la terminal seleccionada.",
         });
       }
 
@@ -851,11 +895,20 @@ const TerminalPosPanel = ({
     } finally {
       setLoading((prev) => ({ ...prev, snapshot: false }));
     }
-  }, [tenantId]);
+  }, [queryTerminalId, syncQueryTerminalId, tenantId]);
 
   useEffect(() => {
     void loadTerminalSnapshot();
   }, [loadTerminalSnapshot]);
+
+  useEffect(() => {
+    if (queryTerminalId && queryTerminalId !== selectedTerminalId) {
+      setSelectedTerminalId(queryTerminalId);
+    }
+    if (!queryTerminalId && resolved?.operationalTerminalId) {
+      setSelectedTerminalId(resolved.operationalTerminalId);
+    }
+  }, [queryTerminalId, resolved?.operationalTerminalId, selectedTerminalId]);
 
   const updateTerminalForm = (
     field: keyof PosTerminalFormState,
@@ -914,48 +967,43 @@ const TerminalPosPanel = ({
 
   const handleSelectTerminal = async (nextTerminalId: string) => {
     setSelectedTerminalId(nextTerminalId);
-    const selected = terminals.find((terminal) => terminal.id === nextTerminalId);
+    syncQueryTerminalId(nextTerminalId);
+    setResolved(null);
+    setSettingsForm({
+      ...defaultTerminalSettingsForm,
+      printerDeviceId: "",
+      cashDrawerDeviceId: "",
+      scaleDeviceId: "",
+      scannerDeviceId: "",
+      enablePrintSale: false,
+      enablePrintPurchase: false,
+      enablePrintOrder: false,
+      enableOpenDrawer: false,
+      enableScale: false,
+      enableScanner: false,
+    });
+
+    const selected = operationalTerminals.find(
+      (terminal) => terminal.id === nextTerminalId
+    );
     if (selected) {
-      setTerminalForm({
+      setTerminalForm((prev) => ({
+        ...prev,
         branchId: selected.branchId,
         code: selected.code,
         name: selected.name,
-        description: selected.description ?? "",
-        mode: selected.mode,
-      });
-    }
-
-    if (!nextTerminalId) {
-      setSettingsForm(settingsFromResolved(resolved));
-      return;
-    }
-
-    try {
-      const settings = await getPosTerminalPeripheralSettings(nextTerminalId);
-      setSettingsForm({
-        printerDeviceId: settings.printerDeviceId ?? "",
-        cashDrawerDeviceId: settings.cashDrawerDeviceId ?? "",
-        scaleDeviceId: settings.scaleDeviceId ?? "",
-        scannerDeviceId: settings.scannerDeviceId ?? "",
-        enablePrintSale: settings.features.printSale,
-        enablePrintPurchase: settings.features.printPurchase,
-        enablePrintOrder: settings.features.printOrder,
-        enableOpenDrawer: settings.features.openDrawer,
-        enableScale: settings.features.scale,
-        enableScanner: settings.features.scanner,
-      });
-    } catch (error) {
-      onToast(getErrorMessage(error), "warning");
+      }));
     }
   };
 
   const handleSaveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const targetTerminalId = selectedTerminalId || resolved?.posTerminalId;
+    const targetTerminalId = resolved?.posTerminalId;
     if (!targetTerminalId) {
       setStatus({
         variant: "warning",
-        message: "Crea o selecciona una terminal antes de guardar perifericos.",
+        message:
+          "Perifericos no configurados. Crea primero el perfil POS asociado a la terminal.",
       });
       return;
     }
@@ -985,6 +1033,74 @@ const TerminalPosPanel = ({
     }
   };
 
+  const persistPrinterDevice = async (printerDeviceId: string | null) => {
+    const targetTerminalId = resolved?.posTerminalId;
+    if (!targetTerminalId) {
+      setStatus({
+        variant: "warning",
+        message:
+          "Perifericos no configurados. Crea primero el perfil POS asociado a la terminal.",
+      });
+      return;
+    }
+
+    setLoading((prev) => ({ ...prev, save: true }));
+    try {
+      await savePosTerminalPeripheralSettings(targetTerminalId, {
+        printerDeviceId,
+        cashDrawerDeviceId:
+          settingsForm.cashDrawerDeviceId.trim() || defaultTerminalSettingsForm.cashDrawerDeviceId,
+        scaleDeviceId:
+          settingsForm.scaleDeviceId.trim() || defaultTerminalSettingsForm.scaleDeviceId,
+        scannerDeviceId:
+          settingsForm.scannerDeviceId.trim() || defaultTerminalSettingsForm.scannerDeviceId,
+        enablePrintSale: settingsForm.enablePrintSale,
+        enablePrintPurchase: settingsForm.enablePrintPurchase,
+        enablePrintOrder: settingsForm.enablePrintOrder,
+        enableOpenDrawer: settingsForm.enableOpenDrawer,
+        enableScale: settingsForm.enableScale,
+        enableScanner: settingsForm.enableScanner,
+      });
+      setSettingsForm((prev) => ({ ...prev, printerDeviceId: printerDeviceId ?? "" }));
+      onToast(
+        printerDeviceId ? "Impresora asociada." : "Impresora desasociada.",
+        "success"
+      );
+      await loadTerminalSnapshot();
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setStatus({ variant: "error", message });
+      onToast(message, "error");
+    } finally {
+      setLoading((prev) => ({ ...prev, save: false }));
+    }
+  };
+
+  const handleTestPrinter = async () => {
+    const printerId = settingsForm.printerDeviceId.trim() || resolved?.printerDeviceId || "";
+    if (!printerId) {
+      onToast("No hay impresora configurada.", "warning");
+      return;
+    }
+
+    try {
+      setLoading((prev) => ({ ...prev, save: true }));
+      const terminalForPrint =
+        resolved?.operationalTerminalId ?? selectedTerminalId ?? terminalId;
+      const result = await testPrint(
+        terminalForPrint,
+        printerId
+      );
+      onToast(result.message ?? "Impresion de prueba enviada.", "success");
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setStatus({ variant: "error", message });
+      onToast(message, "error");
+    } finally {
+      setLoading((prev) => ({ ...prev, save: false }));
+    }
+  };
+
   const statusClass =
     status.variant === "success"
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -993,6 +1109,31 @@ const TerminalPosPanel = ({
         : status.variant === "warning"
           ? "border-amber-200 bg-amber-50 text-amber-800"
           : "border-slate-200 bg-slate-50 text-slate-700";
+
+  const selectedOperationalTerminal = operationalTerminals.find(
+    (terminal) => terminal.id === selectedTerminalId
+  );
+  const selectedPosTerminal = resolved?.posTerminalId
+    ? terminals.find((terminal) => terminal.id === resolved.posTerminalId)
+    : null;
+  const printerCandidates = deviceOptionsByType(devices, "PRINTER");
+  const selectedPrinterDevice = devices.find(
+    (device) =>
+      device.id === settingsForm.printerDeviceId ||
+      device.id === resolved?.printerDeviceId
+  );
+  const printerConnected = Boolean(selectedPrinterDevice);
+  const printerConfigured = Boolean(
+    settingsForm.printerDeviceId.trim() || resolved?.printerDeviceId
+  );
+  const printerStatusLabel = printerConfigured
+    ? printerConnected
+      ? "Configurada y detectada"
+      : "Configurada pero no detectada"
+    : "No configurada";
+  const printerEndpoint = selectedPrinterDevice ? getNetworkEndpoint(selectedPrinterDevice) : "-";
+  const terminalOptionLabel = (terminal: TerminalResponse) =>
+    `${terminal.code}  ${terminal.name}  ${terminal.branchName ?? "-"}`;
 
   const operationalTerminalLabel = (terminal?: PosTerminalResponse | null) => {
     if (!terminal?.operationalTerminalId) {

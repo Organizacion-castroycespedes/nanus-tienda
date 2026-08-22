@@ -21,6 +21,7 @@ export type PeripheralConnectionType =
   | "USB"
   | "SERIAL"
   | "HID"
+  | "USB_HID"
   | "NETWORK"
   | "BLUETOOTH";
 
@@ -341,6 +342,7 @@ export type PeripheralActionResponse = {
   mode?: string;
   deviceId?: string;
   terminalId?: string;
+  network?: DeviceNetworkConfig;
   preview?: string;
   commands?: PrintCommand[];
   adapterName?: string;
