@@ -24,6 +24,27 @@ import {
 import { DEVICE_PROFILES } from "../src/shared/profiles/device-profiles";
 import { EscPosMockCommandName } from "../src/shared/escpos-mock/escpos-mock.types";
 import { createEscPosMockCommand } from "../src/shared/escpos-mock/thermal-ticket.formatter";
+import {
+  type DeviceRegistryState,
+  type DeviceRegistryStateStore,
+} from "../src/platform/device-registry-state.store";
+
+const testPlatformPaths = {
+  configDir: "C:\\Temp\\PeripheralAgent\\config",
+  stateDir: "C:\\Temp\\PeripheralAgent\\state",
+  logDir: "C:\\Temp\\PeripheralAgent\\logs",
+};
+
+const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
+  let state: DeviceRegistryState | null = null;
+
+  return {
+    read: () => state,
+    write: (_paths, nextState) => {
+      state = JSON.parse(JSON.stringify(nextState));
+    },
+  };
+};
 
 const networkPrinter: PeripheralDevice = {
   id: "network-printer-001",
@@ -43,7 +64,13 @@ const networkPrinter: PeripheralDevice = {
 const buildServices = () => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
-  const devicesService = new DevicesService(logsService, eventsService);
+  const devicesService = new DevicesService(
+    logsService,
+    eventsService,
+    undefined,
+    createMemoryDeviceRegistryStore(),
+    testPlatformPaths
+  );
   const printerService = new PrinterService(
     devicesService,
     logsService,
@@ -274,7 +301,13 @@ test("network printer service response exposes host port bytes and cut capabilit
   try {
     const logsService = new LogsService();
     const eventsService = new EventsService();
-    const devicesService = new DevicesService(logsService, eventsService);
+    const devicesService = new DevicesService(
+      logsService,
+      eventsService,
+      undefined,
+      createMemoryDeviceRegistryStore(),
+      testPlatformPaths
+    );
     const printerService = new PrinterService(
       devicesService,
       logsService,

@@ -10,6 +10,7 @@ export enum DeviceType {
 export enum DeviceStatus {
   CONNECTED = "CONNECTED",
   DISCONNECTED = "DISCONNECTED",
+  NOT_REACHABLE = "NOT_REACHABLE",
   ERROR = "ERROR",
   SIMULATED = "SIMULATED",
 }

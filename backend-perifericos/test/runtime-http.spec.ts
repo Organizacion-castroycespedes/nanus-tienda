@@ -86,6 +86,43 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
     /Content-Type/i
   );
 
+  const printerPreflight = await fetch(`${baseUrl}/printer/print-ticket`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: allowedOrigin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.equal(printerPreflight.status, 204);
+  assert.equal(
+    printerPreflight.headers.get("access-control-allow-origin"),
+    allowedOrigin
+  );
+  assert.match(
+    printerPreflight.headers.get("access-control-allow-methods") ?? "",
+    /POST/
+  );
+  assert.match(
+    printerPreflight.headers.get("access-control-allow-headers") ?? "",
+    /Content-Type/i
+  );
+
+  const rejectedPrinterPreflight = await fetch(
+    `${baseUrl}/printer/print-ticket`,
+    {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://malicious.example",
+        "Access-Control-Request-Method": "POST",
+      },
+    }
+  );
+  assert.equal(
+    rejectedPrinterPreflight.headers.get("access-control-allow-origin"),
+    null
+  );
+
   const disallowedPreflight = await fetch(`${baseUrl}/devices`, {
     method: "OPTIONS",
     headers: {

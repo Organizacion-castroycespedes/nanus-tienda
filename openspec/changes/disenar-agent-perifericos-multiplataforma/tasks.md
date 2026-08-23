@@ -33,6 +33,8 @@
   remote Web origin allow-list.
 - [x] 3.10 Certify Windows x64 portable localhost topology with XP-80 USB RAW,
   canonical TERM-001 resolution and observed physical CUT.
+- [x] 3.11 Validate configurable CORS allow-list, printer preflight and
+  browser-to-local-Agent QA from the Windows x64 workstation.
 
 ## 4. Future platform spikes - not implemented in P0
 
@@ -52,3 +54,21 @@
 - [ ] 5.3 Publish artifact version, checksum, signature and platform metadata.
 - [ ] 5.4 Maintain support/certification matrix by OS, architecture, device
   and transport.
+
+## 6. P0 local device registry resilience
+
+- [x] 6.1 Add a versioned local device registry store under
+  `%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state`.
+- [x] 6.2 Reconcile configured devices with USB discovery without duplicating
+  logical printers.
+- [x] 6.3 Keep runtime connectivity separate from persisted configuration for
+  NETWORK and USB devices.
+- [x] 6.4 Handle missing and corrupt registry files with controlled startup
+  behavior.
+- [x] 6.5 Add persistence tests for restart, PATCH, offline devices and USB
+  dedupe.
+- [x] 6.6 Run Agent tests, Agent build, Windows x64 package validation,
+  OpenSpec strict and `git diff --check`.
+- [x] 6.7 Add portable Windows Scheduled Task autostart scripts with
+  idempotent install/remove/status and duplicate-agent guard.
+- [x] 6.8 Validate autostart scripts inside the Windows x64 package artifact.

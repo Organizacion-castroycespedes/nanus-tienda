@@ -127,6 +127,7 @@ export const parseDeviceStatus = (
   if (
     value === DeviceStatus.CONNECTED ||
     value === DeviceStatus.DISCONNECTED ||
+    value === DeviceStatus.NOT_REACHABLE ||
     value === DeviceStatus.ERROR ||
     value === DeviceStatus.SIMULATED
   ) {
@@ -134,7 +135,7 @@ export const parseDeviceStatus = (
   }
 
   throw new BadRequestException(
-    "status must be CONNECTED, DISCONNECTED, ERROR or SIMULATED"
+    "status must be CONNECTED, DISCONNECTED, NOT_REACHABLE, ERROR or SIMULATED"
   );
 };
 

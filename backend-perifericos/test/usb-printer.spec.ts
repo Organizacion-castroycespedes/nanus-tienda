@@ -27,6 +27,16 @@ import {
   type UsbPrinterDiscovery,
 } from "../src/shared/usb/usb-printer-discovery";
 import { renderThermalEscPos } from "../src/shared/escpos/thermal-escpos.renderer";
+import {
+  type DeviceRegistryState,
+  type DeviceRegistryStateStore,
+} from "../src/platform/device-registry-state.store";
+
+const testPlatformPaths = {
+  configDir: "C:\\Temp\\PeripheralAgent\\config",
+  stateDir: "C:\\Temp\\PeripheralAgent\\state",
+  logDir: "C:\\Temp\\PeripheralAgent\\logs",
+};
 
 const discoveredUsbPrinter = buildUsbPrinterDescriptor("Xprinter XP-80T USB");
 
@@ -42,10 +52,27 @@ class FakeUsbDiscovery implements UsbPrinterDiscovery {
   }
 }
 
+const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
+  let state: DeviceRegistryState | null = null;
+
+  return {
+    read: () => state,
+    write: (_paths, nextState) => {
+      state = JSON.parse(JSON.stringify(nextState));
+    },
+  };
+};
+
 const buildDevices = (usbDiscovery = new FakeUsbDiscovery()) => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
-  const service = new DevicesService(logsService, eventsService, usbDiscovery);
+  const service = new DevicesService(
+    logsService,
+    eventsService,
+    usbDiscovery,
+    createMemoryDeviceRegistryStore(),
+    testPlatformPaths
+  );
 
   return {
     controller: new DevicesController(service),

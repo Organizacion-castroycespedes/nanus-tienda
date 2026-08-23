@@ -113,7 +113,7 @@ test("local configuration is whitelisted and environment overrides it", () => {
   writeFileSync(configPath, JSON.stringify({
     port: 4050,
     bind: "127.0.0.1",
-    allowedOrigins: ["http://192.168.1.14:3000"],
+    allowedOrigins: ["http://localhost:3000"],
     logLevel: "WARN",
     enableRealAdapters: true,
     usbPrintTransport: "RAW",
@@ -124,7 +124,7 @@ test("local configuration is whitelisted and environment overrides it", () => {
     assert.equal(loadAgentLocalConfig(environment, configPath), configPath);
     assert.equal(environment.PERIPHERALS_PORT, "4500");
     assert.equal(environment.PERIPHERALS_BIND, "127.0.0.1");
-    assert.equal(environment.PERIPHERALS_ALLOWED_ORIGINS, "http://192.168.1.14:3000");
+    assert.equal(environment.PERIPHERALS_ALLOWED_ORIGINS, "http://localhost:3000");
     assert.equal(environment.PERIPHERALS_ENABLE_REAL_ADAPTERS, "true");
     assert.equal(environment.PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED, "true");
   } finally {
