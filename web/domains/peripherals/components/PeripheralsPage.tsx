@@ -170,6 +170,7 @@ const formatTimestamp = (value?: string) => {
 const statusTone: Record<PeripheralDeviceStatus, string> = {
   CONNECTED: "border-emerald-200 bg-emerald-50 text-emerald-700",
   DISCONNECTED: "border-slate-200 bg-slate-100 text-slate-600",
+  NOT_REACHABLE: "border-amber-200 bg-amber-50 text-amber-800",
   ERROR: "border-rose-200 bg-rose-50 text-rose-700",
   SIMULATED: "border-blue-200 bg-blue-50 text-blue-700",
 };
@@ -546,8 +547,29 @@ const PeripheralAgentStatusCard = ({
         <div className="grid gap-3 sm:grid-cols-2">
           <InfoField label="status" value={health?.status ?? "-"} />
           <InfoField label="mode" value={health?.mode ?? "-"} />
+          <InfoField label="agentInstallationId" value={health?.agentInstallationId ?? "-"} />
+          <InfoField
+            label="platform"
+            value={[health?.platform, health?.architecture].filter(Boolean).join(" / ") || "-"}
+          />
           <InfoField label="version" value={health?.version ?? "-"} />
           <InfoField label="uptime" value={health ? `${health.uptimeSeconds}s` : "-"} />
+          <InfoField
+            label="configuredDevices"
+            value={health?.configuredDevices ?? "-"}
+          />
+          <InfoField
+            label="discoveredDevices"
+            value={health?.discoveredDevices ?? "-"}
+          />
+          <InfoField
+            label="persistenceState"
+            value={
+              health?.persistenceState
+                ? `${health.persistenceState.status} / v${health.persistenceState.schemaVersion}`
+                : "-"
+            }
+          />
           <InfoField label="http" value={getEndpointLabel(config.httpUrl)} />
           <InfoField label="ws" value={getEndpointLabel(config.wsUrl)} />
         </div>

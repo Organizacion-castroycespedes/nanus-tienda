@@ -71,6 +71,27 @@ nunca reasigna hardware silenciosamente.
 Windows usa ProgramData/LocalAppData; Linux /etc, /var/lib, /var/log; macOS
 Library/Application Support y Library/Logs.
 
+### Registro local de dispositivos
+
+El Agent persiste solo la configuracion local de dispositivos en
+`stateDir`, con un store JSON versionado y escritura atomica. El archivo no
+guarda secretos ni estados de conexion duraderos.
+
+Decision: separar `configuration state` de `runtime connectivity state`. El
+registro persistido conserva identidad, tipo, conexion, terminal, perfil y
+parametros de red o USB. El runtime calcula si el dispositivo esta
+`CONNECTED`, `DISCONNECTED` o `NOT_REACHABLE` en cada arranque y discovery.
+
+Rationale: un dispositivo configurado no puede desaparecer por reinicio de
+Agent, Windows o workstation. El estado fisico cambia, la configuracion no.
+
+Decision: discovery USB solo actualiza el overlay runtime. Si un USB
+configurado vuelve a aparecer, se reconcilia contra el registro local y no se
+crea un duplicado logico.
+
+Decision: archivo faltante = registro vacio valido. JSON corrupto = error
+controlado y arranque continuo con defaults seguros.
+
 ### Packaging P0 Windows x64
 
 P0 entrega una carpeta portable reproducible para Windows x64. Contiene el
@@ -83,14 +104,23 @@ El launcher configura `PERIPHERALS_CONFIG_PATH`, mantiene bind por defecto en
 La configuración admite exclusivamente puerto, bind, allow-list de origins,
 nivel de logs y feature flags de transporte. Variables de entorno del wrapper
 siempre prevalecen sobre el archivo local. No existe CORS global.
+En PowerShell 5.1, el autostart fija `PERIPHERALS_CONFIG_PATH` en el ambiente
+del launcher antes de iniciar `runtime\\node.exe`, para que el hijo herede esa
+variable sin depender de `-Environment` ni `-UseNewEnvironment`.
+El entrypoint se pasa entrecomillado para que rutas como
+`C:\\Program Files\\Manus\\PeripheralAgent\\app\\main.js` no rompan el launch.
 
-El perfil QA de artefacto autoriza solo `http://192.168.1.14:3000` para que un
-Browser local pueda llamar el Agent loopback mientras Manus remoto sirve Web.
-Ese origin vive en config local generada, no en el core portable.
+El perfil QA de artefacto autoriza solo origins explícitos en la config local
+generada, por ejemplo `http://localhost:3000` para compatibilidad local y el
+origin remoto de QA `http://192.168.1.9:3000`. Esos origins viven en la
+config local generada o en `PERIPHERALS_ALLOWED_ORIGINS`, nunca en el core
+portable. No existe wildcard CORS.
 
-No se adopta MSI/setup.exe, tray, servicio Windows ni autostart en este P0.
-La ejecución es manual con doble clic y el lifecycle futuro conserva su spike
-separado.
+No se adopta MSI/setup.exe ni servicio Windows en este P0. El autostart
+portable de Windows usa Scheduled Task por usuario, porque conserva el
+workspace portable, no requiere credenciales embebidas y mantiene logs/state
+en `%LOCALAPPDATA%`. La tarea arranca el helper desde la carpeta instalada,
+aplica un delay corto y no crea un segundo Agent si ya hay uno vivo en 4050.
 
 ### Certificación física P0 Windows x64
 
@@ -107,6 +137,37 @@ El trabajo resolvió `TERM-001` por su perfil periférico canónico, conservó e
 pasaron. `local-terminal` solo permaneció como `agentTerminalCode` de
 transición; no se usó fallback legacy para elegir impresora.
 
+### CertificaciÃ³n final de resiliencia y autostart Windows x64
+
+La fase de resiliencia/autostart quedÃ³ cerrada con evidencia fÃ­sica y técnica
+en `192.168.1.18`. El Scheduled Task se registrÃ³ y arrancÃ³ por logon sin
+intervenciÃ³n manual, el launcher usÃ³ `runtime\\node.exe` directo con
+`app\\main.js` entrecomillado, el ambiente propagÃ³ `PERIPHERALS_CONFIG_PATH`
+correctamente, `GET /health` respondiÃ³ despuÃ©s de cold start y reboot, y el
+registro local sobreviviÃ³ reinicios del Agent y de Windows sin perder
+`network-xp80-qa-001`.
+
+La evidencia certificada cubre:
+
+- persistencia de dispositivos configurados;
+- recuperaciÃ³n tras reinicio del Agent;
+- recuperaciÃ³n tras reinicio de Windows;
+- autostart por Scheduled Task;
+- health gate del launcher;
+- logs operativos del startup;
+- re-discovery USB;
+- impresiÃ³n LAN XP-80 despuÃ©s de reboot y autostart;
+- corte fÃ­sico despuÃ©s de reboot y autostart;
+
+### CORS configurable y preflight local
+
+El Agent permanece escuchando solo en `127.0.0.1`. El browser puede venir de
+un origin remoto permitido de forma explÃ­cita. El preflight `OPTIONS` para
+`/printer/print-ticket` responde `204` para origins autorizados y rechaza
+origins no autorizados sin usar `Access-Control-Allow-Origin: *`.
+La allow-list es configurable y deduplicada desde config local o
+`PERIPHERALS_ALLOWED_ORIGINS`.
+
 ### Soporte, packaging y lifecycle futuros
 
 P0: Windows x64. P1: Windows ARM64, Linux x64/ARM64. P2: macOS ARM64/x64.
@@ -114,9 +175,9 @@ P0 usa runtime Node embebido solo para Windows x64. No selecciona Node SEA,
 pkg, MSI ni otro empaquetador final. Cada artefacto futuro se construye en
 runner nativo y registra versión, checksum, firma y target.
 
-Windows inicia con Agent usuario/tray/autostart. Linux usa systemd user/system
-según kiosk; macOS LaunchAgent. Servicio global requiere validar permisos y
-colas de usuario.
+Windows portable usa Scheduled Task por usuario. Linux usa systemd
+user/system según kiosk; macOS LaunchAgent. Servicio global requiere validar
+permisos y colas de usuario.
 
 ### Serial, BBG Market 30 y cajón futuros
 

@@ -35,6 +35,13 @@ import {
   type UsbPrinterDiscovery,
 } from "../../shared/usb/usb-printer-discovery";
 import { SystemUsbPrinterDiscovery } from "../../platform/system-usb-printer-discovery";
+import { resolvePlatformPaths } from "../../platform/platform-paths";
+import {
+  FileDeviceRegistryStateStore,
+  type DeviceRegistryStateStore,
+  type PersistedPeripheralDevice,
+} from "../../platform/device-registry-state.store";
+import type { PlatformPaths } from "../../shared/platform/platform-paths";
 import { EventsService } from "../events/events.service";
 import { LogsService } from "../logs/logs.service";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
@@ -85,15 +92,38 @@ const MOCK_DEVICES: PeripheralDevice[] = [
 
 @Injectable()
 export class DevicesService {
-  private devices = MOCK_DEVICES.map((device) => ({ ...device }));
+  private readonly seedDevices = MOCK_DEVICES.map((device) => ({ ...device }));
+  private configuredDevices = new Map<string, PeripheralDevice>();
+  private discoveredUsbDevices = new Map<string, PeripheralDevice>();
+  private runtimeStatuses = new Map<string, DeviceStatus>();
   private usbDevices = new Map<string, UsbPrinterDescriptor>();
+  private registryPersistenceState: "empty" | "loaded" | "corrupt" = "empty";
+  private readonly platformPaths: PlatformPaths;
+  private readonly deviceRegistryStore: DeviceRegistryStateStore;
 
   constructor(
     @Inject(LogsService) private readonly logsService: LogsService,
     @Inject(EventsService) private readonly eventsService: EventsService,
     @Optional()
-    private readonly usbDiscovery: UsbPrinterDiscovery = new SystemUsbPrinterDiscovery()
-  ) {}
+    private readonly usbDiscovery: UsbPrinterDiscovery = new SystemUsbPrinterDiscovery(),
+    @Optional()
+    deviceRegistryStore: DeviceRegistryStateStore = new FileDeviceRegistryStateStore(),
+    @Optional()
+    platformPaths = resolvePlatformPaths()
+  ) {
+    this.deviceRegistryStore = deviceRegistryStore;
+    this.platformPaths = platformPaths;
+    this.logsService.append({
+      source: "agent",
+      event: "agent.starting",
+      message: "Peripheral Agent starting",
+      metadata: {
+        platform: process.platform,
+        architecture: process.arch,
+      },
+    });
+    this.loadConfiguredDevices();
+  }
 
   discoverOnStartup(): void {
     if (!getPeripheralsConfig().realAdaptersEnabled) {
@@ -101,12 +131,21 @@ export class DevicesService {
     }
 
     try {
+      this.logsService.append({
+        source: "devices",
+        event: "discovery.started",
+        message: "Device discovery started during agent startup",
+        metadata: {
+          configuredDevices: this.configuredDevices.size,
+        },
+      });
       const discovery = this.discover();
       this.logsService.append({
         source: "devices",
-        event: "devices.discover.startup",
-        message: "USB printer discovery completed during agent startup",
+        event: "discovery.completed",
+        message: "Device discovery completed during agent startup",
         metadata: {
+          configuredDevices: this.configuredDevices.size,
           usbPrinterCount: discovery.devices.filter(
             (device) => device.connectionType === ConnectionType.USB
           ).length,
@@ -116,9 +155,10 @@ export class DevicesService {
       this.logsService.append({
         level: LogLevel.WARN,
         source: "devices",
-        event: "devices.discover.startup_failed",
-        message: "USB printer discovery failed during agent startup",
+        event: "discovery.completed",
+        message: "Device discovery failed during agent startup",
         metadata: {
+          configuredDevices: this.configuredDevices.size,
           errorMessage: error instanceof Error ? error.message : "unknown error",
         },
       });
@@ -126,12 +166,31 @@ export class DevicesService {
   }
 
   list(): PeripheralDevice[] {
-    return this.devices.map((device) => this.cloneDevice(device));
+    return Array.from(this.buildMergedDevices().values()).map((device) =>
+      this.cloneDevice(device)
+    );
   }
 
   discover(): DiscoverDevicesResponse {
     const discoveredAt = new Date().toISOString();
+    this.logsService.append({
+      source: "devices",
+      event: "devices.discover.simulated",
+      message: "Device discovery simulated",
+      metadata: {
+        configuredDevices: this.configuredDevices.size,
+      },
+    });
+    this.logsService.append({
+      source: "devices",
+      event: "discovery.started",
+      message: "Device discovery started",
+      metadata: {
+        configuredDevices: this.configuredDevices.size,
+      },
+    });
     let usbDescriptors: UsbPrinterDescriptor[] = [];
+
     try {
       usbDescriptors = this.usbDiscovery.list();
     } catch (error) {
@@ -145,43 +204,57 @@ export class DevicesService {
         },
       });
     }
+
     this.usbDevices = new Map(
       usbDescriptors.map((descriptor) => [descriptor.deviceId, descriptor])
     );
-    const systemUsbDevices = usbDescriptors.map((descriptor): PeripheralDevice => ({
-      id: descriptor.id,
-      type: DeviceType.PRINTER,
-      name: descriptor.name,
-      status: DeviceStatus.CONNECTED,
-      connectionType: ConnectionType.USB,
-      terminalId: LOCAL_TERMINAL_ID,
-      profileId: "THERMAL_80MM",
-      usb: {
-        deviceId: descriptor.deviceId,
-        printerName: descriptor.printerName,
-      },
-      descriptor: descriptor.descriptor,
-      metadata: { discoverySource: "USB_SYSTEM" },
-    }));
-    this.devices = [
-      ...this.devices.filter(
-        (device) => device.metadata?.discoverySource !== "USB_SYSTEM"
-      ),
-      ...systemUsbDevices,
-    ];
+
+    const nextDiscoveredUsbDevices = new Map<string, PeripheralDevice>();
+    const matchedConfiguredIds = new Set<string>();
+
+    for (const descriptor of usbDescriptors) {
+      const configuredMatch = this.findConfiguredUsbDeviceByUsbDeviceId(
+        descriptor.deviceId
+      );
+      const runtimeId = configuredMatch?.id ?? descriptor.id;
+      const discoveredDevice = this.buildDiscoveredUsbDevice(
+        descriptor,
+        runtimeId
+      );
+
+      nextDiscoveredUsbDevices.set(runtimeId, discoveredDevice);
+      matchedConfiguredIds.add(runtimeId);
+      this.runtimeStatuses.set(runtimeId, DeviceStatus.CONNECTED);
+    }
+
+    for (const device of this.configuredDevices.values()) {
+      if (
+        device.connectionType === ConnectionType.USB &&
+        !matchedConfiguredIds.has(device.id)
+      ) {
+        this.runtimeStatuses.set(device.id, DeviceStatus.DISCONNECTED);
+      }
+    }
+
+    this.discoveredUsbDevices = nextDiscoveredUsbDevices;
+    const devices = this.list();
 
     this.logsService.append({
       source: "devices",
-      event: "devices.discover.simulated",
-      message: "Mock device discovery completed",
+      event: "discovery.completed",
+      message: "Device discovery completed",
       metadata: {
-        count: this.devices.length,
-        usbPrinterCount: systemUsbDevices.length,
-        mode: systemUsbDevices.length > 0 ? "HYBRID" : "MOCK",
+        count: devices.length,
+        configuredDevices: this.configuredDevices.size,
+        usbPrinterCount: nextDiscoveredUsbDevices.size,
+        mode: nextDiscoveredUsbDevices.size > 0 ? "HYBRID" : "MOCK",
       },
     });
 
-    for (const device of this.devices) {
+    for (const device of devices) {
+      if (device.status !== DeviceStatus.CONNECTED) {
+        continue;
+      }
       this.eventsService.emit(PeripheralEventName.DeviceConnected, {
         terminalId: device.terminalId,
         deviceId: device.id,
@@ -193,8 +266,38 @@ export class DevicesService {
     return {
       success: true,
       mode: "MOCK",
-      devices: this.list(),
+      devices,
       discoveredAt,
+    };
+  }
+
+  setRuntimeStatus(deviceId: string, status: DeviceStatus): void {
+    const safeDeviceId = validateIdentifier(deviceId, "deviceId");
+    if (!this.buildMergedDevices().has(safeDeviceId)) {
+      return;
+    }
+
+    this.runtimeStatuses.set(safeDeviceId, status);
+  }
+
+  getHealthSnapshot(): {
+    configuredDevices: number;
+    discoveredDevices: number;
+    persistenceState: "empty" | "loaded" | "corrupt";
+    schemaVersion: number;
+  } {
+    return {
+      configuredDevices: this.configuredDevices.size,
+      discoveredDevices: this.discoveredUsbDevices.size,
+      persistenceState: this.registryPersistenceState,
+      schemaVersion: 1,
+    };
+  }
+
+  getRuntimeDeviceCounts(): { configured: number; discovered: number } {
+    return {
+      configured: this.configuredDevices.size,
+      discovered: this.discoveredUsbDevices.size,
     };
   }
 
@@ -226,7 +329,7 @@ export class DevicesService {
     );
     const usb = this.resolveUsbOptions(record.usb, connectionType, type);
 
-    if (this.devices.some((device) => device.id === id)) {
+    if (this.buildMergedDevices().has(id)) {
       this.logsService.append({
         level: LogLevel.WARN,
         source: "devices",
@@ -250,7 +353,12 @@ export class DevicesService {
       metadata,
     };
 
-    this.devices = [device, ...this.devices];
+    const nextConfiguredDevices = new Map(this.configuredDevices);
+    nextConfiguredDevices.set(id, this.cloneDevice(device));
+    this.persistConfiguredDevices(nextConfiguredDevices);
+    this.configuredDevices = nextConfiguredDevices;
+    this.runtimeStatuses.set(id, status);
+
     this.logsService.append({
       source: "devices",
       event: "device.registered.simulated",
@@ -278,8 +386,8 @@ export class DevicesService {
   update(id: string, request: UpdateMockDeviceRequest): PeripheralDevice {
     const deviceId = validateIdentifier(id, "id");
     const record = this.safeRecord(request, "device update payload");
-    const index = this.devices.findIndex((device) => device.id === deviceId);
-    if (index < 0) {
+    const current = this.buildMergedDevices().get(deviceId);
+    if (!current) {
       this.logsService.append({
         level: LogLevel.WARN,
         source: "devices",
@@ -290,7 +398,6 @@ export class DevicesService {
       throw new NotFoundException("device not found");
     }
 
-    const current = this.devices[index];
     const status = parseDeviceStatus(record.status, current.status);
     const connectionType = parseConnectionType(
       record.connectionType,
@@ -304,7 +411,11 @@ export class DevicesService {
       optionalString(record, "terminalId", current.terminalId),
       "terminalId"
     );
-    const profileId = this.resolveProfileId(record.profileId, current.type, current.profileId);
+    const profileId = this.resolveProfileId(
+      record.profileId,
+      current.type,
+      current.profileId
+    );
     const network = resolveNetworkOptionsForConnection(
       record.network,
       connectionType,
@@ -328,7 +439,12 @@ export class DevicesService {
       metadata: optionalMetadata(record) ?? current.metadata,
     };
 
-    this.devices[index] = updated;
+    const nextConfiguredDevices = new Map(this.configuredDevices);
+    nextConfiguredDevices.set(deviceId, this.cloneDevice(updated));
+    this.persistConfiguredDevices(nextConfiguredDevices);
+    this.configuredDevices = nextConfiguredDevices;
+    this.runtimeStatuses.set(updated.id, updated.status);
+
     this.logsService.append({
       source: "devices",
       event: "device.updated.simulated",
@@ -375,7 +491,7 @@ export class DevicesService {
 
   findRequired(deviceId: string, expectedType: DeviceType): PeripheralDevice {
     const safeDeviceId = validateIdentifier(deviceId, "deviceId");
-    const device = this.devices.find((candidate) => candidate.id === safeDeviceId);
+    const device = this.buildMergedDevices().get(safeDeviceId);
     if (!device) {
       this.logsService.append({
         level: LogLevel.WARN,
@@ -400,8 +516,12 @@ export class DevicesService {
       });
       throw new BadRequestException(`device must be ${expectedType}`);
     }
-    if (device.status !== DeviceStatus.CONNECTED) {
-      const level = device.status === DeviceStatus.ERROR ? LogLevel.ERROR : LogLevel.WARN;
+    if (
+      device.connectionType !== ConnectionType.NETWORK &&
+      device.status !== DeviceStatus.CONNECTED
+    ) {
+      const level =
+        device.status === DeviceStatus.ERROR ? LogLevel.ERROR : LogLevel.WARN;
       this.logsService.append({
         level,
         source: "devices",
@@ -460,6 +580,216 @@ export class DevicesService {
     }
   }
 
+  private loadConfiguredDevices(): void {
+    try {
+      const state = this.deviceRegistryStore.read(this.platformPaths);
+      if (!state) {
+        this.registryPersistenceState = "empty";
+        this.logsService.append({
+          source: "devices",
+          event: "registry.restore.success",
+          message: "Device registry state loaded as empty",
+          metadata: {
+            configuredDevices: 0,
+            schemaVersion: 1,
+          },
+        });
+        return;
+      }
+
+      const configuredDevices = new Map<string, PeripheralDevice>();
+      for (const device of state.devices) {
+        configuredDevices.set(device.id, this.restoreConfiguredDevice(device));
+      }
+
+      this.configuredDevices = configuredDevices;
+      this.registryPersistenceState = "loaded";
+      this.logsService.append({
+        source: "devices",
+        event: "registry.restore.success",
+        message: "Device registry state restored",
+        metadata: {
+          configuredDevices: configuredDevices.size,
+          schemaVersion: state.schemaVersion,
+        },
+      });
+    } catch (error) {
+      this.registryPersistenceState = "corrupt";
+      this.logsService.append({
+        level: LogLevel.WARN,
+        source: "devices",
+        event: "registry.restore.failure",
+        message: "Device registry state could not be loaded; starting with defaults",
+        metadata: {
+          errorMessage: error instanceof Error ? error.message : "unknown error",
+        },
+      });
+      this.configuredDevices = new Map();
+    }
+  }
+
+  private persistConfiguredDevices(
+    nextConfiguredDevices: Map<string, PeripheralDevice>
+  ): void {
+    this.deviceRegistryStore.write(this.platformPaths, {
+      schemaVersion: 1,
+      devices: Array.from(nextConfiguredDevices.values()).map((device) =>
+        this.serializeConfiguredDevice(device)
+      ),
+    });
+  }
+
+  private serializeConfiguredDevice(
+    device: PeripheralDevice
+  ): PersistedPeripheralDevice {
+    return {
+      id: device.id,
+      type: device.type,
+      name: device.name,
+      connectionType: device.connectionType,
+      terminalId: device.terminalId,
+      profileId: device.profileId,
+      network: device.network ? { ...device.network } : undefined,
+      usb: device.usb ? { ...device.usb } : undefined,
+      metadata: device.metadata ? { ...device.metadata } : undefined,
+    };
+  }
+
+  private restoreConfiguredDevice(
+    device: PersistedPeripheralDevice
+  ): PeripheralDevice {
+    return {
+      ...device,
+      status: this.defaultRuntimeStatus(device.connectionType),
+      network: device.network ? { ...device.network } : undefined,
+      usb: device.usb ? { ...device.usb } : undefined,
+      metadata: device.metadata ? { ...device.metadata } : undefined,
+    };
+  }
+
+  private defaultRuntimeStatus(connectionType: ConnectionType): DeviceStatus {
+    if (connectionType === ConnectionType.MOCK) {
+      return DeviceStatus.CONNECTED;
+    }
+    if (connectionType === ConnectionType.NETWORK) {
+      return DeviceStatus.NOT_REACHABLE;
+    }
+    return DeviceStatus.DISCONNECTED;
+  }
+
+  private applyRuntimeStatus(device: PeripheralDevice): PeripheralDevice {
+    const status =
+      this.runtimeStatuses.get(device.id) ??
+      this.defaultRuntimeStatus(device.connectionType);
+
+    return {
+      ...device,
+      status,
+    };
+  }
+
+  private buildMergedDevices(): Map<string, PeripheralDevice> {
+    const merged = new Map<string, PeripheralDevice>();
+
+    for (const device of this.seedDevices) {
+      merged.set(device.id, this.applyRuntimeStatus(device));
+    }
+
+    for (const device of this.configuredDevices.values()) {
+      merged.set(device.id, this.applyRuntimeStatus(device));
+    }
+
+    for (const discoveredDevice of this.discoveredUsbDevices.values()) {
+      const current = merged.get(discoveredDevice.id);
+      if (!current) {
+        merged.set(discoveredDevice.id, this.cloneDevice(discoveredDevice));
+        continue;
+      }
+
+      merged.set(
+        current.id,
+        this.mergeDiscoveredUsbDevice(current, discoveredDevice)
+      );
+    }
+
+    return merged;
+  }
+
+  private mergeDiscoveredUsbDevice(
+    current: PeripheralDevice,
+    discovered: PeripheralDevice
+  ): PeripheralDevice {
+    return {
+      ...current,
+      status: DeviceStatus.CONNECTED,
+      connectionType: ConnectionType.USB,
+      usb: discovered.usb ? { ...discovered.usb } : current.usb,
+      descriptor: discovered.descriptor
+        ? {
+            ...discovered.descriptor,
+            fingerprint: discovered.descriptor.fingerprint
+              ? {
+                  ...discovered.descriptor.fingerprint,
+                  values: discovered.descriptor.fingerprint.values
+                    ? { ...discovered.descriptor.fingerprint.values }
+                    : undefined,
+                }
+              : discovered.descriptor.fingerprint,
+          }
+        : current.descriptor,
+      metadata: {
+        ...(current.metadata ?? {}),
+        ...(discovered.metadata ?? {}),
+        discoverySource: "USB_SYSTEM",
+      },
+    };
+  }
+
+  private findConfiguredUsbDeviceByUsbDeviceId(
+    usbDeviceId: string
+  ): PeripheralDevice | undefined {
+    for (const device of this.configuredDevices.values()) {
+      if (
+        device.connectionType === ConnectionType.USB &&
+        device.usb?.deviceId === usbDeviceId
+      ) {
+        return device;
+      }
+    }
+
+    for (const device of this.seedDevices) {
+      if (
+        device.connectionType === ConnectionType.USB &&
+        device.usb?.deviceId === usbDeviceId
+      ) {
+        return device;
+      }
+    }
+
+    return undefined;
+  }
+
+  private buildDiscoveredUsbDevice(
+    descriptor: UsbPrinterDescriptor,
+    runtimeId = descriptor.id
+  ): PeripheralDevice {
+    return {
+      id: runtimeId,
+      type: DeviceType.PRINTER,
+      name: descriptor.name,
+      status: DeviceStatus.CONNECTED,
+      connectionType: ConnectionType.USB,
+      terminalId: LOCAL_TERMINAL_ID,
+      profileId: "THERMAL_80MM",
+      usb: {
+        deviceId: descriptor.deviceId,
+        printerName: descriptor.printerName,
+      },
+      descriptor: descriptor.descriptor,
+      metadata: { discoverySource: "USB_SYSTEM" },
+    };
+  }
+
   private resolveProfileId(
     value: unknown,
     deviceType: DeviceType,
@@ -490,7 +820,9 @@ export class DevicesService {
       return undefined;
     }
     if (deviceType !== DeviceType.PRINTER) {
-      throw new BadRequestException("USB connection is only supported for PRINTER devices");
+      throw new BadRequestException(
+        "USB connection is only supported for PRINTER devices"
+      );
     }
     if (value === undefined || value === null) {
       if (current) {
@@ -506,7 +838,9 @@ export class DevicesService {
     );
     const descriptor = this.usbDevices.get(deviceId);
     if (!descriptor) {
-      throw new NotFoundException("USB printer device not found; run discovery and select a discovered device");
+      throw new NotFoundException(
+        "USB printer device not found; run discovery and select a discovered device"
+      );
     }
 
     return {

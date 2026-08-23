@@ -2,8 +2,17 @@ export type PeripheralAgentHealth = {
   status: string;
   agent: string;
   mode: string;
+  agentInstallationId?: string;
+  platform?: string;
+  architecture?: string;
   version: string;
   uptimeSeconds: number;
+  configuredDevices?: number;
+  discoveredDevices?: number;
+  persistenceState?: {
+    schemaVersion: number;
+    status: "empty" | "loaded" | "corrupt";
+  };
 };
 
 export type PeripheralDeviceType =
@@ -14,7 +23,12 @@ export type PeripheralDeviceType =
   | "DISPLAY"
   | "OTHER";
 
-export type PeripheralDeviceStatus = "CONNECTED" | "DISCONNECTED" | "ERROR" | "SIMULATED";
+export type PeripheralDeviceStatus =
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "NOT_REACHABLE"
+  | "ERROR"
+  | "SIMULATED";
 
 export type PeripheralConnectionType =
   | "MOCK"

@@ -208,7 +208,7 @@ defecto del artefacto QA:
 
 - bind `127.0.0.1`;
 - port `4050`;
-- CORS solo para `http://192.168.1.14:3000`;
+- CORS por allow-list local configurable en `config/agent.config.local.json` o `PERIPHERALS_ALLOWED_ORIGINS`;
 - adapters reales habilitados;
 - USB RAW y corte certificado habilitados.
 

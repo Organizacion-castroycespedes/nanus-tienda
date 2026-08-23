@@ -1,6 +1,8 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import {
+  ConnectionType,
   DeviceType,
+  DeviceStatus,
   LogLevel,
   PeripheralEventName,
 } from "../../shared/types/peripheral.types";
@@ -89,6 +91,12 @@ export class PrinterService {
         event: "printer.test_print.failed",
         error,
       });
+      this.devicesService.setRuntimeStatus(
+        printer.id,
+        printer.connectionType === ConnectionType.NETWORK
+          ? DeviceStatus.NOT_REACHABLE
+          : DeviceStatus.DISCONNECTED
+      );
       throw error;
     }
     const mode = result.capabilities.mode;
@@ -154,6 +162,25 @@ export class PrinterService {
           : "Test print simulated successfully",
       metadata,
     });
+    this.logsService.append({
+      source: "printer",
+      event:
+        mode === "REAL"
+          ? "printer.test_print.sent"
+          : "printer.test_print.simulated",
+      message:
+        mode === "REAL"
+          ? "Test print sent to configured printer"
+          : "Test print simulated successfully",
+      metadata,
+    });
+    this.logsService.append({
+      source: "printer",
+      event: "print.sent",
+      message: "Print job completed successfully",
+      metadata,
+    });
+    this.devicesService.setRuntimeStatus(printer.id, DeviceStatus.CONNECTED);
 
     return {
       success: true,
@@ -238,6 +265,12 @@ export class PrinterService {
         event: "printer.ticket_print.failed",
         error,
       });
+      this.devicesService.setRuntimeStatus(
+        printer.id,
+        printer.connectionType === ConnectionType.NETWORK
+          ? DeviceStatus.NOT_REACHABLE
+          : DeviceStatus.DISCONNECTED
+      );
       throw error;
     }
     const mode = result.capabilities.mode;
@@ -306,6 +339,25 @@ export class PrinterService {
           : "Ticket print simulated successfully",
       metadata,
     });
+    this.logsService.append({
+      source: "printer",
+      event:
+        mode === "REAL"
+          ? "printer.ticket_print.sent"
+          : "printer.ticket_print.simulated",
+      message:
+        mode === "REAL"
+          ? "Ticket print sent to configured printer"
+          : "Ticket print simulated successfully",
+      metadata,
+    });
+    this.logsService.append({
+      source: "printer",
+      event: "print.sent",
+      message: "Print job completed successfully",
+      metadata,
+    });
+    this.devicesService.setRuntimeStatus(printer.id, DeviceStatus.CONNECTED);
 
     return {
       success: true,
@@ -367,6 +419,13 @@ export class PrinterService {
       source: "printer",
       event: input.event,
       message: "Printer job failed with controlled error",
+      metadata,
+    });
+    this.logsService.append({
+      level: LogLevel.ERROR,
+      source: "printer",
+      event: "print.failed",
+      message: "Print job failed",
       metadata,
     });
   }

@@ -35,9 +35,30 @@ import {
   DeviceProfileId,
 } from "../src/shared/profiles/device-profiles";
 import type { UsbPrinterDiscovery } from "../src/shared/usb/usb-printer-discovery";
+import {
+  type DeviceRegistryState,
+  type DeviceRegistryStateStore,
+} from "../src/platform/device-registry-state.store";
 
 const emptyUsbDiscovery: UsbPrinterDiscovery = {
   list: () => [],
+};
+
+const testPlatformPaths = {
+  configDir: "C:\\Temp\\PeripheralAgent\\config",
+  stateDir: "C:\\Temp\\PeripheralAgent\\state",
+  logDir: "C:\\Temp\\PeripheralAgent\\logs",
+};
+
+const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
+  let state: DeviceRegistryState | null = null;
+
+  return {
+    read: () => state,
+    write: (_paths, nextState) => {
+      state = JSON.parse(JSON.stringify(nextState));
+    },
+  };
 };
 
 const buildServices = () => {
@@ -48,7 +69,9 @@ const buildServices = () => {
   const devicesService = new DevicesService(
     logsService,
     eventsService,
-    emptyUsbDiscovery
+    emptyUsbDiscovery,
+    createMemoryDeviceRegistryStore(),
+    testPlatformPaths
   );
   const printerService = new PrinterService(
     devicesService,
@@ -79,7 +102,7 @@ const buildServices = () => {
     cashDrawerService,
     scaleService,
     scannerService,
-    healthController: new HealthController(),
+    healthController: new HealthController(devicesService),
     devicesController: new DevicesController(devicesService),
     printerController: new PrinterController(printerService),
     cashDrawerController: new CashDrawerController(cashDrawerService),
@@ -289,7 +312,10 @@ test("discover logs and emits connected events", () => {
 
   assert.equal(result.success, true);
   assert.ok(result.devices.length >= 4);
-  assert.equal(logsService.list()[0].event, "devices.discover.simulated");
+  assert.equal(
+    logsService.list().find((entry) => entry.event === "devices.discover.simulated")?.event,
+    "devices.discover.simulated"
+  );
   assert.equal(
     eventsService.getRecentEvents().filter(
       (event) => event.event === PeripheralEventName.DeviceConnected
@@ -327,13 +353,16 @@ test("test print simulates job logs and events", async () => {
     result.commands.some((command) => command.name === EscPosMockCommandName.Cut),
     true
   );
-  assert.equal(logsService.list()[0].event, "printer.test_print.simulated");
-  assert.equal(logsService.list()[0].metadata.previewLength, result.preview.length);
+  const testPrintLog = logsService
+    .list()
+    .find((entry) => entry.event === "printer.test_print.simulated");
+  assert.ok(testPrintLog);
+  assert.equal(testPrintLog?.metadata.previewLength, result.preview.length);
   assert.equal(
-    logsService.list()[0].metadata.commandCount,
+    testPrintLog?.metadata.commandCount,
     result.commands.length
   );
-  assert.equal("preview" in logsService.list()[0].metadata, false);
+  assert.equal("preview" in testPrintLog!.metadata, false);
   assert.equal(
     eventsService.getRecentEvents()[0].event,
     PeripheralEventName.PrinterJobCompleted
@@ -379,7 +408,10 @@ test("ticket print simulates without logging full content", async () => {
     },
   });
 
-  const log = logsService.list()[0];
+  const log = logsService
+    .list()
+    .find((entry) => entry.event === "printer.ticket_print.simulated");
+  assert.ok(log);
   assert.equal(result.success, true);
   assert.equal(result.adapterName, "MockPrinterAdapter");
   assert.equal(result.bytesSent, undefined);
@@ -398,13 +430,13 @@ test("ticket print simulates without logging full content", async () => {
     result.commands.some((command) => command.name === EscPosMockCommandName.Cut),
     true
   );
-  assert.equal(log.event, "printer.ticket_print.simulated");
-  assert.deepEqual(log.metadata.itemCount, 1);
-  assert.deepEqual(log.metadata.commandCount, result.commands.length);
-  assert.deepEqual(log.metadata.previewLength, result.preview.length);
-  assert.equal("lines" in log.metadata, false);
-  assert.equal("items" in log.metadata, false);
-  assert.equal("preview" in log.metadata, false);
+  assert.equal(log?.event, "printer.ticket_print.simulated");
+  assert.deepEqual(log?.metadata.itemCount, 1);
+  assert.deepEqual(log?.metadata.commandCount, result.commands.length);
+  assert.deepEqual(log?.metadata.previewLength, result.preview.length);
+  assert.equal("lines" in log!.metadata, false);
+  assert.equal("items" in log!.metadata, false);
+  assert.equal("preview" in log!.metadata, false);
 });
 
 test("printer preview respects configured line width", async () => {

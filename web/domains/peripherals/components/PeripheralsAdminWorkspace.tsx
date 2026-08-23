@@ -416,6 +416,10 @@ const PeripheralsAdminWorkspace = () => {
           {infoBox("Conexión local", health?.agent ?? "127.0.0.1:4050")}
           {infoBox("Dispositivos", String(devices.length))}
           {infoBox("Estado técnico", health?.status ?? "offline")}
+          {infoBox("configuredDevices", String(health?.configuredDevices ?? "-"))}
+          {infoBox("discoveredDevices", String(health?.discoveredDevices ?? "-"))}
+          {infoBox("persistenceState", health?.persistenceState ? `${health.persistenceState.status} / v${health.persistenceState.schemaVersion}` : "-")}
+          {infoBox("platform", [health?.platform, health?.architecture].filter(Boolean).join(" / ") || "-")}
         </div>
       </section>
 

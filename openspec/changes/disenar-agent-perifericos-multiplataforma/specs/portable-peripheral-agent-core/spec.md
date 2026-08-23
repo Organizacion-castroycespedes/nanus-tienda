@@ -47,6 +47,35 @@ paths abstraction. Portable core code SHALL NOT hardcode Windows locations.
 - **THEN** it SHALL request the platform paths abstraction rather than compose
   a Windows-only location
 
+### Requirement: Local device registry persistence
+The Agent SHALL persist configured local devices in the platform state
+directory using a versioned, atomic registry store. The Agent SHALL separate
+configured device state from runtime connectivity state.
+
+#### Scenario: NETWORK device survives restart
+- **WHEN** a NETWORK printer is registered locally and the Agent restarts
+- **THEN** `GET /devices` SHALL still include the configured printer
+- **AND** the Agent SHALL restore its saved configuration without requiring
+  re-registration
+
+#### Scenario: Offline configured device remains configured
+- **WHEN** a configured device cannot currently be reached
+- **THEN** the Agent SHALL keep the device in the registry
+- **AND** it SHALL update only the runtime status to `NOT_REACHABLE` or
+  `DISCONNECTED`
+- **AND** it SHALL NOT delete the configured device
+
+#### Scenario: Missing or corrupt state file
+- **WHEN** the registry file is missing
+- **THEN** the Agent SHALL boot with an empty configured registry
+- **WHEN** the registry file is corrupt
+- **THEN** the Agent SHALL report a controlled error and continue running
+
+#### Scenario: Configured and discovered USB device
+- **WHEN** a configured USB printer is rediscovered by hardware discovery
+- **THEN** the Agent SHALL reconcile the entries deterministically
+- **AND** it SHALL NOT create duplicate logical devices for the same printer
+
 ### Requirement: Windows x64 portable QA artifact
 The project SHALL produce a reproducible Windows x64 portable Agent artifact
 for P0 that runs without global Node, npm or Git on the POS workstation.
@@ -61,3 +90,44 @@ for P0 that runs without global Node, npm or Git on the POS workstation.
 - **WHEN** the packaged launcher starts the Agent through its embedded runtime
 - **THEN** `GET /health` and `POST /devices/discover` SHALL succeed before the
   process accepts a clean shutdown signal
+
+### Requirement: CORS allow-list and preflight
+The Agent SHALL bind to `127.0.0.1` and SHALL only allow browser origins that
+are explicitly configured in its local allow-list or environment override.
+The Agent SHALL respond to printer preflight requests only for authorized
+origins.
+
+#### Scenario: Allowed printer preflight
+- **WHEN** a configured browser origin sends `OPTIONS /printer/print-ticket`
+  with `Access-Control-Request-Method: POST`
+- **THEN** the Agent SHALL return `204` or `200`
+- **AND** the response SHALL include the authorized origin
+- **AND** `Access-Control-Allow-Methods` SHALL include `POST` and `OPTIONS`
+- **AND** `Access-Control-Allow-Headers` SHALL include `content-type`
+
+#### Scenario: Disallowed printer preflight
+- **WHEN** an unapproved origin sends the same printer preflight request
+- **THEN** the Agent SHALL reject the origin
+- **AND** it SHALL NOT advertise `Access-Control-Allow-Origin: *`
+
+### Requirement: Windows x64 portable autostart
+The project SHALL include idempotent Scheduled Task scripts for the portable
+Windows x64 Agent. The task SHALL start the Agent from the installed portable
+folder, avoid duplicate instances on port `4050`, support a short startup
+delay, and expose task registration status without secrets.
+
+#### Scenario: Scheduled Task lifecycle
+- **WHEN** the operator runs `install-agent-autostart.ps1`
+- **THEN** the task SHALL be registered or refreshed with `Register-ScheduledTask`
+- **AND** the task SHALL launch the portable installation after logon
+- **AND** the task SHALL use restart-on-failure settings
+- **AND** `remove-agent-autostart.ps1` SHALL remove the task safely if present
+- **AND** `status-agent-autostart.ps1` SHALL report registered, running and
+  last result information
+
+#### Scenario: Quoted launcher entry point
+- **WHEN** the autostart launcher starts the Agent from a portable path with
+  spaces
+- **THEN** it SHALL pass the entry point as a quoted argument
+- **AND** it SHALL bootstrap `PERIPHERALS_CONFIG_PATH` before process start
+- **AND** it SHALL only return success after the health gate responds `200`
