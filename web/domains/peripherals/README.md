@@ -263,3 +263,7 @@ scan si llega rapida y termina con `Enter`.
 El scanner real se representa en la terminal como capability de teclado wedge
 para `TERM-001`. Si no necesita `deviceId` fisico, la configuracion debe dejar
 eso claro y no reutilizar `mock-scanner-001`.
+
+En `/[tenant]/admin/peripherals` el bloque `Scanner` muestra la capability
+`USB_HID` y el estado persistido. El `deviceId` queda como dato tecnico solo si
+existe; no es la identidad operativa del wedge.

@@ -93,11 +93,16 @@ import {
   normalizePosScannerCode,
 } from "../utils/pos-scanner";
 import {
-  capturePosScannerWedgeChar,
   createPosScannerWedgeState,
-  DEFAULT_POS_SCANNER_WEDGE_OPTIONS,
-  shouldCommitPosScannerWedge,
+  handlePosScannerKeyboardEvent,
+  isPosScannerTerminatorKey,
+  resolvePosScannerWedgeOptions,
 } from "../utils/pos-scanner-wedge";
+import {
+  createPosScannerHidLogger,
+  describePosScannerWedgeIgnoredSequence,
+  resolvePosScannerHidStatus,
+} from "../utils/pos-scanner-hid";
 import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
 import {
@@ -549,9 +554,10 @@ export const PosScreen = () => {
   const [isMobile, setIsMobile] = useState(false);
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
-  const scannerMockEnabled =
+  const scannerHidEnabled =
     peripheralFeatureFlags.peripheralsEnabled &&
     peripheralFeatureFlags.scannerEnabled;
+  const scannerMockEnabled = scannerHidEnabled;
   const scaleMockEnabled =
     peripheralFeatureFlags.peripheralsEnabled &&
     peripheralFeatureFlags.scaleEnabled;
@@ -565,6 +571,11 @@ export const PosScreen = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scannerErrorToastShownRef = useRef(false);
   const scannerWedgeStateRef = useRef(createPosScannerWedgeState());
+  const scannerWedgeOptions = useMemo(() => resolvePosScannerWedgeOptions(), []);
+  const scannerHidLogger = useMemo(
+    () => createPosScannerHidLogger(process.env.NEXT_PUBLIC_POS_SCANNER_DEBUG === "true"),
+    []
+  );
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -1228,11 +1239,10 @@ export const PosScreen = () => {
       }, {}),
     [cartWithDerivedValues]
   );
-  const scannerStatusLabel = scannerMockEnabled
-    ? scannerMockStatus === "error"
-      ? "Desconectado"
-      : "Conectado"
-    : "Desactivado";
+  const scannerHidStatus = resolvePosScannerHidStatus(
+    scannerHidEnabled,
+    scannerLastCode
+  );
   const scaleStatusLabel = scaleMockEnabled
     ? scaleMockStatus === "reading"
       ? "Leyendo"
@@ -1240,10 +1250,7 @@ export const PosScreen = () => {
         ? "Error"
         : "Lista"
     : "Desactivada";
-  const scannerStatusTone =
-    scannerMockStatus === "error" || !scannerMockEnabled
-      ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-      : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100";
+  const scannerStatusTone = scannerHidStatus.tone;
   const scaleStatusTone =
     scaleMockStatus === "error" || !scaleMockEnabled
       ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
@@ -1479,6 +1486,7 @@ export const PosScreen = () => {
         return;
       }
 
+      scannerHidLogger.processingCode(code);
       setScannerMockStatus("connected");
       setQuery("");
       scannerWedgeStateRef.current = createPosScannerWedgeState();
@@ -1487,11 +1495,16 @@ export const PosScreen = () => {
 
       if (!product) {
         const message = `Código no encontrado: ${code}`;
+        scannerHidLogger.productNotFound(code);
         setScannerLastResult(message);
         showToast(message, "warning");
         return;
       }
 
+      scannerHidLogger.productMatched({
+        id: product.id,
+        name: product.name,
+      });
       const added = addToCart(product);
       if (!added) {
         setScannerLastResult(`Producto no agregado por scanner: ${product.name}`);
@@ -1502,7 +1515,7 @@ export const PosScreen = () => {
       setScannerLastResult(message);
       showToast(message, "success");
     },
-    [addToCart, showToast]
+    [addToCart, scannerHidLogger, showToast]
   );
 
   const handleScannerConnectionError = useCallback(
@@ -1519,13 +1532,14 @@ export const PosScreen = () => {
   );
 
   useEffect(() => {
-    if (!scannerMockEnabled) {
+    if (!scannerHidEnabled) {
       setScannerMockStatus("disabled");
       return undefined;
     }
 
     scannerErrorToastShownRef.current = false;
     setScannerMockStatus("connected");
+    scannerHidLogger.captureEnabled();
     const unsubscribe = subscribeScannerEvents(
       handleScannerCodeRead,
       handleScannerConnectionError,
@@ -1545,7 +1559,8 @@ export const PosScreen = () => {
     handleScannerCodeRead,
     handleScannerConnectionError,
     posTerminalId,
-    scannerMockEnabled,
+    scannerHidEnabled,
+    scannerHidLogger,
   ]);
 
   const handleSimulateScannerRead = useCallback(async () => {
@@ -1555,7 +1570,7 @@ export const PosScreen = () => {
       return;
     }
 
-    if (!scannerMockEnabled) {
+    if (!scannerHidEnabled) {
       return;
     }
 
@@ -1593,7 +1608,7 @@ export const PosScreen = () => {
     authUser?.tenantId,
     posTerminalId,
     scannerMockCode,
-    scannerMockEnabled,
+    scannerHidEnabled,
     showToast,
   ]);
 
@@ -1732,38 +1747,53 @@ export const PosScreen = () => {
         return;
       }
 
-      if (scannerMockEnabled) {
-        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-          scannerWedgeStateRef.current = capturePosScannerWedgeChar(
-            scannerWedgeStateRef.current,
-            event.key,
-            event.timeStamp,
-            DEFAULT_POS_SCANNER_WEDGE_OPTIONS
-          );
+      if (scannerHidEnabled) {
+        const previousState = scannerWedgeStateRef.current;
+        const scannerEvent = handlePosScannerKeyboardEvent(
+          scannerWedgeStateRef.current,
+          event.key,
+          event.timeStamp,
+          scannerHidEnabled,
+          scannerWedgeOptions
+        );
+        scannerWedgeStateRef.current = scannerEvent.nextState;
+        if (scannerEvent.committedCode) {
+          event.preventDefault();
+          scannerHidLogger.scanDetected({
+            code: scannerEvent.committedCode,
+            length: scannerEvent.committedCode.length,
+            durationMs:
+              previousState.startedAt === null
+                ? 0
+                : Math.max(0, event.timeStamp - previousState.startedAt),
+          });
+          handleScannerCodeRead({
+            success: true,
+            code: scannerEvent.committedCode,
+            format: "CODE128",
+            timestamp: new Date().toISOString(),
+          });
+          return;
         }
 
-        if (event.key === "Enter") {
-          const wedgeState = scannerWedgeStateRef.current;
-          if (
-            shouldCommitPosScannerWedge(
-              wedgeState,
-              event.timeStamp,
-              DEFAULT_POS_SCANNER_WEDGE_OPTIONS
-            )
-          ) {
-            event.preventDefault();
-            handleScannerCodeRead({
-              success: true,
-              code: wedgeState.buffer,
-              format: "CODE128",
-              timestamp: new Date().toISOString(),
-            });
-            return;
+        if (isPosScannerTerminatorKey(event.key)) {
+          const ignoredSequence = describePosScannerWedgeIgnoredSequence(
+            previousState,
+            event.timeStamp,
+            scannerWedgeOptions
+          );
+
+          if (ignoredSequence) {
+            scannerHidLogger.sequenceIgnored(ignoredSequence);
           }
+        }
+
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          return;
         }
       }
 
-      if (event.key !== "Enter") {
+      if (!["Enter", "Return", "CR", "LF", "LineFeed", "\r", "\n"].includes(event.key)) {
         return;
       }
 
@@ -1780,7 +1810,9 @@ export const PosScreen = () => {
       handleProductCardAction,
       handleScannerCodeRead,
       query,
-      scannerMockEnabled,
+      scannerHidEnabled,
+      scannerHidLogger,
+      scannerWedgeOptions,
     ]
   );
 
@@ -2809,8 +2841,13 @@ export const PosScreen = () => {
                   <span
                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scannerStatusTone}`}
                   >
-                    Scanner {scannerStatusLabel}
-                    {scannerMockStatus === "connected" ? (
+                    {scannerHidStatus.label}
+                    {scannerHidStatus.detail ? (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+                        {scannerHidStatus.detail}
+                      </span>
+                    ) : null}
+                    {scannerHidEnabled ? (
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     ) : null}
                   </span>

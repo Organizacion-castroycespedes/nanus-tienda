@@ -475,7 +475,10 @@ const PeripheralsAdminWorkspace = () => {
               : "Próximamente / Pendiente de integración.",
           }}
         >
-          {infoBox("deviceId", resolved?.scannerDeviceId ?? "-")}
+          <div className="space-y-3">
+            {infoBox("connectionType", "USB_HID")}
+            {infoBox("deviceId", resolved?.scannerDeviceId ?? "-")}
+          </div>
         </BlockCard>
         <BlockCard
           title="Balanza"
