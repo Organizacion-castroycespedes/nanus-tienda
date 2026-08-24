@@ -50,7 +50,14 @@ export class PeripheralAdapterResolver {
     );
   }
 
-  resolveCashDrawer(device: PeripheralDevice, mode: "MOCK"): CashDrawerAdapter {
+  resolveCashDrawer(
+    device: PeripheralDevice,
+    mode: "MOCK"
+  ): CashDrawerAdapter | PrinterAdapter {
+    if (device.type === DeviceType.PRINTER) {
+      return this.resolvePrinter(device, mode);
+    }
+
     if (device.type !== DeviceType.CASH_DRAWER) {
       throw new BadRequestException("device must be CASH_DRAWER");
     }

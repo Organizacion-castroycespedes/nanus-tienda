@@ -166,6 +166,7 @@ export type CashDrawerOpenInput = {
   tenantId?: string;
   branchId?: string;
   terminalId?: string;
+  printerDeviceId?: string;
   deviceId?: string;
   reason?: string;
 };
@@ -339,6 +340,13 @@ export type DeviceProfile = {
   supportsCashDrawerPulse: boolean;
 };
 
+export type DrawerPulseProfile = {
+  connector: 0 | 1;
+  pin: 2 | 5;
+  pulseOnMs: number;
+  pulseOffMs: number;
+};
+
 export type PeripheralCapabilities = {
   adapterName?: string;
   mode?: string;
@@ -355,6 +363,7 @@ export type PeripheralActionResponse = {
   commandId?: string;
   mode?: string;
   deviceId?: string;
+  printerDeviceId?: string;
   terminalId?: string;
   network?: DeviceNetworkConfig;
   preview?: string;
@@ -363,6 +372,8 @@ export type PeripheralActionResponse = {
   profile?: DeviceProfile;
   capabilities?: PeripheralCapabilities;
   commandCount?: number;
+  bytesSent?: number;
+  pulse?: DrawerPulseProfile;
   message?: string;
   timestamp?: string;
 };
@@ -383,11 +394,18 @@ export type CashDrawerResponse = PeripheralActionResponse & {
   success: true;
   commandId: string;
   mode: string;
+  printerDeviceId: string;
   deviceId: string;
   terminalId: string;
+  connectionType: PeripheralConnectionType;
+  network?: DeviceNetworkConfig;
   commands: PrintCommand[];
   profile?: DeviceProfile;
   capabilities?: PeripheralCapabilities;
+  bytesSent?: number;
+  pulse: DrawerPulseProfile;
+  message: string;
+  timestamp: string;
 };
 
 export type PeripheralDiscoverResponse = {

@@ -423,9 +423,10 @@ export const openCashDrawerCommand = (payload: CashDrawerOpenInput) =>
 export const openCashDrawer = (
   terminalId: string,
   deviceId: string,
-  reason = "SALE_CASH_PAYMENT"
+  reason = "SALE_CASH_PAYMENT",
+  printerDeviceId?: string
 ) =>
-  openCashDrawerCommand({ terminalId, deviceId, reason });
+  openCashDrawerCommand({ terminalId, deviceId, printerDeviceId, reason });
 
 export const fetchCurrentWeight = (input: ScaleReadInput = {}) =>
   requestPeripheral<PeripheralScaleWeight>(

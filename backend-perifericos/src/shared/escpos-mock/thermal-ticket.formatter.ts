@@ -49,7 +49,6 @@ export const createEscPosMockCommand = (
 });
 
 export const createCashDrawerPulseCommands = (): EscPosMockCommand[] => [
-  createEscPosMockCommand(EscPosMockCommandName.Init),
   createEscPosMockCommand(EscPosMockCommandName.CashDrawerPulse),
 ];
 

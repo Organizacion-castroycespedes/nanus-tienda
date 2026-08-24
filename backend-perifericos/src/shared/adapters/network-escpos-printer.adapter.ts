@@ -5,10 +5,12 @@ import type {
 } from "../escpos-mock/escpos-mock.types";
 import { EscPosMockCommandName } from "../escpos-mock/escpos-mock.types";
 import {
+  createCashDrawerPulseCommands,
   buildTestPrintDocument,
   buildTicketPrintDocument,
 } from "../escpos-mock/thermal-ticket.formatter";
 import {
+  buildCashDrawerPulseBytes,
   renderThermalEscPos,
   type EscPosTextEncoding,
 } from "../escpos/thermal-escpos.renderer";
@@ -17,6 +19,8 @@ import { validateNetworkOptions } from "../utils/network-device-validation.util"
 import type { DeviceProfile } from "../profiles/device-profiles";
 import type {
   AdapterCapabilities,
+  AdapterResult,
+  CashDrawerAdapterInput,
   PrintTicketAdapterInput,
   PrinterAdapter,
   PrinterAdapterInput,
@@ -56,7 +60,28 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       connectionType: this.connectionType,
       supportsCut: profile.supportsCut,
       supportsPhysicalCut: profile.supportsCut,
-      supportsCashDrawerPulse: false,
+      supportsCashDrawerPulse: profile.supportsCashDrawerPulse,
+    };
+  }
+
+  async openCashDrawer(input: CashDrawerAdapterInput): Promise<AdapterResult> {
+    this.validateDevice(input.device);
+    const capabilities = this.getCapabilities(input.profile);
+    if (!capabilities.supportsCashDrawerPulse) {
+      throw new BadRequestException("printer does not support cash drawer pulse");
+    }
+
+    const commands = createCashDrawerPulseCommands();
+    const payload = buildCashDrawerPulseBytes(input.pulse);
+    const bytesSent = await this.send(input.device, payload);
+
+    return {
+      adapterName: this.adapterName,
+      profile: input.profile,
+      capabilities,
+      commands,
+      bytesSent,
+      pulse: input.pulse,
     };
   }
 

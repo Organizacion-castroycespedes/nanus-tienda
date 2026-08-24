@@ -471,14 +471,14 @@ test("printer preview respects configured line width", async () => {
   assert.equal(result.profile.widthChars, 32);
 });
 
-test("cash drawer open emits event and log", () => {
+test("cash drawer open emits event and log", async () => {
   const {
     cashDrawerController,
     logsService,
     eventsService,
   } = buildServices();
 
-  const result = cashDrawerController.open({
+  const result = await cashDrawerController.open({
     terminalId: "local-terminal",
     deviceId: "mock-cashdrawer-001",
     reason: "SALE_CASH_PAYMENT",
@@ -487,19 +487,23 @@ test("cash drawer open emits event and log", () => {
   assert.equal(result.success, true);
   assert.match(result.commandId, /^mock-cashdrawer-open-/);
   assert.equal(result.mode, "MOCK");
+  assert.equal(result.printerDeviceId, "mock-printer-001");
+  assert.equal(result.connectionType, ConnectionType.MOCK);
   assert.equal(
     result.commands.some(
       (command) => command.name === EscPosMockCommandName.CashDrawerPulse
     ),
     true
   );
+  assert.equal(result.commands.length, 1);
   assert.equal(logsService.list()[0].event, "cashdrawer.open.simulated");
-  assert.equal(logsService.list()[0].metadata.commandCount, 2);
+  assert.equal(logsService.list()[0].metadata.commandCount, 1);
   assert.equal(
     eventsService.getRecentEvents()[0].event,
     PeripheralEventName.CashDrawerOpened
   );
-  assert.equal(eventsService.getRecentEvents()[0].data.commandCount, 2);
+  assert.equal(eventsService.getRecentEvents()[0].data.commandCount, 1);
+  assert.equal(eventsService.getRecentEvents()[0].data.printerDeviceId, "mock-printer-001");
 });
 
 test("scale returns simulated weight and emits event", () => {
@@ -629,20 +633,19 @@ test("deviceId not found returns controlled error and WARN log", async () => {
   assert.equal(logsService.list()[0].event, "device.lookup.not_found");
 });
 
-test("wrong device type returns controlled error and WARN log", () => {
+test("legacy cash drawer request resolves canonical printer device", async () => {
   const { cashDrawerController, logsService } = buildServices();
 
-  assert.throws(
-    () =>
-      cashDrawerController.open({
-        terminalId: "local-terminal",
-        deviceId: "mock-printer-001",
-      }),
-    BadRequestException
-  );
+  const result = await cashDrawerController.open({
+    terminalId: "local-terminal",
+    deviceId: "mock-printer-001",
+  });
 
-  assert.equal(logsService.list()[0].level, LogLevel.WARN);
-  assert.equal(logsService.list()[0].event, "device.lookup.type_mismatch");
+  assert.equal(result.success, true);
+  assert.equal(result.printerDeviceId, "mock-printer-001");
+  assert.equal(result.connectionType, ConnectionType.MOCK);
+  assert.equal(result.commands.length, 1);
+  assert.equal(logsService.list()[0].event, "cashdrawer.open.simulated");
 });
 
 test("disconnected device cannot execute operational action", async () => {
