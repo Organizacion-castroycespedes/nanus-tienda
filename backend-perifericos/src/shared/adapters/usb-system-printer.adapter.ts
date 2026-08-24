@@ -14,6 +14,8 @@ import { ConnectionType, DeviceType, type PeripheralDevice } from "../types/peri
 import type { DeviceProfile } from "../profiles/device-profiles";
 import type {
   AdapterCapabilities,
+  AdapterResult,
+  CashDrawerAdapterInput,
   PrintTicketAdapterInput,
   PrinterAdapter,
   PrinterAdapterInput,
@@ -72,6 +74,16 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
         this.physicalCutCertified,
       supportsCashDrawerPulse: false,
     };
+  }
+
+  openCashDrawer(input: CashDrawerAdapterInput): AdapterResult {
+    this.validateDevice(input.device);
+    const capabilities = this.getCapabilities(input.profile);
+    if (!capabilities.supportsCashDrawerPulse) {
+      throw new BadRequestException("printer does not support cash drawer pulse");
+    }
+
+    throw new BadRequestException("printer does not support cash drawer pulse");
   }
 
   printTest(input: PrinterAdapterInput): PrinterAdapterResult {

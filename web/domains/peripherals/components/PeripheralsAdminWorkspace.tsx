@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Archive,
   CheckCircle2,
   ChevronRight,
   Printer,
@@ -20,6 +21,7 @@ import {
   fetchPeripheralDevices,
   fetchPeripheralHealth,
   getPeripheralAgentConfig,
+  openCashDrawerCommand,
   testPrint,
 } from "../api";
 import {
@@ -29,6 +31,7 @@ import {
 import type {
   PeripheralAgentHealth,
   PeripheralDevice,
+  CashDrawerResponse,
   PosTerminalResolvedConfig,
   PeripheralDiscoverResponse,
 } from "../types";
@@ -113,12 +116,14 @@ const PeripheralsAdminWorkspace = () => {
   const [resolved, setResolved] = useState<PosTerminalResolvedConfig | null>(null);
   const [selectedTerminalId, setSelectedTerminalId] = useState(queryTerminalId);
   const [printerDeviceId, setPrinterDeviceId] = useState("");
+  const [drawerResult, setDrawerResult] = useState<CashDrawerResponse | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [loading, setLoading] = useState({
     snapshot: true,
     discover: false,
     save: false,
     testPrint: false,
+    testDrawer: false,
   });
 
   const showToast = useCallback((message: string, variant: ToastVariant, detail?: string) => {
@@ -232,13 +237,13 @@ const PeripheralsAdminWorkspace = () => {
   const currentBlockState: BlockState = resolved?.source === "CONFIGURED"
     ? {
         status: "configured",
-        title: "Periféricos configurados",
-        detail: "La terminal canónica ya tiene configuración persistida.",
+        title: "PerifÃ©ricos configurados",
+        detail: "La terminal canÃ³nica ya tiene configuraciÃ³n persistida.",
       }
     : {
         status: "not-configured",
-        title: "Periféricos no configurados",
-        detail: "La terminal no tiene perfil persistido todavía.",
+        title: "PerifÃ©ricos no configurados",
+        detail: "La terminal no tiene perfil persistido todavÃ­a.",
       };
 
   const printerState: BlockState = printerDeviceId
@@ -251,7 +256,7 @@ const PeripheralsAdminWorkspace = () => {
       : {
           status: "missing",
           title: "Impresora configurada pero no detectada",
-          detail: "La configuración existe, pero el Agent no la ve ahora.",
+          detail: "La configuraciÃ³n existe, pero el Agent no la ve ahora.",
         }
     : {
         status: "not-configured",
@@ -326,6 +331,40 @@ const PeripheralsAdminWorkspace = () => {
     }
   };
 
+  const handleTestDrawer = async () => {
+    const terminalIdForDrawer =
+      resolved?.operationalTerminalId ?? selectedTerminalId ?? queryTerminalId;
+    const printerId =
+      selectedPrinterDevice?.id || printerDeviceId || resolved?.printerDeviceId;
+    if (!terminalIdForDrawer || !printerId) {
+      showToast("Falta terminal o impresora para el cajon.", "warning");
+      return;
+    }
+
+    setLoading((prev) => ({ ...prev, testDrawer: true }));
+    try {
+      const response = await openCashDrawerCommand({
+        terminalId: terminalIdForDrawer,
+        printerDeviceId: printerId,
+        deviceId: printerId,
+        reason: "MANUAL_TEST",
+      });
+      setDrawerResult(response);
+      showToast(
+        response.success
+          ? `Cajon via impresora ${response.mode}.`
+          : "Cajon sin resultado.",
+        response.success ? "success" : "warning",
+        response.adapterName
+      );
+    } catch (error) {
+      setDrawerResult(null);
+      showToast(error instanceof Error ? error.message : "Apertura fallida.", "error");
+    } finally {
+      setLoading((prev) => ({ ...prev, testDrawer: false }));
+    }
+  };
+
   return (
     <div className="space-y-6">
       {toast ? (
@@ -345,9 +384,9 @@ const PeripheralsAdminWorkspace = () => {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-500">Configuracion operativa</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Periféricos por terminal</h1>
+            <h1 className="text-2xl font-semibold text-slate-900">PerifÃ©ricos por terminal</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Terminal canónica, periféricos asociados y dispositivos disponibles en Agent local.
+              Terminal canÃ³nica, perifÃ©ricos asociados y dispositivos disponibles en Agent local.
             </p>
           </div>
           <div className="flex gap-3">
@@ -373,7 +412,7 @@ const PeripheralsAdminWorkspace = () => {
 
         <div className="mt-4">
           <label className="flex flex-col gap-2 text-sm text-slate-700">
-            <span className="font-medium">Terminal canónica</span>
+            <span className="font-medium">Terminal canÃ³nica</span>
             <select
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
               value={selectedTerminalId}
@@ -412,10 +451,10 @@ const PeripheralsAdminWorkspace = () => {
           </Button>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {infoBox("Versión", health?.version ?? "-")}
-          {infoBox("Conexión local", health?.agent ?? "127.0.0.1:4050")}
+          {infoBox("VersiÃ³n", health?.version ?? "-")}
+          {infoBox("ConexiÃ³n local", health?.agent ?? "127.0.0.1:4050")}
           {infoBox("Dispositivos", String(devices.length))}
-          {infoBox("Estado técnico", health?.status ?? "offline")}
+          {infoBox("Estado tÃ©cnico", health?.status ?? "offline")}
           {infoBox("configuredDevices", String(health?.configuredDevices ?? "-"))}
           {infoBox("discoveredDevices", String(health?.discoveredDevices ?? "-"))}
           {infoBox("persistenceState", health?.persistenceState ? `${health.persistenceState.status} / v${health.persistenceState.schemaVersion}` : "-")}
@@ -442,7 +481,7 @@ const PeripheralsAdminWorkspace = () => {
                 <option value="">Sin configurar</option>
                 {printerCandidates.map((device) => (
                   <option key={device.id} value={device.id}>
-                    {device.name} · {device.connectionType} · {formatEndpoint(device)}
+                    {device.name} Â· {device.connectionType} Â· {formatEndpoint(device)}
                   </option>
                 ))}
               </select>
@@ -450,7 +489,7 @@ const PeripheralsAdminWorkspace = () => {
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => void handleTestPrint()} isLoading={loading.testPrint}>
                 <Printer className="h-4 w-4" />
-                Probar impresión
+                Probar impresiÃ³n
               </Button>
               <Button variant="outline" onClick={() => void savePrinter(printerDeviceId || null)} isLoading={loading.save}>
                 <CheckCircle2 className="h-4 w-4" />
@@ -471,8 +510,8 @@ const PeripheralsAdminWorkspace = () => {
             status: resolved?.scannerDeviceId ? "configured" : "not-configured",
             title: resolved?.scannerDeviceId ? "Scanner configurado" : "Scanner pendiente",
             detail: resolved?.scannerDeviceId
-              ? "Configuración persistida visible."
-              : "Próximamente / Pendiente de integración.",
+              ? "ConfiguraciÃ³n persistida visible."
+              : "PrÃ³ximamente / Pendiente de integraciÃ³n.",
           }}
         >
           <div className="space-y-3">
@@ -486,30 +525,47 @@ const PeripheralsAdminWorkspace = () => {
             status: resolved?.scaleDeviceId ? "configured" : "not-configured",
             title: resolved?.scaleDeviceId ? "Balanza configurada" : "Balanza pendiente",
             detail: resolved?.scaleDeviceId
-              ? "Configuración persistida visible."
-              : "Próximamente / Pendiente de integración.",
+              ? "ConfiguraciÃ³n persistida visible."
+              : "PrÃ³ximamente / Pendiente de integraciÃ³n.",
           }}
         >
           {infoBox("deviceId", resolved?.scaleDeviceId ?? "-")}
         </BlockCard>
         <BlockCard
-          title="Cajón"
+          title="Cajon via impresora"
           state={{
-            status: resolved?.cashDrawerDeviceId ? "configured" : "not-configured",
-            title: resolved?.cashDrawerDeviceId ? "Cajón configurado" : "Cajón pendiente",
-            detail: resolved?.cashDrawerDeviceId
-              ? "Configuración persistida visible."
-              : "Próximamente / Pendiente de integración.",
+            status: selectedPrinterDevice ? "configured" : "not-configured",
+            title: selectedPrinterDevice ? "Cajon via impresora configurado" : "Cajon pendiente",
+            detail: selectedPrinterDevice
+              ? "El cajon cuelga de la impresora canonical."
+              : "Proximamente / Pendiente de integracion.",
           }}
         >
-          {infoBox("deviceId", resolved?.cashDrawerDeviceId ?? "-")}
+          <div className="space-y-3">
+            {infoBox("printerDeviceId", selectedPrinterDevice?.id ?? resolved?.printerDeviceId ?? "-")}
+            {infoBox("connectionType", selectedPrinterDevice?.connectionType ?? "-")}
+            {infoBox("endpoint", selectedPrinterDevice ? formatEndpoint(selectedPrinterDevice) : "-")}
+            {infoBox(
+              "ultimo resultado",
+              drawerResult ? `${drawerResult.mode} / ${drawerResult.adapterName} / ${drawerResult.message}` : "-"
+            )}
+            <Button
+              variant="outline"
+              onClick={() => void handleTestDrawer()}
+              isLoading={loading.testDrawer}
+              disabled={!selectedPrinterDevice && !resolved?.printerDeviceId}
+            >
+              <Archive className="h-4 w-4" />
+              Probar apertura
+            </Button>
+          </div>
         </BlockCard>
       </div>
 
       <details className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
           <ChevronRight className="h-4 w-4" />
-          Herramientas técnicas / QA
+          Herramientas tÃ©cnicas / QA
         </summary>
         <div className="mt-5 space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

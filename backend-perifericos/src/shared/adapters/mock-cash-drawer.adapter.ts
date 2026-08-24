@@ -31,6 +31,7 @@ export class MockCashDrawerAdapter implements CashDrawerAdapter {
       profile: input.profile,
       capabilities: this.getCapabilities(input.profile),
       commands: createCashDrawerPulseCommands(),
+      pulse: input.pulse,
     };
   }
 }

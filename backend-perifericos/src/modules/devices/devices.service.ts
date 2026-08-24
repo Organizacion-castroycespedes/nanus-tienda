@@ -547,6 +547,12 @@ export class DevicesService {
     return this.cloneDevice(device);
   }
 
+  findById(deviceId: string): PeripheralDevice | undefined {
+    const safeDeviceId = validateIdentifier(deviceId, "deviceId");
+    const device = this.buildMergedDevices().get(safeDeviceId);
+    return device ? this.cloneDevice(device) : undefined;
+  }
+
   assertUsbPrinterAvailable(device: PeripheralDevice): void {
     if (device.connectionType !== ConnectionType.USB) {
       return;

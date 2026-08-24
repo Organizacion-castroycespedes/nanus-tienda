@@ -2,8 +2,48 @@ import {
   EscPosMockCommandName,
   type EscPosMockCommand,
 } from "../escpos-mock/escpos-mock.types";
+import type { CashDrawerPulseProfile } from "../adapters/peripheral-adapter.types";
 
 export type EscPosTextEncoding = "utf8" | "latin1";
+
+export const DEFAULT_CASH_DRAWER_PULSE_PROFILE: CashDrawerPulseProfile = {
+  connector: 0,
+  pin: 2,
+  pulseOnMs: 50,
+  pulseOffMs: 250,
+};
+
+const normalizeEscPosByte = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  const rounded = Math.round(value);
+  if (rounded < 0) {
+    return 0;
+  }
+  if (rounded > 255) {
+    return 255;
+  }
+
+  return rounded;
+};
+
+export function buildCashDrawerPulseBytes(
+  pulse: CashDrawerPulseProfile = DEFAULT_CASH_DRAWER_PULSE_PROFILE
+): Buffer {
+  const connector = normalizeEscPosByte(pulse.connector);
+  const pulseOnMs = normalizeEscPosByte(pulse.pulseOnMs);
+  const pulseOffMs = normalizeEscPosByte(pulse.pulseOffMs);
+
+  return Buffer.from([0x1b, 0x70, connector, pulseOnMs, pulseOffMs]);
+}
+
+export function renderCashDrawerPulseEscPos(
+  pulse: CashDrawerPulseProfile = DEFAULT_CASH_DRAWER_PULSE_PROFILE
+): Buffer {
+  return buildCashDrawerPulseBytes(pulse);
+}
 
 const commandBytes: Record<EscPosMockCommandName, Buffer> = {
   INIT: Buffer.from([0x1b, 0x40]),
@@ -17,7 +57,7 @@ const commandBytes: Record<EscPosMockCommandName, Buffer> = {
   // ESC d n flushes and advances paper below the footer before GS V cuts.
   FEED: Buffer.from([0x1b, 0x64, 0x06]),
   CUT: Buffer.from([0x1d, 0x56, 0x00]),
-  CASH_DRAWER_PULSE: Buffer.from([0x1b, 0x70, 0x00, 0x32, 0xfa]),
+  CASH_DRAWER_PULSE: buildCashDrawerPulseBytes(DEFAULT_CASH_DRAWER_PULSE_PROFILE),
 };
 
 export const THERMAL_80MM_SAFE_WIDTH_CHARS = 48;
