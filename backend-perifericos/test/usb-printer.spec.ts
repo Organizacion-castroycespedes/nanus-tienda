@@ -27,6 +27,7 @@ import {
   type UsbPrinterDiscovery,
 } from "../src/shared/usb/usb-printer-discovery";
 import { renderThermalEscPos } from "../src/shared/escpos/thermal-escpos.renderer";
+import { WindowsRawSpoolerTransport } from "../src/platform/windows/windows-raw-spooler.transport";
 import {
   type DeviceRegistryState,
   type DeviceRegistryStateStore,
@@ -192,9 +193,10 @@ test("USB system adapter prints through CUPS queue with a fake command runner", 
 
 test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () => {
   const commands: Array<{ command: string; args: string[] }> = [];
-  const adapter = new UsbSystemPrinterAdapter("win32", (command, args) => {
+  const rawTransport = new WindowsRawSpoolerTransport((command, args) => {
     commands.push({ command, args });
-  }, "RAW", true);
+  });
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW", rawTransport);
 
   const result = adapter.printTicket({
     agentName: "manus-pos-peripheral-agent",
@@ -231,7 +233,7 @@ test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () =>
   );
   assert.equal(Buffer.from(encodedPayload, "base64").includes(Buffer.from([0x1d, 0x56, 0x00])), true);
   assert.equal(result.adapterName, "UsbRawPrinterAdapter");
-  assert.equal(result.capabilities.supportsPhysicalCut, true);
+  assert.equal(result.capabilities.supportsPhysicalCut, false);
   assert.ok((result.bytesSent ?? 0) > 0);
 });
 
@@ -275,7 +277,7 @@ test("USB RAW failure remains controlled and does not fall back to GDI", () => {
 });
 
 test("USB RAW keeps physical-cut capability false until physical certification", () => {
-  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW", false);
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW");
 
   assert.equal(
     adapter.getCapabilities(DEVICE_PROFILES.THERMAL_80MM).supportsPhysicalCut,

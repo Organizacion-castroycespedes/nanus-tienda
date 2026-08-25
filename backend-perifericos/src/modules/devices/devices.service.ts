@@ -52,6 +52,7 @@ import type {
 } from "./devices.types";
 
 const LOCAL_TERMINAL_ID = "local-terminal";
+const DEFAULT_DISCOVERED_USB_PRINTER_PROFILE_ID = "THERMAL_80MM";
 
 const MOCK_DEVICES: PeripheralDevice[] = [
   {
@@ -786,7 +787,9 @@ export class DevicesService {
       status: DeviceStatus.CONNECTED,
       connectionType: ConnectionType.USB,
       terminalId: LOCAL_TERMINAL_ID,
-      profileId: "THERMAL_80MM",
+      // New USB devices start from the safe default. Persisted devices keep
+      // their configured profile through rediscovery.
+      profileId: DEFAULT_DISCOVERED_USB_PRINTER_PROFILE_ID,
       usb: {
         deviceId: descriptor.deviceId,
         printerName: descriptor.printerName,

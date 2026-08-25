@@ -1,4 +1,4 @@
-import type { CreateDeviceRequest, PeripheralDevice } from "./types";
+import type { CreateDeviceRequest, PeripheralDevice, PrinterProfileId } from "./types";
 
 export const printerProfiles = [
   "THERMAL_80MM",
@@ -14,7 +14,7 @@ export type PrinterRegistrationForm = {
   port: string;
   timeoutMs: string;
   usbDeviceId: string;
-  profileId: (typeof printerProfiles)[number];
+  profileId: PrinterProfileId;
   terminalId: string;
   status: "CONNECTED";
 };

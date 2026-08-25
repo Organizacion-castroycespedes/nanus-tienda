@@ -34,6 +34,43 @@ test("THERMAL_80MM document wraps long text and keeps monetary totals within saf
   assert.match(document.preview, /IDENTIFICADOR-MUY-LARGO/);
 });
 
+test("THERMAL_58MM document wraps long text within 32 chars", () => {
+  const document = buildTicketPrintDocument({
+    ticketType: "SALE",
+    terminalId: "local-terminal",
+    deviceId: "usb-printer-1f0028d1fa5243c2",
+    widthChars: 32,
+    timestamp: "2026-08-21T00:00:00.000Z",
+    content: {
+      header: "QA 58MM",
+      businessName: "Manus POS",
+      items: [
+        {
+          name: "PRODUCTO-MUY-LARGO-PARA-58MM-QUE-DEBE-ENVOLVER-BIEN",
+          quantity: 2,
+          unitPrice: 12345,
+          total: 24690,
+        },
+      ],
+      subtotal: 24690,
+      taxes: 0,
+      total: 24690,
+      paid: 30000,
+      change: 5310,
+      footer: "Fin QA local",
+      payments: [{ method: "EFECTIVO", amount: 30000 }],
+    },
+  });
+
+  for (const line of document.preview.split("\n")) {
+    assert.ok(line.length <= 32, line);
+  }
+  assert.match(document.preview, /QA 58MM/);
+  assert.match(document.preview, /PRODUCTO-MUY-LARGO/);
+  assert.match(document.preview, /\$ 24,690/);
+  assert.match(document.preview, /EFECTIVO/);
+});
+
 test("RAW ESC/POS contains CUT only when physical cut is enabled", () => {
   const document = buildTicketPrintDocument({
     ticketType: "SALE",

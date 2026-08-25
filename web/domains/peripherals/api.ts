@@ -12,6 +12,7 @@ import type {
   PeripheralScannerResponse,
   ScannerSimulateInput,
   PrintJobResponse,
+  UpdateDeviceRequest,
 } from "./types";
 
 export type PeripheralAgentConfigStatus = "configured" | "missing" | "invalid";
@@ -368,6 +369,12 @@ export const discoverPeripheralDevices = () =>
 export const createDevice = (payload: CreateDeviceRequest) =>
   requestPeripheral<PeripheralDevice>("/devices", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateDevice = (deviceId: string, payload: UpdateDeviceRequest) =>
+  requestPeripheral<PeripheralDevice>(`/devices/${deviceId}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 

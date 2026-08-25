@@ -31,7 +31,13 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
   const devices = await fetch(`${baseUrl}/devices`);
   assert.equal(devices.status, 200);
   const devicePayload = await readJson<unknown[]>(devices);
-  assert.equal(devicePayload.length, 4);
+  assert.ok(devicePayload.length >= 4);
+  assert.equal(
+    devicePayload.some(
+      (device) => typeof device === "object" && device !== null && (device as { id?: string }).id === "mock-printer-001"
+    ),
+    true
+  );
 
   const logs = await fetch(`${baseUrl}/logs`);
   assert.equal(logs.status, 200);

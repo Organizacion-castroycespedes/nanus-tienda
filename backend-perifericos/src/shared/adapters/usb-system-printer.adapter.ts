@@ -48,8 +48,6 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     private readonly platform = process.platform,
     private readonly commandRunner: UsbPrintCommandRunner = systemPrintCommandRunner,
     private readonly transport: UsbPrintTransport = getPeripheralsConfig().usbPrintTransport,
-    private readonly physicalCutCertified =
-      getPeripheralsConfig().usbRawPhysicalCutCertified,
     private readonly rawTransport: WindowsRawSpoolerTransport =
       new WindowsRawSpoolerTransport(commandRunner),
     private readonly gdiTransport: WindowsGdiSpoolerTransport =
@@ -68,10 +66,10 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
       mode: this.mode,
       connectionType: this.connectionType,
       supportsCut: profile.supportsCut,
-      supportsPhysicalCut:
-        this.transport === "RAW" &&
-        profile.supportsCut &&
-        this.physicalCutCertified,
+      // Physical cut is not inferred from transport-wide certification.
+      // USB printers only advertise it when a device-specific certification
+      // path exists. Keep the signal conservative to avoid cross-device false positives.
+      supportsPhysicalCut: false,
       supportsCashDrawerPulse: false,
     };
   }
