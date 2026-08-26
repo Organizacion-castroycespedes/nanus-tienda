@@ -1,6 +1,7 @@
 "use client";
 
 import { Monitor, Plus, RefreshCw, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Input } from "../../../../components/design-system/Input";
@@ -14,6 +15,7 @@ import {
   type TerminalBranchOption,
 } from "../../../../modules/terminals/hooks/use-terminals";
 import type { TerminalResponse } from "../../../../modules/terminals/services/terminals.service";
+import { buildTerminalPeripheralsPath } from "../../../../modules/terminals/utils/terminal-links";
 
 type TerminalFilters = {
   query: string;
@@ -55,6 +57,7 @@ const formatDate = (value: string) =>
   }).format(new Date(value));
 
 const TerminalsPage = () => {
+  const router = useRouter();
   const authUser = useAppSelector((state) => state.auth.user);
   const [draftFilters, setDraftFilters] = useState<TerminalFilters>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<TerminalFilters>(defaultFilters);
@@ -271,6 +274,11 @@ const TerminalsPage = () => {
     }
   };
 
+  const handleConfigurePeripherals = (terminal: TerminalResponse) => {
+    const tenantSlug = terminal.tenantId || authUser?.tenantId || "";
+    router.push(buildTerminalPeripheralsPath(tenantSlug, terminal.id));
+  };
+
   if (!isSuperRole) {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -435,6 +443,13 @@ const TerminalsPage = () => {
                     <td className="px-4 py-3 text-slate-700">{formatDate(terminal.createdAt)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleConfigurePeripherals(terminal)}
+                        >
+                          Configurar periféricos
+                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => openEditModal(terminal)}>
                           Editar
                         </Button>

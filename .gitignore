@@ -19,6 +19,7 @@ out/
 # Builds / coverage
 dist/
 dist-bin/
+backend-perifericos/dist-package/
 build/
 !scripts/build/
 !scripts/build/*.sh

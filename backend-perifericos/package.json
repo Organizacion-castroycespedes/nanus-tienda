@@ -12,6 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "build:bin": "npm run build && pkg . --compress Brotli",
+    "package:windows-x64": "npm run build && node scripts/package-windows-x64.mjs",
+    "validate:package:windows-x64": "node scripts/validate-windows-x64-package.mjs",
     "test": "tsx --test \"test/**/*.spec.ts\""
   },
   "pkg": {

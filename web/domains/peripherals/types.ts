@@ -2,9 +2,20 @@ export type PeripheralAgentHealth = {
   status: string;
   agent: string;
   mode: string;
+  agentInstallationId?: string;
+  platform?: string;
+  architecture?: string;
   version: string;
   uptimeSeconds: number;
+  configuredDevices?: number;
+  discoveredDevices?: number;
+  persistenceState?: {
+    schemaVersion: number;
+    status: "empty" | "loaded" | "corrupt";
+  };
 };
+
+export type PrinterProfileId = "THERMAL_80MM" | "THERMAL_58MM" | "GENERIC_TEXT";
 
 export type PeripheralDeviceType =
   | "PRINTER"
@@ -14,13 +25,19 @@ export type PeripheralDeviceType =
   | "DISPLAY"
   | "OTHER";
 
-export type PeripheralDeviceStatus = "CONNECTED" | "DISCONNECTED" | "ERROR" | "SIMULATED";
+export type PeripheralDeviceStatus =
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "NOT_REACHABLE"
+  | "ERROR"
+  | "SIMULATED";
 
 export type PeripheralConnectionType =
   | "MOCK"
   | "USB"
   | "SERIAL"
   | "HID"
+  | "USB_HID"
   | "NETWORK"
   | "BLUETOOTH";
 
@@ -30,6 +47,11 @@ export type DeviceNetworkConfig = {
   timeoutMs?: number;
 };
 
+export type DeviceUsbConfig = {
+  deviceId: string;
+  printerName: string;
+};
+
 export type PeripheralDevice = {
   id: string;
   type: PeripheralDeviceType;
@@ -37,9 +59,11 @@ export type PeripheralDevice = {
   status: PeripheralDeviceStatus;
   connectionType: PeripheralConnectionType;
   terminalId: string;
-  profileId?: string;
+  profileId?: PrinterProfileId;
   profile?: DeviceProfile;
   network?: DeviceNetworkConfig;
+  usb?: DeviceUsbConfig;
+  metadata?: Record<string, unknown>;
 };
 
 export type CreateDeviceRequest = {
@@ -49,8 +73,10 @@ export type CreateDeviceRequest = {
   status: PeripheralDeviceStatus;
   connectionType: PeripheralConnectionType;
   terminalId: string;
-  profileId?: string;
+  profileId?: PrinterProfileId;
   network?: DeviceNetworkConfig;
+  usb?: DeviceUsbConfig;
+  metadata?: Record<string, unknown>;
 };
 
 export type PeripheralTicketItem = {
@@ -79,6 +105,9 @@ export type PeripheralTicketContent = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: PeripheralTicketPayment[];
   footer?: string;
   title?: string;
@@ -110,6 +139,9 @@ export type BaseTicketInput = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: PeripheralTicketPayment[];
   footer?: string;
   notes?: string[];
@@ -138,6 +170,7 @@ export type CashDrawerOpenInput = {
   tenantId?: string;
   branchId?: string;
   terminalId?: string;
+  printerDeviceId?: string;
   deviceId?: string;
   reason?: string;
 };
@@ -165,6 +198,11 @@ export type PeripheralOperationError = {
     | "MISSING_CONFIG"
     | "INVALID_CONFIG"
     | "AGENT_OFFLINE"
+    | "DEVICE_NOT_FOUND"
+    | "TIMEOUT"
+    | "CONNECTION_REFUSED"
+    | "PRINT_ERROR"
+    | "PRINTER_NOT_CONFIGURED"
     | "NETWORK_ERROR"
     | "HTTP_ERROR"
     | "AGENT_ERROR"
@@ -203,6 +241,10 @@ export type PosTerminalResponse = {
   tenantId: string;
   branchId: string;
   branchName?: string | null;
+  operationalTerminalId: string | null;
+  operationalTerminalCode: string | null;
+  operationalTerminalName: string | null;
+  operationalTerminalActive: boolean | null;
   code: string;
   name: string;
   description?: string | null;
@@ -222,31 +264,48 @@ export type PosTerminalFeatureFlags = {
 };
 
 export type PosTerminalPeripheralSettings = {
-  printerDeviceId: string;
-  cashDrawerDeviceId: string;
-  scaleDeviceId: string;
-  scannerDeviceId: string;
+  printerDeviceId: string | null;
+  cashDrawerDeviceId: string | null;
+  scaleDeviceId: string | null;
+  scannerDeviceId: string | null;
   features: PosTerminalFeatureFlags;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
 
-export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
+export type UpdateDeviceRequest = Partial<{
+  name: string;
+  status: PeripheralDeviceStatus;
   terminalId: string;
+  connectionType: PeripheralConnectionType;
+  profileId: PrinterProfileId;
+  network: DeviceNetworkConfig | null;
+  usb: DeviceUsbConfig | null;
+  metadata: Record<string, unknown>;
+}>;
+
+export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
+  /** @deprecated Legacy alias for agentTerminalCode. */
+  terminalId: string | null;
+  agentTerminalCode: string | null;
+  operationalTerminalId: string | null;
+  operationalTerminalCode: string | null;
+  operationalTerminalName: string | null;
   posTerminalId: string | null;
   tenantId: string | null;
   branchId: string | null;
   branchName?: string | null;
   code: string;
   name: string;
-  mode: PosTerminalMode;
+  mode: PosTerminalMode | null;
   active: boolean;
-  source: "CONFIGURED" | "FALLBACK_MOCK";
+  source: "CONFIGURED" | "FALLBACK_MOCK" | "OPERATIONAL_UNCONFIGURED";
 };
 
 export type CreatePosTerminalRequest = {
   tenantId?: string;
   branchId: string;
+  operationalTerminalId?: string | null;
   code: string;
   name: string;
   description?: string | null;
@@ -296,11 +355,19 @@ export type DeviceProfile = {
   supportsCashDrawerPulse: boolean;
 };
 
+export type DrawerPulseProfile = {
+  connector: 0 | 1;
+  pin: 2 | 5;
+  pulseOnMs: number;
+  pulseOffMs: number;
+};
+
 export type PeripheralCapabilities = {
   adapterName?: string;
   mode?: string;
   connectionType?: PeripheralConnectionType | string;
   supportsCut?: boolean;
+  supportsPhysicalCut?: boolean;
   supportsCashDrawerPulse?: boolean;
   [key: string]: unknown;
 };
@@ -311,13 +378,17 @@ export type PeripheralActionResponse = {
   commandId?: string;
   mode?: string;
   deviceId?: string;
+  printerDeviceId?: string;
   terminalId?: string;
+  network?: DeviceNetworkConfig;
   preview?: string;
   commands?: PrintCommand[];
   adapterName?: string;
   profile?: DeviceProfile;
   capabilities?: PeripheralCapabilities;
   commandCount?: number;
+  bytesSent?: number;
+  pulse?: DrawerPulseProfile;
   message?: string;
   timestamp?: string;
 };
@@ -338,11 +409,18 @@ export type CashDrawerResponse = PeripheralActionResponse & {
   success: true;
   commandId: string;
   mode: string;
+  printerDeviceId: string;
   deviceId: string;
   terminalId: string;
+  connectionType: PeripheralConnectionType;
+  network?: DeviceNetworkConfig;
   commands: PrintCommand[];
   profile?: DeviceProfile;
   capabilities?: PeripheralCapabilities;
+  bytesSent?: number;
+  pulse: DrawerPulseProfile;
+  message: string;
+  timestamp: string;
 };
 
 export type PeripheralDiscoverResponse = {

@@ -14,6 +14,7 @@ import { ReportAuthzGuard } from "../auth/report-authz.guard";
 import { ReportRoles } from "../auth/report-roles.decorator";
 import type { ReportUser } from "../auth/report-auth.types";
 import { SalesReportsService } from "./sales-reports.service";
+import type { PosSaleTicketPrintDataset } from "./types/sales-report.types";
 
 type AuthenticatedRequest = Request & {
   user?: ReportUser;
@@ -75,6 +76,18 @@ export class SalesReportsController {
     );
     response.setHeader("Content-Length", pdfBuffer.length);
     response.end(pdfBuffer);
+  }
+
+  @Get(":saleId/ticket-data")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  getSaleTicketData(
+    @Param("saleId") saleId: string,
+    @Req() request: AuthenticatedRequest
+  ): Promise<PosSaleTicketPrintDataset> {
+    return this.salesReportsService.getSaleTicketPrintData(
+      saleId,
+      request.user
+    );
   }
 
   @Get(":saleId/cancel-ticket")

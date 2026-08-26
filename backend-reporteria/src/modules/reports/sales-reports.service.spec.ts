@@ -188,3 +188,17 @@ test("SalesReportsService.getSaleTicket: SUPER_ADMIN conserva acceso", async () 
   assert.equal(result.header.saleId, SALE_ID);
   assert.equal(adapter.ticketCalls[0].actor.role, "SUPER_ADMIN");
 });
+
+test("SalesReportsService.getSaleTicketPrintData: conserva dataset canonico", async () => {
+  const adapter = new FakeSalesReportAdapter(
+    new Map([[SALE_ID, ticketDataset()]]),
+    new Set([SALE_ID])
+  );
+  const service = buildService(adapter);
+
+  const result = await service.getSaleTicketPrintData(SALE_ID, user(["USER"]));
+
+  assert.equal(result.tenantId, TENANT_ID);
+  assert.equal(result.ticket.header.saleId, SALE_ID);
+  assert.equal(result.ticket.totals.total, 100.5);
+});

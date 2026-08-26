@@ -69,7 +69,7 @@ export const validateIdentifier = (value: string, field: string): string => {
 };
 
 export const validateShortText = (value: string, field: string): string => {
-  if (!SHORT_TEXT_PATTERN.test(value)) {
+  if (!isSupportedShortText(value)) {
     throw new BadRequestException(
       `${field} contains unsupported characters or is too long`
     );
@@ -77,6 +77,9 @@ export const validateShortText = (value: string, field: string): string => {
 
   return value;
 };
+
+const isSupportedShortText = (value: string): boolean =>
+  /^[\p{L}\p{N} ._:/#-]{1,160}$/u.test(value);
 
 export const validateCode = (value: string, field = "code"): string => {
   if (!CODE_PATTERN.test(value)) {
@@ -124,6 +127,7 @@ export const parseDeviceStatus = (
   if (
     value === DeviceStatus.CONNECTED ||
     value === DeviceStatus.DISCONNECTED ||
+    value === DeviceStatus.NOT_REACHABLE ||
     value === DeviceStatus.ERROR ||
     value === DeviceStatus.SIMULATED
   ) {
@@ -131,7 +135,7 @@ export const parseDeviceStatus = (
   }
 
   throw new BadRequestException(
-    "status must be CONNECTED, DISCONNECTED, ERROR or SIMULATED"
+    "status must be CONNECTED, DISCONNECTED, NOT_REACHABLE, ERROR or SIMULATED"
   );
 };
 
@@ -148,6 +152,7 @@ export const parseConnectionType = (
     value === ConnectionType.USB ||
     value === ConnectionType.SERIAL ||
     value === ConnectionType.HID ||
+    value === ConnectionType.USB_HID ||
     value === ConnectionType.NETWORK ||
     value === ConnectionType.BLUETOOTH
   ) {
@@ -155,6 +160,6 @@ export const parseConnectionType = (
   }
 
   throw new BadRequestException(
-    "connectionType must be MOCK, USB, SERIAL, HID, NETWORK or BLUETOOTH"
+    "connectionType must be MOCK, USB, SERIAL, HID, USB_HID, NETWORK or BLUETOOTH"
   );
 };

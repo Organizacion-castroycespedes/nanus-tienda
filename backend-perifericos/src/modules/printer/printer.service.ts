@@ -1,6 +1,8 @@
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import {
+  ConnectionType,
   DeviceType,
+  DeviceStatus,
   LogLevel,
   PeripheralEventName,
 } from "../../shared/types/peripheral.types";
@@ -67,6 +69,7 @@ export class PrinterService {
     const timestamp = new Date().toISOString();
     let result: PrinterAdapterResult;
     try {
+      this.devicesService.assertUsbPrinterAvailable(printer);
       result = await adapter.printTest({
         agentName: config.agentName,
         mode: adapter.mode,
@@ -88,6 +91,12 @@ export class PrinterService {
         event: "printer.test_print.failed",
         error,
       });
+      this.devicesService.setRuntimeStatus(
+        printer.id,
+        printer.connectionType === ConnectionType.NETWORK
+          ? DeviceStatus.NOT_REACHABLE
+          : DeviceStatus.DISCONNECTED
+      );
       throw error;
     }
     const mode = result.capabilities.mode;
@@ -123,7 +132,7 @@ export class PrinterService {
       event: "printer.test_print.started",
       message:
         mode === "REAL"
-          ? "Test print network ESC/POS job started"
+          ? "Test print job started"
           : "Test print simulation started",
       metadata,
     });
@@ -149,10 +158,29 @@ export class PrinterService {
           : "printer.test_print.simulated",
       message:
         mode === "REAL"
-          ? "Test print sent to network ESC/POS printer"
+          ? "Test print sent to configured printer"
           : "Test print simulated successfully",
       metadata,
     });
+    this.logsService.append({
+      source: "printer",
+      event:
+        mode === "REAL"
+          ? "printer.test_print.sent"
+          : "printer.test_print.simulated",
+      message:
+        mode === "REAL"
+          ? "Test print sent to configured printer"
+          : "Test print simulated successfully",
+      metadata,
+    });
+    this.logsService.append({
+      source: "printer",
+      event: "print.sent",
+      message: "Print job completed successfully",
+      metadata,
+    });
+    this.devicesService.setRuntimeStatus(printer.id, DeviceStatus.CONNECTED);
 
     return {
       success: true,
@@ -161,6 +189,7 @@ export class PrinterService {
       adapterName: result.adapterName,
       deviceId: printer.id,
       terminalId,
+      network: printer.network ? { ...printer.network } : undefined,
       preview: result.preview,
       commands: result.commands,
       profile: result.profile,
@@ -168,7 +197,7 @@ export class PrinterService {
       bytesSent: result.bytesSent,
       message:
         mode === "REAL"
-          ? "Print job sent to network ESC/POS printer"
+          ? "Print job sent to configured printer"
           : "Test print simulated successfully",
     };
   }
@@ -212,6 +241,7 @@ export class PrinterService {
     const timestamp = new Date().toISOString();
     let result: PrinterAdapterResult;
     try {
+      this.devicesService.assertUsbPrinterAvailable(printer);
       result = await adapter.printTicket({
         agentName: config.agentName,
         ticketType,
@@ -235,6 +265,12 @@ export class PrinterService {
         event: "printer.ticket_print.failed",
         error,
       });
+      this.devicesService.setRuntimeStatus(
+        printer.id,
+        printer.connectionType === ConnectionType.NETWORK
+          ? DeviceStatus.NOT_REACHABLE
+          : DeviceStatus.DISCONNECTED
+      );
       throw error;
     }
     const mode = result.capabilities.mode;
@@ -273,7 +309,7 @@ export class PrinterService {
       event: "printer.ticket_print.started",
       message:
         mode === "REAL"
-          ? "Ticket print network ESC/POS job started"
+          ? "Ticket print job started"
           : "Ticket print simulation started",
       metadata,
     });
@@ -299,10 +335,29 @@ export class PrinterService {
           : "printer.ticket_print.simulated",
       message:
         mode === "REAL"
-          ? "Ticket print sent to network ESC/POS printer"
+          ? "Ticket print sent to configured printer"
           : "Ticket print simulated successfully",
       metadata,
     });
+    this.logsService.append({
+      source: "printer",
+      event:
+        mode === "REAL"
+          ? "printer.ticket_print.sent"
+          : "printer.ticket_print.simulated",
+      message:
+        mode === "REAL"
+          ? "Ticket print sent to configured printer"
+          : "Ticket print simulated successfully",
+      metadata,
+    });
+    this.logsService.append({
+      source: "printer",
+      event: "print.sent",
+      message: "Print job completed successfully",
+      metadata,
+    });
+    this.devicesService.setRuntimeStatus(printer.id, DeviceStatus.CONNECTED);
 
     return {
       success: true,
@@ -311,6 +366,7 @@ export class PrinterService {
       adapterName: result.adapterName,
       deviceId: printer.id,
       terminalId,
+      network: printer.network ? { ...printer.network } : undefined,
       preview: result.preview,
       commands: result.commands,
       profile: result.profile,
@@ -318,7 +374,7 @@ export class PrinterService {
       bytesSent: result.bytesSent,
       message:
         mode === "REAL"
-          ? "Print job sent to network ESC/POS printer"
+          ? "Print job sent to configured printer"
           : "Ticket print simulated successfully",
     };
   }
@@ -365,6 +421,13 @@ export class PrinterService {
       message: "Printer job failed with controlled error",
       metadata,
     });
+    this.logsService.append({
+      level: LogLevel.ERROR,
+      source: "printer",
+      event: "print.failed",
+      message: "Print job failed",
+      metadata,
+    });
   }
 
   private parseTicketContent(value: unknown): ThermalTicketContent {
@@ -390,6 +453,9 @@ export class PrinterService {
       taxes: optionalTicketNumber(record, "taxes"),
       discounts: optionalTicketNumber(record, "discounts"),
       total: optionalTicketNumber(record, "total"),
+      paid: optionalTicketNumber(record, "paid"),
+      change: optionalTicketNumber(record, "change"),
+      balance: optionalTicketNumber(record, "balance"),
       payments,
     };
   }

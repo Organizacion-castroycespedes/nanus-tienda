@@ -7,7 +7,9 @@ const LEGACY_POS_STORAGE_KEY = "manus:pos-context";
 export const initialPosState: PosState = {
   tenantId: null,
   branchId: null,
+  branchName: null,
   terminalId: null,
+  terminalName: null,
   cashRegisterId: null,
   posSessionId: null,
   loading: false,
@@ -17,14 +19,18 @@ export const initialPosState: PosState = {
 type PosContextPayload = {
   tenantId?: string | null;
   branchId?: string | null;
+  branchName?: string | null;
   terminalId?: string | null;
+  terminalName?: string | null;
   cashRegisterId?: string | null;
 };
 
 type PosSessionPayload = {
   posSessionId: string | null;
   branchId?: string | null;
+  branchName?: string | null;
   terminalId?: string | null;
+  terminalName?: string | null;
   cashRegisterId?: string | null;
 };
 
@@ -42,7 +48,9 @@ const posSlice = createSlice({
       if (tenantChanged) {
         state.tenantId = nextTenantId;
         state.branchId = action.payload.branchId ?? null;
+        state.branchName = action.payload.branchName ?? null;
         state.terminalId = action.payload.terminalId ?? null;
+        state.terminalName = action.payload.terminalName ?? null;
         state.cashRegisterId = action.payload.cashRegisterId ?? null;
         state.posSessionId = null;
         state.error = null;
@@ -51,17 +59,28 @@ const posSlice = createSlice({
 
       if (action.payload.branchId !== undefined && action.payload.branchId !== state.branchId) {
         state.branchId = action.payload.branchId;
+        state.branchName = action.payload.branchName ?? null;
         state.terminalId = null;
+        state.terminalName = null;
         state.cashRegisterId = null;
         state.posSessionId = null;
+      }
+
+      if (action.payload.branchName !== undefined) {
+        state.branchName = action.payload.branchName;
       }
 
       if (action.payload.terminalId !== undefined) {
         if (action.payload.terminalId !== state.terminalId) {
           state.terminalId = action.payload.terminalId;
+          state.terminalName = action.payload.terminalName ?? null;
           state.cashRegisterId = null;
           state.posSessionId = null;
         }
+      }
+
+      if (action.payload.terminalName !== undefined) {
+        state.terminalName = action.payload.terminalName;
       }
 
       if (action.payload.tenantId !== undefined) {
@@ -74,8 +93,14 @@ const posSlice = createSlice({
       if (action.payload.branchId !== undefined) {
         state.branchId = action.payload.branchId;
       }
+      if (action.payload.branchName !== undefined) {
+        state.branchName = action.payload.branchName;
+      }
       if (action.payload.terminalId !== undefined) {
         state.terminalId = action.payload.terminalId;
+      }
+      if (action.payload.terminalName !== undefined) {
+        state.terminalName = action.payload.terminalName;
       }
       if (action.payload.cashRegisterId !== undefined) {
         state.cashRegisterId = action.payload.cashRegisterId;
@@ -101,7 +126,9 @@ const posSlice = createSlice({
       }
       state.tenantId = action.payload.tenantId ?? null;
       state.branchId = action.payload.branchId ?? null;
+      state.branchName = action.payload.branchName ?? null;
       state.terminalId = action.payload.terminalId ?? null;
+      state.terminalName = action.payload.terminalName ?? null;
       state.cashRegisterId = action.payload.cashRegisterId ?? null;
       state.posSessionId = action.payload.posSessionId ?? null;
       state.loading = false;
@@ -137,7 +164,9 @@ export const persistPosState = (state: PosState) => {
       JSON.stringify({
         tenantId: state.tenantId,
         branchId: state.branchId,
+        branchName: state.branchName,
         terminalId: state.terminalId,
+        terminalName: state.terminalName,
         cashRegisterId: state.cashRegisterId,
         posSessionId: state.posSessionId,
       })
@@ -171,7 +200,9 @@ export const rehydratePosContextFromStorage = (
     setContext({
       tenantId: persisted.tenantId ?? null,
       branchId: persisted.branchId ?? null,
+      branchName: persisted.branchName ?? null,
       terminalId: persisted.terminalId ?? null,
+      terminalName: persisted.terminalName ?? null,
       cashRegisterId: persisted.cashRegisterId ?? null,
     })
   );
@@ -181,7 +212,9 @@ export const rehydratePosContextFromStorage = (
       setSession({
         posSessionId: persisted.posSessionId,
         branchId: persisted.branchId ?? null,
+        branchName: persisted.branchName ?? null,
         terminalId: persisted.terminalId ?? null,
+        terminalName: persisted.terminalName ?? null,
         cashRegisterId: persisted.cashRegisterId ?? null,
       })
     );

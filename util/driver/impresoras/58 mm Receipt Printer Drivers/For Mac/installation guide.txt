@@ -1,0 +1,6 @@
+
+1. Copy the file named "xp" to filter. reference path: usr/libexec/cups/filter;
+
+2. Input command "sudo chmod 777 /usr/libexec/cups/filter/xp" in terminal; 
+
+3. Add printer in system and select corresponding ppd file, 80mm please select XP-80.ppd, 58mm please select XP-58.ppd. 

@@ -25,6 +25,10 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import {
+  listTerminals as listOperationalTerminals,
+  type TerminalResponse,
+} from "../../../modules/terminals/services/terminals.service";
+import {
   createDevice,
   discoverPeripheralDevices,
   fetchCurrentWeight,
@@ -46,6 +50,13 @@ import {
   resolveCurrentPosTerminalConfig,
   savePosTerminalPeripheralSettings,
 } from "../terminal-config";
+import {
+  buildPrinterPayload,
+  printerDefaults,
+  printerProfiles,
+  validatePrinterForm,
+  type PrinterRegistrationForm,
+} from "../printer-registration";
 import type {
   CreateDeviceRequest,
   CreatePosTerminalRequest,
@@ -61,6 +72,7 @@ import type {
   PosTerminalResolvedConfig,
   PosTerminalResponse,
 } from "../types";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type ConnectionState =
   | "loading"
@@ -92,21 +104,6 @@ const realAdaptersDisabledMessage =
   "Real peripheral adapters are disabled. Enable PERIPHERALS_ENABLE_REAL_ADAPTERS=true to use them.";
 const realAdaptersDisabledUiDetail =
   "El adapter real esta desactivado por seguridad. Para pruebas reales debe habilitarse PERIPHERALS_ENABLE_REAL_ADAPTERS=true en backend-perifericos.";
-const networkPrinterProfiles = [
-  "THERMAL_80MM",
-  "THERMAL_58MM",
-  "GENERIC_TEXT",
-] as const;
-const networkPrinterDefaults = {
-  id: "network-printer-001",
-  name: "Impresora red ESC/POS",
-  host: "192.168.1.50",
-  port: "9100",
-  timeoutMs: "3000",
-  profileId: "THERMAL_80MM",
-  terminalId,
-  status: "CONNECTED",
-} as const;
 
 type PosTerminalFormState = {
   branchId: string;
@@ -173,6 +170,7 @@ const formatTimestamp = (value?: string) => {
 const statusTone: Record<PeripheralDeviceStatus, string> = {
   CONNECTED: "border-emerald-200 bg-emerald-50 text-emerald-700",
   DISCONNECTED: "border-slate-200 bg-slate-100 text-slate-600",
+  NOT_REACHABLE: "border-amber-200 bg-amber-50 text-amber-800",
   ERROR: "border-rose-200 bg-rose-50 text-rose-700",
   SIMULATED: "border-blue-200 bg-blue-50 text-blue-700",
 };
@@ -192,6 +190,7 @@ const connectionTone: Record<string, string> = {
   USB: "border-amber-200 bg-amber-50 text-amber-800",
   SERIAL: "border-amber-200 bg-amber-50 text-amber-800",
   HID: "border-amber-200 bg-amber-50 text-amber-800",
+  USB_HID: "border-amber-200 bg-amber-50 text-amber-800",
   NETWORK: "border-blue-200 bg-blue-50 text-blue-800",
   BLUETOOTH: "border-blue-200 bg-blue-50 text-blue-800",
 };
@@ -312,6 +311,14 @@ const getNetworkEndpoint = (device: PeripheralDevice) => {
   }
 
   return `${device.network.host}:${device.network.port}`;
+};
+
+const getResponseNetworkEndpoint = (response?: PeripheralActionResponse) => {
+  if (!response?.network) {
+    return "-";
+  }
+
+  return `${response.network.host}:${response.network.port}`;
 };
 
 const isRealAdapterDisabledError = (message: string) =>
@@ -437,6 +444,7 @@ const PeripheralCapabilitiesList = ({
         />
         <InfoField label="widthChars" value={profile?.widthChars ?? "-"} />
         <InfoField label="connectionType" value={capabilities?.connectionType ?? "-"} />
+        <InfoField label="network" value={getResponseNetworkEndpoint(response)} />
         <InfoField label="commandCount" value={commandCount} />
       </div>
     </div>
@@ -539,8 +547,29 @@ const PeripheralAgentStatusCard = ({
         <div className="grid gap-3 sm:grid-cols-2">
           <InfoField label="status" value={health?.status ?? "-"} />
           <InfoField label="mode" value={health?.mode ?? "-"} />
+          <InfoField label="agentInstallationId" value={health?.agentInstallationId ?? "-"} />
+          <InfoField
+            label="platform"
+            value={[health?.platform, health?.architecture].filter(Boolean).join(" / ") || "-"}
+          />
           <InfoField label="version" value={health?.version ?? "-"} />
           <InfoField label="uptime" value={health ? `${health.uptimeSeconds}s` : "-"} />
+          <InfoField
+            label="configuredDevices"
+            value={health?.configuredDevices ?? "-"}
+          />
+          <InfoField
+            label="discoveredDevices"
+            value={health?.discoveredDevices ?? "-"}
+          />
+          <InfoField
+            label="persistenceState"
+            value={
+              health?.persistenceState
+                ? `${health.persistenceState.status} / v${health.persistenceState.schemaVersion}`
+                : "-"
+            }
+          />
           <InfoField label="http" value={getEndpointLabel(config.httpUrl)} />
           <InfoField label="ws" value={getEndpointLabel(config.wsUrl)} />
         </div>
@@ -549,97 +578,53 @@ const PeripheralAgentStatusCard = ({
   );
 };
 
-type NetworkPrinterFormState = {
-  id: string;
-  name: string;
-  host: string;
-  port: string;
-  timeoutMs: string;
-  profileId: (typeof networkPrinterProfiles)[number];
-  terminalId: string;
-  status: "CONNECTED";
-};
-
-const buildNetworkPrinterPayload = (
-  form: NetworkPrinterFormState
-): CreateDeviceRequest => ({
-  id: form.id.trim(),
-  type: "PRINTER",
-  name: form.name.trim(),
-  status: form.status,
-  connectionType: "NETWORK",
-  terminalId: form.terminalId.trim(),
-  profileId: form.profileId,
-  network: {
-    host: form.host.trim(),
-    port: Number(form.port),
-    timeoutMs: Number(form.timeoutMs),
-  },
-});
-
-const validateNetworkPrinterForm = (form: NetworkPrinterFormState) => {
-  const port = Number(form.port);
-  const timeoutMs = Number(form.timeoutMs);
-
-  if (!form.id.trim()) {
-    return "id requerido";
-  }
-  if (!form.name.trim()) {
-    return "name requerido";
-  }
-  if (!form.host.trim()) {
-    return "host requerido";
-  }
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return "port debe estar entre 1 y 65535";
-  }
-  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    return "timeoutMs debe ser mayor a 0";
-  }
-  if (!form.terminalId.trim()) {
-    return "terminalId requerido";
-  }
-
-  return null;
-};
-
-const NetworkPrinterRegistrationPanel = ({
+const PrinterRegistrationPanel = ({
   loading,
   onRegister,
+  devices,
 }: {
   loading: boolean;
   onRegister: (payload: CreateDeviceRequest) => Promise<PeripheralDevice>;
+  devices: PeripheralDevice[];
 }) => {
-  const [form, setForm] = useState<NetworkPrinterFormState>({
-    ...networkPrinterDefaults,
-  });
+  const [form, setForm] = useState<PrinterRegistrationForm>(printerDefaults);
   const [state, setState] = useState<{
     status: "idle" | "success" | "error";
     message: string;
     detail?: string;
   }>({
     status: "idle",
-    message: "NETWORK temporal listo para registro.",
+    message: "Seleccione una conexión para registrar la impresora.",
   });
 
-  const updateForm = (field: keyof NetworkPrinterFormState, value: string) => {
+  const usbPrinters = devices.filter(
+    (device) => device.type === "PRINTER" && device.connectionType === "USB" && device.usb
+  );
+  const selectedUsbPrinter = usbPrinters.find(
+    (device) => device.usb?.deviceId === form.usbDeviceId
+  );
+
+  const updateForm = (field: keyof PrinterRegistrationForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const submitForm = async (candidate: NetworkPrinterFormState) => {
-    const error = validateNetworkPrinterForm(candidate);
+  const submitForm = async (candidate: PrinterRegistrationForm) => {
+    const error = validatePrinterForm(candidate);
     if (error) {
       setState({ status: "error", message: error });
       return;
     }
 
     try {
-      const payload = buildNetworkPrinterPayload(candidate);
+      const payload = buildPrinterPayload(candidate, selectedUsbPrinter);
       const device = await onRegister(payload);
       setState({
         status: "success",
-        message: "Impresora NETWORK registrada.",
-        detail: `${device.id} ${getNetworkEndpoint(device)}`,
+        message: `Impresora ${device.connectionType} registrada.`,
+        detail:
+          device.connectionType === "NETWORK"
+            ? `${device.id} ${getNetworkEndpoint(device)}`
+            : `${device.id} ${device.usb?.printerName ?? ""}`,
       });
     } catch (errorValue) {
       setState({
@@ -654,12 +639,6 @@ const NetworkPrinterRegistrationPanel = ({
     void submitForm(form);
   };
 
-  const handleRegisterDemo = () => {
-    const demo = { ...networkPrinterDefaults };
-    setForm(demo);
-    void submitForm(demo);
-  };
-
   const statusClass =
     state.status === "success"
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -669,18 +648,12 @@ const NetworkPrinterRegistrationPanel = ({
 
   return (
     <SectionCard
-      title="Registrar impresora NETWORK"
-      eyebrow="ESC/POS red"
-      actions={
-        <Button variant="ghost" onClick={handleRegisterDemo} isLoading={loading}>
-          <Printer className="h-4 w-4" />
-          Registrar demo NETWORK
-        </Button>
-      }
+      title="Registrar impresora"
+      eyebrow="Xprinter XP-80T / THERMAL_80MM"
     >
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="flex flex-wrap gap-2">
-          <Badge className={connectionTone.NETWORK}>NETWORK</Badge>
+          <Badge className={connectionTone[form.connectionType]}>{form.connectionType}</Badge>
           <Badge className="border-slate-200 bg-slate-50 text-slate-700">
             PRINTER
           </Badge>
@@ -700,30 +673,62 @@ const NetworkPrinterRegistrationPanel = ({
             required
             onChange={(event) => updateForm("name", event.target.value)}
           />
-          <Input
-            label="host"
-            value={form.host}
-            required
-            placeholder="192.168.1.50"
-            onChange={(event) => updateForm("host", event.target.value)}
-          />
-          <Input
-            label="port"
-            type="number"
-            min={1}
-            max={65535}
-            value={form.port}
-            required
-            onChange={(event) => updateForm("port", event.target.value)}
-          />
-          <Input
-            label="timeoutMs"
-            type="number"
-            min={1}
-            value={form.timeoutMs}
-            required
-            onChange={(event) => updateForm("timeoutMs", event.target.value)}
-          />
+          <label className="flex flex-col gap-2 text-sm text-slate-700">
+            <span className="font-medium">Conexión</span>
+            <select
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              value={form.connectionType}
+              onChange={(event) => updateForm("connectionType", event.target.value)}
+            >
+              <option value="NETWORK">NETWORK</option>
+              <option value="USB">USB</option>
+            </select>
+          </label>
+          {form.connectionType === "NETWORK" ? (
+            <>
+              <Input
+                label="host"
+                value={form.host}
+                required
+                placeholder="IP o hostname de la impresora"
+                onChange={(event) => updateForm("host", event.target.value)}
+              />
+              <Input
+                label="port"
+                type="number"
+                min={1}
+                max={65535}
+                value={form.port}
+                required
+                placeholder="Puerto RAW configurado"
+                onChange={(event) => updateForm("port", event.target.value)}
+              />
+              <Input
+                label="timeoutMs"
+                type="number"
+                min={250}
+                value={form.timeoutMs}
+                required
+                onChange={(event) => updateForm("timeoutMs", event.target.value)}
+              />
+            </>
+          ) : (
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-medium">Dispositivo USB descubierto</span>
+              <select
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                value={form.usbDeviceId}
+                onChange={(event) => updateForm("usbDeviceId", event.target.value)}
+              >
+                <option value="">Seleccione después de Buscar dispositivos</option>
+                {usbPrinters.map((device) => (
+                  <option key={device.usb?.deviceId} value={device.usb?.deviceId}>
+                    {device.name} ({device.usb?.deviceId})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-2 text-sm text-slate-700">
             <span className="font-medium">profileId</span>
             <select
@@ -732,11 +737,11 @@ const NetworkPrinterRegistrationPanel = ({
               onChange={(event) =>
                 updateForm(
                   "profileId",
-                  event.target.value as NetworkPrinterFormState["profileId"]
+                  event.target.value as PrinterRegistrationForm["profileId"]
                 )
               }
             >
-              {networkPrinterProfiles.map((profileId) => (
+              {printerProfiles.map((profileId) => (
                 <option key={profileId} value={profileId}>
                   {profileId}
                 </option>
@@ -807,9 +812,16 @@ const TerminalPosPanel = ({
   devices: PeripheralDevice[];
   onToast: (message: string, variant: ToastVariant, detail?: string) => void;
 }) => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const queryTerminalId = searchParams.get("terminalId")?.trim() ?? "";
   const [terminals, setTerminals] = useState<PosTerminalResponse[]>([]);
+  const [operationalTerminals, setOperationalTerminals] = useState<
+    TerminalResponse[]
+  >([]);
   const [resolved, setResolved] = useState<PosTerminalResolvedConfig | null>(null);
-  const [selectedTerminalId, setSelectedTerminalId] = useState("");
+  const [selectedTerminalId, setSelectedTerminalId] = useState(queryTerminalId);
   const [terminalForm, setTerminalForm] = useState<PosTerminalFormState>({
     ...defaultPosTerminalForm,
   });
@@ -826,16 +838,42 @@ const TerminalPosPanel = ({
     message: string;
   }>({
     variant: "info",
-    message: "Configuracion terminal POS en modo fallback MOCK.",
+    message: "Selecciona una terminal canónica para cargar sus periféricos.",
   });
+
+  const syncQueryTerminalId = useCallback(
+    (nextTerminalId: string) => {
+      if (!pathname) {
+        return;
+      }
+
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextTerminalId) {
+        params.set("terminalId", nextTerminalId);
+      } else {
+        params.delete("terminalId");
+      }
+
+      const query = params.toString();
+      const nextUrl = query ? `${pathname}?${query}` : pathname;
+      router.replace(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   const loadTerminalSnapshot = useCallback(async () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     try {
-      const [resolvedResult, terminalsResult] = await Promise.allSettled([
-        resolveCurrentPosTerminalConfig({ tenantId }),
-        listPosTerminals({ tenantId }),
-      ]);
+      const requestedTerminalId = queryTerminalId || undefined;
+      const [resolvedResult, terminalsResult, operationalTerminalsResult] =
+        await Promise.allSettled([
+          resolveCurrentPosTerminalConfig({
+            tenantId,
+            terminalId: requestedTerminalId,
+          }),
+          listPosTerminals({ tenantId }),
+          listOperationalTerminals({ tenantId: tenantId ?? undefined }),
+        ]);
 
       if (resolvedResult.status === "fulfilled") {
         setResolved(resolvedResult.value);
@@ -845,35 +883,54 @@ const TerminalPosPanel = ({
           branchId: resolvedResult.value.branchId ?? prev.branchId,
           code: resolvedResult.value.code || prev.code,
           name: resolvedResult.value.name || prev.name,
-          mode: resolvedResult.value.mode,
+          mode: resolvedResult.value.mode ?? prev.mode,
         }));
-        setSelectedTerminalId(resolvedResult.value.posTerminalId ?? "");
+        const canonicalTerminalId =
+          resolvedResult.value.operationalTerminalId ?? requestedTerminalId ?? "";
+        setSelectedTerminalId(canonicalTerminalId);
+        if (!requestedTerminalId && canonicalTerminalId) {
+          syncQueryTerminalId(canonicalTerminalId);
+        }
         setStatus({
           variant:
             resolvedResult.value.source === "CONFIGURED" ? "success" : "warning",
           message:
             resolvedResult.value.source === "CONFIGURED"
-              ? "Terminal POS configurada encontrada."
-              : "Sin terminal configurada. Se usa fallback MOCK seguro.",
+              ? "Terminal canónica con perifericos configurados."
+              : resolvedResult.value.source === "OPERATIONAL_UNCONFIGURED"
+                ? "Terminal operativa sin configuracion de perifericos."
+                : "Perifericos no configurados para la terminal seleccionada.",
         });
       } else {
         setStatus({
           variant: "warning",
-          message: "No se pudo resolver terminal. Fallback MOCK sigue activo.",
+          message: "No se pudo resolver la terminal seleccionada.",
         });
       }
 
       if (terminalsResult.status === "fulfilled") {
         setTerminals(terminalsResult.value);
       }
+      if (operationalTerminalsResult.status === "fulfilled") {
+        setOperationalTerminals(operationalTerminalsResult.value);
+      }
     } finally {
       setLoading((prev) => ({ ...prev, snapshot: false }));
     }
-  }, [tenantId]);
+  }, [queryTerminalId, syncQueryTerminalId, tenantId]);
 
   useEffect(() => {
     void loadTerminalSnapshot();
   }, [loadTerminalSnapshot]);
+
+  useEffect(() => {
+    if (queryTerminalId && queryTerminalId !== selectedTerminalId) {
+      setSelectedTerminalId(queryTerminalId);
+    }
+    if (!queryTerminalId && resolved?.operationalTerminalId) {
+      setSelectedTerminalId(resolved.operationalTerminalId);
+    }
+  }, [queryTerminalId, resolved?.operationalTerminalId, selectedTerminalId]);
 
   const updateTerminalForm = (
     field: keyof PosTerminalFormState,
@@ -932,48 +989,43 @@ const TerminalPosPanel = ({
 
   const handleSelectTerminal = async (nextTerminalId: string) => {
     setSelectedTerminalId(nextTerminalId);
-    const selected = terminals.find((terminal) => terminal.id === nextTerminalId);
+    syncQueryTerminalId(nextTerminalId);
+    setResolved(null);
+    setSettingsForm({
+      ...defaultTerminalSettingsForm,
+      printerDeviceId: "",
+      cashDrawerDeviceId: "",
+      scaleDeviceId: "",
+      scannerDeviceId: "",
+      enablePrintSale: false,
+      enablePrintPurchase: false,
+      enablePrintOrder: false,
+      enableOpenDrawer: false,
+      enableScale: false,
+      enableScanner: false,
+    });
+
+    const selected = operationalTerminals.find(
+      (terminal) => terminal.id === nextTerminalId
+    );
     if (selected) {
-      setTerminalForm({
+      setTerminalForm((prev) => ({
+        ...prev,
         branchId: selected.branchId,
         code: selected.code,
         name: selected.name,
-        description: selected.description ?? "",
-        mode: selected.mode,
-      });
-    }
-
-    if (!nextTerminalId) {
-      setSettingsForm(settingsFromResolved(resolved));
-      return;
-    }
-
-    try {
-      const settings = await getPosTerminalPeripheralSettings(nextTerminalId);
-      setSettingsForm({
-        printerDeviceId: settings.printerDeviceId,
-        cashDrawerDeviceId: settings.cashDrawerDeviceId,
-        scaleDeviceId: settings.scaleDeviceId,
-        scannerDeviceId: settings.scannerDeviceId,
-        enablePrintSale: settings.features.printSale,
-        enablePrintPurchase: settings.features.printPurchase,
-        enablePrintOrder: settings.features.printOrder,
-        enableOpenDrawer: settings.features.openDrawer,
-        enableScale: settings.features.scale,
-        enableScanner: settings.features.scanner,
-      });
-    } catch (error) {
-      onToast(getErrorMessage(error), "warning");
+      }));
     }
   };
 
   const handleSaveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const targetTerminalId = selectedTerminalId || resolved?.posTerminalId;
+    const targetTerminalId = resolved?.posTerminalId;
     if (!targetTerminalId) {
       setStatus({
         variant: "warning",
-        message: "Crea o selecciona una terminal antes de guardar perifericos.",
+        message:
+          "Perifericos no configurados. Crea primero el perfil POS asociado a la terminal.",
       });
       return;
     }
@@ -1003,6 +1055,74 @@ const TerminalPosPanel = ({
     }
   };
 
+  const persistPrinterDevice = async (printerDeviceId: string | null) => {
+    const targetTerminalId = resolved?.posTerminalId;
+    if (!targetTerminalId) {
+      setStatus({
+        variant: "warning",
+        message:
+          "Perifericos no configurados. Crea primero el perfil POS asociado a la terminal.",
+      });
+      return;
+    }
+
+    setLoading((prev) => ({ ...prev, save: true }));
+    try {
+      await savePosTerminalPeripheralSettings(targetTerminalId, {
+        printerDeviceId,
+        cashDrawerDeviceId:
+          settingsForm.cashDrawerDeviceId.trim() || defaultTerminalSettingsForm.cashDrawerDeviceId,
+        scaleDeviceId:
+          settingsForm.scaleDeviceId.trim() || defaultTerminalSettingsForm.scaleDeviceId,
+        scannerDeviceId:
+          settingsForm.scannerDeviceId.trim() || defaultTerminalSettingsForm.scannerDeviceId,
+        enablePrintSale: settingsForm.enablePrintSale,
+        enablePrintPurchase: settingsForm.enablePrintPurchase,
+        enablePrintOrder: settingsForm.enablePrintOrder,
+        enableOpenDrawer: settingsForm.enableOpenDrawer,
+        enableScale: settingsForm.enableScale,
+        enableScanner: settingsForm.enableScanner,
+      });
+      setSettingsForm((prev) => ({ ...prev, printerDeviceId: printerDeviceId ?? "" }));
+      onToast(
+        printerDeviceId ? "Impresora asociada." : "Impresora desasociada.",
+        "success"
+      );
+      await loadTerminalSnapshot();
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setStatus({ variant: "error", message });
+      onToast(message, "error");
+    } finally {
+      setLoading((prev) => ({ ...prev, save: false }));
+    }
+  };
+
+  const handleTestPrinter = async () => {
+    const printerId = settingsForm.printerDeviceId.trim() || resolved?.printerDeviceId || "";
+    if (!printerId) {
+      onToast("No hay impresora configurada.", "warning");
+      return;
+    }
+
+    try {
+      setLoading((prev) => ({ ...prev, save: true }));
+      const terminalForPrint =
+        resolved?.operationalTerminalId ?? selectedTerminalId ?? terminalId;
+      const result = await testPrint(
+        terminalForPrint,
+        printerId
+      );
+      onToast(result.message ?? "Impresion de prueba enviada.", "success");
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setStatus({ variant: "error", message });
+      onToast(message, "error");
+    } finally {
+      setLoading((prev) => ({ ...prev, save: false }));
+    }
+  };
+
   const statusClass =
     status.variant === "success"
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
@@ -1011,6 +1131,43 @@ const TerminalPosPanel = ({
         : status.variant === "warning"
           ? "border-amber-200 bg-amber-50 text-amber-800"
           : "border-slate-200 bg-slate-50 text-slate-700";
+
+  const selectedOperationalTerminal = operationalTerminals.find(
+    (terminal) => terminal.id === selectedTerminalId
+  );
+  const selectedPosTerminal = resolved?.posTerminalId
+    ? terminals.find((terminal) => terminal.id === resolved.posTerminalId)
+    : null;
+  const printerCandidates = deviceOptionsByType(devices, "PRINTER");
+  const selectedPrinterDevice = devices.find(
+    (device) =>
+      device.id === settingsForm.printerDeviceId ||
+      device.id === resolved?.printerDeviceId
+  );
+  const printerConnected = Boolean(selectedPrinterDevice);
+  const printerConfigured = Boolean(
+    settingsForm.printerDeviceId.trim() || resolved?.printerDeviceId
+  );
+  const printerStatusLabel = printerConfigured
+    ? printerConnected
+      ? "Configurada y detectada"
+      : "Configurada pero no detectada"
+    : "No configurada";
+  const printerEndpoint = selectedPrinterDevice ? getNetworkEndpoint(selectedPrinterDevice) : "-";
+  const terminalOptionLabel = (terminal: TerminalResponse) =>
+    `${terminal.code}  ${terminal.name}  ${terminal.branchName ?? "-"}`;
+
+  const operationalTerminalLabel = (terminal?: PosTerminalResponse | null) => {
+    if (!terminal?.operationalTerminalId) {
+      return "Sin terminal operativa asociada";
+    }
+    const operational = operationalTerminals.find(
+      (item) => item.id === terminal.operationalTerminalId
+    );
+    const code = operational?.code ?? terminal.operationalTerminalCode ?? "-";
+    const name = operational?.name ?? terminal.operationalTerminalName ?? "-";
+    return `${code} - ${name}`;
+  };
 
   const renderDeviceDatalist = (
     id: string,
@@ -1045,8 +1202,19 @@ const TerminalPosPanel = ({
           <span className="font-medium">{status.message}</span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <InfoField label="Terminal resuelta" value={resolved?.terminalId ?? terminalId} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <InfoField
+            label="Terminal operativa"
+            value={
+              resolved?.operationalTerminalCode
+                ? `${resolved.operationalTerminalCode} - ${resolved.operationalTerminalName ?? ""}`.trim()
+                : "Sin asociar"
+            }
+          />
+          <InfoField
+            label="Agent code"
+            value={resolved?.agentTerminalCode ?? terminalId}
+          />
           <InfoField
             label="Origen"
             value={resolved?.source ?? "FALLBACK_MOCK"}
@@ -1066,13 +1234,13 @@ const TerminalPosPanel = ({
               onChange={(event) => updateTerminalForm("branchId", event.target.value)}
             />
             <Input
-              label="code"
+              label="Agent code"
               value={terminalForm.code}
               required
               onChange={(event) => updateTerminalForm("code", event.target.value)}
             />
             <Input
-              label="name"
+              label="Nombre perfil perifericos"
               value={terminalForm.name}
               required
               onChange={(event) => updateTerminalForm("name", event.target.value)}
@@ -1100,14 +1268,14 @@ const TerminalPosPanel = ({
           <div className="flex justify-end">
             <Button type="submit" isLoading={loading.create}>
               <Terminal className="h-4 w-4" />
-              Crear terminal
+              Crear perfil perifericos
             </Button>
           </div>
         </form>
 
         <form className="space-y-4" onSubmit={handleSaveSettings}>
           <label className="flex flex-col gap-2 text-sm text-slate-700">
-            <span className="font-medium">Terminal configurada</span>
+            <span className="font-medium">Perfil de perifericos configurado</span>
             <select
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
               value={selectedTerminalId}
@@ -1116,11 +1284,23 @@ const TerminalPosPanel = ({
               <option value="">Fallback MOCK / sin seleccion</option>
               {terminals.map((terminal) => (
                 <option key={terminal.id} value={terminal.id}>
-                  {terminal.code} - {terminal.name}
+                  {operationalTerminalLabel(terminal)} · Agent: {terminal.code}
                 </option>
               ))}
             </select>
           </label>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <span className="font-medium">Terminal operativa asociada: </span>
+            {operationalTerminalLabel(
+              terminals.find((terminal) => terminal.id === selectedTerminalId)
+            )}
+            {selectedTerminalId ? (
+              <span className="ml-2 text-slate-500">
+                `local-terminal` es solo Agent code/compatibilidad; no es otra caja comercial.
+              </span>
+            ) : null}
+          </div>
 
           {renderDeviceDatalist("printer-device-options", "PRINTER")}
           {renderDeviceDatalist("cash-drawer-device-options", "CASH_DRAWER")}
@@ -1859,7 +2039,10 @@ const PeripheralsPage = () => {
       const discovered = await discoverPeripheralDevices();
       setDevices(discovered.devices);
       await loadLogs();
-      showToast("Busqueda simulada completada.", "success");
+      showToast(
+        `Busqueda completada: ${discovered.devices.filter((device) => device.connectionType === "USB").length} USB detectado(s).`,
+        "success"
+      );
     } catch (error) {
       showToast(getErrorMessage(error), "error", getErrorDetail(error));
     } finally {
@@ -1867,7 +2050,7 @@ const PeripheralsPage = () => {
     }
   }, [loadLogs, showToast]);
 
-  const handleRegisterNetworkPrinter = useCallback(
+  const handleRegisterPrinter = useCallback(
     async (payload: CreateDeviceRequest) => {
       setLoading((prev) => ({ ...prev, networkRegistration: true }));
       try {
@@ -1875,9 +2058,11 @@ const PeripheralsPage = () => {
         await refreshDevices();
         await loadLogs();
         showToast(
-          "Impresora NETWORK registrada.",
+          `Impresora ${created.connectionType} registrada.`,
           "success",
-          `${created.id} ${getNetworkEndpoint(created)}`
+          created.connectionType === "NETWORK"
+            ? `${created.id} ${getNetworkEndpoint(created)}`
+            : `${created.id} ${created.usb?.printerName ?? ""}`
         );
         return created;
       } finally {
@@ -2044,10 +2229,10 @@ const PeripheralsPage = () => {
               Administracion tecnica
             </p>
             <h1 className="text-2xl font-semibold text-slate-900">
-              Perifericos POS MOCK
+              Perifericos POS
             </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Diagnostico local de agent, dispositivos, logs y eventos simulados.
+              Diagnostico local de agent, dispositivos, logs y eventos. USB se descubre por el agent local.
             </p>
           </div>
           {headerActions}
@@ -2086,9 +2271,10 @@ const PeripheralsPage = () => {
             onToast={showToast}
           />
 
-          <NetworkPrinterRegistrationPanel
+          <PrinterRegistrationPanel
             loading={loading.networkRegistration}
-            onRegister={handleRegisterNetworkPrinter}
+            onRegister={handleRegisterPrinter}
+            devices={devices}
           />
           <PeripheralDevicesTable
             devices={devices}

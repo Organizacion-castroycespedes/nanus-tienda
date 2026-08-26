@@ -5,6 +5,7 @@ import {
   getPeripheralAgentConfig,
   isPeripheralAgentRequestError,
   openCashDrawerCommand,
+  PeripheralAgentRequestError,
   printTicket,
   simulateScannerCommand,
 } from "./api";
@@ -19,8 +20,10 @@ import {
   DEFAULT_SCALE_DEVICE_ID,
   DEFAULT_SCANNER_DEVICE_ID,
   DEFAULT_POS_TERMINAL_ID,
+  resolvePeripheralOperationTerminalId,
   resolvePeripheralTerminalConfig,
 } from "./terminal-config";
+import { resolveCashDrawerDeviceIdForOperation } from "./cash-drawer-routing";
 import type {
   CashDrawerOpenInput,
   CashDrawerResponse,
@@ -33,6 +36,7 @@ import type {
   PeripheralScannerResponse,
   PeripheralSocketEvent,
   PosTerminalFeatureFlags,
+  PosTerminalResolvedConfig,
   PrintJobResponse,
   PurchaseTicketInput,
   SaleTicketInput,
@@ -55,8 +59,15 @@ type ConfigurablePeripheralInput = {
   branchId?: string;
   terminalId?: string;
   deviceId?: string;
+  printerDeviceId?: string;
 };
 type DeviceRole = "printer" | "cashDrawer" | "scale" | "scanner";
+
+export type DirectPrintTerminalContext = {
+  tenantId?: string | null;
+  branchId?: string | null;
+  terminalId?: string | null;
+};
 
 const defaultScannerFormat = "CODE128";
 const defaultDeviceByRole: Record<DeviceRole, string> = {
@@ -180,7 +191,12 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
     deviceRole === "printer"
       ? config.printerDeviceId
       : deviceRole === "cashDrawer"
-        ? config.cashDrawerDeviceId
+        ? resolveCashDrawerDeviceIdForOperation({
+            currentCashDrawerDeviceId: config.cashDrawerDeviceId,
+            selectedPrinterDeviceId: config.printerDeviceId,
+            selectedPrinterConnectionType: null,
+            printerDrawerCertified: false,
+          })
         : deviceRole === "scale"
           ? config.scaleDeviceId
           : config.scannerDeviceId;
@@ -188,15 +204,70 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
     !input.deviceId || input.deviceId === defaultDeviceId;
   const terminalId =
     config.source === "CONFIGURED"
-      ? config.terminalId
-      : input.terminalId ?? config.terminalId ?? DEFAULT_POS_TERMINAL_ID;
+      ? resolvePeripheralOperationTerminalId(config)
+      : input.terminalId ??
+        config.agentTerminalCode ??
+        config.terminalId ??
+        DEFAULT_POS_TERMINAL_ID;
 
   return {
     ...input,
     terminalId,
-    deviceId: shouldUseConfiguredDevice ? configuredDeviceId : input.deviceId,
+    deviceId: shouldUseConfiguredDevice
+      ? configuredDeviceId ?? undefined
+      : input.deviceId,
+    printerDeviceId:
+      deviceRole === "cashDrawer" &&
+      config.printerDeviceId &&
+      configuredDeviceId === config.printerDeviceId
+        ? config.printerDeviceId
+        : input.printerDeviceId,
   };
 };
+
+const requireRealPrinterConfig = async (
+  input: DirectPrintTerminalContext
+): Promise<
+  PosTerminalResolvedConfig & {
+    agentTerminalCode: string;
+    printerDeviceId: string;
+  }
+> => {
+  const config = await resolvePeripheralTerminalConfig(input);
+  if (!isRealPrinterConfig(config)) {
+    throw new PeripheralAgentRequestError(
+      "PRINTER_NOT_CONFIGURED",
+      "La terminal POS actual no tiene una impresora real configurada."
+    );
+  }
+
+  if (!config.features.printSale) {
+    throw new PeripheralAgentRequestError(
+      "PRINTER_NOT_CONFIGURED",
+      "La impresion de ventas esta desactivada para la terminal POS actual."
+    );
+  }
+
+  if (!config.agentTerminalCode || !config.printerDeviceId) {
+    throw new PeripheralAgentRequestError(
+      "PRINTER_NOT_CONFIGURED",
+      "La terminal POS actual no tiene una impresora real configurada."
+    );
+  }
+
+  return {
+    ...config,
+    agentTerminalCode: config.agentTerminalCode,
+    printerDeviceId: config.printerDeviceId,
+  };
+};
+
+export const isRealPrinterConfig = (config: PosTerminalResolvedConfig) =>
+  config.source === "CONFIGURED" &&
+  config.active &&
+  config.mode !== "MOCK" &&
+  Boolean(config.printerDeviceId) &&
+  config.printerDeviceId !== DEFAULT_PRINTER_DEVICE_ID;
 
 const runConfiguredPeripheralOperation = async <
   TResponse,
@@ -286,6 +357,25 @@ export const printSaleTicket = (input: SaleTicketInput) =>
     "printer",
     input,
     (configuredInput) => printTicket(buildSaleTicketPayload(configuredInput))
+  );
+
+export const printReporteriaSaleTicket = (
+  input: SaleTicketInput,
+  terminal: DirectPrintTerminalContext
+) =>
+  runPeripheralOperation<PrintJobResponse>(
+    "printReporteriaSaleTicket",
+    "printSaleEnabled",
+    async () => {
+      const config = await requireRealPrinterConfig(terminal);
+      return printTicket(
+        buildSaleTicketPayload({
+          ...input,
+          terminalId: config.agentTerminalCode ?? undefined,
+          deviceId: config.printerDeviceId,
+        })
+      );
+    }
   );
 
 export const printPurchaseTicket = (input: PurchaseTicketInput) =>

@@ -57,6 +57,40 @@ export type PosSalesListDataset = {
   rows: PosSalesListRow[];
 };
 
+export type PosSaleTicketPrintDataset = {
+  tenantId: string;
+  ticket: {
+    header: {
+      saleId: string;
+      date: string;
+      tenantName: string | null;
+      branch: string | null;
+      branchId: string;
+      terminal: string | null;
+      terminalId: string;
+      cashier: string;
+      customer: string;
+      status: string;
+      paymentStatus: string;
+    };
+    items: Array<{
+      productName: string;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+    }>;
+    paymentBreakdown: Array<{ method: string; amount: number }>;
+    totals: {
+      subtotal: number;
+      taxes: number;
+      total: number;
+      paid: number;
+      change: number;
+      balance: number;
+    };
+  };
+};
+
 export type CashClosingListRow = {
   cashSessionId: string;
   openedAt: string;

@@ -1,11 +1,15 @@
+import { BadRequestException } from "@nestjs/common";
 import {
   buildTestPrintDocument,
   buildTicketPrintDocument,
+  createCashDrawerPulseCommands,
 } from "../escpos-mock/thermal-ticket.formatter";
-import { ConnectionType, DeviceType } from "../types/peripheral.types";
+import { ConnectionType, DeviceType, type PeripheralDevice } from "../types/peripheral.types";
 import type { DeviceProfile } from "../profiles/device-profiles";
 import type {
   AdapterCapabilities,
+  AdapterResult,
+  CashDrawerAdapterInput,
   PrintTicketAdapterInput,
   PrinterAdapter,
   PrinterAdapterInput,
@@ -18,13 +22,27 @@ export class MockPrinterAdapter implements PrinterAdapter {
   readonly mode = "MOCK" as const;
   readonly adapterName = "MockPrinterAdapter";
 
-  getCapabilities(profile: DeviceProfile): AdapterCapabilities {
+  getCapabilities(profile: DeviceProfile, _device?: PeripheralDevice): AdapterCapabilities {
     return {
       adapterName: this.adapterName,
       mode: this.mode,
       connectionType: this.connectionType,
       supportsCut: profile.supportsCut,
+      supportsPhysicalCut: false,
       supportsCashDrawerPulse: profile.supportsCashDrawerPulse,
+    };
+  }
+
+  openCashDrawer(input: CashDrawerAdapterInput): AdapterResult {
+    this.validateDrawerDevice(input.device);
+    const commands = createCashDrawerPulseCommands();
+
+    return {
+      adapterName: this.adapterName,
+      profile: input.profile,
+      capabilities: this.getCapabilities(input.profile, input.device),
+      commands,
+      pulse: input.pulse,
     };
   }
 
@@ -34,6 +52,9 @@ export class MockPrinterAdapter implements PrinterAdapter {
       mode: input.mode,
       terminalId: input.terminalId,
       deviceId: input.device.id,
+      printerName: input.device.name,
+      profileId: input.profile.id,
+      connectionType: input.device.connectionType,
       widthChars: input.profile.widthChars,
       paperWidthMm: input.profile.paperWidthMm,
       timestamp: input.timestamp,
@@ -42,7 +63,7 @@ export class MockPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands: document.commands,
     };
@@ -61,9 +82,15 @@ export class MockPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands: document.commands,
     };
+  }
+
+  private validateDrawerDevice(device: PrinterAdapterInput["device"]): void {
+    if (device.type !== DeviceType.PRINTER) {
+      throw new BadRequestException("device must be PRINTER");
+    }
   }
 }

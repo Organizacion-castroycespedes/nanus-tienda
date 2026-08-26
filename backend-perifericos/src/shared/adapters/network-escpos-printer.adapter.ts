@@ -2,18 +2,25 @@ import { BadRequestException } from "@nestjs/common";
 import { Socket } from "node:net";
 import type {
   EscPosMockCommand,
-  EscPosMockCommandName,
 } from "../escpos-mock/escpos-mock.types";
-import { EscPosMockCommandName as CommandName } from "../escpos-mock/escpos-mock.types";
+import { EscPosMockCommandName } from "../escpos-mock/escpos-mock.types";
 import {
+  createCashDrawerPulseCommands,
   buildTestPrintDocument,
   buildTicketPrintDocument,
 } from "../escpos-mock/thermal-ticket.formatter";
+import {
+  buildCashDrawerPulseBytes,
+  renderThermalEscPos,
+  type EscPosTextEncoding,
+} from "../escpos/thermal-escpos.renderer";
 import { ConnectionType, DeviceType, type PeripheralDevice } from "../types/peripheral.types";
 import { validateNetworkOptions } from "../utils/network-device-validation.util";
 import type { DeviceProfile } from "../profiles/device-profiles";
 import type {
   AdapterCapabilities,
+  AdapterResult,
+  CashDrawerAdapterInput,
   PrintTicketAdapterInput,
   PrinterAdapter,
   PrinterAdapterInput,
@@ -32,21 +39,7 @@ export type NetworkEscposSocket = {
 
 export type NetworkEscposSocketFactory = () => NetworkEscposSocket;
 
-export type EscPosEncoding = "utf8" | "latin1";
-
-const commandBytes: Record<EscPosMockCommandName, Buffer> = {
-  INIT: Buffer.from([0x1b, 0x40]),
-  ALIGN_LEFT: Buffer.from([0x1b, 0x61, 0x00]),
-  ALIGN_CENTER: Buffer.from([0x1b, 0x61, 0x01]),
-  ALIGN_RIGHT: Buffer.from([0x1b, 0x61, 0x02]),
-  BOLD_ON: Buffer.from([0x1b, 0x45, 0x01]),
-  BOLD_OFF: Buffer.from([0x1b, 0x45, 0x00]),
-  DOUBLE_HEIGHT_ON: Buffer.from([0x1d, 0x21, 0x01]),
-  DOUBLE_HEIGHT_OFF: Buffer.from([0x1d, 0x21, 0x00]),
-  FEED: Buffer.from([0x0a, 0x0a]),
-  CUT: Buffer.from([0x1d, 0x56, 0x00]),
-  CASH_DRAWER_PULSE: Buffer.from([0x1b, 0x70, 0x00, 0x32, 0xfa]),
-};
+export type EscPosEncoding = EscPosTextEncoding;
 
 export class NetworkEscposPrinterAdapter implements PrinterAdapter {
   readonly type = DeviceType.PRINTER;
@@ -60,13 +53,35 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
     private readonly encoding: EscPosEncoding = "utf8"
   ) {}
 
-  getCapabilities(profile: DeviceProfile): AdapterCapabilities {
+  getCapabilities(profile: DeviceProfile, _device?: PeripheralDevice): AdapterCapabilities {
     return {
       adapterName: this.adapterName,
       mode: this.mode,
       connectionType: this.connectionType,
       supportsCut: profile.supportsCut,
-      supportsCashDrawerPulse: false,
+      supportsPhysicalCut: profile.supportsCut,
+      supportsCashDrawerPulse: profile.supportsCashDrawerPulse,
+    };
+  }
+
+  async openCashDrawer(input: CashDrawerAdapterInput): Promise<AdapterResult> {
+    this.validateDevice(input.device);
+    const capabilities = this.getCapabilities(input.profile, input.device);
+    if (!capabilities.supportsCashDrawerPulse) {
+      throw new BadRequestException("printer does not support cash drawer pulse");
+    }
+
+    const commands = createCashDrawerPulseCommands();
+    const payload = buildCashDrawerPulseBytes(input.pulse);
+    const bytesSent = await this.send(input.device, payload);
+
+    return {
+      adapterName: this.adapterName,
+      profile: input.profile,
+      capabilities,
+      commands,
+      bytesSent,
+      pulse: input.pulse,
     };
   }
 
@@ -77,19 +92,23 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       mode: input.mode,
       terminalId: input.terminalId,
       deviceId: input.device.id,
+      printerName: input.device.name,
+      profileId: input.profile.id,
+      connectionType: input.device.connectionType,
       widthChars: input.profile.widthChars,
       paperWidthMm: input.profile.paperWidthMm,
       timestamp: input.timestamp,
     });
-    const payload = this.buildEscPosBuffer(document.commands, document.preview);
+    const commands = this.resolveRawCommands(document.commands, input.profile);
+    const payload = this.buildEscPosBuffer(commands, document.preview);
     const bytesSent = await this.send(input.device, payload);
 
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
-      commands: document.commands,
+      commands,
       bytesSent,
     };
   }
@@ -104,15 +123,16 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
       widthChars: input.profile.widthChars,
       timestamp: input.timestamp,
     });
-    const payload = this.buildEscPosBuffer(document.commands, document.preview);
+    const commands = this.resolveRawCommands(document.commands, input.profile);
+    const payload = this.buildEscPosBuffer(commands, document.preview);
     const bytesSent = await this.send(input.device, payload);
 
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
-      commands: document.commands,
+      commands,
       bytesSent,
     };
   }
@@ -122,22 +142,19 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
     preview: string,
     encoding: EscPosEncoding = this.encoding
   ): Buffer {
-    const prefix: Buffer[] = [];
-    const suffix: Buffer[] = [];
+    return renderThermalEscPos(commands, preview, {
+      encoding,
+      includePhysicalCut: true,
+    });
+  }
 
-    for (const command of commands) {
-      const target =
-        command.name === CommandName.Feed || command.name === CommandName.Cut
-          ? suffix
-          : prefix;
-      target.push(commandBytes[command.name]);
-    }
-
-    return Buffer.concat([
-      ...prefix,
-      Buffer.from(preview + "\n", encoding),
-      ...suffix,
-    ]);
+  private resolveRawCommands(
+    commands: EscPosMockCommand[],
+    profile: DeviceProfile
+  ): EscPosMockCommand[] {
+    return profile.supportsCut
+      ? commands
+      : commands.filter((command) => command.name !== EscPosMockCommandName.Cut);
   }
 
   private validateDevice(device: PeripheralDevice): void {
