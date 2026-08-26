@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Download, Truck } from "lucide-react";
+import { Eye, Download, Printer, Truck } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { Modal } from "../../../components/design-system/Modal";
@@ -9,13 +9,19 @@ import { DeliveryRelationCard } from "../../deliveries/components/DeliveryRelati
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
 import { usePosReports } from "../hooks/use-pos-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
-import { getPosSaleTicket } from "../services/reporting.service";
+import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
+import { printReporteriaSaleTicket } from "../direct-print";
+import {
+  getPosSaleTicket,
+  getPosSaleTicketPrintData,
+} from "../services/reporting.service";
 import type { PosSalesListRow } from "../types";
 import {
   downloadBlob,
   downloadReportWorkbook,
   formatCurrency,
   formatDateTime,
+  getApiErrorMessage,
   getTodayRange,
 } from "../utils";
 import { FiltersBar } from "./FiltersBar";
@@ -37,12 +43,22 @@ type SaleDeliveryRelation = {
   customerName?: string | null;
 };
 
+type DirectPrintFeedback = {
+  saleId: string;
+  variant: "success" | "error";
+  message: string;
+};
+
 const PosReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const [deliveryRelation, setDeliveryRelation] =
     useState<SaleDeliveryRelation | null>(null);
+  const [printingSaleId, setPrintingSaleId] = useState<string | null>(null);
+  const [directPrintFeedback, setDirectPrintFeedback] =
+    useState<DirectPrintFeedback | null>(null);
+  const posContext = usePosContext();
   const {
     canViewReports,
     showTenantSelector,
@@ -59,6 +75,39 @@ const PosReportsPage = () => {
     resolvedBranchLabel,
   } = useReportingScope();
   const { dataset, loading, searched, error, loadReports } = usePosReports();
+
+  const handleDirectPrint = useCallback(
+    async (saleId: string) => {
+      setPrintingSaleId(saleId);
+      setDirectPrintFeedback(null);
+
+      try {
+        const ticket = await getPosSaleTicketPrintData(saleId);
+        const result = await printReporteriaSaleTicket(ticket, {
+          tenantId: posContext.tenantId ?? tenantId,
+          branchId: posContext.branchId ?? branchId,
+          terminalId: posContext.terminalId ?? undefined,
+        });
+
+        setDirectPrintFeedback({
+          saleId,
+          variant: result.success ? "success" : "error",
+          message: result.success
+            ? "Ticket enviado a la impresora"
+            : result.error.message,
+        });
+      } catch (error) {
+        setDirectPrintFeedback({
+          saleId,
+          variant: "error",
+          message: getApiErrorMessage(error, "No se pudo preparar la impresion."),
+        });
+      } finally {
+        setPrintingSaleId(null);
+      }
+    },
+    [branchId, posContext.branchId, posContext.terminalId, posContext.tenantId, tenantId]
+  );
 
   const handleSearch = useCallback(async () => {
     if (!tenantId) {
@@ -141,7 +190,7 @@ const PosReportsPage = () => {
       {
         key: "actions",
         header: "Acciones",
-        cellClassName: "min-w-[260px]",
+        cellClassName: "min-w-[350px]",
         render: (row) => (
           <div className="flex flex-wrap gap-2">
             <Button
@@ -157,6 +206,15 @@ const PosReportsPage = () => {
             >
               <Eye className="h-4 w-4" />
               Ver ticket
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleDirectPrint(row.saleId)}
+              disabled={printingSaleId === row.saleId}
+            >
+              <Printer className="h-4 w-4" />
+              {printingSaleId === row.saleId ? "Imprimiendo..." : "Imprimir"}
             </Button>
             <Button
               variant="ghost"
@@ -188,7 +246,7 @@ const PosReportsPage = () => {
         ),
       },
     ],
-    [tenantId]
+    [handleDirectPrint, printingSaleId, tenantId]
   );
 
   const canExport = Boolean(dataset?.rows.length);
@@ -324,6 +382,19 @@ const PosReportsPage = () => {
             : "Usa los filtros y ejecuta la busqueda para cargar el reporte."
         }
       />
+
+      {directPrintFeedback ? (
+        <div
+          role="status"
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            directPrintFeedback.variant === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-700"
+          }`}
+        >
+          {directPrintFeedback.message}
+        </div>
+      ) : null}
 
       {pdfConfig ? (
         <PdfPreviewModal

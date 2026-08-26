@@ -9,6 +9,7 @@ import { AccessControlService } from "../../common/services/access-control.servi
 import {
   PosTerminalsRepository,
   type PosTerminalMode,
+  type OperationalTerminalRecord,
   type PosTerminalPeripheralSettingsRecord,
   type PosTerminalRecord,
   type UpsertPeripheralSettingsInput,
@@ -23,6 +24,7 @@ type ActorContext = {
 export type CreatePosTerminalDto = {
   tenantId?: string;
   branchId: string;
+  operationalTerminalId?: string | null;
   code: string;
   name: string;
   description?: string | null;
@@ -142,6 +144,20 @@ export class PosTerminalsService {
     return normalized ? normalized : null;
   }
 
+  private normalizeOptionalSetting(
+    value: string | null | undefined,
+    fallback: string | null
+  ) {
+    if (value === undefined) {
+      return fallback;
+    }
+    if (value === null) {
+      return null;
+    }
+    const normalized = value.trim();
+    return normalized ? normalized : null;
+  }
+
   private normalizeMode(mode: PosTerminalMode | undefined) {
     const normalized = mode ?? "MOCK";
     if (!allowedModes.includes(normalized)) {
@@ -158,18 +174,22 @@ export class PosTerminalsService {
     payload: PosTerminalSettingsDto = {}
   ): UpsertPeripheralSettingsInput {
     return {
-      printerDeviceId:
-        this.normalizeOptionalText(payload.printerDeviceId) ??
-        fallbackSettings.printerDeviceId,
-      cashDrawerDeviceId:
-        this.normalizeOptionalText(payload.cashDrawerDeviceId) ??
-        fallbackSettings.cashDrawerDeviceId,
-      scaleDeviceId:
-        this.normalizeOptionalText(payload.scaleDeviceId) ??
-        fallbackSettings.scaleDeviceId,
-      scannerDeviceId:
-        this.normalizeOptionalText(payload.scannerDeviceId) ??
-        fallbackSettings.scannerDeviceId,
+      printerDeviceId: this.normalizeOptionalSetting(
+        payload.printerDeviceId,
+        fallbackSettings.printerDeviceId
+      ),
+      cashDrawerDeviceId: this.normalizeOptionalSetting(
+        payload.cashDrawerDeviceId,
+        fallbackSettings.cashDrawerDeviceId
+      ),
+      scaleDeviceId: this.normalizeOptionalSetting(
+        payload.scaleDeviceId,
+        fallbackSettings.scaleDeviceId
+      ),
+      scannerDeviceId: this.normalizeOptionalSetting(
+        payload.scannerDeviceId,
+        fallbackSettings.scannerDeviceId
+      ),
       enablePrintSale: payload.enablePrintSale ?? true,
       enablePrintPurchase: payload.enablePrintPurchase ?? true,
       enablePrintOrder: payload.enablePrintOrder ?? true,
@@ -203,12 +223,46 @@ export class PosTerminalsService {
     }
   }
 
+  private async assertOperationalTerminalLink(
+    tenantId: string,
+    branchId: string,
+    operationalTerminalId: string | null
+  ) {
+    if (!operationalTerminalId) {
+      return;
+    }
+
+    if (!this.isUuid(operationalTerminalId)) {
+      throw new BadRequestException("operationalTerminalId must be a UUID");
+    }
+
+    const operationalTerminal = await this.repository.findOperationalTerminalById(
+      operationalTerminalId,
+      tenantId
+    );
+    if (!operationalTerminal) {
+      throw new BadRequestException("operationalTerminalId does not belong to tenant");
+    }
+    if (operationalTerminal.branch_id !== branchId) {
+      throw new BadRequestException(
+        "operationalTerminalId does not belong to POS terminal branch"
+      );
+    }
+    if (!operationalTerminal.is_active) {
+      throw new BadRequestException("operationalTerminalId must be active");
+    }
+  }
+
   private mapTerminal(record: PosTerminalRecord) {
     return {
       id: record.id,
       tenantId: record.tenant_id,
       branchId: record.branch_id,
       branchName: record.branch_name,
+      operationalTerminalId: record.operational_terminal_id,
+      operationalTerminalCode: record.operational_terminal_code,
+      operationalTerminalName: record.operational_terminal_name,
+      operationalTerminalActive: record.operational_terminal_active,
       code: record.code,
       name: record.name,
       description: record.description,
@@ -219,16 +273,25 @@ export class PosTerminalsService {
     };
   }
 
-  private mapSettings(record: PosTerminalPeripheralSettingsRecord | null) {
+  private mapSettings(
+    record: PosTerminalPeripheralSettingsRecord | null,
+    useMockDefaults = true
+  ) {
+    const fallbackDevice = (deviceId: string | null) =>
+      useMockDefaults ? deviceId : null;
     const settings = record
       ? {
           printerDeviceId:
-            record.printer_device_id ?? fallbackSettings.printerDeviceId,
+            record.printer_device_id ??
+            fallbackDevice(fallbackSettings.printerDeviceId),
           cashDrawerDeviceId:
-            record.cash_drawer_device_id ?? fallbackSettings.cashDrawerDeviceId,
-          scaleDeviceId: record.scale_device_id ?? fallbackSettings.scaleDeviceId,
+            record.cash_drawer_device_id ??
+            fallbackDevice(fallbackSettings.cashDrawerDeviceId),
+          scaleDeviceId:
+            record.scale_device_id ?? fallbackDevice(fallbackSettings.scaleDeviceId),
           scannerDeviceId:
-            record.scanner_device_id ?? fallbackSettings.scannerDeviceId,
+            record.scanner_device_id ??
+            fallbackDevice(fallbackSettings.scannerDeviceId),
           enablePrintSale: record.enable_print_sale,
           enablePrintPurchase: record.enable_print_purchase,
           enablePrintOrder: record.enable_print_order,
@@ -239,7 +302,18 @@ export class PosTerminalsService {
           updatedAt: record.updated_at,
         }
       : {
-          ...fallbackSettings,
+          printerDeviceId: useMockDefaults ? fallbackSettings.printerDeviceId : null,
+          cashDrawerDeviceId: useMockDefaults
+            ? fallbackSettings.cashDrawerDeviceId
+            : null,
+          scaleDeviceId: useMockDefaults ? fallbackSettings.scaleDeviceId : null,
+          scannerDeviceId: useMockDefaults ? fallbackSettings.scannerDeviceId : null,
+          enablePrintSale: useMockDefaults,
+          enablePrintPurchase: useMockDefaults,
+          enablePrintOrder: useMockDefaults,
+          enableOpenDrawer: useMockDefaults,
+          enableScale: useMockDefaults,
+          enableScanner: useMockDefaults,
           createdAt: null,
           updatedAt: null,
         };
@@ -272,11 +346,18 @@ export class PosTerminalsService {
       branchName?: string | null;
     }
   ) {
-    const mappedSettings = this.mapSettings(settings);
+    const mappedSettings = this.mapSettings(
+      settings,
+      !terminal || terminal.mode === "MOCK"
+    );
 
     if (!terminal) {
       return {
         terminalId: "local-terminal",
+        agentTerminalCode: "local-terminal",
+        operationalTerminalId: null,
+        operationalTerminalCode: null,
+        operationalTerminalName: null,
         posTerminalId: null,
         tenantId: fallbackContext?.tenantId ?? null,
         branchId: fallbackContext?.branchId ?? null,
@@ -292,6 +373,10 @@ export class PosTerminalsService {
 
     return {
       terminalId: terminal.code,
+      agentTerminalCode: terminal.code,
+      operationalTerminalId: terminal.operational_terminal_id,
+      operationalTerminalCode: terminal.operational_terminal_code,
+      operationalTerminalName: terminal.operational_terminal_name,
       posTerminalId: terminal.id,
       tenantId: terminal.tenant_id,
       branchId: terminal.branch_id,
@@ -302,6 +387,29 @@ export class PosTerminalsService {
       active: terminal.active,
       source,
       ...mappedSettings,
+    };
+  }
+
+  private buildOperationalUnconfiguredResponse(
+    operationalTerminal: OperationalTerminalRecord,
+    peripheralProfile: PosTerminalRecord | null = null
+  ) {
+    return {
+      terminalId: peripheralProfile?.code ?? null,
+      agentTerminalCode: peripheralProfile?.code ?? null,
+      operationalTerminalId: operationalTerminal.id,
+      operationalTerminalCode: operationalTerminal.code,
+      operationalTerminalName: operationalTerminal.name,
+      posTerminalId: peripheralProfile?.id ?? null,
+      tenantId: operationalTerminal.tenant_id,
+      branchId: operationalTerminal.branch_id,
+      branchName: operationalTerminal.branch_name,
+      code: operationalTerminal.code,
+      name: operationalTerminal.name,
+      mode: peripheralProfile?.mode ?? null,
+      active: operationalTerminal.is_active,
+      source: "OPERATIONAL_UNCONFIGURED" as const,
+      ...this.mapSettings(null, false),
     };
   }
 
@@ -339,16 +447,25 @@ export class PosTerminalsService {
   async createTerminal(payload: CreatePosTerminalDto, actor: ActorContext) {
     const tenantId = this.resolveTenantId(actor, payload.tenantId);
     const branchId = this.normalizeRequiredText(payload.branchId, "branchId is required");
+    const operationalTerminalId = this.normalizeOptionalText(
+      payload.operationalTerminalId
+    );
     const code = this.normalizeRequiredText(payload.code, "code is required");
     const name = this.normalizeRequiredText(payload.name, "name is required");
     const mode = this.normalizeMode(payload.mode);
 
     await this.assertBranchBelongsToTenant(tenantId, branchId);
     await this.assertCodeUnique(tenantId, branchId, code);
+    await this.assertOperationalTerminalLink(
+      tenantId,
+      branchId,
+      operationalTerminalId
+    );
 
     const created = await this.repository.create({
       tenantId,
       branchId,
+      operationalTerminalId,
       code,
       name,
       description: this.normalizeOptionalText(payload.description),
@@ -377,14 +494,27 @@ export class PosTerminalsService {
       payload.code !== undefined
         ? this.normalizeRequiredText(payload.code, "code is required")
         : current.code;
+    const operationalTerminalId =
+      payload.operationalTerminalId !== undefined
+        ? this.normalizeOptionalText(payload.operationalTerminalId)
+        : current.operational_terminal_id;
 
     if (payload.branchId !== undefined) {
       await this.assertBranchBelongsToTenant(tenantId, branchId);
     }
     await this.assertCodeUnique(tenantId, branchId, code, id);
+    await this.assertOperationalTerminalLink(
+      tenantId,
+      branchId,
+      operationalTerminalId
+    );
 
     const updated = await this.repository.update(id, tenantId, {
       branchId: payload.branchId !== undefined ? branchId : undefined,
+      operationalTerminalId:
+        payload.operationalTerminalId !== undefined
+          ? operationalTerminalId
+          : undefined,
       code: payload.code !== undefined ? code : undefined,
       name:
         payload.name !== undefined
@@ -410,7 +540,7 @@ export class PosTerminalsService {
       throw new NotFoundException("POS terminal not found");
     }
     this.resolveTenantId(actor, current.tenant_id);
-    return this.mapSettings(await this.repository.findSettingsByTerminalId(id));
+    return this.mapSettings(await this.repository.findSettingsByTerminalId(id), false);
   }
 
   async savePeripheralSettings(
@@ -427,7 +557,7 @@ export class PosTerminalsService {
       id,
       this.normalizeSettings(payload)
     );
-    return this.mapSettings(saved);
+    return this.mapSettings(saved, false);
   }
 
   async resolveCurrent(
@@ -437,6 +567,54 @@ export class PosTerminalsService {
     const tenantId = this.resolveTenantId(actor, filters.tenantId);
     const requestedBranchId = this.normalizeOptionalText(filters.branchId);
     const allowedBranchIds = await this.getAllowedBranchIds(actor, tenantId);
+    const requestedTerminalId = this.normalizeOptionalText(filters.terminalId);
+    const requestedTerminalCode = this.normalizeOptionalText(filters.terminalCode);
+
+    if (requestedTerminalId && this.isUuid(requestedTerminalId)) {
+      const operationalTerminal = await this.repository.findOperationalTerminalById(
+        requestedTerminalId,
+        tenantId
+      );
+
+      if (operationalTerminal) {
+        if (
+          requestedBranchId !== null &&
+          requestedBranchId !== operationalTerminal.branch_id
+        ) {
+          throw new BadRequestException(
+            "terminalId does not belong to requested branch"
+          );
+        }
+        await this.assertBranchAccess(actor, tenantId, operationalTerminal.branch_id);
+
+        const linkedTerminal = await this.repository.findByOperationalTerminalId(
+          tenantId,
+          operationalTerminal.branch_id,
+          operationalTerminal.id
+        );
+        if (!linkedTerminal) {
+          return this.buildOperationalUnconfiguredResponse(operationalTerminal);
+        }
+
+        const linkedSettings = await this.repository.findSettingsByTerminalId(
+          linkedTerminal.id
+        );
+        if (!linkedSettings) {
+          return this.buildOperationalUnconfiguredResponse(
+            operationalTerminal,
+            linkedTerminal
+          );
+        }
+        return this.buildResolvedResponse(
+          linkedTerminal,
+          linkedSettings,
+          "CONFIGURED"
+        );
+      }
+
+      throw new NotFoundException("Operational terminal not found");
+    }
+
     const branch =
       requestedBranchId === null
         ? allowedBranchIds
@@ -457,8 +635,6 @@ export class PosTerminalsService {
       });
     }
 
-    const requestedTerminalId = this.normalizeOptionalText(filters.terminalId);
-    const requestedTerminalCode = this.normalizeOptionalText(filters.terminalCode);
     let terminal: PosTerminalRecord | null = null;
 
     if (requestedTerminalId) {

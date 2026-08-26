@@ -10,6 +10,7 @@ import type {
   CustomerOrdersStatusDataset,
   OrderSalesListDataset,
   PosSalesListDataset,
+  PosSaleTicketPrintDataset,
   PurchasesListDataset,
   ReportFilters,
 } from "../types";
@@ -68,6 +69,12 @@ export const getPosSalesReport = (filters: ReportFilters) =>
 
 export const getPosSaleTicket = (saleId: string) =>
   apiBlobClientWithBaseUrl(reportsBaseUrl, `/reports/pos-sales/${saleId}/ticket`);
+
+export const getPosSaleTicketPrintData = (saleId: string) =>
+  apiClientWithBaseUrl<PosSaleTicketPrintDataset>(
+    reportsBaseUrl,
+    `/reports/pos-sales/${saleId}/ticket-data`
+  );
 
 export const getCashClosingsReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CashClosingListDataset>(

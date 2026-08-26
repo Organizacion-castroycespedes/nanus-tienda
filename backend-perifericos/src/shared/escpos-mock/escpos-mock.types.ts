@@ -46,6 +46,9 @@ export type ThermalTicketContent = {
   taxes?: number;
   discounts?: number;
   total?: number;
+  paid?: number;
+  change?: number;
+  balance?: number;
   payments?: ThermalTicketPayment[];
   footer?: string;
   title?: string;

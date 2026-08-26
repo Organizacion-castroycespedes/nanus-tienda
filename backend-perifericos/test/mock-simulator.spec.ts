@@ -34,11 +34,45 @@ import {
   DEVICE_PROFILES,
   DeviceProfileId,
 } from "../src/shared/profiles/device-profiles";
+import type { UsbPrinterDiscovery } from "../src/shared/usb/usb-printer-discovery";
+import {
+  type DeviceRegistryState,
+  type DeviceRegistryStateStore,
+} from "../src/platform/device-registry-state.store";
+
+const emptyUsbDiscovery: UsbPrinterDiscovery = {
+  list: () => [],
+};
+
+const testPlatformPaths = {
+  configDir: "C:\\Temp\\PeripheralAgent\\config",
+  stateDir: "C:\\Temp\\PeripheralAgent\\state",
+  logDir: "C:\\Temp\\PeripheralAgent\\logs",
+};
+
+const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
+  let state: DeviceRegistryState | null = null;
+
+  return {
+    read: () => state,
+    write: (_paths, nextState) => {
+      state = JSON.parse(JSON.stringify(nextState));
+    },
+  };
+};
 
 const buildServices = () => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
-  const devicesService = new DevicesService(logsService, eventsService);
+  // MOCK tests must not call the real Windows spooler. Physical discovery is
+  // covered independently by the Windows provider and packaged-Agent smoke.
+  const devicesService = new DevicesService(
+    logsService,
+    eventsService,
+    emptyUsbDiscovery,
+    createMemoryDeviceRegistryStore(),
+    testPlatformPaths
+  );
   const printerService = new PrinterService(
     devicesService,
     logsService,
@@ -68,7 +102,7 @@ const buildServices = () => {
     cashDrawerService,
     scaleService,
     scannerService,
-    healthController: new HealthController(),
+    healthController: new HealthController(devicesService),
     devicesController: new DevicesController(devicesService),
     printerController: new PrinterController(printerService),
     cashDrawerController: new CashDrawerController(cashDrawerService),
@@ -148,7 +182,7 @@ test("mock printer adapter generates test print with profile preview", () => {
 
   assert.equal(result.adapterName, "MockPrinterAdapter");
   assert.equal(result.profile.id, DeviceProfileId.Thermal80mm);
-  assert.match(result.preview, /ESC\/POS MOCK TEST/);
+  assert.match(result.preview, /PRUEBA DE IMPRESION/);
   assert.match(result.preview, /80mm \/ 48 chars/);
   assert.equal(result.capabilities.supportsCut, true);
   assert.equal(
@@ -251,6 +285,7 @@ test("adapter resolver selects mock adapters and rejects real connection types",
     ConnectionType.USB,
     ConnectionType.SERIAL,
     ConnectionType.HID,
+    ConnectionType.USB_HID,
   ]) {
     assert.throws(
       () =>
@@ -276,13 +311,16 @@ test("discover logs and emits connected events", () => {
   const result = devicesController.discover();
 
   assert.equal(result.success, true);
-  assert.equal(result.devices.length, 4);
-  assert.equal(logsService.list()[0].event, "devices.discover.simulated");
+  assert.ok(result.devices.length >= 4);
+  assert.equal(
+    logsService.list().find((entry) => entry.event === "devices.discover.simulated")?.event,
+    "devices.discover.simulated"
+  );
   assert.equal(
     eventsService.getRecentEvents().filter(
       (event) => event.event === PeripheralEventName.DeviceConnected
     ).length,
-    4
+    result.devices.length
   );
 });
 
@@ -305,7 +343,7 @@ test("test print simulates job logs and events", async () => {
   assert.equal(result.bytesSent, undefined);
   assert.equal(result.deviceId, "mock-printer-001");
   assert.equal(result.terminalId, "local-terminal");
-  assert.match(result.preview, /ESC\/POS MOCK TEST/);
+  assert.match(result.preview, /PRUEBA DE IMPRESION/);
   assert.match(result.preview, /80mm \/ 48 chars/);
   assert.equal(
     result.commands.some((command) => command.name === EscPosMockCommandName.Init),
@@ -315,13 +353,16 @@ test("test print simulates job logs and events", async () => {
     result.commands.some((command) => command.name === EscPosMockCommandName.Cut),
     true
   );
-  assert.equal(logsService.list()[0].event, "printer.test_print.simulated");
-  assert.equal(logsService.list()[0].metadata.previewLength, result.preview.length);
+  const testPrintLog = logsService
+    .list()
+    .find((entry) => entry.event === "printer.test_print.simulated");
+  assert.ok(testPrintLog);
+  assert.equal(testPrintLog?.metadata.previewLength, result.preview.length);
   assert.equal(
-    logsService.list()[0].metadata.commandCount,
+    testPrintLog?.metadata.commandCount,
     result.commands.length
   );
-  assert.equal("preview" in logsService.list()[0].metadata, false);
+  assert.equal("preview" in testPrintLog!.metadata, false);
   assert.equal(
     eventsService.getRecentEvents()[0].event,
     PeripheralEventName.PrinterJobCompleted
@@ -367,7 +408,10 @@ test("ticket print simulates without logging full content", async () => {
     },
   });
 
-  const log = logsService.list()[0];
+  const log = logsService
+    .list()
+    .find((entry) => entry.event === "printer.ticket_print.simulated");
+  assert.ok(log);
   assert.equal(result.success, true);
   assert.equal(result.adapterName, "MockPrinterAdapter");
   assert.equal(result.bytesSent, undefined);
@@ -386,13 +430,13 @@ test("ticket print simulates without logging full content", async () => {
     result.commands.some((command) => command.name === EscPosMockCommandName.Cut),
     true
   );
-  assert.equal(log.event, "printer.ticket_print.simulated");
-  assert.deepEqual(log.metadata.itemCount, 1);
-  assert.deepEqual(log.metadata.commandCount, result.commands.length);
-  assert.deepEqual(log.metadata.previewLength, result.preview.length);
-  assert.equal("lines" in log.metadata, false);
-  assert.equal("items" in log.metadata, false);
-  assert.equal("preview" in log.metadata, false);
+  assert.equal(log?.event, "printer.ticket_print.simulated");
+  assert.deepEqual(log?.metadata.itemCount, 1);
+  assert.deepEqual(log?.metadata.commandCount, result.commands.length);
+  assert.deepEqual(log?.metadata.previewLength, result.preview.length);
+  assert.equal("lines" in log!.metadata, false);
+  assert.equal("items" in log!.metadata, false);
+  assert.equal("preview" in log!.metadata, false);
 });
 
 test("printer preview respects configured line width", async () => {
@@ -427,14 +471,14 @@ test("printer preview respects configured line width", async () => {
   assert.equal(result.profile.widthChars, 32);
 });
 
-test("cash drawer open emits event and log", () => {
+test("cash drawer open emits event and log", async () => {
   const {
     cashDrawerController,
     logsService,
     eventsService,
   } = buildServices();
 
-  const result = cashDrawerController.open({
+  const result = await cashDrawerController.open({
     terminalId: "local-terminal",
     deviceId: "mock-cashdrawer-001",
     reason: "SALE_CASH_PAYMENT",
@@ -443,19 +487,23 @@ test("cash drawer open emits event and log", () => {
   assert.equal(result.success, true);
   assert.match(result.commandId, /^mock-cashdrawer-open-/);
   assert.equal(result.mode, "MOCK");
+  assert.equal(result.printerDeviceId, "mock-printer-001");
+  assert.equal(result.connectionType, ConnectionType.MOCK);
   assert.equal(
     result.commands.some(
       (command) => command.name === EscPosMockCommandName.CashDrawerPulse
     ),
     true
   );
+  assert.equal(result.commands.length, 1);
   assert.equal(logsService.list()[0].event, "cashdrawer.open.simulated");
-  assert.equal(logsService.list()[0].metadata.commandCount, 2);
+  assert.equal(logsService.list()[0].metadata.commandCount, 1);
   assert.equal(
     eventsService.getRecentEvents()[0].event,
     PeripheralEventName.CashDrawerOpened
   );
-  assert.equal(eventsService.getRecentEvents()[0].data.commandCount, 2);
+  assert.equal(eventsService.getRecentEvents()[0].data.commandCount, 1);
+  assert.equal(eventsService.getRecentEvents()[0].data.printerDeviceId, "mock-printer-001");
 });
 
 test("scale returns simulated weight and emits event", () => {
@@ -536,6 +584,21 @@ test("POST /devices validates type and connection fields", () => {
   assert.equal(created.connectionType, ConnectionType.MOCK);
 });
 
+test("SCANNER devices can use USB_HID without usb payload", () => {
+  const { devicesController } = buildServices();
+
+  const created = devicesController.create({
+    type: DeviceType.SCANNER,
+    id: "usb-hid-scanner-001",
+    name: "Scanner HID USB",
+    connectionType: ConnectionType.USB_HID,
+    terminalId: "local-terminal",
+  });
+
+  assert.equal(created.type, DeviceType.SCANNER);
+  assert.equal(created.connectionType, ConnectionType.USB_HID);
+});
+
 test("PATCH /devices/:id validates status and updates state", () => {
   const { devicesController } = buildServices();
 
@@ -570,20 +633,19 @@ test("deviceId not found returns controlled error and WARN log", async () => {
   assert.equal(logsService.list()[0].event, "device.lookup.not_found");
 });
 
-test("wrong device type returns controlled error and WARN log", () => {
+test("legacy cash drawer request resolves canonical printer device", async () => {
   const { cashDrawerController, logsService } = buildServices();
 
-  assert.throws(
-    () =>
-      cashDrawerController.open({
-        terminalId: "local-terminal",
-        deviceId: "mock-printer-001",
-      }),
-    BadRequestException
-  );
+  const result = await cashDrawerController.open({
+    terminalId: "local-terminal",
+    deviceId: "mock-printer-001",
+  });
 
-  assert.equal(logsService.list()[0].level, LogLevel.WARN);
-  assert.equal(logsService.list()[0].event, "device.lookup.type_mismatch");
+  assert.equal(result.success, true);
+  assert.equal(result.printerDeviceId, "mock-printer-001");
+  assert.equal(result.connectionType, ConnectionType.MOCK);
+  assert.equal(result.commands.length, 1);
+  assert.equal(logsService.list()[0].event, "cashdrawer.open.simulated");
 });
 
 test("disconnected device cannot execute operational action", async () => {

@@ -31,7 +31,13 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
   const devices = await fetch(`${baseUrl}/devices`);
   assert.equal(devices.status, 200);
   const devicePayload = await readJson<unknown[]>(devices);
-  assert.equal(devicePayload.length, 4);
+  assert.ok(devicePayload.length >= 4);
+  assert.equal(
+    devicePayload.some(
+      (device) => typeof device === "object" && device !== null && (device as { id?: string }).id === "mock-printer-001"
+    ),
+    true
+  );
 
   const logs = await fetch(`${baseUrl}/logs`);
   assert.equal(logs.status, 200);
@@ -84,6 +90,43 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
   assert.match(
     allowedPreflight.headers.get("access-control-allow-headers") ?? "",
     /Content-Type/i
+  );
+
+  const printerPreflight = await fetch(`${baseUrl}/printer/print-ticket`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: allowedOrigin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type",
+    },
+  });
+  assert.equal(printerPreflight.status, 204);
+  assert.equal(
+    printerPreflight.headers.get("access-control-allow-origin"),
+    allowedOrigin
+  );
+  assert.match(
+    printerPreflight.headers.get("access-control-allow-methods") ?? "",
+    /POST/
+  );
+  assert.match(
+    printerPreflight.headers.get("access-control-allow-headers") ?? "",
+    /Content-Type/i
+  );
+
+  const rejectedPrinterPreflight = await fetch(
+    `${baseUrl}/printer/print-ticket`,
+    {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://malicious.example",
+        "Access-Control-Request-Method": "POST",
+      },
+    }
+  );
+  assert.equal(
+    rejectedPrinterPreflight.headers.get("access-control-allow-origin"),
+    null
   );
 
   const disallowedPreflight = await fetch(`${baseUrl}/devices`, {

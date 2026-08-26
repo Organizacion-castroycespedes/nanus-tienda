@@ -13,7 +13,7 @@ export class CashDrawerController {
   ) {}
 
   @Post("open")
-  open(@Body() body: CashDrawerOpenRequest): CashDrawerOpenResponse {
+  open(@Body() body: CashDrawerOpenRequest): Promise<CashDrawerOpenResponse> {
     return this.cashDrawerService.open(body);
   }
 }

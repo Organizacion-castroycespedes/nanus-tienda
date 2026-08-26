@@ -10,6 +10,9 @@ type TestPrintInput = {
   mode: string;
   terminalId: string;
   deviceId: string;
+  printerName?: string;
+  profileId?: string;
+  connectionType?: string;
   widthChars: number;
   paperWidthMm: number | null;
   timestamp: string;
@@ -46,7 +49,6 @@ export const createEscPosMockCommand = (
 });
 
 export const createCashDrawerPulseCommands = (): EscPosMockCommand[] => [
-  createEscPosMockCommand(EscPosMockCommandName.Init),
   createEscPosMockCommand(EscPosMockCommandName.CashDrawerPulse),
 ];
 
@@ -55,13 +57,16 @@ export const buildTestPrintDocument = (
 ): ThermalMockDocument => {
   const writer = new ThermalTextWriter(input.widthChars);
   writer.center("MANUS POS");
-  writer.center("ESC/POS MOCK TEST");
+  writer.center("PRUEBA DE IMPRESION");
   writer.separator();
-  writer.pair("Agent", input.agentName);
-  writer.pair("Mode", input.mode);
-  writer.pair("Timestamp", input.timestamp);
+  writer.pair("Modelo", input.printerName ?? "Impresora POS");
+  writer.pair("Perfil", input.profileId ?? "-");
+  writer.pair("Conexion", input.connectionType ?? "-");
   writer.pair("Terminal", input.terminalId);
   writer.pair("Device", input.deviceId);
+  writer.pair("Agente", input.agentName);
+  writer.pair("Modo", input.mode);
+  writer.pair("Fecha", input.timestamp);
   writer.pair(
     "Width",
     (input.paperWidthMm === null ? "generic" : input.paperWidthMm + "mm") +
@@ -70,8 +75,7 @@ export const buildTestPrintDocument = (
       " chars"
   );
   writer.separator();
-  writer.center("Print test simulated");
-  writer.center("No bytes sent to hardware");
+  writer.center("IMPRESION OK");
   writer.blank();
   writer.center("Conceptual cut below");
   writer.separator();
@@ -152,6 +156,9 @@ export const buildTicketPrintDocument = (
     writer.separator();
     writer.amount("TOTAL", content.total);
   }
+  writer.amount("Pagado", content.paid);
+  writer.amount("Cambio", content.change);
+  writer.amount("Saldo", content.balance);
 
   if (content.payments?.length) {
     writer.separator();
@@ -163,7 +170,6 @@ export const buildTicketPrintDocument = (
 
   writer.separator();
   writer.center(content.footer || "Gracias por su compra");
-  writer.center("ESC/POS MOCK - no hardware");
 
   return {
     preview: writer.toString(),

@@ -145,6 +145,11 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     [selectedBranch]
   );
 
+  const selectedTerminal = useMemo(
+    () => availableTerminals.find((terminal) => terminal.id === terminalId) ?? null,
+    [availableTerminals, terminalId]
+  );
+
   const selectedCashRegister = useMemo(() => {
     if (!terminalId) {
       return null;
@@ -169,37 +174,57 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     setContext({
       tenantId: tenantId || null,
       branchId: null,
+      branchName: null,
       terminalId: null,
+      terminalName: null,
     });
   };
 
   useEffect(() => {
     if (mustUseAssignedBranch && authBranchId && branchId !== authBranchId) {
-      setContext({ branchId: authBranchId, terminalId: null });
+      setContext({
+        branchId: authBranchId,
+        branchName: authBranchName,
+        terminalId: null,
+        terminalName: null,
+      });
       return;
     }
 
     if (availableBranches.length === 1 && !branchId) {
-      setContext({ branchId: availableBranches[0].id });
+      setContext({
+        branchId: availableBranches[0].id,
+        branchName: availableBranches[0].name,
+        terminalId: null,
+        terminalName: null,
+      });
     }
-  }, [authBranchId, availableBranches, branchId, mustUseAssignedBranch, setContext]);
+  }, [authBranchId, authBranchName, availableBranches, branchId, mustUseAssignedBranch, setContext]);
 
   useEffect(() => {
     if (availableTerminals.length === 1 && !terminalId) {
-      setContext({ terminalId: availableTerminals[0].id });
+      setContext({
+        terminalId: availableTerminals[0].id,
+        terminalName: availableTerminals[0].name,
+      });
     }
   }, [availableTerminals, setContext, terminalId]);
 
   const handleBranchChange = (branchId: string) => {
+    const nextBranch = availableBranches.find((branch) => branch.id === branchId) ?? null;
     setContext({
       branchId: branchId || null,
+      branchName: nextBranch?.name ?? null,
       terminalId: null,
+      terminalName: null,
     });
   };
 
   const handleTerminalChange = (terminalId: string) => {
+    const nextTerminal = availableTerminals.find((terminal) => terminal.id === terminalId) ?? null;
     setContext({
       terminalId: terminalId || null,
+      terminalName: nextTerminal?.name ?? null,
     });
   };
 
@@ -334,7 +359,9 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
       setSession({
         posSessionId: session.posSessionId,
         branchId: session.branchId,
+        branchName: selectedBranch?.name ?? null,
         terminalId: session.terminalId,
+        terminalName: selectedTerminal?.name ?? null,
         cashRegisterId: selectedCashRegister.id,
       });
 
