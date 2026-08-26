@@ -20,8 +20,10 @@ import {
   DEFAULT_SCALE_DEVICE_ID,
   DEFAULT_SCANNER_DEVICE_ID,
   DEFAULT_POS_TERMINAL_ID,
+  resolvePeripheralOperationTerminalId,
   resolvePeripheralTerminalConfig,
 } from "./terminal-config";
+import { resolveCashDrawerDeviceIdForOperation } from "./cash-drawer-routing";
 import type {
   CashDrawerOpenInput,
   CashDrawerResponse,
@@ -57,6 +59,7 @@ type ConfigurablePeripheralInput = {
   branchId?: string;
   terminalId?: string;
   deviceId?: string;
+  printerDeviceId?: string;
 };
 type DeviceRole = "printer" | "cashDrawer" | "scale" | "scanner";
 
@@ -188,7 +191,12 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
     deviceRole === "printer"
       ? config.printerDeviceId
       : deviceRole === "cashDrawer"
-        ? config.cashDrawerDeviceId
+        ? resolveCashDrawerDeviceIdForOperation({
+            currentCashDrawerDeviceId: config.cashDrawerDeviceId,
+            selectedPrinterDeviceId: config.printerDeviceId,
+            selectedPrinterConnectionType: null,
+            printerDrawerCertified: false,
+          })
         : deviceRole === "scale"
           ? config.scaleDeviceId
           : config.scannerDeviceId;
@@ -196,7 +204,7 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
     !input.deviceId || input.deviceId === defaultDeviceId;
   const terminalId =
     config.source === "CONFIGURED"
-      ? config.agentTerminalCode ?? undefined
+      ? resolvePeripheralOperationTerminalId(config)
       : input.terminalId ??
         config.agentTerminalCode ??
         config.terminalId ??
@@ -208,6 +216,12 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
     deviceId: shouldUseConfiguredDevice
       ? configuredDeviceId ?? undefined
       : input.deviceId,
+    printerDeviceId:
+      deviceRole === "cashDrawer" &&
+      config.printerDeviceId &&
+      configuredDeviceId === config.printerDeviceId
+        ? config.printerDeviceId
+        : input.printerDeviceId,
   };
 };
 

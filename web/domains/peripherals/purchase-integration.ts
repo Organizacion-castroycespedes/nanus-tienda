@@ -4,6 +4,7 @@ import {
   openCashDrawer,
   printPurchaseTicket,
 } from "./contracts";
+import { isCashPaymentMethod } from "../../modules/shared/payments/payment-allocation.helper";
 import type {
   PeripheralOperationError,
   PeripheralTicketPayment,
@@ -25,6 +26,7 @@ export type PurchasePeripheralPayment = {
   paymentMethodId?: string;
   methodName?: string | null;
   methodType?: string | null;
+  methodCode?: string | null;
   amount: number;
 };
 
@@ -62,7 +64,13 @@ export type PurchasePeripheralFeedback = {
 
 export const isCashPurchasePeripheralPayment = (
   payment: PurchasePeripheralPayment
-) => payment.amount > 0 && payment.methodType === "CASH";
+) =>
+  payment.amount > 0 &&
+  isCashPaymentMethod({
+    tipo: payment.methodType ?? undefined,
+    codigo: payment.methodCode ?? undefined,
+    nombre: payment.methodName ?? undefined,
+  });
 
 export const hasCashPurchasePeripheralPayment = (
   payments: PurchasePeripheralPayment[]

@@ -11,6 +11,12 @@ export type PaymentDraftLike = {
   amount: string;
 };
 
+export type CashPaymentMethodLike = {
+  codigo?: string | null;
+  nombre?: string | null;
+  tipo?: string | null;
+};
+
 type RebalanceResult<TPayment extends PaymentDraftLike> = {
   payments: TPayment[];
   error: string | null;
@@ -36,23 +42,21 @@ export const formatPaymentAmount = (value: number) => {
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
 };
 
+export const isCashPaymentMethod = (method: CashPaymentMethodLike) => {
+  const type = normalizeText(method.tipo);
+  if (type === "CASH") {
+    return true;
+  }
+
+  const code = normalizeText(method.codigo);
+  const name = normalizeText(method.nombre);
+  return code === "CASH" || code === "EFECTIVO" || name.includes("EFECTIVO") || name === "CASH";
+};
+
 export const findCashPaymentMethod = <TMethod extends PaymentMethodLike>(
   paymentMethods: TMethod[]
 ): TMethod | null => {
-  const byType = paymentMethods.find(
-    (method) => normalizeText(method.tipo) === "CASH"
-  );
-  if (byType) {
-    return byType;
-  }
-
-  return (
-    paymentMethods.find((method) => {
-      const code = normalizeText(method.codigo);
-      const name = normalizeText(method.nombre);
-      return code === "CASH" || code === "EFECTIVO" || name.includes("EFECTIVO") || name === "CASH";
-    }) ?? null
-  );
+  return paymentMethods.find((method) => isCashPaymentMethod(method)) ?? null;
 };
 
 export const createDefaultCashPayment = <TPayment extends PaymentDraftLike>(

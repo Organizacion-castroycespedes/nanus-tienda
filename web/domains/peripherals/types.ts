@@ -63,6 +63,7 @@ export type PeripheralDevice = {
   profile?: DeviceProfile;
   network?: DeviceNetworkConfig;
   usb?: DeviceUsbConfig;
+  metadata?: Record<string, unknown>;
 };
 
 export type CreateDeviceRequest = {
@@ -75,6 +76,7 @@ export type CreateDeviceRequest = {
   profileId?: PrinterProfileId;
   network?: DeviceNetworkConfig;
   usb?: DeviceUsbConfig;
+  metadata?: Record<string, unknown>;
 };
 
 export type PeripheralTicketItem = {
@@ -279,6 +281,7 @@ export type UpdateDeviceRequest = Partial<{
   profileId: PrinterProfileId;
   network: DeviceNetworkConfig | null;
   usb: DeviceUsbConfig | null;
+  metadata: Record<string, unknown>;
 }>;
 
 export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {

@@ -3,9 +3,13 @@ import { BadRequestException } from "@nestjs/common";
 import {
   buildTestPrintDocument,
   buildTicketPrintDocument,
+  createCashDrawerPulseCommands,
 } from "../escpos-mock/thermal-ticket.formatter";
 import { EscPosMockCommandName } from "../escpos-mock/escpos-mock.types";
-import { renderThermalEscPos } from "../escpos/thermal-escpos.renderer";
+import {
+  buildCashDrawerPulseBytes,
+  renderThermalEscPos,
+} from "../escpos/thermal-escpos.renderer";
 import {
   getPeripheralsConfig,
   type UsbPrintTransport,
@@ -60,7 +64,8 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
       : "UsbSystemPrinterAdapter";
   }
 
-  getCapabilities(profile: DeviceProfile): AdapterCapabilities {
+  getCapabilities(profile: DeviceProfile, device?: PeripheralDevice): AdapterCapabilities {
+    const drawerCertified = this.isCashDrawerPulseCertified(device);
     return {
       adapterName: this.adapterName,
       mode: this.mode,
@@ -70,18 +75,38 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
       // USB printers only advertise it when a device-specific certification
       // path exists. Keep the signal conservative to avoid cross-device false positives.
       supportsPhysicalCut: false,
-      supportsCashDrawerPulse: false,
+      supportsCashDrawerPulse: profile.supportsCashDrawerPulse && drawerCertified,
     };
   }
 
   openCashDrawer(input: CashDrawerAdapterInput): AdapterResult {
     this.validateDevice(input.device);
-    const capabilities = this.getCapabilities(input.profile);
+    const capabilities = this.getCapabilities(input.profile, input.device);
     if (!capabilities.supportsCashDrawerPulse) {
-      throw new BadRequestException("printer does not support cash drawer pulse");
+      throw new BadRequestException("printer drawer pulse is not certified for this device");
     }
 
-    throw new BadRequestException("printer does not support cash drawer pulse");
+    const queueName = input.device.usb?.printerName;
+    if (!queueName) {
+      throw new BadRequestException("USB printer queue is required");
+    }
+
+    const commands = createCashDrawerPulseCommands();
+    const payload = buildCashDrawerPulseBytes(input.pulse);
+    const bytesSent = this.rawTransport.send({
+      nativeIdentifier: queueName,
+      payload,
+      jobName: "Manus POS cash drawer pulse",
+    }).bytesSent;
+
+    return {
+      adapterName: this.adapterName,
+      profile: input.profile,
+      capabilities,
+      commands,
+      bytesSent,
+      pulse: input.pulse,
+    };
   }
 
   printTest(input: PrinterAdapterInput): PrinterAdapterResult {
@@ -104,7 +129,7 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands,
       bytesSent,
@@ -127,7 +152,7 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands,
       bytesSent,
@@ -141,6 +166,10 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     if (device.connectionType !== ConnectionType.USB || !device.usb) {
       throw new BadRequestException("device connectionType must be USB with discovered usb config");
     }
+  }
+
+  private isCashDrawerPulseCertified(device?: PeripheralDevice): boolean {
+    return device?.metadata?.usbRawCashDrawerPulseCertified === true;
   }
 
   private resolveRawCommands(

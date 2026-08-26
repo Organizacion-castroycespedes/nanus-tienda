@@ -84,7 +84,7 @@ const buildDevices = (usbDiscovery = new FakeUsbDiscovery()) => {
   };
 };
 
-const buildUsbPrinter = (): PeripheralDevice => ({
+const buildUsbPrinter = (metadata?: Record<string, unknown>): PeripheralDevice => ({
   id: "printer-xp80t-usb-001",
   type: DeviceType.PRINTER,
   name: "Xprinter XP-80T",
@@ -96,6 +96,7 @@ const buildUsbPrinter = (): PeripheralDevice => ({
     deviceId: discoveredUsbPrinter.deviceId,
     printerName: discoveredUsbPrinter.printerName,
   },
+  ...(metadata ? { metadata } : {}),
 });
 
 test("USB discovery returns stable agent-generated printer descriptor", () => {
@@ -282,6 +283,23 @@ test("USB RAW keeps physical-cut capability false until physical certification",
   assert.equal(
     adapter.getCapabilities(DEVICE_PROFILES.THERMAL_80MM).supportsPhysicalCut,
     false
+  );
+});
+
+test("USB drawer capability stays false until the device is certified", () => {
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW");
+
+  assert.equal(
+    adapter.getCapabilities(DEVICE_PROFILES.THERMAL_58MM, buildUsbPrinter())
+      .supportsCashDrawerPulse,
+    false
+  );
+  assert.equal(
+    adapter.getCapabilities(
+      DEVICE_PROFILES.THERMAL_58MM,
+      buildUsbPrinter({ usbRawCashDrawerPulseCertified: true })
+    ).supportsCashDrawerPulse,
+    true
   );
 });
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isRealPrinterConfig,
+  openCashDrawer,
   printReporteriaSaleTicket,
 } from "./contracts";
 import type { PosTerminalResolvedConfig, SaleTicketInput } from "./types";
@@ -211,6 +212,91 @@ test("report direct print returns DEVICE_NOT_FOUND from the Agent", async () => 
 
     assert.equal(result.success, false);
     assert.equal(result.error.code, "DEVICE_NOT_FOUND");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousAgentUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL;
+    } else {
+      process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL = previousAgentUrl;
+    }
+  }
+});
+
+test("local-terminal resolves the canonical configured terminal before drawer routing", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousAgentUrl = process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL = "http://127.0.0.1:4050";
+
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    calls.push({ url, init });
+
+    if (url === "/pos-terminals/resolve-current?tenantId=tenant-1&branchId=branch-1") {
+      return jsonResponse({
+        ...configured("usb-printer-45207a0cc744eb10"),
+        terminalId: "local-terminal",
+        operationalTerminalId: "693921eb-d28d-4c1b-af17-087b589c6467",
+        cashDrawerDeviceId: "mock-cashdrawer-001",
+        agentTerminalCode: "local-terminal",
+      });
+    }
+
+    if (url === "http://127.0.0.1:4050/cash-drawer/open") {
+      const payload = JSON.parse(String(init?.body)) as {
+        terminalId?: string;
+        deviceId?: string;
+        printerDeviceId?: string;
+        reason?: string;
+      };
+      assert.equal(init?.method, "POST");
+      assert.equal(payload.terminalId, "693921eb-d28d-4c1b-af17-087b589c6467");
+      assert.equal(payload.deviceId, "usb-printer-45207a0cc744eb10");
+      assert.equal(payload.printerDeviceId, "usb-printer-45207a0cc744eb10");
+      return jsonResponse({
+        success: true,
+        commandId: "drawer-1",
+        mode: "REAL",
+        printerDeviceId: "usb-printer-45207a0cc744eb10",
+        deviceId: "usb-printer-45207a0cc744eb10",
+        terminalId: "693921eb-d28d-4c1b-af17-087b589c6467",
+        connectionType: "USB",
+        commands: [],
+        profile: {
+          id: "THERMAL_58MM",
+          paperWidthMm: 58,
+          widthChars: 32,
+          supportsCut: false,
+          supportsCashDrawerPulse: true,
+        },
+        pulse: {
+          connector: 0,
+          pin: 2,
+          pulseOnMs: 120,
+          pulseOffMs: 120,
+        },
+        bytesSent: 5,
+        message: "drawer opened",
+        adapterName: "UsbRawPrinterAdapter",
+      });
+    }
+
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  try {
+    const result = await openCashDrawer({
+      tenantId: "tenant-1",
+      branchId: "branch-1",
+      terminalId: "local-terminal",
+      deviceId: "mock-cashdrawer-001",
+      reason: "SALE_CASH_PAYMENT",
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(calls[0].url, "/pos-terminals/resolve-current?tenantId=tenant-1&branchId=branch-1");
+    assert.equal(calls[1].url, "/pos-terminals/resolve-current?tenantId=tenant-1&branchId=branch-1");
+    assert.equal(calls[2].url, "http://127.0.0.1:4050/cash-drawer/open");
   } finally {
     globalThis.fetch = previousFetch;
     if (previousAgentUrl === undefined) {

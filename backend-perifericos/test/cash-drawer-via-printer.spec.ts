@@ -17,11 +17,20 @@ import {
   type NetworkEscposSocket,
 } from "../src/shared/adapters/network-escpos-printer.adapter";
 import { PeripheralAdapterResolver } from "../src/shared/adapters/peripheral-adapter.resolver";
+import {
+  UsbSystemPrinterAdapter,
+  type UsbPrintCommandRunner,
+} from "../src/shared/adapters/usb-system-printer.adapter";
 import { DEVICE_PROFILES } from "../src/shared/profiles/device-profiles";
 import {
   DEFAULT_CASH_DRAWER_PULSE_PROFILE,
   buildCashDrawerPulseBytes,
 } from "../src/shared/escpos/thermal-escpos.renderer";
+import {
+  buildUsbPrinterDescriptor,
+  type UsbPrinterDiscovery,
+} from "../src/shared/usb/usb-printer-discovery";
+import { WindowsRawSpoolerTransport } from "../src/platform/windows/windows-raw-spooler.transport";
 import type {
   DeviceRegistryState,
   DeviceRegistryStateStore,
@@ -119,6 +128,28 @@ class FakeNetworkSocket implements NetworkEscposSocket {
   }
 }
 
+const certifiedUsbPrinterDescriptor = buildUsbPrinterDescriptor(
+  "XP-58",
+  {
+    nativeIdentifier: "XP-58",
+    fingerprint: {
+      source: "WINDOWS_PRINT_QUEUE",
+      values: { queueName: "XP-58" },
+    },
+    platform: "WINDOWS",
+    architecture: "x64",
+  },
+  "agent-installation-qa"
+);
+
+class FakeUsbDiscovery implements UsbPrinterDiscovery {
+  constructor(private readonly devices = [certifiedUsbPrinterDescriptor]) {}
+
+  list() {
+    return [...this.devices];
+  }
+}
+
 const buildHarness = (socketFactory: () => NetworkEscposSocket) => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
@@ -148,6 +179,45 @@ const buildHarness = (socketFactory: () => NetworkEscposSocket) => {
     devicesService,
     cashDrawerService,
     cashDrawerController: new CashDrawerController(cashDrawerService),
+  };
+};
+
+const buildUsbHarness = (commandRunner: UsbPrintCommandRunner) => {
+  const logsService = new LogsService();
+  const eventsService = new EventsService();
+  const devicesService = new DevicesService(
+    logsService,
+    eventsService,
+    new FakeUsbDiscovery(),
+    createMemoryDeviceRegistryStore(),
+    testPlatformPaths
+  );
+  const cashDrawerService = new CashDrawerService(
+    devicesService,
+    logsService,
+    eventsService
+  );
+  const resolver = new PeripheralAdapterResolver(true);
+  const usbAdapter = new UsbSystemPrinterAdapter(
+    "win32",
+    () => {},
+    "RAW",
+    new WindowsRawSpoolerTransport(commandRunner)
+  );
+
+  (resolver as unknown as { usbSystemPrinterAdapter: UsbSystemPrinterAdapter }).usbSystemPrinterAdapter =
+    usbAdapter;
+  (cashDrawerService as unknown as { adapterResolver: PeripheralAdapterResolver }).adapterResolver =
+    resolver;
+
+  return {
+    logsService,
+    eventsService,
+    devicesService,
+    cashDrawerService,
+    cashDrawerController: new CashDrawerController(cashDrawerService),
+    usbAdapter,
+    certifiedUsbPrinterDescriptor,
   };
 };
 
@@ -289,4 +359,86 @@ test("cash drawer open rejects printers without drawer pulse support", async () 
     /printer does not support cash drawer pulse/
   );
   assert.equal(socket.writeCount, 0);
+});
+
+test("USB certified drawer pulse uses one raw write and returns QA data", async () => {
+  const writes: Array<{ command: string; args: string[] }> = [];
+  const harness = buildUsbHarness((command, args) => {
+    writes.push({ command, args });
+  });
+  harness.devicesService.discover();
+
+  const printer = harness.devicesService.create({
+    id: "printer-xp58-usb-qa-001",
+    type: DeviceType.PRINTER,
+    name: "XP-58 USB QA",
+    status: DeviceStatus.CONNECTED,
+    connectionType: ConnectionType.USB,
+    terminalId: "local-terminal",
+    profileId: "THERMAL_58MM",
+    usb: {
+      deviceId: harness.certifiedUsbPrinterDescriptor.deviceId,
+      printerName: harness.certifiedUsbPrinterDescriptor.printerName,
+    },
+    metadata: { usbRawCashDrawerPulseCertified: true },
+  });
+
+  const response = await harness.cashDrawerController.open({
+    terminalId: "local-terminal",
+    printerDeviceId: printer.id,
+    reason: "MANUAL_TEST",
+  });
+
+  assert.equal(response.success, true);
+  assert.equal(response.mode, "REAL");
+  assert.equal(response.adapterName, "UsbRawPrinterAdapter");
+  assert.equal(response.printerDeviceId, printer.id);
+  assert.equal(response.connectionType, ConnectionType.USB);
+  assert.equal(response.profile.id, "THERMAL_58MM");
+  assert.equal(response.capabilities.supportsCashDrawerPulse, true);
+  assert.equal(response.capabilities.supportsPhysicalCut, false);
+  assert.equal(response.bytesSent, 5);
+  assert.deepEqual(response.pulse, DEFAULT_CASH_DRAWER_PULSE_PROFILE);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]?.command, "powershell.exe");
+});
+
+test("USB uncertified drawer pulse is rejected before transport write", async () => {
+  let writes = 0;
+  const harness = buildUsbHarness(() => {
+    writes += 1;
+  });
+  harness.devicesService.discover();
+
+  harness.devicesService.create({
+    id: "printer-xp58-usb-qa-002",
+    type: DeviceType.PRINTER,
+    name: "XP-58 USB QA",
+    status: DeviceStatus.CONNECTED,
+    connectionType: ConnectionType.USB,
+    terminalId: "local-terminal",
+    profileId: "THERMAL_58MM",
+    usb: {
+      deviceId: harness.certifiedUsbPrinterDescriptor.deviceId,
+      printerName: harness.certifiedUsbPrinterDescriptor.printerName,
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      harness.cashDrawerController.open({
+        terminalId: "local-terminal",
+        printerDeviceId: "printer-xp58-usb-qa-002",
+        reason: "MANUAL_TEST",
+      }),
+    (error) => {
+      assert.ok(error instanceof BadRequestException);
+      assert.match(
+        (error as Error).message,
+        /printer drawer pulse is not certified for this device/
+      );
+      return true;
+    }
+  );
+  assert.equal(writes, 0);
 });

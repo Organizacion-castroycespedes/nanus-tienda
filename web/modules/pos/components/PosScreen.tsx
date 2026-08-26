@@ -69,6 +69,7 @@ import type { ElectronicInvoicingCustomer } from "../../electronic-invoicing/ser
 import {
   createDefaultCashPayment,
   findCashPaymentMethod,
+  isCashPaymentMethod,
   parsePaymentAmount,
   rebalanceCashPayment,
 } from "../../shared/payments/payment-allocation.helper";
@@ -1169,7 +1170,7 @@ export const PosScreen = () => {
     () =>
       round(
         parsedPayments
-          .filter((payment) => payment.method?.tipo === "CASH")
+          .filter((payment) => payment.method && isCashPaymentMethod(payment.method))
           .reduce((sum, payment) => sum + payment.numericAmount, 0)
       ),
     [parsedPayments]
@@ -1179,7 +1180,7 @@ export const PosScreen = () => {
     () =>
       round(
         parsedPayments
-          .filter((payment) => payment.method?.tipo !== "CASH")
+          .filter((payment) => !payment.method || !isCashPaymentMethod(payment.method))
           .reduce((sum, payment) => sum + payment.numericAmount, 0)
       ),
     [parsedPayments]
@@ -2001,7 +2002,7 @@ export const PosScreen = () => {
 
     return basePayments
       .map((payment) => {
-        if (payment.method?.tipo !== "CASH" || remainingChange <= 0) {
+        if (!payment.method || !isCashPaymentMethod(payment.method) || remainingChange <= 0) {
           return {
             paymentMethodId: payment.paymentMethodId,
             amount: payment.numericAmount,
@@ -2011,9 +2012,7 @@ export const PosScreen = () => {
           };
         }
 
-        const adjustedAmount = round(
-          Math.max(payment.numericAmount - remainingChange, 0)
-        );
+        const adjustedAmount = round(Math.max(payment.numericAmount - remainingChange, 0));
         remainingChange = round(Math.max(remainingChange - payment.numericAmount, 0));
 
         return {
@@ -2098,7 +2097,11 @@ export const PosScreen = () => {
     }
 
     const hasCashWithoutSession = parsedPayments.some(
-      (payment) => payment.numericAmount > 0 && payment.method?.tipo === "CASH" && !currentCashSession
+      (payment) =>
+        payment.numericAmount > 0 &&
+        payment.method &&
+        isCashPaymentMethod(payment.method) &&
+        !currentCashSession
     );
     if (hasCashWithoutSession) {
       return "Abre una caja antes de registrar efectivo en el POS.";
@@ -2187,6 +2190,7 @@ export const PosScreen = () => {
             paymentMethodId: payment.paymentMethodId,
             methodName: method?.nombre,
             methodType: method?.tipo,
+            methodCode: method?.codigo,
             amount: payment.amount,
           };
         }),
