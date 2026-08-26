@@ -121,6 +121,12 @@ import {
   sortPosClassificationOptions,
   type PosStockFilterKey,
 } from "../utils/product-classification";
+import { createProductAddedSoundPlayer } from "../utils/product-added-sound";
+import {
+  FLOATING_CART_STORAGE_KEY,
+  FLOATING_POS_STORAGE_KEY,
+} from "../utils/floating-control-position";
+import { useDraggableFloatingControl } from "../hooks/useDraggableFloatingControl";
 
 type StockFilterKey = PosStockFilterKey;
 type ProductViewMode = "grid" | "list";
@@ -519,10 +525,9 @@ export const PosScreen = () => {
   const [activeStockFilter, setActiveStockFilter] = useState<StockFilterKey>("all");
   const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("");
   const [selectedProductSubcategoryId, setSelectedProductSubcategoryId] = useState("");
-  const [productFiltersOpen, setProductFiltersOpen] = useState(false);
+  const [productToolsOpen, setProductToolsOpen] = useState(false);
   const [productViewMode, setProductViewMode] =
     useState<ProductViewMode>("grid");
-  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -577,6 +582,8 @@ export const PosScreen = () => {
     () => createPosScannerHidLogger(process.env.NEXT_PUBLIC_POS_SCANNER_DEBUG === "true"),
     []
   );
+  const playProductAddedSound = useMemo(() => createProductAddedSoundPlayer(), []);
+  const shouldFocusProductSearchRef = useRef(false);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -596,12 +603,54 @@ export const PosScreen = () => {
     [setCartItems]
   );
 
+  const openProductTools = useCallback(() => {
+    shouldFocusProductSearchRef.current = true;
+    setProductToolsOpen(true);
+  }, []);
+
+  const posFloatingControl = useDraggableFloatingControl({
+    storageKey: FLOATING_POS_STORAGE_KEY,
+    defaultAnchor: "top-right",
+    defaultSize: {
+      width: 176,
+      height: 56,
+    },
+    minTop: 96,
+    onActivate: openProductTools,
+  });
+  const cartFloatingControl = useDraggableFloatingControl({
+    storageKey: FLOATING_CART_STORAGE_KEY,
+    defaultAnchor: "bottom-right",
+    defaultSize: {
+      width: 272,
+      height: 56,
+    },
+    minTop: 96,
+    onActivate: () => setIsCartOpen(true),
+  });
+
   const focusProductSearch = useCallback(() => {
+    if (!productToolsOpen) {
+      return;
+    }
+
     window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, []);
+  }, [productToolsOpen]);
+
+  useEffect(() => {
+    if (!productToolsOpen || !shouldFocusProductSearchRef.current) {
+      return;
+    }
+
+    shouldFocusProductSearchRef.current = false;
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, [productToolsOpen]);
 
   // Detect mobile/tablet viewport
   useEffect(() => {
@@ -860,7 +909,7 @@ export const PosScreen = () => {
     (customer: CustomerResponse) => {
       setCustomers((current) => upsertCustomer(current, customer));
       setSelectedCustomerId(customer.id);
-      setCustomerPickerOpen(false);
+      setProductToolsOpen(false);
       showToast("Cliente seleccionado.", "success");
     },
     [setSelectedCustomerId, showToast]
@@ -876,7 +925,7 @@ export const PosScreen = () => {
         setCustomers((current) => upsertCustomer(current, mappedCustomer));
       }
       setSelectedCustomerId(customer.id);
-      setCustomerPickerOpen(false);
+      setProductToolsOpen(false);
       showToast("Cliente fiscal listo.", "success");
     },
     [setSelectedCustomerId, showToast]
@@ -888,7 +937,7 @@ export const PosScreen = () => {
       return;
     }
     setSelectedCustomerId(finalConsumerCustomer.id);
-    setCustomerPickerOpen(false);
+    setProductToolsOpen(false);
   }, [finalConsumerCustomer, setSelectedCustomerId, showToast]);
 
   const paymentMethodById = useMemo(
@@ -1474,10 +1523,11 @@ export const PosScreen = () => {
       const added = setProductQuantityInCart(product, nextQuantity);
       if (added) {
         focusProductSearch();
+        void playProductAddedSound();
       }
       return added;
     },
-    [focusProductSearch, setProductQuantityInCart]
+    [focusProductSearch, playProductAddedSound, setProductQuantityInCart]
   );
 
   const handleScannerCodeRead = useCallback(
@@ -1688,6 +1738,7 @@ export const PosScreen = () => {
         const message = `Peso leído: ${reading}`;
         setScaleMockStatus("ready");
         setScaleLastResult(message);
+        void playProductAddedSound();
         showToast(message, "success");
         focusProductSearch();
       } finally {
@@ -1698,6 +1749,7 @@ export const PosScreen = () => {
       activeBranchId,
       authUser?.tenantId,
       focusProductSearch,
+      playProductAddedSound,
       posTerminalId,
       scaleMockEnabled,
       setProductQuantityInCart,
@@ -1898,12 +1950,17 @@ export const PosScreen = () => {
 
       if (event.key === "/" && !editableTarget && !paymentModalOpen) {
         event.preventDefault();
-        focusProductSearch();
+        openProductTools();
         return;
       }
 
       if (event.key === "Escape") {
         if (paymentModalOpen || quickFiscalCustomerOpen) {
+          return;
+        }
+        if (productToolsOpen) {
+          event.preventDefault();
+          setProductToolsOpen(false);
           return;
         }
         if (isCartOpen && isMobile) {
@@ -1925,7 +1982,11 @@ export const PosScreen = () => {
 
       if (event.key === "F2") {
         event.preventDefault();
-        setCustomerPickerOpen((current) => !current);
+        if (productToolsOpen) {
+          setProductToolsOpen(false);
+        } else {
+          openProductTools();
+        }
         return;
       }
 
@@ -1943,8 +2004,10 @@ export const PosScreen = () => {
     isCartOpen,
     isMobile,
     openChargeModal,
+    openProductTools,
     paymentModalOpen,
     query,
+    productToolsOpen,
     quickFiscalCustomerOpen,
   ]);
 
@@ -2538,29 +2601,47 @@ export const PosScreen = () => {
         />
       ) : null}
 
-      {/* Top Bar */}
-      <section className="mb-5 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
-        <div className="grid gap-4 xl:grid-cols-[auto_minmax(320px,1fr)_minmax(420px,520px)] xl:items-center">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900">
-              <ShoppingCart className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-                POS
-              </p>
-              <h1 className="text-2xl font-semibold text-slate-950 dark:text-white">
-                Punto de venta
-              </h1>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Version: {appVersion || "No disponible"}
-              </p>
-            </div>
-          </div>
+      {/* POS operational panel trigger */}
+      <div className="relative">
+        <button
+          type="button"
+          ref={posFloatingControl.buttonRef}
+          onPointerDown={posFloatingControl.buttonProps.onPointerDown}
+          onPointerMove={posFloatingControl.buttonProps.onPointerMove}
+          onPointerUp={posFloatingControl.buttonProps.onPointerUp}
+          onPointerCancel={posFloatingControl.buttonProps.onPointerCancel}
+          onClick={posFloatingControl.buttonProps.onClick}
+          style={posFloatingControl.buttonStyle}
+          className={`fixed z-20 inline-flex cursor-grab select-none items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 active:cursor-grabbing dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-900 ${posFloatingControl.isDragging ? "scale-[1.02] shadow-2xl" : ""}`}
+          aria-label="Abrir panel operativo POS"
+          title="Abrir panel operativo POS. Arrastra para mover."
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          <span>POS</span>
+          {hasProductCatalogFilters ? (
+            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-900 px-2 py-0.5 text-xs font-bold text-white dark:bg-white dark:text-slate-950">
+              {activeProductFilterLabels.length}
+            </span>
+          ) : null}
+          {selectedCustomerId && selectedCustomerId !== finalConsumerCustomer?.id ? (
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+          ) : null}
+        </button>
 
-          <div className="min-w-0">
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <div className="relative min-w-0">
+        {productToolsOpen ? (
+          <Modal
+            title="Panel operativo POS"
+            description="Buscar productos, ajustar filtros y cambiar cliente sin reservar espacio permanente."
+            size="xl"
+            onClose={() => setProductToolsOpen(false)}
+            className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
+          >
+            <div className="space-y-5">
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <Search className="h-4 w-4" />
+                  Buscar productos
+                </div>
                 <Input
                   ref={searchInputRef}
                   label="Buscador POS principal"
@@ -2569,146 +2650,158 @@ export const PosScreen = () => {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={handleSearchKeyDown}
-                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                 />
-                <Search className="pointer-events-none absolute left-3 top-[42px] h-5 w-5 text-slate-400" />
-              </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Usa nombre, SKU o codigo. Escape limpia o cierra el panel.
+                </p>
+              </section>
 
-              <Button
-                variant={hasProductCatalogFilters ? "primary" : "outline"}
-                size="md"
-                onClick={() => setProductFiltersOpen((current) => !current)}
-                aria-expanded={productFiltersOpen}
-                aria-controls="pos-product-filter-panel"
-                className={`min-h-12 rounded-xl whitespace-nowrap ${
-                  hasProductCatalogFilters
-                    ? "border border-blue-600 shadow-sm focus-visible:ring-blue-600 dark:border-blue-400"
-                    : "dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800"
-                }`}
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                Filtros
-                {activeProductFilterLabels.length > 0 ? (
-                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs dark:bg-slate-950/10">
-                    {activeProductFilterLabels.length}
-                  </span>
-                ) : null}
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-200 ${
-                    productFiltersOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </Button>
-            </div>
-
-            <div className="mt-2 flex min-h-7 flex-wrap items-center gap-2 text-xs">
-              {hasProductCatalogFilters ? (
-                <>
-                  {activeProductFilterLabels.map((label) => (
-                    <span
-                      key={label}
-                      className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
-                    >
-                      <span className="truncate">{label}</span>
-                    </span>
-                  ))}
-                  <button
-                    type="button"
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Filtros de producto
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={clearProductCatalogFilters}
-                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    disabled={!hasProductCatalogFilters}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-4 w-4" />
                     Limpiar filtros
-                  </button>
-                </>
-              ) : (
-                <span className="text-slate-500 dark:text-slate-400">
-                  Sin filtros activos
-                </span>
-              )}
-            </div>
-          </div>
+                  </Button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Select
+                    label="Categoria"
+                    value={selectedProductCategoryId}
+                    onChange={(event) => handleProductCategoryFilterChange(event.target.value)}
+                  >
+                    <option value="">Todas las categorias</option>
+                    {productCategoryOptions.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    label="Subcategoria"
+                    value={selectedProductSubcategoryId}
+                    onChange={(event) => handleProductSubcategoryFilterChange(event.target.value)}
+                    disabled={!productSubcategoryOptions.length}
+                  >
+                    <option value="">Todas las subcategorias</option>
+                    {productSubcategoryOptions.map((subcategory) => (
+                      <option key={subcategory.id} value={subcategory.id}>
+                        {subcategory.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
+                    const isActive = activeStockFilter === filter;
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => handleStockFilterChange(filter)}
+                        className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
+                          isActive
+                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>{stockFilterLabels[filter]}</span>
+                        <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-[11px] dark:bg-white/10">
+                          {stockFilterCounts[filter]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={productViewMode === "grid" ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => setProductViewMode("grid")}
+                  >
+                    <Grid3X3 className="h-4 w-4" />
+                    Cuadrícula
+                  </Button>
+                  <Button
+                    variant={productViewMode === "list" ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => setProductViewMode("list")}
+                  >
+                    <List className="h-4 w-4" />
+                    Lista
+                  </Button>
+                </div>
+                {hasSelectedCategoryWithoutSubcategories ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {selectedProductCategory?.name ?? "Categoría"} sin subcategorías.
+                  </p>
+                ) : null}
+              </section>
 
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Usuario actual
-              </p>
-              <p className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-white">
-                {authUser?.name || "Usuario"}
-              </p>
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <UserRound className="h-4 w-4" />
+                  Cliente de la venta
+                </div>
+                <Select
+                  label="Cliente"
+                  value={selectedCustomerId ?? ""}
+                  onChange={(event) => setSelectedCustomerId(event.target.value || null)}
+                >
+                  {customers.length === 0 ? (
+                    <option value="">No hay clientes disponibles</option>
+                  ) : null}
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </Select>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setQuickFiscalCustomerOpen(true)}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Cliente fiscal
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUseFinalConsumer}
+                    disabled={!finalConsumerCustomer}
+                  >
+                    <UserRound className="h-4 w-4" />
+                    Consumidor Final
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                    {selectedCustomer?.name ?? "Consumidor final"}
+                  </span>
+                  {hasProductCatalogFilters ? (
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                      {activeProductFilterLabels.length} filtro(s) activos
+                    </span>
+                  ) : (
+                    <span>Sin filtros activos</span>
+                  )}
+                </div>
+              </section>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Estado venta
-              </p>
-              <div className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-                {renderedStatus}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Cliente
-              </p>
-              <button
-                type="button"
-                onClick={() => setCustomerPickerOpen((current) => !current)}
-                className="mt-1 flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-slate-900 transition hover:text-slate-700 dark:text-white dark:hover:text-slate-300"
-              >
-                <span className="truncate">
-                  {customerPickerOpen ? "Ocultar selector" : "Seleccionar cliente"}
-                </span>
-                <span className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {selectedCustomer?.name ?? "Consumidor final"}
-                </span>
-                <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform duration-200 ${customerPickerOpen ? "rotate-180" : ""}`} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {customerPickerOpen ? (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-              <UserRound className="h-4 w-4" />
-              Seleccionar cliente
-            </div>
-            <Select
-              label="Cliente"
-              value={selectedCustomerId ?? ""}
-              onChange={(event) => setSelectedCustomerId(event.target.value || null)}
-            >
-              {customers.length === 0 ? (
-                <option value="">No hay clientes disponibles</option>
-              ) : null}
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </Select>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setQuickFiscalCustomerOpen(true)}
-              >
-                <UserPlus className="h-4 w-4" />
-                Cliente fiscal
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleUseFinalConsumer}
-                disabled={!finalConsumerCustomer}
-              >
-                <UserRound className="h-4 w-4" />
-                Consumidor Final
-              </Button>
-            </div>
-          </div>
+          </Modal>
         ) : null}
-      </section>
+      </div>
 
       {catalogError ? (
         <section className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
@@ -2879,83 +2972,6 @@ export const PosScreen = () => {
                   </button>
                 ) : null}
               </div>
-
-              {productFiltersOpen ? (
-                <div
-                  id="pos-product-filter-panel"
-                  className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/70"
-                >
-                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                        Filtros de productos
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Categoria y subcategoria del catalogo POS.
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={clearProductCatalogFilters}
-                      disabled={!hasProductCatalogFilters}
-                      className="justify-center dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:hover:bg-slate-800"
-                    >
-                      <X className="h-4 w-4" />
-                      Limpiar filtros
-                    </Button>
-                  </div>
-
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <Select
-                      label="Categoria"
-                      value={selectedProductCategoryId}
-                      onChange={(event) =>
-                        handleProductCategoryFilterChange(event.target.value)
-                      }
-                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    >
-                      <option value="">Todas las categorias</option>
-                      {productCategoryOptions.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      label="Subcategoria"
-                      value={selectedProductSubcategoryId}
-                      onChange={(event) =>
-                        handleProductSubcategoryFilterChange(event.target.value)
-                      }
-                      disabled={
-                        !selectedProductCategoryId ||
-                        productSubcategoryOptions.length === 0
-                      }
-                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    >
-                      <option value="">
-                        {!selectedProductCategoryId
-                          ? "Selecciona categoria"
-                          : productSubcategoryOptions.length === 0
-                            ? "Sin subcategorias"
-                            : "Todas las subcategorias"}
-                      </option>
-                      {productSubcategoryOptions.map((subcategory) => (
-                        <option key={subcategory.id} value={subcategory.id}>
-                          {subcategory.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  {hasSelectedCategoryWithoutSubcategories ? (
-                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      {selectedProductCategory?.name ?? "Categoria"} sin subcategorias.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
 
               {/* Filter Chips */}
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -3255,7 +3271,7 @@ export const PosScreen = () => {
           </div>
         </div>
 
-        {/* Cart Panel - Desktop: sticky sidebar, Mobile: Drawer overlay */}
+        {/* Cart Panel - Desktop: sticky sidebar, Mobile: centered modal */}
         {/* Desktop Cart */}
         <aside
           className="sticky top-3 hidden h-[calc(100vh-1.5rem)] min-h-0 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95 xl:block"
@@ -3265,23 +3281,19 @@ export const PosScreen = () => {
           </div>
         </aside>
 
-        {/* Mobile Cart Drawer Overlay */}
+        {/* Mobile Cart Modal */}
         {isMobile && isCartOpen ? (
-          <>
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300"
-              onClick={() => setIsCartOpen(false)}
-              aria-hidden="true"
-            />
-            {/* Drawer */}
-            <aside className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-hidden rounded-t-[28px] border-t border-slate-200 bg-white/95 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur-sm transition-transform duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-950/95">
-              <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700" />
-              <div className="max-h-[calc(85vh-60px)] overflow-y-auto">
-                <CartPanel />
-              </div>
-            </aside>
-          </>
+          <Modal
+            title="Carrito de venta"
+            description="Revisa productos, totales y cobro sin perder contexto."
+            size="xl"
+            onClose={() => setIsCartOpen(false)}
+            className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
+          >
+            <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
+              <CartPanel />
+            </div>
+          </Modal>
         ) : null}
       </div>
 
@@ -3289,8 +3301,18 @@ export const PosScreen = () => {
       {!isCartOpen && cartItemCount > 0 ? (
         <button
           type="button"
-          onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-30 flex items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-white shadow-2xl transition-all duration-200 hover:scale-105 hover:bg-slate-800 active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 sm:right-6 sm:px-6 sm:py-4"
+          ref={cartFloatingControl.buttonRef}
+          onPointerDown={cartFloatingControl.buttonProps.onPointerDown}
+          onPointerMove={cartFloatingControl.buttonProps.onPointerMove}
+          onPointerUp={cartFloatingControl.buttonProps.onPointerUp}
+          onPointerCancel={cartFloatingControl.buttonProps.onPointerCancel}
+          onClick={cartFloatingControl.buttonProps.onClick}
+          style={{
+            ...cartFloatingControl.buttonStyle,
+          }}
+          className={`fixed z-30 flex cursor-grab select-none items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-white shadow-2xl transition hover:scale-105 hover:bg-slate-800 active:cursor-grabbing active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 sm:px-6 sm:py-4 ${cartFloatingControl.isDragging ? "scale-[1.02] shadow-[0_24px_60px_-24px_rgba(15,23,42,0.65)]" : ""}`}
+          aria-label={`Abrir carrito con ${cartItemCount} productos`}
+          title="Abrir carrito. Arrastra para mover."
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="font-semibold">

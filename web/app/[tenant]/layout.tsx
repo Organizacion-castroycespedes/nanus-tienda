@@ -154,6 +154,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const permissionsLoaded = useAppSelector((state) => state.auth.permissionsLoaded);
   const menuItems = useAppSelector((state) => state.menu.menuItems);
   const permissions = useAppSelector((state) => state.menu.permissions);
+  const posContext = useAppSelector((state) => state.pos);
   const posCartItemCount = useAppSelector((state) =>
     state.posCart.items.reduce((sum, item) => sum + item.quantity, 0)
   );
@@ -164,6 +165,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const tenantSlug = authUser?.tenantId ?? "default";
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [posClock, setPosClock] = useState(() => new Date());
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
     if (!name) return "";
@@ -177,6 +179,32 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     () => Boolean(pathname && /^\/[^/]+\/pos\/select-context\/?$/i.test(pathname)),
     [pathname]
   );
+  const isPosRoute = useMemo(
+    () => Boolean(pathname && /^\/[^/]+\/pos(?:\/|$)/i.test(pathname)),
+    [pathname]
+  );
+  const posClockDateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("es-CO", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+    []
+  );
+  const posClockTimeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("es-CO", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+  const posOperationalRole = authUser?.role || "Usuario";
+  const posOperationalBranch = posContext.branchName || authUser?.branchName || "Sucursal";
+  const posOperationalTerminal = posContext.terminalName || "Terminal";
+  const posOperationalDate = posClockDateFormatter.format(posClock);
+  const posOperationalTime = posClockTimeFormatter.format(posClock);
   const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-3" : "lg:w-72 lg:px-4";
 
   const applyTenantToMenu = useCallback(
@@ -190,6 +218,24 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    if (isPosRoute) {
+      setSidebarCollapsed(true);
+    }
+  }, [isPosRoute]);
+
+  useEffect(() => {
+    if (!isPosRoute) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setPosClock(new Date());
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isPosRoute]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1114,7 +1160,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b bg-[var(--brand-header-bg)]/90 px-4 py-4 shadow-sm backdrop-blur-md md:px-6"
             style={{ borderColor: tenantTheme.header.border }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] lg:hidden"
@@ -1128,13 +1174,55 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)]">
-                  Sistema
-                </p>
-                <h1 className="text-lg font-semibold text-[var(--brand-header-text)]">
-                  Panel de control
-                </h1>
+              <div className="min-w-0">
+                {isPosRoute ? (
+                  <div className="space-y-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span
+                        className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalRole}
+                      >
+                        <span className="truncate">{posOperationalRole}</span>
+                      </span>
+                      <span
+                        className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalTerminal}
+                      >
+                        <span className="truncate">{posOperationalTerminal}</span>
+                      </span>
+                      <span
+                        className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalBranch}
+                      >
+                        <span className="truncate">{posOperationalBranch}</span>
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-header-muted)]">
+                      {posOperationalDate} · {posOperationalTime}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)]">
+                      Sistema
+                    </p>
+                    <h1 className="text-lg font-semibold text-[var(--brand-header-text)]">
+                      Panel de control
+                    </h1>
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">

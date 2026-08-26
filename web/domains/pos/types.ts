@@ -1,7 +1,9 @@
 export type PosState = {
   tenantId: string | null;
   branchId: string | null;
+  branchName: string | null;
   terminalId: string | null;
+  terminalName: string | null;
   cashRegisterId: string | null;
   posSessionId: string | null;
   loading: boolean;
