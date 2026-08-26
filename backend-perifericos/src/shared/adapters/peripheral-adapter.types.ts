@@ -71,7 +71,7 @@ export type PeripheralAdapter = {
   connectionType: ConnectionType;
   mode: AdapterMode;
   adapterName: string;
-  getCapabilities(profile: DeviceProfile): AdapterCapabilities;
+  getCapabilities(profile: DeviceProfile, device?: PeripheralDevice): AdapterCapabilities;
 };
 
 export type PrinterAdapterOutput =

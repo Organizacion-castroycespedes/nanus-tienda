@@ -204,3 +204,79 @@ test("configured and discovered USB device does not duplicate on restart", () =>
     1
   );
 });
+
+test("USB profile selection persists through restart and rediscovery", () => {
+  const context = createTestPaths();
+  const discovery = new FakeUsbDiscovery();
+  const first = buildPersistentBundle(discovery, context.paths);
+
+  first.devicesController.discover();
+  first.devicesController.create({
+    id: "printer-xp58-usb-qa-001",
+    type: DeviceType.PRINTER,
+    name: "Xprinter XP-58 USB QA",
+    connectionType: ConnectionType.USB,
+    terminalId: "local-terminal",
+    profileId: "THERMAL_80MM",
+    usb: {
+      deviceId: discoveredUsbPrinter.deviceId,
+      printerName: discoveredUsbPrinter.printerName,
+    },
+  });
+  first.devicesController.update("printer-xp58-usb-qa-001", {
+    profileId: "THERMAL_58MM",
+  });
+  first.devicesController.discover();
+
+  const second = buildPersistentBundle(discovery, context.paths);
+  second.devicesController.discover();
+  const restored = second.devicesController
+    .getDevices()
+    .find((device) => device.id === "printer-xp58-usb-qa-001");
+
+  assert.ok(restored);
+  assert.equal(restored?.profileId, "THERMAL_58MM");
+  assert.equal(restored?.usb?.deviceId, discoveredUsbPrinter.deviceId);
+  assert.equal(
+    second.devicesController
+      .getDevices()
+      .filter((device) => device.usb?.deviceId === discoveredUsbPrinter.deviceId)
+      .length,
+    1
+  );
+});
+
+test("USB drawer certification metadata persists through restart and rediscovery", () => {
+  const context = createTestPaths();
+  const discovery = new FakeUsbDiscovery();
+  const first = buildPersistentBundle(discovery, context.paths);
+
+  first.devicesController.discover();
+  const created = first.devicesController.create({
+    id: "printer-xp58-usb-certified-001",
+    type: DeviceType.PRINTER,
+    name: "Xprinter XP-58 USB QA",
+    connectionType: ConnectionType.USB,
+    terminalId: "local-terminal",
+    profileId: "THERMAL_58MM",
+    usb: {
+      deviceId: discoveredUsbPrinter.deviceId,
+      printerName: discoveredUsbPrinter.printerName,
+    },
+    metadata: { usbRawCashDrawerPulseCertified: true },
+  });
+  first.devicesController.update(created.id, {
+    metadata: { usbRawCashDrawerPulseCertified: true },
+  });
+  first.devicesController.discover();
+
+  const second = buildPersistentBundle(discovery, context.paths);
+  second.devicesController.discover();
+  const restored = second.devicesController
+    .getDevices()
+    .find((device) => device.id === "printer-xp58-usb-certified-001");
+
+  assert.ok(restored);
+  assert.equal(restored?.profileId, "THERMAL_58MM");
+  assert.equal(restored?.metadata?.usbRawCashDrawerPulseCertified, true);
+});

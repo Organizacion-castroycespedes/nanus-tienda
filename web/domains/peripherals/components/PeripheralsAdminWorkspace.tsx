@@ -22,18 +22,24 @@ import {
   fetchPeripheralHealth,
   getPeripheralAgentConfig,
   openCashDrawerCommand,
+  updateDevice,
   testPrint,
 } from "../api";
 import {
   resolveCurrentPosTerminalConfig,
   savePosTerminalPeripheralSettings,
 } from "../terminal-config";
+import {
+  isPrinterBackedCashDrawer,
+  resolveCashDrawerDeviceIdToPersist,
+} from "../cash-drawer-routing";
 import type {
   PeripheralAgentHealth,
   PeripheralDevice,
   CashDrawerResponse,
   PosTerminalResolvedConfig,
   PeripheralDiscoverResponse,
+  PrinterProfileId,
 } from "../types";
 
 type ToastState = {
@@ -58,6 +64,25 @@ const formatEndpoint = (device?: PeripheralDevice | null) => {
   }
   return device.id;
 };
+
+const PRINTER_PROFILE_OPTIONS: Array<{ id: PrinterProfileId; label: string; detail: string }> = [
+  {
+    id: "THERMAL_58MM",
+    label: "58 mm",
+    detail: "32 chars. Perfil real para Xprinter 58 mm USB.",
+  },
+  {
+    id: "THERMAL_80MM",
+    label: "80 mm",
+    detail: "48 chars. Mantiene el layout existente.",
+  },
+];
+
+const getPrinterProfileLabel = (profileId?: PrinterProfileId | string | null) =>
+  PRINTER_PROFILE_OPTIONS.find((option) => option.id === profileId)?.label ?? "80 mm";
+
+const getUsbCashDrawerCertification = (device?: PeripheralDevice | null) =>
+  device?.metadata?.["usbRawCashDrawerPulseCertified"] === true;
 
 const terminalLabel = (terminal: TerminalResponse) =>
   `${terminal.code}  ${terminal.name}  ${terminal.branchName ?? "-"}`;
@@ -116,6 +141,8 @@ const PeripheralsAdminWorkspace = () => {
   const [resolved, setResolved] = useState<PosTerminalResolvedConfig | null>(null);
   const [selectedTerminalId, setSelectedTerminalId] = useState(queryTerminalId);
   const [printerDeviceId, setPrinterDeviceId] = useState("");
+  const [printerProfileId, setPrinterProfileId] = useState<PrinterProfileId>("THERMAL_80MM");
+  const [drawerCertified, setDrawerCertified] = useState(false);
   const [drawerResult, setDrawerResult] = useState<CashDrawerResponse | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [loading, setLoading] = useState({
@@ -233,17 +260,40 @@ const PeripheralsAdminWorkspace = () => {
   const selectedTerminal = terminals.find((terminal) => terminal.id === selectedTerminalId);
   const selectedPrinterDevice = devices.find((device) => device.id === printerDeviceId);
   const printerCandidates = devices.filter((device) => device.type === "PRINTER");
+  const selectedPrinterDrawerCertified = getUsbCashDrawerCertification(selectedPrinterDevice);
+  const printerBackedDrawer = isPrinterBackedCashDrawer({
+    currentCashDrawerDeviceId: resolved?.cashDrawerDeviceId ?? null,
+    selectedPrinterDeviceId: selectedPrinterDevice?.id ?? printerDeviceId ?? null,
+    selectedPrinterConnectionType: selectedPrinterDevice?.connectionType ?? null,
+    printerDrawerCertified: selectedPrinterDrawerCertified,
+  });
+
+  useEffect(() => {
+    const profileId = selectedPrinterDevice?.profileId;
+    if (profileId === "THERMAL_58MM" || profileId === "THERMAL_80MM") {
+      setPrinterProfileId(profileId);
+      return;
+    }
+
+    if (printerDeviceId || resolved?.printerDeviceId) {
+      setPrinterProfileId("THERMAL_80MM");
+    }
+  }, [printerDeviceId, resolved?.printerDeviceId, selectedPrinterDevice?.profileId]);
+
+  useEffect(() => {
+    setDrawerCertified(selectedPrinterDrawerCertified);
+  }, [selectedPrinterDrawerCertified, selectedPrinterDevice?.id]);
 
   const currentBlockState: BlockState = resolved?.source === "CONFIGURED"
     ? {
         status: "configured",
-        title: "PerifÃ©ricos configurados",
-        detail: "La terminal canÃ³nica ya tiene configuraciÃ³n persistida.",
+        title: "Periféricos configurados",
+        detail: "La terminal canónica ya tiene configuración persistida.",
       }
     : {
         status: "not-configured",
-        title: "PerifÃ©ricos no configurados",
-        detail: "La terminal no tiene perfil persistido todavÃ­a.",
+        title: "Periféricos no configurados",
+        detail: "La terminal no tiene perfil persistido todavía.",
       };
 
   const printerState: BlockState = printerDeviceId
@@ -256,7 +306,7 @@ const PeripheralsAdminWorkspace = () => {
       : {
           status: "missing",
           title: "Impresora configurada pero no detectada",
-          detail: "La configuraciÃ³n existe, pero el Agent no la ve ahora.",
+          detail: "La configuración existe, pero el Agent no la ve ahora.",
         }
     : {
         status: "not-configured",
@@ -268,15 +318,45 @@ const PeripheralsAdminWorkspace = () => {
     const currentResolved = resolved;
     const targetTerminalId = currentResolved?.posTerminalId;
     if (!targetTerminalId || !currentResolved) {
-      showToast("Perifericos no configurados para la terminal.", "warning");
+      showToast("Periféricos no configurados para la terminal.", "warning");
       return;
     }
 
+    const targetDeviceId =
+      selectedPrinterDevice?.id || printerDeviceId || currentResolved.printerDeviceId;
+    const nextCashDrawerDeviceId = nextPrinterDeviceId
+      ? resolveCashDrawerDeviceIdToPersist({
+          currentCashDrawerDeviceId: currentResolved.cashDrawerDeviceId,
+          selectedPrinterDeviceId: nextPrinterDeviceId,
+          selectedPrinterConnectionType: selectedPrinterDevice?.connectionType ?? null,
+          printerDrawerCertified: drawerCertified,
+        })
+      : currentResolved.cashDrawerDeviceId;
+
     setLoading((prev) => ({ ...prev, save: true }));
     try {
+      if (nextPrinterDeviceId && targetDeviceId) {
+        const targetDevice = devices.find((device) => device.id === targetDeviceId) ?? selectedPrinterDevice;
+        const targetDeviceMetadata = targetDevice?.metadata ?? {};
+        const nextMetadata =
+          targetDevice?.connectionType === "USB"
+            ? {
+                ...targetDeviceMetadata,
+              usbRawCashDrawerPulseCertified: drawerCertified,
+              }
+            : undefined;
+        const updatedDevice = await updateDevice(targetDeviceId, {
+          profileId: printerProfileId,
+          ...(nextMetadata ? { metadata: nextMetadata } : {}),
+        });
+        setDevices((prev) =>
+          prev.map((device) => (device.id === updatedDevice.id ? updatedDevice : device))
+        );
+      }
+
       await savePosTerminalPeripheralSettings(targetTerminalId, {
         printerDeviceId: nextPrinterDeviceId,
-        cashDrawerDeviceId: currentResolved.cashDrawerDeviceId,
+        cashDrawerDeviceId: nextCashDrawerDeviceId,
         scaleDeviceId: currentResolved.scaleDeviceId,
         scannerDeviceId: currentResolved.scannerDeviceId,
         enablePrintSale: currentResolved.features.printSale,
@@ -288,7 +368,9 @@ const PeripheralsAdminWorkspace = () => {
       });
       await loadSnapshot(selectedTerminalId || undefined);
       showToast(
-        nextPrinterDeviceId ? "Impresora asociada." : "Impresora desasociada.",
+        nextPrinterDeviceId
+          ? `Impresora asociada con perfil ${getPrinterProfileLabel(printerProfileId)}.`
+          : "Impresora desasociada.",
         "success"
       );
     } catch (error) {
@@ -383,10 +465,10 @@ const PeripheralsAdminWorkspace = () => {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Configuracion operativa</p>
-            <h1 className="text-2xl font-semibold text-slate-900">PerifÃ©ricos por terminal</h1>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Configuración operativa</p>
+            <h1 className="text-2xl font-semibold text-slate-900">Periféricos por terminal</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Terminal canÃ³nica, perifÃ©ricos asociados y dispositivos disponibles en Agent local.
+              Terminal canónica, periféricos asociados y dispositivos disponibles en Agent local.
             </p>
           </div>
           <div className="flex gap-3">
@@ -412,7 +494,7 @@ const PeripheralsAdminWorkspace = () => {
 
         <div className="mt-4">
           <label className="flex flex-col gap-2 text-sm text-slate-700">
-            <span className="font-medium">Terminal canÃ³nica</span>
+            <span className="font-medium">Terminal canónica</span>
             <select
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
               value={selectedTerminalId}
@@ -451,10 +533,10 @@ const PeripheralsAdminWorkspace = () => {
           </Button>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {infoBox("VersiÃ³n", health?.version ?? "-")}
-          {infoBox("ConexiÃ³n local", health?.agent ?? "127.0.0.1:4050")}
+          {infoBox("Versión", health?.version ?? "-")}
+          {infoBox("Conexión local", health?.agent ?? "127.0.0.1:4050")}
           {infoBox("Dispositivos", String(devices.length))}
-          {infoBox("Estado tÃ©cnico", health?.status ?? "offline")}
+          {infoBox("Estado técnico", health?.status ?? "offline")}
           {infoBox("configuredDevices", String(health?.configuredDevices ?? "-"))}
           {infoBox("discoveredDevices", String(health?.discoveredDevices ?? "-"))}
           {infoBox("persistenceState", health?.persistenceState ? `${health.persistenceState.status} / v${health.persistenceState.schemaVersion}` : "-")}
@@ -466,9 +548,10 @@ const PeripheralsAdminWorkspace = () => {
         <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-3">
             {infoBox("connectionType", selectedPrinterDevice?.connectionType ?? "-")}
-            {infoBox("profile", selectedPrinterDevice?.profileId ?? "THERMAL_80MM")}
+            {infoBox("profile", getPrinterProfileLabel(selectedPrinterDevice?.profileId ?? printerProfileId))}
             {infoBox("endpoint", formatEndpoint(selectedPrinterDevice))}
             {infoBox("deviceId", (selectedPrinterDevice?.id ?? printerDeviceId) || "-")}
+            {infoBox("cajon", printerBackedDrawer ? "Vía impresora" : "Independiente")}
           </div>
           <div className="space-y-3">
             <label className="flex flex-col gap-2 text-sm text-slate-700">
@@ -481,15 +564,48 @@ const PeripheralsAdminWorkspace = () => {
                 <option value="">Sin configurar</option>
                 {printerCandidates.map((device) => (
                   <option key={device.id} value={device.id}>
-                    {device.name} Â· {device.connectionType} Â· {formatEndpoint(device)}
+                    {device.name} · {device.connectionType} · {formatEndpoint(device)}
                   </option>
                 ))}
               </select>
             </label>
+            <label className="flex flex-col gap-2 text-sm text-slate-700">
+              <span className="font-medium">Perfil de impresión</span>
+              <select
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                value={printerProfileId}
+                onChange={(event) => setPrinterProfileId(event.target.value as PrinterProfileId)}
+              >
+                {PRINTER_PROFILE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label} - {option.detail}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                checked={drawerCertified}
+                onChange={(event) => setDrawerCertified(event.target.checked)}
+                disabled={selectedPrinterDevice?.connectionType !== "USB"}
+              />
+              <span>
+                Cajón vía impresora
+                <span className="ml-2 font-semibold text-slate-900">
+                  {selectedPrinterDevice?.connectionType === "USB"
+                    ? selectedPrinterDrawerCertified
+                      ? "CERTIFICADO"
+                      : "NO CERTIFICADO"
+                    : "NO APLICA"}
+                </span>
+              </span>
+            </label>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => void handleTestPrint()} isLoading={loading.testPrint}>
                 <Printer className="h-4 w-4" />
-                Probar impresiÃ³n
+                Probar impresión
               </Button>
               <Button variant="outline" onClick={() => void savePrinter(printerDeviceId || null)} isLoading={loading.save}>
                 <CheckCircle2 className="h-4 w-4" />
@@ -510,8 +626,8 @@ const PeripheralsAdminWorkspace = () => {
             status: resolved?.scannerDeviceId ? "configured" : "not-configured",
             title: resolved?.scannerDeviceId ? "Scanner configurado" : "Scanner pendiente",
             detail: resolved?.scannerDeviceId
-              ? "ConfiguraciÃ³n persistida visible."
-              : "PrÃ³ximamente / Pendiente de integraciÃ³n.",
+              ? "Configuración persistida visible."
+              : "Próximamente / Pendiente de integración.",
           }}
         >
           <div className="space-y-3">
@@ -525,20 +641,20 @@ const PeripheralsAdminWorkspace = () => {
             status: resolved?.scaleDeviceId ? "configured" : "not-configured",
             title: resolved?.scaleDeviceId ? "Balanza configurada" : "Balanza pendiente",
             detail: resolved?.scaleDeviceId
-              ? "ConfiguraciÃ³n persistida visible."
-              : "PrÃ³ximamente / Pendiente de integraciÃ³n.",
+              ? "Configuración persistida visible."
+              : "Próximamente / Pendiente de integración.",
           }}
         >
           {infoBox("deviceId", resolved?.scaleDeviceId ?? "-")}
         </BlockCard>
         <BlockCard
-          title="Cajon via impresora"
+          title="Cajón vía impresora"
           state={{
             status: selectedPrinterDevice ? "configured" : "not-configured",
-            title: selectedPrinterDevice ? "Cajon via impresora configurado" : "Cajon pendiente",
+            title: selectedPrinterDevice ? "Cajón vía impresora configurado" : "Cajón pendiente",
             detail: selectedPrinterDevice
-              ? "El cajon cuelga de la impresora canonical."
-              : "Proximamente / Pendiente de integracion.",
+              ? "El cajón cuelga de la impresora canónica."
+              : "Próximamente / Pendiente de integración.",
           }}
         >
           <div className="space-y-3">
@@ -546,7 +662,15 @@ const PeripheralsAdminWorkspace = () => {
             {infoBox("connectionType", selectedPrinterDevice?.connectionType ?? "-")}
             {infoBox("endpoint", selectedPrinterDevice ? formatEndpoint(selectedPrinterDevice) : "-")}
             {infoBox(
-              "ultimo resultado",
+              "drawerPulse",
+              selectedPrinterDevice?.connectionType === "USB"
+                ? selectedPrinterDrawerCertified
+                  ? "CERTIFICADO"
+                  : "NO CERTIFICADO"
+                : "NO APLICA"
+            )}
+            {infoBox(
+              "último resultado",
               drawerResult ? `${drawerResult.mode} / ${drawerResult.adapterName} / ${drawerResult.message}` : "-"
             )}
             <Button
@@ -565,7 +689,7 @@ const PeripheralsAdminWorkspace = () => {
       <details className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
           <ChevronRight className="h-4 w-4" />
-          Herramientas tÃ©cnicas / QA
+          Herramientas técnicas / QA
         </summary>
         <div className="mt-5 space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

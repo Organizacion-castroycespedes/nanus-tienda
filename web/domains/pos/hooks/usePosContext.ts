@@ -17,7 +17,9 @@ export const usePosContext = () => {
     (payload: {
       tenantId?: string | null;
       branchId?: string | null;
+      branchName?: string | null;
       terminalId?: string | null;
+      terminalName?: string | null;
       cashRegisterId?: string | null;
     }) => dispatch(setContext(payload)),
     [dispatch]
@@ -26,7 +28,9 @@ export const usePosContext = () => {
     (payload: {
       posSessionId: string | null;
       branchId?: string | null;
+      branchName?: string | null;
       terminalId?: string | null;
+      terminalName?: string | null;
       cashRegisterId?: string | null;
     }) => dispatch(setSession(payload)),
     [dispatch]

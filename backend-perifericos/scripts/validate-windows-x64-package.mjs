@@ -36,6 +36,25 @@ const preflight = async (url, origin, timeoutMs = 1000) => {
   });
 };
 
+const taskkillProcess = (pid) => {
+  if (!pid) {
+    return;
+  }
+  spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+};
+
+const readStartedPid = (logPath) => {
+  if (!existsSync(logPath)) {
+    return null;
+  }
+  const logText = readFileSync(logPath, "utf8");
+  const match = logText.match(/started pid=(\d+)/);
+  return match ? match[1] : null;
+};
+
 assert.equal(process.platform, "win32", "Windows x64 validation must run on Windows.");
 assert.equal(process.arch, "x64", "Windows x64 validation must run on x64.");
 for (const path of [
@@ -164,6 +183,7 @@ const launcherSmoke = spawn(
 
 let launcherStdout = "";
 let launcherStderr = "";
+let launcherExit = null;
 launcherSmoke.stdout.on("data", (chunk) => {
   launcherStdout += chunk.toString();
 });
@@ -171,43 +191,73 @@ launcherSmoke.stderr.on("data", (chunk) => {
   launcherStderr += chunk.toString();
 });
 
-const launcherExit = await Promise.race([
-  new Promise((resolve) => {
-    launcherSmoke.once("exit", (code, signal) => {
-      resolve({ code, signal });
-    });
-  }),
-  new Promise((_, reject) => {
-    setTimeout(() => reject(new Error("Autostart launcher smoke timed out.")), 30000);
-  }),
-]);
-
-assert.equal(
-  launcherExit.code,
-  0,
-  `Autostart launcher smoke failed.\nSTATUS: ${launcherExit.code}\nSTDOUT:\n${launcherStdout}\nSTDERR:\n${launcherStderr}`
-);
-assert.match(launcherStdout, /Autostart health check: PASS/);
-assert.ok(
-  existsSync(join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "agent-autostart.stdout.log")),
-  "Launcher smoke did not create stdout log."
-);
-assert.ok(
-  existsSync(join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "agent-autostart.stderr.log")),
-  "Launcher smoke did not create stderr log."
-);
+launcherSmoke.once("exit", (code, signal) => {
+  launcherExit = { code, signal };
+});
 
 const autostartLogPath = join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "autostart.log");
-const autostartLog = readFileSync(autostartLogPath, "utf8");
-const pidMatch = autostartLog.match(/started pid=(\d+)/);
-assert.ok(pidMatch, `Missing started pid in autostart log.\n${autostartLog}`);
-const pid = pidMatch[1];
+const stdoutLogPath = join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "agent-autostart.stdout.log");
+const stderrLogPath = join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "agent-autostart.stderr.log");
 
-const killResult = spawnSync("taskkill", ["/PID", pid, "/T", "/F"], {
-  encoding: "utf8",
-  windowsHide: true,
-});
-assert.equal(killResult.status, 0, `Could not clean up launcher smoke PID ${pid}.\n${killResult.stdout}\n${killResult.stderr}`);
+let launcherHealth;
+let startedPid = null;
+const launcherDeadline = Date.now() + 30000;
+try {
+  while (Date.now() < launcherDeadline) {
+    startedPid ??= readStartedPid(autostartLogPath);
+
+    if (launcherExit && launcherExit.code !== 0) {
+      break;
+    }
+
+    try {
+      launcherHealth = await request("http://127.0.0.1:4050/health");
+      if (launcherHealth.statusCode === 200) {
+        break;
+      }
+    } catch {
+      // Keep waiting.
+    }
+
+    await wait(250);
+  }
+
+  assert.ok(launcherHealth, "Autostart launcher smoke timed out.");
+  assert.equal(
+    launcherHealth.statusCode,
+    200,
+    `Autostart launcher smoke failed.\nSTATUS: ${launcherHealth.statusCode}\nSTDOUT:\n${launcherStdout}\nSTDERR:\n${launcherStderr}`
+  );
+  const launcherHealthBody = JSON.parse(launcherHealth.body);
+  assert.equal(launcherHealthBody.status, "ok");
+  assert.equal(typeof launcherHealthBody.agentInstallationId, "string");
+  assert.equal(typeof launcherHealthBody.platform, "string");
+  assert.equal(typeof launcherHealthBody.architecture, "string");
+  assert.equal(typeof launcherHealthBody.version, "string");
+  assert.equal(typeof launcherHealthBody.uptimeSeconds, "number");
+  assert.equal(typeof launcherHealthBody.configuredDevices, "number");
+  assert.equal(typeof launcherHealthBody.discoveredDevices, "number");
+  assert.equal(launcherHealthBody.persistenceState?.schemaVersion, 1);
+  assert.ok(["empty", "loaded", "corrupt"].includes(launcherHealthBody.persistenceState?.status));
+
+  assert.ok(existsSync(stdoutLogPath), "Launcher smoke did not create stdout log.");
+  assert.ok(existsSync(stderrLogPath), "Launcher smoke did not create stderr log.");
+
+  const autostartLog = readFileSync(autostartLogPath, "utf8");
+  startedPid ??= readStartedPid(autostartLogPath);
+  assert.ok(startedPid, `Missing started pid in autostart log.\n${autostartLog}`);
+} finally {
+  if (!startedPid) {
+    for (let attempt = 0; attempt < 20 && !startedPid; attempt += 1) {
+      await wait(250);
+      startedPid = readStartedPid(autostartLogPath);
+    }
+  }
+  taskkillProcess(startedPid);
+  if (launcherSmoke.pid && !launcherSmoke.killed) {
+    taskkillProcess(launcherSmoke.pid);
+  }
+}
 
 const port = 44051;
 let childOutput = "";

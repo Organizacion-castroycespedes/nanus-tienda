@@ -53,15 +53,23 @@ export class CashDrawerService {
     const config = getPeripheralsConfig();
     const profile = this.adapterResolver.resolveProfile(printer);
     const pulse = this.buildPulseProfile(profile.id);
+
+    if (!profile.supportsCashDrawerPulse) {
+      throw new BadRequestException("printer does not support cash drawer pulse");
+    }
+
+    if (
+      printer.connectionType === ConnectionType.USB &&
+      !this.isUsbDrawerPulseCertified(printer)
+    ) {
+      throw new BadRequestException("printer drawer pulse is not certified for this device");
+    }
+
     const adapter = this.adapterResolver.resolvePrinter(printer, config.mode);
     const commandId = createId(
       adapter.mode === "REAL" ? "real-cashdrawer-open" : "mock-cashdrawer-open"
     );
     const timestamp = new Date().toISOString();
-
-    if (!profile.supportsCashDrawerPulse) {
-      throw new BadRequestException("printer does not support cash drawer pulse");
-    }
 
     try {
       this.devicesService.assertUsbPrinterAvailable(printer);
@@ -223,6 +231,10 @@ export class CashDrawerService {
     }
 
     return { ...DEFAULT_CASH_DRAWER_PULSE_PROFILE };
+  }
+
+  private isUsbDrawerPulseCertified(printer: PeripheralDevice): boolean {
+    return printer.metadata?.usbRawCashDrawerPulseCertified === true;
   }
 
   private buildMetadata(

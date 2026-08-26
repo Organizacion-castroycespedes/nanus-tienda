@@ -4,7 +4,7 @@ import {
   buildTicketPrintDocument,
   createCashDrawerPulseCommands,
 } from "../escpos-mock/thermal-ticket.formatter";
-import { ConnectionType, DeviceType } from "../types/peripheral.types";
+import { ConnectionType, DeviceType, type PeripheralDevice } from "../types/peripheral.types";
 import type { DeviceProfile } from "../profiles/device-profiles";
 import type {
   AdapterCapabilities,
@@ -22,7 +22,7 @@ export class MockPrinterAdapter implements PrinterAdapter {
   readonly mode = "MOCK" as const;
   readonly adapterName = "MockPrinterAdapter";
 
-  getCapabilities(profile: DeviceProfile): AdapterCapabilities {
+  getCapabilities(profile: DeviceProfile, _device?: PeripheralDevice): AdapterCapabilities {
     return {
       adapterName: this.adapterName,
       mode: this.mode,
@@ -40,7 +40,7 @@ export class MockPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       commands,
       pulse: input.pulse,
     };
@@ -63,7 +63,7 @@ export class MockPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands: document.commands,
     };
@@ -82,7 +82,7 @@ export class MockPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands: document.commands,
     };

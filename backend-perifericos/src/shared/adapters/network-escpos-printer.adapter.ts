@@ -53,7 +53,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
     private readonly encoding: EscPosEncoding = "utf8"
   ) {}
 
-  getCapabilities(profile: DeviceProfile): AdapterCapabilities {
+  getCapabilities(profile: DeviceProfile, _device?: PeripheralDevice): AdapterCapabilities {
     return {
       adapterName: this.adapterName,
       mode: this.mode,
@@ -66,7 +66,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
 
   async openCashDrawer(input: CashDrawerAdapterInput): Promise<AdapterResult> {
     this.validateDevice(input.device);
-    const capabilities = this.getCapabilities(input.profile);
+    const capabilities = this.getCapabilities(input.profile, input.device);
     if (!capabilities.supportsCashDrawerPulse) {
       throw new BadRequestException("printer does not support cash drawer pulse");
     }
@@ -106,7 +106,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands,
       bytesSent,
@@ -130,7 +130,7 @@ export class NetworkEscposPrinterAdapter implements PrinterAdapter {
     return {
       adapterName: this.adapterName,
       profile: input.profile,
-      capabilities: this.getCapabilities(input.profile),
+      capabilities: this.getCapabilities(input.profile, input.device),
       preview: document.preview,
       commands,
       bytesSent,

@@ -70,15 +70,18 @@ async function bootstrap() {
     },
   });
 
-  if (config.realAdaptersEnabled) {
-    app.get(DevicesService).discoverOnStartup();
-  }
-
   await app.listen(config.port, config.bind);
 
   console.log(
     `${config.agentName} running in ${config.mode} mode on http://${config.bind}:${config.port}`,
   );
+
+  if (config.realAdaptersEnabled) {
+    const devicesService = app.get(DevicesService);
+    setImmediate(() => {
+      devicesService.discoverOnStartup();
+    });
+  }
 
   let stopping = false;
   const shutdown = async (signal: string) => {

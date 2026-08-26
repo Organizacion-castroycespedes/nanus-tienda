@@ -15,6 +15,8 @@ export type PeripheralAgentHealth = {
   };
 };
 
+export type PrinterProfileId = "THERMAL_80MM" | "THERMAL_58MM" | "GENERIC_TEXT";
+
 export type PeripheralDeviceType =
   | "PRINTER"
   | "CASH_DRAWER"
@@ -57,10 +59,11 @@ export type PeripheralDevice = {
   status: PeripheralDeviceStatus;
   connectionType: PeripheralConnectionType;
   terminalId: string;
-  profileId?: string;
+  profileId?: PrinterProfileId;
   profile?: DeviceProfile;
   network?: DeviceNetworkConfig;
   usb?: DeviceUsbConfig;
+  metadata?: Record<string, unknown>;
 };
 
 export type CreateDeviceRequest = {
@@ -70,9 +73,10 @@ export type CreateDeviceRequest = {
   status: PeripheralDeviceStatus;
   connectionType: PeripheralConnectionType;
   terminalId: string;
-  profileId?: string;
+  profileId?: PrinterProfileId;
   network?: DeviceNetworkConfig;
   usb?: DeviceUsbConfig;
+  metadata?: Record<string, unknown>;
 };
 
 export type PeripheralTicketItem = {
@@ -268,6 +272,17 @@ export type PosTerminalPeripheralSettings = {
   createdAt?: string | null;
   updatedAt?: string | null;
 };
+
+export type UpdateDeviceRequest = Partial<{
+  name: string;
+  status: PeripheralDeviceStatus;
+  terminalId: string;
+  connectionType: PeripheralConnectionType;
+  profileId: PrinterProfileId;
+  network: DeviceNetworkConfig | null;
+  usb: DeviceUsbConfig | null;
+  metadata: Record<string, unknown>;
+}>;
 
 export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
   /** @deprecated Legacy alias for agentTerminalCode. */

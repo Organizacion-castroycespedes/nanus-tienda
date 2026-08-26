@@ -43,6 +43,26 @@ const getTenantFromPath = () => {
   return tenant || null;
 };
 
+const normalizeTerminalIdForResolution = (terminalId?: string | null) => {
+  const normalized = terminalId?.trim();
+  if (!normalized || normalized === DEFAULT_POS_TERMINAL_ID) {
+    return undefined;
+  }
+
+  return normalized;
+};
+
+export const resolvePeripheralOperationTerminalId = (
+  config: Pick<
+    PosTerminalResolvedConfig,
+    "operationalTerminalId" | "agentTerminalCode" | "terminalId"
+  >
+) =>
+  config.operationalTerminalId?.trim() ||
+  config.agentTerminalCode?.trim() ||
+  config.terminalId?.trim() ||
+  DEFAULT_POS_TERMINAL_ID;
+
 export const buildFallbackPosTerminalConfig = (
   input: ResolveConfigInput = {}
 ): PosTerminalResolvedConfig => ({
@@ -124,7 +144,7 @@ export const resolveCurrentPosTerminalConfig = (input: ResolveConfigInput = {}) 
     `/pos-terminals/resolve-current${buildQueryString({
       tenantId: input.tenantId ?? getTenantFromPath(),
       branchId: input.branchId,
-      terminalId: input.terminalId,
+      terminalId: normalizeTerminalIdForResolution(input.terminalId),
       terminalCode: input.terminalCode,
     })}`
   );
