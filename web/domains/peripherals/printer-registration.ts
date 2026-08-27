@@ -9,6 +9,8 @@ export const printerProfiles = [
 export type PrinterRegistrationForm = {
   id: string;
   name: string;
+  manufacturer: string;
+  model: string;
   connectionType: "NETWORK" | "USB";
   host: string;
   port: string;
@@ -21,10 +23,12 @@ export type PrinterRegistrationForm = {
 
 export const printerDefaults: PrinterRegistrationForm = {
   id: "",
-  name: "Xprinter XP-80T",
+  name: "",
+  manufacturer: "",
+  model: "",
   connectionType: "NETWORK",
   host: "",
-  port: "",
+  port: "9100",
   timeoutMs: "3000",
   usbDeviceId: "",
   profileId: "THERMAL_80MM",
@@ -45,8 +49,11 @@ export const buildPrinterPayload = (
     profileId: form.profileId,
   };
 
+  const manufacturer = form.manufacturer.trim();
+  const model = form.model.trim();
+
   if (form.connectionType === "NETWORK") {
-    return {
+    const payload: CreateDeviceRequest = {
       ...common,
       connectionType: "NETWORK",
       network: {
@@ -55,9 +62,18 @@ export const buildPrinterPayload = (
         timeoutMs: Number(form.timeoutMs),
       },
     };
+
+    if (manufacturer || model) {
+      payload.metadata = {
+        ...(manufacturer ? { manufacturer } : {}),
+        ...(model ? { model } : {}),
+      };
+    }
+
+    return payload;
   }
 
-  return {
+  const payload: CreateDeviceRequest = {
     ...common,
     connectionType: "USB",
     usb: {
@@ -65,6 +81,15 @@ export const buildPrinterPayload = (
       printerName: usbDevice?.usb?.printerName ?? "",
     },
   };
+
+  if (manufacturer || model) {
+    payload.metadata = {
+      ...(manufacturer ? { manufacturer } : {}),
+      ...(model ? { model } : {}),
+    };
+  }
+
+  return payload;
 };
 
 export const validatePrinterForm = (form: PrinterRegistrationForm): string | null => {

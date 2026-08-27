@@ -645,11 +645,13 @@ const PrinterRegistrationPanel = ({
       : state.status === "error"
         ? "border-rose-200 bg-rose-50 text-rose-800"
         : "border-slate-200 bg-slate-50 text-slate-600";
+  const printerBrand = [form.manufacturer, form.model].filter(Boolean).join(" ");
+  const printerEyebrow = `${printerBrand || "Impresora"} / ${form.connectionType}`;
 
   return (
     <SectionCard
       title="Registrar impresora"
-      eyebrow="Xprinter XP-80T / THERMAL_80MM"
+      eyebrow={printerEyebrow}
     >
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="flex flex-wrap gap-2">
@@ -672,6 +674,18 @@ const PrinterRegistrationPanel = ({
             value={form.name}
             required
             onChange={(event) => updateForm("name", event.target.value)}
+          />
+          <Input
+            label="manufacturer"
+            value={form.manufacturer}
+            placeholder="Opcional. Ej: Digital POS"
+            onChange={(event) => updateForm("manufacturer", event.target.value)}
+          />
+          <Input
+            label="model"
+            value={form.model}
+            placeholder="Opcional. Ej: DIG-E200I"
+            onChange={(event) => updateForm("model", event.target.value)}
           />
           <label className="flex flex-col gap-2 text-sm text-slate-700">
             <span className="font-medium">Conexión</span>

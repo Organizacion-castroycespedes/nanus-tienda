@@ -266,6 +266,29 @@ test("NetworkEscposPrinterAdapter converts minimum commands to Buffer", () => {
   assert.deepEqual([...buffer.subarray(-3)], [0x1d, 0x56, 0x00]);
 });
 
+test("NetworkEscposPrinterAdapter preserves Unicode preview and emits UTF-8 bytes", () => {
+  const sampleSpanish = "á é í ó ú Á É Í Ó Ú ñ Ñ ¿ ? ¡ ! $ COP";
+  const sampleAscii = "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789";
+  const adapter = new NetworkEscposPrinterAdapter();
+  const buffer = adapter.buildEscPosBuffer(
+    [createEscPosMockCommand(EscPosMockCommandName.Init)],
+    sampleSpanish + "\n" + sampleAscii
+  );
+  const expectedSpanish = Buffer.from(
+    "á é í ó ú Á É Í Ó Ú ñ Ñ ¿ ? ¡ ! $ COP\n",
+    "utf8"
+  );
+  const expectedAscii = Buffer.from(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789\n",
+    "utf8"
+  );
+
+  assert.equal(buffer.includes(Buffer.from([0x1b, 0x40])), true);
+  assert.equal(buffer.toString("utf8").includes("�"), false);
+  assert.equal(buffer.includes(expectedSpanish), true);
+  assert.equal(buffer.includes(expectedAscii), true);
+});
+
 test("NetworkEscposPrinterAdapter reports bytesSent with socket mock", async () => {
   let socket: FakeNetworkSocket | undefined;
   const adapter = new NetworkEscposPrinterAdapter(() => {
