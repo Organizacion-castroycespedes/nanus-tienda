@@ -3,6 +3,7 @@ import test from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { SaleService } from "./sale.service";
+import { buildDeterministicSaleExternalReference } from "../mappers/sale-electronic-invoice.mapper";
 import type { CreateSaleInput } from "../repositories/sale.repository";
 import type {
   CalculateLinePriceInput,
@@ -158,6 +159,34 @@ class FakeCreateSaleClient {
 
     if (sql.includes("FROM public.deliveries") && sql.includes("sale_id = $2")) {
       return { rows: [] as T[] };
+    }
+
+    if (sql.includes("FROM sale_items")) {
+      return {
+        rows: [
+          {
+            product_id: ids.product,
+            quantity: 1,
+            price: 3000,
+            order_item_id: null,
+            subtotal: 3000,
+            price_without_tax: 3000,
+            tax_total: 0,
+            base_unit_price: 3000,
+            final_unit_price: 3000,
+            discount_amount: 0,
+            discount_percent: 0,
+            discount_total: 0,
+            tax_id: null,
+            tax_rate: null,
+            tax_base: 3000,
+            tax_amount: 0,
+            line_total: 3000,
+            pricing_source: "ORDER_DELIVERY",
+            created_at: new Date("2026-06-02T00:00:00.000Z"),
+          },
+        ] as T[],
+      };
     }
 
     if (sql.startsWith("UPDATE public.deliveries")) {
@@ -375,7 +404,109 @@ const buildService = (scenario: Scenario = {}) => {
   return { service, client, createdMovements };
 };
 
-const buildCreateSaleService = (previews: LinePricePreview[]) => {
+type SaleBillingHarness = {
+  configRepository: {
+    findEnabledForTenant: (tenantId: string, client: PoolClient) => Promise<Array<{ id: string }>>;
+    findDefaultForTenant: (tenantId: string, client: PoolClient) => Promise<{ id: string } | null>;
+  };
+  providerResolver: {
+    resolve: (command: { tenantId: string; providerConfigId: string }, client?: PoolClient) => Promise<{
+      context: {
+        tenantId: string;
+        providerId: string;
+        providerConfigId: string;
+        environment: "TEST" | "HABILITATION" | "PRODUCTION";
+        baseUrl: string | null;
+        credentialReference: string | null;
+        settings: Record<string, unknown>;
+      };
+    }>;
+  };
+  billingService: {
+    createInvoiceDocument: (
+      command: {
+        context: { tenantId: string; providerId: string; providerConfigId: string };
+        documentId: string;
+        externalReference: string;
+        customer: { identification: { number: string } };
+        lines: Array<{ description: string }>;
+        totals: { totalAmount: number };
+      },
+      client?: PoolClient,
+      source?: { type?: string; id?: string | null }
+    ) => Promise<void>;
+  };
+  customerRepository: {
+    findById: (id: string, tenantId: string, client?: PoolClient) => Promise<{
+      id: string;
+      tenantId: string;
+      name: string;
+      documentNumber: string | null;
+      phone: string | null;
+      email: string | null;
+      address: string | null;
+      municipioId: string | null;
+      isFinalConsumer: boolean;
+    } | null>;
+  };
+  productRepository: {
+    findById: (id: string, tenantId: string) => Promise<{
+      id: string;
+      sku: string;
+      name: string;
+      description: string | null;
+      measurementUnit: string;
+    } | null>;
+  };
+  taxRepository: {
+    findById: (id: string, tenantId: string) => Promise<{
+      id: string;
+      name: string;
+      rate: number;
+    } | null>;
+  };
+  invoicingCustomersRepository: {
+    findByNormalizedDocument: (tenantId: string, documentNumber: string) => Promise<{
+      dianIdentificationType: string | null;
+      documentTypeCode: string | null;
+      identificationNumber: string | null;
+      documentNumberNormalized: string | null;
+      verificationDigit: string | null;
+      legalName: string | null;
+      tradeName: string | null;
+      invoiceEmail: string | null;
+      fiscalEmail: string | null;
+      phone: string | null;
+      address: string | null;
+      municipalityCode: string | null;
+      personType: "NATURAL" | "JURIDICA" | "UNKNOWN" | null;
+      taxResponsibilities: string[];
+      taxRegime: string | null;
+    } | null>;
+    findActiveFinalConsumer: (tenantId: string) => Promise<{
+      dianIdentificationType: string | null;
+      documentTypeCode: string | null;
+      identificationNumber: string | null;
+      documentNumberNormalized: string | null;
+      verificationDigit: string | null;
+      legalName: string | null;
+      tradeName: string | null;
+      invoiceEmail: string | null;
+      fiscalEmail: string | null;
+      phone: string | null;
+      address: string | null;
+      municipalityCode: string | null;
+      personType: "NATURAL" | "JURIDICA" | "UNKNOWN" | null;
+      taxResponsibilities: string[];
+      taxRegime: string | null;
+    } | null>;
+  };
+};
+
+const buildCreateSaleService = (
+  previews: LinePricePreview[],
+  billing?: SaleBillingHarness
+) => {
   const client = new FakeCreateSaleClient();
   const repository = new FakeCreateSaleRepository();
   const pricingService = new FakePricingService([...previews]);
@@ -414,7 +545,14 @@ const buildCreateSaleService = (previews: LinePricePreview[]) => {
         };
       },
     } as never,
-    pricingService as never
+    pricingService as never,
+    billing?.billingService as never,
+    billing?.providerResolver as never,
+    billing?.configRepository as never,
+    billing?.customerRepository as never,
+    billing?.productRepository as never,
+    billing?.taxRepository as never,
+    billing?.invoicingCustomersRepository as never
   );
 
   (service as unknown as { getSaleById: () => Promise<unknown> }).getSaleById =
@@ -509,6 +647,114 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
   );
 });
 
+test("SaleService.createSale creates an electronic invoice intent when billing is enabled", async () => {
+  const invoiceCalls: Array<{
+    command: {
+      context: { tenantId: string; providerId: string; providerConfigId: string };
+      externalReference: string;
+      customer: { identification: { number: string } };
+      lines: Array<{ description: string; sku: string | null }>;
+      payment: { methodCode: string } | null;
+      totals: { totalAmount: number; currencyCode: string };
+    };
+    source: { type?: string; id?: string | null } | undefined;
+  }> = [];
+
+  const billing = {
+    configRepository: {
+      findEnabledForTenant: async () => [{ id: "config-1" }],
+      findDefaultForTenant: async () => ({ id: "config-1" }),
+    },
+    providerResolver: {
+      resolve: async () => ({
+        context: {
+          tenantId: ids.tenant,
+          providerId: ids.provider,
+          providerConfigId: "config-1",
+          environment: "TEST" as const,
+          baseUrl: null,
+          credentialReference: null,
+          settings: {},
+        },
+      }),
+    },
+    billingService: {
+      createInvoiceDocument: async (command: any, _client?: PoolClient, source?: { type?: string; id?: string | null }) => {
+        invoiceCalls.push({
+          command,
+          source,
+        });
+      },
+    },
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service } = buildCreateSaleService([makePreview()], billing);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(invoiceCalls.length, 1);
+  assert.equal(
+    invoiceCalls[0].command.externalReference,
+    buildDeterministicSaleExternalReference(ids.tenant, ids.sale)
+  );
+  assert.equal(invoiceCalls[0].source?.type, "SALE");
+  assert.equal(invoiceCalls[0].source?.id, ids.sale);
+  assert.equal(invoiceCalls[0].command.context.providerConfigId, "config-1");
+  assert.equal(invoiceCalls[0].command.payment?.methodCode, "CASH");
+  assert.equal(invoiceCalls[0].command.lines[0].description, "Producto factura");
+  assert.equal(invoiceCalls[0].command.lines[0].sku, "SKU-1");
+  assert.equal(invoiceCalls[0].command.totals.currencyCode, "COP");
+});
+
 test("SaleService.createSaleFromOrderDelivery links existing order delivery to sale", async () => {
   const { service, client, repository } = buildCreateSaleService([]);
 
@@ -556,6 +802,115 @@ test("SaleService.createSaleFromOrderDelivery links existing order delivery to s
   assert(
     client.queries.some((query) => query.text.replace(/\s+/g, " ").trim() === "COMMIT")
   );
+  assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
+});
+
+test("SaleService.createSaleFromOrderDelivery creates an electronic invoice intent when billing is enabled", async () => {
+  const invoiceCalls: Array<{
+    command: { externalReference: string; totals: { totalAmount: number } };
+    source: { type?: string; id?: string | null } | undefined;
+  }> = [];
+
+  const billing = {
+    configRepository: {
+      findEnabledForTenant: async () => [{ id: "config-1" }],
+      findDefaultForTenant: async () => ({ id: "config-1" }),
+    },
+    providerResolver: {
+      resolve: async () => ({
+        context: {
+          tenantId: ids.tenant,
+          providerId: ids.provider,
+          providerConfigId: "config-1",
+          environment: "TEST" as const,
+          baseUrl: null,
+          credentialReference: null,
+          settings: {},
+        },
+      }),
+    },
+    billingService: {
+      createInvoiceDocument: async (
+        command: any,
+        _client?: PoolClient,
+        source?: { type?: string; id?: string | null }
+      ) => {
+        invoiceCalls.push({
+          command,
+          source,
+        });
+      },
+    },
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service } = buildCreateSaleService([], billing);
+
+  const result = await service.createSaleFromOrderDelivery(
+    {
+      orderId: ids.order,
+      type: "CASH",
+      payments: [],
+    },
+    posContext
+  );
+
+  assert.equal(invoiceCalls.length, 1);
+  assert.equal(
+    invoiceCalls[0].command.externalReference,
+    buildDeterministicSaleExternalReference(ids.tenant, ids.sale)
+  );
+  assert.equal(invoiceCalls[0].source?.type, "SALE");
+  assert.equal(invoiceCalls[0].source?.id, ids.sale);
+  assert.equal(invoiceCalls[0].command.totals.totalAmount, 3000);
   assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
 });
 

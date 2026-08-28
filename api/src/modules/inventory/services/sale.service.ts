@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Optional,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -11,6 +12,11 @@ import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { CreatePaymentDto } from "../../finance/payments/dto/create-payment.dto";
 import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
+import { ElectronicBillingService } from "../../electronic-billing/electronic-billing.service";
+import { ElectronicBillingProviderResolver } from "../../electronic-billing/providers/electronic-billing-provider-resolver";
+import { TenantElectronicBillingConfigRepository } from "../../electronic-billing/repositories/electronic-billing.repositories";
+import type { ElectronicCustomer } from "../../electronic-billing/contracts/electronic-billing-commands";
+import { ElectronicInvoicingCustomersRepository } from "../../electronic-invoicing/customers/electronic-invoicing-customers.repository";
 import {
   PaymentsRepository,
   type PaymentAllocationRecord,
@@ -20,6 +26,13 @@ import { PaymentsService } from "../../finance/payments/payments.service";
 import { PricingService } from "../../pricing/pricing.service";
 import type { LinePricePreview } from "../../pricing/pricing.types";
 import { AuditService } from "../../../common/services/audit.service";
+import { CustomerRepository } from "../repositories/customer.repository";
+import { ProductRepository } from "../repositories/product.repository";
+import { TaxRepository } from "../repositories/tax.repository";
+import {
+  buildSaleElectronicInvoiceCommand,
+  buildDeterministicSaleExternalReference,
+} from "../mappers/sale-electronic-invoice.mapper";
 import { SaleEntity, type SaleType } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
 import {
@@ -149,6 +162,31 @@ type ProductLotRequirementRow = {
   requires_lot: boolean;
 };
 
+type PricedSaleItem = {
+  productId: string;
+  quantity: number;
+  price: number;
+  orderItemId?: string | null;
+  subtotal: number;
+  priceWithoutTax: number;
+  taxTotal: number;
+  baseUnitPrice?: number;
+  finalUnitPrice?: number;
+  discountAmount?: number;
+  discountPercent?: number;
+  discountTotal?: number;
+  appliedPromotionId?: string | null;
+  appliedPromotionName?: string | null;
+  taxId?: string | null;
+  taxRate?: number | null;
+  taxBase?: number;
+  taxAmount?: number;
+  lineTotal?: number;
+  pricingSnapshot?: Record<string, unknown>;
+  pricingCalculatedAt?: Date;
+  pricingSource?: string | null;
+};
+
 type InheritableOrderPayment = {
   payment: PaymentRecord;
   availableAmount: number;
@@ -182,7 +220,28 @@ export class SaleService {
     @Inject(PaymentsService)
     private readonly paymentsService: PaymentsService,
     @Inject(PricingService)
-    private readonly pricingService: PricingService
+    private readonly pricingService: PricingService,
+    @Optional()
+    @Inject(ElectronicBillingService)
+    private readonly electronicBillingService?: ElectronicBillingService,
+    @Optional()
+    @Inject(ElectronicBillingProviderResolver)
+    private readonly electronicBillingProviderResolver?: ElectronicBillingProviderResolver,
+    @Optional()
+    @Inject(TenantElectronicBillingConfigRepository)
+    private readonly tenantElectronicBillingConfigRepository?: TenantElectronicBillingConfigRepository,
+    @Optional()
+    @Inject(CustomerRepository)
+    private readonly customerRepository?: CustomerRepository,
+    @Optional()
+    @Inject(ProductRepository)
+    private readonly productRepository?: ProductRepository,
+    @Optional()
+    @Inject(TaxRepository)
+    private readonly taxRepository?: TaxRepository,
+    @Optional()
+    @Inject(ElectronicInvoicingCustomersRepository)
+    private readonly electronicInvoicingCustomersRepository?: ElectronicInvoicingCustomersRepository
   ) {}
 
   private toNumber(value: string | number) {
@@ -369,6 +428,89 @@ export class SaleService {
     });
   }
 
+  private async loadPricedSaleItemsForBilling(
+    saleId: string,
+    tenantId: string,
+    client: PoolClient
+  ) {
+    const result = await client.query<{
+      product_id: string;
+      quantity: string | number;
+      price: string | number;
+      order_item_id: string | null;
+      subtotal: string | number;
+      price_without_tax: string | number;
+      tax_total: string | number;
+      base_unit_price: string | number | null;
+      final_unit_price: string | number | null;
+      discount_amount: string | number | null;
+      discount_percent: string | number | null;
+      discount_total: string | number | null;
+      tax_id: string | null;
+      tax_rate: string | number | null;
+      tax_base: string | number | null;
+      tax_amount: string | number | null;
+      line_total: string | number | null;
+      pricing_source: string | null;
+      created_at: Date;
+    }>(
+      `
+        SELECT
+          product_id,
+          quantity,
+          price,
+          order_item_id,
+          subtotal,
+          price_without_tax,
+          tax_total,
+          base_unit_price,
+          final_unit_price,
+          discount_amount,
+          discount_percent,
+          discount_total,
+          tax_id,
+          tax_rate,
+          tax_base,
+          tax_amount,
+          line_total,
+          pricing_source,
+          created_at
+        FROM sale_items
+        WHERE sale_id = $1
+          AND tenant_id = $2
+        ORDER BY created_at ASC, id ASC
+      `,
+      [saleId, tenantId]
+    );
+
+    return result.rows.map((row) => ({
+      productId: row.product_id,
+      quantity: this.toNumber(row.quantity),
+      price: this.toNumber(row.price),
+      orderItemId: row.order_item_id,
+      subtotal: this.toNumber(row.subtotal),
+      priceWithoutTax: this.toNumber(row.price_without_tax),
+      taxTotal: this.toNumber(row.tax_total),
+      baseUnitPrice:
+        row.base_unit_price == null ? undefined : this.toNumber(row.base_unit_price),
+      finalUnitPrice:
+        row.final_unit_price == null ? undefined : this.toNumber(row.final_unit_price),
+      discountAmount:
+        row.discount_amount == null ? undefined : this.toNumber(row.discount_amount),
+      discountPercent:
+        row.discount_percent == null ? undefined : this.toNumber(row.discount_percent),
+      discountTotal:
+        row.discount_total == null ? undefined : this.toNumber(row.discount_total),
+      taxId: row.tax_id,
+      taxRate: row.tax_rate == null ? null : this.toNumber(row.tax_rate),
+      taxBase: row.tax_base == null ? undefined : this.toNumber(row.tax_base),
+      taxAmount: row.tax_amount == null ? undefined : this.toNumber(row.tax_amount),
+      lineTotal: row.line_total == null ? undefined : this.toNumber(row.line_total),
+      pricingSource: row.pricing_source,
+      pricingCalculatedAt: row.created_at,
+    })) as PricedSaleItem[];
+  }
+
   private buildPosPricingSnapshot(input: {
     tenantId: string;
     branchId: string;
@@ -487,6 +629,348 @@ export class SaleService {
       roles: Array.isArray(context.roles) ? context.roles : [],
       sessionId: context.sessionId,
     };
+  }
+
+  private normalizeInvoiceDocumentNumber(value?: string | null) {
+    const normalized = value?.trim().toUpperCase().replace(/[^0-9A-Z]/g, "") ?? "";
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private async buildElectronicBillingCustomerSnapshot(
+    tenantId: string,
+    customerId: string,
+    client: PoolClient
+  ): Promise<ElectronicCustomer> {
+    if (!this.customerRepository) {
+      throw new BadRequestException("customer repository is not configured");
+    }
+
+    const customer = await this.customerRepository.findById(customerId, tenantId, client);
+    if (!customer) {
+      throw new BadRequestException("customer not found for tenant");
+    }
+
+    const normalizedDocument = this.normalizeInvoiceDocumentNumber(customer.documentNumber);
+    const fiscalCustomer =
+      normalizedDocument && this.electronicInvoicingCustomersRepository
+        ? await this.electronicInvoicingCustomersRepository.findByNormalizedDocument(
+            tenantId,
+            normalizedDocument
+          )
+        : null;
+    const finalConsumerCustomer =
+      !fiscalCustomer && customer.isFinalConsumer && this.electronicInvoicingCustomersRepository
+        ? await this.electronicInvoicingCustomersRepository.findActiveFinalConsumer(tenantId)
+        : null;
+    const resolvedCustomer = fiscalCustomer ?? finalConsumerCustomer;
+
+    const identificationNumber =
+      resolvedCustomer?.identificationNumber ??
+      resolvedCustomer?.documentNumberNormalized ??
+      customer.documentNumber ??
+      null;
+    if (!identificationNumber) {
+      throw new BadRequestException("customer identification number is required for invoice");
+    }
+
+    const legalName =
+      resolvedCustomer?.legalName ??
+      resolvedCustomer?.tradeName ??
+      customer.name;
+
+    return {
+      customerType:
+        resolvedCustomer?.personType === "NATURAL"
+          ? "PERSON"
+          : resolvedCustomer?.personType === "JURIDICA"
+            ? "COMPANY"
+            : customer.isFinalConsumer
+              ? "PERSON"
+              : "COMPANY",
+      identification: {
+        typeCode:
+          resolvedCustomer?.dianIdentificationType ??
+          resolvedCustomer?.documentTypeCode ??
+          null,
+        number: identificationNumber,
+        verificationDigit: resolvedCustomer?.verificationDigit ?? null,
+      },
+      legalName,
+      firstName: null,
+      lastName: null,
+      email: resolvedCustomer?.invoiceEmail ?? resolvedCustomer?.fiscalEmail ?? customer.email,
+      phone: resolvedCustomer?.phone ?? customer.phone,
+      address: resolvedCustomer?.address ?? customer.address,
+      municipalityCode: resolvedCustomer?.municipalityCode ?? null,
+      taxProfile: resolvedCustomer
+        ? {
+            identificationTypeCode:
+              resolvedCustomer.dianIdentificationType ??
+              resolvedCustomer.documentTypeCode ??
+              null,
+            fiscalResponsibilityCodes: resolvedCustomer.taxResponsibilities ?? [],
+            taxScheme: resolvedCustomer.taxRegime ?? null,
+            liabilityTypeCode: resolvedCustomer.personType ?? null,
+          }
+        : undefined,
+      metadata: {
+        source: "sales.customer",
+        customerId: customer.id,
+        tenantId: customer.tenantId,
+        isFinalConsumer: customer.isFinalConsumer,
+        documentNumber: customer.documentNumber ?? null,
+      },
+    };
+  }
+
+  private async buildElectronicBillingLines(
+    tenantId: string,
+    items: PricedSaleItem[]
+  ) {
+    const productRepository = this.productRepository;
+    if (!productRepository) {
+      throw new BadRequestException("product repository is not configured");
+    }
+    const taxRepository = this.taxRepository;
+
+    const lines = await Promise.all(
+      items.map(async (item) => {
+        const product = await productRepository.findById(
+          item.productId,
+          tenantId
+        );
+        if (!product) {
+          throw new BadRequestException(`product not found for sale line ${item.productId}`);
+        }
+
+        const tax =
+          item.taxId !== undefined && item.taxId !== null && taxRepository
+            ? await taxRepository.findById(item.taxId, tenantId)
+            : null;
+        const subtotalAmount = this.roundCurrency(
+          item.taxBase ?? item.priceWithoutTax * item.quantity
+        );
+        const discountAmount = this.roundCurrency(
+          item.discountTotal ?? item.discountAmount ?? 0
+        );
+        const taxAmount = this.roundCurrency(item.taxAmount ?? item.taxTotal);
+        const totalAmount = this.roundCurrency(
+          item.lineTotal ?? item.subtotal ?? subtotalAmount + taxAmount - discountAmount
+        );
+
+        return {
+          sourceLineId: item.orderItemId ?? null,
+          originalElectronicDocumentLineId: null,
+          providerOriginalLineId: null,
+          sku: product.sku,
+          description: product.description ?? product.name,
+          quantity: item.quantity,
+          unitCode: product.measurementUnit,
+          unitPrice: this.roundCurrency(item.priceWithoutTax),
+          discountAmount,
+          subtotalAmount,
+          taxAmount,
+          totalAmount,
+          taxTreatment: taxAmount > 0 ? "TAXED" : "EXCLUDED",
+          standardItemId: product.id,
+          standardItemSchemeId: "MANUS",
+          taxes:
+            taxAmount > 0
+              ? [
+                  {
+                    type: tax?.name ?? item.taxId ?? "TAX",
+                    code: item.taxId ?? null,
+                    schemeId: item.taxId ?? null,
+                    schemeName: tax?.name ?? null,
+                    rate: item.taxRate ?? tax?.rate ?? 0,
+                    taxableBase: subtotalAmount,
+                    amount: taxAmount,
+                    metadata: {
+                      productId: product.id,
+                      taxId: item.taxId ?? null,
+                    },
+                  },
+                ]
+              : [],
+          metadata: {
+            productId: product.id,
+            sku: product.sku,
+            saleItemId: item.orderItemId ?? null,
+            pricingSource: item.pricingSource ?? null,
+            pricingSnapshot: item.pricingSnapshot ?? null,
+            baseUnitPrice: item.baseUnitPrice ?? null,
+            finalUnitPrice: item.finalUnitPrice ?? null,
+            discountPercent: item.discountPercent ?? null,
+          },
+        };
+      })
+    );
+
+    return lines;
+  }
+
+  private buildElectronicBillingPayment(
+    legacyPaymentMethods: Array<{
+      paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      amount: number;
+      reference?: string | null;
+    }>,
+    payments: ReturnType<SaleService["normalizePayments"]>
+  ) {
+    if (payments.length === 0) {
+      return null;
+    }
+
+    return {
+      methodCode:
+        legacyPaymentMethods.length === 1
+          ? legacyPaymentMethods[0].paymentMethod
+          : "MIXED",
+      term: payments.length === 1 ? "IMMEDIATE" : "MIXED",
+      dueDate: null,
+      metadata: {
+        breakdown: legacyPaymentMethods.map((payment, index) => ({
+          index,
+          paymentMethod: payment.paymentMethod,
+          amount: payment.amount,
+          reference: payment.reference ?? null,
+          paymentMethodId: payments[index]?.paymentMethodId ?? null,
+        })),
+      },
+    };
+  }
+
+  private async issueElectronicInvoiceForSale(
+    saleContext: SaleContext,
+    saleRow: { id: string; customer_id: string; order_id: string | null; total: string | number },
+    pricedItems: PricedSaleItem[] | null,
+    legacyPaymentMethods: Array<{
+      paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      amount: number;
+      reference?: string | null;
+    }> | null,
+    payments: ReturnType<SaleService["normalizePayments"]>,
+    client: PoolClient,
+    billingSource: {
+      customerId: string;
+      orderId?: string | null;
+    }
+  ) {
+    const tenantId = saleContext.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException("tenantId is required for electronic billing");
+    }
+
+    if (
+      !this.electronicBillingService ||
+      !this.electronicBillingProviderResolver ||
+      !this.tenantElectronicBillingConfigRepository
+    ) {
+      return;
+    }
+
+    const enabledConfigs =
+      await this.tenantElectronicBillingConfigRepository.findEnabledForTenant(
+        tenantId,
+        client
+      );
+    if (enabledConfigs.length === 0) {
+      return;
+    }
+
+    const defaultConfig = await this.tenantElectronicBillingConfigRepository.findDefaultForTenant(
+      tenantId,
+      client
+    );
+    if (!defaultConfig) {
+      throw new BadRequestException(
+        "electronic billing provider configuration is missing default"
+      );
+    }
+
+    const effectivePricedItems =
+      pricedItems ??
+      (await this.loadPricedSaleItemsForBilling(saleRow.id, tenantId, client));
+    const effectiveLegacyPaymentMethods =
+      legacyPaymentMethods ??
+      (await this.buildLegacySalePaymentMethods(tenantId, payments, client));
+
+    const resolved = await this.electronicBillingProviderResolver.resolve(
+      {
+        tenantId,
+        providerConfigId: defaultConfig.id,
+      },
+      client
+    );
+
+    const customer = await this.buildElectronicBillingCustomerSnapshot(
+      tenantId,
+      billingSource.customerId,
+      client
+    );
+    const lines = await this.buildElectronicBillingLines(
+      tenantId,
+      effectivePricedItems
+    );
+    const payment = this.buildElectronicBillingPayment(
+      effectiveLegacyPaymentMethods,
+      payments
+    );
+    const totals = effectivePricedItems.reduce(
+      (acc, item) => {
+        acc.subtotalAmount += item.taxBase ?? item.priceWithoutTax * item.quantity;
+        acc.discountAmount += item.discountTotal ?? item.discountAmount ?? 0;
+        acc.taxAmount += item.taxAmount ?? item.taxTotal;
+        acc.totalAmount += item.lineTotal ?? item.subtotal;
+        return acc;
+      },
+      {
+        subtotalAmount: 0,
+        discountAmount: 0,
+        taxAmount: 0,
+        totalAmount: 0,
+      }
+    );
+
+    const command = buildSaleElectronicInvoiceCommand({
+      context: resolved.context,
+      documentId: saleRow.id,
+      saleId: saleRow.id,
+      externalReference: buildDeterministicSaleExternalReference(
+        tenantId,
+        saleRow.id
+      ),
+      issueDate: new Date(),
+      issueTime: new Date().toISOString().substring(11, 19),
+      customer,
+      payment,
+      lines,
+      totals: {
+        subtotalAmount: this.roundCurrency(totals.subtotalAmount),
+        discountAmount: this.roundCurrency(totals.discountAmount),
+        taxAmount: this.roundCurrency(totals.taxAmount),
+        totalAmount: this.roundCurrency(
+          totals.totalAmount || this.toNumber(saleRow.total)
+        ),
+        currencyCode: "COP",
+      },
+      metadata: {
+        saleId: saleRow.id,
+        customerId: saleRow.customer_id,
+        tenantId,
+        branchId: saleContext.branchId ?? null,
+        terminalId: saleContext.terminalId ?? null,
+        posSessionId: saleContext.posSessionId ?? null,
+        orderId: saleRow.order_id ?? billingSource.orderId ?? null,
+        paymentMethods: legacyPaymentMethods,
+        paymentCount: payments.length,
+      },
+    });
+
+    await this.electronicBillingService.createInvoiceDocument(command, client, {
+      type: "SALE",
+      id: saleRow.id,
+    });
   }
 
   private async resolveAllowedBranchIds(
@@ -1325,6 +1809,18 @@ export class SaleService {
         saleContext.userId,
         client
       );
+      await this.issueElectronicInvoiceForSale(
+        saleContext,
+        saleRow,
+        pricedItems as PricedSaleItem[],
+        legacyPaymentMethods,
+        payments,
+        client,
+        {
+          customerId: data.customerId,
+          orderId: data.orderId ?? saleRow.order_id ?? null,
+        }
+      );
 
       await client.query("COMMIT");
       this.auditService.logEvent({
@@ -1388,6 +1884,18 @@ export class SaleService {
         saleRow.id,
         saleContext.userId,
         client
+      );
+      await this.issueElectronicInvoiceForSale(
+        saleContext,
+        saleRow,
+        null,
+        null,
+        payments,
+        client,
+        {
+          customerId: saleRow.customer_id,
+          orderId: data.orderId ?? saleRow.order_id ?? null,
+        }
       );
 
       await client.query("COMMIT");
