@@ -1,5 +1,12 @@
-export { FACTUCORE_CREDENTIAL_RESOLVER as ELECTRONIC_BILLING_CREDENTIAL_RESOLVER } from "./factucore.types";
-export { FACTUCORE_CREDENTIAL_RESOLVER } from "./factucore.types";
+export {
+  ELECTRONIC_BILLING_CREDENTIAL_RESOLVER as FACTUCORE_CREDENTIAL_RESOLVER,
+} from "../../credentials";
+export { ELECTRONIC_BILLING_CREDENTIAL_RESOLVER } from "../../credentials";
+export type {
+  ElectronicBillingCredentialContext,
+  ElectronicBillingCredentialResolver,
+  ElectronicBillingResolvedCredential,
+} from "../../credentials";
 export type {
   FactuCoreCredentialResolver,
   FactuCoreCredentials,
@@ -38,9 +45,8 @@ export { FactuCoreMapper as ElectronicBillingMapper } from "./factucore.mapper";
 export { FactuCoreMapper } from "./factucore.mapper";
 export {
   FactuCoreProvider as ElectronicBillingProviderAdapter,
-  NoopFactuCoreCredentialResolver as ElectronicBillingNoopCredentialResolver,
   isFactuCoreError,
 } from "./factucore.provider";
-export { FactuCoreProvider, NoopFactuCoreCredentialResolver } from "./factucore.provider";
+export { FactuCoreProvider } from "./factucore.provider";
 export { FactuCoreProviderBootstrap as ElectronicBillingProviderBootstrap } from "./factucore.bootstrap";
 export { FactuCoreProviderBootstrap } from "./factucore.bootstrap";

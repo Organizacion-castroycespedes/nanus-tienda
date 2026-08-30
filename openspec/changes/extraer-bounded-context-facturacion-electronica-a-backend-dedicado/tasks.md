@@ -66,3 +66,11 @@
 - [x] 10.3 Add the V074 official migration for `integration_outbox_events`.
 - [x] 10.4 Add contract compatibility tests against the X6 billing event envelope.
 - [x] 10.5 Validate API/backend build and tests with the outbox foundation in place.
+
+## 11. X8C credential storage and secret resolution
+
+- [x] 11.1 Select the secret backend for `backend-facturacion-electronica` and document the operational limitation of the initial implementation.
+- [x] 11.2 Add a neutral credential resolver contract and an environment-based implementation.
+- [x] 11.3 Wire FactuCore to resolve credentials at operation time without direct `process.env` access in the client.
+- [x] 11.4 Add resolver/provider tests for missing, invalid, and interleaved tenant credentials.
+- [x] 11.5 Update OpenSpec evidence, design, and runbook notes for credential ownership and rotation.

@@ -12,10 +12,6 @@ import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import { CreatePaymentDto } from "../../finance/payments/dto/create-payment.dto";
 import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
-import { ElectronicBillingService } from "../../electronic-billing/electronic-billing.service";
-import { ElectronicBillingProviderResolver } from "../../electronic-billing/providers/electronic-billing-provider-resolver";
-import { TenantElectronicBillingConfigRepository } from "../../electronic-billing/repositories/electronic-billing.repositories";
-import type { ElectronicCustomer } from "../../electronic-billing/contracts/electronic-billing-commands";
 import { ElectronicInvoicingCustomersRepository } from "../../electronic-invoicing/customers/electronic-invoicing-customers.repository";
 import {
   PaymentsRepository,
@@ -29,10 +25,7 @@ import { AuditService } from "../../../common/services/audit.service";
 import { CustomerRepository } from "../repositories/customer.repository";
 import { ProductRepository } from "../repositories/product.repository";
 import { TaxRepository } from "../repositories/tax.repository";
-import {
-  buildSaleElectronicInvoiceCommand,
-  buildDeterministicSaleExternalReference,
-} from "../mappers/sale-electronic-invoice.mapper";
+import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
 import { SaleEntity, type SaleType } from "../entities/sale.entity";
 import { SaleItemEntity } from "../entities/sale-item.entity";
 import {
@@ -55,6 +48,14 @@ import {
   type BranchScopedActor,
   type BranchScopedFilters,
 } from "../utils/access";
+import { IntegrationOutboxService } from "../../integration-outbox/services/integration-outbox.service";
+import type {
+  BuildSaleCompletedForElectronicBillingEventInput,
+  SaleLineSnapshot,
+  SalePaymentSnapshot,
+  SaleTaxSnapshot,
+  SaleCustomerSnapshot,
+} from "../../integration-outbox/contracts/integration-outbox-events";
 import { StockMovementService } from "./stock-movement.service";
 
 type SaleListRow = SaleRow & {
@@ -163,6 +164,7 @@ type ProductLotRequirementRow = {
 };
 
 type PricedSaleItem = {
+  saleItemId: string;
   productId: string;
   quantity: number;
   price: number;
@@ -222,14 +224,8 @@ export class SaleService {
     @Inject(PricingService)
     private readonly pricingService: PricingService,
     @Optional()
-    @Inject(ElectronicBillingService)
-    private readonly electronicBillingService?: ElectronicBillingService,
-    @Optional()
-    @Inject(ElectronicBillingProviderResolver)
-    private readonly electronicBillingProviderResolver?: ElectronicBillingProviderResolver,
-    @Optional()
-    @Inject(TenantElectronicBillingConfigRepository)
-    private readonly tenantElectronicBillingConfigRepository?: TenantElectronicBillingConfigRepository,
+    @Inject(IntegrationOutboxService)
+    private readonly integrationOutboxService?: IntegrationOutboxService,
     @Optional()
     @Inject(CustomerRepository)
     private readonly customerRepository?: CustomerRepository,
@@ -250,6 +246,19 @@ export class SaleService {
 
   private roundCurrency(value: number) {
     return Math.round(value * 100) / 100;
+  }
+
+  private toDecimalWireValue(value: number | string | null | undefined) {
+    if (value === null || value === undefined) {
+      return "0.00";
+    }
+
+    const numericValue = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return "0.00";
+    }
+
+    return this.roundCurrency(numericValue).toFixed(2);
   }
 
   private mapSale(row: SaleRow) {
@@ -434,6 +443,7 @@ export class SaleService {
     client: PoolClient
   ) {
     const result = await client.query<{
+      id: string;
       product_id: string;
       quantity: string | number;
       price: string | number;
@@ -455,35 +465,56 @@ export class SaleService {
       created_at: Date;
     }>(
       `
+        WITH sale_item_tax_snapshot AS (
+          SELECT DISTINCT ON (taxes.sale_item_id)
+            taxes.sale_item_id,
+            taxes.tenant_id,
+            taxes.tax_id,
+            taxes.tax_rate,
+            taxes.tax_amount
+          FROM sale_item_taxes AS taxes
+          WHERE taxes.sale_item_id IN (
+            SELECT id
+            FROM sale_items
+            WHERE sale_id = $1
+              AND tenant_id = $2
+          )
+          ORDER BY taxes.sale_item_id, taxes.created_at ASC, taxes.id ASC
+        )
         SELECT
-          product_id,
-          quantity,
-          price,
-          order_item_id,
-          subtotal,
-          price_without_tax,
-          tax_total,
-          base_unit_price,
-          final_unit_price,
-          discount_amount,
-          discount_percent,
-          discount_total,
-          tax_id,
-          tax_rate,
-          tax_base,
-          tax_amount,
-          line_total,
-          pricing_source,
-          created_at
-        FROM sale_items
-        WHERE sale_id = $1
-          AND tenant_id = $2
-        ORDER BY created_at ASC, id ASC
+          si.id,
+          si.product_id,
+          si.quantity,
+          si.price,
+          si.order_item_id,
+          si.subtotal,
+          si.price_without_tax,
+          si.tax_total,
+          si.base_unit_price,
+          si.final_unit_price,
+          si.discount_amount,
+          si.discount_percent,
+          si.discount_total,
+          sit.tax_id,
+          sit.tax_rate,
+          si.tax_base,
+          COALESCE(si.tax_amount, sit.tax_amount) AS tax_amount,
+          si.line_total,
+          si.pricing_source,
+          si.created_at
+        FROM sale_items AS si
+        LEFT JOIN sale_item_tax_snapshot AS sit
+          ON sit.sale_item_id = si.id
+         AND sit.tenant_id = si.tenant_id
+        WHERE si.sale_id = $1
+          AND si.tenant_id = $2
+        ORDER BY si.created_at ASC, si.id ASC
       `,
       [saleId, tenantId]
     );
 
     return result.rows.map((row) => ({
+      saleItemId: row.id,
       productId: row.product_id,
       quantity: this.toNumber(row.quantity),
       price: this.toNumber(row.price),
@@ -640,7 +671,7 @@ export class SaleService {
     tenantId: string,
     customerId: string,
     client: PoolClient
-  ): Promise<ElectronicCustomer> {
+  ): Promise<SaleCustomerSnapshot> {
     if (!this.customerRepository) {
       throw new BadRequestException("customer repository is not configured");
     }
@@ -687,32 +718,32 @@ export class SaleService {
             : customer.isFinalConsumer
               ? "PERSON"
               : "COMPANY",
-      identification: {
-        typeCode:
-          resolvedCustomer?.dianIdentificationType ??
-          resolvedCustomer?.documentTypeCode ??
-          null,
-        number: identificationNumber,
-        verificationDigit: resolvedCustomer?.verificationDigit ?? null,
-      },
+      identificationType:
+        resolvedCustomer?.dianIdentificationType ??
+        resolvedCustomer?.documentTypeCode ??
+        null,
+      identificationTypeCode:
+        resolvedCustomer?.dianIdentificationType ??
+        resolvedCustomer?.documentTypeCode ??
+        null,
+      identificationNumber,
+      verificationDigit: resolvedCustomer?.verificationDigit ?? null,
       legalName,
-      firstName: null,
-      lastName: null,
       email: resolvedCustomer?.invoiceEmail ?? resolvedCustomer?.fiscalEmail ?? customer.email,
       phone: resolvedCustomer?.phone ?? customer.phone,
-      address: resolvedCustomer?.address ?? customer.address,
+      addressLine1: resolvedCustomer?.address ?? customer.address,
+      countryCode: "CO",
+      departmentCode: null,
       municipalityCode: resolvedCustomer?.municipalityCode ?? null,
-      taxProfile: resolvedCustomer
-        ? {
-            identificationTypeCode:
-              resolvedCustomer.dianIdentificationType ??
-              resolvedCustomer.documentTypeCode ??
-              null,
-            fiscalResponsibilityCodes: resolvedCustomer.taxResponsibilities ?? [],
-            taxScheme: resolvedCustomer.taxRegime ?? null,
-            liabilityTypeCode: resolvedCustomer.personType ?? null,
-          }
-        : undefined,
+      cityName: customer.municipioId ?? null,
+      departmentName: null,
+      countryName: "Colombia",
+      taxLevelCode: resolvedCustomer?.personType ?? null,
+      taxSchemeId:
+        resolvedCustomer?.taxRegime ?? resolvedCustomer?.documentTypeCode ?? null,
+      taxSchemeName:
+        resolvedCustomer?.taxRegime ?? resolvedCustomer?.documentTypeCode ?? null,
+      fiscalResponsibilityCodes: resolvedCustomer?.taxResponsibilities ?? null,
       metadata: {
         source: "sales.customer",
         customerId: customer.id,
@@ -759,18 +790,17 @@ export class SaleService {
         );
 
         return {
-          sourceLineId: item.orderItemId ?? null,
-          originalElectronicDocumentLineId: null,
-          providerOriginalLineId: null,
+          sourceLineId: item.saleItemId,
+          productId: product.id,
           sku: product.sku,
           description: product.description ?? product.name,
-          quantity: item.quantity,
+          quantity: this.toDecimalWireValue(item.quantity),
           unitCode: product.measurementUnit,
-          unitPrice: this.roundCurrency(item.priceWithoutTax),
-          discountAmount,
-          subtotalAmount,
-          taxAmount,
-          totalAmount,
+          unitPrice: this.toDecimalWireValue(item.priceWithoutTax),
+          discountAmount: this.toDecimalWireValue(discountAmount),
+          subtotalAmount: this.toDecimalWireValue(subtotalAmount),
+          taxAmount: this.toDecimalWireValue(taxAmount),
+          totalAmount: this.toDecimalWireValue(totalAmount),
           taxTreatment: taxAmount > 0 ? "TAXED" : "EXCLUDED",
           standardItemId: product.id,
           standardItemSchemeId: "MANUS",
@@ -782,9 +812,9 @@ export class SaleService {
                     code: item.taxId ?? null,
                     schemeId: item.taxId ?? null,
                     schemeName: tax?.name ?? null,
-                    rate: item.taxRate ?? tax?.rate ?? 0,
-                    taxableBase: subtotalAmount,
-                    amount: taxAmount,
+                    rate: this.toDecimalWireValue(item.taxRate ?? tax?.rate ?? 0),
+                    taxableBase: this.toDecimalWireValue(subtotalAmount),
+                    amount: this.toDecimalWireValue(taxAmount),
                     metadata: {
                       productId: product.id,
                       taxId: item.taxId ?? null,
@@ -795,7 +825,8 @@ export class SaleService {
           metadata: {
             productId: product.id,
             sku: product.sku,
-            saleItemId: item.orderItemId ?? null,
+            saleItemId: item.saleItemId,
+            orderItemId: item.orderItemId ?? null,
             pricingSource: item.pricingSource ?? null,
             pricingSnapshot: item.pricingSnapshot ?? null,
             baseUnitPrice: item.baseUnitPrice ?? null,
@@ -809,40 +840,60 @@ export class SaleService {
     return lines;
   }
 
-  private buildElectronicBillingPayment(
+  private buildElectronicBillingTaxes(lines: SaleLineSnapshot[]): SaleTaxSnapshot[] {
+    return lines.flatMap((line) =>
+      line.taxes.map((tax) => ({
+        ...tax,
+        sourceLineId: line.sourceLineId,
+      }))
+    );
+  }
+
+  private buildElectronicBillingPayments(
     legacyPaymentMethods: Array<{
       paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
       amount: number;
       reference?: string | null;
     }>,
     payments: ReturnType<SaleService["normalizePayments"]>
-  ) {
+  ): SalePaymentSnapshot[] {
     if (payments.length === 0) {
-      return null;
+      return [];
     }
 
-    return {
+    const term = payments.length === 1 ? "IMMEDIATE" : "MIXED";
+
+    return payments.map((payment, index) => ({
       methodCode:
-        legacyPaymentMethods.length === 1
-          ? legacyPaymentMethods[0].paymentMethod
-          : "MIXED",
-      term: payments.length === 1 ? "IMMEDIATE" : "MIXED",
+        legacyPaymentMethods[index]?.paymentMethod ??
+        legacyPaymentMethods[0]?.paymentMethod ??
+        "OTHER",
+      amount: this.toDecimalWireValue(payment.amount),
+      term,
       dueDate: null,
+      reference: payment.referenceNumber ?? payment.notes ?? null,
       metadata: {
-        breakdown: legacyPaymentMethods.map((payment, index) => ({
-          index,
-          paymentMethod: payment.paymentMethod,
-          amount: payment.amount,
-          reference: payment.reference ?? null,
-          paymentMethodId: payments[index]?.paymentMethodId ?? null,
-        })),
+        index,
+        paymentMethodId: payment.paymentMethodId,
+        cashSessionId: payment.cashSessionId ?? null,
+        paymentMethod: legacyPaymentMethods[index]?.paymentMethod ?? null,
+        amount: payment.amount,
+        reference: payment.referenceNumber ?? payment.notes ?? null,
       },
-    };
+    }));
   }
 
-  private async issueElectronicInvoiceForSale(
+  private async enqueueSaleCompletedForElectronicBilling(
     saleContext: SaleContext,
-    saleRow: { id: string; customer_id: string; order_id: string | null; total: string | number },
+    saleRow: {
+      id: string;
+      customer_id: string;
+      order_id: string | null;
+      total: string | number;
+      type: SaleType;
+      status: string;
+      created_at: string | Date;
+    },
     pricedItems: PricedSaleItem[] | null,
     legacyPaymentMethods: Array<{
       paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
@@ -858,50 +909,21 @@ export class SaleService {
   ) {
     const tenantId = saleContext.tenantId;
     if (!tenantId) {
-      throw new BadRequestException("tenantId is required for electronic billing");
+      throw new BadRequestException("tenantId is required for sale billing outbox");
     }
 
-    if (
-      !this.electronicBillingService ||
-      !this.electronicBillingProviderResolver ||
-      !this.tenantElectronicBillingConfigRepository
-    ) {
+    if (!this.integrationOutboxService) {
       return;
     }
 
-    const enabledConfigs =
-      await this.tenantElectronicBillingConfigRepository.findEnabledForTenant(
-        tenantId,
-        client
-      );
-    if (enabledConfigs.length === 0) {
-      return;
-    }
-
-    const defaultConfig = await this.tenantElectronicBillingConfigRepository.findDefaultForTenant(
+    const effectivePricedItems = await this.loadPricedSaleItemsForBilling(
+      saleRow.id,
       tenantId,
       client
     );
-    if (!defaultConfig) {
-      throw new BadRequestException(
-        "electronic billing provider configuration is missing default"
-      );
-    }
-
-    const effectivePricedItems =
-      pricedItems ??
-      (await this.loadPricedSaleItemsForBilling(saleRow.id, tenantId, client));
     const effectiveLegacyPaymentMethods =
       legacyPaymentMethods ??
       (await this.buildLegacySalePaymentMethods(tenantId, payments, client));
-
-    const resolved = await this.electronicBillingProviderResolver.resolve(
-      {
-        tenantId,
-        providerConfigId: defaultConfig.id,
-      },
-      client
-    );
 
     const customer = await this.buildElectronicBillingCustomerSnapshot(
       tenantId,
@@ -911,10 +933,6 @@ export class SaleService {
     const lines = await this.buildElectronicBillingLines(
       tenantId,
       effectivePricedItems
-    );
-    const payment = this.buildElectronicBillingPayment(
-      effectiveLegacyPaymentMethods,
-      payments
     );
     const totals = effectivePricedItems.reduce(
       (acc, item) => {
@@ -931,29 +949,47 @@ export class SaleService {
         totalAmount: 0,
       }
     );
+    const lineSnapshots = lines;
+    const taxSnapshots = this.buildElectronicBillingTaxes(lineSnapshots);
+    const paymentSnapshots = this.buildElectronicBillingPayments(
+      effectiveLegacyPaymentMethods,
+      payments
+    );
+    const occurredAt =
+      saleRow.created_at instanceof Date
+        ? saleRow.created_at.toISOString()
+        : new Date(saleRow.created_at).toISOString();
 
-    const command = buildSaleElectronicInvoiceCommand({
-      context: resolved.context,
-      documentId: saleRow.id,
-      saleId: saleRow.id,
-      externalReference: buildDeterministicSaleExternalReference(
-        tenantId,
-        saleRow.id
-      ),
-      issueDate: new Date(),
-      issueTime: new Date().toISOString().substring(11, 19),
-      customer,
-      payment,
-      lines,
-      totals: {
-        subtotalAmount: this.roundCurrency(totals.subtotalAmount),
-        discountAmount: this.roundCurrency(totals.discountAmount),
-        taxAmount: this.roundCurrency(totals.taxAmount),
-        totalAmount: this.roundCurrency(
-          totals.totalAmount || this.toNumber(saleRow.total)
-        ),
+    const event: BuildSaleCompletedForElectronicBillingEventInput = {
+      eventId: buildSaleCompletedForElectronicBillingEventId(tenantId, saleRow.id),
+      tenantId,
+      correlationId: saleContext.sessionId ?? saleRow.id,
+      occurredAt,
+      sale: {
+        saleId: saleRow.id,
+        saleNumber: null,
+        saleType: saleRow.type,
+        saleStatus: saleRow.status,
+        branchId: saleContext.branchId ?? null,
+        terminalId: saleContext.terminalId ?? null,
+        posSessionId: saleContext.posSessionId ?? null,
+        orderId: saleRow.order_id ?? billingSource.orderId ?? null,
+        completedAt: occurredAt,
         currencyCode: "COP",
       },
+      customer,
+      lines: lineSnapshots,
+      taxes: taxSnapshots,
+      payments: paymentSnapshots,
+      totals: {
+        subtotalAmount: this.toDecimalWireValue(totals.subtotalAmount),
+        discountAmount: this.toDecimalWireValue(totals.discountAmount),
+        taxAmount: this.toDecimalWireValue(totals.taxAmount),
+        totalAmount: this.toDecimalWireValue(
+          totals.totalAmount || this.toNumber(saleRow.total)
+        ),
+      },
+      currencyCode: "COP",
       metadata: {
         saleId: saleRow.id,
         customerId: saleRow.customer_id,
@@ -962,15 +998,12 @@ export class SaleService {
         terminalId: saleContext.terminalId ?? null,
         posSessionId: saleContext.posSessionId ?? null,
         orderId: saleRow.order_id ?? billingSource.orderId ?? null,
-        paymentMethods: legacyPaymentMethods,
+        paymentMethods: effectiveLegacyPaymentMethods,
         paymentCount: payments.length,
       },
-    });
+    };
 
-    await this.electronicBillingService.createInvoiceDocument(command, client, {
-      type: "SALE",
-      id: saleRow.id,
-    });
+    await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
   }
 
   private async resolveAllowedBranchIds(
@@ -1809,7 +1842,7 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      await this.issueElectronicInvoiceForSale(
+      await this.enqueueSaleCompletedForElectronicBilling(
         saleContext,
         saleRow,
         pricedItems as PricedSaleItem[],
@@ -1885,7 +1918,7 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      await this.issueElectronicInvoiceForSale(
+      await this.enqueueSaleCompletedForElectronicBilling(
         saleContext,
         saleRow,
         null,

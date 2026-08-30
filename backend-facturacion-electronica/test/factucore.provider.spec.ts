@@ -15,7 +15,6 @@ import { FakeElectronicBillingProvider } from "../src/modules/electronic-billing
 import type {
   FactuCoreBinaryResponse,
   FactuCoreCredentialResolver,
-  FactuCoreCredentials,
   FactuCoreDocumentResponse,
   FactuCoreRuntimeContext,
   FactuCoreStatusResponse,
@@ -271,8 +270,11 @@ const buildResolver = () => {
     resolve: async (context) => {
       calls.push(context);
       return {
-        clientKey: `key-${context.tenantId}`,
-        clientSecret: `secret-${context.tenantId}`,
+        reference: `env:FACTUCORE_${context.tenantId}`,
+        values: {
+          clientKey: `key-${context.tenantId}`,
+          clientSecret: `secret-${context.tenantId}`,
+        },
       };
     },
   };
@@ -407,6 +409,27 @@ test("tenant credentials do not leak across interleaved calls", async () => {
   assert.equal(calls[1].tenantId, "tenant-b");
   assert.equal(client.calls[0].context.credentials.clientKey, "key-tenant-a");
   assert.equal(client.calls[4].context.credentials.clientKey, "key-tenant-b");
+});
+
+test("missing credential payload blocks FactuCore HTTP", async () => {
+  const client = new RecordingFactuCoreClient();
+  const provider = new FactuCoreProvider(
+    client as never,
+    {
+      resolve: async () => null,
+    } as never,
+    new FactuCoreMapper(),
+  );
+
+  await assert.rejects(
+    () => provider.issueInvoice(makeInvoiceCommand()),
+    (error: unknown) => {
+      assert.equal(error instanceof Error, true);
+      assert.match((error as Error).message, /credentials/i);
+      return true;
+    },
+  );
+  assert.equal(client.calls.length, 0);
 });
 
 test("no FactuCore DTO leaks outside the adapter folder by construction", () => {

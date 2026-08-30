@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Inject,
   Headers,
   ForbiddenException,
   Post,
@@ -21,6 +22,7 @@ const normalizeBearer = (value: string | undefined) => {
 @Controller("internal/electronic-billing")
 export class ElectronicBillingSaleEventController {
   constructor(
+    @Inject(SaleCompletedForElectronicBillingConsumerService)
     private readonly consumer: SaleCompletedForElectronicBillingConsumerService,
   ) {}
 
@@ -29,6 +31,15 @@ export class ElectronicBillingSaleEventController {
     @Headers("authorization") authorization: string | undefined,
     @Body() body: SaleCompletedForElectronicBillingEventEnvelope,
   ): Promise<ElectronicBillingConsumptionResult> {
+    console.debug("[ElectronicBillingSaleEventController] receive", {
+      eventId: body?.eventId,
+      eventType: body?.eventType,
+      schemaVersion: body?.schemaVersion,
+      tenantId: body?.tenantId,
+      sourceType: body?.source?.type,
+      sourceId: body?.source?.id,
+      payloadKeys: Object.keys(body?.payload ?? {}),
+    });
     this.assertInternalToken(authorization);
     return this.consumer.consume(body);
   }

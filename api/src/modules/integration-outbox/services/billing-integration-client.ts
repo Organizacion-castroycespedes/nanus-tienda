@@ -66,6 +66,15 @@ export class BillingIntegrationClient {
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
     try {
+      console.debug("[BillingIntegrationClient] dispatch", {
+        eventId: event.eventId,
+        eventType: event.eventType,
+        schemaVersion: event.schemaVersion,
+        tenantId: event.tenantId,
+        sourceType: event.source?.type,
+        sourceId: event.source?.id,
+        payloadKeys: Object.keys(event.payload ?? {}),
+      });
       const response = await fetch(
         new URL(SALE_COMPLETED_ENDPOINT, withTrailingSlash(this.config.billingBackendBaseUrl)),
         {

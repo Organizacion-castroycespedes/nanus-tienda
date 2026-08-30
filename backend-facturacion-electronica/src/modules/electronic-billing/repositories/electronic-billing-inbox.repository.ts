@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../database/database.service";
 import type {
@@ -19,7 +19,10 @@ const toDateValue = (value: Date | string | null | undefined) => {
 
 @Injectable()
 export class ElectronicBillingInboxRepository {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService)
+    private readonly db: DatabaseService,
+  ) {}
 
   async findByEventId(eventId: string, client?: PoolClient) {
     return this.queryOne<ElectronicBillingInboxEventRecord>(

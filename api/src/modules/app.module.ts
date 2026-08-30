@@ -13,7 +13,6 @@ import { PosUserSessionsModule } from "./pos-user-sessions/pos-user-sessions.mod
 import { FinanceModule } from "./finance/finance.module";
 import { SystemModule } from "./system/system.module";
 import { ElectronicInvoicingModule } from "./electronic-invoicing/electronic-invoicing.module";
-import { ElectronicBillingModule } from "./electronic-billing/electronic-billing.module";
 import { IntegrationOutboxModule } from "./integration-outbox/integration-outbox.module";
 import { PricingModule } from "./pricing/pricing.module";
 import { PosTerminalsModule } from "./pos-terminals/pos-terminals.module";
@@ -35,7 +34,6 @@ import { DeliveriesModule } from "./deliveries/deliveries.module";
     FinanceModule,
     SystemModule,
     ElectronicInvoicingModule,
-    ElectronicBillingModule,
     IntegrationOutboxModule,
     PricingModule,
     PosTerminalsModule,

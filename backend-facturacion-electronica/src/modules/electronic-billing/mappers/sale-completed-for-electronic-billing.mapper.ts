@@ -22,14 +22,84 @@ const toDecimalWireValue = (value: DecimalWireValue | number | null | undefined)
   return typeof value === "number" ? String(value) : value;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
 export const buildDeterministicSaleExternalReference = (
   tenantId: string,
   saleId: string,
 ) => `SALE-${tenantId}-${saleId}`;
 
 export const buildElectronicBillingCustomer = (
-  customer: ElectronicCustomer,
-): ElectronicCustomer => customer;
+  customer: ElectronicCustomer | Record<string, unknown>,
+): ElectronicCustomer => {
+  if (isRecord(customer) && isRecord(customer.identification)) {
+    return customer as ElectronicCustomer;
+  }
+
+  const flattened = (isRecord(customer) ? customer : {}) as Record<string, unknown>;
+  const identificationNumber =
+    typeof flattened.identificationNumber === "string" ? flattened.identificationNumber : "";
+
+  return {
+    customerType:
+      flattened.customerType === "PERSON" ||
+      flattened.customerType === "COMPANY" ||
+      flattened.customerType === "FOREIGN" ||
+      flattened.customerType === "OTHER"
+        ? (flattened.customerType as ElectronicCustomer["customerType"])
+        : undefined,
+    identification: {
+      typeCode:
+        typeof flattened.identificationTypeCode === "string"
+          ? flattened.identificationTypeCode
+          : typeof flattened.identificationType === "string"
+            ? flattened.identificationType
+            : null,
+      number: identificationNumber,
+      verificationDigit:
+        typeof flattened.verificationDigit === "string" ||
+        typeof flattened.verificationDigit === "number"
+          ? flattened.verificationDigit
+          : null,
+    },
+    legalName: typeof flattened.legalName === "string" ? flattened.legalName : null,
+    firstName: null,
+    lastName: null,
+    email: typeof flattened.email === "string" ? flattened.email : null,
+    phone: typeof flattened.phone === "string" ? flattened.phone : null,
+    address:
+      typeof flattened.addressLine1 === "string"
+        ? flattened.addressLine1
+        : typeof flattened.address === "string"
+          ? flattened.address
+          : null,
+    municipalityCode:
+      typeof flattened.municipalityCode === "string" ? flattened.municipalityCode : null,
+    taxProfile: {
+      identificationTypeCode:
+        typeof flattened.identificationTypeCode === "string"
+          ? flattened.identificationTypeCode
+          : typeof flattened.identificationType === "string"
+            ? flattened.identificationType
+            : null,
+      fiscalResponsibilityCodes: Array.isArray(flattened.fiscalResponsibilityCodes)
+        ? (flattened.fiscalResponsibilityCodes as unknown[]).filter(
+            (code): code is string => typeof code === "string" && code.trim().length > 0,
+          )
+        : null,
+      taxScheme:
+        typeof flattened.taxSchemeId === "string"
+          ? flattened.taxSchemeId
+          : typeof flattened.taxSchemeName === "string"
+            ? flattened.taxSchemeName
+            : null,
+      liabilityTypeCode:
+        typeof flattened.taxLevelCode === "string" ? flattened.taxLevelCode : null,
+    },
+    metadata: isRecord(flattened.metadata) ? flattened.metadata : {},
+  };
+};
 
 export const buildElectronicBillingPayment = (
   payments: SalePaymentSnapshot[],

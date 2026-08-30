@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service";
 import { ElectronicBillingProviderError } from "../contracts/electronic-billing-errors";
@@ -191,12 +191,19 @@ export class ElectronicBillingProcessingService {
   );
 
   constructor(
+    @Inject(DatabaseService)
     private readonly db: DatabaseService,
+    @Inject(ElectronicDocumentRepository)
     private readonly documentRepository: ElectronicDocumentRepository,
+    @Inject(ElectronicDocumentLineRepository)
     private readonly lineRepository: ElectronicDocumentLineRepository,
+    @Inject(ElectronicDocumentTaxRepository)
     private readonly taxRepository: ElectronicDocumentTaxRepository,
+    @Inject(ElectronicDocumentReferenceRepository)
     private readonly referenceRepository: ElectronicDocumentReferenceRepository,
+    @Inject(ElectronicDocumentEventRepository)
     private readonly eventRepository: ElectronicDocumentEventRepository,
+    @Inject(ElectronicBillingProviderResolver)
     private readonly providerResolver: ElectronicBillingProviderResolver,
   ) {}
 

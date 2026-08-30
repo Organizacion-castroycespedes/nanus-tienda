@@ -26,7 +26,9 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
   constructor(
     @Inject(INTEGRATION_OUTBOX_CONFIG)
     private readonly config: IntegrationOutboxConfig,
+    @Inject(IntegrationOutboxService)
     private readonly outboxService: IntegrationOutboxService,
+    @Inject(BillingIntegrationClient)
     private readonly billingClient: BillingIntegrationClient,
   ) {}
 

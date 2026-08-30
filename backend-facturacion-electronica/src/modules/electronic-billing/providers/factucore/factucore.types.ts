@@ -1,20 +1,20 @@
 import type {
-  ElectronicBillingProviderContext,
-} from "../../contracts/electronic-billing-commands";
+  ElectronicBillingCredentialContext,
+  ElectronicBillingCredentialResolver,
+  ElectronicBillingResolvedCredential,
+} from "../../credentials";
 import type { ElectronicDocumentStatus } from "../../domain/electronic-billing.types";
 
-export const FACTUCORE_CREDENTIAL_RESOLVER = Symbol("FACTUCORE_CREDENTIAL_RESOLVER");
+export { ELECTRONIC_BILLING_CREDENTIAL_RESOLVER as FACTUCORE_CREDENTIAL_RESOLVER } from "../../credentials";
 
 export type FactuCoreCredentials = {
   clientKey: string;
   clientSecret: string;
 };
 
-export interface FactuCoreCredentialResolver {
-  resolve(
-    context: ElectronicBillingProviderContext,
-  ): Promise<FactuCoreCredentials | null> | FactuCoreCredentials | null;
-}
+export type FactuCoreCredentialContext = ElectronicBillingCredentialContext;
+export type FactuCoreResolvedCredential = ElectronicBillingResolvedCredential;
+export type FactuCoreCredentialResolver = ElectronicBillingCredentialResolver;
 
 export type FactuCoreIdentification = {
   typeCode: string;

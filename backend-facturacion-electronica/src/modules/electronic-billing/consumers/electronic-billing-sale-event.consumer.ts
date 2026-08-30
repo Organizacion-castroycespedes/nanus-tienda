@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service";
 import {
@@ -72,9 +72,13 @@ const isElectronicBillingProviderDisabledError = (
 @Injectable()
 export class SaleCompletedForElectronicBillingConsumerService {
   constructor(
+    @Inject(DatabaseService)
     private readonly db: DatabaseService,
+    @Inject(ElectronicBillingInboxRepository)
     private readonly inboxRepository: ElectronicBillingInboxRepository,
+    @Inject(ElectronicBillingService)
     private readonly billingService: ElectronicBillingService,
+    @Inject(ElectronicBillingProviderResolver)
     private readonly providerResolver: ElectronicBillingProviderResolver,
   ) {}
 

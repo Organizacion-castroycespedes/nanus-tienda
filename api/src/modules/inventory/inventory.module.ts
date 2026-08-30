@@ -2,8 +2,8 @@ import { Module } from "@nestjs/common";
 import { AccessControlModule } from "../../common/access-control.module";
 import { CommonServicesModule } from "../../common/services/common-services.module";
 import { DatabaseModule } from "../../common/db/database.module";
-import { ElectronicBillingModule } from "../electronic-billing/electronic-billing.module";
 import { ElectronicInvoicingModule } from "../electronic-invoicing/electronic-invoicing.module";
+import { IntegrationOutboxModule } from "../integration-outbox/integration-outbox.module";
 import { DeliveriesModule } from "../deliveries/deliveries.module";
 import { FinanceModule } from "../finance/finance.module";
 import { FinanceAccessRepository } from "../finance/common/repositories/finance-access.repository";
@@ -72,9 +72,9 @@ import { UnitRepository } from "./repositories/unit.repository";
     AccessControlModule,
     CommonServicesModule,
     DeliveriesModule,
-    ElectronicBillingModule,
     ElectronicInvoicingModule,
     FinanceModule,
+    IntegrationOutboxModule,
     PricingModule,
   ],
   controllers: [

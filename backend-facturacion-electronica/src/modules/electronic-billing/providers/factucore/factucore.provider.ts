@@ -15,6 +15,14 @@ import type {
 import type { ElectronicBillingProvider } from "../../contracts/electronic-billing-provider";
 import { assertElectronicBillingProviderCapability } from "../../contracts/electronic-billing-provider";
 import {
+  ElectronicBillingCredentialResolutionError,
+  ELECTRONIC_BILLING_CREDENTIAL_RESOLVER,
+} from "../../credentials";
+import type {
+  ElectronicBillingCredentialResolver,
+  ElectronicBillingResolvedCredential,
+} from "../../credentials";
+import {
   FactuCoreConfigurationError,
   FactuCoreError,
   FactuCoreMissingCredentialsError,
@@ -23,8 +31,6 @@ import { FactuCoreClient } from "./factucore.client";
 import { FactuCoreMapper } from "./factucore.mapper";
 import {
   FACTUCORE_DEFAULT_TIMEOUT_MS,
-  FACTUCORE_CREDENTIAL_RESOLVER,
-  type FactuCoreCredentialResolver,
   type FactuCoreCredentials,
   type FactuCoreDocumentResponse,
   type FactuCoreRuntimeContext,
@@ -78,8 +84,8 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
 
   constructor(
     private readonly client: FactuCoreClient,
-    @Inject(FACTUCORE_CREDENTIAL_RESOLVER)
-    private readonly credentialResolver: FactuCoreCredentialResolver,
+    @Inject(ELECTRONIC_BILLING_CREDENTIAL_RESOLVER)
+    private readonly credentialResolver: ElectronicBillingCredentialResolver,
     private readonly mapper: FactuCoreMapper = new FactuCoreMapper(),
   ) {}
 
@@ -183,12 +189,43 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
   }
 
   private async resolveCredentials(operation: string, context: ElectronicBillingProviderContext): Promise<FactuCoreCredentials> {
-    const credentials = await this.credentialResolver.resolve(context);
-    if (!credentials || !credentials.clientKey || !credentials.clientSecret) {
+    let credentials: ElectronicBillingResolvedCredential | null;
+
+    try {
+      credentials = await this.credentialResolver.resolve({
+        tenantId: context.tenantId,
+        providerId: context.providerId,
+        providerCode: this.code,
+        providerConfigId: context.providerConfigId,
+        credentialReference: context.credentialReference ?? null,
+        settings: context.settings ?? null,
+      });
+    } catch (error) {
+      if (error instanceof ElectronicBillingCredentialResolutionError) {
+        throw new FactuCoreConfigurationError(operation, error.message);
+      }
+
+      throw error;
+    }
+
+    if (!credentials) {
       throw new FactuCoreMissingCredentialsError(operation);
     }
 
-    return credentials;
+    const clientKey = typeof credentials.values.clientKey === "string" ? credentials.values.clientKey.trim() : "";
+    const clientSecret = typeof credentials.values.clientSecret === "string" ? credentials.values.clientSecret.trim() : "";
+
+    if (!clientKey || !clientSecret) {
+      throw new FactuCoreConfigurationError(
+        operation,
+        "FactuCore credential payload must include clientKey and clientSecret",
+      );
+    }
+
+    return {
+      clientKey,
+      clientSecret,
+    };
   }
 
   private resolveProviderDocumentId(response: FactuCoreDocumentSnapshot) {
@@ -218,12 +255,6 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     }
 
     throw new FactuCoreConfigurationError("resolve_provider_document_id", "FactuCore provider document id is required for this operation");
-  }
-}
-
-export class NoopFactuCoreCredentialResolver implements FactuCoreCredentialResolver {
-  resolve(_context: ElectronicBillingProviderContext): FactuCoreCredentials | null {
-    throw new FactuCoreMissingCredentialsError("factucore_runtime");
   }
 }
 

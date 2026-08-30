@@ -54,6 +54,11 @@ export class DatabaseService
     }
 
     this.pool = this.poolFactory(this.config);
+    if ("on" in this.pool) {
+      (this.pool as Pool).on("error", (error) => {
+        console.error("PostgreSQL pool error:", error);
+      });
+    }
     return this.pool;
   }
 

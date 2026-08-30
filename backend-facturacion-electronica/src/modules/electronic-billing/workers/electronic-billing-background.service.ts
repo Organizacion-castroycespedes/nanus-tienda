@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import {
   ElectronicDocumentAlreadyProcessingError,
   ElectronicDocumentNotProcessableError,
@@ -68,7 +68,9 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
   private stopping = false;
 
   constructor(
+    @Inject(ElectronicDocumentRepository)
     private readonly documentRepository: ElectronicDocumentRepository,
+    @Inject(ElectronicBillingProcessingService)
     private readonly processingService: ElectronicBillingProcessingService,
   ) {}
 

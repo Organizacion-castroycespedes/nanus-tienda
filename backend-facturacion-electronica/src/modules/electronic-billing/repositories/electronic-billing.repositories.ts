@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../database/database.service";
 import {
@@ -58,7 +58,7 @@ const buildBulkValues = (rows: unknown[][]) => {
 };
 
 abstract class ElectronicBillingRepositoryBase {
-  constructor(protected readonly db: DatabaseService) {}
+  constructor(@Inject(DatabaseService) protected readonly db: DatabaseService) {}
 
   protected async query<T extends QueryResultRow>(
     text: string,
@@ -83,7 +83,7 @@ abstract class ElectronicBillingRepositoryBase {
 
 @Injectable()
 export class ElectronicBillingProviderRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -184,7 +184,7 @@ export class ElectronicBillingProviderRepository extends ElectronicBillingReposi
 
 @Injectable()
 export class TenantElectronicBillingConfigRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -392,7 +392,7 @@ type BackgroundSyncClaimOptions = {
 
 @Injectable()
 export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -1077,7 +1077,7 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
 
 @Injectable()
 export class ElectronicDocumentLineRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -1276,7 +1276,7 @@ export class ElectronicDocumentLineRepository extends ElectronicBillingRepositor
 
 @Injectable()
 export class ElectronicDocumentTaxRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -1402,7 +1402,7 @@ export class ElectronicDocumentTaxRepository extends ElectronicBillingRepository
 
 @Injectable()
 export class ElectronicDocumentReferenceRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -1513,7 +1513,7 @@ export class ElectronicDocumentReferenceRepository extends ElectronicBillingRepo
 
 @Injectable()
 export class ElectronicDocumentEventRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -1598,7 +1598,7 @@ export class ElectronicDocumentEventRepository extends ElectronicBillingReposito
 
 @Injectable()
 export class ElectronicDocumentAttachmentRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 
@@ -1759,7 +1759,7 @@ export class ElectronicDocumentAttachmentRepository extends ElectronicBillingRep
 
 @Injectable()
 export class ElectronicDocumentDeliveryRepository extends ElectronicBillingRepositoryBase {
-  constructor(db: DatabaseService) {
+  constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
   }
 

@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
+import { ELECTRONIC_BILLING_CREDENTIAL_RESOLVER, EnvironmentElectronicBillingCredentialResolver } from "./credentials";
 import {
   ElectronicBillingSaleEventController,
   SaleCompletedForElectronicBillingConsumerService,
@@ -7,10 +8,8 @@ import {
 import { ElectronicBillingProviderRegistry } from "./providers/electronic-billing-provider-registry";
 import { ElectronicBillingProviderResolver } from "./providers/electronic-billing-provider-resolver";
 import {
-  ELECTRONIC_BILLING_CREDENTIAL_RESOLVER,
   ElectronicBillingClient,
   ElectronicBillingMapper,
-  ElectronicBillingNoopCredentialResolver,
   ElectronicBillingProviderAdapter,
   ElectronicBillingProviderBootstrap,
 } from "./providers/f\u0061ctucore";
@@ -41,7 +40,7 @@ import { ElectronicBillingBackgroundService } from "./workers";
     ElectronicBillingProviderBootstrap,
     {
       provide: ELECTRONIC_BILLING_CREDENTIAL_RESOLVER,
-      useClass: ElectronicBillingNoopCredentialResolver,
+      useClass: EnvironmentElectronicBillingCredentialResolver,
     },
     SaleCompletedForElectronicBillingConsumerService,
     ElectronicBillingService,

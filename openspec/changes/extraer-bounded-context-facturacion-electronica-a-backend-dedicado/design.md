@@ -171,6 +171,46 @@ Cutover order:
 
 This avoids dual processing.
 
+## Credential resolution
+
+Selected secret backend for the initial extraction:
+
+```text
+environment-based secret resolution
+```
+
+Reason:
+
+- no AWS Secrets Manager, Vault, SSM, or other managed secret backend was found in the repo
+- the platform already uses `process.env` for runtime config
+- the billing backend can keep `credential_reference` in the database while secret material stays in runtime env
+
+Credential flow:
+
+```text
+tenant_electronic_billing_configs.credential_reference
+  -> env:<REFERENCE>
+  -> env variable JSON payload
+  -> provider-neutral resolved credential
+  -> FactuCore-specific validation
+  -> runtime request headers
+```
+
+Rules:
+
+- the database stores only `credential_reference`
+- secret values are not stored in DB rows, events, inbox, outbox, logs, or metadata
+- the credential resolver is owned by `backend-facturacion-electronica`
+- `FactuCoreClient` does not read `process.env`
+- resolved credentials are operation-scoped and never cached in shared mutable singleton state
+- provider-specific validation stays inside the FactuCore adapter
+
+Operational limit:
+
+- the env-backed strategy is acceptable for the first controlled rollout
+- it is not the long-term ideal for large tenant-scale secret rotation
+- later swaps can move the same resolver contract to a managed secret backend without changing the billing domain contract
+
 ## Backend foundation
 
 `backend-facturacion-electronica/` should get:

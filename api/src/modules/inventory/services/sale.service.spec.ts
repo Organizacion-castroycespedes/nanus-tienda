@@ -3,7 +3,7 @@ import test from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { SaleService } from "./sale.service";
-import { buildDeterministicSaleExternalReference } from "../mappers/sale-electronic-invoice.mapper";
+import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
 import type { CreateSaleInput } from "../repositories/sale.repository";
 import type {
   CalculateLinePriceInput,
@@ -165,6 +165,7 @@ class FakeCreateSaleClient {
       return {
         rows: [
           {
+            id: saleItemRow.id,
             product_id: ids.product,
             quantity: 1,
             price: 3000,
@@ -405,37 +406,7 @@ const buildService = (scenario: Scenario = {}) => {
 };
 
 type SaleBillingHarness = {
-  configRepository: {
-    findEnabledForTenant: (tenantId: string, client: PoolClient) => Promise<Array<{ id: string }>>;
-    findDefaultForTenant: (tenantId: string, client: PoolClient) => Promise<{ id: string } | null>;
-  };
-  providerResolver: {
-    resolve: (command: { tenantId: string; providerConfigId: string }, client?: PoolClient) => Promise<{
-      context: {
-        tenantId: string;
-        providerId: string;
-        providerConfigId: string;
-        environment: "TEST" | "HABILITATION" | "PRODUCTION";
-        baseUrl: string | null;
-        credentialReference: string | null;
-        settings: Record<string, unknown>;
-      };
-    }>;
-  };
-  billingService: {
-    createInvoiceDocument: (
-      command: {
-        context: { tenantId: string; providerId: string; providerConfigId: string };
-        documentId: string;
-        externalReference: string;
-        customer: { identification: { number: string } };
-        lines: Array<{ description: string }>;
-        totals: { totalAmount: number };
-      },
-      client?: PoolClient,
-      source?: { type?: string; id?: string | null }
-    ) => Promise<void>;
-  };
+  outboxService?: unknown;
   customerRepository: {
     findById: (id: string, tenantId: string, client?: PoolClient) => Promise<{
       id: string;
@@ -499,7 +470,7 @@ type SaleBillingHarness = {
       personType: "NATURAL" | "JURIDICA" | "UNKNOWN" | null;
       taxResponsibilities: string[];
       taxRegime: string | null;
-    } | null>;
+      } | null>;
   };
 };
 
@@ -512,6 +483,7 @@ const buildCreateSaleService = (
   const pricingService = new FakePricingService([...previews]);
   const createdPayments: unknown[] = [];
   const auditEvents: unknown[] = [];
+  const outboxEvents: Array<unknown> = [];
 
   const service = new SaleService(
     {
@@ -546,9 +518,13 @@ const buildCreateSaleService = (
       },
     } as never,
     pricingService as never,
-    billing?.billingService as never,
-    billing?.providerResolver as never,
-    billing?.configRepository as never,
+    billing?.outboxService
+      ? {
+          enqueueSaleCompletedEvent: async (input: unknown) => {
+            outboxEvents.push(input);
+          },
+        }
+      : undefined,
     billing?.customerRepository as never,
     billing?.productRepository as never,
     billing?.taxRepository as never,
@@ -565,6 +541,7 @@ const buildCreateSaleService = (
     pricingService,
     createdPayments,
     auditEvents,
+    outboxEvents,
   };
 };
 
@@ -647,45 +624,9 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
   );
 });
 
-test("SaleService.createSale creates an electronic invoice intent when billing is enabled", async () => {
-  const invoiceCalls: Array<{
-    command: {
-      context: { tenantId: string; providerId: string; providerConfigId: string };
-      externalReference: string;
-      customer: { identification: { number: string } };
-      lines: Array<{ description: string; sku: string | null }>;
-      payment: { methodCode: string } | null;
-      totals: { totalAmount: number; currencyCode: string };
-    };
-    source: { type?: string; id?: string | null } | undefined;
-  }> = [];
-
+test("SaleService.createSale creates a sale billing outbox event when billing is enabled", async () => {
   const billing = {
-    configRepository: {
-      findEnabledForTenant: async () => [{ id: "config-1" }],
-      findDefaultForTenant: async () => ({ id: "config-1" }),
-    },
-    providerResolver: {
-      resolve: async () => ({
-        context: {
-          tenantId: ids.tenant,
-          providerId: ids.provider,
-          providerConfigId: "config-1",
-          environment: "TEST" as const,
-          baseUrl: null,
-          credentialReference: null,
-          settings: {},
-        },
-      }),
-    },
-    billingService: {
-      createInvoiceDocument: async (command: any, _client?: PoolClient, source?: { type?: string; id?: string | null }) => {
-        invoiceCalls.push({
-          command,
-          source,
-        });
-      },
-    },
+    outboxService: {},
     customerRepository: {
       findById: async () => ({
         id: ids.customer,
@@ -737,22 +678,50 @@ test("SaleService.createSale creates an electronic invoice intent when billing i
     },
   };
 
-  const { service } = buildCreateSaleService([makePreview()], billing);
+  const { service, outboxEvents } = buildCreateSaleService([makePreview()], billing);
 
   await service.createSale(createSalePayload(), posContext);
 
-  assert.equal(invoiceCalls.length, 1);
+  assert.equal(outboxEvents.length, 1);
+  const event = outboxEvents[0] as {
+    eventId: string;
+    tenantId: string;
+    correlationId: string;
+    sale: { saleId: string; saleType?: string | null; saleStatus?: string | null };
+    customer: { identificationNumber?: string | null; legalName?: string | null };
+    lines: Array<{ sourceLineId: string; description: string; sku?: string | null }>;
+    taxes: Array<{ sourceLineId?: string | null }>;
+    payments: Array<{ methodCode: string; amount?: string | null }>;
+    totals: { totalAmount: string };
+    currencyCode: string;
+  };
+
   assert.equal(
-    invoiceCalls[0].command.externalReference,
-    buildDeterministicSaleExternalReference(ids.tenant, ids.sale)
+    event.eventId,
+    buildSaleCompletedForElectronicBillingEventId(ids.tenant, ids.sale)
   );
-  assert.equal(invoiceCalls[0].source?.type, "SALE");
-  assert.equal(invoiceCalls[0].source?.id, ids.sale);
-  assert.equal(invoiceCalls[0].command.context.providerConfigId, "config-1");
-  assert.equal(invoiceCalls[0].command.payment?.methodCode, "CASH");
-  assert.equal(invoiceCalls[0].command.lines[0].description, "Producto factura");
-  assert.equal(invoiceCalls[0].command.lines[0].sku, "SKU-1");
-  assert.equal(invoiceCalls[0].command.totals.currencyCode, "COP");
+  assert.equal(event.tenantId, ids.tenant);
+  assert.equal(event.correlationId, ids.sale);
+  assert.equal(event.sale.saleId, ids.sale);
+  assert.equal(event.sale.saleType, "CASH");
+  assert.equal(event.sale.saleStatus, "CONFIRMED");
+  assert.equal(event.customer.identificationNumber, "900123456");
+  assert.equal(event.lines[0].description, "Producto factura");
+  assert.equal(event.lines[0].sku, "SKU-1");
+  assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
+  assert.equal(event.taxes.length, 0);
+  assert.equal(event.payments[0].methodCode, "CASH");
+  assert.equal(event.payments[0].amount, "360.00");
+  assert.equal(event.totals.totalAmount, "3000.00");
+  assert.equal(event.currencyCode, "COP");
+});
+
+test("SaleService.createSale skips sale billing outbox event when outbox service is unavailable", async () => {
+  const { service, outboxEvents } = buildCreateSaleService([makePreview()]);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(outboxEvents.length, 0);
 });
 
 test("SaleService.createSaleFromOrderDelivery links existing order delivery to sale", async () => {
@@ -806,41 +775,8 @@ test("SaleService.createSaleFromOrderDelivery links existing order delivery to s
 });
 
 test("SaleService.createSaleFromOrderDelivery creates an electronic invoice intent when billing is enabled", async () => {
-  const invoiceCalls: Array<{
-    command: { externalReference: string; totals: { totalAmount: number } };
-    source: { type?: string; id?: string | null } | undefined;
-  }> = [];
-
   const billing = {
-    configRepository: {
-      findEnabledForTenant: async () => [{ id: "config-1" }],
-      findDefaultForTenant: async () => ({ id: "config-1" }),
-    },
-    providerResolver: {
-      resolve: async () => ({
-        context: {
-          tenantId: ids.tenant,
-          providerId: ids.provider,
-          providerConfigId: "config-1",
-          environment: "TEST" as const,
-          baseUrl: null,
-          credentialReference: null,
-          settings: {},
-        },
-      }),
-    },
-    billingService: {
-      createInvoiceDocument: async (
-        command: any,
-        _client?: PoolClient,
-        source?: { type?: string; id?: string | null }
-      ) => {
-        invoiceCalls.push({
-          command,
-          source,
-        });
-      },
-    },
+    outboxService: {},
     customerRepository: {
       findById: async () => ({
         id: ids.customer,
@@ -892,7 +828,7 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
     },
   };
 
-  const { service } = buildCreateSaleService([], billing);
+  const { service, outboxEvents } = buildCreateSaleService([], billing);
 
   const result = await service.createSaleFromOrderDelivery(
     {
@@ -903,14 +839,20 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
     posContext
   );
 
-  assert.equal(invoiceCalls.length, 1);
+  assert.equal(outboxEvents.length, 1);
+  const event = outboxEvents[0] as {
+    eventId: string;
+    sale: { saleId: string };
+    totals: { totalAmount: string };
+    currencyCode: string;
+  };
   assert.equal(
-    invoiceCalls[0].command.externalReference,
-    buildDeterministicSaleExternalReference(ids.tenant, ids.sale)
+    event.eventId,
+    buildSaleCompletedForElectronicBillingEventId(ids.tenant, ids.sale)
   );
-  assert.equal(invoiceCalls[0].source?.type, "SALE");
-  assert.equal(invoiceCalls[0].source?.id, ids.sale);
-  assert.equal(invoiceCalls[0].command.totals.totalAmount, 3000);
+  assert.equal(event.sale.saleId, ids.sale);
+  assert.equal(event.totals.totalAmount, "3000.00");
+  assert.equal(event.currencyCode, "COP");
   assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
 });
 

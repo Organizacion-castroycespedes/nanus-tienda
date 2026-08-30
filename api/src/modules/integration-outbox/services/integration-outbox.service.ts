@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { BuildSaleCompletedForElectronicBillingEventInput, SaleCompletedForElectronicBillingEventEnvelope } from "../contracts/integration-outbox-events";
 import { buildSaleCompletedForElectronicBillingEvent } from "../mappers/sale-completed-for-electronic-billing.builder";
@@ -23,7 +24,7 @@ export class IntegrationOutboxService {
   ) {
     return this.repository.enqueue(
       {
-        id: event.eventId,
+        id: randomUUID(),
         event,
       },
       client,

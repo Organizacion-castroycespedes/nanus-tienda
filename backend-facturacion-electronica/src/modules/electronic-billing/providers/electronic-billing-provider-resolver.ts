@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { ElectronicBillingProviderDisabledError } from "../contracts/electronic-billing-errors";
 import type {
@@ -22,8 +22,11 @@ export type ResolvedElectronicBillingProvider = {
 @Injectable()
 export class ElectronicBillingProviderResolver {
   constructor(
+    @Inject(ElectronicBillingProviderRegistry)
     private readonly providerRegistry: ElectronicBillingProviderRegistry,
+    @Inject(ElectronicBillingProviderRepository)
     private readonly providerRepository: ElectronicBillingProviderRepository,
+    @Inject(TenantElectronicBillingConfigRepository)
     private readonly tenantConfigRepository: TenantElectronicBillingConfigRepository,
   ) {}
 
