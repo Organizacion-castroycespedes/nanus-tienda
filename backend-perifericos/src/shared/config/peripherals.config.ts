@@ -1,3 +1,5 @@
+import { resolveAgentVersion } from "../runtime/runtime-version";
+
 export type PeripheralsMode = "MOCK";
 export type UsbPrintTransport = "RAW" | "GDI";
 export type AgentLogLevel = "INFO" | "WARN" | "ERROR";
@@ -129,6 +131,6 @@ export const getPeripheralsConfig = (): PeripheralsConfig => ({
   printerWidthChars: parsePrinterWidthChars(
     process.env.PERIPHERALS_PRINTER_WIDTH_CHARS
   ),
-  version: "0.1.0",
+  version: resolveAgentVersion(),
   startedAt: STARTED_AT,
 });

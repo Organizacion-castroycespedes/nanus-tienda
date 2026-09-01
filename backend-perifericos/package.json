@@ -14,6 +14,10 @@
     "build:bin": "npm run build && pkg . --compress Brotli",
     "package:windows-x64": "npm run build && node scripts/package-windows-x64.mjs",
     "validate:package:windows-x64": "node scripts/validate-windows-x64-package.mjs",
+    "package:linux-x64": "npm run build && node scripts/package-linux-x64.mjs",
+    "validate:package:linux-x64": "node scripts/validate-linux-x64-package.mjs",
+    "installer:windows-x64": "npm run package:windows-x64 && node scripts/package-windows-installer.mjs",
+    "validate:installer:windows-x64": "node scripts/validate-windows-installer.mjs",
     "test": "tsx --test \"test/**/*.spec.ts\""
   },
   "pkg": {

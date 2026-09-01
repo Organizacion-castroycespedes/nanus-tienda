@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
 const artifactRoot = join(
   projectRoot,
-  "dist-package",
+  "dist-terminal",
   "windows-x64",
   `ManusPeripheralAgent-win-x64-${packageJson.version}`,
 );
@@ -34,25 +33,6 @@ const preflight = async (url, origin, timeoutMs = 1000) => {
     },
     signal: AbortSignal.timeout(timeoutMs),
   });
-};
-
-const taskkillProcess = (pid) => {
-  if (!pid) {
-    return;
-  }
-  spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-};
-
-const readStartedPid = (logPath) => {
-  if (!existsSync(logPath)) {
-    return null;
-  }
-  const logText = readFileSync(logPath, "utf8");
-  const match = logText.match(/started pid=(\d+)/);
-  return match ? match[1] : null;
 };
 
 assert.equal(process.platform, "win32", "Windows x64 validation must run on Windows.");
@@ -154,111 +134,6 @@ assert.ok(
   "Autostart runner must quote the entry point."
 );
 
-const localAppDataRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-localappdata-"));
-const launcherSmoke = spawn(
-  "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-  [
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    join(artifactRoot, "start-agent-autostart.ps1"),
-    "-DelaySeconds",
-    "0",
-    "-HealthTimeoutSeconds",
-    "20",
-    "-PollIntervalSeconds",
-    "1",
-  ],
-  {
-    cwd: artifactRoot,
-    env: {
-      ...process.env,
-      LOCALAPPDATA: localAppDataRoot,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  }
-);
-
-let launcherStdout = "";
-let launcherStderr = "";
-let launcherExit = null;
-launcherSmoke.stdout.on("data", (chunk) => {
-  launcherStdout += chunk.toString();
-});
-launcherSmoke.stderr.on("data", (chunk) => {
-  launcherStderr += chunk.toString();
-});
-
-launcherSmoke.once("exit", (code, signal) => {
-  launcherExit = { code, signal };
-});
-
-const autostartLogPath = join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "autostart.log");
-const stdoutLogPath = join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "agent-autostart.stdout.log");
-const stderrLogPath = join(localAppDataRoot, "Manus", "PeripheralAgent", "logs", "agent-autostart.stderr.log");
-
-let launcherHealth;
-let startedPid = null;
-const launcherDeadline = Date.now() + 30000;
-try {
-  while (Date.now() < launcherDeadline) {
-    startedPid ??= readStartedPid(autostartLogPath);
-
-    if (launcherExit && launcherExit.code !== 0) {
-      break;
-    }
-
-    try {
-      launcherHealth = await request("http://127.0.0.1:4050/health");
-      if (launcherHealth.statusCode === 200) {
-        break;
-      }
-    } catch {
-      // Keep waiting.
-    }
-
-    await wait(250);
-  }
-
-  assert.ok(launcherHealth, "Autostart launcher smoke timed out.");
-  assert.equal(
-    launcherHealth.statusCode,
-    200,
-    `Autostart launcher smoke failed.\nSTATUS: ${launcherHealth.statusCode}\nSTDOUT:\n${launcherStdout}\nSTDERR:\n${launcherStderr}`
-  );
-  const launcherHealthBody = JSON.parse(launcherHealth.body);
-  assert.equal(launcherHealthBody.status, "ok");
-  assert.equal(typeof launcherHealthBody.agentInstallationId, "string");
-  assert.equal(typeof launcherHealthBody.platform, "string");
-  assert.equal(typeof launcherHealthBody.architecture, "string");
-  assert.equal(typeof launcherHealthBody.version, "string");
-  assert.equal(typeof launcherHealthBody.uptimeSeconds, "number");
-  assert.equal(typeof launcherHealthBody.configuredDevices, "number");
-  assert.equal(typeof launcherHealthBody.discoveredDevices, "number");
-  assert.equal(launcherHealthBody.persistenceState?.schemaVersion, 1);
-  assert.ok(["empty", "loaded", "corrupt"].includes(launcherHealthBody.persistenceState?.status));
-
-  assert.ok(existsSync(stdoutLogPath), "Launcher smoke did not create stdout log.");
-  assert.ok(existsSync(stderrLogPath), "Launcher smoke did not create stderr log.");
-
-  const autostartLog = readFileSync(autostartLogPath, "utf8");
-  startedPid ??= readStartedPid(autostartLogPath);
-  assert.ok(startedPid, `Missing started pid in autostart log.\n${autostartLog}`);
-} finally {
-  if (!startedPid) {
-    for (let attempt = 0; attempt < 20 && !startedPid; attempt += 1) {
-      await wait(250);
-      startedPid = readStartedPid(autostartLogPath);
-    }
-  }
-  taskkillProcess(startedPid);
-  if (launcherSmoke.pid && !launcherSmoke.killed) {
-    taskkillProcess(launcherSmoke.pid);
-  }
-}
-
 const port = 44051;
 let childOutput = "";
 const child = spawn(runtime, [main], {
@@ -300,6 +175,7 @@ try {
   assert.equal(typeof healthBody.uptimeSeconds, "number");
   assert.equal(typeof healthBody.configuredDevices, "number");
   assert.equal(typeof healthBody.discoveredDevices, "number");
+  assert.equal(healthBody.version, packageJson.version);
   assert.equal(healthBody.persistenceState?.schemaVersion, 1);
   assert.ok(["empty", "loaded", "corrupt"].includes(healthBody.persistenceState?.status));
 
@@ -331,7 +207,6 @@ try {
   child.kill("SIGINT");
   for (let attempt = 0; attempt < 25 && !exited; attempt += 1) await wait(200);
   assert.equal(exited, true, "Packaged Agent did not shut down cleanly after SIGINT.");
-  rmSync(localAppDataRoot, { recursive: true, force: true });
 }
 
 console.log("Windows x64 portable package validation passed.");

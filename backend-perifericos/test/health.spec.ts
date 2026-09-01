@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -9,6 +10,10 @@ import { EventsService } from "../src/modules/events/events.service";
 import { LogsService } from "../src/modules/logs/logs.service";
 import { FileDeviceRegistryStateStore } from "../src/platform/device-registry-state.store";
 import { buildUsbPrinterDescriptor, type UsbPrinterDiscovery } from "../src/shared/usb/usb-printer-discovery";
+
+const packageJson = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf8")
+);
 
 class FakeUsbDiscovery implements UsbPrinterDiscovery {
   list() {
@@ -41,7 +46,7 @@ test("health responds with MOCK agent metadata", () => {
   assert.equal(result.status, "ok");
   assert.equal(result.agent, "manus-pos-peripheral-agent");
   assert.equal(result.mode, "MOCK");
-  assert.equal(result.version, "0.1.0");
+  assert.equal(result.version, packageJson.version);
   assert.equal(typeof result.uptimeSeconds, "number");
   assert.equal(typeof result.agentInstallationId, "string");
   assert.equal(result.platform, process.platform);
