@@ -1,8 +1,0 @@
-{
-  "agent": "manus-pos-peripheral-agent",
-  "version": "0.1.0",
-  "platform": "win32",
-  "architecture": "x64",
-  "runtime": "v24.13.1",
-  "packaging": "portable-node-runtime"
-}
