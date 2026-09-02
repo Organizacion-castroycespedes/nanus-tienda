@@ -1,6 +1,6 @@
 {
   "name": "@manus-tienda/backend-perifericos",
-  "version": "0.1.0",
+  "version": "0.1.1-qa.3",
   "private": true,
   "bin": "dist/main.js",
   "engines": {

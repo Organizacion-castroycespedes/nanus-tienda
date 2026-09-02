@@ -53,6 +53,12 @@ class FakeUsbDiscovery implements UsbPrinterDiscovery {
   }
 }
 
+class FailingUsbDiscovery implements UsbPrinterDiscovery {
+  list() {
+    throw new Error("Get-Printer unavailable");
+  }
+}
+
 const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
   let state: DeviceRegistryState | null = null;
 
@@ -108,8 +114,51 @@ test("USB discovery returns stable agent-generated printer descriptor", () => {
 
   assert.ok(device);
   assert.equal(device.connectionType, ConnectionType.USB);
-  assert.equal(device.profileId, "THERMAL_80MM");
+  assert.equal(device.profileId, undefined);
   assert.equal(device.usb?.printerName, "Xprinter XP-80T USB");
+});
+
+test("REAL discovery reports REAL and excludes MOCK seed devices", () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  try {
+    const { controller, logsService } = buildDevices();
+    const result = controller.discover();
+    assert.equal(result.mode, "REAL");
+    assert.equal(result.devices.some((device) => device.connectionType === "MOCK"), false);
+    assert.equal(
+      logsService.list().some((entry) => entry.metadata.outcome === "FOUND"),
+      true
+    );
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.PERIPHERALS_MODE;
+    } else {
+      process.env.PERIPHERALS_MODE = previousMode;
+    }
+  }
+});
+
+test("REAL discovery exposes physical discovery failures instead of returning mocks", () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  try {
+    const { controller, logsService } = buildDevices(new FailingUsbDiscovery());
+    assert.throws(
+      () => controller.discover(),
+      /Physical printer discovery failed: Get-Printer unavailable/
+    );
+    assert.equal(
+      logsService.list().some((entry) => entry.metadata.outcome === "FAILED"),
+      true
+    );
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.PERIPHERALS_MODE;
+    } else {
+      process.env.PERIPHERALS_MODE = previousMode;
+    }
+  }
 });
 
 test("USB printer registration requires discovered device and not network fields", () => {

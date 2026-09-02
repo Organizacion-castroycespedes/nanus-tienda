@@ -255,7 +255,7 @@ func install(manifest installerManifest) error {
 	logger.Printf("service registration executable=%s args=%q", registration.Executable, registration.Args)
 	if err := configureService(manifest, registration); err != nil {
 		if rollbackPath != "" {
-			_ = restorePreviousVersion(manifest, layout, rollbackPath, logger)
+			_ = rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
 		}
 		return err
 	}
@@ -266,7 +266,7 @@ func install(manifest installerManifest) error {
 
 	if err := startService(manifest); err != nil {
 		if rollbackPath != "" {
-			_ = restorePreviousVersion(manifest, layout, rollbackPath, logger)
+			_ = rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
 		}
 		return fmt.Errorf("start service: %w", err)
 	}
@@ -275,14 +275,7 @@ func install(manifest installerManifest) error {
 		logger.Printf("health failed: %v", err)
 		_ = stopService(manifest)
 		if rollbackPath != "" {
-			_ = restorePreviousVersion(manifest, layout, rollbackPath, logger)
-			if restartErr := startService(manifest); restartErr != nil {
-				logger.Printf("rollback restart failed: %v", restartErr)
-			} else if healthErr := waitForHealth(manifest); healthErr != nil {
-				logger.Printf("rollback health failed: %v", healthErr)
-			} else {
-				logger.Printf("rollback restored version=%s", existingVersion)
-			}
+			_ = rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
 		}
 		return fmt.Errorf("health gate failed: %w", err)
 	}
@@ -563,6 +556,10 @@ func deleteService(manifest installerManifest) error {
 }
 
 func waitForHealth(manifest installerManifest) error {
+	return waitForHealthVersion(manifest, manifest.Version)
+}
+
+func waitForHealthVersion(manifest installerManifest, expectedVersion string) error {
 	timeout := envDurationSeconds("MANUS_INSTALLER_HEALTH_TIMEOUT_SECONDS", 60)
 	poll := envDurationSeconds("MANUS_INSTALLER_HEALTH_POLL_SECONDS", 2)
 	deadline := time.Now().Add(timeout)
@@ -578,7 +575,7 @@ func waitForHealth(manifest installerManifest) error {
 				var payload map[string]any
 				if err := json.Unmarshal(body, &payload); err == nil {
 					if payload["status"] == "ok" &&
-						stringValue(payload["version"]) == manifest.Version &&
+						stringValue(payload["version"]) == expectedVersion &&
 						stringValue(payload["platform"]) == "win32" &&
 						stringValue(payload["architecture"]) == "x64" {
 						return nil
@@ -796,6 +793,33 @@ func restorePreviousVersion(manifest installerManifest, layout runtimeLayout, ro
 	}
 	if logger != nil {
 		logger.Printf("rollback activated current=%s", rollbackPath)
+	}
+	return nil
+}
+
+func rollbackToPreviousVersion(
+	manifest installerManifest,
+	layout runtimeLayout,
+	rollbackPath string,
+	expectedVersion string,
+	logger *installLogger,
+) error {
+	if err := restorePreviousVersion(manifest, layout, rollbackPath, logger); err != nil {
+		return err
+	}
+	registration := buildServiceRegistration(manifest, layout)
+	registration.Executable = filepath.Join(rollbackPath, "ManusTerminalSetup.exe")
+	if err := configureService(manifest, registration); err != nil {
+		return fmt.Errorf("rollback configure service: %w", err)
+	}
+	if err := startService(manifest); err != nil {
+		return fmt.Errorf("rollback start service: %w", err)
+	}
+	if err := waitForHealthVersion(manifest, expectedVersion); err != nil {
+		return fmt.Errorf("rollback health: %w", err)
+	}
+	if logger != nil {
+		logger.Printf("rollback restored version=%s", expectedVersion)
 	}
 	return nil
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
-	_, err := embeddedAssets.ReadFile("assets/bundle/ManusPeripheralAgent-win-x64-0.1.0/node_modules/readable-stream/lib/_stream_readable.js")
+	_, err := embeddedAssets.ReadFile("assets/bundle/ManusPeripheralAgent-win-x64-0.1.1-qa.3/node_modules/readable-stream/lib/_stream_readable.js")
 	if err != nil {
 		t.Fatalf("embedded asset missing: %v", err)
 	}
@@ -104,5 +104,66 @@ func TestEnvDurationSecondsFallback(t *testing.T) {
 	t.Setenv("MANUS_INSTALLER_HEALTH_TIMEOUT_SECONDS", "")
 	if got := envDurationSeconds("MANUS_INSTALLER_HEALTH_TIMEOUT_SECONDS", 33); got != 33*time.Second {
 		t.Fatalf("fallback duration = %v, want 33s", got)
+	}
+}
+
+func TestRollbackRegistrationCanTargetPreviousVersionExecutable(t *testing.T) {
+	manifest := installerManifest{ServiceArgs: []string{"service"}}
+	layout := runtimeLayout{
+		ServiceExe: `C:\Program Files\Manus\PeripheralAgent\versions\0.1.1-qa.3\ManusTerminalSetup.exe`,
+	}
+	rollbackPath := `C:\Program Files\Manus\PeripheralAgent\versions\0.1.0`
+	registration := buildServiceRegistration(manifest, layout)
+	registration.Executable = filepath.Join(rollbackPath, "ManusTerminalSetup.exe")
+
+	if registration.Executable != `C:\Program Files\Manus\PeripheralAgent\versions\0.1.0\ManusTerminalSetup.exe` {
+		t.Fatalf("rollback executable = %q", registration.Executable)
+	}
+}
+
+func TestUpgradePreservesExistingConfigAndInstallationIdentity(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ProgramFiles", filepath.Join(root, "Program Files"))
+	t.Setenv("ProgramData", filepath.Join(root, "ProgramData"))
+	layout := buildLayout(installerManifest{Version: "0.1.1-qa.3"})
+
+	if err := ensureBaseDirectories(layout); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(layout.VersionRoot, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := []byte(`{"mode":"REAL"}`)
+	if err := os.WriteFile(filepath.Join(layout.VersionRoot, "config", "agent.config.local.json"), seed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	existingConfig := []byte(`{"mode":"MOCK","marker":"preserve-me"}`)
+	configPath := filepath.Join(layout.ConfigRoot, "agent.config.local.json")
+	if err := os.WriteFile(configPath, existingConfig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	identityPath := filepath.Join(layout.StateRoot, "agent-installation-id")
+	identity := []byte("qa-installation-id")
+	if err := os.WriteFile(identityPath, identity, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureLocalConfig(layout); err != nil {
+		t.Fatal(err)
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotIdentity, err := os.ReadFile(identityPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotConfig) != string(existingConfig) {
+		t.Fatalf("existing config changed: %s", gotConfig)
+	}
+	if string(gotIdentity) != string(identity) {
+		t.Fatalf("installation identity changed: %s", gotIdentity)
 	}
 }

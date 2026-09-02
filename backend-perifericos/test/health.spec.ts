@@ -56,3 +56,18 @@ test("health responds with MOCK agent metadata", () => {
   assert.equal(result.persistenceState.schemaVersion, 1);
   assert.equal(result.persistenceState.status, "empty");
 });
+
+test("health reports REAL when explicitly configured", () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  try {
+    const result = new HealthController(createDevicesService()).getHealth();
+    assert.equal(result.mode, "REAL");
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.PERIPHERALS_MODE;
+    } else {
+      process.env.PERIPHERALS_MODE = previousMode;
+    }
+  }
+});

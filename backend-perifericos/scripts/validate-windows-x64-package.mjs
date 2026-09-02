@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -15,6 +16,7 @@ const artifactRoot = join(
 );
 const runtime = join(artifactRoot, "runtime", "node.exe");
 const main = join(artifactRoot, "app", "main.js");
+const isolatedRuntimeRoot = mkdtempSync(join(tmpdir(), "manus-package-validation-"));
 
 const wait = (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
 
@@ -23,13 +25,16 @@ const request = async (url, method = "GET", timeoutMs = 1000) => {
   return { statusCode: response.status, body: await response.text() };
 };
 
-const preflight = async (url, origin, timeoutMs = 1000) => {
+const preflight = async (url, origin, timeoutMs = 1000, privateNetwork = false) => {
   return await fetch(url, {
     method: "OPTIONS",
     headers: {
       Origin: origin,
       "Access-Control-Request-Method": "POST",
       "Access-Control-Request-Headers": "content-type",
+      ...(privateNetwork
+        ? { "Access-Control-Request-Private-Network": "true" }
+        : {}),
     },
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -55,25 +60,27 @@ for (const path of [
 const localConfig = JSON.parse(
   readFileSync(join(artifactRoot, "config", "agent.config.local.json"), "utf8")
 );
+const versionMetadata = JSON.parse(
+  readFileSync(join(artifactRoot, "VERSION.json"), "utf8")
+);
+assert.equal(versionMetadata.version, packageJson.version);
+assert.equal(readFileSync(join(artifactRoot, "VERSION"), "utf8").trim(), packageJson.version);
 assert.equal(localConfig.port, 4050);
 assert.equal(localConfig.bind, "127.0.0.1");
+assert.equal(localConfig.mode, "REAL");
 assert.equal(localConfig.logLevel, "INFO");
 assert.equal(localConfig.enableRealAdapters, true);
 assert.equal(localConfig.usbPrintTransport, "RAW");
-assert.equal(localConfig.usbRawPhysicalCutCertified, true);
+assert.equal(localConfig.usbRawPhysicalCutCertified, false);
 assert.equal(localConfig.logLimit, 500);
 assert.equal(localConfig.printerWidthChars, 48);
 assert.ok(Array.isArray(localConfig.allowedOrigins));
-assert.ok(localConfig.allowedOrigins.length > 0);
-assert.ok(
-  localConfig.allowedOrigins.every(
-    (origin) => typeof origin === "string" && origin.length > 0
-  )
-);
+assert.deepEqual(localConfig.allowedOrigins, [
+  "https://apptiendamanus.space",
+  "http://localhost:3000",
+]);
 
-const allowedOrigin =
-  localConfig.allowedOrigins.find((origin) => origin !== "http://localhost:3000") ??
-  localConfig.allowedOrigins[0];
+const allowedOrigin = "https://apptiendamanus.space";
 
 const readArtifactText = (relativePath) => readFileSync(join(artifactRoot, relativePath), "utf8");
 const assertContains = (relativePath, patterns) => {
@@ -141,12 +148,15 @@ const child = spawn(runtime, [main], {
   env: {
     ...process.env,
     PERIPHERALS_CONFIG_PATH: join(artifactRoot, "config", "agent.config.local.json"),
+    PERIPHERALS_VERSION: packageJson.version,
     PERIPHERALS_PORT: String(port),
     // The artifact config above is asserted as REAL. Disable only startup
     // discovery for this smoke so a slow Windows spooler cannot hide health;
     // the POST below still exercises real Windows discovery explicitly.
     PERIPHERALS_ENABLE_REAL_ADAPTERS: "false",
     PERIPHERALS_BIND: "127.0.0.1",
+    PROGRAMDATA: join(isolatedRuntimeRoot, "ProgramData"),
+    LOCALAPPDATA: join(isolatedRuntimeRoot, "LocalAppData"),
   },
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
@@ -168,6 +178,7 @@ try {
   assert.equal(health.statusCode, 200);
   const healthBody = JSON.parse(health.body);
   assert.equal(healthBody.status, "ok");
+  assert.equal(healthBody.mode, "REAL");
   assert.equal(typeof healthBody.agentInstallationId, "string");
   assert.equal(typeof healthBody.platform, "string");
   assert.equal(typeof healthBody.architecture, "string");
@@ -189,6 +200,18 @@ try {
     printerPreflight.headers.get("access-control-allow-origin"),
     allowedOrigin
   );
+
+  const privateNetworkPreflight = await preflight(
+    `http://127.0.0.1:${port}/devices`,
+    allowedOrigin,
+    3000,
+    true
+  );
+  assert.equal(privateNetworkPreflight.status, 204);
+  assert.equal(
+    privateNetworkPreflight.headers.get("access-control-allow-private-network"),
+    "true"
+  );
   assert.match(
     printerPreflight.headers.get("access-control-allow-methods") ?? "",
     /POST/
@@ -207,6 +230,7 @@ try {
   child.kill("SIGINT");
   for (let attempt = 0; attempt < 25 && !exited; attempt += 1) await wait(200);
   assert.equal(exited, true, "Packaged Agent did not shut down cleanly after SIGINT.");
+  rmSync(isolatedRuntimeRoot, { recursive: true, force: true });
 }
 
 console.log("Windows x64 portable package validation passed.");

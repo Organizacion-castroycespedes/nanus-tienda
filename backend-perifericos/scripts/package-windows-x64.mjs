@@ -12,12 +12,6 @@ const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactN
 const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
-const parseAllowedOrigins = (value) =>
-  (value ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
 const clearReadonlyWindows = (path) => {
   if (process.platform !== "win32") {
     return;
@@ -341,9 +335,13 @@ try {
   writeText("config/agent.config.example.json", `${JSON.stringify({
     port: 4050,
     bind: "127.0.0.1",
-    allowedOrigins: ["http://localhost:3000"],
+    mode: "REAL",
+    allowedOrigins: [
+      "https://apptiendamanus.space",
+      "http://localhost:3000",
+    ],
     logLevel: "INFO",
-    enableRealAdapters: false,
+    enableRealAdapters: true,
     usbPrintTransport: "RAW",
     usbRawPhysicalCutCertified: false,
     logLimit: 500,
@@ -355,14 +353,15 @@ try {
   writeText("config/agent.config.local.json", `${JSON.stringify({
     port: 4050,
     bind: "127.0.0.1",
-    allowedOrigins: Array.from(new Set([
+    mode: "REAL",
+    allowedOrigins: [
+      "https://apptiendamanus.space",
       "http://localhost:3000",
-      ...parseAllowedOrigins(process.env.PERIPHERALS_ALLOWED_ORIGINS),
-    ])),
+    ],
     logLevel: "INFO",
     enableRealAdapters: true,
     usbPrintTransport: "RAW",
-    usbRawPhysicalCutCertified: true,
+    usbRawPhysicalCutCertified: false,
     logLimit: 500,
     printerWidthChars: 48,
   }, null, 2)}\n`);

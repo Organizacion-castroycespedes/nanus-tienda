@@ -481,7 +481,7 @@ const PeripheralAgentStatusCard = ({
   const isWarning = state === "missing-config" || state === "loading";
   const statusLabel =
     state === "connected"
-      ? "Conectado"
+      ? "Servicio Manus conectado"
       : state === "missing-config"
         ? "Configuracion faltante"
         : state === "invalid-config"
@@ -490,7 +490,7 @@ const PeripheralAgentStatusCard = ({
             ? "Error de red/CORS"
             : state === "loading"
               ? "Validando"
-              : "No disponible";
+              : "Servicio Manus no disponible";
   const containerTone = isConnected
     ? "border-emerald-200 bg-emerald-50"
     : isWarning

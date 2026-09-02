@@ -35,7 +35,7 @@ export type PeripheralAgentConfig = {
   isConfigured: boolean;
   isProduction: boolean;
   status: PeripheralAgentConfigStatus;
-  source: "environment" | "development-default";
+  source: "environment" | "loopback-default";
   message?: string;
   errorCode?: PeripheralAgentRequestErrorCode;
 };
@@ -70,14 +70,11 @@ export const isPeripheralAgentRequestError = (
 ): error is PeripheralAgentRequestError =>
   error instanceof PeripheralAgentRequestError;
 
-const developmentHttpUrl = "http://127.0.0.1:4050";
-const developmentWsUrl = "ws://127.0.0.1:4050/peripherals";
+const defaultHttpUrl = "http://127.0.0.1:4050";
+const defaultWsUrl = "ws://127.0.0.1:4050/peripherals";
 
 const productionHttpsRequiredMessage =
-  "NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL debe ser una URL HTTPS publica en produccion.";
-
-const missingProductionConfigMessage =
-  "Falta configurar NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL para produccion.";
+  "El servicio Manus remoto debe usar HTTPS en produccion.";
 
 const normalizeBaseUrl = (value: string) => value.replace(/\/+$/, "");
 
@@ -143,7 +140,7 @@ const validateWsUrl = (
     (parsedWsUrl.protocol !== "ws:" && parsedWsUrl.protocol !== "wss:")
   ) {
     return buildInvalidConfig(
-      "NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL debe ser una URL ws:// o wss:// valida.",
+      "La configuracion tecnica del servicio Manus no es valida.",
       httpUrl,
       value
     );
@@ -151,11 +148,11 @@ const validateWsUrl = (
 
   if (
     isProduction &&
-    (parsedWsUrl.protocol !== "wss:" ||
-      isLocalHostname(normalizeHostname(parsedWsUrl)))
+    parsedWsUrl.protocol !== "wss:" &&
+    !isLocalHostname(normalizeHostname(parsedWsUrl))
   ) {
     return buildInvalidConfig(
-      "NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL debe ser una URL WSS publica en produccion.",
+      "El servicio Manus remoto debe usar WSS en produccion.",
       httpUrl,
       value
     );
@@ -172,32 +169,19 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
   const isProduction = process.env.NODE_ENV === "production";
 
   if (!rawHttpUrl) {
-    if (isProduction) {
-      return {
-        httpUrl: "",
-        wsUrl: "",
-        isConfigured: false,
-        isProduction,
-        status: "missing",
-        source: "environment",
-        message: missingProductionConfigMessage,
-        errorCode: "MISSING_CONFIG",
-      };
-    }
-
-    const wsUrl = rawWsUrl || developmentWsUrl;
-    const invalidWsConfig = validateWsUrl(wsUrl, false, developmentHttpUrl);
+    const wsUrl = rawWsUrl || defaultWsUrl;
+    const invalidWsConfig = validateWsUrl(wsUrl, isProduction, defaultHttpUrl);
     if (invalidWsConfig) {
       return invalidWsConfig;
     }
 
     return {
-      httpUrl: developmentHttpUrl,
+      httpUrl: defaultHttpUrl,
       wsUrl,
       isConfigured: true,
       isProduction,
       status: "configured",
-      source: "development-default",
+      source: "loopback-default",
     };
   }
 
@@ -207,7 +191,7 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
     (parsedHttpUrl.protocol !== "http:" && parsedHttpUrl.protocol !== "https:")
   ) {
     return buildInvalidConfig(
-      "NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL debe ser una URL http:// o https:// valida.",
+      "La configuracion tecnica del servicio Manus no es valida.",
       rawHttpUrl
     );
   }
@@ -215,8 +199,8 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
   const httpUrl = normalizeHttpBaseUrl(parsedHttpUrl);
   if (
     isProduction &&
-    (parsedHttpUrl.protocol !== "https:" ||
-      isLocalHostname(normalizeHostname(parsedHttpUrl)))
+    parsedHttpUrl.protocol !== "https:" &&
+    !isLocalHostname(normalizeHostname(parsedHttpUrl))
   ) {
     return buildInvalidConfig(productionHttpsRequiredMessage, httpUrl);
   }

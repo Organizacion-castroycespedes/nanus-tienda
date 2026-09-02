@@ -52,7 +52,6 @@ import type {
 } from "./devices.types";
 
 const LOCAL_TERMINAL_ID = "local-terminal";
-const DEFAULT_DISCOVERED_USB_PRINTER_PROFILE_ID = "THERMAL_80MM";
 
 const MOCK_DEVICES: PeripheralDevice[] = [
   {
@@ -173,15 +172,18 @@ export class DevicesService {
   }
 
   discover(): DiscoverDevicesResponse {
+    const config = getPeripheralsConfig();
     const discoveredAt = new Date().toISOString();
-    this.logsService.append({
-      source: "devices",
-      event: "devices.discover.simulated",
-      message: "Device discovery simulated",
-      metadata: {
-        configuredDevices: this.configuredDevices.size,
-      },
-    });
+    if (config.mode === "MOCK") {
+      this.logsService.append({
+        source: "devices",
+        event: "devices.discover.simulated",
+        message: "Device discovery simulated",
+        metadata: {
+          configuredDevices: this.configuredDevices.size,
+        },
+      });
+    }
     this.logsService.append({
       source: "devices",
       event: "discovery.started",
@@ -195,15 +197,25 @@ export class DevicesService {
     try {
       usbDescriptors = this.usbDiscovery.list();
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "unknown error";
       this.logsService.append({
-        level: LogLevel.WARN,
+        level: config.mode === "REAL" ? LogLevel.ERROR : LogLevel.WARN,
         source: "devices",
         event: "devices.discover.usb_failed",
-        message: "USB printer discovery failed; keeping mock device list",
+        message: config.mode === "REAL"
+          ? "Physical printer discovery failed"
+          : "USB printer discovery failed; keeping mock device list",
         metadata: {
-          errorMessage: error instanceof Error ? error.message : "unknown error",
+          mode: config.mode,
+          outcome: "FAILED",
+          errorMessage,
         },
       });
+      if (config.mode === "REAL") {
+        throw new BadRequestException(
+          `Physical printer discovery failed: ${errorMessage}`
+        );
+      }
     }
 
     this.usbDevices = new Map(
@@ -238,17 +250,22 @@ export class DevicesService {
     }
 
     this.discoveredUsbDevices = nextDiscoveredUsbDevices;
-    const devices = this.list();
+    const devices = config.mode === "REAL"
+      ? this.list().filter((device) => device.connectionType !== ConnectionType.MOCK)
+      : this.list();
 
     this.logsService.append({
       source: "devices",
       event: "discovery.completed",
-      message: "Device discovery completed",
+      message: nextDiscoveredUsbDevices.size > 0
+        ? "Physical printer discovery completed with results"
+        : "Physical printer discovery completed without results",
       metadata: {
         count: devices.length,
         configuredDevices: this.configuredDevices.size,
         usbPrinterCount: nextDiscoveredUsbDevices.size,
-        mode: nextDiscoveredUsbDevices.size > 0 ? "HYBRID" : "MOCK",
+        mode: config.mode,
+        outcome: nextDiscoveredUsbDevices.size > 0 ? "FOUND" : "EMPTY",
       },
     });
 
@@ -266,7 +283,7 @@ export class DevicesService {
 
     return {
       success: true,
-      mode: "MOCK",
+      mode: config.mode,
       devices,
       discoveredAt,
     };
@@ -787,9 +804,8 @@ export class DevicesService {
       status: DeviceStatus.CONNECTED,
       connectionType: ConnectionType.USB,
       terminalId: LOCAL_TERMINAL_ID,
-      // New USB devices start from the safe default. Persisted devices keep
-      // their configured profile through rediscovery.
-      profileId: DEFAULT_DISCOVERED_USB_PRINTER_PROFILE_ID,
+      // Discovery is hardware inventory only. Profile is selected during
+      // terminal configuration and persisted by update().
       usb: {
         deviceId: descriptor.deviceId,
         printerName: descriptor.printerName,
