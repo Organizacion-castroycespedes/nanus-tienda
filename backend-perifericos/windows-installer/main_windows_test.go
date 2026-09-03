@@ -3,6 +3,8 @@
 package main
 
 import (
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,9 +14,131 @@ import (
 )
 
 func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
-	_, err := embeddedAssets.ReadFile("assets/bundle/ManusPeripheralAgent-win-x64-0.1.1-qa.3/node_modules/readable-stream/lib/_stream_readable.js")
+	_, err := embeddedAssets.ReadFile("assets/bundle/ManusPeripheralAgent-win-x64-0.1.1-qa.4/node_modules/readable-stream/lib/_stream_readable.js")
 	if err != nil {
 		t.Fatalf("embedded asset missing: %v", err)
+	}
+}
+
+func TestReadOnlyBridgeHealthAndDiscovery(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.baseURL = "http://test.local"
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"status":"ok","mode":"REAL","version":"qa"}`
+		if r.URL.Path == "/devices/discover" {
+			body = `{"success":true,"mode":"REAL","devices":[{"id":"p1","type":"PRINTER"}]}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})
+	state, err := bridge.getInstallerState()
+	if err != nil || state.Agent["mode"] != "REAL" {
+		t.Fatalf("health bridge = %#v, %v", state, err)
+	}
+	devices, err := bridge.discoverDevices()
+	if err != nil || len(devices) != 1 || devices[0]["id"] != "p1" {
+		t.Fatalf("discovery bridge = %#v, %v", devices, err)
+	}
+}
+
+func TestConfigureBridgeValidatesDiscoveredDeviceAndProfile(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.baseURL = "http://test.local"
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"success":true,"mode":"REAL","devices":[{"id":"p1","type":"PRINTER","terminalId":"local-terminal","metadata":{"usbRawCashDrawerPulseCertified":true}}]}`
+		if r.Method == http.MethodPatch {
+			body = `{"id":"p1","type":"PRINTER","profileId":"THERMAL_58MM","metadata":{"usbRawCashDrawerPulseCertified":true}}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})
+	if _, err := bridge.discoverDevices(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bridge.configureDevice("not-discovered", "THERMAL_58MM"); err == nil {
+		t.Fatal("arbitrary device id accepted")
+	}
+	if _, err := bridge.configureDevice("p1", "UNKNOWN"); err == nil {
+		t.Fatal("unknown profile accepted")
+	}
+	updated, err := bridge.configureDevice("p1", "THERMAL_58MM")
+	if err != nil || updated["profileId"] != "THERMAL_58MM" {
+		t.Fatalf("configure result = %#v, %v", updated, err)
+	}
+}
+
+func TestReadOnlyBootstrapUsesOnlyReadOperations(t *testing.T) {
+	html := appendReadOnlyBootstrap("<html><body></body></html>", false, false, false)
+	for _, required := range []string{"getInstallerState", "discoverDevices", "DOMContentLoaded", "DISCOVERY_RUNNING", "go('devices')", "Buscar nuevamente", "supportsCashDrawerPulse", "hideReadonlyComplete"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("bootstrap missing %s", required)
+		}
+	}
+	for _, forbidden := range []string{"configureDevice", "testPrinter", "testCashDrawer", "installBundle", "PowerShell"} {
+		if forbidden == "configureDevice" || forbidden == "testPrinter" || forbidden == "testCashDrawer" {
+			continue
+		}
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("read-only bootstrap contains mutating operation %s", forbidden)
+		}
+	}
+	if !strings.Contains(html, "const configEnabled=false") {
+		t.Fatal("readonly bootstrap must disable configuration")
+	}
+	if !strings.Contains(html, "const printEnabled=false") {
+		t.Fatal("readonly bootstrap must disable printing")
+	}
+	for _, forbidden := range []string{"XPrinter 80 mm", "DIG-E200I", "3 impresoras detectadas"} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("read-only bootstrap contains fixture %s", forbidden)
+		}
+	}
+}
+
+func TestPrintBootstrapEnablesConfigurationButNotDrawer(t *testing.T) {
+	html := appendReadOnlyBootstrap("<html><body></body></html>", true, true, false)
+	if !strings.Contains(html, "const configEnabled=true") || !strings.Contains(html, "const printEnabled=true") {
+		t.Fatal("print QA capabilities not enabled")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestEmbeddedInstallerUIAssetsExcludeReference(t *testing.T) {
+	for _, path := range []string{"assets/ui/index.html", "assets/ui/styles.css", "assets/ui/app.js"} {
+		if _, err := embeddedAssets.ReadFile(path); err != nil {
+			t.Fatalf("embedded UI asset missing: %s: %v", path, err)
+		}
+	}
+	if _, err := embeddedAssets.ReadFile("assets/ui/reference/manus-terminal-installer-approved.html"); err == nil {
+		t.Fatal("approved reference must not be a runtime UI asset")
+	}
+	for _, path := range []string{"assets/ui/index.runtime.html", "assets/ui/index.runtime.productive.html"} {
+		runtimeHTML, err := embeddedAssets.ReadFile(path)
+		if err != nil {
+			t.Fatalf("runtime UI asset missing: %v", err)
+		}
+		content := string(runtimeHTML)
+		for _, forbidden := range []string{`src="app.js"`, `href="styles.css"`, "http://", "https://"} {
+			if strings.Contains(content, forbidden) {
+				t.Fatalf("runtime UI contains forbidden reference: %s", forbidden)
+			}
+		}
+		if !strings.Contains(content, "data:image/jpeg;base64,") {
+			t.Fatalf("%s does not embed the Manus logo", path)
+		}
+		if strings.Contains(content, "LogoManus.png.jpeg") || strings.Contains(content, "file://") {
+			t.Fatalf("%s contains a non-self-contained logo reference", path)
+		}
+		if !strings.Contains(content, `.window-bar{display:none!important;}`) {
+			t.Fatalf("%s does not hide browser chrome", path)
+		}
+		if path == "assets/ui/index.runtime.productive.html" && !strings.Contains(content, `.prototype-nav{display:none!important;}`) {
+			t.Fatal("productive runtime must hide mock nav")
+		}
+		if path == "assets/ui/index.runtime.html" && strings.Contains(content, `.prototype-nav{display:none!important;}`) {
+			t.Fatal("spike runtime must keep mock nav")
+		}
 	}
 }
 

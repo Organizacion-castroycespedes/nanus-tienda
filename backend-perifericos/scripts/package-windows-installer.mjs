@@ -11,6 +11,8 @@ const bundleRoot = join(projectRoot, "dist-terminal", "windows-x64", bundleName)
 const installerSourceRoot = join(projectRoot, "windows-installer");
 const assetsRoot = join(installerSourceRoot, "assets");
 const embeddedBundleRoot = join(assetsRoot, "bundle", bundleName);
+const installerUiRoot = join(projectRoot, "installer-ui");
+const embeddedUiRoot = join(assetsRoot, "ui");
 const installerManifestPath = join(assetsRoot, "manifest.json");
 const outputRoot = join(projectRoot, "dist-installer", "windows-x64");
 const outputPath = join(outputRoot, `ManusTerminalSetup-${packageJson.version}-win-x64.exe`);
@@ -37,18 +39,42 @@ const clearReadonlyWindows = (path) => {
 
 const removePath = (path) => rmSync(path, { recursive: true, force: true });
 
+const buildRuntimeHtml = ({ showMockNav }) => {
+  let html = readFileSync(join(installerUiRoot, "index.html"), "utf8");
+  const css = readFileSync(join(installerUiRoot, "styles.css"), "utf8");
+const js = readFileSync(join(installerUiRoot, "app.js"), "utf8");
+  const logoPath = join(projectRoot, "..", "web", "public", "LogoManus.png.jpeg");
+  if (!existsSync(logoPath)) throw new Error(`Missing Manus logo source: ${logoPath}`);
+  const logoDataUri = `data:image/jpeg;base64,${readFileSync(logoPath).toString("base64")}`;
+  html = html.replace(/<link[^>]+href=["']styles\.css["'][^>]*>/i, `<style>${css}</style>`);
+  html = html.replace(/<script[^>]+src=["']app\.js["'][^>]*><\/script>/i, `<script>${js}</script>`);
+  html = html.replaceAll("../../web/public/LogoManus.png.jpeg", logoDataUri);
+  if (/src=["']app\.js["']|href=["']styles\.css["']|(?:src|href)=["'][^"']*LogoManus\.png\.jpeg|file:\/\/|https?:\/\//i.test(html)) {
+    throw new Error("runtime UI HTML contains unresolved or remote assets");
+  }
+  const runtimeCss = `<style data-manus-runtime="true">\n.window-bar{display:none!important;}\n${showMockNav ? "" : ".prototype-nav{display:none!important;}"}\n</style>`;
+  return html.replace("</head>", `${runtimeCss}</head>`);
+};
+
 try {
   assertBundleReady();
   clearReadonlyWindows(embeddedBundleRoot);
   clearReadonlyWindows(installerManifestPath);
   clearReadonlyWindows(outputPath);
   removePath(embeddedBundleRoot);
+  removePath(embeddedUiRoot);
   removePath(installerManifestPath);
   removePath(outputPath);
   mkdirSync(dirname(embeddedBundleRoot), { recursive: true });
   mkdirSync(outputRoot, { recursive: true });
 
   cpSync(bundleRoot, embeddedBundleRoot, { recursive: true });
+  mkdirSync(embeddedUiRoot, { recursive: true });
+  for (const fileName of ["index.html", "styles.css", "app.js"]) {
+    cpSync(join(installerUiRoot, fileName), join(embeddedUiRoot, fileName));
+  }
+  writeFileSync(join(embeddedUiRoot, "index.runtime.html"), buildRuntimeHtml({ showMockNav: true }), "utf8");
+  writeFileSync(join(embeddedUiRoot, "index.runtime.productive.html"), buildRuntimeHtml({ showMockNav: false }), "utf8");
 
   writeFileSync(
     installerManifestPath,

@@ -107,6 +107,21 @@ func main() {
 		case "service":
 			runAsService(manifest)
 			return
+		case "--ui-spike":
+			fatal(runInstallerUI(true, false, false, false, false))
+			return
+		case "--ui-bridge-qa":
+			fatal(runInstallerUI(false, true, false, false, false))
+			return
+		case "--ui-config-qa":
+			fatal(runInstallerUI(false, true, true, false, false))
+			return
+		case "--ui-print-qa":
+			fatal(runInstallerUI(false, true, true, true, false))
+			return
+		case "--ui-drawer-qa":
+			fatal(runInstallerUI(false, true, true, true, true))
+			return
 		case "--help", "-h", "/?", "help":
 			printUsage(manifest)
 			return
