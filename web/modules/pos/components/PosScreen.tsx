@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   ChevronDown,
@@ -162,7 +162,6 @@ type WeighableProductCandidate = ProductResponse & {
   type?: string | null;
   tipo?: string | null;
 };
-
 type PosItemTax = {
   id: string;
   name: string;
@@ -170,7 +169,6 @@ type PosItemTax = {
   amount: number;
   isIncluded: boolean;
 };
-
 const stockFilterLabels: Record<StockFilterKey, string> = {
   available: "Con stock",
   low: "Stock bajo",
@@ -1551,7 +1549,7 @@ export const PosScreen = () => {
       const product = findUniquePosScannerProduct(code, productsRef.current);
 
       if (!product) {
-        const message = `Código no encontrado: ${code}`;
+        const message = `CÃ³digo no encontrado: ${code}`;
         scannerHidLogger.productNotFound(code);
         setScannerLastResult(message);
         showToast(message, "warning");
@@ -1741,7 +1739,7 @@ export const PosScreen = () => {
           return;
         }
 
-        const message = `Peso leído: ${reading}`;
+        const message = `Peso leÃ­do: ${reading}`;
         setScaleMockStatus("ready");
         setScaleLastResult(message);
         void playProductAddedSound();
@@ -2735,7 +2733,7 @@ export const PosScreen = () => {
                     onClick={() => setProductViewMode("grid")}
                   >
                     <Grid3X3 className="h-4 w-4" />
-                    Cuadrícula
+                    CuadrÃ­cula
                   </Button>
                   <Button
                     variant={productViewMode === "list" ? "primary" : "outline"}
@@ -2748,7 +2746,7 @@ export const PosScreen = () => {
                 </div>
                 {hasSelectedCategoryWithoutSubcategories ? (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {selectedProductCategory?.name ?? "Categoría"} sin subcategorías.
+                    {selectedProductCategory?.name ?? "CategorÃ­a"} sin subcategorÃ­as.
                   </p>
                 ) : null}
               </section>
@@ -2799,9 +2797,7 @@ export const PosScreen = () => {
                     <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
                       {activeProductFilterLabels.length} filtro(s) activos
                     </span>
-                  ) : (
-                    <span>Sin filtros activos</span>
-                  )}
+                  ) : null}
                 </div>
               </section>
             </div>
@@ -2832,7 +2828,7 @@ export const PosScreen = () => {
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                         Scanner MOCK/SIMULATOR
                       </span>
                       <span
@@ -2852,7 +2848,7 @@ export const PosScreen = () => {
                       </span>
                     </div>
                     <Input
-                      label="Código scanner MOCK"
+                      label="CÃ³digo scanner MOCK"
                       placeholder="SKU, codigo de barras o referencia"
                       value={scannerMockCode}
                       onChange={(event) => setScannerMockCode(event.target.value)}
@@ -2939,51 +2935,51 @@ export const PosScreen = () => {
               </>
               ) : null}
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/70 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scannerStatusTone}`}
-                  >
-                    {scannerHidStatus.label}
-                    {scannerHidStatus.detail ? (
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-                        {scannerHidStatus.detail}
+              <div className="flex flex-wrap items-center gap-2">
+                {scannerMockStatus === "error" || scaleMockStatus === "error" ? (
+                  <>
+                    {scannerMockStatus === "error" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                        Scanner desconectado
                       </span>
                     ) : null}
-                    {scannerHidEnabled ? (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {scaleMockStatus === "error" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                        Balanza no disponible
+                      </span>
                     ) : null}
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
+                    className="inline-flex min-h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
-                    Balanza {scaleStatusLabel}
-                    {scaleMockStatus === "ready" ? (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    ) : null}
-                  </span>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                    Sync {appVersion || "sin version"}
-                  </span>
-                  {canShowPeripheralDiagnostics ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPeripheralDiagnosticsOpen((current) => !current)
-                      }
-                      className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      {peripheralDiagnosticsOpen ? "Ocultar diagnostico" : "Ver diagnostico"}
-                    </button>
-                  ) : null}
-                </div>
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Periféricos OK
+                  </button>
+                )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                {canShowPeripheralDiagnostics ? (
+                  <button
+                    type="button"
+                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
+                    className="inline-flex min-h-7 items-center justify-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Diagnóstico
+                  </button>
+                ) : null}
+
+                <span className="text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  Sync {appVersion || "sin version"}
+                </span>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                     {filteredProducts.length} productos disponibles
                   </span>
                   <div
-                    className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                    className="inline-flex rounded-full border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
                     role="group"
                     aria-label="Vista de productos"
                   >
@@ -2997,13 +2993,13 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => setProductViewMode(option.value)}
                           aria-pressed={isActive}
-                          className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
+                          className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                             isActive
                               ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
                               : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                           }`}
                         >
-                          <Icon className="h-4 w-4" />
+                          <Icon className="h-3.5 w-3.5" />
                           {option.label}
                         </button>
                       );
@@ -3013,8 +3009,8 @@ export const PosScreen = () => {
               </div>
 
               {/* Filter Chips */}
-              <div className="flex flex-col gap-1">
-                <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
                     const isActive = activeStockFilter === filter;
                     return (
@@ -3022,14 +3018,14 @@ export const PosScreen = () => {
                         key={filter}
                         type="button"
                         onClick={() => handleStockFilterChange(filter)}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none transition-all duration-200 active:scale-95 ${
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none transition-all duration-200 active:scale-95 ${
                           isActive
                             ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
                             : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                         }`}
                       >
                         <span>{stockFilterLabels[filter]}</span>
-                        <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px] leading-none dark:bg-white/10">
+                        <span className="rounded-full bg-black/10 px-1 py-0.5 text-[9px] leading-none dark:bg-white/10">
                           {stockFilterCounts[filter]}
                         </span>
                       </button>
@@ -3053,7 +3049,7 @@ export const PosScreen = () => {
                         size="sm"
                         onClick={clearProductCatalogFilters}
                         disabled={!hasProductCatalogFilters}
-                        className="min-h-7 px-2 py-0.5 text-[11px] leading-none"
+                        className="min-h-7 px-2 py-0.5 text-[10px] leading-none"
                       >
                         <X className="h-3 w-3" />
                         Limpiar
@@ -3065,7 +3061,7 @@ export const PosScreen = () => {
             </div>
 
             {/* Products Catalog */}
-            <div className="mt-5">
+            <div className="mt-3">
               {catalogLoading ? (
                 <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                   <Loader2 className="mr-3 h-5 w-5 animate-spin" />
@@ -3080,7 +3076,7 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid gap-3 grid-cols-1 min-[520px]:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                      ? "grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
                       : "grid gap-2.5"
                   }
                 >
@@ -3153,7 +3149,7 @@ export const PosScreen = () => {
 
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                 <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
+                                <span className="text-slate-300 dark:text-slate-600">â€¢</span>
                                 <span className="text-slate-600 dark:text-slate-300">
                                   {productSaleTypeLabels[productSaleType]} /{" "}
                                   {product.measurementUnit ??
@@ -3218,7 +3214,7 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => handleProductCardAction(product)}
                           disabled={isProductActionDisabled}
-                          className={`group min-h-[240px] overflow-hidden rounded-[28px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-900 ${
+                          className={`group min-h-[220px] overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-900 ${
                             hasProductInCart
                               ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
                               : "border-slate-200 dark:border-slate-800"
@@ -3226,25 +3222,25 @@ export const PosScreen = () => {
                       >
                         <div className="flex h-full flex-col">
                           <div className="relative">
-                            <div className="relative aspect-[7/4] w-full overflow-hidden bg-white">
+                            <div className="relative aspect-[4/3] w-full overflow-hidden bg-white">
                               <InventoryImagePreview
                                 imageUrl={effectiveImage.imageUrl}
                                 altText={effectiveImage.altText}
                                 lazy
-                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2.5 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
+                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
                                 fallback={<span>{buildImageLabel(product.name)}</span>}
                               />
                             </div>
                             <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-2">
                               {hasProductInCart ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
                                   En carrito {quantityInCart}
                                 </span>
                               ) : null}
                             </div>
                             <div className="absolute right-3 top-3">
                               <span
-                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold shadow-sm ${getProductStockTone(
+                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
                                   stock
                                 )}`}
                               >
@@ -3257,14 +3253,14 @@ export const PosScreen = () => {
                             </div>
                           </div>
 
-                          <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-3.5">
+                          <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
                             <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-[1.02rem] font-semibold leading-tight text-slate-950 dark:text-white">
+                              <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-tight text-slate-950 dark:text-white">
                                 {product.name}
                               </h3>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                 <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
+                                <span className="text-slate-300 dark:text-slate-600">â€¢</span>
                                 <span className="text-slate-600 dark:text-slate-300">
                                   {productSaleTypeLabels[productSaleType]} /{" "}
                                   {product.measurementUnit ??
@@ -3273,25 +3269,25 @@ export const PosScreen = () => {
                               </div>
                             </div>
 
-                            <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
                               <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                                   Precio final
                                 </p>
-                                <p className="mt-1 text-[1.3rem] font-semibold leading-none text-slate-950 dark:text-white">
+                                <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
                                   {formatCurrency(Number(product.price))}
                                 </p>
                               </div>
                               <span
-                                className={`inline-flex h-11 min-w-11 items-center justify-center rounded-2xl px-3.5 text-sm font-bold transition-colors ${actionTone}`}
+                                className={`inline-flex h-10 min-w-10 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
                               >
                                 {requiresScale ? (
                                   scaleMockEnabled ? (
-                                    <span className="inline-flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1.5">
                                       <Scale className="h-4 w-4" />
                                       Leer
                                     </span>
-                                  ) : (
+                          ) : (
                                     actionLabel
                                   )
                                 ) : (
