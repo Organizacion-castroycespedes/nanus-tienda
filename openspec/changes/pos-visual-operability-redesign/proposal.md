@@ -2,14 +2,22 @@
 
 El modulo POS actual contiene informacion util para operar, pero la venta no esta suficientemente priorizada a nivel visual. El buscador, Scanner MOCK/SIMULATOR, Balanza MOCK, filtros, grilla y carrito compiten por espacio vertical, lo que genera scroll innecesario y reduce velocidad en caja.
 
-El objetivo es redisenar la experiencia POS alrededor de un flujo venta-first: buscar o escanear producto, agregar producto, ajustar cantidad y cobrar.
+Durante QA manual se detectaron tres regresiones funcionales que forman parte del mismo cambio:
+
+- el carrito POS puede quedar inaccesible en resoluciones pequeñas,
+- el menu responsive pierde labels solamente desde `/pos`,
+- el contexto POS de usuario, terminal y sucursal no aparece en el header global hasta entrar a `/pos`.
+
+El objetivo es redisenar la experiencia POS alrededor de un flujo venta-first y, al mismo tiempo, corregir esas regresiones operativas sin introducir hacks visuales ni estados duplicados.
 
 ## What Changes
 
 - Introducir un layout POS enfocado en venta diaria.
 - Ubicar el buscador de productos como control principal y mantener autofocus operativo.
 - Mantener el carrito siempre visible o accesible como panel lateral sticky, drawer o bottom sheet segun viewport.
+- Compartir un unico estado funcional para abrir y cerrar el carrito responsive desde cabecera, floating action y POS.
 - Compactar usuario actual, estado de venta y cliente en una barra de contexto.
+- Resolver y mostrar el contexto POS global en el header cuando exista una sesion valida, sin depender de montar `PosScreen`.
 - Mostrar filtros de productos como chips compactos con contador.
 - Modernizar tarjetas de producto para priorizar nombre, SKU/codigo, unidad, precio, stock y accion rapida.
 - Reubicar Scanner MOCK/SIMULATOR y Balanza MOCK en una barra contextual compacta y panel diagnostico colapsable.
@@ -32,6 +40,7 @@ El objetivo es redisenar la experiencia POS alrededor de un flujo venta-first: b
 ## Impact
 
 - Afecta principalmente `web/modules/pos/components/PosScreen.tsx`.
+- Puede requerir ajustes puntuales en `web/app/[tenant]/layout.tsx` y `web/app/providers.tsx` para compartir el contexto POS y el carrito responsive.
 - Puede agregar componentes visuales POS bajo `web/modules/pos/components/`.
 - Agrega documentacion en `docs/pos-visual-experience.md`.
 - Agrega artefactos OpenSpec en `openspec/changes/pos-visual-operability-redesign/`.

@@ -33,6 +33,7 @@ import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { usePosCartStore } from "../hooks/usePosCartStore";
+import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
@@ -509,6 +510,7 @@ export const PosScreen = () => {
     setSaleStatus,
     setSelectedCustomerId,
   } = usePosCartStore();
+  const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
   const canCreate = hasMenuAccess("POS", "WRITE");
 
@@ -555,8 +557,6 @@ export const PosScreen = () => {
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
 
-  // New state for cart drawer visibility
-  const [isCartOpen, setIsCartOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -626,7 +626,7 @@ export const PosScreen = () => {
       height: 56,
     },
     minTop: 96,
-    onActivate: () => setIsCartOpen(true),
+    onActivate: () => setCartSheetOpen(true),
   });
 
   const focusProductSearch = useCallback(() => {
@@ -656,19 +656,25 @@ export const PosScreen = () => {
   useEffect(() => {
     const checkViewport = () => {
       const mobile = window.innerWidth < 1280;
-      setIsMobile(mobile);
-      // On mobile, cart is closed by default
-      if (mobile) {
-        setIsCartOpen(false);
-      } else {
-        setIsCartOpen(true);
-      }
-    };
+    setIsMobile(mobile);
+    // On mobile, cart is closed by default
+    if (mobile) {
+      setCartSheetOpen(false);
+    } else {
+      setCartSheetOpen(true);
+    }
+  };
 
     checkViewport();
     window.addEventListener("resize", checkViewport);
     return () => window.removeEventListener("resize", checkViewport);
   }, []);
+
+  useEffect(() => {
+    if (isMobile && cart.length === 0 && cartSheetOpen) {
+      setCartSheetOpen(false);
+    }
+  }, [cart.length, cartSheetOpen, isMobile, setCartSheetOpen]);
 
   useEffect(() => {
     if (paymentModalOpen || quickFiscalCustomerOpen) {
@@ -1963,9 +1969,9 @@ export const PosScreen = () => {
           setProductToolsOpen(false);
           return;
         }
-        if (isCartOpen && isMobile) {
+        if (cartSheetOpen && isMobile) {
           event.preventDefault();
-          setIsCartOpen(false);
+          setCartSheetOpen(false);
           return;
         }
         if (query.trim()) {
@@ -2001,7 +2007,7 @@ export const PosScreen = () => {
   }, [
     canCharge,
     focusProductSearch,
-    isCartOpen,
+    cartSheetOpen,
     isMobile,
     openChargeModal,
     openProductTools,
@@ -2308,7 +2314,7 @@ export const PosScreen = () => {
           {/* Close button - visible on mobile or when cart can be collapsed */}
           <button
             type="button"
-            onClick={() => setIsCartOpen(false)}
+            onClick={() => setCartSheetOpen(false)}
             className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden"
             aria-label="Cerrar carrito"
           >
@@ -3282,12 +3288,12 @@ export const PosScreen = () => {
         </aside>
 
         {/* Mobile Cart Modal */}
-        {isMobile && isCartOpen ? (
+        {isMobile && cartSheetOpen ? (
           <Modal
             title="Carrito de venta"
             description="Revisa productos, totales y cobro sin perder contexto."
             size="xl"
-            onClose={() => setIsCartOpen(false)}
+            onClose={() => setCartSheetOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
           >
             <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
@@ -3298,7 +3304,7 @@ export const PosScreen = () => {
       </div>
 
       {/* Floating Cart Button - visible when cart is closed and has items */}
-      {!isCartOpen && cartItemCount > 0 ? (
+      {!cartSheetOpen && cartItemCount > 0 ? (
         <button
           type="button"
           ref={cartFloatingControl.buttonRef}
