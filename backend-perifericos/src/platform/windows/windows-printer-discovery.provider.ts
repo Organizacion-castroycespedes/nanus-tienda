@@ -6,6 +6,7 @@ import type {
 } from "../../shared/discovery/device-discovery-provider";
 
 export type WindowsDiscoveryCommandRunner = (command: string, args: string[]) => string;
+export const WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS = 10_000;
 export type WindowsPrinterDiagnostic = {
   Name: string;
   Type: string;
@@ -25,7 +26,7 @@ const systemCommandRunner: WindowsDiscoveryCommandRunner = (command, args) =>
   execFileSync(command, args, {
     encoding: "utf8",
     windowsHide: true,
-    timeout: 5000,
+    timeout: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
   });
 
 export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider {
@@ -36,6 +37,7 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
   ) {}
 
   listUsbPrinters(): DiscoveredUsbPrinter[] {
+    const startedAt = Date.now();
     try {
       const printers = parseWindowsPrinterDiagnostics(
         this.commandRunner("powershell.exe", [
@@ -46,6 +48,12 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
         ])
       );
       this.diagnosticLogger(printers);
+      console.info("Windows printer discovery completed", {
+        durationMs: Date.now() - startedAt,
+        timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+        foundCount: printers.length,
+        timeout: false,
+      });
       return printers
         .filter((printer) => printer.Type === "Local" && /^(USB|DOT4USB)/i.test(printer.PortName))
         .map((printer) => ({
@@ -60,6 +68,14 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
+      const timeout = /timed?out|ETIMEDOUT/i.test(message);
+      console.error("Windows printer discovery failed", {
+        durationMs: Date.now() - startedAt,
+        timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+        timeout,
+        parseFailure: /PARSE_FAILED/i.test(message),
+        errorMessage: message,
+      });
       throw new BadRequestException(`USB printer discovery failed: ${message}`);
     }
   }

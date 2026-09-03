@@ -173,6 +173,7 @@ export class DevicesService {
 
   discover(): DiscoverDevicesResponse {
     const config = getPeripheralsConfig();
+    const discoveryStartedAt = Date.now();
     const discoveredAt = new Date().toISOString();
     if (config.mode === "MOCK") {
       this.logsService.append({
@@ -208,6 +209,7 @@ export class DevicesService {
         metadata: {
           mode: config.mode,
           outcome: "FAILED",
+          durationMs: Date.now() - discoveryStartedAt,
           errorMessage,
         },
       });
@@ -266,6 +268,9 @@ export class DevicesService {
         usbPrinterCount: nextDiscoveredUsbDevices.size,
         mode: config.mode,
         outcome: nextDiscoveredUsbDevices.size > 0 ? "FOUND" : "EMPTY",
+        durationMs: Date.now() - discoveryStartedAt,
+        timeoutMs: config.mode === "REAL" ? 10_000 : undefined,
+        timeout: false,
       },
     });
 
@@ -581,10 +586,9 @@ export class DevicesService {
       throw new BadRequestException("USB printer deviceId is required");
     }
 
-    const available = this.usbDiscovery
-      .list()
-      .some((descriptor) => descriptor.deviceId === usbDeviceId);
-    if (!available) {
+    // A configured USB device already has its queue identity persisted.
+    // Do not invoke Windows discovery on every print-ticket/open-drawer call.
+    if (device.status !== DeviceStatus.CONNECTED || !device.usb?.printerName) {
       throw new NotFoundException("USB printer device not found");
     }
   }

@@ -2,7 +2,7 @@
 
 | Risk | Signal | Mitigation | Stop condition |
 | --- | --- | --- | --- |
-| Runtime installed remains old | `/health.version` mismatch | Use `0.1.1-qa.2`; verify SHA256 and health version | Do not continue physical QA with old runtime |
+| Runtime installed remains old | `/health.version` mismatch | Use `0.1.1-qa.4`; verify SHA256 and health version | Do not continue physical QA with old runtime |
 | Same-version repair bug | `unlinkat ... Access is denied` | Never invoke repair or reuse `0.1.0` | Stop if installer classifies run as repair |
 | Config overwritten | JSON hash/content changes during install | Backup first; installer seeds only absent config; automated preservation test | Stop before REAL config if backup/preservation differs |
 | Identity changed | `agentInstallationId` differs | Preserve ProgramData state; compare before/after | Do not associate device until investigated |
@@ -13,12 +13,15 @@
 | Production sale side effects | POS test creates real sale | Document safe QA sale before execution | Leave AC9 NOT TESTED |
 | Automatic cut damage/false claim | unexpected cut command | Keep certification false | Do not enable cut in this phase |
 
-# Current physical status
+# Final physical status
 
 ```text
 PHYSICAL WINDOWS TEST PAGE: PASS
-PERIPHERAL AGENT REAL DISCOVERY: NOT TESTED
-DIRECT MANUS TEST PRINT: NOT TESTED
-WEB MANUS TEST PRINT: NOT TESTED
-POS PHYSICAL PRINT: NOT TESTED
+PERIPHERAL AGENT REAL DISCOVERY: PASS
+DIRECT MANUS TEST PRINT: PASS
+SALE API PHYSICAL PRINT: PASS
+WEB MANUS TEST PRINT: DEFERRED TO FOLLOW-UP
+POS UI PHYSICAL PRINT: DEFERRED TO FOLLOW-UP
+CASH DRAWER PHYSICAL OPEN: PASS
+AUTOCUT: OUT OF SCOPE
 ```

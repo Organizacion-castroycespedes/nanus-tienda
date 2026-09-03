@@ -23,6 +23,21 @@ SemVer prerelease version through `/health`.
 - **AND** terminal configuration may persist `THERMAL_58MM` or `THERMAL_80MM`
 - **AND** test print resolves the persisted device profile
 
+### Scenario: USB drawer pulse remains fail-closed until device certification
+
+- **WHEN** a USB printer lacks `metadata.usbRawCashDrawerPulseCertified=true`
+- **THEN** `/cash-drawer/open` returns `400 printer drawer pulse is not certified for this device`
+- **AND** no RAW write is attempted
+- **WHEN** that metadata is explicitly persisted after physical QA
+- **THEN** the configured profile pulse may be sent through the USB RAW adapter
+
+### Scenario: slow LocalService discovery is observable
+
+- **WHEN** Windows discovery runs as LocalService
+- **THEN** the Agent allows the measured 6263 ms duration within a 10000 ms timeout
+- **AND** logs started, completed, durationMs, timeoutMs, timeout, parse failure and found count
+- **AND** print-ticket for a persisted USB device does not invoke discovery
+
 ### Requirement: AC3 REAL physical discovery
 REAL discovery SHALL return physical devices without MOCK seed devices and
 SHALL distinguish empty, found and failed outcomes.

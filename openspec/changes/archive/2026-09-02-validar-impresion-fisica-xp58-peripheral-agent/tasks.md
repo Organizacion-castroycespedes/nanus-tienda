@@ -8,6 +8,7 @@
 ## 2. XP-58 QA packaging
 
 - [x] 2.1 Set source and artifact version to `0.1.1-qa.2` (QA2 parser fix)
+- [x] 2.8 Preserve USB cash-drawer certification as device metadata and keep guard fail-closed
 - [x] 2.2 Seed Windows QA templates with REAL mode, approved origins, RAW and physical cut disabled
 - [x] 2.3 Add tests for XP-58-like `Local / USB001` discovery and package config/version contents
 - [x] 2.4 Add upgrade tests proving existing config and installation identity state are preserved
@@ -24,11 +25,13 @@
 
 ## 4. Physical Windows QA
 
-- [ ] 4.1 Capture XP-58 queue, pre-upgrade health, version and `agentInstallationId`
-- [ ] 4.2 Back up local config and install the signed-off higher-version QA artifact
-- [ ] 4.3 Apply REAL config and prove version/identity/config preservation through health
-- [ ] 4.4 Discover XP-58 with no mocks and capture its physical `deviceId`
-- [ ] 4.5 Associate XP-58 to the terminal with `THERMAL_58MM`
-- [ ] 4.6 Observe paper from direct `/printer/test-print`
-- [ ] 4.7 Observe paper from the Manus Web test action
-- [ ] 4.8 Execute and observe POS physical print only if a safe QA sale flow is documented
+- [x] 4.1 Capture XP-58 queue, pre-upgrade health, version and `agentInstallationId`
+- [x] 4.2 Back up local config and install the signed-off higher-version QA artifact
+- [x] 4.3 Apply REAL config and prove version/identity/config preservation through health
+- [x] 4.4 Discover XP-58 with no mocks and capture its physical `deviceId`
+- [x] 4.5 Associate XP-58 to the terminal with `THERMAL_58MM`
+- [x] 4.6 Observe paper from direct `/printer/test-print` and sale ticket API
+- [x] 4.7 DEFERRED TO FOLLOW-UP: Web UI/terminal integration belongs to a future terminal/installer UX change
+- [x] 4.8 DEFERRED TO FOLLOW-UP: POS UI physical flow belongs to a future terminal/installer UX change; SALE API is certified here
+- [x] 4.9 Persist USB drawer certification and execute `/cash-drawer/open` API QA
+- [x] 4.10 Observe physical drawer opening (QA4 final evidence)

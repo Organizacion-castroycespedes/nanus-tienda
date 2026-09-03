@@ -389,7 +389,7 @@ test("USB unavailable queue emits a controlled printer failure event", async () 
   try {
     await assert.rejects(
       () => printerService.testPrint({ terminalId: "local-terminal", deviceId: "printer-xp80t-usb-001" }),
-      NotFoundException
+      BadRequestException
     );
     assert.equal(eventsService.getRecentEvents()[0]?.event, "printer.job.failed");
   } finally {
