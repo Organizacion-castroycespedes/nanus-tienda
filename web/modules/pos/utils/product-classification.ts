@@ -164,7 +164,7 @@ export const filterPosProductsForCatalog = <
   filters: PosProductCatalogFilters<TProduct>
 ) => {
   const normalizedQuery = normalizePosProductFilterText(filters.query ?? "");
-  const stockFilter = filters.stockFilter ?? "all";
+  const stockFilter = filters.stockFilter ?? "available";
   const isLowStock = filters.isLowStock ?? defaultIsLowStock;
   const getSearchText =
     filters.getSearchText ?? ((product: TProduct) => defaultProductSearchText(product));
