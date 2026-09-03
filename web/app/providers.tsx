@@ -9,8 +9,12 @@ import AuthSessionManager from "../components/auth/AuthSessionManager";
 import { ConfirmProvider } from "../providers/confirm-provider";
 import { useTenantTheme } from "../hooks/useTenantTheme";
 import {
+  clearPersistedPosState,
+  clearContext as clearPosContext,
+  loadPersistedPosState,
   persistPosState,
-  rehydratePosContextFromStorage,
+  setContext as setPosContext,
+  setSession as setPosSession,
 } from "../store/pos";
 import {
   clearPersistedPosCartState,
@@ -20,6 +24,8 @@ import {
   setPosCartContext,
 } from "../store/posCart";
 import { setInventoryScope } from "../store/inventoryScopeSlice";
+import { getAuthContext, getCurrentPosSession } from "../domains/pos/api";
+import { resolvePosSessionContext } from "../domains/pos/utils/pos-session-context";
 
 const BrandingApplier = ({ children }: { children: ReactNode }) => {
   const config = useAppSelector((state) => state.branding.config);
@@ -90,13 +96,123 @@ const BrandingApplier = ({ children }: { children: ReactNode }) => {
 };
 
 const PosStateManager = () => {
+  const authStatus = useAppSelector((state) => state.auth.authStatus);
+  const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
+  const authTenantId = useAppSelector((state) => state.auth.tenantId);
+  const authUserId = useAppSelector((state) => state.auth.user?.id ?? null);
   const pos = useAppSelector((state) => state.pos);
   const [hydrated, setHydrated] = useState(false);
+  const bootstrapKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    rehydratePosContextFromStorage(store.dispatch);
-    setHydrated(true);
-  }, []);
+    if (!bootstrapped) {
+      return;
+    }
+
+    if (authStatus !== "authenticated") {
+      bootstrapKeyRef.current = null;
+      setHydrated(true);
+      return;
+    }
+
+    const bootstrapKey = `${authTenantId ?? "default"}:${authUserId ?? "anonymous"}`;
+    if (bootstrapKeyRef.current === bootstrapKey) {
+      setHydrated(true);
+      return;
+    }
+
+    bootstrapKeyRef.current = bootstrapKey;
+    let active = true;
+
+    const syncPosContext = async () => {
+      const tenantId = authTenantId ?? null;
+      if (!tenantId) {
+        store.dispatch(clearPosContext());
+        clearPersistedPosState();
+        if (active) {
+          setHydrated(true);
+        }
+        return;
+      }
+
+      const [currentSession, authContext] = await Promise.all([
+        getCurrentPosSession().catch(() => null),
+        getAuthContext().catch(() => null),
+      ]);
+
+      if (!active) {
+        return;
+      }
+
+      const resolved = resolvePosSessionContext(authContext, currentSession, tenantId);
+      if (resolved) {
+        store.dispatch(
+          setPosContext({
+            tenantId: resolved.tenantId,
+            branchId: resolved.branchId,
+            branchName: resolved.branchName,
+            terminalId: resolved.terminalId,
+            terminalName: resolved.terminalName,
+            cashRegisterId: null,
+          })
+        );
+        store.dispatch(
+          setPosSession({
+            posSessionId: resolved.posSessionId,
+            branchId: resolved.branchId,
+            branchName: resolved.branchName,
+            terminalId: resolved.terminalId,
+            terminalName: resolved.terminalName,
+            cashRegisterId: null,
+          })
+        );
+        setHydrated(true);
+        return;
+      }
+
+      const persisted = loadPersistedPosState();
+      if (
+        persisted &&
+        persisted.tenantId === tenantId &&
+        persisted.branchId &&
+        persisted.terminalId &&
+        persisted.posSessionId
+      ) {
+        store.dispatch(
+          setPosContext({
+            tenantId: persisted.tenantId,
+            branchId: persisted.branchId,
+            branchName: persisted.branchName ?? null,
+            terminalId: persisted.terminalId,
+            terminalName: persisted.terminalName ?? null,
+            cashRegisterId: persisted.cashRegisterId ?? null,
+          })
+        );
+        store.dispatch(
+          setPosSession({
+            posSessionId: persisted.posSessionId,
+            branchId: persisted.branchId,
+            branchName: persisted.branchName ?? null,
+            terminalId: persisted.terminalId,
+            terminalName: persisted.terminalName ?? null,
+            cashRegisterId: persisted.cashRegisterId ?? null,
+          })
+        );
+        setHydrated(true);
+        return;
+      }
+
+      store.dispatch(clearPosContext());
+      clearPersistedPosState();
+      setHydrated(true);
+    };
+
+    void syncPosContext();
+
+    return () => {
+      active = false;
+    };
+  }, [authStatus, authTenantId, authUserId, bootstrapped]);
 
   useEffect(() => {
     if (!hydrated) {

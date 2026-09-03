@@ -159,6 +159,10 @@ export const persistPosState = (state: PosState) => {
     return;
   }
   try {
+    if (!state.tenantId || !state.branchId || !state.terminalId || !state.posSessionId) {
+      clearPersistedPosState();
+      return;
+    }
     window.localStorage.setItem(
       POS_STORAGE_KEY,
       JSON.stringify({

@@ -56,6 +56,7 @@ import { setCompanyDetails } from "../../store/companySlice";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthPermissions, setUser } from "../../store/authSlice";
 import { setMenuCache, setMenuItems, setPermissions } from "../../store/menuSlice";
+import { usePosUiStore } from "../../modules/pos/hooks/usePosUiStore";
 import type { AuthProfile } from "../../domains/auth/types";
 import type { MenuItem, MenuResponse } from "../../domains/menu/types";
 import { Select } from "../../components/design-system/Select";
@@ -155,6 +156,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const menuItems = useAppSelector((state) => state.menu.menuItems);
   const permissions = useAppSelector((state) => state.menu.permissions);
   const posContext = useAppSelector((state) => state.pos);
+  const { openCartSheet } = usePosUiStore();
   const posCartItemCount = useAppSelector((state) =>
     state.posCart.items.reduce((sum, item) => sum + item.quantity, 0)
   );
@@ -200,12 +202,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       }),
     []
   );
-  const posOperationalRole = authUser?.role || "Usuario";
-  const posOperationalBranch = posContext.branchName || authUser?.branchName || "Sucursal";
-  const posOperationalTerminal = posContext.terminalName || "Terminal";
+  const posOperationalRole = authUser?.role ?? null;
+  const posOperationalBranch = posContext.branchName ?? null;
+  const posOperationalTerminal = posContext.terminalName ?? null;
+  const hasPosOperationalContext = Boolean(
+    posOperationalRole || posOperationalBranch || posOperationalTerminal || posContext.posSessionId
+  );
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
   const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-3" : "lg:w-72 lg:px-4";
+  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -226,16 +232,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [isPosRoute]);
 
   useEffect(() => {
-    if (!isPosRoute) {
-      return;
-    }
-
     const intervalId = window.setInterval(() => {
       setPosClock(new Date());
     }, 60_000);
 
     return () => window.clearInterval(intervalId);
-  }, [isPosRoute]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -643,7 +645,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   : "text-[var(--brand-sidebar-text)] hover:bg-[var(--brand-sidebar-hover)]"
               }`}
               style={menuItemStyles.container}
-              title={sidebarCollapsed ? item.label : undefined}
+              title={isSidebarCompact ? item.label : undefined}
             >
               <span
                 aria-hidden="true"
@@ -658,13 +660,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
                   depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
                 } ${
-                  sidebarCollapsed ? "justify-center" : ""
+                  isSidebarCompact ? "justify-center" : ""
                 }`}
                 onClick={() => setSidebarOpen(false)}
                 aria-label={
                   posRequiresCash
                     ? "POS requiere caja abierta"
-                    : sidebarCollapsed
+                    : isSidebarCompact
                       ? item.label
                       : undefined
                 }
@@ -685,7 +687,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     <Icon className="h-3.5 w-3.5" />
                   </span>
                 )}
-                {!sidebarCollapsed ? (
+                {!isSidebarCompact ? (
                   <span className="flex min-w-0 flex-1 flex-col leading-5">
                     <span className="truncate">{item.label}</span>
                     {posRequiresCash ? (
@@ -708,7 +710,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   aria-expanded={isExpanded}
                   style={menuItemStyles.chevron}
                   title={
-                    sidebarCollapsed
+                    isSidebarCompact
                       ? `${isExpanded ? "Colapsar" : "Expandir"} ${item.label}`
                       : undefined
                   }
@@ -727,7 +729,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </button>
               ) : null}
             </div>
-            {hasChildren && (isExpanded || hasActiveChild) && !sidebarCollapsed
+            {hasChildren && (isExpanded || hasActiveChild) && !isSidebarCompact
               ? renderMenuItems(item.children ?? [], depth + 1)
               : null}
           </li>
@@ -747,7 +749,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             className="border-t pt-2 first:border-t-0 first:pt-0"
             style={{ borderColor: tenantTheme.sidebar.border }}
           >
-            {!sidebarCollapsed ? (
+            {!isSidebarCompact ? (
               <p className="mb-2 mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--brand-sidebar-muted)] opacity-70">
                 {section}
               </p>
@@ -1089,8 +1091,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          <div className={`mb-5 flex items-center gap-3 ${sidebarCollapsed ? "lg:justify-center" : ""}`}>
-            <div className={`flex min-w-0 items-center gap-2.5 ${sidebarCollapsed ? "lg:flex-col" : ""}`}>
+          <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "lg:justify-center" : ""}`}>
+            <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "lg:flex-col" : ""}`}>
               {brandingLogo ? (
                 <img
                   src={brandingLogo}
@@ -1109,7 +1111,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   {companyInitials}
                 </div>
               )}
-              {!sidebarCollapsed ? (
+              {!isSidebarCompact ? (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
                     {sidebarCompanyName}
@@ -1120,7 +1122,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </div>
               ) : null}
             </div>
-            <div className={`ml-auto flex items-center gap-2 ${sidebarCollapsed ? "lg:ml-0" : ""}`}>
+            <div className={`ml-auto flex items-center gap-2 ${isSidebarCompact ? "lg:ml-0" : ""}`}>
               <button
                 type="button"
                 className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
@@ -1175,39 +1177,55 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0">
-                {isPosRoute ? (
+                {hasPosOperationalContext ? (
                   <div className="space-y-1">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span
-                        className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)]"
-                        style={{
-                          borderColor: tenantTheme.header.iconButtonBorder,
-                          backgroundColor: tenantTheme.header.iconButtonBackground,
-                        }}
-                        title={posOperationalRole}
-                      >
-                        <span className="truncate">{posOperationalRole}</span>
-                      </span>
-                      <span
-                        className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
-                        style={{
-                          borderColor: tenantTheme.header.iconButtonBorder,
-                          backgroundColor: tenantTheme.header.iconButtonBackground,
-                        }}
-                        title={posOperationalTerminal}
-                      >
-                        <span className="truncate">{posOperationalTerminal}</span>
-                      </span>
-                      <span
-                        className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
-                        style={{
-                          borderColor: tenantTheme.header.iconButtonBorder,
-                          backgroundColor: tenantTheme.header.iconButtonBackground,
-                        }}
-                        title={posOperationalBranch}
-                      >
-                        <span className="truncate">{posOperationalBranch}</span>
-                      </span>
+                      {posOperationalRole ? (
+                        <span
+                          className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)]"
+                          style={{
+                            borderColor: tenantTheme.header.iconButtonBorder,
+                            backgroundColor: tenantTheme.header.iconButtonBackground,
+                          }}
+                          title={posOperationalRole}
+                        >
+                          <span className="truncate">{posOperationalRole}</span>
+                        </span>
+                      ) : null}
+                      {posOperationalTerminal ? (
+                        <span
+                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
+                          style={{
+                            borderColor: tenantTheme.header.iconButtonBorder,
+                            backgroundColor: tenantTheme.header.iconButtonBackground,
+                          }}
+                          title={posOperationalTerminal}
+                        >
+                          <span className="truncate">{posOperationalTerminal}</span>
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-muted)]"
+                          style={{
+                            borderColor: tenantTheme.header.iconButtonBorder,
+                            backgroundColor: tenantTheme.header.iconButtonBackground,
+                          }}
+                        >
+                          Terminal no disponible
+                        </span>
+                      )}
+                      {posOperationalBranch ? (
+                        <span
+                          className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
+                          style={{
+                            borderColor: tenantTheme.header.iconButtonBorder,
+                            backgroundColor: tenantTheme.header.iconButtonBackground,
+                          }}
+                          title={posOperationalBranch}
+                        >
+                          <span className="truncate">{posOperationalBranch}</span>
+                        </span>
+                      ) : null}
                     </div>
                     <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-header-muted)]">
                       {posOperationalDate} · {posOperationalTime}
@@ -1263,17 +1281,32 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 <MessageCircle className="h-5 w-5" />
               </button>
               {hasPendingPosSale ? (
-                <Link
-                  href={`/${tenantSlug}/pos`}
-                  className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
-                  aria-label={`Volver al POS con ${posCartItemCount} items pendientes`}
-                  title={`Venta POS pendiente: ${posCartItemCount} items`}
-                >
-                  <ShoppingCart className="h-5 w-5" />
-                  <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
-                    {posCartItemCount}
-                  </span>
-                </Link>
+                isPosRoute ? (
+                  <button
+                    type="button"
+                    className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    aria-label={`Abrir carrito con ${posCartItemCount} items pendientes`}
+                    title={`Venta POS pendiente: ${posCartItemCount} items`}
+                    onClick={() => openCartSheet()}
+                  >
+                    <ShoppingCart className="h-5 w-5" />
+                    <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                      {posCartItemCount}
+                    </span>
+                  </button>
+                ) : (
+                  <Link
+                    href={`/${tenantSlug}/pos`}
+                    className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    aria-label={`Volver al POS con ${posCartItemCount} items pendientes`}
+                    title={`Venta POS pendiente: ${posCartItemCount} items`}
+                  >
+                    <ShoppingCart className="h-5 w-5" />
+                    <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                      {posCartItemCount}
+                    </span>
+                  </Link>
+                )
               ) : null}
               <div className="relative">
                 <button
