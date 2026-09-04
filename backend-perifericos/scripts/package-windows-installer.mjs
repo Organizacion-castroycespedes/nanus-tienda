@@ -15,7 +15,8 @@ const installerUiRoot = join(projectRoot, "installer-ui");
 const embeddedUiRoot = join(assetsRoot, "ui");
 const installerManifestPath = join(assetsRoot, "manifest.json");
 const outputRoot = join(projectRoot, "dist-installer", "windows-x64");
-const outputPath = join(outputRoot, `ManusTerminalSetup-${packageJson.version}-win-x64.exe`);
+const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${packageJson.version}-win-x64.exe`;
+const outputPath = join(outputRoot, outputName);
 
 const assertBundleReady = () => {
   if (!existsSync(bundleRoot)) {

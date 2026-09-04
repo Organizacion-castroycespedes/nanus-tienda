@@ -75,6 +75,9 @@
     color:#041214;font-weight:900;font-size:14px;
     box-shadow:0 0 24px rgba(20,241,228,.16);
   }
+  .brand-logo{display:block;object-fit:contain;object-position:left center}
+  .brand-logo-header{width:142px;height:34px}
+  .brand-logo-hero{width:190px;height:62px}
   .brand-name{font-weight:800;letter-spacing:.08em;font-size:13px}
   .brand-name small{font-weight:500;color:var(--muted);letter-spacing:.05em;margin-left:7px}
   .window-actions{display:flex;gap:16px;color:#d7e0e4;font-size:18px;line-height:1}
@@ -311,8 +314,7 @@
 
   <header class="window-bar">
     <div class="brand-mini">
-      <div class="brand-mark">M</div>
-      <div class="brand-name">MANUS <small>TERMINAL SETUP</small></div>
+      <img class="brand-logo brand-logo-header" src="../../web/public/LogoManus.png.jpeg" alt="Manus POS">
     </div>
     <div class="window-actions" aria-label="Controles de ventana">
       <span>−</span><span>×</span>
@@ -325,11 +327,7 @@
     <section class="screen welcome active" data-screen="welcome">
       <div class="welcome-copy">
         <div class="hero-brand">
-          <div class="brand-mark">M</div>
-          <div>
-            <strong>MANUS</strong>
-            <span>TERMINAL SETUP</span>
-          </div>
+          <img class="brand-logo brand-logo-hero" src="../../web/public/LogoManus.png.jpeg" alt="Manus POS">
         </div>
 
         <div class="heading">

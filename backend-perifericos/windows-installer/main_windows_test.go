@@ -224,6 +224,156 @@ func TestReadInstalledVersionParsesJSONAndText(t *testing.T) {
 	}
 }
 
+func TestRepairStagingValidationRequiresCompletePayload(t *testing.T) {
+	dir := t.TempDir()
+	manifest := installerManifest{Version: "0.1.1-qa.4", VersionFileName: "VERSION.json"}
+	if err := os.WriteFile(filepath.Join(dir, "VERSION.json"), []byte(`{"version":"0.1.1-qa.4"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRepairStaging(dir, manifest); err == nil {
+		t.Fatal("incomplete repair staging accepted")
+	}
+	for _, path := range []string{
+		filepath.Join(dir, "ManusTerminalSetup.exe"),
+		filepath.Join(dir, "runtime", "node.exe"),
+		filepath.Join(dir, "app", "main.js"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := validateRepairStaging(dir, manifest); err != nil {
+		t.Fatalf("complete repair staging rejected: %v", err)
+	}
+}
+
+func TestRepairStagingValidationRejectsWrongVersion(t *testing.T) {
+	dir := t.TempDir()
+	manifest := installerManifest{Version: "0.1.1-qa.4", VersionFileName: "VERSION.json"}
+	if err := os.WriteFile(filepath.Join(dir, "VERSION.json"), []byte(`{"version":"0.1.1-qa.3"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRepairStaging(dir, manifest); err == nil {
+		t.Fatal("wrong staged version accepted")
+	}
+}
+
+func TestPreflightDetectsInconsistentFootprints(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ProgramFiles", filepath.Join(root, "Program Files"))
+	t.Setenv("ProgramData", filepath.Join(root, "ProgramData"))
+	layout := buildLayout(installerManifest{Version: "0.1.1-qa.4"})
+	if err := os.MkdirAll(layout.CurrentRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !hasInstallationFootprints(layout) {
+		t.Fatal("expected installation footprint")
+	}
+}
+
+func TestRepairPathsNeverAliasLiveTarget(t *testing.T) {
+	layout := runtimeLayout{VersionsRoot: filepath.Join(t.TempDir(), "versions"), VersionRoot: filepath.Join(t.TempDir(), "versions", "0.1.1-qa.4")}
+	staging, backup := newRepairPaths(layout)
+	if staging == layout.VersionRoot || backup == layout.VersionRoot || staging == backup {
+		t.Fatalf("repair paths alias live target: staging=%q backup=%q target=%q", staging, backup, layout.VersionRoot)
+	}
+}
+
+func TestUninstallCleanupUsesExternalHelperArguments(t *testing.T) {
+	layout := runtimeLayout{
+		InstallRoot:     `C:\Program Files\Manus\PeripheralAgent`,
+		ProgramDataRoot: `C:\ProgramData\Manus\PeripheralAgent`,
+	}
+	args := uninstallCleanupArgs(1234, layout, false)
+	if strings.Contains(strings.Join(args, " "), layout.InstallRoot+"\\versions") {
+		t.Fatal("cleanup args must target install root, not a live child executable")
+	}
+	pid, installRoot, dataRoot, removeData, err := parseUninstallCleanupArgs(args)
+	if err != nil || pid != 1234 || installRoot != layout.InstallRoot || dataRoot != layout.ProgramDataRoot || removeData {
+		t.Fatalf("cleanup args parse = %d %q %q %v %v", pid, installRoot, dataRoot, removeData, err)
+	}
+	if strings.HasPrefix(filepath.Clean(filepath.Dir(os.TempDir())), filepath.Clean(layout.InstallRoot)) {
+		t.Fatal("test temp root unexpectedly inside Program Files")
+	}
+}
+
+func TestUninstallCleanupRequiresParentAndRoots(t *testing.T) {
+	if _, _, _, _, err := parseUninstallCleanupArgs(nil); err == nil {
+		t.Fatal("incomplete cleanup arguments accepted")
+	}
+}
+
+func TestProgramDataAloneIsNotProductiveFootprint(t *testing.T) {
+	root := t.TempDir()
+	layout := runtimeLayout{
+		InstallRoot:     filepath.Join(root, "Program Files", "Manus", "PeripheralAgent"),
+		ProgramDataRoot: filepath.Join(root, "ProgramData", "Manus", "PeripheralAgent"),
+	}
+	if err := os.MkdirAll(layout.ProgramDataRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if hasInstallationFootprints(layout) {
+		t.Fatal("ProgramData alone must not be inconsistent")
+	}
+}
+
+func TestEmptyManusParentCanBeRemovedButNonEmptyIsPreserved(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "Manus")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := removeEmptyManusParent(root)
+	if err != nil || !removed || exists(root) {
+		t.Fatalf("empty Manus parent cleanup = removed=%v err=%v exists=%v", removed, err, exists(root))
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "other.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	removed, err = removeEmptyManusParent(root)
+	if err != nil || removed || !exists(root) {
+		t.Fatalf("non-empty Manus parent cleanup = removed=%v err=%v exists=%v", removed, err, exists(root))
+	}
+}
+
+func TestTempCleanupCommandQuotesPathsWithSpacesAndRunsFromParent(t *testing.T) {
+	tempRoot := filepath.Join(os.TempDir(), "Ivan Castro", "ManusTerminalSetup-uninstall-7280")
+	if err := os.MkdirAll(filepath.Dir(tempRoot), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script, err := writeTempCleanupScript(tempRoot, filepath.Join(os.TempDir(), "logs", "installer.log"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(script)
+	defer os.Remove(filepath.Dir(tempRoot))
+	contents, err := os.ReadFile(script)
+	if err != nil || !strings.Contains(string(contents), `rmdir /s /q "%TARGET%"`) || !strings.Contains(string(contents), "1,1,12") {
+		t.Fatalf("cleanup script invalid: %v %s", err, contents)
+	}
+	command := buildTempCleanupCommand(tempRoot)
+	if !strings.Contains(command, "retries=12") {
+		t.Fatalf("cleanup command = %q", command)
+	}
+	finalScript := filepath.Join(filepath.Dir(tempRoot), "ManusTerminalSetup-cleanup-final.cmd")
+	if err := writeFinalLogCleanupScript(finalScript, filepath.Join(os.TempDir(), "Manus Terminal Setup.log")); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(finalScript)
+	finalContents, err := os.ReadFile(finalScript)
+	if err != nil || !strings.Contains(string(finalContents), "1,1,12") || !strings.Contains(string(finalContents), "del /q") {
+		t.Fatalf("final cleanup script invalid: %v %s", err, finalContents)
+	}
+	if filepath.Dir(tempRoot) == tempRoot {
+		t.Fatal("cleanup target must have an external working directory")
+	}
+}
+
 func TestEnvDurationSecondsFallback(t *testing.T) {
 	t.Setenv("MANUS_INSTALLER_HEALTH_TIMEOUT_SECONDS", "")
 	if got := envDurationSeconds("MANUS_INSTALLER_HEALTH_TIMEOUT_SECONDS", 33); got != 33*time.Second {

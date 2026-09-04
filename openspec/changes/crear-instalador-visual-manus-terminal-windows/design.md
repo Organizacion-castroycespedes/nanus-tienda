@@ -111,7 +111,64 @@ certificación del Agent.
 3. Probar fallback y rollback del Installer Core.
 4. Ejecutar QA Windows limpio; si falla UI, conservar camino tecnico actual.
 
+## Fase 7 — integración productiva
+
+El Installer Core Go sigue siendo la única autoridad para instalación versionada,
+servicio, health gate y rollback. La UI WebView2 solo representa un estado tipado
+y solicita acciones permitidas por el Core; no duplica operaciones privilegiadas.
+
+El modelo `installerCoreState` define fase, progreso, pasos, paso actual,
+advertencia, error y cancelabilidad. Los pasos productivos definidos son
+requisitos, archivos, instalación del Agent, servicio, health, discovery,
+periféricos y finalización. El estado inicial deja todos los pasos en `PENDING`,
+por lo que la UI no puede afirmar éxitos que no ocurrieron.
+
+El reducer tipado acepta eventos `STEP_STARTED`, `STEP_SUCCEEDED`,
+`STEP_WARNING`, `STEP_FAILED`, `ROLLBACK_*` e `INSTALL_*`, con secuencia
+monotónica, transiciones válidas y progreso derivado de pasos terminados. La
+publicación de esos eventos reales desde cada operación del Core queda pendiente.
+Discovery,
+configuración, impresión y cajón solo se habilitan después de health exitoso y
+usan los bridges ya certificados. Cero dispositivos es un resultado operativo no
+fatal; scanner y balanza son opcionales.
+
+Mientras esa integración no esté conectada, el flujo sin flags conserva el Core
+técnico existente y no se ejecuta un instalador productivo visual. No se reclama
+“Terminal lista” hasta que autostart/launcher y readiness real estén implementados.
+
+### Fase 7.1B — Core real
+
+`install()` conserva su entrada pública y delega en `installWithObserver`.
+Los wrappers mapean `ensureSupportedHost`/`ensureElevated` a
+`VERIFY_REQUIREMENTS`; `ensureBaseDirectories` a `PREPARE_FILES`;
+`copyBundleToVersion`, `copySelfExecutable`, `ensureLocalConfig`, permisos,
+`stopService` y `ensureCurrentJunction` a `INSTALL_AGENT`;
+`configureService` a `CONFIGURE_SERVICE`; `startService` a `START_SERVICE`;
+`waitForHealth` a `VERIFY_SERVICE`; y `writeUninstallMetadata` a
+`FINALIZE_INSTALLATION`. `rollbackToPreviousVersion` queda intacta y se rodea
+con eventos `ROLLBACK_STARTED`, `ROLLBACK_SUCCEEDED` o `ROLLBACK_FAILED`.
+
+### Same-version repair transaccional
+
+El repair de una version ya activa nunca escribe sobre el target live. Copia
+el bundle a un staging unico, valida `VERSION.json` y los archivos requeridos,
+detiene y confirma el servicio detenido, mueve el target anterior a un backup
+independiente y activa el replacement. El rollback restaura ese backup y
+reconstruye `current`, servicio y health. La identidad y ProgramData quedan
+fuera del payload reemplazable.
+
+Preflight clasifica como `INCONSISTENT` una instalacion con footprints
+productivos pero sin metadata `VERSION.json` valida.
+
 ## Open Questions
+
+### Harness visual Fase 7.1
+
+`--ui-core-flow-qa[=success|rollback-success|rollback-fail]` usa eventos
+deterministas en memoria y el mismo reducer. Cada snapshot se envía a
+`window.manusInstaller.onState` mediante `WebView2.Dispatch`; el goroutine del
+harness no llama directamente al hilo UI. El modo no invoca instalación,
+servicios, health real, rollback real, filesystem ni PeripheralAgent.
 
 - Confirmar disponibilidad minima de WebView2 en las maquinas objetivo.
 - Elegir mecanismo exacto de bridge Go/UI despues de spike, sin comprometer Electron.

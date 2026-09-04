@@ -87,6 +87,22 @@ type statusReport struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && strings.EqualFold(os.Args[1], "--uninstall-cleanup") {
+		manifest, err := loadManifest()
+		if err != nil {
+			fatal(err)
+		}
+		fatal(runUninstallCleanup(manifest, os.Args[2:]))
+		return
+	}
+	if len(os.Args) > 1 {
+		if scenario, ok := coreFlowScenarioArg(os.Args[1]); ok {
+			if err := runInstallerCoreFlowQA(scenario); err != nil {
+				fatal(err)
+			}
+			return
+		}
+	}
 	manifest, err := loadManifest()
 	if err != nil {
 		fatal(err)
@@ -104,6 +120,8 @@ func main() {
 			fatal(printStatus(manifest))
 		case "inspect", "/inspect":
 			fatal(printInspect(manifest))
+		case "--preflight":
+			fatal(printPreflight(manifest))
 		case "service":
 			runAsService(manifest)
 			return
@@ -130,12 +148,12 @@ func main() {
 				printUsage(manifest)
 				os.Exit(2)
 			}
-			fatal(install(manifest))
+			fatal(runProductiveInstallerUI(manifest))
 		}
 		return
 	}
 
-	fatal(install(manifest))
+	fatal(runProductiveInstallerUI(manifest))
 }
 
 func fatal(err error) {
@@ -179,6 +197,35 @@ func printInspect(manifest installerManifest) error {
 	return json.NewEncoder(os.Stdout).Encode(payload)
 }
 
+func printPreflight(manifest installerManifest) error {
+	layout := buildLayout(manifest)
+	installedVersion, installedPath := currentInstalledVersion(manifest, layout)
+	intent := "fresh install"
+	state := "CLEAN"
+	warning := ""
+	if installedVersion != "" {
+		if installedVersion == manifest.Version {
+			intent = "same-version repair"
+		} else {
+			intent = "upgrade"
+		}
+	} else if hasInstallationFootprints(layout) {
+		state = "INCONSISTENT"
+		intent = "inconsistent installation"
+		warning = "installation footprints exist but VERSION.json is missing or invalid"
+	}
+	return json.NewEncoder(os.Stdout).Encode(map[string]any{
+		"embeddedAgentVersion":    manifest.Version,
+		"installedAgentVersion":   installedVersion,
+		"intendedMode":            intent,
+		"installationState":       state,
+		"warning":                 warning,
+		"targetVersionDirectory":  layout.VersionRoot,
+		"currentVersionDirectory": layout.CurrentRoot,
+		"rollbackCandidate":       installedPath,
+	})
+}
+
 func printStatus(manifest installerManifest) error {
 	layout := buildLayout(manifest)
 	report := statusReport{
@@ -212,15 +259,28 @@ func printStatus(manifest installerManifest) error {
 }
 
 func install(manifest installerManifest) error {
-	if err := ensureSupportedHost(); err != nil {
-		return err
+	return installWithObserver(manifest, nil)
+}
+
+func installWithObserver(manifest installerManifest, observer installerCoreEventSink) error {
+	if coreFlowHarnessActive.Load() {
+		return fmt.Errorf("productive installer blocked during CoreFlow QA")
 	}
-	if err := ensureElevated(); err != nil {
+	var sequence uint64
+	if observer != nil {
+		emitCoreStep(observer, &sequence, eventInstallStarted, "", nil)
+	}
+	if err := runCoreStep(observer, &sequence, stepVerifyRequirements, func() error {
+		if err := ensureSupportedHost(); err != nil {
+			return err
+		}
+		return ensureElevated()
+	}); err != nil {
 		return err
 	}
 
 	layout := buildLayout(manifest)
-	if err := ensureBaseDirectories(layout); err != nil {
+	if err := runCoreStep(observer, &sequence, stepPrepareFiles, func() error { return ensureBaseDirectories(layout) }); err != nil {
 		return err
 	}
 
@@ -242,35 +302,48 @@ func install(manifest installerManifest) error {
 	} else {
 		logger.Printf("fresh install version=%s", manifest.Version)
 	}
-
-	if err := copyBundleToVersion(layout, manifest); err != nil {
-		return fmt.Errorf("install copy payload: %w", err)
-	}
-
-	if err := copySelfExecutable(layout.ServiceExe); err != nil {
-		return fmt.Errorf("copy installer executable: %w", err)
-	}
-
-	if err := ensureLocalConfig(layout); err != nil {
-		return fmt.Errorf("prepare config: %w", err)
-	}
-
-	if err := ensureServicePermissions(layout); err != nil {
-		return fmt.Errorf("prepare service permissions: %w", err)
-	}
-
-	_ = stopService(manifest)
-
-	if err := ensureCurrentJunction(layout.CurrentRoot, layout.VersionRoot); err != nil {
-		return fmt.Errorf("activate current version: %w", err)
-	}
-
 	rollbackPath := existingVersionPath
+	repairBackupPath := ""
+	repairStagingPath := ""
+
+	if err := runCoreStep(observer, &sequence, stepInstallAgent, func() error {
+		if sameVersion {
+			var err error
+			repairStagingPath, repairBackupPath, err = prepareSameVersionRepair(layout, manifest, logger)
+			if err != nil {
+				return err
+			}
+			rollbackPath = repairBackupPath
+			return nil
+		}
+		if err := copyBundleToVersion(layout, manifest); err != nil {
+			return fmt.Errorf("install copy payload: %w", err)
+		}
+		if err := copySelfExecutable(layout.ServiceExe); err != nil {
+			return fmt.Errorf("copy installer executable: %w", err)
+		}
+		if err := ensureLocalConfig(layout); err != nil {
+			return fmt.Errorf("prepare config: %w", err)
+		}
+		if err := ensureServicePermissions(layout); err != nil {
+			return err
+		}
+		_ = stopService(manifest)
+		if err := ensureCurrentJunction(layout.CurrentRoot, layout.VersionRoot); err != nil {
+			return fmt.Errorf("activate current version: %w", err)
+		}
+		return nil
+	}); err != nil {
+		if repairBackupPath != "" {
+			emitRollback(observer, &sequence, manifest, layout, repairBackupPath, existingVersion, logger)
+		}
+		return err
+	}
 	registration := buildServiceRegistration(manifest, layout)
 	logger.Printf("service registration executable=%s args=%q", registration.Executable, registration.Args)
-	if err := configureService(manifest, registration); err != nil {
+	if err := runCoreStep(observer, &sequence, stepConfigureService, func() error { return configureService(manifest, registration) }); err != nil {
 		if rollbackPath != "" {
-			_ = rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
+			emitRollback(observer, &sequence, manifest, layout, rollbackPath, existingVersion, logger)
 		}
 		return err
 	}
@@ -279,27 +352,39 @@ func install(manifest installerManifest) error {
 		logger.Printf("recovery policy warning: %v", err)
 	}
 
-	if err := startService(manifest); err != nil {
+	if err := runCoreStep(observer, &sequence, stepStartService, func() error { return startService(manifest) }); err != nil {
 		if rollbackPath != "" {
-			_ = rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
+			emitRollback(observer, &sequence, manifest, layout, rollbackPath, existingVersion, logger)
 		}
 		return fmt.Errorf("start service: %w", err)
 	}
 
-	if err := waitForHealth(manifest); err != nil {
+	if err := runCoreStep(observer, &sequence, stepVerifyService, func() error { return waitForHealth(manifest) }); err != nil {
 		logger.Printf("health failed: %v", err)
 		_ = stopService(manifest)
 		if rollbackPath != "" {
-			_ = rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
+			emitRollback(observer, &sequence, manifest, layout, rollbackPath, existingVersion, logger)
 		}
 		return fmt.Errorf("health gate failed: %w", err)
 	}
 
+	emitCoreStep(observer, &sequence, eventStepStarted, stepFinalize, nil)
 	if err := writeUninstallMetadata(layout, manifest); err != nil {
+		emitCoreStep(observer, &sequence, eventStepWarning, stepFinalize, err)
 		logger.Printf("uninstall metadata warning: %v", err)
+	} else {
+		emitCoreStep(observer, &sequence, eventStepSucceeded, stepFinalize, nil)
 	}
 
 	logger.Printf("install success version=%s", manifest.Version)
+	if repairStagingPath != "" || repairBackupPath != "" {
+		if err := cleanupRepairArtifacts(repairStagingPath, repairBackupPath, logger); err != nil {
+			logger.Printf("repair cleanup warning: %v", err)
+		}
+	}
+	if observer != nil {
+		emitCoreStep(observer, &sequence, eventInstallSuccess, "", nil)
+	}
 	fmt.Printf("SUCCESS version=%s\n", manifest.Version)
 	return nil
 }
@@ -319,24 +404,294 @@ func uninstall(manifest installerManifest, removeData bool) error {
 		logger.Printf("uninstall start removeData=%t", removeData)
 	}
 
-	_ = stopService(manifest)
+	if err := stopService(manifest); err != nil && !isMissingServiceError(err) {
+		return fmt.Errorf("uninstall stop service: %w", err)
+	}
+	if err := waitForServiceStopped(manifest); err != nil {
+		return fmt.Errorf("uninstall service stop confirmation: %w", err)
+	}
 	if err := deleteService(manifest); err != nil && !isMissingServiceError(err) {
 		return err
 	}
-	if err := deleteUninstallMetadata(manifest); err != nil {
+	helperPath, err := prepareUninstallCleanupHelper(layout, removeData)
+	if err != nil {
 		return err
 	}
-	if err := removeCurrentJunction(layout.CurrentRoot); err != nil {
-		return err
+	cmd := exec.Command(helperPath, uninstallCleanupArgs(os.Getpid(), layout, removeData)...)
+	cmd.Dir = filepath.Dir(helperPath)
+	if err := cmd.Start(); err != nil {
+		_ = os.Remove(helperPath)
+		return fmt.Errorf("launch uninstall cleanup helper: %w", err)
 	}
-	if err := os.RemoveAll(filepath.Join(layout.InstallRoot, "versions")); err != nil {
-		return err
+	if logger != nil {
+		logger.Printf("uninstall cleanup helper launched pid=%d path=%s", cmd.Process.Pid, helperPath)
+	}
+	fmt.Println("UNINSTALL CLEANUP SCHEDULED")
+	return nil
+}
+
+func prepareUninstallCleanupHelper(layout runtimeLayout, removeData bool) (string, error) {
+	tempRoot := filepath.Join(os.TempDir(), fmt.Sprintf("ManusTerminalSetup-uninstall-%d", os.Getpid()))
+	if err := os.MkdirAll(tempRoot, 0o700); err != nil {
+		return "", err
+	}
+	helperPath := filepath.Join(tempRoot, "ManusTerminalSetup-uninstall-helper.exe")
+	if err := copyFile(os.Args[0], helperPath); err != nil {
+		self, selfErr := os.Executable()
+		if selfErr != nil {
+			return "", err
+		}
+		if copyErr := copyFile(self, helperPath); copyErr != nil {
+			return "", copyErr
+		}
+	}
+	return helperPath, nil
+}
+
+func uninstallCleanupArgs(parentPID int, layout runtimeLayout, removeData bool) []string {
+	args := []string{
+		"--uninstall-cleanup",
+		fmt.Sprintf("--parent-pid=%d", parentPID),
+		"--install-root=" + layout.InstallRoot,
+		"--programdata-root=" + layout.ProgramDataRoot,
 	}
 	if removeData {
-		_ = os.RemoveAll(layout.ProgramDataRoot)
+		args = append(args, "--remove-data")
 	}
-	fmt.Println("SUCCESS uninstall")
+	return args
+}
+
+func runUninstallCleanup(manifest installerManifest, args []string) error {
+	parentPID, installRoot, programDataRoot, removeData, err := parseUninstallCleanupArgs(args)
+	if err != nil {
+		return err
+	}
+	if err := waitForParentExit(parentPID); err != nil {
+		return err
+	}
+	logger, _ := newInstallLogger(filepath.Join(programDataRoot, "logs", "installer.log"))
+	cleanupLogPath := filepath.Join(programDataRoot, "logs", "installer.log")
+	if logger != nil {
+		logger.Printf("cleanup helper start parent pid=%d", parentPID)
+		logger.Printf("cleanup parent exit confirmed")
+		logger.Printf("PeripheralAgent delete start root=%s", installRoot)
+	}
+	if err := os.RemoveAll(installRoot); err != nil {
+		if logger != nil {
+			logger.Printf("PeripheralAgent delete failure error=%v", err)
+		}
+		return fmt.Errorf("uninstall cleanup Program Files: %w", err)
+	}
+	if exists(installRoot) {
+		return fmt.Errorf("uninstall cleanup Program Files still exists: %s", installRoot)
+	}
+	if logger != nil {
+		logger.Printf("PeripheralAgent delete success")
+	}
+	if removed, removeErr := removeEmptyManusParent(filepath.Dir(installRoot)); removeErr != nil {
+		if logger != nil {
+			logger.Printf("empty Manus parent cleanup failure error=%v", removeErr)
+		}
+	} else if removed && logger != nil {
+		logger.Printf("empty Manus parent cleanup success")
+	}
+	if removeData {
+		if logger != nil {
+			logger.Printf("ProgramData policy=remove")
+			_ = logger.Close()
+			logger = nil
+		}
+		cleanupLogPath = filepath.Join(os.TempDir(), "ManusTerminalSetup-cleanup-"+fmt.Sprintf("%d", parentPID)+".log")
+		logger, _ = newInstallLogger(cleanupLogPath)
+		if logger != nil {
+			defer logger.Close()
+			logger.Printf("ProgramData logger closed before remove")
+			logger.Printf("ProgramData delete start target=%s", programDataRoot)
+		}
+		if err := os.RemoveAll(programDataRoot); err != nil {
+			if logger != nil {
+				logger.Printf("ProgramData delete failure error=%v", err)
+			}
+			return fmt.Errorf("uninstall cleanup ProgramData: %w", err)
+		}
+		if logger != nil {
+			logger.Printf("ProgramData delete success")
+		}
+		if removed, removeErr := removeEmptyManusParent(filepath.Dir(programDataRoot)); logger != nil {
+			if removeErr != nil {
+				logger.Printf("ProgramData Manus parent cleanup failure error=%v", removeErr)
+			} else if removed {
+				logger.Printf("ProgramData Manus parent cleanup success")
+			}
+		}
+	} else if logger != nil {
+		logger.Printf("ProgramData policy=preserve")
+	}
+	if err := deleteUninstallMetadata(manifest); err != nil && !isMissingServiceError(err) {
+		return fmt.Errorf("uninstall cleanup registry: %w", err)
+	}
+	if logger != nil {
+		logger.Printf("registry removal success")
+	}
+	tempRoot := filepath.Dir(os.Args[0])
+	cleanupCommand := buildTempCleanupCommand(tempRoot)
+	if logger != nil {
+		logger.Printf("TEMP cleanup command=%s target=%s strategy=external-cmd-after-helper", cleanupCommand, tempRoot)
+	}
+	cleanupPID, cleanupErr := scheduleTempCleanup(tempRoot, cleanupLogPath, removeData)
+	if logger != nil {
+		if cleanupErr != nil {
+			logger.Printf("TEMP cleanup launch failure error=%v", cleanupErr)
+		} else {
+			logger.Printf("TEMP cleanup launched pid=%d workingDir=%s", cleanupPID, filepath.Dir(tempRoot))
+		}
+		_ = logger.Close()
+	}
 	return nil
+}
+
+func removeEmptyManusParent(manusRoot string) (bool, error) {
+	if filepath.Base(filepath.Clean(manusRoot)) != "Manus" {
+		return false, nil
+	}
+	entries, err := os.ReadDir(manusRoot)
+	if err != nil || len(entries) != 0 {
+		return false, err
+	}
+	if err := os.Remove(manusRoot); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func scheduleTempCleanup(tempRoot, logPath string, removeLog bool) (int, error) {
+	if tempRoot == "" {
+		return 0, fmt.Errorf("empty temp cleanup target")
+	}
+	rel, err := filepath.Rel(os.TempDir(), tempRoot)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return 0, fmt.Errorf("temp cleanup target outside TEMP")
+	}
+	finalScript := ""
+	if removeLog {
+		finalScript = filepath.Join(filepath.Dir(tempRoot), filepath.Base(tempRoot)+"-log-cleanup.cmd")
+		if err := writeFinalLogCleanupScript(finalScript, logPath); err != nil {
+			return 0, err
+		}
+	}
+	scriptPath, err := writeTempCleanupScriptWithFinal(tempRoot, logPath, removeLog, finalScript)
+	if err != nil {
+		return 0, err
+	}
+	cmd := exec.Command("cmd.exe", "/D", "/C", scriptPath)
+	cmd.Dir = filepath.Dir(tempRoot)
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	return cmd.Process.Pid, nil
+}
+
+func writeFinalLogCleanupScript(scriptPath, logPath string) error {
+	contents := "@echo off\r\n" +
+		"set \"LOG=" + quoteBatchPath(logPath) + "\"\r\n" +
+		"for /L %%I in (1,1,12) do (\r\n" +
+		"  if not exist \"%LOG%\" goto success\r\n" +
+		"  del /q \"%LOG%\" >nul 2>&1\r\n" +
+		"  if not exist \"%LOG%\" goto success\r\n" +
+		"  timeout /t 5 /nobreak >nul\r\n" +
+		")\r\n" +
+		"goto done\r\n" +
+		":success\r\n" +
+		"del /q \"%~f0\" >nul 2>&1\r\n" +
+		":done\r\n"
+	return os.WriteFile(scriptPath, []byte(contents), 0o600)
+}
+
+func buildTempCleanupCommand(tempRoot string) string {
+	return fmt.Sprintf("cmd.exe /D /C cleanup-target=\"%s\" retries=12", tempRoot)
+}
+
+func writeTempCleanupScript(tempRoot, logPath string, removeLog bool) (string, error) {
+	return writeTempCleanupScriptWithFinal(tempRoot, logPath, removeLog, "")
+}
+
+func writeTempCleanupScriptWithFinal(tempRoot, logPath string, removeLog bool, finalScript string) (string, error) {
+	if tempRoot == "" {
+		return "", fmt.Errorf("empty temp cleanup target")
+	}
+	rel, err := filepath.Rel(os.TempDir(), tempRoot)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("temp cleanup target outside TEMP")
+	}
+	parent := filepath.Dir(tempRoot)
+	scriptPath := filepath.Join(parent, filepath.Base(tempRoot)+"-cleanup.cmd")
+	contents := "@echo off\r\n" +
+		"set \"TARGET=" + quoteBatchPath(tempRoot) + "\"\r\n" +
+		"set \"LOG=" + quoteBatchPath(logPath) + "\"\r\n" +
+		"for /L %%I in (1,1,12) do (\r\n" +
+		"  if not exist \"%TARGET%\" goto success\r\n" +
+		"  echo cleanup retry %%I target=%TARGET%>>\"%LOG%\"\r\n" +
+		"  rmdir /s /q \"%TARGET%\" >>\"%LOG%\" 2>&1\r\n" +
+		"  if not exist \"%TARGET%\" goto success\r\n" +
+		"  timeout /t 5 /nobreak >nul\r\n" +
+		")\r\n" +
+		"echo cleanup failure target=%TARGET% retries=12>>\"%LOG%\"\r\n" +
+		"goto failureDone\r\n" +
+		":success\r\n" +
+		"echo cleanup success target=%TARGET%>>\"%LOG%\"\r\n" +
+		func() string {
+			if finalScript != "" {
+				return "start \"\" /b cmd.exe /D /C \"" + quoteBatchPath(finalScript) + "\"\r\n"
+			}
+			return ""
+		}() +
+		":failureDone\r\n" +
+		"del /q \"%~f0\" >nul 2>&1\r\n"
+	_ = removeLog // final cleaner owns external log deletion.
+	if err := os.WriteFile(scriptPath, []byte(contents), 0o600); err != nil {
+		return "", err
+	}
+	return scriptPath, nil
+}
+
+func quoteBatchPath(path string) string {
+	return strings.ReplaceAll(path, "%", "%%")
+}
+
+func parseUninstallCleanupArgs(args []string) (int, string, string, bool, error) {
+	parentPID, installRoot, programDataRoot := 0, "", ""
+	removeData := false
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--parent-pid="):
+			if _, err := fmt.Sscanf(strings.TrimPrefix(arg, "--parent-pid="), "%d", &parentPID); err != nil {
+				return 0, "", "", false, fmt.Errorf("invalid parent pid")
+			}
+		case strings.HasPrefix(arg, "--install-root="):
+			installRoot = strings.TrimPrefix(arg, "--install-root=")
+		case strings.HasPrefix(arg, "--programdata-root="):
+			programDataRoot = strings.TrimPrefix(arg, "--programdata-root=")
+		case strings.EqualFold(arg, "--remove-data"):
+			removeData = true
+		}
+	}
+	if parentPID <= 0 || installRoot == "" || programDataRoot == "" {
+		return 0, "", "", false, fmt.Errorf("incomplete uninstall cleanup arguments")
+	}
+	return parentPID, installRoot, programDataRoot, removeData, nil
+}
+
+func waitForParentExit(parentPID int) error {
+	if parentPID == os.Getpid() {
+		return fmt.Errorf("cleanup helper cannot wait for itself")
+	}
+	handle, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(parentPID))
+	if err != nil {
+		return nil
+	}
+	defer windows.CloseHandle(handle)
+	_, err = windows.WaitForSingleObject(handle, windows.INFINITE)
+	return err
 }
 
 func runAsService(manifest installerManifest) {
@@ -714,6 +1069,10 @@ func currentInstalledVersion(manifest installerManifest, layout runtimeLayout) (
 	return "", ""
 }
 
+func hasInstallationFootprints(layout runtimeLayout) bool {
+	return exists(layout.InstallRoot) || exists(layout.CurrentRoot) || exists(layout.VersionRoot)
+}
+
 func readInstalledVersion(versionFilePath string) (string, bool) {
 	data, err := os.ReadFile(versionFilePath)
 	if err != nil {
@@ -741,6 +1100,160 @@ func copyBundleToVersion(layout runtimeLayout, manifest installerManifest) error
 		return err
 	}
 	return nil
+}
+
+func prepareSameVersionRepair(layout runtimeLayout, manifest installerManifest, logger *installLogger) (string, string, error) {
+	stagingPath, backupPath := newRepairPaths(layout)
+	if logger != nil {
+		logger.Printf("repair staging path=%s", stagingPath)
+		logger.Printf("repair staging extraction start")
+	}
+	if err := os.MkdirAll(stagingPath, 0o755); err != nil {
+		return "", "", fmt.Errorf("create repair staging: %w", err)
+	}
+	cleanupStaging := true
+	defer func() {
+		if cleanupStaging {
+			_ = os.RemoveAll(stagingPath)
+		}
+	}()
+	if err := copyEmbeddedTree(manifest.BundleRoot, stagingPath); err != nil {
+		return "", "", fmt.Errorf("repair staging extraction: %w", err)
+	}
+	if err := copySelfExecutable(filepath.Join(stagingPath, "ManusTerminalSetup.exe")); err != nil {
+		return "", "", fmt.Errorf("repair staging executable: %w", err)
+	}
+	stagedLayout := layout
+	stagedLayout.VersionRoot = stagingPath
+	stagedLayout.ServiceExe = filepath.Join(stagingPath, "ManusTerminalSetup.exe")
+	if err := ensureLocalConfig(stagedLayout); err != nil {
+		return "", "", fmt.Errorf("repair staging config: %w", err)
+	}
+	if err := validateRepairStaging(stagingPath, manifest); err != nil {
+		return "", "", err
+	}
+	if logger != nil {
+		logger.Printf("repair staging validation success path=%s", stagingPath)
+	}
+	if err := ensureServicePermissions(stagedLayout); err != nil {
+		return "", "", fmt.Errorf("repair staging permissions: %w", err)
+	}
+	if logger != nil {
+		logger.Printf("repair service stop requested")
+	}
+	if err := stopService(manifest); err != nil {
+		return "", "", fmt.Errorf("repair service stop: %w", err)
+	}
+	if err := waitForServiceStopped(manifest); err != nil {
+		return "", "", err
+	}
+	if logger != nil {
+		logger.Printf("repair service stopped")
+		logger.Printf("repair activation start oldTarget=%s backup=%s", layout.VersionRoot, backupPath)
+	}
+	if err := os.Rename(layout.VersionRoot, backupPath); err != nil {
+		return "", "", fmt.Errorf("repair backup live target: %w", err)
+	}
+	if err := os.Rename(stagingPath, layout.VersionRoot); err != nil {
+		_ = os.Rename(backupPath, layout.VersionRoot)
+		return "", "", fmt.Errorf("repair activate replacement: %w", err)
+	}
+	cleanupStaging = false
+	if !exists(layout.CurrentRoot) {
+		if err := ensureCurrentJunction(layout.CurrentRoot, layout.VersionRoot); err != nil {
+			return "", backupPath, fmt.Errorf("repair restore current: %w", err)
+		}
+	}
+	if logger != nil {
+		logger.Printf("repair replacement activated current=%s", layout.CurrentRoot)
+	}
+	return stagingPath, backupPath, nil
+}
+
+func newRepairPaths(layout runtimeLayout) (string, string) {
+	stamp := fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid())
+	return filepath.Join(layout.VersionsRoot, ".staging-repair-"+stamp),
+		filepath.Join(layout.VersionsRoot, ".backup-repair-"+stamp)
+}
+
+func validateRepairStaging(stagingPath string, manifest installerManifest) error {
+	versionPath := filepath.Join(stagingPath, manifest.VersionFileName)
+	version, ok := readInstalledVersion(versionPath)
+	if !ok || version != manifest.Version {
+		return fmt.Errorf("repair staging validation: VERSION.json does not contain %s", manifest.Version)
+	}
+	for _, required := range []string{
+		filepath.Join(stagingPath, "ManusTerminalSetup.exe"),
+		filepath.Join(stagingPath, "runtime", "node.exe"),
+		filepath.Join(stagingPath, "app", "main.js"),
+	} {
+		if !exists(required) {
+			return fmt.Errorf("repair staging validation: missing %s", required)
+		}
+	}
+	return nil
+}
+
+func waitForServiceStopped(manifest installerManifest) error {
+	timeout := envDurationSeconds("MANUS_INSTALLER_SERVICE_STOP_TIMEOUT_SECONDS", 30)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		manager, err := mgr.Connect()
+		if err != nil {
+			return err
+		}
+		service, err := manager.OpenService(manifest.ServiceName)
+		if err != nil {
+			manager.Disconnect()
+			if isMissingServiceError(err) {
+				return nil
+			}
+			return err
+		}
+		status, queryErr := service.Query()
+		service.Close()
+		manager.Disconnect()
+		if queryErr == nil && status.State == svc.Stopped {
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return fmt.Errorf("service did not stop within %s", timeout)
+}
+
+func stopServiceIfRunning(manifest installerManifest) error {
+	manager, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	service, err := manager.OpenService(manifest.ServiceName)
+	if err != nil {
+		manager.Disconnect()
+		return err
+	}
+	status, queryErr := service.Query()
+	service.Close()
+	manager.Disconnect()
+	if queryErr != nil || status.State == svc.Stopped {
+		return queryErr
+	}
+	return stopService(manifest)
+}
+
+func cleanupRepairArtifacts(stagingPath, backupPath string, logger *installLogger) error {
+	var firstErr error
+	for _, path := range []string{stagingPath, backupPath} {
+		if path == "" {
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr == nil && logger != nil {
+		logger.Printf("repair cleanup complete")
+	}
+	return firstErr
 }
 
 func copySelfExecutable(destination string) error {
@@ -819,6 +1332,40 @@ func rollbackToPreviousVersion(
 	expectedVersion string,
 	logger *installLogger,
 ) error {
+	if strings.HasPrefix(filepath.Base(rollbackPath), ".backup-repair-") {
+		if err := stopServiceIfRunning(manifest); err != nil && !isMissingServiceError(err) {
+			return fmt.Errorf("rollback stop service: %w", err)
+		}
+		if err := waitForServiceStopped(manifest); err != nil {
+			return err
+		}
+		failedPath := filepath.Join(layout.VersionsRoot, ".failed-repair-"+fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid()))
+		if err := os.Rename(layout.VersionRoot, failedPath); err != nil {
+			return fmt.Errorf("rollback preserve failed replacement: %w", err)
+		}
+		if err := os.Rename(rollbackPath, layout.VersionRoot); err != nil {
+			_ = os.Rename(failedPath, layout.VersionRoot)
+			return fmt.Errorf("rollback restore payload: %w", err)
+		}
+		if err := ensureCurrentJunction(layout.CurrentRoot, layout.VersionRoot); err != nil {
+			return err
+		}
+		registration := buildServiceRegistration(manifest, layout)
+		if err := configureService(manifest, registration); err != nil {
+			return fmt.Errorf("rollback configure service: %w", err)
+		}
+		if err := startService(manifest); err != nil {
+			return fmt.Errorf("rollback start service: %w", err)
+		}
+		if err := waitForHealthVersion(manifest, expectedVersion); err != nil {
+			return fmt.Errorf("rollback health: %w", err)
+		}
+		_ = os.RemoveAll(failedPath)
+		if logger != nil {
+			logger.Printf("rollback restored repair payload version=%s", expectedVersion)
+		}
+		return nil
+	}
 	if err := restorePreviousVersion(manifest, layout, rollbackPath, logger); err != nil {
 		return err
 	}

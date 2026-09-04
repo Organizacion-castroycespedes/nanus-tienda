@@ -61,3 +61,26 @@
 - [ ] 10.2 Tests de XP-58, THERMAL_58MM, cajón y periféricos ausentes
 - [ ] 10.3 Validar host en Windows limpio sin PowerShell manual
 - [ ] 10.4 Documentar launcher/kiosk como change futuro
+
+## 11. Fase 7 — flujo productivo
+
+- [x] 11.1 Definir modelo tipado de estado del Installer Core para la UI
+- [x] 11.1a Implementar reducer/harness no destructivo para eventos y rollback
+- [x] 11.1b Añadir `--ui-core-flow-qa` con escenarios deterministas y push WebView2
+- [x] 11.1c Generar artefacto QA no destructivo para los flujos Core
+- [x] 11.1d Corregir estado inicial, handshake UI_READY y renderer dinámico CoreFlow
+- [x] 11.1e Ajustar copy y CTA terminales del harness sin afirmar Terminal lista
+- [x] 11.1f Conectar `requestClose()` a `WebView2.Terminate()` con política Core
+- [x] 11.1g Instrumentar operaciones Core reales con eventos observacionales
+- [x] 11.1h Proteger WM_CLOSE/Alt+F4 con la politica Core
+- [x] 11.1i Conectar observer real al WebView productivo tras UI_READY
+- [x] 11.1j Aislar el harness CoreFlow de operaciones productivas y cerrar CTA/native close
+- [x] 11.1k Implementar staging transaccional para same-version repair y preflight inconsistente
+- [x] 11.1l Separar cleanup de uninstall en helper externo fuera de Program Files
+- [x] 11.1m Ejecutar QA fisico de uninstall estandar y `--remove-data`
+- [x] 11.1n Corregir preflight para ignorar ProgramData persistente y limpiar padre Manus vacio
+- [x] 11.1o Corregir cleanup diferido del helper TEMP usando working directory externo y rutas con espacios
+- [ ] 11.2 Conectar eventos reales del Core al host WebView2 sin simular progreso
+- [ ] 11.3 Activar discovery y periféricos únicamente después del health gate
+- [ ] 11.4 Validar cancelación protegida, rollback visible y flujo sin efectos duplicados
+- [ ] 11.5 Ejecutar QA manual del instalador integrado (requiere aprobación)
