@@ -224,6 +224,8 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
 export const PERIPHERALS_AGENT_HTTP_URL = getPeripheralAgentConfig().httpUrl;
 export const PERIPHERALS_AGENT_WS_URL = getPeripheralAgentConfig().wsUrl;
 
+export const isElectronTerminal = () => typeof window !== "undefined" && Boolean((window as Window & { manusTerminal?: unknown }).manusTerminal);
+
 const requirePeripheralAgentConfig = () => {
   const config = getPeripheralAgentConfig();
 
@@ -274,6 +276,24 @@ export const requestPeripheral = async <T>(
   path: string,
   init?: RequestInit
 ): Promise<T> => {
+  const terminalBridge = typeof window !== "undefined" ? (window as Window & { manusTerminal?: Record<string, (arg?: unknown, payload?: unknown) => Promise<unknown>> }).manusTerminal : undefined;
+  if (terminalBridge) {
+    if (path === "/health" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.getAgentHealth() as Promise<T>;
+    if (path === "/devices" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listDevices() as Promise<T>;
+    if (path === "/devices/discover" && init?.method === "POST") {
+      let terminalId = "local-terminal";
+      try { terminalId = String((JSON.parse(String(init.body ?? "{}")) as { terminalId?: unknown }).terminalId ?? terminalId); } catch { /* validation handled by fixed IPC */ }
+      return terminalBridge.discoverDevices(terminalId) as Promise<T>;
+    }
+    if (path === "/devices" && init?.method === "POST") return terminalBridge.createDevice(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path.startsWith("/devices/") && init?.method === "PATCH") return terminalBridge.updateDevice(path.slice("/devices/".length), JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/printer/test-print" && init?.method === "POST") return terminalBridge.testPrint(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/cash-drawer/open" && init?.method === "POST") return terminalBridge.openCashDrawer(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/scanner/simulate" && init?.method === "POST") return terminalBridge.simulateScanner(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.currentWeight(Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
+    if (path === "/logs" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listLogs() as Promise<T>;
+    throw new PeripheralAgentRequestError("HTTP_ERROR", "Esta operación aún no está disponible en Manus POS.");
+  }
   const config = requirePeripheralAgentConfig();
   const url = `${normalizeBaseUrl(config.httpUrl)}${path}`;
   const headers = new Headers(init?.headers);

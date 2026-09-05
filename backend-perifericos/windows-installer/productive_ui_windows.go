@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"runtime"
 	"sync"
 	"time"
@@ -71,6 +72,21 @@ func runProductiveInstallerUI(manifest installerManifest) error {
 		return nil
 	}
 	sink := &productiveCoreWebViewSink{webview: w, state: newCoreFlowState()}
+	deviceBridge := newInstallerReadOnlyBridge()
+	if err := w.Bind("discoverDevices", deviceBridge.discoverDevices); err != nil {
+		showWebViewFallback(err)
+		return nil
+	}
+	layout := buildLayout(manifest)
+	if err := w.Bind("launchPOS", func() bool {
+		if manifest.PosRoot == "" || !exists(layout.POSExecutable) {
+			return false
+		}
+		return exec.Command("explorer.exe", layout.POSExecutable).Start() == nil
+	}); err != nil {
+		showWebViewFallback(err)
+		return nil
+	}
 	if err := w.Bind("requestClose", func() bool {
 		if !sink.closeAllowed() {
 			w.Dispatch(func() { w.Eval("window.manusInstaller.onCloseDenied()") })
@@ -82,7 +98,9 @@ func runProductiveInstallerUI(manifest installerManifest) error {
 		showWebViewFallback(err)
 		return nil
 	}
-	html = []byte(appendCoreFlowHarness(string(html)))
+	html = []byte(appendCoreFlowHarness(string(html)) + `<script data-manus-productive-devices="true">
+(function(){var previous=window.manusInstaller.onState;window.manusInstaller.onState=function(snapshot){previous(snapshot);if(!snapshot||snapshot.phase!=='COMPLETED')return;var goDevices=function(){if(typeof go==='function')go('devices');var list=document.querySelector('.device-list');if(!list||typeof window.discoverDevices!=='function')return;window.discoverDevices().then(function(devices){list.replaceChildren();(devices||[]).forEach(function(device){var card=document.createElement('article');card.className='device-card';var main=document.createElement('div');main.className='device-main';var name=document.createElement('div');name.className='device-name';name.textContent=String(device.name||device.type||'Dispositivo');var status=document.createElement('div');status.className='status ok';status.textContent=String(device.status||'DETECTED');main.append(name,status);card.append(main);list.append(card);});if(!(devices||[]).length){var empty=document.createElement('div');empty.className='device-card';empty.textContent='No detectado';list.append(empty);}}).catch(function(){list.textContent='No pudimos detectar los dispositivos.';});};setTimeout(goDevices,50);};})();
+</script>`)
 	w.SetHtml(string(html))
 	cleanup, err := installNativeCloseProtection(w.Window(), sink.closeAllowed, func() { w.Dispatch(func() { w.Terminate() }) }, func() { w.Dispatch(func() { w.Eval("window.manusInstaller.onCloseDenied()") }) })
 	if err != nil {

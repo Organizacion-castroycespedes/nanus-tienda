@@ -215,5 +215,6 @@ window.manusInstaller.onState=function(snapshot){
 function signalReady(){if(typeof window.uiReady==='function')window.uiReady();}
 window.addEventListener('DOMContentLoaded',signalReady);if(document.readyState!=='loading')signalReady();
 })();</script>`
-	return strings.Replace(html, "</body>", script+"</body>", 1)
+	launchScript := `<script data-manus-pos-launch="true">(function(){var previous=window.manusInstaller.onState;window.manusInstaller.onState=function(snapshot){previous(snapshot);if(snapshot&&snapshot.phase==='COMPLETED'){var button=document.querySelector('[data-screen="complete"] .cta .btn');if(button){button.textContent='Abrir Manus POS';button.onclick=function(){if(typeof window.launchPOS==='function'){window.launchPOS();}};}if(typeof go==='function')go('complete');}};})();</script>`
+	return strings.Replace(html, "</body>", script+launchScript+"</body>", 1)
 }

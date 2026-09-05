@@ -1,4 +1,6 @@
 export const DEFAULT_MANUS_WEB_URL = "http://localhost:3000";
+export const DEFAULT_AGENT_LOOPBACK_ORIGIN = "http://127.0.0.1:4050";
+export const QA_MANUS_WEB_ORIGIN = "https://www.apptiendamanus.space";
 
 export type ElectronConfigEnv = {
   MANUS_WEB_URL?: string;
@@ -15,6 +17,76 @@ export type ElectronOperationalContext = {
   branchId: string | null;
   terminalId: string | null;
   initialUrl: URL;
+};
+
+export type ShellEnvironment = "dev" | "qa" | "production";
+
+export type VersionedShellConfig = {
+  environment: Exclude<ShellEnvironment, "dev">;
+  frontendUrl: string;
+  allowedOrigins: string[];
+  agentLoopbackOrigin: string;
+};
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1"]);
+
+const originOf = (value: string): URL => {
+  const url = new URL(value);
+  if (url.username || url.password || url.hash || url.search) {
+    throw new Error("Shell URL must not include credentials, query, or hash");
+  }
+  return url;
+};
+
+export const validateVersionedShellConfig = (
+  value: unknown,
+): VersionedShellConfig => {
+  if (!value || typeof value !== "object") {
+    throw new Error("Shell config must be an object");
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const environment = candidate.environment;
+  if (environment !== "qa" && environment !== "production") {
+    throw new Error("Shell config environment is not allowed");
+  }
+
+  if (typeof candidate.frontendUrl !== "string") {
+    throw new Error("Shell config frontendUrl is required");
+  }
+  const frontend = originOf(candidate.frontendUrl);
+  if (frontend.protocol !== "https:") {
+    throw new Error("Packaged frontendUrl must use HTTPS");
+  }
+
+  if (!Array.isArray(candidate.allowedOrigins) || candidate.allowedOrigins.length === 0) {
+    throw new Error("Shell config allowedOrigins is required");
+  }
+  const allowedOrigins = candidate.allowedOrigins.map((origin) => {
+    if (typeof origin !== "string") {
+      throw new Error("Shell config origin must be a string");
+    }
+    const parsed = originOf(origin);
+    return parsed.origin;
+  });
+  if (!allowedOrigins.includes(frontend.origin)) {
+    throw new Error("frontendUrl origin must be allowlisted");
+  }
+
+  if (typeof candidate.agentLoopbackOrigin !== "string") {
+    throw new Error("Shell config agentLoopbackOrigin is required");
+  }
+  const agent = originOf(candidate.agentLoopbackOrigin);
+  if (agent.protocol !== "http:" || !LOOPBACK_HOSTS.has(agent.hostname) || agent.port !== "4050") {
+    throw new Error("agentLoopbackOrigin must be http://127.0.0.1:4050");
+  }
+
+  return {
+    environment,
+    frontendUrl: frontend.origin,
+    allowedOrigins,
+    agentLoopbackOrigin: agent.origin,
+  };
 };
 
 const readTrimmed = (value: string | undefined) => {

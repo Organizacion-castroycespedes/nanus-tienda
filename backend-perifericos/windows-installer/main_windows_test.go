@@ -20,6 +20,28 @@ func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
 	}
 }
 
+func TestPOSPayloadValidRequiresCurrentPayload(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "POS", "current")
+	if err := os.MkdirAll(filepath.Join(current, "resources"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(current, "Manus POS.exe"), filepath.Join(current, "resources", "app.asar"), filepath.Join(current, "resources", "manus-shell.config.json")} {
+		if err := os.WriteFile(path, []byte("ok"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	layout := runtimeLayout{POSCurrentRoot: current}
+	manifest := installerManifest{PosRoot: "assets/pos", PosVersion: "0.1.0"}
+	if !posPayloadValid(layout, manifest) {
+		t.Fatal("valid POS current payload should pass")
+	}
+	_ = os.Remove(filepath.Join(current, "Manus POS.exe"))
+	if posPayloadValid(layout, manifest) {
+		t.Fatal("missing executable must fail validation")
+	}
+}
+
 func TestReadOnlyBridgeHealthAndDiscovery(t *testing.T) {
 	bridge := newInstallerReadOnlyBridge()
 	bridge.baseURL = "http://test.local"
@@ -291,7 +313,7 @@ func TestUninstallCleanupUsesExternalHelperArguments(t *testing.T) {
 	if strings.Contains(strings.Join(args, " "), layout.InstallRoot+"\\versions") {
 		t.Fatal("cleanup args must target install root, not a live child executable")
 	}
-	pid, installRoot, dataRoot, removeData, err := parseUninstallCleanupArgs(args)
+	pid, installRoot, dataRoot, _, removeData, err := parseUninstallCleanupArgs(args)
 	if err != nil || pid != 1234 || installRoot != layout.InstallRoot || dataRoot != layout.ProgramDataRoot || removeData {
 		t.Fatalf("cleanup args parse = %d %q %q %v %v", pid, installRoot, dataRoot, removeData, err)
 	}
@@ -301,7 +323,7 @@ func TestUninstallCleanupUsesExternalHelperArguments(t *testing.T) {
 }
 
 func TestUninstallCleanupRequiresParentAndRoots(t *testing.T) {
-	if _, _, _, _, err := parseUninstallCleanupArgs(nil); err == nil {
+	if _, _, _, _, _, err := parseUninstallCleanupArgs(nil); err == nil {
 		t.Fatal("incomplete cleanup arguments accepted")
 	}
 }

@@ -166,9 +166,11 @@ export class DevicesService {
   }
 
   list(): PeripheralDevice[] {
-    return Array.from(this.buildMergedDevices().values()).map((device) =>
-      this.cloneDevice(device)
-    );
+    const devices = Array.from(this.buildMergedDevices().values());
+    const filtered = getPeripheralsConfig().mode === "REAL"
+      ? devices.filter((device) => device.connectionType !== ConnectionType.MOCK && !device.id.startsWith("mock-"))
+      : devices;
+    return filtered.map((device) => this.cloneDevice(device));
   }
 
   discover(): DiscoverDevicesResponse {

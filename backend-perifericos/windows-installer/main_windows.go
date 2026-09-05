@@ -53,23 +53,32 @@ type installerManifest struct {
 	LogsRelative    string   `json:"logsRelative"`
 	StateRelative   string   `json:"stateRelative"`
 	VersionFileName string   `json:"versionFileName"`
+	PosVersion      string   `json:"posVersion"`
+	PosRoot         string   `json:"posRoot"`
+	PosManifest     string   `json:"posManifest"`
 }
 
 type runtimeLayout struct {
-	InstallRoot     string
-	ProgramDataRoot string
-	VersionsRoot    string
-	CurrentRoot     string
-	ConfigRoot      string
-	LogsRoot        string
-	StateRoot       string
-	VersionRoot     string
-	ServiceExe      string
-	InstallLog      string
-	ServiceLog      string
-	ServiceStdout   string
-	ServiceStderr   string
-	RegistryKey     string
+	InstallRoot        string
+	ProgramDataRoot    string
+	VersionsRoot       string
+	CurrentRoot        string
+	ConfigRoot         string
+	LogsRoot           string
+	StateRoot          string
+	VersionRoot        string
+	ServiceExe         string
+	InstallLog         string
+	ServiceLog         string
+	ServiceStdout      string
+	ServiceStderr      string
+	RegistryKey        string
+	POSInstallRoot     string
+	POSVersionsRoot    string
+	POSCurrentRoot     string
+	POSVersionRoot     string
+	POSExecutable      string
+	POSPreviousPresent bool
 }
 
 type statusReport struct {
@@ -193,6 +202,10 @@ func printInspect(manifest installerManifest) error {
 		"bundleRoot":     manifest.BundleRoot,
 		"bundleDirName":  manifest.BundleDirName,
 		"serviceArgs":    manifest.ServiceArgs,
+		"posVersion":     manifest.PosVersion,
+		"posRoot":        layout.POSInstallRoot,
+		"posCurrentRoot": layout.POSCurrentRoot,
+		"posExecutable":  layout.POSExecutable,
 	}
 	return json.NewEncoder(os.Stdout).Encode(payload)
 }
@@ -280,6 +293,7 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 	}
 
 	layout := buildLayout(manifest)
+	layout.POSPreviousPresent = posPayloadValid(layout, manifest)
 	if err := runCoreStep(observer, &sequence, stepPrepareFiles, func() error { return ensureBaseDirectories(layout) }); err != nil {
 		return err
 	}
@@ -328,6 +342,11 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		if err := ensureServicePermissions(layout); err != nil {
 			return err
 		}
+		if manifest.PosRoot != "" {
+			if err := installPOSPayload(layout, manifest); err != nil {
+				return fmt.Errorf("install POS payload: %w", err)
+			}
+		}
 		_ = stopService(manifest)
 		if err := ensureCurrentJunction(layout.CurrentRoot, layout.VersionRoot); err != nil {
 			return fmt.Errorf("activate current version: %w", err)
@@ -338,6 +357,17 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 			emitRollback(observer, &sequence, manifest, layout, repairBackupPath, existingVersion, logger)
 		}
 		return err
+	}
+	if manifest.PosRoot != "" && !posPayloadValid(layout, manifest) {
+		logger.Printf("POS detection state=missing")
+		if err := installPOSPayload(layout, manifest); err != nil {
+			logger.Printf("POS install failure stage=activation sanitized error=%v", err)
+			if repairBackupPath != "" {
+				_ = emitRollback(observer, &sequence, manifest, layout, repairBackupPath, existingVersion, logger)
+			}
+			return fmt.Errorf("install POS payload: %w", err)
+		}
+		logger.Printf("POS activation success version=%s", manifest.PosVersion)
 	}
 	registration := buildServiceRegistration(manifest, layout)
 	logger.Printf("service registration executable=%s args=%q", registration.Executable, registration.Args)
@@ -367,6 +397,16 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		}
 		return fmt.Errorf("health gate failed: %w", err)
 	}
+	if manifest.PosRoot != "" {
+		if err := createPOSShortcuts(layout); err != nil {
+			logger.Printf("POS shortcut failure: %v", err)
+			if rollbackPath != "" {
+				_ = emitRollback(observer, &sequence, manifest, layout, rollbackPath, existingVersion, logger)
+			}
+			return fmt.Errorf("POS shortcuts: %w", err)
+		}
+		logger.Printf("POS verification success")
+	}
 
 	emitCoreStep(observer, &sequence, eventStepStarted, stepFinalize, nil)
 	if err := writeUninstallMetadata(layout, manifest); err != nil {
@@ -387,6 +427,43 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 	}
 	fmt.Printf("SUCCESS version=%s\n", manifest.Version)
 	return nil
+}
+
+func createPOSShortcuts(layout runtimeLayout) error {
+	stableExecutable := filepath.Join(layout.POSCurrentRoot, "Manus POS.exe")
+	if !exists(stableExecutable) {
+		return fmt.Errorf("POS executable missing")
+	}
+	startMenu := filepath.Join(defaultOrEnv("ProgramData", `C:\ProgramData`), "Microsoft", "Windows", "Start Menu", "Programs", "Manus")
+	if err := os.MkdirAll(startMenu, 0o755); err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("user home unavailable: %w", err)
+	}
+	desktop := filepath.Join(home, "Desktop")
+	script := "$ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut($env:MANUS_SHORTCUT_PATH); $s.TargetPath=$env:MANUS_POS_TARGET; $s.WorkingDirectory=$env:MANUS_POS_WORKDIR; $s.Save()"
+	for _, shortcut := range []string{filepath.Join(desktop, "Manus POS.lnk"), filepath.Join(startMenu, "Manus POS.lnk")} {
+		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+		cmd.Env = append(os.Environ(), "MANUS_SHORTCUT_PATH="+shortcut, "MANUS_POS_TARGET="+stableExecutable, "MANUS_POS_WORKDIR="+filepath.Dir(stableExecutable))
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("create shortcut %s: %w: %s", shortcut, err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
+}
+
+func posPayloadValid(layout runtimeLayout, manifest installerManifest) bool {
+	if manifest.PosRoot == "" || manifest.PosVersion == "" || !exists(layout.POSCurrentRoot) {
+		return false
+	}
+	for _, required := range []string{"Manus POS.exe", "resources/app.asar", "resources/manus-shell.config.json"} {
+		if !exists(filepath.Join(layout.POSCurrentRoot, required)) {
+			return false
+		}
+	}
+	return true
 }
 
 func uninstall(manifest installerManifest, removeData bool) error {
@@ -454,6 +531,7 @@ func uninstallCleanupArgs(parentPID int, layout runtimeLayout, removeData bool) 
 		fmt.Sprintf("--parent-pid=%d", parentPID),
 		"--install-root=" + layout.InstallRoot,
 		"--programdata-root=" + layout.ProgramDataRoot,
+		"--pos-root=" + layout.POSInstallRoot,
 	}
 	if removeData {
 		args = append(args, "--remove-data")
@@ -462,7 +540,7 @@ func uninstallCleanupArgs(parentPID int, layout runtimeLayout, removeData bool) 
 }
 
 func runUninstallCleanup(manifest installerManifest, args []string) error {
-	parentPID, installRoot, programDataRoot, removeData, err := parseUninstallCleanupArgs(args)
+	parentPID, installRoot, programDataRoot, posRoot, removeData, err := parseUninstallCleanupArgs(args)
 	if err != nil {
 		return err
 	}
@@ -484,6 +562,16 @@ func runUninstallCleanup(manifest installerManifest, args []string) error {
 	}
 	if exists(installRoot) {
 		return fmt.Errorf("uninstall cleanup Program Files still exists: %s", installRoot)
+	}
+	if posRoot != "" {
+		_ = removePOSShortcuts()
+		if err := os.RemoveAll(posRoot); err != nil {
+			return fmt.Errorf("uninstall cleanup POS: %w", err)
+		}
+		if exists(posRoot) {
+			return fmt.Errorf("uninstall cleanup POS still exists: %s", posRoot)
+		}
+		_, _ = removeEmptyManusParent(filepath.Dir(posRoot))
 	}
 	if logger != nil {
 		logger.Printf("PeripheralAgent delete success")
@@ -546,6 +634,23 @@ func runUninstallCleanup(manifest installerManifest, args []string) error {
 			logger.Printf("TEMP cleanup launched pid=%d workingDir=%s", cleanupPID, filepath.Dir(tempRoot))
 		}
 		_ = logger.Close()
+	}
+	return nil
+}
+
+func removePOSShortcuts() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	paths := []string{
+		filepath.Join(home, "Desktop", "Manus POS.lnk"),
+		filepath.Join(defaultOrEnv("ProgramData", `C:\ProgramData`), "Microsoft", "Windows", "Start Menu", "Programs", "Manus", "Manus POS.lnk"),
+	}
+	for _, path := range paths {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }
@@ -658,27 +763,29 @@ func quoteBatchPath(path string) string {
 	return strings.ReplaceAll(path, "%", "%%")
 }
 
-func parseUninstallCleanupArgs(args []string) (int, string, string, bool, error) {
-	parentPID, installRoot, programDataRoot := 0, "", ""
+func parseUninstallCleanupArgs(args []string) (int, string, string, string, bool, error) {
+	parentPID, installRoot, programDataRoot, posRoot := 0, "", "", ""
 	removeData := false
 	for _, arg := range args {
 		switch {
 		case strings.HasPrefix(arg, "--parent-pid="):
 			if _, err := fmt.Sscanf(strings.TrimPrefix(arg, "--parent-pid="), "%d", &parentPID); err != nil {
-				return 0, "", "", false, fmt.Errorf("invalid parent pid")
+				return 0, "", "", "", false, fmt.Errorf("invalid parent pid")
 			}
 		case strings.HasPrefix(arg, "--install-root="):
 			installRoot = strings.TrimPrefix(arg, "--install-root=")
 		case strings.HasPrefix(arg, "--programdata-root="):
 			programDataRoot = strings.TrimPrefix(arg, "--programdata-root=")
+		case strings.HasPrefix(arg, "--pos-root="):
+			posRoot = strings.TrimPrefix(arg, "--pos-root=")
 		case strings.EqualFold(arg, "--remove-data"):
 			removeData = true
 		}
 	}
 	if parentPID <= 0 || installRoot == "" || programDataRoot == "" {
-		return 0, "", "", false, fmt.Errorf("incomplete uninstall cleanup arguments")
+		return 0, "", "", "", false, fmt.Errorf("incomplete uninstall cleanup arguments")
 	}
-	return parentPID, installRoot, programDataRoot, removeData, nil
+	return parentPID, installRoot, programDataRoot, posRoot, removeData, nil
 }
 
 func waitForParentExit(parentPID int) error {
@@ -999,6 +1106,9 @@ func buildLayout(manifest installerManifest) runtimeLayout {
 	logsRoot := filepath.Join(programDataRoot, "logs")
 	stateRoot := filepath.Join(programDataRoot, "state")
 	serviceExe := filepath.Join(versionRoot, "ManusTerminalSetup.exe")
+	posRoot := filepath.Join(filepath.Dir(installRoot), "POS")
+	posVersions := filepath.Join(posRoot, "versions")
+	posVersionRoot := filepath.Join(posVersions, manifest.PosVersion)
 	return runtimeLayout{
 		InstallRoot:     installRoot,
 		ProgramDataRoot: programDataRoot,
@@ -1014,6 +1124,11 @@ func buildLayout(manifest installerManifest) runtimeLayout {
 		ServiceStdout:   filepath.Join(logsRoot, "service.stdout.log"),
 		ServiceStderr:   filepath.Join(logsRoot, "service.stderr.log"),
 		RegistryKey:     `Software\Microsoft\Windows\CurrentVersion\Uninstall\ManusPeripheralAgent`,
+		POSInstallRoot:  posRoot,
+		POSVersionsRoot: posVersions,
+		POSCurrentRoot:  filepath.Join(posRoot, "current"),
+		POSVersionRoot:  posVersionRoot,
+		POSExecutable:   filepath.Join(posVersionRoot, "Manus POS.exe"),
 	}
 }
 
@@ -1025,12 +1140,52 @@ func ensureBaseDirectories(layout runtimeLayout) error {
 		layout.ConfigRoot,
 		layout.LogsRoot,
 		layout.StateRoot,
+		layout.POSInstallRoot,
+		layout.POSVersionsRoot,
 	} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func installPOSPayload(layout runtimeLayout, manifest installerManifest) error {
+	if manifest.PosRoot == "" || manifest.PosVersion == "" {
+		return errors.New("POS payload metadata missing")
+	}
+	staging := filepath.Join(layout.POSVersionsRoot, ".staging-pos-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	if err := os.RemoveAll(staging); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err := copyEmbeddedTree(manifest.PosRoot, staging); err != nil {
+		return err
+	}
+	for _, required := range []string{"Manus POS.exe", "resources/app.asar", "resources/manus-shell.config.json"} {
+		if !exists(filepath.Join(staging, required)) {
+			return fmt.Errorf("POS payload missing %s", required)
+		}
+	}
+	backup := filepath.Join(layout.POSVersionsRoot, ".backup-pos-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	if exists(layout.POSVersionRoot) {
+		if err := os.Rename(layout.POSVersionRoot, backup); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(staging, layout.POSVersionRoot); err != nil {
+		if exists(backup) {
+			_ = os.Rename(backup, layout.POSVersionRoot)
+		}
+		return err
+	}
+	if exists(backup) {
+		_ = os.RemoveAll(backup)
+	}
+	return ensureCurrentJunction(layout.POSCurrentRoot, layout.POSVersionRoot)
 }
 
 func ensureServicePermissions(layout runtimeLayout) error {

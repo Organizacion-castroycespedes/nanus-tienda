@@ -2,7 +2,11 @@
 
 package main
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"time"
+)
 
 type installerCoreEventSink interface {
 	Emit(installerCoreEvent)
@@ -60,6 +64,11 @@ func emitRollback(sink installerCoreEventSink, sequence *uint64, manifest instal
 		emitCoreStep(sink, sequence, eventRollbackStarted, stepRollback, nil)
 	}
 	err := rollbackToPreviousVersion(manifest, layout, rollbackPath, existingVersion, logger)
+	if err == nil {
+		if posErr := rollbackPOSPayload(layout); posErr != nil {
+			err = posErr
+		}
+	}
 	if sink != nil {
 		if err != nil {
 			emitCoreStep(sink, sequence, eventRollbackFailed, stepRollback, err)
@@ -75,6 +84,19 @@ func emitRollback(sink installerCoreEventSink, sequence *uint64, manifest instal
 		}
 	}
 	return err
+}
+
+func rollbackPOSPayload(layout runtimeLayout) error {
+	if layout.POSInstallRoot == "" || layout.POSPreviousPresent {
+		return nil
+	}
+	if err := os.RemoveAll(layout.POSInstallRoot); err != nil {
+		return fmt.Errorf("rollback POS payload: %w", err)
+	}
+	if exists(layout.POSInstallRoot) {
+		return fmt.Errorf("rollback POS payload remains: %s", layout.POSInstallRoot)
+	}
+	return nil
 }
 
 func coreCloseAllowed(state installerCoreState) bool {

@@ -36,6 +36,7 @@ import {
   fetchPeripheralHealth,
   fetchPeripheralLogs,
   getPeripheralAgentConfig,
+  isElectronTerminal,
   isPeripheralAgentRequestError,
   openCashDrawer,
   printMockTicket,
@@ -775,15 +776,19 @@ const PrinterRegistrationPanel = ({
 
 const settingsFromResolved = (
   resolved?: PosTerminalResolvedConfig | null
-): PosTerminalSettingsFormState => ({
+): PosTerminalSettingsFormState => {
+  const fallback = isElectronTerminal()
+    ? { printerDeviceId: "", cashDrawerDeviceId: "", scaleDeviceId: "", scannerDeviceId: "" }
+    : defaultTerminalSettingsForm;
+  return {
   printerDeviceId:
-    resolved?.printerDeviceId ?? defaultTerminalSettingsForm.printerDeviceId,
+    resolved?.printerDeviceId ?? fallback.printerDeviceId,
   cashDrawerDeviceId:
     resolved?.cashDrawerDeviceId ??
-    defaultTerminalSettingsForm.cashDrawerDeviceId,
-  scaleDeviceId: resolved?.scaleDeviceId ?? defaultTerminalSettingsForm.scaleDeviceId,
+    fallback.cashDrawerDeviceId,
+  scaleDeviceId: resolved?.scaleDeviceId ?? fallback.scaleDeviceId,
   scannerDeviceId:
-    resolved?.scannerDeviceId ?? defaultTerminalSettingsForm.scannerDeviceId,
+    resolved?.scannerDeviceId ?? fallback.scannerDeviceId,
   enablePrintSale:
     resolved?.features.printSale ?? defaultTerminalSettingsForm.enablePrintSale,
   enablePrintPurchase:
@@ -796,7 +801,8 @@ const settingsFromResolved = (
   enableScale: resolved?.features.scale ?? defaultTerminalSettingsForm.enableScale,
   enableScanner:
     resolved?.features.scanner ?? defaultTerminalSettingsForm.enableScanner,
-});
+  };
+};
 
 const deviceOptionsByType = (
   devices: PeripheralDevice[],
@@ -1941,7 +1947,7 @@ const PeripheralsPage = () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     setAgentError(null);
 
-    if (!agentConfig.isConfigured) {
+    if (!agentConfig.isConfigured && !isElectronTerminal()) {
       setHealth(null);
       setDevices([]);
       setLogs([]);
@@ -1982,6 +1988,11 @@ const PeripheralsPage = () => {
   useEffect(() => {
     let socket: WebSocket | null = null;
     let closedByEffect = false;
+
+    if (isElectronTerminal()) {
+      setSocketState("disconnected");
+      return () => undefined;
+    }
 
     if (!agentConfig.isConfigured) {
       setSocketState(
