@@ -133,7 +133,6 @@ export class OrderController {
   }
 
   @Post()
-  @RequireOpenCashSession()
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "ORDERS", level: "WRITE" })
   create(@Body() body: CreateOrderBody, @Req() request: AuthRequest) {

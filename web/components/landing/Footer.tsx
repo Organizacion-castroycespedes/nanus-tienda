@@ -1,7 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
+import { CONTACT_INFO } from "../../lib/contact-info";
 
-const Footer = () => (
+type FooterProps = {
+  onRequestDemo: () => void;
+};
+
+const Footer = ({ onRequestDemo }: FooterProps) => (
   <footer className="border-t border-slate-200 bg-white px-6 py-12">
     <div className="mx-auto max-w-6xl">
       <div className="grid gap-8 md:grid-cols-[1.4fr_0.8fr_0.8fr]">
@@ -59,12 +64,13 @@ const Footer = () => (
               </Link>
             </li>
             <li>
-              <Link
-                href="#contacto"
+              <button
+                type="button"
                 className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
+                onClick={onRequestDemo}
               >
                 Solicitar demo
-              </Link>
+              </button>
             </li>
           </ul>
         </div>
@@ -74,6 +80,9 @@ const Footer = () => (
         <p className="text-center text-xs text-slate-500">
           &copy; {new Date().getFullYear()} Manus POS. Todos los derechos
           reservados.
+        </p>
+        <p className="mt-2 text-center text-xs text-slate-400">
+          Hecho por {CONTACT_INFO.developerName}
         </p>
       </div>
     </div>

@@ -41,6 +41,18 @@ test("OrderController: maps order delivery endpoints to DELIVERIES permissions",
   assert.equal(requiresOpenCashSession("getDelivery"), undefined);
 });
 
+test("OrderController: allows creating orders without open cash session metadata", () => {
+  assert.equal(requiresOpenCashSession("create"), undefined);
+});
+
+test("OrderController: keeps open cash session requirement for operational order mutations", () => {
+  assert.equal(requiresOpenCashSession("update"), true);
+  assert.equal(requiresOpenCashSession("deliver"), true);
+  assert.equal(requiresOpenCashSession("confirm"), true);
+  assert.equal(requiresOpenCashSession("invoice"), true);
+  assert.equal(requiresOpenCashSession("cancel"), true);
+});
+
 test("OrderController: normal order creation does not call deliveries service", async () => {
   let orderCreateCalled = false;
   let deliveriesCalled = false;

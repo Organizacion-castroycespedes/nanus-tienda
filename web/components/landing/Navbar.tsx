@@ -12,8 +12,16 @@ const links = [
   { href: "#como-funciona", label: "Cómo funciona" },
 ];
 
-const Navbar = () => {
+type NavbarProps = {
+  onRequestDemo: () => void;
+};
+
+const Navbar = ({ onRequestDemo }: NavbarProps) => {
   const [open, setOpen] = useState(false);
+  const handleRequestDemo = () => {
+    setOpen(false);
+    onRequestDemo();
+  };
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[rgba(8,18,32,0.92)] text-white shadow-[0_18px_45px_rgba(2,6,23,0.28)] backdrop-blur-xl">
@@ -48,12 +56,13 @@ const Navbar = () => {
           >
             Iniciar sesión
           </Link>
-          <Link
-            href="#contacto"
+          <button
+            type="button"
             className="rounded-lg bg-white px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            onClick={handleRequestDemo}
           >
             Solicitar demo
-          </Link>
+          </button>
         </div>
 
         <button
@@ -91,13 +100,13 @@ const Navbar = () => {
               >
                 Iniciar sesión
               </Link>
-              <Link
-                href="#contacto"
+              <button
+                type="button"
                 className="rounded-lg bg-white px-3 py-3 text-center text-sm font-bold text-slate-950"
-                onClick={() => setOpen(false)}
+                onClick={handleRequestDemo}
               >
                 Solicitar demo
-              </Link>
+              </button>
             </li>
           </ul>
         </nav>

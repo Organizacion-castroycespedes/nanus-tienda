@@ -18,7 +18,11 @@ const chips = [
   { label: "Reportes", icon: BarChart3 },
 ];
 
-const Hero = () => (
+type HeroProps = {
+  onRequestDemo: () => void;
+};
+
+const Hero = ({ onRequestDemo }: HeroProps) => (
   <section id="inicio" className="relative isolate overflow-hidden bg-slate-950">
     <Image
       src="/images/home/manus-pos-hero-landing.png"
@@ -48,13 +52,14 @@ const Hero = () => (
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="#contacto"
+          <button
+            type="button"
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            onClick={onRequestDemo}
           >
             <PlayCircle className="h-5 w-5" aria-hidden="true" />
             Solicitar demo
-          </Link>
+          </button>
           <Link
             href="#funcionalidades"
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"

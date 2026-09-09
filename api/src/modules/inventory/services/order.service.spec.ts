@@ -471,6 +471,27 @@ test("OrderService.createOrder persists terminal context in audit payload and re
   assert.equal((auditEvents[0] as any).after.cashSessionId, ids.cashSession);
 });
 
+test("OrderService.createOrder persists null cash session when no cash is open", async () => {
+  const { service, client, auditEvents } = buildService([makePreview()]);
+
+  const result = await service.createOrder({
+    ...createPayload(),
+    context: {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      terminalId: ids.terminal,
+      userId: ids.user,
+    },
+  });
+
+  assert.equal(result.cashSessionId, null);
+  assert.equal(client.insertedOrder?.cashSessionId, null);
+  assert.equal(
+    (auditEvents[0] as { after: { cashSessionId: unknown } }).after.cashSessionId,
+    null
+  );
+});
+
 test("OrderService.createOrder rejects terminal outside tenant branch", async () => {
   const { service, client, pricingService } = buildService([makePreview()], {
     terminalBranchId: ids.otherBranch,

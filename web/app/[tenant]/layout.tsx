@@ -68,6 +68,12 @@ import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
 import type { CashSession } from "../../modules/finance/types";
 
+const APP_BRAND_NAME = "MANUS POS";
+const APP_DEVELOPER_NAME = "Castro y Cespedes Development";
+const SUPPORT_EMAIL = "castroycespedes@gmail.com";
+const SUPPORT_PHONE = "3004107145";
+const SUPPORT_WHATSAPP_URL = "https://wa.me/573004107145";
+
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -162,21 +168,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
   const hasPendingPosSale = posCartItemCount > 0;
   const confirm = useConfirm();
-  const sidebarCompanyName = company?.razonSocial || authUser?.tenantName || "Empresa";
-  const brandingLogo = branding.logoUrl ?? branding.logo;
+  const brandingLogo = branding.logoUrl ?? branding.logo ?? "/LogoManus.png.jpeg";
+  const supportEmail = company?.emailCorporativo || SUPPORT_EMAIL;
+  const supportPhone = company?.telefono || SUPPORT_PHONE;
+  const supportWebsite = company?.sitioWeb || "";
   const tenantSlug = authUser?.tenantId ?? "default";
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [posClock, setPosClock] = useState(() => new Date());
-  const companyInitials = useMemo(() => {
-    const name = sidebarCompanyName.trim();
-    if (!name) return "";
-    const parts = name.split(/\s+/);
-    if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
-    }
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }, [sidebarCompanyName]);
   const isPosContextRoute = useMemo(
     () => Boolean(pathname && /^\/[^/]+\/pos\/select-context\/?$/i.test(pathname)),
     [pathname]
@@ -1093,31 +1092,20 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       >
           <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "lg:justify-center" : ""}`}>
             <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "lg:flex-col" : ""}`}>
-              {brandingLogo ? (
+              <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white shadow-sm">
                 <img
                   src={brandingLogo}
-                  alt="Logo empresa"
-                  className="h-10 w-10 shrink-0 rounded-xl object-contain p-1"
-                  style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
+                  alt="Logo Manus"
+                  className="h-full w-full object-contain p-0.5"
                 />
-              ) : (
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-                  style={{
-                    backgroundColor: tenantTheme.sidebar.logoBackground,
-                    color: tenantTheme.sidebar.logoText,
-                  }}
-                >
-                  {companyInitials}
-                </div>
-              )}
+              </div>
               {!isSidebarCompact ? (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
-                    {sidebarCompanyName}
+                    {APP_BRAND_NAME}
                   </p>
                   <p className="truncate text-xs text-[var(--brand-sidebar-muted)]">
-                    Manus POS
+                    {APP_DEVELOPER_NAME}
                   </p>
                 </div>
               ) : null}
@@ -1392,18 +1380,54 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="font-semibold" style={{ color: tenantTheme.surface.text }}>
-                    {company?.razonSocial || authUser?.tenantName || "Empresa"}
+                    {APP_BRAND_NAME}
                   </p>
                   <p>
-                    {company?.nit ? `NIT ${company.nit}${company.dv ? `-${company.dv}` : ""}` : "Gestion administrativa y operativa."}
+                    Hecho por {APP_DEVELOPER_NAME}
+                    {company?.nit ? ` · NIT ${company.nit}${company.dv ? `-${company.dv}` : ""}` : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4 text-slate-500">
-                  {company?.emailCorporativo && (
-                    <span>{company.emailCorporativo}</span>
+                  {supportEmail && (
+                    <a
+                      className="transition hover:text-[var(--brand-primary)] hover:underline"
+                      href={`mailto:${supportEmail}`}
+                    >
+                      {supportEmail}
+                    </a>
                   )}
-                  {company?.sitioWeb && <span>{company.sitioWeb}</span>}
-                  {company?.telefono && <span>{company.telefono}</span>}
+                  {supportWebsite && (
+                    <a
+                      className="transition hover:text-[var(--brand-primary)] hover:underline"
+                      href={supportWebsite}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {supportWebsite}
+                    </a>
+                  )}
+                  {supportPhone && (
+                    <span className="inline-flex items-center gap-2">
+                      <a
+                        className="transition hover:text-[var(--brand-primary)] hover:underline"
+                        href={SUPPORT_WHATSAPP_URL}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {supportPhone}
+                      </a>
+                      <a
+                        aria-label={`Contactar soporte por WhatsApp al ${supportPhone}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white shadow-sm transition hover:bg-green-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+                        href={SUPPORT_WHATSAPP_URL}
+                        rel="noreferrer"
+                        target="_blank"
+                        title="Contactar soporte por WhatsApp"
+                      >
+                        <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                      </a>
+                    </span>
+                  )}
                 </div>
               </div>
             </footer>

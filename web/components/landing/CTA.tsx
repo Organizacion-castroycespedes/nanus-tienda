@@ -1,7 +1,11 @@
-import Link from "next/link";
 import { ArrowRight, MessageCircle } from "lucide-react";
+import { getCommercialWhatsAppUrl } from "../../lib/contact-info";
 
-const CTA = () => (
+type CTAProps = {
+  onRequestDemo: () => void;
+};
+
+const CTA = ({ onRequestDemo }: CTAProps) => (
   <section id="contacto" className="bg-blue-700 px-6 py-20 text-white md:py-28">
     <div className="mx-auto max-w-6xl">
       <div className="grid gap-8 rounded-lg border border-white/10 bg-slate-950 p-8 shadow-2xl shadow-blue-950/25 md:p-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
@@ -18,18 +22,20 @@ const CTA = () => (
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-          <Link
-            href="mailto:contacto@manus.com?subject=Solicitar%20demo%20Manus%20POS"
+          <button
+            type="button"
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-white px-6 py-3 text-sm font-bold text-slate-950 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            onClick={onRequestDemo}
           >
             Solicitar demo
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
+          </button>
           <a
-            href="https://wa.me/51999999999?text=Hola%2C%20quiero%20conocer%20Manus%20POS"
+            href={getCommercialWhatsAppUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-white/20 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Hablar con Manus POS por WhatsApp"
           >
             <MessageCircle className="h-4 w-4" aria-hidden="true" />
             Hablar por WhatsApp

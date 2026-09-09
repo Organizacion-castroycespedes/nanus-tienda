@@ -196,7 +196,7 @@ INSERT INTO tenants (id, slug, nombre, config, activo)
 VALUES (
   '00000000-0000-0000-0000-000000000001',
   'default',
-  'Tenant Principal',
+  'MANUS POS',
   '{}'::jsonb,
   TRUE
 )
@@ -336,7 +336,7 @@ INSERT INTO tenants_detalles (
 )
 VALUES (
   '00000000-0000-0000-0000-000000000001',
-  'ManusTienda Platform S.A.S',
+  'MANUS POS - Hecho por Castro y Cespedes Development',
   '901234567',
   '1',
   'JURIDICA',
@@ -353,13 +353,13 @@ VALUES (
   'Barranquilla',
   'Atlántico',
   'Colombia',
-  '+57 300 123 4567',
-  'info@softmetalglass.com',
-  'https://softmetalglass.com',
+  '3004107145',
+  'castroycespedes@gmail.com',
+  'https://castroycespedes.com',
   'Ivan Castro Ruiz',
   'CC',
   '1043436352',
-  'representante@softmetalglass.com',
+  'castroycespedes@gmail.com',
   '+57 301 555 8899',
   '110505', -- ejemplo de cuenta contable
   'Bancolombia',

@@ -355,10 +355,6 @@ const OrdersPage = () => {
   };
 
   const openCreateForm = () => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(null);
     setFormMode("create");
@@ -547,10 +543,7 @@ const OrdersPage = () => {
               Actualizar
             </Button>
             {canCreate ? (
-              <Button
-                onClick={openCreateForm}
-                disabled={cashSessionChecked && !hasOpenCashSession}
-              >
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear pedido
               </Button>
@@ -562,9 +555,8 @@ const OrdersPage = () => {
 
       {cashSessionChecked && !hasOpenCashSession ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          No tienes una caja abierta. Abre caja para ver la operacion actual
-          de pedidos. Crear, editar, entregar, abonar, facturar o cancelar sigue
-          bloqueado.
+          No tienes una caja abierta. Puedes crear pedidos, pero editar,
+          entregar, abonar, facturar o cancelar sigue bloqueado hasta abrir caja.
         </section>
       ) : null}
 

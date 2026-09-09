@@ -30,6 +30,7 @@ import {
 } from "../../../components/home/Recommendations";
 
 const DEFAULT_VERSION = "v0.0.1";
+const DASHBOARD_BRAND_COPY = "MANUS POS - Hecho por Castro y Cespedes Development";
 
 const DashboardPage = () => {
   const params = useParams();
@@ -37,14 +38,10 @@ const DashboardPage = () => {
 
   const authUser = useAppSelector((state) => state.auth.user);
   const authStatus = useAppSelector((state) => state.auth.authStatus);
-  const companyDetails = useAppSelector((state) => state.company.details);
   const dispatch = useAppDispatch();
 
   const userName = authUser?.name || authUser?.email || "Usuario";
-  const businessName =
-    companyDetails?.razonSocial ||
-    authUser?.tenantName ||
-    "Tienda Castro & Céspedes";
+  const businessName = DASHBOARD_BRAND_COPY;
 
   const [appVersion, setAppVersion] = useState(DEFAULT_VERSION);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
