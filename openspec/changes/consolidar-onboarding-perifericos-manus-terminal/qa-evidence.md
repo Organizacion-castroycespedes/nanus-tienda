@@ -149,6 +149,20 @@ The required split is explicit: packaged Electron uses the existing typed
 `window.manusTerminal` bridge and fixed Agent loopback; pure Web keeps its
 existing configured HTTPS validation. No generic IPC/HTTP proxy is allowed.
 
+## Physical QA regression: Electron runtime transport
+
+- QA Web deployment was current, and the local Agent remained healthy,
+  `REAL`, `0.1.1-qa.9`, with three persisted devices.
+- Packaged Electron `/pos` and `Configuracion -> Perifericos POS` still
+  displayed the production HTTPS warning and an offline Agent.
+- Root cause was confirmed in `web/domains/peripherals/contracts.ts`:
+  `subscribePeripheralEvents()` directly called `getPeripheralAgentConfig()`
+  and opened `new WebSocket(config.wsUrl)`, bypassing the Electron bridge.
+- Classification: **PHYSICAL QA FAIL / OPEN**. The handoff change remains
+  active until the corrected Web bundle is deployed and physically retested.
+- Fullscreen, scanner, persistence, and POS reconciliation gates remain
+  CLOSED and are not reopened by this regression.
+
 ## P7 gates still open
 
 1. Installer completion to POS launch and same-configuration visibility in
