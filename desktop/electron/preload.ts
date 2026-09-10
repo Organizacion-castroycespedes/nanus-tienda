@@ -10,6 +10,7 @@ const api: ManusTerminalApi = {
   createDevice: (payload) => ipcRenderer.invoke(IPC_CHANNELS.createDevice, payload),
   updateDevice: (deviceId, payload) => ipcRenderer.invoke(IPC_CHANNELS.updateDevice, deviceId, payload),
   testPrint: (payload) => ipcRenderer.invoke(IPC_CHANNELS.testPrint, payload),
+  printTicket: (payload) => ipcRenderer.invoke(IPC_CHANNELS.printTicket, payload),
   openCashDrawer: (payload) => ipcRenderer.invoke(IPC_CHANNELS.openCashDrawer, payload),
   simulateScanner: (payload) => ipcRenderer.invoke(IPC_CHANNELS.simulateScanner, payload),
   currentWeight: (payload) => ipcRenderer.invoke(IPC_CHANNELS.currentWeight, payload),
