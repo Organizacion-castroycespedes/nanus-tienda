@@ -4,6 +4,7 @@ import {
   isRealPrinterConfig,
   openCashDrawer,
   printReporteriaSaleTicket,
+  subscribePeripheralEvents,
 } from "./contracts";
 import type { PosTerminalResolvedConfig, SaleTicketInput } from "./types";
 
@@ -41,6 +42,55 @@ const jsonResponse = (body: unknown) =>
     status: 200,
     headers: { "content-type": "application/json" },
   });
+
+test("Electron event subscription does not evaluate browser Agent configuration", () => {
+  const previousWindow = (globalThis as { window?: unknown }).window;
+  const previousAgentUrl = process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL;
+  const previousWsUrl = process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      manusTerminal: {
+        getAgentHealth: async () => ({ status: "ok" }),
+        listDevices: async () => [],
+        discoverDevices: async () => ({ devices: [] }),
+        createDevice: async () => ({}),
+        updateDevice: async () => ({}),
+        testPrint: async () => ({}),
+        openCashDrawer: async () => ({}),
+        simulateScanner: async () => ({}),
+        currentWeight: async () => ({}),
+        listLogs: async () => [],
+      },
+    },
+  });
+  process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL = "http://agent.example.com";
+  process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL = "ws://agent.example.com/peripherals";
+  let callbackCalls = 0;
+
+  try {
+    const unsubscribe = subscribePeripheralEvents(() => {
+      callbackCalls += 1;
+    });
+    unsubscribe();
+    assert.equal(callbackCalls, 0);
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: previousWindow,
+    });
+    if (previousAgentUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL;
+    } else {
+      process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL = previousAgentUrl;
+    }
+    if (previousWsUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL;
+    } else {
+      process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL = previousWsUrl;
+    }
+  }
+});
 
 test("report direct print resolves the branch terminal before calling the Agent", async () => {
   const previousFetch = globalThis.fetch;
