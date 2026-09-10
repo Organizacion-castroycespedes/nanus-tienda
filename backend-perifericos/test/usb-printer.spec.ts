@@ -53,6 +53,12 @@ class FakeUsbDiscovery implements UsbPrinterDiscovery {
   }
 }
 
+class FailingUsbDiscovery implements UsbPrinterDiscovery {
+  list() {
+    throw new Error("Get-Printer unavailable");
+  }
+}
+
 const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
   let state: DeviceRegistryState | null = null;
 
@@ -108,8 +114,51 @@ test("USB discovery returns stable agent-generated printer descriptor", () => {
 
   assert.ok(device);
   assert.equal(device.connectionType, ConnectionType.USB);
-  assert.equal(device.profileId, "THERMAL_80MM");
+  assert.equal(device.profileId, undefined);
   assert.equal(device.usb?.printerName, "Xprinter XP-80T USB");
+});
+
+test("REAL discovery reports REAL and excludes MOCK seed devices", () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  try {
+    const { controller, logsService } = buildDevices();
+    const result = controller.discover();
+    assert.equal(result.mode, "REAL");
+    assert.equal(result.devices.some((device) => device.connectionType === "MOCK"), false);
+    assert.equal(
+      logsService.list().some((entry) => entry.metadata.outcome === "FOUND"),
+      true
+    );
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.PERIPHERALS_MODE;
+    } else {
+      process.env.PERIPHERALS_MODE = previousMode;
+    }
+  }
+});
+
+test("REAL discovery exposes physical discovery failures instead of returning mocks", () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  try {
+    const { controller, logsService } = buildDevices(new FailingUsbDiscovery());
+    assert.throws(
+      () => controller.discover(),
+      /Physical printer discovery failed: Get-Printer unavailable/
+    );
+    assert.equal(
+      logsService.list().some((entry) => entry.metadata.outcome === "FAILED"),
+      true
+    );
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.PERIPHERALS_MODE;
+    } else {
+      process.env.PERIPHERALS_MODE = previousMode;
+    }
+  }
 });
 
 test("USB printer registration requires discovered device and not network fields", () => {
@@ -238,6 +287,57 @@ test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () =>
   assert.ok((result.bytesSent ?? 0) > 0);
 });
 
+test("PnP-only USB printer never calls OpenPrinter without a Windows queue", () => {
+  let calls = 0;
+  const device = {
+    ...buildUsbPrinter(),
+    descriptor: {
+      agentInstallationId: "fixture",
+      deviceId: "usb-pnp-only",
+      nativeIdentifier: "USB\\VID_0483&PID_070B\\B82D3A880106",
+      fingerprint: { source: "WINDOWS_PNP", values: { physicalDetected: "true", queueInstalled: "false" } },
+      platform: "WINDOWS" as const,
+      architecture: "x64",
+    },
+    metadata: { physicalDetected: true, queueInstalled: false },
+  };
+  const adapter = new UsbSystemPrinterAdapter("win32", () => { calls += 1; }, "RAW");
+  assert.throws(() => adapter.printTest({
+    agentName: "manus-pos-peripheral-agent", mode: "REAL", terminalId: "local-terminal",
+    device, profile: DEVICE_PROFILES.THERMAL_58MM, jobId: "pnp-only", timestamp: "2026-08-21T00:00:00.000Z",
+  }), /PRINT_TRANSPORT_NOT_READY/);
+  assert.equal(calls, 0);
+});
+
+test("exact PnP plus queue uses the resolved Windows queue name", () => {
+  const commands: Array<{ command: string; args: string[] }> = [];
+  const rawTransport = new WindowsRawSpoolerTransport((command, args) => commands.push({ command, args }));
+  const device = { ...buildUsbPrinter(), usb: { ...buildUsbPrinter().usb!, windowsQueueName: "XP-80" }, metadata: { physicalDetected: true, queueInstalled: true } };
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW", rawTransport);
+  adapter.printTest({
+    agentName: "manus-pos-peripheral-agent", mode: "REAL", terminalId: "local-terminal",
+    device, profile: DEVICE_PROFILES.THERMAL_80MM, jobId: "queue-resolved", timestamp: "2026-08-21T00:00:00.000Z",
+  });
+  const script = Buffer.from(commands[0]?.args[3] ?? "", "base64").toString("utf16le");
+  const queueEncoded = script.match(/FromBase64String\('([^']+)'\)/)?.[1];
+  assert.equal(Buffer.from(queueEncoded ?? "", "base64").toString("utf8"), "XP-80");
+  assert.doesNotMatch(script, /Xprinter XP-80T USB/);
+});
+
+test("Win32 error 1801 is normalized without encoded PowerShell details", () => {
+  const rawTransport = new WindowsRawSpoolerTransport(() => { throw new Error("OpenPrinter failed: 1801"); });
+  const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW", rawTransport);
+  assert.throws(() => adapter.printTest({
+    agentName: "manus-pos-peripheral-agent", mode: "REAL", terminalId: "local-terminal",
+    device: buildUsbPrinter(), profile: DEVICE_PROFILES.THERMAL_58MM, jobId: "invalid-queue", timestamp: "2026-08-21T00:00:00.000Z",
+  }), (error) => {
+    assert.match((error as Error).message, /WINDOWS_INVALID_PRINTER_QUEUE/);
+    assert.match((error as Error).message, /1801/);
+    assert.doesNotMatch((error as Error).message, /EncodedCommand|FromBase64String/);
+    return true;
+  });
+});
+
 test("portable USB descriptor keeps legacy deviceId and serializes identity fields", () => {
   const descriptor = buildUsbPrinterDescriptor("XP-80", {
     nativeIdentifier: "XP-80",
@@ -340,7 +440,7 @@ test("USB unavailable queue emits a controlled printer failure event", async () 
   try {
     await assert.rejects(
       () => printerService.testPrint({ terminalId: "local-terminal", deviceId: "printer-xp80t-usb-001" }),
-      NotFoundException
+      BadRequestException
     );
     assert.equal(eventsService.getRecentEvents()[0]?.event, "printer.job.failed");
   } finally {

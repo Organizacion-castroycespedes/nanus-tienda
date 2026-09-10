@@ -35,7 +35,7 @@ export type PeripheralAgentConfig = {
   isConfigured: boolean;
   isProduction: boolean;
   status: PeripheralAgentConfigStatus;
-  source: "environment" | "development-default";
+  source: "environment" | "loopback-default";
   message?: string;
   errorCode?: PeripheralAgentRequestErrorCode;
 };
@@ -70,14 +70,11 @@ export const isPeripheralAgentRequestError = (
 ): error is PeripheralAgentRequestError =>
   error instanceof PeripheralAgentRequestError;
 
-const developmentHttpUrl = "http://127.0.0.1:4050";
-const developmentWsUrl = "ws://127.0.0.1:4050/peripherals";
+const defaultHttpUrl = "http://127.0.0.1:4050";
+const defaultWsUrl = "ws://127.0.0.1:4050/peripherals";
 
 const productionHttpsRequiredMessage =
-  "NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL debe ser una URL HTTPS publica en produccion.";
-
-const missingProductionConfigMessage =
-  "Falta configurar NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL para produccion.";
+  "El servicio Manus remoto debe usar HTTPS en produccion.";
 
 const normalizeBaseUrl = (value: string) => value.replace(/\/+$/, "");
 
@@ -143,7 +140,7 @@ const validateWsUrl = (
     (parsedWsUrl.protocol !== "ws:" && parsedWsUrl.protocol !== "wss:")
   ) {
     return buildInvalidConfig(
-      "NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL debe ser una URL ws:// o wss:// valida.",
+      "La configuracion tecnica del servicio Manus no es valida.",
       httpUrl,
       value
     );
@@ -151,11 +148,11 @@ const validateWsUrl = (
 
   if (
     isProduction &&
-    (parsedWsUrl.protocol !== "wss:" ||
-      isLocalHostname(normalizeHostname(parsedWsUrl)))
+    parsedWsUrl.protocol !== "wss:" &&
+    !isLocalHostname(normalizeHostname(parsedWsUrl))
   ) {
     return buildInvalidConfig(
-      "NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL debe ser una URL WSS publica en produccion.",
+      "El servicio Manus remoto debe usar WSS en produccion.",
       httpUrl,
       value
     );
@@ -172,32 +169,19 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
   const isProduction = process.env.NODE_ENV === "production";
 
   if (!rawHttpUrl) {
-    if (isProduction) {
-      return {
-        httpUrl: "",
-        wsUrl: "",
-        isConfigured: false,
-        isProduction,
-        status: "missing",
-        source: "environment",
-        message: missingProductionConfigMessage,
-        errorCode: "MISSING_CONFIG",
-      };
-    }
-
-    const wsUrl = rawWsUrl || developmentWsUrl;
-    const invalidWsConfig = validateWsUrl(wsUrl, false, developmentHttpUrl);
+    const wsUrl = rawWsUrl || defaultWsUrl;
+    const invalidWsConfig = validateWsUrl(wsUrl, isProduction, defaultHttpUrl);
     if (invalidWsConfig) {
       return invalidWsConfig;
     }
 
     return {
-      httpUrl: developmentHttpUrl,
+      httpUrl: defaultHttpUrl,
       wsUrl,
       isConfigured: true,
       isProduction,
       status: "configured",
-      source: "development-default",
+      source: "loopback-default",
     };
   }
 
@@ -207,7 +191,7 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
     (parsedHttpUrl.protocol !== "http:" && parsedHttpUrl.protocol !== "https:")
   ) {
     return buildInvalidConfig(
-      "NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL debe ser una URL http:// o https:// valida.",
+      "La configuracion tecnica del servicio Manus no es valida.",
       rawHttpUrl
     );
   }
@@ -215,8 +199,8 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
   const httpUrl = normalizeHttpBaseUrl(parsedHttpUrl);
   if (
     isProduction &&
-    (parsedHttpUrl.protocol !== "https:" ||
-      isLocalHostname(normalizeHostname(parsedHttpUrl)))
+    parsedHttpUrl.protocol !== "https:" &&
+    !isLocalHostname(normalizeHostname(parsedHttpUrl))
   ) {
     return buildInvalidConfig(productionHttpsRequiredMessage, httpUrl);
   }
@@ -239,6 +223,54 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
 
 export const PERIPHERALS_AGENT_HTTP_URL = getPeripheralAgentConfig().httpUrl;
 export const PERIPHERALS_AGENT_WS_URL = getPeripheralAgentConfig().wsUrl;
+
+export type ElectronPeripheralBridge = {
+  getAgentHealth: () => Promise<unknown>;
+  listDevices: () => Promise<unknown>;
+  discoverDevices: (terminalId: string) => Promise<unknown>;
+  createDevice: (payload: unknown) => Promise<unknown>;
+  updateDevice: (deviceId: string, payload: unknown) => Promise<unknown>;
+  testPrint: (payload: unknown) => Promise<unknown>;
+  openCashDrawer: (payload: unknown) => Promise<unknown>;
+  simulateScanner: (payload: unknown) => Promise<unknown>;
+  currentWeight: (payload: unknown) => Promise<unknown>;
+  listLogs: () => Promise<unknown>;
+};
+
+export type PeripheralTransport =
+  | { kind: "electron"; bridge: ElectronPeripheralBridge }
+  | { kind: "browser"; config: PeripheralAgentConfig };
+
+const readElectronPeripheralBridge = (): ElectronPeripheralBridge | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const candidate = (window as Window & { manusTerminal?: unknown }).manusTerminal;
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  return candidate as ElectronPeripheralBridge;
+};
+
+export const getPeripheralTransport = (): PeripheralTransport => {
+  const bridge = readElectronPeripheralBridge();
+  return bridge
+    ? { kind: "electron", bridge }
+    : { kind: "browser", config: getPeripheralAgentConfig() };
+};
+
+export const getElectronPeripheralAgentConfig = (): PeripheralAgentConfig => ({
+  httpUrl: "typed IPC / 127.0.0.1:4050",
+  wsUrl: "typed IPC",
+  isConfigured: true,
+  isProduction: process.env.NODE_ENV === "production",
+  status: "configured",
+  source: "loopback-default",
+});
+
+export const isElectronTerminal = () => Boolean(readElectronPeripheralBridge());
 
 const requirePeripheralAgentConfig = () => {
   const config = getPeripheralAgentConfig();
@@ -290,6 +322,25 @@ export const requestPeripheral = async <T>(
   path: string,
   init?: RequestInit
 ): Promise<T> => {
+  const transport = getPeripheralTransport();
+  if (transport.kind === "electron") {
+    const terminalBridge = transport.bridge;
+    if (path === "/health" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.getAgentHealth() as Promise<T>;
+    if (path === "/devices" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listDevices() as Promise<T>;
+    if (path === "/devices/discover" && init?.method === "POST") {
+      let terminalId = "local-terminal";
+      try { terminalId = String((JSON.parse(String(init.body ?? "{}")) as { terminalId?: unknown }).terminalId ?? terminalId); } catch { /* validation handled by fixed IPC */ }
+      return terminalBridge.discoverDevices(terminalId) as Promise<T>;
+    }
+    if (path === "/devices" && init?.method === "POST") return terminalBridge.createDevice(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path.startsWith("/devices/") && init?.method === "PATCH") return terminalBridge.updateDevice(path.slice("/devices/".length), JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/printer/test-print" && init?.method === "POST") return terminalBridge.testPrint(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/cash-drawer/open" && init?.method === "POST") return terminalBridge.openCashDrawer(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/scanner/simulate" && init?.method === "POST") return terminalBridge.simulateScanner(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.currentWeight(Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
+    if (path === "/logs" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listLogs() as Promise<T>;
+    throw new PeripheralAgentRequestError("HTTP_ERROR", "Esta operación aún no está disponible en Manus POS.");
+  }
   const config = requirePeripheralAgentConfig();
   const url = `${normalizeBaseUrl(config.httpUrl)}${path}`;
   const headers = new Headers(init?.headers);

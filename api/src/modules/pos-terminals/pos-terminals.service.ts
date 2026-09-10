@@ -553,9 +553,35 @@ export class PosTerminalsService {
       throw new NotFoundException("POS terminal not found");
     }
     this.resolveTenantId(actor, current.tenant_id);
+    const existing = await this.repository.findSettingsByTerminalId(id);
+    const mergedPayload: PosTerminalSettingsDto = {
+      printerDeviceId:
+        payload.printerDeviceId === undefined
+          ? existing?.printer_device_id
+          : payload.printerDeviceId,
+      cashDrawerDeviceId:
+        payload.cashDrawerDeviceId === undefined
+          ? existing?.cash_drawer_device_id
+          : payload.cashDrawerDeviceId,
+      scaleDeviceId:
+        payload.scaleDeviceId === undefined
+          ? existing?.scale_device_id
+          : payload.scaleDeviceId,
+      scannerDeviceId:
+        payload.scannerDeviceId === undefined
+          ? existing?.scanner_device_id
+          : payload.scannerDeviceId,
+      enablePrintSale: payload.enablePrintSale ?? existing?.enable_print_sale,
+      enablePrintPurchase:
+        payload.enablePrintPurchase ?? existing?.enable_print_purchase,
+      enablePrintOrder: payload.enablePrintOrder ?? existing?.enable_print_order,
+      enableOpenDrawer: payload.enableOpenDrawer ?? existing?.enable_open_drawer,
+      enableScale: payload.enableScale ?? existing?.enable_scale,
+      enableScanner: payload.enableScanner ?? existing?.enable_scanner,
+    };
     const saved = await this.repository.upsertSettings(
       id,
-      this.normalizeSettings(payload)
+      this.normalizeSettings(mergedPayload)
     );
     return this.mapSettings(saved, false);
   }

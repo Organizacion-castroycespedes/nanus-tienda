@@ -171,6 +171,9 @@ export class FileDeviceRegistryStateStore implements DeviceRegistryStateStore {
         optionalString(record, "printerName", ""),
         "usb.printerName"
       ),
+      windowsQueueName: typeof record.windowsQueueName === "string"
+        ? validateShortText(record.windowsQueueName, "usb.windowsQueueName")
+        : undefined,
     };
   }
 }

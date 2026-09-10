@@ -2640,7 +2640,7 @@ export const PosScreen = () => {
         {productToolsOpen ? (
           <Modal
             title="Panel operativo POS"
-            description="Buscar productos, ajustar filtros y cambiar cliente sin reservar espacio permanente."
+            description="Ajustar filtros y cambiar cliente sin reservar espacio permanente."
             size="xl"
             onClose={() => setProductToolsOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
@@ -2940,7 +2940,17 @@ export const PosScreen = () => {
               </>
               ) : null}
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/70 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
+                  >
+                    Balanza {scaleStatusLabel}
+                    {scaleMockStatus === "ready" ? (
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    ) : null}
+                  </span>
+                </div>
                 {scaleMockStatus === "error" ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
                     Balanza no disponible
@@ -2955,7 +2965,6 @@ export const PosScreen = () => {
                     Periféricos OK
                   </button>
                 )}
-
                 {canShowPeripheralDiagnostics ? (
                   <button
                     type="button"

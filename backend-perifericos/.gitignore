@@ -1,0 +1,7 @@
+# Generated Manus Terminal distributions
+dist-terminal/
+dist-installer/
+
+# Generated Windows installer embedded bundle
+windows-installer/assets/bundle/
+windows-installer/assets/manifest.json

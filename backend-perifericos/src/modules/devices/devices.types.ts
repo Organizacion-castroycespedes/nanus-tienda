@@ -6,6 +6,7 @@ import type {
   UsbPrinterConnectionOptions,
   PeripheralDevice,
 } from "../../shared/types/peripheral.types";
+import type { PeripheralsMode } from "../../shared/config/peripherals.config";
 
 export type CreateMockDeviceRequest = {
   id?: string;
@@ -33,7 +34,7 @@ export type UpdateMockDeviceRequest = {
 
 export type DiscoverDevicesResponse = {
   success: true;
-  mode: "MOCK";
+  mode: PeripheralsMode;
   devices: PeripheralDevice[];
   discoveredAt: string;
 };
