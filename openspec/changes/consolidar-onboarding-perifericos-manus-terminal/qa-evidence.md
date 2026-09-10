@@ -77,6 +77,25 @@ is not used.
 This closes the controlled multi-printer restart-persistence gate. Scanner
 barcode capture remains open.
 
+## Local Web physical scanner smoke
+
+- Branch: `feat/develop/despliegue-manus-terminal`.
+- Frontend source: `web/modules/pos/components/PosScreen.tsx`.
+- Local Web URL: `http://localhost:3000`.
+- Panel operativo POS: CLOSED.
+- Permanent main search: USED and focused.
+- Physical USB HID scanner: USED; no manual Enter.
+- Product: `Contra Muslo`.
+- Barcode: `353962561087655`.
+- Cart quantity: `8 -> 9` (delta `+1`).
+- Single add: PASS; duplicate add: NO.
+- Focus returned to the permanent main search: PASS.
+- `/scanner/simulate`: not used.
+- Agent scanner path: not used.
+
+This is a LOCAL WEB PHYSICAL SMOKE PASS. It does not certify the final QA
+frontend deployment or the packaged Electron physical flow.
+
 ## P7 gates still open
 
 1. Physical/default-printer acceptance, including POS-80/XP-80 behavior and
