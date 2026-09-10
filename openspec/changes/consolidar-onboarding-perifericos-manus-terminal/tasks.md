@@ -17,5 +17,5 @@
 - [x] P5 Implementar scanner keyboard-wedge y cajon via impresora; preparar DTO extensible para scale.
 - [x] P5.1 POS peripheral surface arm/disarm scanner keyboard-wedge con captura acotada y sin listener global.
 - [x] P6 Validar handoff y paridad de configuracion wizard->POS.
-- [ ] P7 Ejecutar packaging y pruebas automatizadas; despues QA fisico del fixture XP-58/XP-80. Evidencia: 7.2Q PASS para impresion fisica XP-58 y cajon VIA_PRINTER; 7.2U PASS para certificacion, impresion/corte y cajon VIA_PRINTER de XP-80; quedan abiertos los gates listados en `qa-evidence.md`.
+- [ ] P7 Ejecutar packaging y pruebas automatizadas; despues QA fisico del fixture XP-58/XP-80. Evidencia: 7.2Q PASS para impresion fisica XP-58 y cajon VIA_PRINTER; 7.2U PASS para certificacion, impresion/corte y cajon VIA_PRINTER de XP-80; scanner HID real en vista principal del POS PASS en QA Electron empaquetado; fullscreen Electron 7.2X PASS/CLOSED; quedan abiertos los gates listados en `qa-evidence.md`.
 - [ ] P8 Certificar fresh install, repair, uninstall y remove-data; watchdog queda posterior.
