@@ -103,7 +103,6 @@ import {
 import {
   createPosScannerHidLogger,
   describePosScannerWedgeIgnoredSequence,
-  resolvePosScannerHidStatus,
 } from "../utils/pos-scanner-hid";
 import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
@@ -628,15 +627,11 @@ export const PosScreen = () => {
   });
 
   const focusProductSearch = useCallback(() => {
-    if (!productToolsOpen) {
-      return;
-    }
-
     window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, [productToolsOpen]);
+  }, []);
 
   useEffect(() => {
     if (!productToolsOpen || !shouldFocusProductSearchRef.current) {
@@ -1293,10 +1288,6 @@ export const PosScreen = () => {
       }, {}),
     [cartWithDerivedValues]
   );
-  const scannerHidStatus = resolvePosScannerHidStatus(
-    scannerHidEnabled,
-    scannerLastCode
-  );
   const scaleStatusLabel = scaleMockEnabled
     ? scaleMockStatus === "reading"
       ? "Leyendo"
@@ -1304,7 +1295,6 @@ export const PosScreen = () => {
         ? "Error"
         : "Lista"
     : "Desactivada";
-  const scannerStatusTone = scannerHidStatus.tone;
   const scaleStatusTone =
     scaleMockStatus === "error" || !scaleMockEnabled
       ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
@@ -2657,26 +2647,6 @@ export const PosScreen = () => {
           >
             <div className="space-y-5">
               <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <Search className="h-4 w-4" />
-                  Buscar productos
-                </div>
-                <Input
-                  ref={searchInputRef}
-                  label="Buscador POS principal"
-                  placeholder="Buscar productos por nombre, SKU o codigo"
-                  autoFocus
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Usa nombre, SKU o codigo. Escape limpia o cierra el panel.
-                </p>
-              </section>
-
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                     <SlidersHorizontal className="h-4 w-4" />
@@ -2837,6 +2807,26 @@ export const PosScreen = () => {
         <div className="min-w-0">
           <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
             <div className="flex flex-col gap-4">
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <Search className="h-4 w-4" />
+                  Buscar productos
+                </div>
+                <Input
+                  ref={searchInputRef}
+                  label="Buscador POS principal"
+                  placeholder="Buscar productos por nombre, SKU o codigo"
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Usa nombre, SKU o codigo. Escape limpia la busqueda.
+                </p>
+              </section>
+
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
               <>
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
@@ -2951,19 +2941,10 @@ export const PosScreen = () => {
               ) : null}
 
               <div className="flex flex-wrap items-center gap-2">
-                {scannerMockStatus === "error" || scaleMockStatus === "error" ? (
-                  <>
-                    {scannerMockStatus === "error" ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                        Scanner desconectado
-                      </span>
-                    ) : null}
-                    {scaleMockStatus === "error" ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                        Balanza no disponible
-                      </span>
-                    ) : null}
-                  </>
+                {scaleMockStatus === "error" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                    Balanza no disponible
+                  </span>
                 ) : (
                   <button
                     type="button"
