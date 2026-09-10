@@ -1,11 +1,10 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { config as loadEnv } from "dotenv";
-import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import {
   buildPeripheralsCorsOptions,
-  getCorsAllowedOrigin,
+  buildPrivateNetworkAccessMiddleware,
   getPeripheralsConfig,
 } from "./shared/config/peripherals.config";
 import { SanitizedHttpExceptionFilter } from "./shared/filters/sanitized-http-exception.filter";
@@ -22,39 +21,9 @@ async function bootstrap() {
   const config = getPeripheralsConfig();
 
   app.useGlobalFilters(new SanitizedHttpExceptionFilter());
+  app.use(buildPrivateNetworkAccessMiddleware(config.allowedOrigins));
   const corsOptions = buildPeripheralsCorsOptions(config.allowedOrigins);
   app.enableCors(corsOptions);
-  app.use((request: Request, response: Response, next: NextFunction) => {
-    if (request.method !== "OPTIONS") {
-      next();
-      return;
-    }
-
-    const origin = Array.isArray(request.headers.origin)
-      ? request.headers.origin[0]
-      : request.headers.origin;
-    const allowedOrigin = getCorsAllowedOrigin(
-      origin,
-      config.allowedOrigins
-    );
-    if (typeof allowedOrigin !== "string") {
-      next();
-      return;
-    }
-
-    response.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-    response.setHeader("Access-Control-Allow-Credentials", "true");
-    response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
-    response.setHeader(
-      "Access-Control-Allow-Headers",
-      String(
-        request.headers["access-control-request-headers"] ??
-          "Content-Type, Authorization, Accept, Origin"
-      )
-    );
-    response.setHeader("Vary", "Origin");
-    response.status(204).send();
-  });
 
   const eventsService = app.get(EventsService);
   const logsService = app.get(LogsService);

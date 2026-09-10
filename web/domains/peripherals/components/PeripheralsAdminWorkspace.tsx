@@ -20,7 +20,6 @@ import {
   discoverPeripheralDevices,
   fetchPeripheralDevices,
   fetchPeripheralHealth,
-  getPeripheralAgentConfig,
   openCashDrawerCommand,
   updateDevice,
   testPrint,
@@ -133,8 +132,6 @@ const PeripheralsAdminWorkspace = () => {
   const searchParams = useSearchParams();
   const tenantSlug = useMemo(() => pathname.split("/")[1] ?? "", [pathname]);
   const queryTerminalId = searchParams.get("terminalId")?.trim() ?? "";
-  const agentConfig = useMemo(() => getPeripheralAgentConfig(), []);
-
   const [terminals, setTerminals] = useState<TerminalResponse[]>([]);
   const [health, setHealth] = useState<PeripheralAgentHealth | null>(null);
   const [devices, setDevices] = useState<PeripheralDevice[]>([]);
@@ -519,13 +516,10 @@ const PeripheralsAdminWorkspace = () => {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Peripheral Agent</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Servicio Manus</p>
             <h2 className="text-lg font-semibold text-slate-900">
-              {health ? "Disponible" : "No disponible"}
+              {health ? "Servicio Manus conectado" : "No encontramos el servicio Manus en este equipo"}
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              URL local {agentConfig.httpUrl || "http://127.0.0.1:4050"}
-            </p>
           </div>
           <Button variant="ghost" onClick={() => void loadSnapshot(selectedTerminalId || undefined)} isLoading={loading.snapshot}>
             <RefreshCw className="h-4 w-4" />

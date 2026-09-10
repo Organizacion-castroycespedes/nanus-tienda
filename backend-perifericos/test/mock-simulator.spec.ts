@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { CashDrawerService } from "../src/modules/cash-drawer/cash-drawer.service";
@@ -39,6 +41,10 @@ import {
   type DeviceRegistryState,
   type DeviceRegistryStateStore,
 } from "../src/platform/device-registry-state.store";
+
+const packageJson = JSON.parse(
+  readFileSync(join(process.cwd(), "package.json"), "utf8")
+);
 
 const emptyUsbDiscovery: UsbPrinterDiscovery = {
   list: () => [],
@@ -127,6 +133,7 @@ test("health controller responds ok", () => {
   assert.equal(result.status, "ok");
   assert.equal(result.agent, "manus-pos-peripheral-agent");
   assert.equal(result.mode, "MOCK");
+  assert.equal(result.version, packageJson.version);
 });
 
 test("devices list returns required mock peripherals", () => {
