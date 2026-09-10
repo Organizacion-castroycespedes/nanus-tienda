@@ -20,7 +20,6 @@ import {
   discoverPeripheralDevices,
   fetchPeripheralDevices,
   fetchPeripheralHealth,
-  getPeripheralAgentConfig,
   openCashDrawerCommand,
   updateDevice,
   testPrint,
@@ -133,8 +132,6 @@ const PeripheralsAdminWorkspace = () => {
   const searchParams = useSearchParams();
   const tenantSlug = useMemo(() => pathname.split("/")[1] ?? "", [pathname]);
   const queryTerminalId = searchParams.get("terminalId")?.trim() ?? "";
-  const agentConfig = useMemo(() => getPeripheralAgentConfig(), []);
-
   const [terminals, setTerminals] = useState<TerminalResponse[]>([]);
   const [health, setHealth] = useState<PeripheralAgentHealth | null>(null);
   const [devices, setDevices] = useState<PeripheralDevice[]>([]);

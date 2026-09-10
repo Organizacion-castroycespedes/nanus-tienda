@@ -35,7 +35,9 @@ import {
   fetchPeripheralDevices,
   fetchPeripheralHealth,
   fetchPeripheralLogs,
+  getElectronPeripheralAgentConfig,
   getPeripheralAgentConfig,
+  getPeripheralTransport,
   isElectronTerminal,
   isPeripheralAgentRequestError,
   openCashDrawer,
@@ -1955,7 +1957,15 @@ const PeripheralEventsPanel = ({
 const PeripheralsPage = () => {
   const params = useParams<{ tenant?: string }>();
   const tenantIdParam = typeof params?.tenant === "string" ? params.tenant : null;
-  const agentConfig = useMemo(() => getPeripheralAgentConfig(), []);
+  const transport = useMemo(() => getPeripheralTransport(), []);
+  const electronRuntime = transport.kind === "electron";
+  const agentConfig = useMemo(
+    () =>
+      electronRuntime
+        ? getElectronPeripheralAgentConfig()
+        : getPeripheralAgentConfig(),
+    [electronRuntime]
+  );
   const [health, setHealth] = useState<PeripheralAgentHealth | null>(null);
   const [devices, setDevices] = useState<PeripheralDevice[]>([]);
   const [logs, setLogs] = useState<PeripheralLog[]>([]);
@@ -2012,7 +2022,7 @@ const PeripheralsPage = () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     setAgentError(null);
 
-    if (!agentConfig.isConfigured && !isElectronTerminal()) {
+    if (!agentConfig.isConfigured && !electronRuntime) {
       setHealth(null);
       setDevices([]);
       setLogs([]);
@@ -2044,7 +2054,7 @@ const PeripheralsPage = () => {
     setDevices(devicesResult.status === "fulfilled" ? devicesResult.value : []);
     setLogs(logsResult.status === "fulfilled" ? logsResult.value : []);
     setLoading((prev) => ({ ...prev, snapshot: false }));
-  }, [agentConfig]);
+  }, [agentConfig, electronRuntime]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -2054,7 +2064,7 @@ const PeripheralsPage = () => {
     let socket: WebSocket | null = null;
     let closedByEffect = false;
 
-    if (isElectronTerminal()) {
+    if (electronRuntime) {
       setSocketState("disconnected");
       return () => undefined;
     }
@@ -2096,7 +2106,7 @@ const PeripheralsPage = () => {
       closedByEffect = true;
       socket?.close();
     };
-  }, [agentConfig, socketAttempt]);
+  }, [agentConfig, electronRuntime, socketAttempt]);
 
   const refreshDevices = useCallback(async () => {
     setLoading((prev) => ({ ...prev, devices: true }));

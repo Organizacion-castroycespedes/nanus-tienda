@@ -224,7 +224,53 @@ export const getPeripheralAgentConfig = (): PeripheralAgentConfig => {
 export const PERIPHERALS_AGENT_HTTP_URL = getPeripheralAgentConfig().httpUrl;
 export const PERIPHERALS_AGENT_WS_URL = getPeripheralAgentConfig().wsUrl;
 
-export const isElectronTerminal = () => typeof window !== "undefined" && Boolean((window as Window & { manusTerminal?: unknown }).manusTerminal);
+export type ElectronPeripheralBridge = {
+  getAgentHealth: () => Promise<unknown>;
+  listDevices: () => Promise<unknown>;
+  discoverDevices: (terminalId: string) => Promise<unknown>;
+  createDevice: (payload: unknown) => Promise<unknown>;
+  updateDevice: (deviceId: string, payload: unknown) => Promise<unknown>;
+  testPrint: (payload: unknown) => Promise<unknown>;
+  openCashDrawer: (payload: unknown) => Promise<unknown>;
+  simulateScanner: (payload: unknown) => Promise<unknown>;
+  currentWeight: (payload: unknown) => Promise<unknown>;
+  listLogs: () => Promise<unknown>;
+};
+
+export type PeripheralTransport =
+  | { kind: "electron"; bridge: ElectronPeripheralBridge }
+  | { kind: "browser"; config: PeripheralAgentConfig };
+
+const readElectronPeripheralBridge = (): ElectronPeripheralBridge | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const candidate = (window as Window & { manusTerminal?: unknown }).manusTerminal;
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  return candidate as ElectronPeripheralBridge;
+};
+
+export const getPeripheralTransport = (): PeripheralTransport => {
+  const bridge = readElectronPeripheralBridge();
+  return bridge
+    ? { kind: "electron", bridge }
+    : { kind: "browser", config: getPeripheralAgentConfig() };
+};
+
+export const getElectronPeripheralAgentConfig = (): PeripheralAgentConfig => ({
+  httpUrl: "typed IPC / 127.0.0.1:4050",
+  wsUrl: "typed IPC",
+  isConfigured: true,
+  isProduction: process.env.NODE_ENV === "production",
+  status: "configured",
+  source: "loopback-default",
+});
+
+export const isElectronTerminal = () => Boolean(readElectronPeripheralBridge());
 
 const requirePeripheralAgentConfig = () => {
   const config = getPeripheralAgentConfig();
@@ -276,8 +322,9 @@ export const requestPeripheral = async <T>(
   path: string,
   init?: RequestInit
 ): Promise<T> => {
-  const terminalBridge = typeof window !== "undefined" ? (window as Window & { manusTerminal?: Record<string, (arg?: unknown, payload?: unknown) => Promise<unknown>> }).manusTerminal : undefined;
-  if (terminalBridge) {
+  const transport = getPeripheralTransport();
+  if (transport.kind === "electron") {
+    const terminalBridge = transport.bridge;
     if (path === "/health" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.getAgentHealth() as Promise<T>;
     if (path === "/devices" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listDevices() as Promise<T>;
     if (path === "/devices/discover" && init?.method === "POST") {
