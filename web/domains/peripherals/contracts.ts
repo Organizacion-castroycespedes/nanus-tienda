@@ -3,6 +3,7 @@ import {
   fetchPeripheralDevices,
   fetchPeripheralHealth,
   getPeripheralAgentConfig,
+  isElectronTerminal,
   isPeripheralAgentRequestError,
   openCashDrawerCommand,
   PeripheralAgentRequestError,
@@ -491,6 +492,13 @@ export const subscribePeripheralEvents = (
       "PERIPHERALS_DISABLED",
       "La capa frontend de perifericos esta desactivada por NEXT_PUBLIC_PERIPHERALS_ENABLED=false."
     );
+    return () => undefined;
+  }
+
+  // Electron uses the typed preload bridge for local Agent operations. The
+  // browser WebSocket is intentionally unavailable in that runtime; HID
+  // scanner capture remains focus-scoped in the POS search input.
+  if (isElectronTerminal()) {
     return () => undefined;
   }
 
