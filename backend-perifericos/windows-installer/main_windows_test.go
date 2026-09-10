@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,7 +17,15 @@ import (
 )
 
 func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
-	_, err := embeddedAssets.ReadFile("assets/bundle/ManusPeripheralAgent-win-x64-0.1.1-qa.4/node_modules/readable-stream/lib/_stream_readable.js")
+	manifestBytes, err := embeddedAssets.ReadFile("assets/manifest.json")
+	if err != nil {
+		t.Fatalf("embedded installer manifest missing: %v", err)
+	}
+	var manifest installerManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("embedded installer manifest invalid: %v", err)
+	}
+	_, err = embeddedAssets.ReadFile(filepath.ToSlash(filepath.Join(manifest.BundleRoot, "node_modules/readable-stream/lib/_stream_readable.js")))
 	if err != nil {
 		t.Fatalf("embedded asset missing: %v", err)
 	}
@@ -28,19 +37,56 @@ func TestPOSPayloadValidRequiresCurrentPayload(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(current, "resources"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{filepath.Join(current, "Manus POS.exe"), filepath.Join(current, "resources", "app.asar"), filepath.Join(current, "resources", "manus-shell.config.json")} {
-		if err := os.WriteFile(path, []byte("ok"), 0o600); err != nil {
+	files := map[string][]byte{
+		"Manus POS.exe":                     []byte("fresh exe"),
+		"resources/app.asar":                []byte("fresh asar"),
+		"resources/manus-shell.config.json": []byte(`{"environment":"qa"}`),
+	}
+	manifestFiles := make([]posPayloadFile, 0, len(files))
+	for relative, content := range files {
+		path := filepath.Join(current, filepath.FromSlash(relative))
+		if err := os.WriteFile(path, content, 0o600); err != nil {
 			t.Fatal(err)
 		}
+		manifestFiles = append(manifestFiles, posPayloadFile{Path: relative, Size: int64(len(content)), SHA256: fmt.Sprintf("%x", sha256.Sum256(content))})
 	}
 	layout := runtimeLayout{POSCurrentRoot: current}
-	manifest := installerManifest{PosRoot: "assets/pos", PosVersion: "0.1.0"}
-	if !posPayloadValid(layout, manifest) {
+	manifest := posPayloadManifest{PosVersion: "0.1.0", Files: manifestFiles}
+	if err := validateInstalledPOSPayload(layout, manifest); err != nil {
 		t.Fatal("valid POS current payload should pass")
 	}
 	_ = os.Remove(filepath.Join(current, "Manus POS.exe"))
-	if posPayloadValid(layout, manifest) {
+	if err := validateInstalledPOSPayload(layout, manifest); err == nil {
 		t.Fatal("missing executable must fail validation")
+	}
+}
+
+func TestPOSPayloadHashMismatchRequiresReplacement(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "POS", "current")
+	if err := os.MkdirAll(filepath.Join(current, "resources"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("expected")
+	path := filepath.Join(current, "Manus POS.exe")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := posPayloadManifest{PosVersion: "0.1.0", Files: []posPayloadFile{{Path: "Manus POS.exe", Size: int64(len(content)), SHA256: fmt.Sprintf("%x", sha256.Sum256(content))}}}
+	if err := validateInstalledPOSPayload(runtimeLayout{POSCurrentRoot: current}, manifest); err == nil {
+		t.Fatal("hash mismatch must fail validation")
+	}
+}
+
+func TestPOSPayloadUnsafeManifestPathFails(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "POS", "current")
+	if err := os.MkdirAll(current, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := posPayloadManifest{PosVersion: "0.1.0", Files: []posPayloadFile{{Path: "../outside", Size: 0, SHA256: ""}}}
+	if err := validateInstalledPOSPayload(runtimeLayout{POSCurrentRoot: current}, manifest); err == nil {
+		t.Fatal("unsafe manifest path must fail validation")
 	}
 }
 

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -56,6 +57,21 @@ type installerManifest struct {
 	PosVersion      string   `json:"posVersion"`
 	PosRoot         string   `json:"posRoot"`
 	PosManifest     string   `json:"posManifest"`
+}
+
+type posPayloadFile struct {
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
+type posPayloadManifest struct {
+	SchemaVersion int              `json:"schemaVersion"`
+	PosVersion    string           `json:"posVersion"`
+	Executable    string           `json:"executable"`
+	ShellConfig   string           `json:"shellConfig"`
+	PayloadSize   int64            `json:"payloadSize"`
+	Files         []posPayloadFile `json:"files"`
 }
 
 type runtimeLayout struct {
@@ -374,16 +390,24 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		}
 		return err
 	}
-	if manifest.PosRoot != "" && !posPayloadValid(layout, manifest) {
-		logger.Printf("POS detection state=missing")
-		if err := installPOSPayload(layout, manifest); err != nil {
-			logger.Printf("POS install failure stage=activation sanitized error=%v", err)
-			if repairBackupPath != "" {
-				_ = emitRollback(observer, &sequence, manifest, layout, repairBackupPath, existingVersion, logger)
-			}
-			return fmt.Errorf("install POS payload: %w", err)
+	if manifest.PosRoot != "" {
+		posValid, reason := installedPOSMatchesEmbeddedManifest(layout, manifest)
+		if posValid {
+			logger.Printf("POS reconciliation state=MATCH")
+		} else {
+			logger.Printf("POS reconciliation state=MISMATCH detail=%s", reason)
+			logger.Printf("POS payload mismatch; replacement required")
 		}
-		logger.Printf("POS activation success version=%s", manifest.PosVersion)
+		if !posValid {
+			if err := installPOSPayload(layout, manifest); err != nil {
+				logger.Printf("POS install failure stage=activation sanitized error=%v", err)
+				if repairBackupPath != "" {
+					_ = emitRollback(observer, &sequence, manifest, layout, repairBackupPath, existingVersion, logger)
+				}
+				return fmt.Errorf("install POS payload: %w", err)
+			}
+			logger.Printf("POS activation success version=%s", manifest.PosVersion)
+		}
 	}
 	registration := buildServiceRegistration(manifest, layout)
 	logger.Printf("service registration executable=%s args=%q", registration.Executable, registration.Args)
@@ -471,15 +495,99 @@ func createPOSShortcuts(layout runtimeLayout) error {
 }
 
 func posPayloadValid(layout runtimeLayout, manifest installerManifest) bool {
-	if manifest.PosRoot == "" || manifest.PosVersion == "" || !exists(layout.POSCurrentRoot) {
-		return false
+	valid, _ := installedPOSMatchesEmbeddedManifest(layout, manifest)
+	return valid
+}
+
+func readEmbeddedPOSManifest(manifest installerManifest) (posPayloadManifest, error) {
+	if manifest.PosManifest == "" {
+		return posPayloadManifest{}, errors.New("POS manifest path missing")
 	}
-	for _, required := range []string{"Manus POS.exe", "resources/app.asar", "resources/manus-shell.config.json"} {
-		if !exists(filepath.Join(layout.POSCurrentRoot, required)) {
-			return false
+	manifestPath := filepath.ToSlash(filepath.Clean(manifest.PosManifest))
+	if filepath.IsAbs(manifestPath) || manifestPath == "." || strings.HasPrefix(manifestPath, "../") || strings.Contains(manifestPath, "/../") {
+		return posPayloadManifest{}, errors.New("unsafe POS manifest path")
+	}
+	data, err := embeddedAssets.ReadFile(manifestPath)
+	if err != nil {
+		return posPayloadManifest{}, fmt.Errorf("read POS manifest: %w", err)
+	}
+	var payload posPayloadManifest
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return posPayloadManifest{}, fmt.Errorf("parse POS manifest: %w", err)
+	}
+	if payload.PosVersion == "" || len(payload.Files) == 0 {
+		return posPayloadManifest{}, errors.New("POS manifest has no payload files")
+	}
+	return payload, nil
+}
+
+func safePOSRelativePath(relativePath string) (string, error) {
+	if relativePath == "" || filepath.IsAbs(relativePath) || filepath.VolumeName(relativePath) != "" {
+		return "", errors.New("unsafe POS payload path")
+	}
+	clean := filepath.Clean(relativePath)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", errors.New("unsafe POS payload path")
+	}
+	return clean, nil
+}
+
+func validateInstalledPOSPayload(layout runtimeLayout, manifest posPayloadManifest) error {
+	if manifest.PosVersion == "" || !exists(layout.POSCurrentRoot) {
+		return errors.New("POS current payload missing")
+	}
+	for _, file := range manifest.Files {
+		relativePath, err := safePOSRelativePath(filepath.FromSlash(file.Path))
+		if err != nil {
+			return fmt.Errorf("%s: %w", file.Path, err)
+		}
+		installedPath := filepath.Join(layout.POSCurrentRoot, relativePath)
+		relativeToRoot, err := filepath.Rel(layout.POSCurrentRoot, installedPath)
+		if err != nil || relativeToRoot == ".." || strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("%s: path escapes POS root", file.Path)
+		}
+		info, err := os.Stat(installedPath)
+		if err != nil {
+			return fmt.Errorf("%s: missing installed file", file.Path)
+		}
+		if !info.Mode().IsRegular() || info.Size() != file.Size {
+			return fmt.Errorf("%s: size mismatch expected=%d actual=%d", file.Path, file.Size, info.Size())
+		}
+		fileHandle, err := os.Open(installedPath)
+		if err != nil {
+			return fmt.Errorf("%s: read installed file: %w", file.Path, err)
+		}
+		hash := sha256.New()
+		if _, err := io.Copy(hash, fileHandle); err != nil {
+			_ = fileHandle.Close()
+			return fmt.Errorf("%s: hash installed file: %w", file.Path, err)
+		}
+		if err := fileHandle.Close(); err != nil {
+			return fmt.Errorf("%s: close installed file: %w", file.Path, err)
+		}
+		actualHash := fmt.Sprintf("%x", hash.Sum(nil))
+		if !strings.EqualFold(actualHash, file.SHA256) {
+			return fmt.Errorf("%s: hash mismatch expected=%s actual=%s", file.Path, file.SHA256, actualHash)
 		}
 	}
-	return true
+	return nil
+}
+
+func installedPOSMatchesEmbeddedManifest(layout runtimeLayout, manifest installerManifest) (bool, string) {
+	if manifest.PosRoot == "" || manifest.PosVersion == "" {
+		return false, "POS payload metadata missing"
+	}
+	payload, err := readEmbeddedPOSManifest(manifest)
+	if err != nil {
+		return false, err.Error()
+	}
+	if payload.PosVersion != manifest.PosVersion {
+		return false, fmt.Sprintf("manifest version mismatch expected=%s actual=%s", manifest.PosVersion, payload.PosVersion)
+	}
+	if err := validateInstalledPOSPayload(layout, payload); err != nil {
+		return false, err.Error()
+	}
+	return true, ""
 }
 
 func uninstall(manifest installerManifest, removeData bool) error {
