@@ -43,6 +43,12 @@ El modulo POS SHALL mantener el carrito visible o accesible durante toda la vent
 - **THEN** the cart SHALL be represented as a bottom floating summary
 - **AND** tapping the summary SHALL open a bottom sheet with the full cart.
 
+#### Scenario: Header access
+- **WHEN** the viewport is tablet or mobile sized and the cart has items
+- **THEN** the global header cart control and the POS floating cart control SHALL open the same cart sheet state
+- **AND** closing one control SHALL update the same shared state
+- **AND** the cart SHALL remain closed when empty.
+
 ### Requirement: Compact sale context
 El modulo POS SHALL compactar la informacion de usuario actual, estado de venta y cliente.
 
@@ -52,6 +58,19 @@ El modulo POS SHALL compactar la informacion de usuario actual, estado de venta 
 - **AND** the sale state SHALL be visible
 - **AND** the selected customer SHALL be visible
 - **AND** these elements SHALL NOT consume excessive vertical space.
+
+### Requirement: Global POS context bootstrap
+La aplicacion SHALL resolver el contexto POS activo a nivel de provider o layout, without depending on visiting `/pos` first.
+
+#### Scenario: Authenticated session with active POS
+- **WHEN** the user authenticates successfully and has an active POS session for the current tenant
+- **THEN** the header SHALL show the resolved role or user identity, terminal, branch, and live date or time
+- **AND** the values SHALL come from the resolved POS session state, not from fake placeholders.
+
+#### Scenario: No active POS session
+- **WHEN** the user authenticates successfully but no valid POS session exists
+- **THEN** the application SHALL keep navigation available
+- **AND** the header SHALL use a safe state instead of inventing terminal or branch values.
 
 ### Requirement: Compact product filters
 El modulo POS SHALL mostrar filtros de productos como chips compactos con contador.
@@ -169,6 +188,16 @@ El modulo POS SHALL adaptarse a desktop Web/Electron, tablet and mobile/Capacito
 - **THEN** the POS SHALL show search near the top
 - **AND** the cart SHALL use a bottom summary and bottom sheet
 - **AND** bottom controls SHALL respect `env(safe-area-inset-bottom)`.
+
+### Requirement: Responsive sidebar labels from POS
+La navegacion global SHALL mostrar las mismas etiquetas y jerarquia desde `/pos` que desde cualquier otra ruta when the drawer is expanded on small viewports.
+
+#### Scenario: Mobile drawer opened from /pos
+- **WHEN** the user opens the hamburger menu from `/pos` on a small viewport
+- **THEN** the drawer SHALL show icons and labels
+- **AND** the drawer width SHALL remain consistent with other routes
+- **AND** the POS entry SHALL remain highlighted
+- **AND** the content underneath SHALL stay behind the overlay.
 
 ### Requirement: Use existing design system
 La implementacion SHALL reutilizar componentes y tokens existentes de `web/components/design-system`.
