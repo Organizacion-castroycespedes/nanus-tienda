@@ -5,6 +5,8 @@ import type { VersionedShellConfig } from "./config.js";
 
 export const DEFAULT_AGENT_REQUEST_TIMEOUT_MS = 2500;
 export const DISCOVERY_REQUEST_TIMEOUT_MS = 15000;
+export const PRINT_TICKET_REQUEST_TIMEOUT_MS = 15000;
+export const CASH_DRAWER_REQUEST_TIMEOUT_MS = 15000;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
 type RequestOptions = { timeoutMs?: number };
@@ -102,12 +104,12 @@ export const discoverAgentDevices = async (shellConfig: VersionedShellConfig, te
   return { devices: Array.isArray(source.devices) ? source.devices : [] };
 };
 
-const requestAgentOperation = (config: VersionedShellConfig, path: string, method: string, body: unknown) => requestJson(config, path, method, body);
+const requestAgentOperation = (config: VersionedShellConfig, path: string, method: string, body: unknown, options: RequestOptions = {}) => requestJson(config, path, method, body, options);
 export const createAgentDevice = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/devices", "POST", payload);
 export const updateAgentDevice = (config: VersionedShellConfig, id: string, payload: unknown) => requestAgentOperation(config, `/devices/${encodeURIComponent(id.slice(0, 128))}`, "PATCH", payload);
 export const testAgentPrint = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/printer/test-print", "POST", payload);
-export const printAgentTicket = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/printer/print-ticket", "POST", payload);
-export const openAgentCashDrawer = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/cash-drawer/open", "POST", payload);
+export const printAgentTicket = (config: VersionedShellConfig, payload: unknown, options: RequestOptions = { timeoutMs: PRINT_TICKET_REQUEST_TIMEOUT_MS }) => requestAgentOperation(config, "/printer/print-ticket", "POST", payload, options);
+export const openAgentCashDrawer = (config: VersionedShellConfig, payload: unknown, options: RequestOptions = { timeoutMs: CASH_DRAWER_REQUEST_TIMEOUT_MS }) => requestAgentOperation(config, "/cash-drawer/open", "POST", payload, options);
 export const simulateAgentScanner = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/scanner/simulate", "POST", payload);
 export const getAgentCurrentWeight = (config: VersionedShellConfig, payload: unknown) => {
   const input = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};

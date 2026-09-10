@@ -35,6 +35,10 @@
 - [x] 3.6 Add the explicit typed `printTicket` bridge and accept successful
       Agent `2xx` responses, preserving the short default timeout and fixed
       loopback transport.
+- [x] 3.7 Give synchronous physical `print-ticket` and `cash-drawer/open`
+      operations bounded 15000 ms Electron response windows while retaining
+      the 2500 ms default and 15000 ms discovery timeout; cover delayed
+      success and finite `AGENT_TIMEOUT` behavior without retries.
 
 ## 4. Validation and QA
 
@@ -43,5 +47,6 @@
 - [x] 4.2 Run `git diff --check`; no whitespace errors.
 - [x] 4.3 Web-only fix confirmed; fresh Electron/Installer rebuild is not
       required because preload/main/IPC sources are unchanged.
-- [ ] 4.4 Perform one physical packaged-Electron handoff reproduction; pending
-      candidate installation.
+- [x] 4.4 Perform one physical packaged-Electron handoff reproduction on the
+      7.2AA candidate; physical sale print, drawer, Reporteria print, and
+      authenticated local-to-cloud handoff pass.
