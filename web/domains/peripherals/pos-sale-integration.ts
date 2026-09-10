@@ -106,12 +106,12 @@ const isAgentOffline = (error?: PeripheralOperationError) =>
 const printWarningMessage = (error?: PeripheralOperationError) =>
   isAgentOffline(error)
     ? "Venta guardada, pero no se pudo contactar el agente de perifericos"
-    : "Venta guardada, pero fallo la impresion MOCK";
+    : "Venta guardada, pero no se pudo imprimir el ticket";
 
 const drawerWarningMessage = (error?: PeripheralOperationError) =>
   isAgentOffline(error)
     ? "Venta guardada, pero no se pudo contactar el agente de perifericos"
-    : "Venta guardada, pero fallo la apertura de caja MOCK";
+    : "Venta guardada, pero no se pudo confirmar la apertura del cajon";
 
 export const runSalePeripheralOperations = async (
   context: PosSalePeripheralContext
@@ -135,7 +135,7 @@ export const runSalePeripheralOperations = async (
     if (printResult.success) {
       feedback.push({
         variant: "success",
-        message: "Ticket MOCK enviado",
+        message: "Ticket enviado a impresion",
         operation: "print",
       });
     } else if (
@@ -163,7 +163,7 @@ export const runSalePeripheralOperations = async (
     if (drawerResult.success) {
       feedback.push({
         variant: "success",
-        message: "Caja MOCK abierta",
+        message: "Cajon abierto",
         operation: "cash-drawer",
       });
     } else if (

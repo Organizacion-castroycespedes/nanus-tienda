@@ -231,6 +231,7 @@ export type ElectronPeripheralBridge = {
   createDevice: (payload: unknown) => Promise<unknown>;
   updateDevice: (deviceId: string, payload: unknown) => Promise<unknown>;
   testPrint: (payload: unknown) => Promise<unknown>;
+  printTicket: (payload: unknown) => Promise<unknown>;
   openCashDrawer: (payload: unknown) => Promise<unknown>;
   simulateScanner: (payload: unknown) => Promise<unknown>;
   currentWeight: (payload: unknown) => Promise<unknown>;
@@ -335,6 +336,7 @@ export const requestPeripheral = async <T>(
     if (path === "/devices" && init?.method === "POST") return terminalBridge.createDevice(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path.startsWith("/devices/") && init?.method === "PATCH") return terminalBridge.updateDevice(path.slice("/devices/".length), JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path === "/printer/test-print" && init?.method === "POST") return terminalBridge.testPrint(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/printer/print-ticket" && init?.method === "POST") return terminalBridge.printTicket(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path === "/cash-drawer/open" && init?.method === "POST") return terminalBridge.openCashDrawer(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path === "/scanner/simulate" && init?.method === "POST") return terminalBridge.simulateScanner(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.currentWeight(Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;

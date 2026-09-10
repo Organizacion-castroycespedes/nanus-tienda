@@ -57,6 +57,7 @@ test("Electron event subscription does not evaluate browser Agent configuration"
         createDevice: async () => ({}),
         updateDevice: async () => ({}),
         testPrint: async () => ({}),
+        printTicket: async () => ({}),
         openCashDrawer: async () => ({}),
         simulateScanner: async () => ({}),
         currentWeight: async () => ({}),

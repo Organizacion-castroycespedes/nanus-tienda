@@ -3,17 +3,20 @@ import http from "node:http";
 import type { AgentHealth } from "./electron-api.js";
 import type { VersionedShellConfig } from "./config.js";
 
-const REQUEST_TIMEOUT_MS = 2500;
+export const DEFAULT_AGENT_REQUEST_TIMEOUT_MS = 2500;
+export const DISCOVERY_REQUEST_TIMEOUT_MS = 15000;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
-const requestJson = (shellConfig: VersionedShellConfig, path: string, method = "GET", body?: unknown): Promise<unknown> => new Promise((resolve, reject) => {
+type RequestOptions = { timeoutMs?: number };
+
+const requestJson = (shellConfig: VersionedShellConfig, path: string, method = "GET", body?: unknown, options: RequestOptions = {}): Promise<unknown> => new Promise((resolve, reject) => {
   const target = new URL(path, shellConfig.agentLoopbackOrigin);
   const payload = body === undefined ? undefined : JSON.stringify(body);
-  const request = http.request({ hostname: target.hostname, port: Number(target.port), path: target.pathname, method, timeout: REQUEST_TIMEOUT_MS, headers: { Accept: "application/json", ...(payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}) } }, (response) => {
+  const request = http.request({ hostname: target.hostname, port: Number(target.port), path: target.pathname, method, timeout: options.timeoutMs ?? DEFAULT_AGENT_REQUEST_TIMEOUT_MS, headers: { Accept: "application/json", ...(payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}) } }, (response) => {
     let text = ""; let bytes = 0;
     response.setEncoding("utf8");
     response.on("data", (chunk: string) => { bytes += Buffer.byteLength(chunk); if (bytes <= MAX_RESPONSE_BYTES) text += chunk; });
-    response.on("end", () => { if (bytes > MAX_RESPONSE_BYTES || response.statusCode !== 200) { reject(new Error("AGENT_RESPONSE_INVALID")); return; } try { resolve(JSON.parse(text)); } catch { reject(new Error("AGENT_RESPONSE_INVALID")); } });
+    response.on("end", () => { if (bytes > MAX_RESPONSE_BYTES || response.statusCode === undefined || response.statusCode < 200 || response.statusCode >= 300) { reject(new Error("AGENT_RESPONSE_INVALID")); return; } try { resolve(JSON.parse(text)); } catch { reject(new Error("AGENT_RESPONSE_INVALID")); } });
   });
   request.on("timeout", () => { request.destroy(new Error("AGENT_TIMEOUT")); });
   request.on("error", reject);
@@ -50,7 +53,7 @@ export const getAgentHealth = (
         hostname: target.hostname,
         port: Number(target.port),
         path: target.pathname,
-        timeout: REQUEST_TIMEOUT_MS,
+        timeout: DEFAULT_AGENT_REQUEST_TIMEOUT_MS,
         headers: { Accept: "application/json" },
       },
       (response) => {
@@ -93,7 +96,7 @@ export const listAgentDevices = async (shellConfig: VersionedShellConfig): Promi
 };
 
 export const discoverAgentDevices = async (shellConfig: VersionedShellConfig, terminalId: string): Promise<{ devices: unknown[] }> => {
-  const value = await requestJson(shellConfig, "/devices/discover", "POST", { terminalId: terminalId.slice(0, 128) });
+  const value = await requestJson(shellConfig, "/devices/discover", "POST", { terminalId: terminalId.slice(0, 128) }, { timeoutMs: DISCOVERY_REQUEST_TIMEOUT_MS });
   if (!value || typeof value !== "object") return { devices: [] };
   const source = value as { devices?: unknown };
   return { devices: Array.isArray(source.devices) ? source.devices : [] };
@@ -103,6 +106,7 @@ const requestAgentOperation = (config: VersionedShellConfig, path: string, metho
 export const createAgentDevice = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/devices", "POST", payload);
 export const updateAgentDevice = (config: VersionedShellConfig, id: string, payload: unknown) => requestAgentOperation(config, `/devices/${encodeURIComponent(id.slice(0, 128))}`, "PATCH", payload);
 export const testAgentPrint = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/printer/test-print", "POST", payload);
+export const printAgentTicket = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/printer/print-ticket", "POST", payload);
 export const openAgentCashDrawer = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/cash-drawer/open", "POST", payload);
 export const simulateAgentScanner = (config: VersionedShellConfig, payload: unknown) => requestAgentOperation(config, "/scanner/simulate", "POST", payload);
 export const getAgentCurrentWeight = (config: VersionedShellConfig, payload: unknown) => {
