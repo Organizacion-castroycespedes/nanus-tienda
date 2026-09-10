@@ -108,6 +108,7 @@ test("Electron bridge wins over invalid production Agent URL", async () => {
         createDevice: async () => ({}),
         updateDevice: async () => ({}),
         testPrint: async () => ({}),
+        printTicket: async () => ({}),
         openCashDrawer: async () => ({}),
         simulateScanner: async () => ({}),
         currentWeight: async () => ({}),
@@ -151,6 +152,7 @@ test("Electron bridge fails closed for an unmapped peripheral path", async () =>
         createDevice: async () => ({}),
         updateDevice: async () => ({}),
         testPrint: async () => ({}),
+        printTicket: async () => ({}),
         openCashDrawer: async () => ({}),
         simulateScanner: async () => ({}),
         currentWeight: async () => ({}),
@@ -201,6 +203,10 @@ test("Electron bridge routes discovery and device updates without renderer HTTP"
           return { id: deviceId };
         },
         testPrint: async () => ({}),
+        printTicket: async (payload: unknown) => {
+          calls.push(`print-ticket:${JSON.stringify(payload)}`);
+          return { success: true };
+        },
         openCashDrawer: async () => ({}),
         simulateScanner: async () => ({}),
         currentWeight: async () => ({}),
@@ -222,10 +228,15 @@ test("Electron bridge routes discovery and device updates without renderer HTTP"
       method: "PATCH",
       body: JSON.stringify({ status: "READY" }),
     });
+    await requestPeripheral("/printer/print-ticket", {
+      method: "POST",
+      body: JSON.stringify({ deviceId: "printer-1" }),
+    });
     assert.deepEqual(calls, [
       "devices",
       "discover:terminal-1",
       'update:device-1:{"status":"READY"}',
+      'print-ticket:{"deviceId":"printer-1"}',
     ]);
   } finally {
     globalThis.fetch = previousFetch;

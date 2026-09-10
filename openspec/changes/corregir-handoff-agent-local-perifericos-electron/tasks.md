@@ -29,6 +29,12 @@
       pass.
 - [x] 3.4 Run relevant Web peripheral/cloud handoff tests; 49/49 pass,
       including the Electron subscription bypass regression.
+- [x] 3.5 Add operation-specific Electron Agent timeout coverage: retain the
+      2500 ms default and allow physical discovery up to 15000 ms, with a
+      finite `AGENT_TIMEOUT` failure beyond that limit.
+- [x] 3.6 Add the explicit typed `printTicket` bridge and accept successful
+      Agent `2xx` responses, preserving the short default timeout and fixed
+      loopback transport.
 
 ## 4. Validation and QA
 

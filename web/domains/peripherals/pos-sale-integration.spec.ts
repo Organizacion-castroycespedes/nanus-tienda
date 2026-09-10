@@ -106,7 +106,7 @@ test("sale flow resolves the canonical terminal and printer-backed drawer", asyn
           mode: "REAL",
           active: true,
           source: "CONFIGURED",
-          printerDeviceId: "usb-printer-45207a0cc744eb10",
+          printerDeviceId: "usb-printer-804a1994045911fd",
           cashDrawerDeviceId: "mock-cashdrawer-001",
           scaleDeviceId: "mock-scale-001",
           scannerDeviceId: "mock-scanner-001",
@@ -134,7 +134,7 @@ test("sale flow resolves the canonical terminal and printer-backed drawer", asyn
         deviceId?: string;
       };
       assert.equal(payload.terminalId, "693921eb-d28d-4c1b-af17-087b589c6467");
-      assert.equal(payload.deviceId, "usb-printer-45207a0cc744eb10");
+      assert.equal(payload.deviceId, "usb-printer-804a1994045911fd");
       return new Response(JSON.stringify({ success: true, jobId: "job-1" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -148,15 +148,15 @@ test("sale flow resolves the canonical terminal and printer-backed drawer", asyn
         printerDeviceId?: string;
       };
       assert.equal(payload.terminalId, "693921eb-d28d-4c1b-af17-087b589c6467");
-      assert.equal(payload.deviceId, "usb-printer-45207a0cc744eb10");
-      assert.equal(payload.printerDeviceId, "usb-printer-45207a0cc744eb10");
+      assert.equal(payload.deviceId, "usb-printer-804a1994045911fd");
+      assert.equal(payload.printerDeviceId, "usb-printer-804a1994045911fd");
       return new Response(
         JSON.stringify({
           success: true,
           commandId: "drawer-1",
           mode: "REAL",
-          printerDeviceId: "usb-printer-45207a0cc744eb10",
-          deviceId: "usb-printer-45207a0cc744eb10",
+          printerDeviceId: "usb-printer-804a1994045911fd",
+          deviceId: "usb-printer-804a1994045911fd",
           terminalId: "693921eb-d28d-4c1b-af17-087b589c6467",
           connectionType: "USB",
           commands: [],
@@ -210,6 +210,9 @@ test("sale flow resolves the canonical terminal and printer-backed drawer", asyn
 
     assert.equal(result.some((item) => item.operation === "cash-drawer"), true);
     assert.equal(result.some((item) => item.operation === "print"), true);
+    assert.equal(result.find((item) => item.operation === "print")?.message, "Ticket enviado a impresion");
+    assert.equal(result.find((item) => item.operation === "cash-drawer")?.message, "Cajon abierto");
+    assert.equal(result.some((item) => item.message.includes("MOCK")), false);
     assert.equal(calls[0].url, "/pos-terminals/resolve-current?tenantId=tenant-1&branchId=branch-1");
     assert.equal(calls[1].url, "/pos-terminals/resolve-current?tenantId=tenant-1&branchId=branch-1");
     assert.equal(calls[2].url, "http://127.0.0.1:4050/printer/print-ticket");

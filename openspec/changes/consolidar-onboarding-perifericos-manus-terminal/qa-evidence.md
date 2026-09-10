@@ -171,3 +171,55 @@ existing configured HTTPS validation. No generic IPC/HTTP proxy is allowed.
    workflow.
 3. Final packaging/regression certification and the remaining fresh,
    repair, uninstall, and remove-data evidence tracked by P7/P8.
+
+## Electron discovery timeout regression
+
+After a complete packaged-POS restart, the Electron bridge and local Agent
+health were healthy: the UI showed Agent `0.1.1-qa.9`, loopback
+`127.0.0.1:4050`, and technical status `ok`. Direct physical discovery at
+`POST http://127.0.0.1:4050/devices/discover` passed in 8356 ms.
+
+The same operation through `Buscar dispositivos` failed with `AGENT_TIMEOUT`.
+The source root cause was the Electron client applying its 2500 ms default
+timeout to discovery, even though Windows PnP/print-queue enumeration is a
+longer physical operation. The fix uses an operation-specific finite
+discovery timeout of 15000 ms while retaining the 2500 ms default for normal
+Agent operations. `AGENT_TIMEOUT` remains the controlled error when discovery
+exceeds its dedicated limit.
+
+This keeps the authenticated Electron handoff **OPEN / pending physical
+retest**. Fullscreen, scanner, persistence, POS reconciliation, and the
+Electron transport selection gates remain CLOSED and are not reopened.
+
+Discovery also reported a queue-only XP-58 record
+`usb-printer-45207a0cc744eb10` (`physicalDetected=false`,
+`queueInstalled=true`, `reconciliationStatus=OFFLINE`,
+`discoverySource=WINDOWS_PRINT_QUEUE`). This is an **OPEN, non-blocking QA
+observation** until the UI confirms queue-only records are hidden or
+non-actionable and cannot appear as duplicate physical printers.
+
+## P7 real peripheral actions: print-ticket and cash-sale feedback
+
+The certified POS-80 test print and manual drawer actions remain physical
+PASS. A real cash sale was saved and the drawer physically opened, but the
+sale ticket did not print and the UI reported legacy `MOCK` failures. Source
+trace showed two related defects:
+
+- Electron's typed bridge mapped `/printer/test-print` but not the existing
+  Agent `/printer/print-ticket` operation. POS sale tickets and Reporteria
+  sale reprints therefore failed in packaged Electron with the unmapped
+  operation error.
+- The Agent returns successful NestJS POST responses with HTTP `201`, while
+  the Electron JSON client accepted only `200`. The drawer pulse completed,
+  then its successful response was rejected as `AGENT_RESPONSE_INVALID`, so
+  sale feedback incorrectly warned even though the drawer opened.
+
+The fix adds one explicit `printTicket` IPC capability through preload/main
+to the fixed Agent loopback and accepts all successful `2xx` Agent responses
+without changing payload validation. POS sale feedback no longer says
+`MOCK`; it reports ticket and drawer results in real terminal language.
+
+Physical acceptance remains **OPEN / pending fresh packaged QA** for the
+automatic sale ticket, sale drawer feedback, and Reporteria sale print. The
+discovery timeout, fullscreen, scanner, persistence, POS reconciliation,
+test-print, and manual drawer gates remain CLOSED and are not reopened.

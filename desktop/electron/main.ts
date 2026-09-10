@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 
-import { createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, listAgentDevices, listAgentLogs, openAgentCashDrawer, simulateAgentScanner, testAgentPrint, updateAgentDevice } from "./agent-client.js";
+import { createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, testAgentPrint, updateAgentDevice } from "./agent-client.js";
 import { IPC_CHANNELS, type AgentHealth, type ShellInfo } from "./electron-api.js";
 import {
   DEFAULT_MANUS_WEB_URL,
@@ -98,7 +98,7 @@ const registerIpcHandlers = () => {
   ipcMain.removeHandler(IPC_CHANNELS.getAgentHealth);
   ipcMain.removeHandler(IPC_CHANNELS.listDevices);
   ipcMain.removeHandler(IPC_CHANNELS.discoverDevices);
-  for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
+  for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.printTicket, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
   ipcMain.handle(IPC_CHANNELS.getShellInfo, () => getShellInfo());
   ipcMain.handle(IPC_CHANNELS.getAgentHealth, async (): Promise<AgentHealth> => {
     if (!packagedShellConfig) {
@@ -117,6 +117,7 @@ const registerIpcHandlers = () => {
   ipcMain.handle(IPC_CHANNELS.createDevice, (_event, payload: unknown) => packagedShellConfig ? createAgentDevice(packagedShellConfig, payload) : []);
   ipcMain.handle(IPC_CHANNELS.updateDevice, (_event, id: unknown, payload: unknown) => packagedShellConfig ? updateAgentDevice(packagedShellConfig, typeof id === "string" ? id : "", payload) : null);
   ipcMain.handle(IPC_CHANNELS.testPrint, (_event, payload: unknown) => packagedShellConfig ? testAgentPrint(packagedShellConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.printTicket, (_event, payload: unknown) => packagedShellConfig ? printAgentTicket(packagedShellConfig, payload) : null);
   ipcMain.handle(IPC_CHANNELS.openCashDrawer, (_event, payload: unknown) => packagedShellConfig ? openAgentCashDrawer(packagedShellConfig, payload) : null);
   ipcMain.handle(IPC_CHANNELS.simulateScanner, (_event, payload: unknown) => packagedShellConfig ? simulateAgentScanner(packagedShellConfig, payload) : null);
   ipcMain.handle(IPC_CHANNELS.currentWeight, (_event, payload: unknown) => packagedShellConfig ? getAgentCurrentWeight(packagedShellConfig, payload) : null);
