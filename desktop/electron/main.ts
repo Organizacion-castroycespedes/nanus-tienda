@@ -10,7 +10,12 @@ import {
   validateVersionedShellConfig,
   type VersionedShellConfig,
 } from "./config.js";
-import { calculateTerminalBounds, shouldRecoverRenderer } from "./window-policy.js";
+import {
+  calculateTerminalBounds,
+  enforceTerminalWindowState,
+  shouldRecoverRenderer,
+  showAndEnforceTerminalWindow,
+} from "./window-policy.js";
 
 const DEFAULT_WINDOW_TITLE = "Manus POS";
 const DEFAULT_WINDOW_WIDTH = 1280;
@@ -44,6 +49,8 @@ let closeBehavior = parseCloseBehavior(process.env.MANUS_ELECTRON_CLOSE_BEHAVIOR
 let rendererRecoveryTimes: number[] = [];
 let maintenanceExitAllowed = false;
 
+const getPrimaryDisplayBounds = () => calculateTerminalBounds(screen.getPrimaryDisplay().bounds);
+
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 const allowMaintenanceExit = () => {
@@ -57,10 +64,7 @@ const focusMainWindow = () => {
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
-  mainWindow.show();
-  if (!mainWindow.isFullScreen()) {
-    mainWindow.setFullScreen(true);
-  }
+  showAndEnforceTerminalWindow(mainWindow, getPrimaryDisplayBounds());
   mainWindow.focus();
 };
 
@@ -174,19 +178,12 @@ const createMainWindow = async () => {
   });
 
   mainWindow = window;
-  window.setMenuBarVisibility(false);
-  window.setFullScreen(true);
-
   const fitToPrimaryDisplay = () => {
     if (window.isDestroyed()) {
       return;
     }
     const display = screen.getPrimaryDisplay();
-    const bounds = calculateTerminalBounds(display.workArea);
-    if (!window.isFullScreen()) {
-      window.setBounds(bounds);
-      window.setFullScreen(true);
-    }
+    enforceTerminalWindowState(window, calculateTerminalBounds(display.bounds));
   };
 
   fitToPrimaryDisplay();
@@ -196,7 +193,7 @@ const createMainWindow = async () => {
   screen.on("display-removed", onDisplayChanged);
 
   window.once("ready-to-show", () => {
-    window.show();
+    showAndEnforceTerminalWindow(window, getPrimaryDisplayBounds());
   });
 
   window.on("close", (event) => {
@@ -288,7 +285,8 @@ app.on("activate", () => {
   }
 
   if (mainWindow) {
-    mainWindow.show();
+    showAndEnforceTerminalWindow(mainWindow, getPrimaryDisplayBounds());
+    mainWindow.focus();
   }
 });
 
