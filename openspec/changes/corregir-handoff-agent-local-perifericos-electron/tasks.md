@@ -27,14 +27,15 @@
       behavior; focused API tests pass.
 - [x] 3.3 Run Electron and Agent regressions; Electron 19/19 and Agent 92/92
       pass.
-- [x] 3.4 Run relevant Web peripheral/cloud handoff tests; 29/29 pass.
+- [x] 3.4 Run relevant Web peripheral/cloud handoff tests; 49/49 pass,
+      including the Electron subscription bypass regression.
 
 ## 4. Validation and QA
 
 - [x] 4.1 Validate the active OpenSpec change and preserve the known global
       71/82 baseline; active change passes and historical 11 failures remain.
 - [x] 4.2 Run `git diff --check`; no whitespace errors.
-- [ ] 4.3 Build fresh Electron/Installer only after all tests pass; pending
-      physical handoff candidate decision.
+- [x] 4.3 Web-only fix confirmed; fresh Electron/Installer rebuild is not
+      required because preload/main/IPC sources are unchanged.
 - [ ] 4.4 Perform one physical packaged-Electron handoff reproduction; pending
       candidate installation.
