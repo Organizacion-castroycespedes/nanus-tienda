@@ -28,6 +28,7 @@ func emitCoreStep(sink installerCoreEventSink, sequence *uint64, eventType insta
 	event := newCoreEvent(*sequence, eventType, step)
 	if err != nil {
 		event.ErrorCode, event.SafeError, event.Retryable = string(step)+"_FAILED", safeCoreError(step), false
+		event.Message = err.Error()
 	}
 	sink.Emit(event)
 }
@@ -193,6 +194,7 @@ func applyInstallerCoreEvent(state *installerCoreState, event installerCoreEvent
 		target.Message, target.DurationMs = event.Message, 0
 		if event.Type == eventStepFailed {
 			state.Error = event.SafeError
+			state.TechnicalError = event.Message
 			state.Phase = coreFailedSafe
 		} else if event.Type == eventStepWarning {
 			state.Warning = event.Message

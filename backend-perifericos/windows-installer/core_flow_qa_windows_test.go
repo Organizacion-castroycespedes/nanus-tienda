@@ -27,6 +27,56 @@ func TestCoreFlowQAScenariosAreDeterministicAndNonDestructive(t *testing.T) {
 	}
 }
 
+func TestInstallerElevationPolicyRelaunchesInteractiveInstallOnly(t *testing.T) {
+	if !requiresElevation(nil) || !requiresElevation([]string{"install"}) || !requiresElevation([]string{"repair"}) {
+		t.Fatal("install and default UI must require elevation")
+	}
+	for _, args := range [][]string{{"service"}, {"status"}, {"inspect"}, {"--help"}} {
+		if requiresElevation(args) {
+			t.Fatalf("%v must not relaunch for elevation", args)
+		}
+	}
+}
+
+func TestPreflightFailureDoesNotClaimRollbackFailure(t *testing.T) {
+	state := newCoreFlowState()
+	if !applyInstallerCoreEvent(&state, newCoreEvent(1, eventInstallStarted, "")) {
+		t.Fatal("install start rejected")
+	}
+	started := newCoreEvent(2, eventStepStarted, stepVerifyRequirements)
+	if !applyInstallerCoreEvent(&state, started) {
+		t.Fatal("preflight step start rejected")
+	}
+	failure := newCoreEvent(3, eventStepFailed, stepVerifyRequirements)
+	failure.SafeError = "No pudimos completar la instalaciÃ³n."
+	failure.Message = "administrator privileges required"
+	if !applyInstallerCoreEvent(&state, failure) {
+		t.Fatal("preflight failure rejected")
+	}
+	if state.TechnicalError != "administrator privileges required" {
+		t.Fatalf("technical error lost: %#v", state)
+	}
+	if len(state.Steps) != 7 {
+		t.Fatalf("preflight failure must not append rollback step: %d", len(state.Steps))
+	}
+}
+
+func TestPostMutationRollbackStateIsExplicit(t *testing.T) {
+	state := newCoreFlowState()
+	if !applyInstallerCoreEvent(&state, newCoreEvent(1, eventInstallStarted, "")) {
+		t.Fatal("install start rejected")
+	}
+	if !applyInstallerCoreEvent(&state, newCoreEvent(2, eventRollbackStarted, stepRollback)) {
+		t.Fatal("rollback start rejected")
+	}
+	if !applyInstallerCoreEvent(&state, newCoreEvent(3, eventRollbackSuccess, stepRollback)) {
+		t.Fatal("rollback success rejected")
+	}
+	if state.Phase != coreFailedSafe || len(state.Steps) != 8 || state.Steps[len(state.Steps)-1].ID != stepRollback {
+		t.Fatalf("rollback state = %#v", state)
+	}
+}
+
 func TestCoreFlowArgumentsFailClosedBeforeProductiveRoute(t *testing.T) {
 	for _, arg := range []string{"--ui-core-flow-qa", "--ui-core-flow-qa=success", "--ui-core-flow-qa=rollback-success", "--ui-core-flow-qa=rollback-fail"} {
 		if _, ok := coreFlowScenarioArg(arg); !ok {

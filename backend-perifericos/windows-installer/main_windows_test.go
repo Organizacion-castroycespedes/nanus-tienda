@@ -3,6 +3,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -48,7 +50,7 @@ func TestReadOnlyBridgeHealthAndDiscovery(t *testing.T) {
 	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		body := `{"status":"ok","mode":"REAL","version":"qa"}`
 		if r.URL.Path == "/devices/discover" {
-			body = `{"success":true,"mode":"REAL","devices":[{"id":"p1","type":"PRINTER"}]}`
+			body = `{"success":true,"mode":"REAL","devices":[{"id":"p1","type":"PRINTER","descriptor":{"nativeIdentifier":"USB\\\\VID_0483&PID_070B\\\\B82D3A880106"}}]}`
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})
@@ -59,6 +61,51 @@ func TestReadOnlyBridgeHealthAndDiscovery(t *testing.T) {
 	devices, err := bridge.discoverDevices()
 	if err != nil || len(devices) != 1 || devices[0]["id"] != "p1" {
 		t.Fatalf("discovery bridge = %#v, %v", devices, err)
+	}
+	usb, ok := devices[0]["usb"].(map[string]any)
+	if !ok || usb["vid"] != "0483" || usb["pid"] != "070B" {
+		t.Fatalf("discovery USB identity = %#v", devices[0]["usb"])
+	}
+}
+
+func TestProductiveBridgeWaitsForTargetAgentVersion(t *testing.T) {
+	bridge := newInstallerReadOnlyBridgeForVersion("0.1.1-qa.9")
+	bridge.baseURL = "http://test.local"
+	attempts := 0
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		attempts++
+		version := "0.1.1-qa.8"
+		if attempts > 1 {
+			version = "0.1.1-qa.9"
+		}
+		body := `{"status":"ok","mode":"REAL","version":"` + version + `"}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})
+	state, err := bridge.getInstallerState()
+	if err != nil || state.Agent["version"] != "0.1.1-qa.9" || attempts < 2 {
+		t.Fatalf("target health gate = %#v attempts=%d err=%v", state, attempts, err)
+	}
+}
+
+func TestProductiveBridgeListsCanonicalDevicesAfterDiscover(t *testing.T) {
+	bridge := newInstallerReadOnlyBridgeForVersion("0.1.1-qa.9")
+	bridge.baseURL = "http://test.local"
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `[]`
+		if r.URL.Path == "/devices/discover" {
+			body = `{"success":true,"mode":"REAL","devices":[{"id":"stale","type":"PRINTER"}]}`
+		}
+		if r.URL.Path == "/devices" {
+			body = `[{"id":"canonical-1","type":"PRINTER"},{"id":"canonical-2","type":"PRINTER"}]`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})
+	if _, err := bridge.discoverDevices(); err != nil {
+		t.Fatal(err)
+	}
+	devices, err := bridge.listDevices()
+	if err != nil || len(devices) != 2 || devices[0]["id"] != "canonical-1" {
+		t.Fatalf("canonical device list = %#v err=%v", devices, err)
 	}
 }
 
@@ -119,6 +166,329 @@ func TestPrintBootstrapEnablesConfigurationButNotDrawer(t *testing.T) {
 	html := appendReadOnlyBootstrap("<html><body></body></html>", true, true, false)
 	if !strings.Contains(html, "const configEnabled=true") || !strings.Contains(html, "const printEnabled=true") {
 		t.Fatal("print QA capabilities not enabled")
+	}
+}
+
+func TestProductiveDevicesHarnessSupportsPersistenceAndZeroDevices(t *testing.T) {
+	html := appendProductiveDevicesHarness()
+	for _, required := range []string{
+		"No se detectaron",
+		"Buscar nuevamente",
+		"Agregar dispositivo",
+		"Continuar sin periféricos",
+		"window.saveDeviceConfiguration",
+		"window.assignDevice",
+		"window.registerNetworkPrinter",
+		"window.testPrinter",
+		"window.assignCashDrawer",
+		"window.associateWindowsQueue",
+		"Impresora principal",
+		"Falta cola/controlador de Windows",
+		"Cajón monedero",
+		"Vía impresora",
+		"Probar apertura",
+		"No detectada / Offline",
+		"Detectada / No configurada",
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("productive devices harness missing %q", required)
+		}
+	}
+	if strings.Contains(html, "http://127.0.0.1") || strings.Contains(html, "window.fetch") {
+		t.Fatal("productive devices harness must use typed bridge only")
+	}
+	for _, required := range []string{"Array.isArray(result)", "Array.isArray(result.devices)", "No pudimos detectar los dispositivos."} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("productive devices harness missing discovery normalization %q", required)
+		}
+	}
+	for _, required := range []string{"data-discover-retry", "Buscando...", "device.metadata", "queueInstalled", "VID/PID"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("productive devices harness missing UX contract %q", required)
+		}
+	}
+	for _, required := range []string{"Buscando dispositivos...", "attempt<2", "No se detectaron", "window.listDevices", "devices.request.start", "devices.request.success", "startInitialDiscovery", "__manusCoreComplete", "recordDeviceDiagnostic"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("productive discovery retry missing %q", required)
+		}
+	}
+	for _, required := range []string{"__manusQueueInventory", "queueAvailable", "applyDrawerReadiness"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("canonical queue readiness missing %q", required)
+		}
+	}
+	for _, required := range []string{"La cola no quedo persistida en el dispositivo fisico", "finally(function(){select.disabled=false;})", "usbRawCashDrawerPulseCertified"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("association/drawer guard missing %q", required)
+		}
+	}
+	for _, required := range []string{"setCashDrawerCertification", "Habilitar apertura automatica mediante esta impresora", "Activalo solo si el cajon esta conectado fisicamente"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("drawer certification UI missing %q", required)
+		}
+	}
+	for _, required := range []string{"Guardando", "window.listDevices", "window.__manusLastDevices=devices", "applyDrawerReadiness();", "Enviando pulso...", "Pulso enviado; confirma apertura física"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("drawer canonical state/update UI missing %q", required)
+		}
+	}
+}
+
+func TestCashDrawerBridgeTimeoutExceedsRawOperationBudget(t *testing.T) {
+	if cashDrawerBridgeTimeout <= cashDrawerRawOperationTimeout {
+		t.Fatalf("bridge timeout %s must exceed raw operation timeout %s", cashDrawerBridgeTimeout, cashDrawerRawOperationTimeout)
+	}
+}
+
+func TestCashDrawerBridgeClassifiesLostAcknowledgementAsUnknownWithoutRetry(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.devices = map[string]map[string]any{
+		"physical": {
+			"id": "physical", "type": "PRINTER", "status": "CONNECTED", "profileId": "THERMAL_58MM",
+			"usb":      map[string]any{"windowsQueueName": "XP-58"},
+			"metadata": map[string]any{"usbRawCashDrawerPulseCertified": true},
+		},
+	}
+	calls := 0
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return nil, fmt.Errorf("connection reset after dispatch")
+	})
+	if _, err := bridge.testCashDrawer("physical"); err == nil || !strings.Contains(err.Error(), "RESULT_UNKNOWN") {
+		t.Fatalf("lost acknowledgement classification = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("drawer request retried %d times", calls)
+	}
+}
+
+func TestCashDrawerHarnessIncludesResultStatesAndLayoutRegions(t *testing.T) {
+	html := appendProductiveDevicesHarness()
+	for _, required := range []string{"RESULT_UNKNOWN", "CONFIRMED_ERROR", "drawer.ui.test.click", "drawer.ui.state", "drawer-card", "drawer-certification", "drawer-helper"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("drawer 7.2Q contract missing %q", required)
+		}
+	}
+}
+
+func TestCashDrawerSaveSnapshotsTargetAndVerifiesCanonicalState(t *testing.T) {
+	html := appendProductiveDevicesHarness()
+	for _, required := range []string{
+		"var targetDeviceId=select.value",
+		"var certificationEnabled=!!certInput.checked",
+		"domCertificationChecked=",
+		"cachedCertification=",
+		"var renderSnapshot=renderId",
+		"assignCashDrawer(targetDeviceId",
+		"setCashDrawerCertification(targetDeviceId",
+		"drawer.ui.save.click",
+		"drawer.assign.start",
+		"drawer.assign.success",
+		"drawer.assign.error",
+		"drawer.certification.start",
+		"drawer.certification.success",
+		"drawer.certification.error",
+		"drawer.canonical.get.start",
+		"drawer.canonical.get.success",
+		"drawer.canonical.verify",
+		"drawer.ui.save.success",
+		"stage=CANONICAL_VERIFY",
+		"window.__manusDrawerSaveGeneration",
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("drawer save observability missing %q", required)
+		}
+	}
+	if strings.Contains(html, "assignCashDrawer(select.value") || strings.Contains(html, "setCashDrawerCertification(select.value") {
+		t.Fatal("drawer save must use one immutable targetDeviceId snapshot")
+	}
+	if !strings.Contains(html, "var certified=certificationEnabled") {
+		t.Fatal("drawer save must persist the live checkbox snapshot")
+	}
+	if !strings.Contains(html, "throw error;}).then(function(){stage='CANONICAL_GET'") {
+		t.Fatal("drawer save must fail before canonical success when a PATCH rejects")
+	}
+}
+
+func TestCashDrawerRuntimeAndBridgeBoundaryDiagnostics(t *testing.T) {
+	html := appendProductiveDevicesHarness()
+	for _, required := range []string{
+		"drawer.runtime.ready",
+		"candidate=7.2T productiveHarness=true",
+		"drawer.ui.render",
+		"drawer.ui.save.button.created",
+		"drawer.ui.save.handler.bound",
+		"drawer.ui.save.click.captured",
+		"drawer.ui.save.handler.enter",
+		"addEventListener('click'",
+	} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("runtime drawer boundary diagnostic missing %q", required)
+		}
+	}
+	if strings.Contains(html, "preventDefault()") || strings.Contains(html, "stopPropagation()") {
+		t.Fatal("diagnostic capture observer must not control the click")
+	}
+	bridgeSource, err := os.ReadFile("readonly_bridge_windows.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"drawer.bridge.assign.entry",
+		"drawer.bridge.assign.http.start",
+		"drawer.bridge.assign.http.success",
+		"drawer.bridge.assign.http.error",
+		"drawer.bridge.certification.entry",
+		"drawer.bridge.certification.http.start",
+		"drawer.bridge.certification.http.success",
+		"drawer.bridge.certification.http.error",
+		"drawer.bridge.canonical.entry",
+		"drawer.bridge.canonical.success",
+		"drawer.bridge.canonical.error",
+	} {
+		if !strings.Contains(string(bridgeSource), required) {
+			t.Fatalf("native bridge diagnostic missing %q", required)
+		}
+	}
+}
+
+func TestCashDrawerBridgeRejectsUncertifiedUsbBeforeAgentRequest(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.devices = map[string]map[string]any{
+		"physical": {
+			"id": "physical", "type": "PRINTER", "status": "CONNECTED", "profileId": "THERMAL_58MM",
+			"usb":      map[string]any{"windowsQueueName": "XP-58"},
+			"metadata": map[string]any{},
+		},
+	}
+	called := false
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		called = true
+		return nil, fmt.Errorf("unexpected request")
+	})
+	if _, err := bridge.testCashDrawer("physical"); err == nil || !strings.Contains(err.Error(), "no est") {
+		t.Fatalf("uncertified drawer result = %v", err)
+	}
+	if called {
+		t.Fatal("uncertified drawer must not call Agent")
+	}
+}
+
+func TestCashDrawerCertificationPreservesMetadataAndTargetsParentPrinter(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.baseURL = "http://test.local"
+	bridge.devices = map[string]map[string]any{
+		"physical": {
+			"id": "physical", "type": "PRINTER",
+			"metadata": map[string]any{
+				"cashDrawerConnectionType":  "VIA_PRINTER",
+				"cashDrawerParentPrinterId": "physical",
+				"manusAssignmentRole":       "PRIMARY_PRINTER",
+				"physicalDetected":          true,
+			},
+		},
+	}
+	var body map[string]any
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPatch {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				return nil, err
+			}
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"id":"physical","type":"PRINTER","metadata":{"usbRawCashDrawerPulseCertified":true,"cashDrawerParentPrinterId":"physical"}}`)), Header: make(http.Header)}, nil
+	})
+	if _, err := bridge.setCashDrawerCertification("physical", "local-terminal", true); err != nil {
+		t.Fatal(err)
+	}
+	metadata, ok := body["metadata"].(map[string]any)
+	if !ok || metadata["usbRawCashDrawerPulseCertified"] != true || metadata["cashDrawerParentPrinterId"] != "physical" || metadata["manusAssignmentRole"] != "PRIMARY_PRINTER" {
+		t.Fatalf("certification payload did not preserve parent metadata: %#v", body)
+	}
+}
+
+func TestExtractUsbVIDPIDUsesNativeIdentityWithoutModelMapping(t *testing.T) {
+	vid, pid := extractUsbVIDPID(`USB\VID_0483&PID_070B\B82D3A880106`)
+	if vid != "0483" || pid != "070B" {
+		t.Fatalf("parsed XP-58 identity = %s/%s", vid, pid)
+	}
+	vid, pid = extractUsbVIDPID(`USB\VID_1FC9&PID_2016\5D2F0E663532`)
+	if vid != "1FC9" || pid != "2016" {
+		t.Fatalf("parsed POS-80 identity = %s/%s", vid, pid)
+	}
+	vid, pid = extractUsbVIDPID(`USB\UNKNOWN\DEVICE`)
+	if vid != "" || pid != "" {
+		t.Fatalf("missing identity = %s/%s", vid, pid)
+	}
+}
+
+func TestResolvedWindowsQueueNeverTreatsPnPFriendlyNameAsQueue(t *testing.T) {
+	pnpOnly := map[string]any{
+		"usb":      map[string]any{"printerName": "Printer USB Printer Port"},
+		"metadata": map[string]any{"physicalDetected": true, "queueInstalled": false},
+	}
+	if resolvedWindowsQueue(pnpOnly) {
+		t.Fatal("PnP friendly name must not be used as a Windows queue")
+	}
+	withQueue := map[string]any{
+		"usb":      map[string]any{"printerName": "XP-80", "windowsQueueName": "XP-80"},
+		"metadata": map[string]any{"physicalDetected": true, "queueInstalled": true},
+	}
+	if !resolvedWindowsQueue(withQueue) {
+		t.Fatal("resolved Windows queue should be usable")
+	}
+}
+
+func TestAssociateWindowsQueueSendsCanonicalUsbField(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.baseURL = "http://test.local"
+	bridge.devices = map[string]map[string]any{
+		"physical": {"id": "physical", "type": "PRINTER", "usb": map[string]any{"deviceId": "physical", "printerName": "Printer USB Printer Port"}},
+		"queue":    {"id": "queue", "type": "PRINTER", "name": "XP-58", "profileId": "THERMAL_58MM", "descriptor": map[string]any{"fingerprint": map[string]any{"source": "WINDOWS_PRINT_QUEUE"}}},
+	}
+	var body map[string]any
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPatch {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				return nil, err
+			}
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"id":"physical","type":"PRINTER","usb":{"deviceId":"physical","printerName":"Printer USB Printer Port","windowsQueueName":"XP-58"}}`)), Header: make(http.Header)}, nil
+	})
+	if _, err := bridge.associateWindowsQueue("physical", "XP-58"); err != nil {
+		t.Fatal(err)
+	}
+	usb, ok := body["usb"].(map[string]any)
+	if !ok || usb["windowsQueueName"] != "XP-58" {
+		t.Fatalf("association payload = %#v", body)
+	}
+}
+
+func TestAssociateWindowsQueueBlocksOnlyRealConfiguredOwner(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.baseURL = "http://test.local"
+	bridge.devices = map[string]map[string]any{
+		"target": {"id": "target", "type": "PRINTER", "usb": map[string]any{"deviceId": "target"}},
+		"queue":  {"id": "queue", "type": "PRINTER", "name": "XP-80", "profileId": "THERMAL_80MM", "descriptor": map[string]any{"fingerprint": map[string]any{"source": "WINDOWS_PRINT_QUEUE"}}},
+	}
+	called := false
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		called = true
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"id":"target","type":"PRINTER","usb":{"deviceId":"target","windowsQueueName":"XP-80"}}`)), Header: make(http.Header)}, nil
+	})
+	if _, err := bridge.associateWindowsQueue("target", "XP-80"); err != nil {
+		t.Fatalf("queue-only discovery row blocked explicit association: %v", err)
+	}
+	if !called {
+		t.Fatal("valid explicit association must send PATCH")
+	}
+
+	bridge.devices["configured"] = map[string]any{
+		"id": "configured", "type": "PRINTER", "profileId": "THERMAL_80MM",
+		"usb":        map[string]any{"deviceId": "configured", "windowsQueueName": "XP-80"},
+		"descriptor": map[string]any{"fingerprint": map[string]any{"source": "WINDOWS_PNP"}},
+	}
+	if _, err := bridge.associateWindowsQueue("target", "XP-80"); err == nil || !strings.Contains(err.Error(), "asociada") {
+		t.Fatalf("real configured owner should block duplicate queue: %v", err)
 	}
 }
 
@@ -280,6 +650,56 @@ func TestRepairStagingValidationRejectsWrongVersion(t *testing.T) {
 	}
 	if err := validateRepairStaging(dir, manifest); err == nil {
 		t.Fatal("wrong staged version accepted")
+	}
+}
+
+func TestQA4ToQA5UpgradePreflightAndServiceTarget(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ProgramFiles", filepath.Join(root, "Program Files"))
+	t.Setenv("ProgramData", filepath.Join(root, "ProgramData"))
+	qa4 := filepath.Join(root, "Program Files", "Manus", "PeripheralAgent", "versions", "0.1.1-qa.4")
+	current := filepath.Join(root, "Program Files", "Manus", "PeripheralAgent", "current")
+	if err := os.MkdirAll(current, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(current, "VERSION.json"), []byte(`{"version":"0.1.1-qa.4"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := installerManifest{
+		Version:         "0.1.1-qa.5",
+		BundleRoot:      "assets/bundle/ManusPeripheralAgent-win-x64-0.1.1-qa.5",
+		VersionFileName: "VERSION.json",
+		ServiceName:     "ManusPeripheralAgent",
+		ServiceArgs:     []string{"service"},
+	}
+	layout := buildLayout(manifest)
+	previous, previousPath := currentInstalledVersion(manifest, layout)
+	if previous != "0.1.1-qa.4" || previousPath != qa4 {
+		t.Fatalf("previous install = %q %q, want qa.4 at %q", previous, previousPath, qa4)
+	}
+	staging := filepath.Join(root, "staging-qa.5")
+	if err := os.MkdirAll(filepath.Join(staging, "runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(staging, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(staging, "VERSION.json"),
+		filepath.Join(staging, "ManusTerminalSetup.exe"),
+		filepath.Join(staging, "runtime", "node.exe"),
+		filepath.Join(staging, "app", "main.js"),
+	} {
+		if err := os.WriteFile(path, []byte(`{"version":"0.1.1-qa.5"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := validateRepairStaging(staging, manifest); err != nil {
+		t.Fatalf("qa.5 staging rejected: %v", err)
+	}
+	registration := buildServiceRegistration(manifest, runtimeLayout{VersionRoot: filepath.Join(layout.VersionsRoot, manifest.Version), ServiceExe: filepath.Join(layout.VersionsRoot, manifest.Version, "ManusTerminalSetup.exe")})
+	if !strings.Contains(registration.Executable, "0.1.1-qa.5") || registration.Args[0] != "service" {
+		t.Fatalf("qa.5 service registration = %#v", registration)
 	}
 }
 

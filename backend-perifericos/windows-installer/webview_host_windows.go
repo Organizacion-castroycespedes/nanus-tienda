@@ -65,6 +65,11 @@ func runInstallerUI(showMockNav bool, realReadonly bool, configMode bool, printM
 				showWebViewFallback(err)
 				return nil
 			}
+			if err := w.Bind("registerNetworkPrinter", bridge.registerNetworkPrinter); err != nil {
+				w.Destroy()
+				showWebViewFallback(err)
+				return nil
+			}
 		}
 		if printMode {
 			if err := w.Bind("testPrinter", bridge.testPrinter); err != nil {
@@ -142,6 +147,7 @@ func appendReadOnlyBootstrap(html string, configMode bool, printMode bool, drawe
   const ensureRetryButton=()=>{
     const footer=document.querySelector('.device-footer'); if(!footer||footer.querySelector('[data-readonly-retry]'))return;
     const button=document.createElement('button'); button.className='btn btn-ghost'; button.dataset.readonlyRetry='true'; button.textContent='Buscar nuevamente'; button.addEventListener('click',runDiscovery); footer.insertBefore(button,footer.firstChild);
+    if(configEnabled && typeof window.registerNetworkPrinter==='function') { const add=document.createElement('button'); add.className='btn btn-ghost'; add.textContent='Agregar dispositivo'; add.addEventListener('click',async()=>{const name=window.prompt('Nombre de la impresora');const host=window.prompt('IP o hostname');const port=Number(window.prompt('Puerto','9100'));if(!name||!host||!Number.isInteger(port)||port<1||port>65535)return;try{await window.registerNetworkPrinter(name,host,port,'THERMAL_80MM','local-terminal');await runDiscovery();}catch(error){window.alert('No pudimos guardar la impresora de red.');console.warn('Peripheral Agent network printer error',error);}}); footer.insertBefore(add,footer.firstChild); }
   };
   const wireConfigButtons=(devices)=>{
     if(!configEnabled && !printEnabled)return;

@@ -1,0 +1,21 @@
+# Tareas
+
+- [x] P0 Inventariar contratos OpenSpec, Agent y terminales existentes.
+- [x] P1.1 Crear Agent qa.5 sin modificar qa.4; filtrar MOCK en inventario REAL.
+- [x] P1.2 Anadir consulta PnP Windows Class_07 y metadata de identidad fisica.
+- [x] P1.3 Reconciliar PnP/queues, estados fisicos y deduplicacion segura.
+- [x] P1.3 Reconciliacion base separa PnP-only, queue-only y match por identidad nativa exacta.
+- [x] P2 Auditoria: el esquema existente `pos_terminals` + `pos_terminal_peripheral_settings` ya persiste terminal, dispositivos y configuracion; no se requiere migracion nueva.
+- [x] P2 Fachada `PeripheralConfigurationFacade` reutiliza la persistencia existente y aplica alcance tenant/terminal del servicio.
+- [x] P1.3 Reconciliacion pura cubierta por tests PnP-only, queue-only, exact match y ambiguedad.
+- [x] P2 Definir/reutilizar persistencia multi-tenant y asignacion por terminal; migracion aditiva solo si falta.
+- [x] P3 Hacer productivo Devices wizard: detectar, agregar, editar, probar, guardar y asignar.
+- [x] P3.1 Devices wizard consume discovery real, muestra estado fisico/configurado y permite reintentar.
+- [x] P3.2 Devices wizard expone configuracion de perfil, prueba de impresion y apertura de cajon mediante bridge tipado.
+- [x] P3.3 Devices wizard ofrece alta de impresora NETWORK con validacion de host/puerto, sin proxy generico.
+- [x] P4 Convertir PeripheralsPage en administracion post-instalacion usando Electron IPC/Web HTTP.
+- [x] P5 Implementar scanner keyboard-wedge y cajon via impresora; preparar DTO extensible para scale.
+- [x] P5.1 POS peripheral surface arm/disarm scanner keyboard-wedge con captura acotada y sin listener global.
+- [x] P6 Validar handoff y paridad de configuracion wizard->POS.
+- [ ] P7 Ejecutar packaging y pruebas automatizadas; despues QA fisico del fixture XP-58/XP-80. Evidencia: 7.2Q PASS para impresion fisica XP-58 y cajon VIA_PRINTER; 7.2U PASS para certificacion, impresion/corte y cajon VIA_PRINTER de XP-80; quedan abiertos los gates listados en `qa-evidence.md`.
+- [ ] P8 Certificar fresh install, repair, uninstall y remove-data; watchdog queda posterior.

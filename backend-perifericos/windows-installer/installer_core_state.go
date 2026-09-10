@@ -64,15 +64,16 @@ type installerCoreStep struct {
 }
 
 type installerCoreState struct {
-	Sequence     uint64              `json:"sequence"`
-	Phase        installerCorePhase  `json:"phase"`
-	Progress     int                 `json:"progress"`
-	Steps        []installerCoreStep `json:"steps"`
-	CurrentStep  string              `json:"currentStep,omitempty"`
-	Warning      string              `json:"warning,omitempty"`
-	Error        string              `json:"error,omitempty"`
-	CanCancel    bool                `json:"canCancel"`
-	lastSequence uint64
+	Sequence       uint64              `json:"sequence"`
+	Phase          installerCorePhase  `json:"phase"`
+	Progress       int                 `json:"progress"`
+	Steps          []installerCoreStep `json:"steps"`
+	CurrentStep    string              `json:"currentStep,omitempty"`
+	Warning        string              `json:"warning,omitempty"`
+	Error          string              `json:"error,omitempty"`
+	TechnicalError string              `json:"technicalError,omitempty"`
+	CanCancel      bool                `json:"canCancel"`
+	lastSequence   uint64
 }
 
 type installerCoreEvent struct {

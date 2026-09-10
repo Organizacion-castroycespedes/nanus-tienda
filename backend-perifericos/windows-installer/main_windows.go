@@ -112,6 +112,12 @@ func main() {
 			return
 		}
 	}
+	if requiresElevation(os.Args[1:]) && ensureElevated() != nil {
+		if err := relaunchElevated(os.Args[1:]); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	manifest, err := loadManifest()
 	if err != nil {
 		fatal(err)
@@ -280,6 +286,11 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		return fmt.Errorf("productive installer blocked during CoreFlow QA")
 	}
 	var sequence uint64
+	preflightLogger := newPreflightLogger()
+	if preflightLogger != nil {
+		defer preflightLogger.Close()
+		preflightLogger.Printf("lifecycle phase=START previousVersion=unknown targetVersion=%s", manifest.Version)
+	}
 	if observer != nil {
 		emitCoreStep(observer, &sequence, eventInstallStarted, "", nil)
 	}
@@ -289,6 +300,9 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		}
 		return ensureElevated()
 	}); err != nil {
+		if preflightLogger != nil {
+			preflightLogger.Printf("lifecycle phase=PREFLIGHT_FAILURE previousVersion=unknown targetVersion=%s rollbackAttempted=NO error=%v", manifest.Version, err)
+		}
 		return err
 	}
 
@@ -305,6 +319,7 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 	defer logger.Close()
 
 	logger.Printf("install start version=%s", manifest.Version)
+	logger.Printf("lifecycle phase=PREFLIGHT_SUCCESS previousVersion=pending targetVersion=%s rollbackAttempted=NO", manifest.Version)
 
 	existingVersion, existingVersionPath := currentInstalledVersion(manifest, layout)
 	sameVersion := existingVersion == manifest.Version && existingVersion != ""
@@ -316,7 +331,7 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 	} else {
 		logger.Printf("fresh install version=%s", manifest.Version)
 	}
-	rollbackPath := existingVersionPath
+	rollbackPath := ""
 	repairBackupPath := ""
 	repairStagingPath := ""
 
@@ -351,6 +366,7 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		if err := ensureCurrentJunction(layout.CurrentRoot, layout.VersionRoot); err != nil {
 			return fmt.Errorf("activate current version: %w", err)
 		}
+		rollbackPath = existingVersionPath
 		return nil
 	}); err != nil {
 		if repairBackupPath != "" {
@@ -1094,6 +1110,44 @@ func ensureElevated() error {
 	return nil
 }
 
+func requiresElevation(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	switch strings.ToLower(args[0]) {
+	case "service", "status", "inspect", "help", "-h", "/?", "--help":
+		return false
+	default:
+		return true
+	}
+}
+
+func relaunchElevated(args []string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve installer executable: %w", err)
+	}
+	quote := func(value string) string {
+		return `"` + strings.ReplaceAll(value, `"`, `\\"`) + `"`
+	}
+	parameters := make([]string, 0, len(args))
+	for _, arg := range args {
+		parameters = append(parameters, quote(arg))
+	}
+	verb, _ := syscall.UTF16PtrFromString("runas")
+	file, _ := syscall.UTF16PtrFromString(executable)
+	params, _ := syscall.UTF16PtrFromString(strings.Join(parameters, " "))
+	shell32 := syscall.NewLazyDLL("shell32.dll")
+	result, _, callErr := shell32.NewProc("ShellExecuteW").Call(0, uintptr(unsafe.Pointer(verb)), uintptr(unsafe.Pointer(file)), uintptr(unsafe.Pointer(params)), 0, 1)
+	if result <= 32 {
+		if callErr != syscall.Errno(0) {
+			return fmt.Errorf("request administrator elevation: %w", callErr)
+		}
+		return errors.New("request administrator elevation failed")
+	}
+	return nil
+}
+
 func buildLayout(manifest installerManifest) runtimeLayout {
 	installRoot := defaultOrEnv("ProgramFiles", `C:\Program Files`)
 	installRoot = filepath.Join(installRoot, "Manus", "PeripheralAgent")
@@ -1692,6 +1746,20 @@ func newInstallLogger(path string) (*installLogger, error) {
 		return nil, err
 	}
 	return &installLogger{file: file}, nil
+}
+
+func newPreflightLogger() *installLogger {
+	programData := defaultOrEnv("ProgramData", `C:\ProgramData`)
+	paths := []string{
+		filepath.Join(programData, "Manus", "PeripheralAgent", "logs", "installer-preflight.log"),
+		filepath.Join(os.TempDir(), "Manus", "PeripheralAgent", "installer-preflight.log"),
+	}
+	for _, path := range paths {
+		if logger, err := newInstallLogger(path); err == nil {
+			return logger
+		}
+	}
+	return nil
 }
 
 func (l *installLogger) Close() error {

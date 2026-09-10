@@ -45,6 +45,8 @@ import type { PlatformPaths } from "../../shared/platform/platform-paths";
 import { EventsService } from "../events/events.service";
 import { LogsService } from "../logs/logs.service";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
+import { getAgentInstallationId } from "../../platform/agent-installation-state.store";
+import { reconcilePrinters } from "../../shared/discovery/printer-reconciliation";
 import type {
   CreateMockDeviceRequest,
   DiscoverDevicesResponse,
@@ -52,6 +54,7 @@ import type {
 } from "./devices.types";
 
 const LOCAL_TERMINAL_ID = "local-terminal";
+const portableDiscoverySource = (descriptor: UsbPrinterDescriptor): string => descriptor.descriptor.fingerprint.source;
 
 const MOCK_DEVICES: PeripheralDevice[] = [
   {
@@ -199,6 +202,43 @@ export class DevicesService {
 
     try {
       usbDescriptors = this.usbDiscovery.list();
+      if (config.mode === "REAL") {
+       const physical = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PNP").map((d) => ({ name: d.name, nativeIdentifier: d.descriptor.nativeIdentifier, fingerprint: d.descriptor.fingerprint.values }));
+       const queues = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PRINT_QUEUE").map((d) => ({ name: d.name, portName: d.printerName, nativeIdentifier: d.descriptor.nativeIdentifier }));
+       const reconciled = reconcilePrinters(physical, queues);
+       const normalized = reconciled.map((item) => {
+        const original = usbDescriptors.find((d) => d.descriptor.nativeIdentifier === item.nativeIdentifier);
+        const source = item.physicalDetected ? "WINDOWS_PNP" : "WINDOWS_PRINT_QUEUE";
+        const descriptorValues = {
+          ...(original?.descriptor.fingerprint.values ?? {}),
+          physicalDetected: String(item.physicalDetected),
+          queueInstalled: String(item.queueInstalled),
+          reconciliationStatus: item.status,
+        };
+        if (original) {
+          return {
+            ...original,
+            name: item.name,
+            windowsQueueName: item.windowsQueueName,
+            descriptor: {
+              ...original.descriptor,
+              nativeIdentifier: item.nativeIdentifier,
+              fingerprint: { source, values: descriptorValues },
+            },
+          };
+        }
+        return {
+          id: item.nativeIdentifier,
+          name: item.name,
+          deviceId: item.nativeIdentifier,
+          printerName: item.name,
+          windowsQueueName: item.windowsQueueName,
+          descriptor: { agentInstallationId: getAgentInstallationId(), deviceId: item.nativeIdentifier, nativeIdentifier: item.nativeIdentifier, fingerprint: { source, values: descriptorValues }, platform: "WINDOWS" as const, architecture: process.arch },
+        };
+       });
+       const legacy = usbDescriptors.filter((d) => !["WINDOWS_PNP", "WINDOWS_PRINT_QUEUE"].includes(d.descriptor.fingerprint.source));
+       usbDescriptors = [...normalized, ...legacy.filter((legacyDevice) => !normalized.some((d) => d.descriptor.nativeIdentifier === legacyDevice.descriptor.nativeIdentifier))];
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "unknown error";
       this.logsService.append({
@@ -470,10 +510,11 @@ export class DevicesService {
     this.configuredDevices = nextConfiguredDevices;
     this.runtimeStatuses.set(updated.id, updated.status);
 
+    const updateIsMock = getPeripheralsConfig().mode === "MOCK";
     this.logsService.append({
       source: "devices",
-      event: "device.updated.simulated",
-      message: "Mock device updated",
+      event: updateIsMock ? "device.updated.simulated" : "device.updated",
+      message: updateIsMock ? "Mock device updated" : "Device updated",
       metadata: {
         deviceId: updated.id,
         status: updated.status,
@@ -751,9 +792,19 @@ export class DevicesService {
   ): PeripheralDevice {
     return {
       ...current,
-      status: DeviceStatus.CONNECTED,
+      status: discovered.status,
       connectionType: ConnectionType.USB,
-      usb: discovered.usb ? { ...discovered.usb } : current.usb,
+      usb: discovered.usb
+        ? {
+            ...current.usb,
+            ...discovered.usb,
+            // Discovery may not see a queue temporarily. Keep the explicit
+            // logical association; readiness still comes from current queue
+            // evidence and is represented by metadata/status.
+            windowsQueueName:
+              discovered.usb.windowsQueueName ?? current.usb?.windowsQueueName,
+          }
+        : current.usb,
       descriptor: discovered.descriptor
         ? {
             ...discovered.descriptor,
@@ -803,11 +854,15 @@ export class DevicesService {
     descriptor: UsbPrinterDescriptor,
     runtimeId = descriptor.id
   ): PeripheralDevice {
+    const source = portableDiscoverySource(descriptor);
+    const fingerprintValues = descriptor.descriptor.fingerprint.values ?? {};
+    const physicalDetected = fingerprintValues.physicalDetected === "true" || source === "WINDOWS_PNP";
+    const queueInstalled = fingerprintValues.queueInstalled === "true" || source === "WINDOWS_PRINT_QUEUE";
     return {
       id: runtimeId,
       type: DeviceType.PRINTER,
       name: descriptor.name,
-      status: DeviceStatus.CONNECTED,
+      status: queueInstalled && !physicalDetected ? DeviceStatus.DISCONNECTED : DeviceStatus.CONNECTED,
       connectionType: ConnectionType.USB,
       terminalId: LOCAL_TERMINAL_ID,
       // Discovery is hardware inventory only. Profile is selected during
@@ -815,9 +870,15 @@ export class DevicesService {
       usb: {
         deviceId: descriptor.deviceId,
         printerName: descriptor.printerName,
+        windowsQueueName: descriptor.windowsQueueName,
       },
       descriptor: descriptor.descriptor,
-      metadata: { discoverySource: "USB_SYSTEM" },
+      metadata: {
+        discoverySource: source,
+        physicalDetected,
+        queueInstalled,
+        reconciliationStatus: fingerprintValues.reconciliationStatus,
+      },
     };
   }
 
@@ -874,9 +935,20 @@ export class DevicesService {
       );
     }
 
+    const requestedQueue = optionalString(record, "windowsQueueName", current?.windowsQueueName ?? "");
+    if (requestedQueue) {
+      const queueExists = [...this.usbDevices.values()].some((candidate) =>
+        portableDiscoverySource(candidate) === "WINDOWS_PRINT_QUEUE" &&
+        candidate.name === requestedQueue
+      );
+      if (!queueExists) {
+        throw new BadRequestException("windowsQueueName must reference a discovered Windows print queue");
+      }
+    }
     return {
       deviceId: descriptor.deviceId,
       printerName: descriptor.printerName,
+      windowsQueueName: requestedQueue || descriptor.windowsQueueName,
     };
   }
 
