@@ -28,11 +28,13 @@ export const buildUsbPrinterDescriptor = (
   const hash = createHash("sha256").update(normalizedName).digest("hex").slice(0, 16);
   const deviceId = `usb-printer-${hash}`;
 
+  const source = portable?.fingerprint.source;
   return {
     id: deviceId,
     name: normalizedName,
     deviceId,
     printerName: normalizedName,
+    windowsQueueName: source === "WINDOWS_PRINT_QUEUE" ? normalizedName : undefined,
     descriptor: {
       agentInstallationId,
       deviceId,

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resolveElectronConfig, type ElectronConfigEnv } from "./config.js";
+import {
+  resolveElectronConfig,
+  type ElectronConfigEnv,
+  validateVersionedShellConfig,
+} from "./config.js";
 
 const resolve = (env: ElectronConfigEnv = {}) => resolveElectronConfig(env);
 
@@ -73,5 +77,26 @@ describe("resolveElectronConfig", () => {
     assert.equal(config.branchId, "branch-1");
     assert.equal(config.terminalId, "terminal-1");
     assert.equal(config.initialUrl.href, "http://localhost:3000/");
+  });
+});
+
+describe("validateVersionedShellConfig", () => {
+  const valid = {
+    environment: "qa" as const,
+    frontendUrl: "https://www.apptiendamanus.space",
+    allowedOrigins: ["https://www.apptiendamanus.space"],
+    agentLoopbackOrigin: "http://127.0.0.1:4050",
+  };
+
+  it("accepts the approved QA configuration", () => {
+    assert.deepEqual(validateVersionedShellConfig(valid), valid);
+  });
+
+  it("rejects invalid environment, frontend, and agent origins", () => {
+    assert.throws(() => validateVersionedShellConfig({ ...valid, environment: "dev" }));
+    assert.throws(() => validateVersionedShellConfig({ ...valid, frontendUrl: "http://localhost:3000" }));
+    assert.throws(() => validateVersionedShellConfig({ ...valid, allowedOrigins: ["https://other.example"] }));
+    assert.throws(() => validateVersionedShellConfig({ ...valid, agentLoopbackOrigin: "http://0.0.0.0:4050" }));
+    assert.throws(() => validateVersionedShellConfig({ ...valid, agentLoopbackOrigin: "http://192.168.1.20:4050" }));
   });
 });

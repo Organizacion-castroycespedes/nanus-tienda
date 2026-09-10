@@ -5,6 +5,7 @@ import { resolvePlatformPaths } from "./platform-paths";
 type AgentLocalConfig = {
   port?: number;
   bind?: string;
+  mode?: "MOCK" | "REAL";
   allowedOrigins?: string[];
   logLevel?: "INFO" | "WARN" | "ERROR";
   enableRealAdapters?: boolean;
@@ -17,6 +18,7 @@ type AgentLocalConfig = {
 const configEnvironmentMapping: Record<keyof AgentLocalConfig, string> = {
   port: "PERIPHERALS_PORT",
   bind: "PERIPHERALS_BIND",
+  mode: "PERIPHERALS_MODE",
   allowedOrigins: "PERIPHERALS_ALLOWED_ORIGINS",
   logLevel: "PERIPHERALS_LOG_LEVEL",
   enableRealAdapters: "PERIPHERALS_ENABLE_REAL_ADAPTERS",

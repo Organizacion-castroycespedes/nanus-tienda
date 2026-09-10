@@ -2,11 +2,12 @@ import { Inject, Controller, Get } from "@nestjs/common";
 import { getAgentInstallationId } from "../../platform/agent-installation-state.store";
 import { DevicesService } from "../devices/devices.service";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
+import type { PeripheralsMode } from "../../shared/config/peripherals.config";
 
 export type HealthResponse = {
   status: "ok";
   agent: string;
-  mode: "MOCK";
+  mode: PeripheralsMode;
   agentInstallationId: string;
   platform: string;
   architecture: string;

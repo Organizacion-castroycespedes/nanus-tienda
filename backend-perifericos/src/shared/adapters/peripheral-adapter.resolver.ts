@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { ConnectionType, DeviceType, type PeripheralDevice } from "../types/peripheral.types";
 import { getPeripheralsConfig } from "../config/peripherals.config";
+import type { PeripheralsMode } from "../config/peripherals.config";
 import { getDeviceProfile, type DeviceProfile } from "../profiles/device-profiles";
 import { MockCashDrawerAdapter } from "./mock-cash-drawer.adapter";
 import { MockPrinterAdapter } from "./mock-printer.adapter";
@@ -26,7 +27,7 @@ export class PeripheralAdapterResolver {
     return getDeviceProfile(device.profileId);
   }
 
-  resolvePrinter(device: PeripheralDevice, mode: "MOCK"): PrinterAdapter {
+  resolvePrinter(device: PeripheralDevice, mode: PeripheralsMode): PrinterAdapter {
     if (device.type !== DeviceType.PRINTER) {
       throw new BadRequestException("device must be PRINTER");
     }
@@ -52,7 +53,7 @@ export class PeripheralAdapterResolver {
 
   resolveCashDrawer(
     device: PeripheralDevice,
-    mode: "MOCK"
+    mode: PeripheralsMode
   ): CashDrawerAdapter | PrinterAdapter {
     if (device.type === DeviceType.PRINTER) {
       return this.resolvePrinter(device, mode);

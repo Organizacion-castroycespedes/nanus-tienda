@@ -4,7 +4,10 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../src/app.module";
-import { buildPeripheralsCorsOptions } from "../src/shared/config/peripherals.config";
+import {
+  buildPeripheralsCorsOptions,
+  buildPrivateNetworkAccessMiddleware,
+} from "../src/shared/config/peripherals.config";
 import { SanitizedHttpExceptionFilter } from "../src/shared/filters/sanitized-http-exception.filter";
 
 const readJson = async <T>(response: Response): Promise<T> => {
@@ -12,9 +15,10 @@ const readJson = async <T>(response: Response): Promise<T> => {
 };
 
 test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t) => {
-  const allowedOrigin = "https://www.apptiendamanus.space";
+  const allowedOrigin = "https://apptiendamanus.space";
   const app = await NestFactory.create(AppModule, { logger: false });
   app.useGlobalFilters(new SanitizedHttpExceptionFilter());
+  app.use(buildPrivateNetworkAccessMiddleware([allowedOrigin]));
   app.enableCors(buildPeripheralsCorsOptions([allowedOrigin]));
 
   const server = await app.listen(0, "127.0.0.1");
@@ -92,6 +96,20 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
     /Content-Type/i
   );
 
+  const privateNetworkPreflight = await fetch(`${baseUrl}/devices`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: allowedOrigin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Private-Network": "true",
+    },
+  });
+  assert.equal(privateNetworkPreflight.status, 204);
+  assert.equal(
+    privateNetworkPreflight.headers.get("access-control-allow-private-network"),
+    "true"
+  );
+
   const printerPreflight = await fetch(`${baseUrl}/printer/print-ticket`, {
     method: "OPTIONS",
     headers: {
@@ -134,10 +152,15 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
     headers: {
       Origin: "https://malicious.example",
       "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Private-Network": "true",
     },
   });
   assert.equal(
     disallowedPreflight.headers.get("access-control-allow-origin"),
+    null
+  );
+  assert.equal(
+    disallowedPreflight.headers.get("access-control-allow-private-network"),
     null
   );
 });

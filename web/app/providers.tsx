@@ -24,6 +24,7 @@ import {
   setPosCartContext,
 } from "../store/posCart";
 import { setInventoryScope } from "../store/inventoryScopeSlice";
+import { syncLocalPeripheralAssignments } from "../domains/peripherals/local-config-sync";
 import { getAuthContext, getCurrentPosSession } from "../domains/pos/api";
 import { resolvePosSessionContext } from "../domains/pos/utils/pos-session-context";
 
@@ -290,6 +291,34 @@ const InventoryScopeManager = () => {
   return null;
 };
 
+const LocalPeripheralSyncManager = () => {
+  const auth = useAppSelector((state) => state.auth);
+  const pos = useAppSelector((state) => state.pos);
+  const lastSyncKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    const tenantId = pos.tenantId ?? auth.user?.tenantId ?? auth.tenantId ?? null;
+    const branchId = pos.branchId ?? auth.user?.branchId ?? null;
+    const terminalId = pos.terminalId ?? null;
+    const key = [auth.user?.id ?? "", tenantId ?? "", branchId ?? "", terminalId ?? ""].join(":");
+    if (!auth.user || !tenantId || !branchId || !terminalId || terminalId === "local-terminal" || lastSyncKey.current === key) {
+      return;
+    }
+    void syncLocalPeripheralAssignments({
+      authenticated: true,
+      tenantId,
+      branchId,
+      terminalId,
+    }).then((result) => {
+      if (result.status === "SYNCED" || result.status === "NOOP") {
+        lastSyncKey.current = key;
+      }
+    });
+  }, [auth.tenantId, auth.user, pos.branchId, pos.terminalId, pos.tenantId]);
+
+  return null;
+};
+
 const Providers = ({ children }: { children: ReactNode }) => {
   return (
     <Provider store={store}>
@@ -299,6 +328,7 @@ const Providers = ({ children }: { children: ReactNode }) => {
           <PosStateManager />
           <PosCartStateManager />
           <InventoryScopeManager />
+          <LocalPeripheralSyncManager />
           {children}
         </ConfirmProvider>
       </BrandingApplier>

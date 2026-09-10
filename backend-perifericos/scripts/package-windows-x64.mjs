@@ -8,15 +8,37 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
 const artifactName = `ManusPeripheralAgent-win-x64-${packageJson.version}`;
-const artifactRoot = join(projectRoot, "dist-package", "windows-x64", artifactName);
+const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactName);
 const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
-const parseAllowedOrigins = (value) =>
-  (value ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+const clearReadonlyWindows = (path) => {
+  if (process.platform !== "win32") {
+    return;
+  }
+  try {
+    execFileSync("cmd.exe", ["/c", "attrib", "-R", "/S", "/D", path], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+  } catch {
+    // Best effort. Some paths do not exist yet or are already writable.
+  }
+};
+
+const removePath = (path) => {
+  clearReadonlyWindows(path);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      rmSync(path, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
+    }
+  }
+};
 
 if (process.platform !== "win32" || process.arch !== "x64") {
   throw new Error("Windows x64 packaging must run on a Windows x64 build host.");
@@ -48,7 +70,11 @@ const writeAutostartScripts = () => {
       '$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path',
       '$nodeExe = Join-Path $scriptRoot "runtime\\node.exe"',
       '$entryPoint = Join-Path $scriptRoot "app\\main.js"',
-      '$configPath = Join-Path $scriptRoot "config\\agent.config.local.json"',
+      '$configPath = $env:PERIPHERALS_CONFIG_PATH',
+      'if (-not $configPath) {',
+      '  $configPath = Join-Path $scriptRoot "config\\agent.config.local.json"',
+      '}',
+      '$defaultVersion = "' + packageJson.version + '"',
       '$healthUrl = "http://127.0.0.1:4050/health"',
       'function Resolve-WritableDirectory {',
       '  param(',
@@ -133,6 +159,9 @@ const writeAutostartScripts = () => {
       'Write-AutostartLog ("executable={0}" -f $nodeExe)',
       'Write-AutostartLog ("entryPoint={0}" -f $entryPoint)',
       'Write-AutostartLog ("configPath={0}" -f $configPath)',
+      'if (-not $env:PERIPHERALS_VERSION) {',
+      '  $env:PERIPHERALS_VERSION = $defaultVersion',
+      '}',
       '# PowerShell 5.1 compatibility: set the env var before process start so the child inherits it.',
       "",
       'Start-Sleep -Seconds $DelaySeconds',
@@ -159,7 +188,9 @@ const writeAutostartScripts = () => {
       '  exit 1',
       '}',
       "",
-      '$env:PERIPHERALS_CONFIG_PATH = $configPath',
+      'if (-not $env:PERIPHERALS_CONFIG_PATH) {',
+      '  $env:PERIPHERALS_CONFIG_PATH = $configPath',
+      '}',
       '$quotedEntryPoint = \'"\' + $entryPoint + \'"\'',
       '$process = $null',
       'try {',
@@ -277,7 +308,7 @@ const writeAutostartScripts = () => {
 };
 
 try {
-  rmSync(artifactRoot, { recursive: true, force: true });
+  removePath(artifactRoot);
   mkdirSync(artifactRoot, { recursive: true });
 
   // Build a clean production dependency closure. No development dependencies,
@@ -304,9 +335,13 @@ try {
   writeText("config/agent.config.example.json", `${JSON.stringify({
     port: 4050,
     bind: "127.0.0.1",
-    allowedOrigins: ["http://localhost:3000"],
+    mode: "REAL",
+    allowedOrigins: [
+      "https://apptiendamanus.space",
+      "http://localhost:3000",
+    ],
     logLevel: "INFO",
-    enableRealAdapters: false,
+    enableRealAdapters: true,
     usbPrintTransport: "RAW",
     usbRawPhysicalCutCertified: false,
     logLimit: 500,
@@ -318,19 +353,20 @@ try {
   writeText("config/agent.config.local.json", `${JSON.stringify({
     port: 4050,
     bind: "127.0.0.1",
-    allowedOrigins: Array.from(new Set([
+    mode: "REAL",
+    allowedOrigins: [
+      "https://apptiendamanus.space",
       "http://localhost:3000",
-      ...parseAllowedOrigins(process.env.PERIPHERALS_ALLOWED_ORIGINS),
-    ])),
+    ],
     logLevel: "INFO",
     enableRealAdapters: true,
     usbPrintTransport: "RAW",
-    usbRawPhysicalCutCertified: true,
+    usbRawPhysicalCutCertified: false,
     logLimit: 500,
     printerWidthChars: 48,
   }, null, 2)}\n`);
 
-  writeText("start-agent.cmd", `@echo off\r\nsetlocal\r\nset "AGENT_ROOT=%~dp0"\r\nset "PERIPHERALS_CONFIG_PATH=%AGENT_ROOT%config\\agent.config.local.json"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state"\r\n"%AGENT_ROOT%runtime\\node.exe" "%AGENT_ROOT%app\\main.js"\r\n`);
+  writeText("start-agent.cmd", `@echo off\r\nsetlocal\r\nset "AGENT_ROOT=%~dp0"\r\nif not defined PERIPHERALS_CONFIG_PATH set "PERIPHERALS_CONFIG_PATH=%AGENT_ROOT%config\\agent.config.local.json"\r\nif not defined PERIPHERALS_VERSION set "PERIPHERALS_VERSION=${packageJson.version}"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state"\r\n"%AGENT_ROOT%runtime\\node.exe" "%AGENT_ROOT%app\\main.js"\r\n`);
   writeText("VERSION.json", `${JSON.stringify({
     agent: "manus-pos-peripheral-agent",
     version: packageJson.version,

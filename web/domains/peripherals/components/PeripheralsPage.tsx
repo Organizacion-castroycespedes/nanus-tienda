@@ -20,7 +20,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useParams } from "next/navigation";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
@@ -35,12 +35,16 @@ import {
   fetchPeripheralDevices,
   fetchPeripheralHealth,
   fetchPeripheralLogs,
+  getElectronPeripheralAgentConfig,
   getPeripheralAgentConfig,
+  getPeripheralTransport,
+  isElectronTerminal,
   isPeripheralAgentRequestError,
   openCashDrawer,
   printMockTicket,
   simulateScanner,
   testPrint,
+  updateDevice,
   type PeripheralAgentConfig,
 } from "../api";
 import {
@@ -72,6 +76,7 @@ import type {
   PosTerminalResolvedConfig,
   PosTerminalResponse,
 } from "../types";
+import { armScanner, receiveScannerKey, timeoutScanner, type ScannerCapture } from "../scanner-capture";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type ConnectionState =
@@ -481,7 +486,7 @@ const PeripheralAgentStatusCard = ({
   const isWarning = state === "missing-config" || state === "loading";
   const statusLabel =
     state === "connected"
-      ? "Conectado"
+      ? "Servicio Manus conectado"
       : state === "missing-config"
         ? "Configuracion faltante"
         : state === "invalid-config"
@@ -490,7 +495,7 @@ const PeripheralAgentStatusCard = ({
             ? "Error de red/CORS"
             : state === "loading"
               ? "Validando"
-              : "No disponible";
+              : "Servicio Manus no disponible";
   const containerTone = isConnected
     ? "border-emerald-200 bg-emerald-50"
     : isWarning
@@ -775,15 +780,19 @@ const PrinterRegistrationPanel = ({
 
 const settingsFromResolved = (
   resolved?: PosTerminalResolvedConfig | null
-): PosTerminalSettingsFormState => ({
+): PosTerminalSettingsFormState => {
+  const fallback = isElectronTerminal()
+    ? { printerDeviceId: "", cashDrawerDeviceId: "", scaleDeviceId: "", scannerDeviceId: "" }
+    : defaultTerminalSettingsForm;
+  return {
   printerDeviceId:
-    resolved?.printerDeviceId ?? defaultTerminalSettingsForm.printerDeviceId,
+    resolved?.printerDeviceId ?? fallback.printerDeviceId,
   cashDrawerDeviceId:
     resolved?.cashDrawerDeviceId ??
-    defaultTerminalSettingsForm.cashDrawerDeviceId,
-  scaleDeviceId: resolved?.scaleDeviceId ?? defaultTerminalSettingsForm.scaleDeviceId,
+    fallback.cashDrawerDeviceId,
+  scaleDeviceId: resolved?.scaleDeviceId ?? fallback.scaleDeviceId,
   scannerDeviceId:
-    resolved?.scannerDeviceId ?? defaultTerminalSettingsForm.scannerDeviceId,
+    resolved?.scannerDeviceId ?? fallback.scannerDeviceId,
   enablePrintSale:
     resolved?.features.printSale ?? defaultTerminalSettingsForm.enablePrintSale,
   enablePrintPurchase:
@@ -796,7 +805,8 @@ const settingsFromResolved = (
   enableScale: resolved?.features.scale ?? defaultTerminalSettingsForm.enableScale,
   enableScanner:
     resolved?.features.scanner ?? defaultTerminalSettingsForm.enableScanner,
-});
+  };
+};
 
 const deviceOptionsByType = (
   devices: PeripheralDevice[],
@@ -1393,6 +1403,8 @@ const PeripheralDevicesTable = ({
   onPrintTicket,
   onOpenDrawer,
   onReadWeight,
+  onEdit,
+  onAssignPrinter,
 }: {
   devices: PeripheralDevice[];
   loading: boolean;
@@ -1401,6 +1413,8 @@ const PeripheralDevicesTable = ({
   onPrintTicket: (device: PeripheralDevice) => void;
   onOpenDrawer: (device: PeripheralDevice) => void;
   onReadWeight: () => void;
+  onEdit: (device: PeripheralDevice) => void;
+  onAssignPrinter: (device: PeripheralDevice) => void;
 }) => (
   <SectionCard
     title="Dispositivos locales"
@@ -1436,7 +1450,7 @@ const PeripheralDevicesTable = ({
           ) : devices.length === 0 ? (
             <tr>
               <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
-                No hay dispositivos simulados para mostrar.
+                No se detectaron periféricos.
               </td>
             </tr>
           ) : (
@@ -1448,9 +1462,22 @@ const PeripheralDevicesTable = ({
                 <td className="px-4 py-3 text-slate-900">{device.type}</td>
                 <td className="px-4 py-3 text-slate-700">{device.name}</td>
                 <td className="px-4 py-3">
-                  <Badge className={statusTone[device.status] ?? statusTone.DISCONNECTED}>
-                    {device.status}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge className={statusTone[device.status] ?? statusTone.DISCONNECTED}>
+                      {device.status}
+                    </Badge>
+                    {device.metadata?.physicalDetected === true ? (
+                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">Detectada</Badge>
+                    ) : device.metadata?.physicalDetected === false ? (
+                      <Badge className="border-amber-200 bg-amber-50 text-amber-700">No detectada</Badge>
+                    ) : null}
+                    {device.profileId ? (
+                      <Badge className="border-blue-200 bg-blue-50 text-blue-700">Configurada</Badge>
+                    ) : null}
+                    {device.terminalId ? (
+                      <Badge className="border-violet-200 bg-violet-50 text-violet-700">Asignada</Badge>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <Badge
@@ -1473,6 +1500,12 @@ const PeripheralDevicesTable = ({
                   <div className="flex flex-wrap gap-2">
                     {device.type === "PRINTER" ? (
                       <>
+                        <Button size="sm" variant="ghost" onClick={() => onEdit(device)}>
+                          Editar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => onAssignPrinter(device)}>
+                          Asignar principal
+                        </Button>
                         <Button size="sm" variant="ghost" onClick={() => onTestPrint(device)}>
                           <Printer className="h-4 w-4" />
                           Prueba
@@ -1541,14 +1574,42 @@ const PeripheralScannerSimulator = ({
   loading,
   result,
   onSubmit,
+  onValidated,
 }: {
   scannerDevice: PeripheralDevice | undefined;
   loading: boolean;
   result: PeripheralScannerResponse | null;
   onSubmit: (code: string, format: string) => void;
+  onValidated: () => void;
 }) => {
-  const [code, setCode] = useState("7701234567890");
-  const [format, setFormat] = useState("EAN13");
+  const [code, setCode] = useState("");
+  const [capture, setCapture] = useState<ScannerCapture>(() => armScanner());
+  const [active, setActive] = useState(false);
+  const [format, setFormat] = useState("KEYBOARD_WEDGE");
+
+  useEffect(() => {
+    if (!active || capture.state !== "RECEIVING") return;
+    const timeout = window.setTimeout(() => setCapture((current) => timeoutScanner(current)), 900);
+    return () => window.clearTimeout(timeout);
+  }, [active, capture]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!active) return;
+    event.preventDefault();
+    const next = receiveScannerKey(capture, event.key);
+    setCapture(next);
+    if (next.state === "COMPLETE") {
+      setCode(next.value);
+      setActive(false);
+      onValidated();
+    }
+  };
+
+  const armCapture = () => {
+    setCode("");
+    setCapture(armScanner());
+    setActive(true);
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1557,12 +1618,15 @@ const PeripheralScannerSimulator = ({
 
   return (
     <SectionCard title="Scanner">
+      <div className="mb-3 text-sm text-slate-600">Modo: USB HID / teclado</div>
       <form className="grid gap-4 md:grid-cols-[1fr_180px_auto]" onSubmit={handleSubmit}>
         <Input
-          label="Codigo"
+          label="Escanea un código de barras para verificar el lector"
           value={code}
           onChange={(event) => setCode(event.target.value)}
-          placeholder="7701234567890"
+          onKeyDown={handleKeyDown}
+          placeholder={active ? "Esperando lectura..." : "Pulsa Validar scanner"}
+          autoFocus={active}
         />
         <Input
           label="Formato"
@@ -1573,10 +1637,19 @@ const PeripheralScannerSimulator = ({
         <div className="flex items-end">
           <Button type="submit" isLoading={loading} disabled={!scannerDevice}>
             <ScanLine className="h-4 w-4" />
-            Simular
+            Enviar simulación QA
           </Button>
         </div>
       </form>
+      <div className="mt-3 flex items-center gap-3">
+        <Button type="button" variant="outline" onClick={armCapture} disabled={!scannerDevice || active}>
+          <ScanLine className="h-4 w-4" />
+          Validar scanner
+        </Button>
+        <span className="text-sm text-slate-600">
+          {capture.state === "COMPLETE" ? "Lectura detectada" : active ? "Listo para escanear" : "Validación inactiva"}
+        </span>
+      </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <InfoField label="deviceId" value={scannerDevice?.id ?? "-"} />
         <InfoField label="codigo" value={result?.code ?? "-"} />
@@ -1884,7 +1957,15 @@ const PeripheralEventsPanel = ({
 const PeripheralsPage = () => {
   const params = useParams<{ tenant?: string }>();
   const tenantIdParam = typeof params?.tenant === "string" ? params.tenant : null;
-  const agentConfig = useMemo(() => getPeripheralAgentConfig(), []);
+  const transport = useMemo(() => getPeripheralTransport(), []);
+  const electronRuntime = transport.kind === "electron";
+  const agentConfig = useMemo(
+    () =>
+      electronRuntime
+        ? getElectronPeripheralAgentConfig()
+        : getPeripheralAgentConfig(),
+    [electronRuntime]
+  );
   const [health, setHealth] = useState<PeripheralAgentHealth | null>(null);
   const [devices, setDevices] = useState<PeripheralDevice[]>([]);
   const [logs, setLogs] = useState<PeripheralLog[]>([]);
@@ -1941,7 +2022,7 @@ const PeripheralsPage = () => {
     setLoading((prev) => ({ ...prev, snapshot: true }));
     setAgentError(null);
 
-    if (!agentConfig.isConfigured) {
+    if (!agentConfig.isConfigured && !electronRuntime) {
       setHealth(null);
       setDevices([]);
       setLogs([]);
@@ -1973,7 +2054,7 @@ const PeripheralsPage = () => {
     setDevices(devicesResult.status === "fulfilled" ? devicesResult.value : []);
     setLogs(logsResult.status === "fulfilled" ? logsResult.value : []);
     setLoading((prev) => ({ ...prev, snapshot: false }));
-  }, [agentConfig]);
+  }, [agentConfig, electronRuntime]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -1982,6 +2063,11 @@ const PeripheralsPage = () => {
   useEffect(() => {
     let socket: WebSocket | null = null;
     let closedByEffect = false;
+
+    if (electronRuntime) {
+      setSocketState("disconnected");
+      return () => undefined;
+    }
 
     if (!agentConfig.isConfigured) {
       setSocketState(
@@ -2020,7 +2106,7 @@ const PeripheralsPage = () => {
       closedByEffect = true;
       socket?.close();
     };
-  }, [agentConfig, socketAttempt]);
+  }, [agentConfig, electronRuntime, socketAttempt]);
 
   const refreshDevices = useCallback(async () => {
     setLoading((prev) => ({ ...prev, devices: true }));
@@ -2072,11 +2158,73 @@ const PeripheralsPage = () => {
     [loadLogs, refreshDevices, showToast]
   );
 
+  const handleEditPrinter = useCallback(async (device: PeripheralDevice) => {
+    const name = window.prompt("Nombre lógico", device.name);
+    if (!name) return;
+    const profileId = window.prompt("Perfil", device.profileId ?? "THERMAL_80MM");
+    if (!profileId) return;
+    const networkHost = device.network?.host;
+    const host = device.connectionType === "NETWORK"
+      ? window.prompt("IP o hostname", networkHost ?? "")
+      : undefined;
+    const portValue = device.connectionType === "NETWORK"
+      ? window.prompt("Puerto", String(device.network?.port ?? 9100))
+      : undefined;
+    try {
+      await updateDevice(device.id, {
+        name,
+        profileId: profileId as PeripheralDevice["profileId"],
+        network: device.connectionType === "NETWORK" && host
+          ? { host, port: Number(portValue ?? device.network?.port ?? 9100) }
+          : undefined,
+      });
+      await refreshDevices();
+      showToast("Configuración guardada.", "success");
+    } catch (error) {
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
+    }
+  }, [refreshDevices, showToast]);
+
+  const handleAssignPrinter = useCallback(async (device: PeripheralDevice) => {
+    try {
+      const resolved = await resolveCurrentPosTerminalConfig({ tenantId: tenantIdParam, terminalId });
+      if (!resolved.posTerminalId) {
+        showToast("No hay terminal POS asociada para asignar la impresora.", "warning");
+        return;
+      }
+      await savePosTerminalPeripheralSettings(resolved.posTerminalId, { printerDeviceId: device.id });
+      showToast("Impresora principal asignada.", "success");
+    } catch (error) {
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
+    }
+  }, [showToast, tenantIdParam]);
+
+  const handleScannerValidated = useCallback(async () => {
+    if (!scannerDevice) {
+      showToast("No hay scanner descubierto para asignar.", "warning");
+      return;
+    }
+    try {
+      const resolved = await resolveCurrentPosTerminalConfig({ tenantId: tenantIdParam, terminalId });
+      if (!resolved.posTerminalId) {
+        showToast("No hay terminal POS asociada para guardar el scanner.", "warning");
+        return;
+      }
+      await savePosTerminalPeripheralSettings(resolved.posTerminalId, {
+        scannerDeviceId: scannerDevice.id,
+        enableScanner: true,
+      });
+      showToast("Scanner KEYBOARD_WEDGE guardado y asignado.", "success");
+    } catch (error) {
+      showToast(getErrorMessage(error), "error", getErrorDetail(error));
+    }
+  }, [scannerDevice, showToast, tenantIdParam]);
+
   const handleDeviceAction = useCallback(
     async (
       action: () => Promise<PeripheralActionResponse>,
       successMessage: string,
-      title = "Accion MOCK"
+      title = "Acción de periférico"
     ) => {
       setLoading((prev) => ({ ...prev, action: true }));
       setActionResult((prev) => ({
@@ -2203,7 +2351,7 @@ const PeripheralsPage = () => {
     setActionResult({
       status: "idle",
       title: "Sin operacion",
-      message: "Ejecuta una accion MOCK para ver el resultado.",
+      message: "Ejecuta una acción para ver el resultado.",
     });
   }, []);
 
@@ -2302,6 +2450,8 @@ const PeripheralsPage = () => {
               )
             }
             onReadWeight={() => void handleReadWeight()}
+            onEdit={(device) => void handleEditPrinter(device)}
+            onAssignPrinter={(device) => void handleAssignPrinter(device)}
           />
           <PeripheralLogsPanel
             logs={logs}
@@ -2389,6 +2539,7 @@ const PeripheralsPage = () => {
             loading={loading.scanner}
             result={scannerResult}
             onSubmit={(code, format) => void handleScannerSubmit(code, format)}
+            onValidated={() => void handleScannerValidated()}
           />
 
           <PeripheralEventsPanel
