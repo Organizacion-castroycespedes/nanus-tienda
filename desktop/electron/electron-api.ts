@@ -23,6 +23,7 @@ export const IPC_CHANNELS = {
   createDevice: "manusTerminal.createDevice",
   updateDevice: "manusTerminal.updateDevice",
   testPrint: "manusTerminal.testPrint",
+  printTicket: "manusTerminal.printTicket",
   openCashDrawer: "manusTerminal.openCashDrawer",
   simulateScanner: "manusTerminal.simulateScanner",
   currentWeight: "manusTerminal.currentWeight",
@@ -37,6 +38,7 @@ export type ManusTerminalApi = {
   createDevice: (payload: unknown) => Promise<unknown>;
   updateDevice: (deviceId: string, payload: unknown) => Promise<unknown>;
   testPrint: (payload: unknown) => Promise<unknown>;
+  printTicket: (payload: unknown) => Promise<unknown>;
   openCashDrawer: (payload: unknown) => Promise<unknown>;
   simulateScanner: (payload: unknown) => Promise<unknown>;
   currentWeight: (payload: unknown) => Promise<unknown>;

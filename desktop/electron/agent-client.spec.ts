@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { describe, it } from "node:test";
 
-import { getAgentHealth } from "./agent-client.js";
+import { DISCOVERY_REQUEST_TIMEOUT_MS, discoverAgentDevices, getAgentHealth } from "./agent-client.js";
 
 const config = {
   environment: "qa" as const,
@@ -27,6 +27,8 @@ const withServer = async (
 };
 
 const configForPort = (port: number) => ({ ...config, agentLoopbackOrigin: `http://127.0.0.1:${port}` });
+
+const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 describe("getAgentHealth", () => {
   it("normalizes a real health response", async () => {
@@ -57,6 +59,32 @@ describe("getAgentHealth", () => {
 
     await withServer((_request, response) => response.end("x".repeat(70 * 1024)), async (port) => {
       assert.deepEqual(await getAgentHealth(configForPort(port)), { available: false, reason: "INVALID_RESPONSE" });
+    });
+  });
+});
+
+describe("discoverAgentDevices", () => {
+  it("allows physical discovery to exceed the short default request timeout", async () => {
+    await withServer(async (_request, response) => {
+      await wait(3_000);
+      response.statusCode = 201;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ devices: [{ id: "usb-printer-slow" }] }));
+    }, async (port) => {
+      const result = await discoverAgentDevices(configForPort(port), "terminal-qa");
+      assert.deepEqual(result, { devices: [{ id: "usb-printer-slow" }] });
+    });
+  });
+
+  it("keeps discovery finite and reports AGENT_TIMEOUT", async () => {
+    await withServer(async (_request, response) => {
+      await wait(DISCOVERY_REQUEST_TIMEOUT_MS + 100);
+      response.end(JSON.stringify({ devices: [] }));
+    }, async (port) => {
+      await assert.rejects(
+        discoverAgentDevices(configForPort(port), "terminal-qa"),
+        (error: unknown) => error instanceof Error && error.message === "AGENT_TIMEOUT",
+      );
     });
   });
 });
