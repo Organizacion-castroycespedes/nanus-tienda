@@ -96,16 +96,64 @@ barcode capture remains open.
 This is a LOCAL WEB PHYSICAL SMOKE PASS. It does not certify the final QA
 frontend deployment or the packaged Electron physical flow.
 
+## Final packaged Electron physical scanner QA
+
+- QA frontend: `https://www.apptiendamanus.space`.
+- Packaged Manus POS Electron: PASS.
+- Panel operativo POS: CLOSED; permanent main search: VISIBLE.
+- Physical USB HID scanner: PASS; manual Enter: NO.
+- Product: `Contra Muslo`; barcode: `353962561087655`.
+- Main-view product add: PASS; single add: PASS; duplicate add: NO.
+- Panel operativo required: NO.
+- Scanner-generated terminator and focus return: PASS.
+
+This is the FINAL QA PHYSICAL PASS for the real HID scanner P7 block. It is
+distinct from the preceding local Web physical smoke PASS.
+
+## Final packaged Electron fullscreen QA
+
+- Candidate: `ManusTerminalSetup-Integrated-7.2X-QA-display-bounds-fullscreen-qa9.exe`.
+- Installer SHA256: `302ABA4DC518807A9A340A42F870E13B759291C7A935129F3CA92873993966A6`.
+- POS reconciliation: PASS; installed Electron payload hashes matched the
+  fresh embedded payload.
+- Physical fullscreen: PASS; the terminal covered the full display.
+- Taskbar visible: NO; desktop exposed: NO.
+- Frameless: PASS; fullscreen remained enforced: PASS.
+- Alt+F4: PASS; SSH HWND diagnostics were unavailable outside the interactive
+  desktop session and did not block human physical acceptance.
+
+This closes the P7 fullscreen physical QA block. Scanner remains PASS/FROZEN.
+
+## Separate configuration finding
+
+- QA WARNING: `NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL` must be a public HTTPS
+  URL in production.
+- Classification: OPEN / separate configuration finding.
+- This warning does not block the real HID scanner result and is not fixed in
+  this scanner closure.
+
+## P7 authenticated local-to-cloud handoff blocker
+
+The following gates remain CLOSED and frozen: fullscreen, real HID scanner,
+POS reconciliation, cold-boot Agent persistence, installation ID persistence,
+and primary/drawer persistence.
+
+The authenticated local-to-cloud handoff is OPEN. Physical QA showed that the
+packaged Electron Agent was healthy on `http://127.0.0.1:4050` with persisted
+devices, but the peripheral configuration UI selected the browser transport
+and rejected the local endpoint under production HTTPS validation. The fix is
+tracked separately in
+`corregir-handoff-agent-local-perifericos-electron`.
+
+The required split is explicit: packaged Electron uses the existing typed
+`window.manusTerminal` bridge and fixed Agent loopback; pure Web keeps its
+existing configured HTTPS validation. No generic IPC/HTTP proxy is allowed.
+
 ## P7 gates still open
 
-1. Physical/default-printer acceptance, including POS-80/XP-80 behavior and
-   one-primary assignment switching.
-2. Real scanner barcode capture and the no-scanner/scale-absent non-blocking
-   path.
-3. Installer completion to POS launch and same-configuration visibility in
+1. Installer completion to POS launch and same-configuration visibility in
    POS, including post-install edit without reinstall.
-4. Fullscreen/single-instance/operator-window regression.
-5. Final authenticated local-to-cloud handoff regression in the packaged
+2. Final authenticated local-to-cloud handoff regression in the packaged
    workflow.
-6. Final packaging/regression certification and the remaining fresh,
+3. Final packaging/regression certification and the remaining fresh,
    repair, uninstall, and remove-data evidence tracked by P7/P8.
