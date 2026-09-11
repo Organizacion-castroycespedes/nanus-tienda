@@ -316,9 +316,12 @@ test("refreshDocumentStatus moves processing document to accepted", async () => 
     prefix: "FKE",
     number: "1",
     fullNumber: "FKE-1",
-    cufe: "CUFE-123",
-    cude: null,
-    acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+     cufe: "CUFE-123",
+     cude: null,
+     providerStatusCode: "100",
+     providerStatusMessage: "Accepted by DIAN",
+     trackingId: "TRACK-123",
+     acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
     rejectedAt: null,
     metadata: {},
   });
@@ -328,6 +331,11 @@ test("refreshDocumentStatus moves processing document to accepted", async () => 
   assert.equal(result.document.status, "ACCEPTED");
   assert.equal(result.document.provider_status, "ACCEPTED");
   assert.equal(result.document.cufe, "CUFE-123");
+  assert.deepEqual(result.document.metadata.providerResponse, {
+    code: "100",
+    message: "Accepted by DIAN",
+    trackingId: "TRACK-123",
+  });
 });
 
 test("refreshDocumentStatus recovers accepted provider by external reference without create", async () => {
@@ -354,6 +362,38 @@ test("refreshDocumentStatus recovers accepted provider by external reference wit
   assert.equal(result.document.provider_document_id, "FACTUCORE-EXISTING-1");
   assert.equal(result.document.provider_status, "ACCEPTED");
   assert.equal(result.document.cufe, "CUFE-EXISTING-1");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("repeated accepted reconciliation preserves fiscal metadata without provider mutation", async () => {
+  const harness = buildHarness(buildState({ status: "PROCESSING", provider_document_id: "FACTUCORE-EXISTING-1" }));
+  let lookupCalls = 0;
+  harness.provider.getDocumentStatus = async (command) => {
+    lookupCalls += 1;
+    return {
+      documentId: command.documentId,
+      providerDocumentId: "FACTUCORE-EXISTING-1",
+      providerStatus: "ACCEPTED",
+      normalizedStatus: "ACCEPTED",
+      providerStatusDetail: "accepted",
+      providerStatusCode: "100",
+      providerStatusMessage: "Accepted by DIAN",
+      trackingId: "TRACK-EXISTING-1",
+      cufe: "CUFE-EXISTING-1",
+      acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+      rejectedAt: null,
+      metadata: {},
+    };
+  };
+
+  await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+  const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(lookupCalls, 2);
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(result.document.cufe, "CUFE-EXISTING-1");
+  assert.equal(result.document.metadata.providerResponse.code, "100");
   assert.equal(harness.provider.received.issueInvoice.length, 0);
   assert.equal(harness.provider.received.retryDocument.length, 0);
 });

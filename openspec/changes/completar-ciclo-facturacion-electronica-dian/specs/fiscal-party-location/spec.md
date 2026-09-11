@@ -2,6 +2,28 @@
 
 ## ADDED Requirements
 
+### Requirement: FactuCore fiscal response normalization
+The billing integration SHALL expose only proven FactuCore fiscal response fields through a normalized provider contract.
+
+#### Scenario: Accepted response preserves fiscal identity
+- **WHEN** FactuCore returns an accepted document status with `uuid`, document number, response code, response message, or tracking identifier
+- **THEN** the provider adapter SHALL map the available values without exposing raw credentials or raw provider payloads
+
+#### Scenario: Reconciliation persists terminal metadata
+- **WHEN** an accepted or rejected status is reconciled
+- **THEN** Manus SHALL persist the provider identity, canonical status, CUFE when available, terminal timestamp, and safe provider response metadata
+
+#### Scenario: Reconciliation is non-mutating at provider
+- **WHEN** an existing document status is refreshed
+- **THEN** the operation SHALL issue no provider create, XML generation, signing, or transmission call
+
+### Requirement: Fiscal response data remains honest
+The integration SHALL classify unavailable fields such as validation timestamp and QR data as unavailable rather than inventing values.
+
+#### Scenario: Unavailable metadata remains absent
+- **WHEN** FactuCore does not expose a fiscal field in its status contract
+- **THEN** Manus SHALL leave that field unavailable and SHALL NOT derive it from an unrelated identifier or raw payload
+
 ### Requirement: Selectores legibles son la fuente de edición
 Los usuarios normales SHALL seleccionar la ubicación fiscal mediante `País`, `Departamento` y `Municipio`. El formulario MUST NOT exponer campos editables independientes para `countryCode`, `departmentCode` o `municipalityCode`.
 

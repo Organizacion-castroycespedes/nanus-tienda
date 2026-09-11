@@ -361,6 +361,7 @@ export type ElectronicDocumentIdentityUpdate = {
   cude?: string | null;
   providerStatus?: string | null;
   providerStatusDetail?: string | null;
+  metadata?: Record<string, unknown>;
   lastStatusCheckAt?: Date | string | null;
 };
 
@@ -765,6 +766,7 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
     if (updates.cude !== undefined) add("cude", updates.cude);
     if (updates.providerStatus !== undefined) add("provider_status", updates.providerStatus);
     if (updates.providerStatusDetail !== undefined) add("provider_status_detail", updates.providerStatusDetail);
+    if (updates.metadata !== undefined) add("metadata", updates.metadata);
     if (updates.lastStatusCheckAt !== undefined) add("last_status_check_at", toDateValue(updates.lastStatusCheckAt));
 
     if (sets.length === 0) {

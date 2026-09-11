@@ -725,6 +725,10 @@ export class ElectronicBillingProcessingService {
       const acceptedAt = this.resolveAcceptedAt(providerResult);
       const rejectedAt = this.resolveRejectedAt(providerResult);
       const nextStatusCheckAt = this.resolveNextStatusCheckAt(normalizedStatus, attempt);
+      const existingProviderMetadata = currentDocument.metadata?.providerResponse;
+      const providerResponseMetadata = existingProviderMetadata && typeof existingProviderMetadata === "object"
+        ? existingProviderMetadata as Record<string, unknown>
+        : {};
 
       await this.documentRepository.updateProviderIdentity(
         tenantId,
@@ -738,6 +742,16 @@ export class ElectronicBillingProcessingService {
           cude: providerResult.cude ?? currentDocument.cude,
           providerStatus: providerResult.providerStatus,
           providerStatusDetail: providerResult.providerStatusDetail ?? null,
+          metadata: {
+            ...currentDocument.metadata,
+            providerResponse: {
+              ...providerResponseMetadata,
+              ...(providerResult.providerStatusCode ? { code: providerResult.providerStatusCode } : {}),
+              ...(providerResult.providerStatusMessage ? { message: providerResult.providerStatusMessage } : {}),
+              ...(providerResult.trackingId ? { trackingId: providerResult.trackingId } : {}),
+              ...(providerResult.metadata ?? {}),
+            },
+          },
           lastStatusCheckAt: nextStatusCheckAt,
         },
         client,

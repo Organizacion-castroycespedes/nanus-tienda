@@ -302,6 +302,9 @@ export class FactuCoreMapper {
       cude: normalizeNullableString(response.cude),
       acceptedAt: response.acceptedAt ?? null,
       rejectedAt: response.rejectedAt ?? null,
+      providerStatusCode: normalizeNullableString(response.providerStatusCode),
+      providerStatusMessage: normalizeNullableString(response.providerStatusMessage),
+      trackingId: normalizeNullableString(response.trackingId),
       metadata: {
         ...(response.metadata ?? {}),
         ...(lineResults ? { lineResults } : {}),
@@ -321,6 +324,9 @@ export class FactuCoreMapper {
         providerStatus,
         typeof response.normalizedStatus === "string" ? response.normalizedStatus : null,
       ),
+      providerStatusCode: normalizeNullableString(response.providerStatusCode),
+      providerStatusMessage: normalizeNullableString(response.providerStatusMessage),
+      trackingId: normalizeNullableString(response.trackingId),
       errorCode: normalizeNullableString(response.errorCode),
       errorMessage: normalizeNullableString(response.errorMessage),
     };
