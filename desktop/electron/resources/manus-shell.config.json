@@ -1,6 +1,6 @@
 {
   "environment": "qa",
-  "frontendUrl": "https://www.apptiendamanus.space",
+  "frontendUrl": "https://www.apptiendamanus.space/login",
   "allowedOrigins": [
     "https://www.apptiendamanus.space"
   ],

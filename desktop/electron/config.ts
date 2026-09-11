@@ -1,4 +1,4 @@
-export const DEFAULT_MANUS_WEB_URL = "http://localhost:3000";
+export const DEFAULT_MANUS_WEB_URL = "https://www.apptiendamanus.space/login";
 export const DEFAULT_AGENT_LOOPBACK_ORIGIN = "http://127.0.0.1:4050";
 export const QA_MANUS_WEB_ORIGIN = "https://www.apptiendamanus.space";
 
@@ -83,7 +83,9 @@ export const validateVersionedShellConfig = (
 
   return {
     environment,
-    frontendUrl: frontend.origin,
+    // Keep the configured startup path (for example `/login`) while using
+    // only the origin for the allowlist check above.
+    frontendUrl: frontend.href,
     allowedOrigins,
     agentLoopbackOrigin: agent.origin,
   };
