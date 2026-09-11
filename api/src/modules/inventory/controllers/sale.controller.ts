@@ -120,6 +120,27 @@ export class SaleController {
     };
   }
 
+  @Post("electronic-billing/batch")
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  requestElectronicBillingBatch(
+    @Body() body: { saleIds?: string[] },
+    @Req() request: AuthRequest,
+  ) {
+    if (!Array.isArray(body.saleIds) || body.saleIds.length === 0) {
+      throw new BadRequestException("saleIds must contain at least one sale");
+    }
+    return this.saleService.requestElectronicBillingForSales(
+      body.saleIds,
+      this.buildActor(request),
+    );
+  }
+
+  @Post(":id/electronic-billing")
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  requestElectronicBilling(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.saleService.requestElectronicBillingForSale(id, this.buildActor(request));
+  }
+
   @Post()
   @RequireOpenCashSession()
   @RequirePosSession()

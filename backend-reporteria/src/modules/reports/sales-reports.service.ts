@@ -103,6 +103,10 @@ export class SalesReportsService {
       paid: Number(row.paid ?? 0),
       balance: Number(row.balance ?? 0),
       cashSessionId: row.cashSessionId ?? null,
+      billingStatus: row.billingStatus ?? "NO_DOCUMENT",
+      billingDocumentNumber: row.billingDocumentNumber ?? null,
+      billingCufe: row.billingCufe ?? null,
+      billingAcceptedAt: row.billingAcceptedAt ?? null,
     };
   }
 

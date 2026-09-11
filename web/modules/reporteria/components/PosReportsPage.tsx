@@ -30,6 +30,10 @@ import { PdfPreviewModal } from "./PdfPreviewModal";
 import { ReportExportCard } from "./ReportExportCard";
 import { ReportMetricCard } from "./ReportMetricCard";
 import { ReportStatusBadge } from "./ReportStatusBadge";
+import {
+  requestElectronicBilling,
+  requestElectronicBillingBatch,
+} from "../services/electronic-billing.service";
 
 type PdfConfig = {
   title: string;
@@ -59,6 +63,8 @@ const PosReportsPage = () => {
   const [printingSaleId, setPrintingSaleId] = useState<string | null>(null);
   const [directPrintFeedback, setDirectPrintFeedback] =
     useState<DirectPrintFeedback | null>(null);
+  const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
+  const [billingRequestBusy, setBillingRequestBusy] = useState(false);
   const posContext = usePosContext();
   const {
     canViewReports,
@@ -123,6 +129,31 @@ const PosReportsPage = () => {
     });
   }, [branchId, dateRange.from, dateRange.to, loadReports, tenantId]);
 
+  const handleBillingRequest = useCallback(async (saleIds: string[]) => {
+    setBillingRequestBusy(true);
+    try {
+      const response = saleIds.length === 1
+        ? { results: [await requestElectronicBilling(saleIds[0])] }
+        : await requestElectronicBillingBatch(saleIds);
+      const requested = response.results.filter((item) => item.requestCreated).length;
+      setDirectPrintFeedback({
+        saleId: saleIds[0],
+        variant: "success",
+        message: `${requested} solicitud(es) de facturacion electronica creada(s).`,
+      });
+      setSelectedSaleIds([]);
+      await handleSearch();
+    } catch (error) {
+      setDirectPrintFeedback({
+        saleId: saleIds[0] ?? "billing",
+        variant: "error",
+        message: getApiErrorMessage(error, "No se pudo solicitar la facturacion electronica."),
+      });
+    } finally {
+      setBillingRequestBusy(false);
+    }
+  }, [handleSearch]);
+
   useEffect(() => {
     if (!canViewReports || !tenantId) {
       return;
@@ -138,6 +169,24 @@ const PosReportsPage = () => {
 
   const columns = useMemo<DataTableColumn<PosSalesListRow>[]>(
     () => [
+      {
+        key: "select",
+        header: "Seleccionar",
+        render: (row) => (
+          <input
+            type="checkbox"
+            aria-label={`Seleccionar venta ${row.saleId}`}
+            checked={selectedSaleIds.includes(row.saleId)}
+            onChange={(event) =>
+              setSelectedSaleIds((current) =>
+                event.target.checked
+                  ? [...current, row.saleId]
+                  : current.filter((saleId) => saleId !== row.saleId),
+              )
+            }
+          />
+        ),
+      },
       {
         key: "date",
         header: "Fecha",
@@ -189,11 +238,53 @@ const PosReportsPage = () => {
         ),
       },
       {
+        key: "billingStatus",
+        header: "Facturación electrónica",
+        render: (row) => (
+          <div>
+            <p className="text-sm font-medium text-slate-700">
+              {row.billingStatus === "ACCEPTED"
+                ? "Aceptada DIAN"
+                : row.billingStatus === "NO_DOCUMENT"
+                  ? "Sin factura electrónica"
+                  : row.billingStatus === "REJECTED"
+                    ? "Rechazada"
+                      : row.billingStatus === "PROCESSING"
+                        ? "Procesando"
+                        : row.billingStatus === "ELIGIBLE_ON_DEMAND"
+                          ? "Disponible para facturar"
+                      : row.billingStatus === "PENDING" || row.billingStatus === "REQUESTED"
+                        ? "Pendiente"
+                        : row.billingStatus}
+            </p>
+            {row.billingStatus === "ACCEPTED" && row.billingDocumentNumber ? (
+              <p className="text-xs text-slate-500">{row.billingDocumentNumber}</p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
         key: "actions",
         header: "Acciones",
         cellClassName: "min-w-[350px]",
         render: (row) => (
           <div className="flex flex-wrap gap-2">
+            {row.billingStatus !== "ACCEPTED" &&
+            row.billingStatus !== "PENDING" &&
+            row.billingStatus !== "PROCESSING" &&
+            row.billingStatus !== "REJECTED" &&
+            row.billingStatus !== "TECHNICAL_ERROR" &&
+            row.billingStatus !== "CANCELLED" &&
+            row.billingStatus !== "AMBIGUOUS" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleBillingRequest([row.saleId])}
+                disabled={billingRequestBusy}
+              >
+                Facturar electrónicamente
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
@@ -261,7 +352,7 @@ const PosReportsPage = () => {
         ),
       },
     ],
-    [handleDirectPrint, printingSaleId, tenantId]
+    [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, tenantId]
   );
 
   const canExport = Boolean(dataset?.rows.length);
@@ -397,6 +488,19 @@ const PosReportsPage = () => {
             : "Usa los filtros y ejecuta la busqueda para cargar el reporte."
         }
       />
+
+      {selectedSaleIds.length > 0 ? (
+        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
+          <span className="text-sm text-blue-900">{selectedSaleIds.length} venta(s) seleccionada(s)</span>
+          <Button
+            size="sm"
+            onClick={() => void handleBillingRequest(selectedSaleIds)}
+            disabled={billingRequestBusy}
+          >
+            Facturar electrónicamente seleccionadas
+          </Button>
+        </div>
+      ) : null}
 
       {directPrintFeedback ? (
         <div

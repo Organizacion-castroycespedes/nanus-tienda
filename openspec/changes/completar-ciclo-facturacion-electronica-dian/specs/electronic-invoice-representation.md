@@ -33,3 +33,33 @@ An accepted representation SHALL be renderable from persisted Manus data without
 - **WHEN** an accepted representation is rendered more than once
 - **THEN** no provider create, transmission, or status polling is performed
 - **AND** fiscal metadata remains unchanged
+
+### Requirement: Billing request mode controls only the sale trigger
+The system SHALL support `AUTOMATIC` and `ON_DEMAND` billing modes through one canonical outbox pipeline.
+
+#### Scenario: Automatic mode completes a sale
+- **WHEN** a confirmed, paid sale is completed in `AUTOMATIC` mode
+- **THEN** one idempotent billing outbox request is created
+- **AND** the provider is not called directly by the sale operation
+
+#### Scenario: On-demand mode completes a sale
+- **WHEN** a confirmed, paid sale is completed in `ON_DEMAND` mode
+- **THEN** no automatic billing request is created
+- **AND** a later authorized single or batch command may enqueue the same canonical sale event
+
+### Requirement: Manual billing requests are tenant-scoped and idempotent
+Manual billing commands SHALL evaluate each sale independently and SHALL never combine multiple sales into one fiscal document.
+
+#### Scenario: A batch contains mixed sales
+- **WHEN** an authorized operator submits multiple sale IDs
+- **THEN** each sale returns its own eligibility and request result
+- **AND** a repeated request reuses the deterministic event identity
+- **AND** no provider or transmission call occurs in the command
+
+### Requirement: Sale billing status is a lightweight read model
+The sale list SHALL expose persisted billing status through one tenant-scoped batch query without provider calls per sale.
+
+#### Scenario: Billing status is listed
+- **WHEN** the POS sale report is loaded
+- **THEN** statuses such as `NO_DOCUMENT`, `REQUESTED`, `PENDING`, `PROCESSING`, `ACCEPTED`, and `REJECTED` are mapped for each sale
+- **AND** accepted fiscal number, CUFE, and acceptance timestamp are included only when persisted

@@ -17,4 +17,9 @@
 - [x] Guard non-accepted documents from accepted fiscal representation.
 - [x] Preserve CUFE and available provider metadata without provider calls.
 - [x] Add tenant-scoped sale electronic-document lookup and accepted-only reprint endpoint.
-- [ ] Implement automatic and on-demand processing.
+- [x] Implement typed automatic and on-demand billing request modes.
+- [x] Reuse one eligibility and idempotent outbox request path for single and batch requests.
+- [x] Hydrate sale billing status with one tenant-scoped reporting query.
+- [x] Add on-demand single and multi-sale billing controls.
+- [ ] Certify automatic/on-demand modes with a controlled E2E.
+- [ ] Certify unattended/global worker operation.

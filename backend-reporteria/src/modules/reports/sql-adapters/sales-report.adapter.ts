@@ -29,7 +29,7 @@ export class SalesReportAdapter {
     actor: ReportActorContext,
     filters: SalesListParams
   ): Promise<PosSalesListDataset | null> {
-    return this.functionRunnerService.executeFunction<PosSalesListDataset | null>(
+    const dataset = await this.functionRunnerService.executeFunction<PosSalesListDataset | null>(
       "report_pos_sales",
       [
         actor.userId,
@@ -42,6 +42,79 @@ export class SalesReportAdapter {
         filters.dateTo ?? null,
       ]
     );
+    if (!dataset?.rows?.length) {
+      return dataset;
+    }
+    const saleIds = dataset.rows.map((row) => row.saleId);
+    const billing = await this.databaseService.query<{
+      saleId: string;
+      billingStatus: ElectronicInvoiceReadModel["status"] | "NO_DOCUMENT";
+      billingDocumentNumber: string | null;
+      billingCufe: string | null;
+      billingAcceptedAt: string | null;
+      saleStatus: string;
+      paymentStatus: string;
+      requestExists: boolean;
+      documentCount: number;
+    }>(
+      `SELECT sale_id AS "saleId", status AS "billingStatus",
+              document_number AS "billingDocumentNumber", cufe AS "billingCufe",
+              accepted_at AS "billingAcceptedAt", sale_status AS "saleStatus",
+              payment_status AS "paymentStatus", request_exists AS "requestExists",
+              document_count AS "documentCount"
+         FROM (
+           SELECT s.id AS sale_id, s.status AS sale_status, s.payment_status,
+                  document.status,
+                  COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) AS document_number,
+                  document.cufe, document.accepted_at,
+                  EXISTS (
+                    SELECT 1 FROM integration_outbox_events event
+                    WHERE event.tenant_id = s.tenant_id
+                      AND event.source_type = 'SALE'
+                      AND event.source_id = s.id
+                  ) AS request_exists,
+                  ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY document.created_at DESC) AS row_number,
+                  COUNT(document.id) OVER (PARTITION BY s.id) AS document_count
+             FROM sales AS s
+             LEFT JOIN electronic_documents AS document
+               ON document.tenant_id = s.tenant_id
+              AND document.source_type = 'SALE'
+              AND document.source_id = s.id
+            WHERE s.tenant_id = $1 AND s.id = ANY($2::UUID[])
+              AND ($3 = 'SUPER_ADMIN' OR $4 IS NULL OR s.branch_id = $4)
+         ) AS documents
+        WHERE row_number = 1`,
+      [actor.tenantId, saleIds, actor.role, actor.branchId]
+    );
+    const billingBySale = new Map(billing.rows.map((row) => [row.saleId, row]));
+    return {
+      ...dataset,
+      rows: dataset.rows.map((row) => {
+        const document = billingBySale.get(row.saleId);
+        const mode = process.env.ELECTRONIC_BILLING_MODE?.trim().toUpperCase();
+        const isEligibleOnDemand =
+          mode === "ON_DEMAND" &&
+          document &&
+          document.documentCount === 0 &&
+          document.saleStatus === "CONFIRMED" &&
+          ["PAID", "OVERPAID"].includes(document.paymentStatus) &&
+          !document.requestExists;
+        const billingStatus = document?.billingStatus
+          ? document.billingStatus
+          : document?.requestExists
+            ? "REQUESTED"
+            : "NO_DOCUMENT";
+        return {
+          ...row,
+          billingStatus: isEligibleOnDemand
+            ? "ELIGIBLE_ON_DEMAND"
+            : billingStatus,
+          billingDocumentNumber: document?.billingDocumentNumber ?? null,
+          billingCufe: document?.billingCufe ?? null,
+          billingAcceptedAt: document?.billingAcceptedAt ?? null,
+        };
+      }),
+    };
   }
 
   async getSaleTicket(
