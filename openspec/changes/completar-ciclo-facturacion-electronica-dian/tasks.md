@@ -13,5 +13,7 @@
 - [x] Map CUFE and terminal metadata into Manus.
 - [x] Persist safe provider response metadata without raw payload.
 - [x] Cover terminal reconciliation without provider mutation.
-- [ ] Implement ticket representation and fiscal downloads.
+- [x] Implement accepted electronic invoice representation and thermal rendering.
+- [x] Guard non-accepted documents from accepted fiscal representation.
+- [x] Preserve CUFE and available provider metadata without provider calls.
 - [ ] Implement automatic and on-demand processing.
