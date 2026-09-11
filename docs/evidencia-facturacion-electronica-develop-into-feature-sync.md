@@ -5,7 +5,7 @@
 - Rama destino: `feat/develop/implementando-facturacion-electronica`.
 - Fuente: `origin/develop`.
 - QA y proveedores no fueron llamados.
-- No hubo commit, push, deploy ni merge hacia `develop`.
+- No hubo push, deploy ni merge hacia `develop`.
 
 ## Merge
 
@@ -15,7 +15,8 @@
 - Divergencia antes: feature `4` commits ahead, `34` behind.
 - Merge ejecutado con `git merge --no-commit --no-ff origin/develop`.
 - Conflictos Git: ninguno.
-- El merge queda staged y sin commit por la regla de seguridad.
+- Merge commit: `999c80d`.
+- Padres: feature `b66162e`, develop `5a393b4`.
 
 ## Cambios entrantes
 
@@ -53,9 +54,8 @@ permanecen presentes en la rama feature. No hay colision de migraciones:
 
 ## Estado y promocion
 
-El arbol contiene el merge staged, por eso no esta limpio. La referencia HEAD
-todavia es `b66162e`; `MERGE_HEAD` apunta a `5a393b4`. No se puede reportar un
-merge commit ni `behind=0` sin crear un commit, prohibido en esta tarea.
+El merge esta confirmado en `999c80d`. El feature queda `5` commits ahead y
+`0` behind de `origin/develop`. El worktree queda limpio.
 
 Promocion futura, sin ejecutar:
 
