@@ -15,11 +15,11 @@ const getMethodPermission = (methodName: string) => {
 };
 
 describe("TerminalsController permissions", () => {
-  it("keeps terminal routes scoped to SUPER_USER and SUPER_ADMIN", () => {
+  it("keeps terminal administration scoped to SUPER_ADMIN", () => {
     const roles = Reflect.getMetadata(ROLES_KEY, TerminalsController) as
       | string[]
       | undefined;
-    assert.deepEqual(roles, ["SUPER_ADMIN", "SUPER_USER"]);
+    assert.deepEqual(roles, ["SUPER_ADMIN"]);
     assert.equal(roles?.includes("ADMIN"), false);
     assert.equal(roles?.includes("USER"), false);
   });

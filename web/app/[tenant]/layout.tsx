@@ -48,7 +48,10 @@ import { fetchMenu, fetchProfile, logout, updatePassword, updateProfile } from "
 import { fetchPermissions } from "../../domains/menu/api";
 import { persistMenuCache, readMenuCache } from "../../domains/auth/menu-cache";
 import { MENU_KEYS } from "../../domains/menu/constants";
-import { getRoutePermissionRequirement } from "../../lib/route-permissions";
+import {
+  canAccessInfrastructureAdminRoute,
+  getRoutePermissionRequirement,
+} from "../../lib/route-permissions";
 import { getAllowedMenuItems, hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
 import { setBranding } from "../../store/brandingSlice";
@@ -881,6 +884,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       authUser.role !== "SUPER_ADMIN"
     ) {
       router.replace(`/${authUser.tenantId}/unauthorized`);
+      return;
+    }
+
+    if (!canAccessInfrastructureAdminRoute(pathname, authUser?.role)) {
+      router.replace(`/${authUser?.tenantId ?? tenantSlug}/unauthorized`);
       return;
     }
 

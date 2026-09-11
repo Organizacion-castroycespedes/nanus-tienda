@@ -52,3 +52,6 @@ Thumbs.db
 # Manus Windows installer generated executables
 backend-perifericos/windows-installer/*.exe
 backend-perifericos/windows-installer/assets/pos/*.exe
+
+# Local database credentials
+scripts/config/db.env

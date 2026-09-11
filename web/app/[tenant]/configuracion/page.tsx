@@ -2119,7 +2119,7 @@ const ConfiguracionPage = () => {
         </p>
       </header>
 
-      {(authUser?.role === "SUPER_ADMIN" || authUser?.role === "SUPER_USER") ? (
+      {authUser?.role === "SUPER_ADMIN" ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>

@@ -16,6 +16,7 @@ import {
 } from "../../../../modules/terminals/hooks/use-terminals";
 import type { TerminalResponse } from "../../../../modules/terminals/services/terminals.service";
 import { buildTerminalPeripheralsPath } from "../../../../modules/terminals/utils/terminal-links";
+import { TerminalDeviceBindingPanel } from "../../../../modules/terminals/components/TerminalDeviceBindingPanel";
 
 type TerminalFilters = {
   query: string;
@@ -67,6 +68,7 @@ const TerminalsPage = () => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedTerminal, setSelectedTerminal] = useState<TerminalResponse | null>(null);
+  const [bindingTerminal, setBindingTerminal] = useState<TerminalResponse | null>(null);
   const [form, setForm] = useState<TerminalFormState>(emptyForm);
 
   const {
@@ -279,12 +281,16 @@ const TerminalsPage = () => {
     router.push(buildTerminalPeripheralsPath(tenantSlug, terminal.id));
   };
 
-  if (!isSuperRole) {
+  const openBindingPanel = (terminal: TerminalResponse) => {
+    setBindingTerminal(terminal);
+  };
+
+  if (authUser?.role !== "SUPER_ADMIN") {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Acceso restringido</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Solo SUPER_ADMIN y SUPER_USER pueden administrar terminales.
+          Solo SUPER_ADMIN puede administrar terminales.
         </p>
       </section>
     );
@@ -446,6 +452,13 @@ const TerminalsPage = () => {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => openBindingPanel(terminal)}
+                        >
+                          Administrar dispositivo
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => handleConfigurePeripherals(terminal)}
                         >
                           Configurar periféricos
@@ -492,6 +505,13 @@ const TerminalsPage = () => {
           </div>
         </div>
       </section>
+
+      {bindingTerminal ? (
+        <TerminalDeviceBindingPanel
+          terminal={bindingTerminal}
+          onClose={() => setBindingTerminal(null)}
+        />
+      ) : null}
 
       {modalMode ? (
         <Modal title={modalMode === "create" ? "Crear terminal" : "Editar terminal"}>
