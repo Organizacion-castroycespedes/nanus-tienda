@@ -223,3 +223,47 @@ Physical acceptance remains **OPEN / pending fresh packaged QA** for the
 automatic sale ticket, sale drawer feedback, and Reporteria sale print. The
 discovery timeout, fullscreen, scanner, persistence, POS reconciliation,
 test-print, and manual drawer gates remain CLOSED and are not reopened.
+
+## P7 physical action response-timeout regression
+
+7.2Z physical QA confirmed that the real cash sale saved, the ticket printed,
+and the drawer opened, but Electron reported timeout-derived warnings. Report
+reprint also printed physically while the typed Electron call returned
+`AGENT_TIMEOUT`. The Agent endpoints complete their adapter work synchronously
+and return successful HTTP `201` responses; Electron's 2500 ms default expired
+after the side effect and before the response was observed.
+
+The fix keeps the 2500 ms default for fast Agent operations and the 15000 ms
+discovery timeout. It adds separate finite 15000 ms response windows only for
+`/printer/print-ticket` and `/cash-drawer/open`. No automatic retries were
+added, because retrying after a post-side-effect timeout could duplicate a
+ticket or drawer pulse.
+
+P7 remains **OPEN / pending 7.2AA physical retest** for successful UI feedback
+on cash-sale print/drawer and Reporteria print. Fullscreen, scanner,
+discovery, Web transport, typed printTicket IPC, Agent 2xx handling, POS
+reconciliation, persistence, test-print, and manual drawer remain CLOSED and
+are not reopened.
+
+## 7.2AA final physical peripheral handoff
+
+Candidate: `ManusTerminalSetup-Integrated-7.2AA-QA-peripheral-action-timeout-qa9.exe`.
+Installer SHA256:
+`7977879FA905AFC156EE3636B576A7D8EF4835740719C8708D671A8FCB4442C5`.
+The installed Electron EXE and `app.asar` hashes matched the fresh payload.
+
+Physical QA passed: cash sale save, automatic ticket print, cash drawer
+opening, Reporteria print, scanner, discovery, test print, manual drawer, and
+fullscreen. No cash-sale warning or `AGENT_TIMEOUT` appeared. Reporteria had
+no UI error or timeout.
+
+The final timeout model is operation-specific and finite: default 2500 ms,
+discovery 15000 ms, print-ticket 15000 ms, and cash-drawer 15000 ms. No global
+increase or automatic retry was introduced. Retries remain forbidden for
+side-effecting print and drawer operations because an ambiguous timeout could
+duplicate the physical action.
+
+**P7 authenticated local-to-cloud peripheral handoff: PASS / CLOSED.**
+Fullscreen, scanner, discovery, Web transport, typed printTicket IPC, Agent
+2xx handling, POS reconciliation, persistence, test-print, and manual drawer
+remain PASS/CLOSED.
