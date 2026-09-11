@@ -17,8 +17,10 @@ import {
 } from "../src/modules/electronic-billing/contracts/electronic-billing-integration-events";
 import {
   buildDeterministicSaleExternalReference,
+  buildElectronicBillingCustomer,
   buildElectronicBillingInvoiceCommandFromSaleEvent,
 } from "../src/modules/electronic-billing/mappers/sale-completed-for-electronic-billing.mapper";
+import { FactuCoreMapper } from "../src/modules/electronic-billing/providers/factucore";
 
 const ids = {
   tenantA: "00000000-0000-0000-0000-000000000201",
@@ -295,6 +297,35 @@ test("sale billing integration event builds deterministic invoice command", () =
   assert.equal(command.documentId, "document-1");
   assert.equal(command.lines.length, 1);
   assert.equal(command.metadata?.integrationEvent?.eventId, "event-1");
+});
+
+test("real create-path customer location fields survive the billing boundary", () => {
+  const customer = buildElectronicBillingCustomer({
+    customerType: "COMPANY",
+    identificationTypeCode: "31",
+    identificationNumber: "900123456",
+    legalName: "QA Customer",
+    addressLine1: "CL 1 2 3",
+    municipalityCode: "05001",
+    departmentCode: "05",
+    cityName: "Medellin",
+    departmentName: "Antioquia",
+    countryName: "Colombia",
+    taxLevelCode: "IVA",
+    taxSchemeId: "IVA",
+    fiscalResponsibilityCodes: ["O-13"],
+  });
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(buildInvoiceCommand({
+    customer,
+  }));
+
+  assert.equal(customer.metadata?.departmentCode, "05");
+  assert.equal(customer.metadata?.cityName, "Medellin");
+  assert.equal(request.customer.departmentCode, "05");
+  assert.equal(request.customer.cityName, "Medellin");
+  assert.equal(request.customer.departmentName, "Antioquia");
+  assert.equal(request.customer.countryName, "Colombia");
 });
 
 test("sale billing integration event keeps mixed payment snapshot in metadata", () => {

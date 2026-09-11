@@ -11,6 +11,7 @@ import type {
   IssueElectronicInvoiceCommand,
 } from "../../contracts/electronic-billing-commands";
 import type { ElectronicDocumentStatus } from "../../domain/electronic-billing.types";
+import { FactuCoreConfigurationError } from "./factucore.errors";
 import { FACTUCORE_DEFAULT_TIMEOUT_MS } from "./factucore.types";
 import type {
   FactuCoreBinaryResponse,
@@ -56,6 +57,29 @@ const normalizeNullableString = (value: unknown) => {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
 };
+
+type NormalizedFactuCorePaymentMeans = {
+  paymentMeansCode: "10";
+  paymentMeansId: "1";
+};
+
+const normalizePaymentMeans = (methodCode: string | null | undefined): NormalizedFactuCorePaymentMeans => {
+  const normalizedMethodCode = normalizeString(methodCode).toUpperCase();
+
+  if (normalizedMethodCode === "CASH" || normalizedMethodCode === "10") {
+    return {
+      paymentMeansCode: "10",
+      paymentMeansId: "1",
+    };
+  }
+
+  throw new FactuCoreConfigurationError(
+    "payment_normalization",
+    "Payment method is not mapped to the FactuCore fiscal contract",
+  );
+};
+
+const mapUnitCode = (value: string | null | undefined) => value === "UNIT" || value === "UND" || !value ? "EA" : value;
 
 const toIsoString = (value: string | Date | null | undefined) => {
   if (!value) {
@@ -144,6 +168,9 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
     phone: normalizeNullableString(customer.phone),
     addressLine1: normalizeNullableString(customer.address),
     countryCode: "CO",
+    departmentCode: normalizeNullableString(
+      customer.metadata?.departmentCode,
+    ),
     municipalityCode: normalizeNullableString(customer.municipalityCode),
     cityName: normalizeNullableString(customer.metadata?.cityName),
     departmentName: normalizeNullableString(customer.metadata?.departmentName),
@@ -156,13 +183,15 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
 
 const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => ({
   taxType: tax.type,
-  taxCode: normalizeNullableString(tax.code),
-  taxSchemeId: normalizeNullableString(tax.schemeId),
-  taxSchemeName: normalizeNullableString(tax.schemeName),
   rate: tax.rate,
   taxableBase: tax.taxableBase,
   taxAmount: tax.amount,
-  metadata: tax.metadata ?? {},
+  metadata: {
+    ...(tax.metadata ?? {}),
+    ...(tax.code ? { taxCode: tax.code } : {}),
+    ...(tax.schemeId ? { taxSchemeId: tax.schemeId } : {}),
+    ...(tax.schemeName ? { taxSchemeName: tax.schemeName } : {}),
+  },
 });
 
 const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
@@ -171,31 +200,36 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
   standardItemId: normalizeNullableString(line.standardItemId),
   standardItemSchemeId: normalizeNullableString(line.standardItemSchemeId),
   description: line.description,
-  unitCode: line.unitCode ?? "UNIT",
+  unitCode: mapUnitCode(line.unitCode),
   taxTreatment: normalizeNullableString(line.taxTreatment),
   taxSchemeId: normalizeNullableString(line.metadata?.taxSchemeId),
   taxSchemeName: normalizeNullableString(line.metadata?.taxSchemeName),
   quantity: line.quantity,
   unitPrice: line.unitPrice,
   discountAmount: line.discountAmount ?? null,
-  taxes: line.taxes?.map(mapTax),
+  taxes: line.taxTreatment === "EXCLUDED" || line.taxTreatment === "NOT_APPLICABLE"
+    ? undefined
+    : line.taxes?.map(mapTax),
   metadata: line.metadata ?? {},
 });
 
 const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
   overrides: Record<string, unknown> = {},
-): Record<string, unknown> => ({
-  externalReference: command.externalReference,
-  issueDate: toIsoString(command.issueDate) ?? new Date().toISOString(),
-  issueTime: command.issueTime ?? null,
-  paymentMeansCode: command.payment?.methodCode ?? "1",
-  paymentMeansId: command.payment?.methodCode ?? "1",
-  dueDate: toDateOnlyString(command.payment?.dueDate ?? null),
-  lines: command.lines.map(mapLine),
-  metadata: command.metadata ?? {},
-  ...overrides,
-});
+): Record<string, unknown> => {
+  const paymentMeans = normalizePaymentMeans(command.payment?.methodCode);
+
+  return {
+    externalReference: command.externalReference,
+    issueDate: toIsoString(command.issueDate) ?? new Date().toISOString(),
+    issueTime: command.issueTime ?? null,
+    ...paymentMeans,
+    dueDate: toDateOnlyString(command.payment?.dueDate ?? null),
+    lines: command.lines.map(mapLine),
+    metadata: command.metadata ?? {},
+    ...overrides,
+  };
+};
 
 export class FactuCoreMapper {
   buildRuntimeContext(context: ElectronicBillingProviderContext, credentials: { clientKey: string; clientSecret: string }): FactuCoreRuntimeContext {

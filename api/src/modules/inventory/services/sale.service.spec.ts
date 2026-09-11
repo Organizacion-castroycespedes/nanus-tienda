@@ -131,6 +131,8 @@ class FakePricingService {
 
 class FakeCreateSaleClient {
   readonly queries: RecordedQuery[] = [];
+
+  constructor(private readonly includeTaxSnapshot = false) {}
   released = false;
 
   async query<T>(text: string, params: unknown[] = []) {
@@ -178,8 +180,8 @@ class FakeCreateSaleClient {
             discount_amount: 0,
             discount_percent: 0,
             discount_total: 0,
-            tax_id: null,
-            tax_rate: null,
+            tax_id: this.includeTaxSnapshot ? ids.tax : null,
+            tax_rate: this.includeTaxSnapshot ? 0 : null,
             tax_base: 3000,
             tax_amount: 0,
             line_total: 3000,
@@ -476,9 +478,10 @@ type SaleBillingHarness = {
 
 const buildCreateSaleService = (
   previews: LinePricePreview[],
-  billing?: SaleBillingHarness
+  billing?: SaleBillingHarness,
+  includeTaxSnapshot = false,
 ) => {
-  const client = new FakeCreateSaleClient();
+  const client = new FakeCreateSaleClient(includeTaxSnapshot);
   const repository = new FakeCreateSaleRepository();
   const pricingService = new FakePricingService([...previews]);
   const createdPayments: unknown[] = [];
@@ -637,6 +640,8 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
         email: "cliente@example.com",
         address: "Calle 1",
         municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
         isFinalConsumer: false,
       }),
     },
@@ -673,12 +678,13 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
         personType: "JURIDICA" as const,
         taxResponsibilities: ["O-13"],
         taxRegime: "IVA",
+        departmentCode: "05",
       }),
       findActiveFinalConsumer: async () => null,
     },
   };
 
-  const { service, outboxEvents } = buildCreateSaleService([makePreview()], billing);
+  const { service, outboxEvents } = buildCreateSaleService([makePreview()], billing, true);
 
   await service.createSale(createSalePayload(), posContext);
 
@@ -689,7 +695,12 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
     correlationId: string;
     sale: { saleId: string; saleType?: string | null; saleStatus?: string | null };
     customer: { identificationNumber?: string | null; legalName?: string | null };
-    lines: Array<{ sourceLineId: string; description: string; sku?: string | null }>;
+    lines: Array<{
+      sourceLineId: string;
+      description: string;
+      sku?: string | null;
+      taxes: Array<{ rate: string; amount: string }>;
+    }>;
     taxes: Array<{ sourceLineId?: string | null }>;
     payments: Array<{ methodCode: string; amount?: string | null }>;
     totals: { totalAmount: string };
@@ -706,10 +717,15 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
   assert.equal(event.sale.saleType, "CASH");
   assert.equal(event.sale.saleStatus, "CONFIRMED");
   assert.equal(event.customer.identificationNumber, "900123456");
+  assert.equal((event.customer as { departmentCode?: string }).departmentCode, "05");
+  assert.equal((event.customer as { cityName?: string }).cityName, "Medellin");
+  assert.equal((event.customer as { departmentName?: string }).departmentName, "Antioquia");
   assert.equal(event.lines[0].description, "Producto factura");
   assert.equal(event.lines[0].sku, "SKU-1");
   assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
-  assert.equal(event.taxes.length, 0);
+  assert.equal(event.lines[0].taxes[0].rate, "0.00");
+  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.taxes.length, 1);
   assert.equal(event.payments[0].methodCode, "CASH");
   assert.equal(event.payments[0].amount, "360.00");
   assert.equal(event.totals.totalAmount, "3000.00");
@@ -787,6 +803,8 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
         email: "cliente@example.com",
         address: "Calle 1",
         municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
         isFinalConsumer: false,
       }),
     },
@@ -823,12 +841,13 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
         personType: "JURIDICA" as const,
         taxResponsibilities: ["O-13"],
         taxRegime: "IVA",
+        departmentCode: "05",
       }),
       findActiveFinalConsumer: async () => null,
     },
   };
 
-  const { service, outboxEvents } = buildCreateSaleService([], billing);
+  const { service, outboxEvents } = buildCreateSaleService([], billing, true);
 
   const result = await service.createSaleFromOrderDelivery(
     {
@@ -843,6 +862,9 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
   const event = outboxEvents[0] as {
     eventId: string;
     sale: { saleId: string };
+    customer: { identificationNumber?: string | null };
+    lines: Array<{ taxes: Array<{ rate: string; amount: string }> }>;
+    taxes: Array<{ sourceLineId?: string | null }>;
     totals: { totalAmount: string };
     currencyCode: string;
   };
@@ -851,6 +873,10 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
     buildSaleCompletedForElectronicBillingEventId(ids.tenant, ids.sale)
   );
   assert.equal(event.sale.saleId, ids.sale);
+  assert.equal(event.customer.identificationNumber, "900123456");
+  assert.equal(event.lines[0].taxes[0].rate, "0.00");
+  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.taxes.length, 1);
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");
   assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });

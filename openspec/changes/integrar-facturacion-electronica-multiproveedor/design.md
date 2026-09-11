@@ -165,3 +165,99 @@ electronic_documents
 **Recommendation:** `public.electronic_*` tables.
 
 **Why:** It matches the current Manus persistence model, avoids inventing a second schema convention, and keeps the first implementation aligned with the real codebase.
+
+## Canonical fiscal snapshot addendum
+
+The `SALE_COMPLETED_FOR_ELECTRONIC_BILLING` version 1 event already carries the
+provider-neutral `customer`, `lines`, `lines[].taxes`, `taxes`, `payments`, and
+`totals` fields. The compatible decision is to keep schema version 1.
+
+The API sale producer remains the owner of the fiscal snapshot. It resolves the
+customer and sale-item tax data inside the sale transaction and writes them to
+the outbox event. The billing backend consumes only that event; it does not read
+API-owned sales, customers, or tax tables.
+
+An explicit zero-rate tax classification is preserved when a sale item has a
+tax identity or rate, even when its amount is zero (for example, `Exento`). A
+genuinely tax-free item without tax identity remains tax-free. The billing
+aggregate persists the customer snapshot in document metadata and line taxes in
+`electronic_document_taxes`.
+
+For the historical QA candidate, the immutable inbox payload contains customer
+data but no line/document tax rows; the persisted document was created without
+the current customer metadata. No historical row is patched. Recommended
+recovery is a new controlled QA sale after this boundary fix.
+## Controlled QA DI and retry finding
+
+The local Nest runtime initially registered `FactuCoreClient`, but constructor metadata did not provide that token to `FactuCoreProvider`. The provider therefore held an undefined client while unit tests still passed because provider tests supplied manual mocks. The fix uses explicit `@Inject(FactuCoreClient)` and `@Inject(FactuCoreMapper)` tokens and adds a real application-context regression test.
+
+The controlled retry then exposed a separate state-machine gap: a `TECHNICAL_ERROR` created before any provider document has no provider ID, but `retryDocument()` calls the provider retry operation instead of restarting issue/create. FactuCore returned `404` for the external-reference status lookup. No provider mutation occurred. This document must not be retried again until the retry path is corrected.
+
+The corrected state machine now uses external-reference reconciliation before pre-provider retry, preserves provider identity after partial create, and permits only the known legacy pre-provider `REJECTED` classification to recover. The controlled re-execution reached FactuCore `CREATE` once and received sanitized `400` validation; XML generation, signing, and transmission were not attempted.
+
+## FactuCore create payload validation finding
+
+The authoritative FactuCore source is `D:/Profe/Factucore`. Its invoice route
+uses `CreateInvoiceDto` and global validation with `forbidNonWhitelisted`.
+Manus previously emitted nested tax keys that are not part of the FactuCore tax
+DTO, and emitted `Exento` taxes for excluded lines. The adapter now keeps those
+identifiers in metadata, omits taxes for excluded lines, and maps generic `UNIT`
+to `EA` for DIAN-compatible provider input. Billing regression coverage passes.
+
+The final controlled retry still received a sanitized HTTP 400. No further
+provider POST was attempted because the response body is not retained by the
+current client error model. Provider QA remains blocked until the remaining
+FactuCore validation field is identified without another uncontrolled retry.
+
+## Provider validation observability
+
+FactuCore validation responses use an envelope containing `statusCode`,
+`message`, `code`, and `failedChecks`. Manus now preserves the provider code
+and bounded validation `{ path, message }` details in
+`FactuCoreValidationError`, while recursively excluding credential fields and
+unnecessary payload data. HTTP 400/422 remains provider
+validation and maps to `REJECTED`; transport, runtime, and configuration
+failures remain `TECHNICAL_ERROR`.
+
+The final diagnostic retry identified `lines.0.unitCode=UND` as the remaining
+payload mismatch. FactuCore accepts `UNIT`, `NIU`, `EA`, `HOUR`, `DAY`,
+`KILOGRAM`, `LITER`, and `SERVICE`; Manus now maps `UND` to `EA`. No second
+provider retry was performed after this correction.
+
+## FactuCore DIAN readiness finding
+
+FactuCore accepts the external DTO shape, then `DocumentsService.createDocument`
+calls `DianUblReadinessService.checkDocumentCandidate` before persistence. The
+generic readiness error is raised when that result is not ready; the response
+also carries its `missing` list.
+
+An earlier readiness check incorrectly searched the FactuCore database with the
+Manus QA tenant `00000000-0000-0000-0000-000000000001`. The configured Manus
+credential's API client `60cbac48-f476-4f34-9664-6ba27df95d23` belongs to the
+FactuCore tenant `d5bacedc-c3cd-48bf-b1a9-e4327ef0ffdc`, which has the required
+issuer, DIAN tenant configuration, and invoice resolution. The actual issue was
+tenant identity mismatch, not missing FactuCore fiscal configuration.
+
+## Manus and FactuCore tenant identity alignment
+
+Manus tenant identity and FactuCore tenant identity are separate bounded-context
+identifiers. The provider configuration keeps the Manus tenant in
+`tenant_id` and stores the external FactuCore tenant in provider settings under
+`factuCoreTenantId`. This value is resolved only by the FactuCore adapter and is
+not added to the provider-neutral sale event.
+
+FactuCore external document requests resolve the effective tenant from the
+authenticated API-client actor. The request `tenantId` does not override that
+actor tenant for API-client calls. Therefore Manus does not send its tenant UUID
+as a FactuCore tenant identity. The configured API client resolves to the
+FactuCore tenant, whose issuer, DIAN configuration, invoice resolution, and
+signing configuration are ready in TEST.
+
+## Controlled E2E after tenant alignment
+
+The aligned QA configuration resolved both bounded-context tenant identities and
+the billing runtime resolved the FactuCore provider without provider-specific
+data in the sale event. The single authorized recovery was invoked once for the
+existing document. FactuCore timed out during the authenticated provider
+preflight, and its health endpoint also timed out afterward. The recovery stopped
+before invoice creation; no provider document or fiscal mutation was observed.

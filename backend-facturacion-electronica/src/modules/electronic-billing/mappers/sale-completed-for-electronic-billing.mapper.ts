@@ -97,7 +97,17 @@ export const buildElectronicBillingCustomer = (
       liabilityTypeCode:
         typeof flattened.taxLevelCode === "string" ? flattened.taxLevelCode : null,
     },
-    metadata: isRecord(flattened.metadata) ? flattened.metadata : {},
+    metadata: {
+      ...(isRecord(flattened.metadata) ? flattened.metadata : {}),
+      ...(typeof flattened.cityName === "string" ? { cityName: flattened.cityName } : {}),
+      ...(typeof flattened.departmentCode === "string"
+        ? { departmentCode: flattened.departmentCode }
+        : {}),
+      ...(typeof flattened.departmentName === "string"
+        ? { departmentName: flattened.departmentName }
+        : {}),
+      ...(typeof flattened.countryName === "string" ? { countryName: flattened.countryName } : {}),
+    },
   };
 };
 

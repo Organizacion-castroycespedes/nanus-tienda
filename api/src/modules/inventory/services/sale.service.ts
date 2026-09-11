@@ -733,10 +733,10 @@ export class SaleService {
       phone: resolvedCustomer?.phone ?? customer.phone,
       addressLine1: resolvedCustomer?.address ?? customer.address,
       countryCode: "CO",
-      departmentCode: null,
+      departmentCode: resolvedCustomer?.departmentCode ?? null,
       municipalityCode: resolvedCustomer?.municipalityCode ?? null,
-      cityName: customer.municipioId ?? null,
-      departmentName: null,
+      cityName: customer.ciudad ?? null,
+      departmentName: customer.departamento ?? null,
       countryName: "Colombia",
       taxLevelCode: resolvedCustomer?.personType ?? null,
       taxSchemeId:
@@ -805,7 +805,7 @@ export class SaleService {
           standardItemId: product.id,
           standardItemSchemeId: "MANUS",
           taxes:
-            taxAmount > 0
+            taxAmount > 0 || item.taxId !== null || item.taxRate !== null
               ? [
                   {
                     type: tax?.name ?? item.taxId ?? "TAX",

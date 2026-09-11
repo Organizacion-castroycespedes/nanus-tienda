@@ -7,6 +7,7 @@ import {
   FactuCoreTimeoutError,
   FactuCoreUnavailableError,
   FactuCoreValidationError,
+  extractFactuCoreValidationDetails,
 } from "./factucore.errors";
 import {
   FACTUCORE_DEFAULT_TIMEOUT_MS,
@@ -304,6 +305,12 @@ export class FactuCoreClient {
 
   private mapHttpError(operation: string, response: Response, responseText: string) {
     const status = response.status;
+    const payload = parseJson<unknown>(responseText, null);
+    const validationDetails = extractFactuCoreValidationDetails(payload);
+    const providerCode = this.readProviderCode(payload);
+    const validationMessage = validationDetails.length > 0
+      ? validationDetails.map((detail) => detail.path ? `${detail.path}: ${detail.message}` : detail.message).join("; ").slice(0, 2000)
+      : "FactuCore rejected the request payload";
 
     if (status === 401 || status === 403) {
       return new FactuCoreAuthenticationError(operation, status);
@@ -314,7 +321,7 @@ export class FactuCoreClient {
     }
 
     if (status === 422) {
-      return new FactuCoreValidationError(operation, status, "FactuCore rejected the request payload");
+      return new FactuCoreValidationError(operation, status, validationMessage, validationDetails, providerCode);
     }
 
     if (status === 429) {
@@ -341,9 +348,22 @@ export class FactuCoreClient {
     return new FactuCoreValidationError(
       operation,
       status,
-      bodyPreview.length > 0
-        ? `FactuCore request failed with status ${status}`
-        : `FactuCore request failed with status ${status}`,
+      validationDetails.length > 0
+        ? validationMessage
+        : bodyPreview.length > 0
+          ? `FactuCore request failed with status ${status}`
+          : `FactuCore request failed with status ${status}`,
+      validationDetails,
+      providerCode,
     );
+  }
+
+  private readProviderCode(payload: unknown) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return null;
+    }
+
+    const code = (payload as Record<string, unknown>).code;
+    return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,79}$/.test(code) ? code : null;
   }
 }

@@ -124,6 +124,36 @@ test("422 maps to validation error", async () => {
   );
 });
 
+test("FactuCore client preserves DIAN failedChecks and provider code", async () => {
+  const client = new FactuCoreClient(async () => new Response(JSON.stringify({
+    statusCode: 400,
+    code: "DIAN_READINESS_VALIDATION",
+    message: "The invoice is not ready for DIAN",
+    failedChecks: [
+      { path: "customer.cityName", reason: "Required" },
+      { path: "lines[0].taxes[0].rate", reason: "Invalid rate" },
+      { path: "credentials", reason: "clientSecret=should-not-appear" },
+    ],
+  }), { status: 400, headers: { "content-type": "application/json" } }));
+
+  await assert.rejects(
+    () => client.createInvoice(context, {} as never),
+    (error: unknown) => {
+      const typed = error as FactuCoreValidationError;
+      assert.equal(typed.providerCode, "DIAN_READINESS_VALIDATION");
+      assert.deepEqual(typed.validationDetails, [
+        { path: "customer.cityName", message: "Required" },
+        { path: "lines[0].taxes[0].rate", message: "Invalid rate" },
+        { path: "credentials", message: "clientSecret=[redacted]" },
+      ]);
+      assert.match(typed.message, /customer\.cityName: Required/);
+      assert.doesNotMatch(typed.message, /should-not-appear/);
+      assert.ok(typed.message.length <= 2000);
+      return true;
+    },
+  );
+});
+
 test("429 maps to rate limit error", async () => {
   const client = new FactuCoreClient(async () =>
     buildJsonResponse(429, { message: "rate limited" }, {

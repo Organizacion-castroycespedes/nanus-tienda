@@ -17,3 +17,17 @@ The system SHALL define a provider adapter boundary that accepts canonical docum
 - **WHEN** a second provider is introduced later
 - **THEN** the new provider can be registered without modifying `SaleService` or `ReturnService`
 
+### Requirement: Provider mappers normalize business payment values
+Provider adapters SHALL translate business payment values into the provider's fiscal contract before constructing an outbound request.
+
+#### Scenario: Manus cash payment targets FactuCore
+- **WHEN** the canonical payment method is `CASH`
+- **THEN** the FactuCore request SHALL use `paymentMeansCode = "10"`
+- **AND** the FactuCore request SHALL use `paymentMeansId = "1"`
+- **AND** the business value `CASH` SHALL NOT be passed through either fiscal field
+
+#### Scenario: Unsupported payment value
+- **WHEN** a payment value has no explicit provider mapping
+- **THEN** the provider mapper SHALL fail before constructing the provider request
+- **AND** the business value SHALL NOT be passed through as a fiscal code
+

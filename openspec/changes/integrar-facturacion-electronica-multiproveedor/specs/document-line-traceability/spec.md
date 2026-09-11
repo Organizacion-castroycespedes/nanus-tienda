@@ -15,3 +15,7 @@ The system SHALL persist each electronic document line as a historical snapshot 
 - **WHEN** a line has taxes
 - **THEN** the line snapshot keeps the tax values that applied at issuance time
 
+#### Scenario: Explicit zero-rate tax classification
+- **WHEN** a line has an explicit tax identity or rate with a zero amount
+- **THEN** the event and line snapshot preserve that classification instead of treating it as missing tax data
+

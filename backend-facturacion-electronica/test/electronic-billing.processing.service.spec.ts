@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ElectronicBillingProviderError,
   ElectronicBillingProcessingService,
   ElectronicDocumentAlreadyProcessingError,
   FakeElectronicBillingProvider,
 } from "../src/modules/electronic-billing";
+import { FactuCoreValidationError } from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
 
 const ids = {
   tenant: "00000000-0000-0000-0000-000000000501",
@@ -183,7 +185,7 @@ const buildHarness = (state = buildState()) => {
   const documentRepository = {
     findById: async () => state.document,
     claimForProcessing: async () => {
-      if (state.document.status !== "PENDING" && state.document.status !== "TECHNICAL_ERROR") {
+      if (state.document.status !== "PENDING" && state.document.status !== "TECHNICAL_ERROR" && state.document.status !== "REJECTED") {
         return null;
       }
       state.document = { ...state.document, status: "PROCESSING", last_status_check_at: new Date() };
@@ -355,4 +357,222 @@ test("processDocument throws on already processing document", async () => {
     () => harness.service.processDocument(ids.tenant, ids.document),
     ElectronicDocumentAlreadyProcessingError,
   );
+});
+
+const buildNotFoundError = () => {
+  const error = new ElectronicBillingProviderError("provider document not found", "FACTUCORE_VALIDATION") as ElectronicBillingProviderError & { httpStatus?: number };
+  error.httpStatus = 404;
+  return error;
+};
+
+test("retry restarts issuance before provider document creation", async () => {
+  const harness = buildHarness(buildState({ status: "TECHNICAL_ERROR" }));
+  harness.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+
+  const result = await harness.service.retryDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(harness.provider.received.issueInvoice.length, 1);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("retry uses provider recovery when provider document already exists", async () => {
+  const harness = buildHarness(buildState({ status: "TECHNICAL_ERROR", provider_document_id: "FAKE-EXISTING" }));
+
+  harness.provider.retryDocument = async (command) => {
+    harness.provider.received.retryDocument.push(command);
+    return {
+      documentId: command.documentId,
+      providerDocumentId: "FAKE-EXISTING",
+      providerStatus: "PROCESSING",
+      normalizedStatus: "PROCESSING",
+      providerStatusDetail: "retry requested",
+      prefix: null,
+      number: null,
+      fullNumber: null,
+      cufe: null,
+      cude: null,
+      acceptedAt: null,
+      rejectedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      metadata: {},
+    };
+  };
+
+  const result = await harness.service.retryDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 1);
+});
+
+test("retry reconciles provider document found by external reference", async () => {
+  const harness = buildHarness(buildState({ status: "TECHNICAL_ERROR" }));
+  harness.provider.getDocumentStatus = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FAKE-FOUND",
+    providerStatus: "PROCESSING",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "processing",
+    prefix: null,
+    number: null,
+    fullNumber: null,
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const result = await harness.service.retryDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.provider_document_id, "FAKE-FOUND");
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("approved pre-provider recovery can restart, but ordinary rejection cannot", async () => {
+  const recoverable = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "FACTUCORE_VALIDATION",
+    last_error_message: "FactuCore resource not found",
+  }));
+  recoverable.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+  await recoverable.service.recoverPreProviderDocument(ids.tenant, ids.document);
+  assert.equal(recoverable.provider.received.issueInvoice.length, 1);
+
+  const payloadCorrection = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "FACTUCORE_VALIDATION",
+    last_error_message: "lines.0.unitCode must be one of the following values: UNIT, NIU, EA",
+  }));
+  payloadCorrection.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+  await payloadCorrection.service.recoverPreProviderDocument(ids.tenant, ids.document);
+  assert.equal(payloadCorrection.provider.received.issueInvoice.length, 1);
+
+  const rejected = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "FACTUCORE_VALIDATION",
+    last_error_message: "FactuCore rejected fiscal rule",
+    provider_document_id: "FACTUCORE-DOCUMENT-1",
+  }));
+  await assert.rejects(() => rejected.service.retryDocument(ids.tenant, ids.document));
+  assert.equal(rejected.provider.received.issueInvoice.length, 0);
+  await assert.rejects(() => rejected.service.recoverPreProviderDocument(ids.tenant, ids.document));
+});
+
+test("retryDocument delegates correctable pre-provider rejection to issue flow", async () => {
+  const harness = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "FACTUCORE_VALIDATION",
+    last_error_message: "structured provider detail with changed wording",
+  }));
+  harness.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+
+  const result = await harness.service.retryDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(harness.provider.received.issueInvoice.length, 1);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("retryDocument reconciles found provider before any create for a correctable rejection", async () => {
+  const harness = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "FACTUCORE_VALIDATION",
+    last_error_message: "provider detail",
+  }));
+  harness.provider.getDocumentStatus = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FAKE-FOUND",
+    providerStatus: "PROCESSING",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "processing",
+    prefix: null,
+    number: null,
+    fullNumber: null,
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const result = await harness.service.retryDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.provider_document_id, "FAKE-FOUND");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("retryDocument blocks unrelated rejected errors without provider calls", async () => {
+  const harness = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "UNKNOWN_ERROR",
+    last_error_message: "wording is not a recovery signal",
+  }));
+
+  await assert.rejects(() => harness.service.retryDocument(ids.tenant, ids.document));
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+  assert.equal(harness.provider.received.getDocumentStatus.length, 0);
+});
+
+test("technical provider exception stays technical error", async () => {
+  const harness = buildHarness();
+  harness.provider.issueInvoice = async () => {
+    throw new Error("network failure");
+  };
+
+  const result = await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "TECHNICAL_ERROR");
+});
+
+test("processing persists safe FactuCore failed-check paths", async () => {
+  const harness = buildHarness();
+  harness.provider.issueInvoice = async () => {
+    throw new FactuCoreValidationError(
+      "issue_invoice",
+      400,
+      "customer.cityName: Required; customer.departmentCode: Required",
+      [
+        { path: "customer.cityName", message: "Required" },
+        { path: "customer.departmentCode", message: "Required" },
+      ],
+      "DIAN_READINESS_VALIDATION",
+    );
+  };
+
+  const result = await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "REJECTED");
+  assert.equal(result.document.last_error_code, "FACTUCORE_VALIDATION");
+  assert.match(result.document.last_error_message ?? "", /customer\.cityName: Required/);
+  assert.match(result.document.last_error_message ?? "", /customer\.departmentCode: Required/);
+  assert.doesNotMatch(result.document.last_error_message ?? "", /clientSecret|softwarePin|technicalKey/);
+});
+
+test("provider ID survives failure after create", async () => {
+  const harness = buildHarness();
+  const error = new Error("generate XML failed") as Error & { providerDocumentId?: string };
+  error.providerDocumentId = "FAKE-CREATED";
+  harness.provider.issueInvoice = async () => {
+    throw error;
+  };
+
+  const result = await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "TECHNICAL_ERROR");
+  assert.equal(result.document.provider_document_id, "FAKE-CREATED");
 });

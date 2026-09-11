@@ -99,6 +99,7 @@ const buildDb = () => {
 };
 
 const buildRepositories = (overrides: Record<string, any> = {}) => {
+  const createInputs: any[] = [];
   const state = {
     document: null as any,
     lines: [] as any[],
@@ -110,7 +111,9 @@ const buildRepositories = (overrides: Record<string, any> = {}) => {
 
   const documentRepository = {
     findByExternalReference: async () => state.document,
-    create: async (input: any) => ({
+    create: async (input: any) => {
+      createInputs.push(input);
+      return {
       id: input.id,
       tenant_id: input.tenantId,
       provider_id: input.providerId,
@@ -144,7 +147,8 @@ const buildRepositories = (overrides: Record<string, any> = {}) => {
       metadata: input.metadata ?? {},
       created_at: input.createdAt,
       updated_at: input.updatedAt,
-    }),
+      };
+    },
     findById: async () => state.document,
   };
 
@@ -167,6 +171,7 @@ const buildRepositories = (overrides: Record<string, any> = {}) => {
 
   return {
     state,
+    createInputs,
     documentRepository,
     lineRepository,
     taxRepository,
@@ -250,6 +255,7 @@ test("create invoice aggregate persists snapshot and returns fresh aggregate", a
   assert.equal(result.document.status, "PENDING");
   assert.equal(result.lines.length, 1);
   assert.equal(result.taxes.length, 1);
+  assert.equal(repos.createInputs[0].metadata.electronicBilling.customer.legalName, "Client SA");
 });
 
 test("create invoice aggregate returns existing document as idempotent", async () => {

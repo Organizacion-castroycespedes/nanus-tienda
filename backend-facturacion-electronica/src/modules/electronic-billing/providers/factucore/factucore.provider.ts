@@ -31,6 +31,7 @@ import { FactuCoreClient } from "./factucore.client";
 import { FactuCoreMapper } from "./factucore.mapper";
 import {
   FACTUCORE_DEFAULT_TIMEOUT_MS,
+  FACTUCORE_TENANT_ID_SETTING,
   type FactuCoreCredentials,
   type FactuCoreDocumentResponse,
   type FactuCoreRuntimeContext,
@@ -83,46 +84,64 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
   readonly capabilities = DEFAULT_CAPABILITIES;
 
   constructor(
+    @Inject(FactuCoreClient)
     private readonly client: FactuCoreClient,
     @Inject(ELECTRONIC_BILLING_CREDENTIAL_RESOLVER)
     private readonly credentialResolver: ElectronicBillingCredentialResolver,
-    private readonly mapper: FactuCoreMapper = new FactuCoreMapper(),
+    @Inject(FactuCoreMapper)
+    private readonly mapper: FactuCoreMapper,
   ) {}
 
   async issueInvoice(command: IssueElectronicInvoiceCommand) {
     const runtime = await this.resolveRuntimeContext("issue_invoice", command.context);
     assertElectronicBillingProviderCapability(this, "invoice");
 
-    const created = await this.client.createInvoice(runtime, this.mapper.buildInvoiceRequest(command));
-    const createdDocumentId = this.resolveProviderDocumentId(created);
-    if (!createdDocumentId) {
-      throw new FactuCoreConfigurationError("issue_invoice", "FactuCore create invoice response did not include a document id");
+    let createdDocumentId: string | null = null;
+    try {
+      const created = await this.client.createInvoice(runtime, this.mapper.buildInvoiceRequest(command));
+      createdDocumentId = this.resolveProviderDocumentId(created);
+      if (!createdDocumentId) {
+        throw new FactuCoreConfigurationError("issue_invoice", "FactuCore create invoice response did not include a document id");
+      }
+
+      const generated = await this.client.generateXml(runtime, createdDocumentId);
+      const signed = await this.client.sign(runtime, createdDocumentId);
+      const transmitted = await this.client.transmit(runtime, createdDocumentId);
+      const merged = mergeDocumentResponses(created, generated, signed, transmitted);
+
+      return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
+    } catch (error) {
+      if (createdDocumentId && error instanceof Error) {
+        (error as Error & { providerDocumentId?: string }).providerDocumentId = createdDocumentId;
+      }
+      throw error;
     }
-
-    const generated = await this.client.generateXml(runtime, createdDocumentId);
-    const signed = await this.client.sign(runtime, createdDocumentId);
-    const transmitted = await this.client.transmit(runtime, createdDocumentId);
-    const merged = mergeDocumentResponses(created, generated, signed, transmitted);
-
-    return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
   }
 
   async issueCreditNote(command: IssueElectronicCreditNoteCommand) {
     const runtime = await this.resolveRuntimeContext("issue_credit_note", command.context);
     assertElectronicBillingProviderCapability(this, "creditNote");
 
-    const created = await this.client.createCreditNote(runtime, this.mapper.buildCreditNoteRequest(command));
-    const createdDocumentId = this.resolveProviderDocumentId(created);
-    if (!createdDocumentId) {
-      throw new FactuCoreConfigurationError("issue_credit_note", "FactuCore create credit note response did not include a document id");
+    let createdDocumentId: string | null = null;
+    try {
+      const created = await this.client.createCreditNote(runtime, this.mapper.buildCreditNoteRequest(command));
+      createdDocumentId = this.resolveProviderDocumentId(created);
+      if (!createdDocumentId) {
+        throw new FactuCoreConfigurationError("issue_credit_note", "FactuCore create credit note response did not include a document id");
+      }
+
+      const generated = await this.client.generateXml(runtime, createdDocumentId);
+      const signed = await this.client.sign(runtime, createdDocumentId);
+      const transmitted = await this.client.transmit(runtime, createdDocumentId);
+      const merged = mergeDocumentResponses(created, generated, signed, transmitted);
+
+      return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
+    } catch (error) {
+      if (createdDocumentId && error instanceof Error) {
+        (error as Error & { providerDocumentId?: string }).providerDocumentId = createdDocumentId;
+      }
+      throw error;
     }
-
-    const generated = await this.client.generateXml(runtime, createdDocumentId);
-    const signed = await this.client.sign(runtime, createdDocumentId);
-    const transmitted = await this.client.transmit(runtime, createdDocumentId);
-    const merged = mergeDocumentResponses(created, generated, signed, transmitted);
-
-    return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
   }
 
   async getDocumentStatus(command: GetElectronicDocumentStatusCommand) {
@@ -180,12 +199,26 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
 
     const credentials = await this.resolveCredentials(operation, context);
     const timeoutMs = this.mapper.resolveTimeoutMs(context.settings) ?? FACTUCORE_DEFAULT_TIMEOUT_MS;
+    const factuCoreTenantId = this.resolveFactuCoreTenantId(operation, context.settings);
 
     return {
       baseUrl: context.baseUrl,
       credentials,
       timeoutMs,
+      factuCoreTenantId,
     };
+  }
+
+  private resolveFactuCoreTenantId(operation: string, settings: Record<string, unknown>) {
+    const value = settings[FACTUCORE_TENANT_ID_SETTING];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new FactuCoreConfigurationError(
+        operation,
+        `FactuCore setting ${FACTUCORE_TENANT_ID_SETTING} is required`,
+      );
+    }
+
+    return value.trim();
   }
 
   private async resolveCredentials(operation: string, context: ElectronicBillingProviderContext): Promise<FactuCoreCredentials> {

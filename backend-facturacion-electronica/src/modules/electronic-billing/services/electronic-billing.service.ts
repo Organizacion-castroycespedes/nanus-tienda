@@ -289,7 +289,10 @@ export class ElectronicBillingService {
           totalAmount: command.totals.totalAmount,
           issueDate: command.issueDate ?? null,
           issueTime: command.issueTime ?? null,
-          metadata: command.metadata ?? {},
+          metadata: {
+            ...(command.metadata ?? {}),
+            electronicBilling: buildBillingSnapshotMetadata(command),
+          },
           createdAt: new Date(),
           updatedAt: new Date(),
         },

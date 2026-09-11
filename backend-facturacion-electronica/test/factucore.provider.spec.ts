@@ -11,6 +11,7 @@ import {
   FactuCoreProvider,
   FactuCoreProviderBootstrap,
 } from "../src/modules/electronic-billing/providers/factucore";
+import { FactuCoreClient } from "../src/modules/electronic-billing/providers/factucore";
 import { FakeElectronicBillingProvider } from "../src/modules/electronic-billing/providers";
 import type {
   FactuCoreBinaryResponse,
@@ -21,6 +22,7 @@ import type {
 } from "../src/modules/electronic-billing/providers/factucore";
 import { ElectronicBillingProviderCapabilityError } from "../src/modules/electronic-billing/contracts/electronic-billing-errors";
 import { assertElectronicBillingProviderCapability } from "../src/modules/electronic-billing/contracts/electronic-billing-provider";
+import { FactuCoreValidationError } from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
 
 const makeContext = (tenantId: string): ElectronicBillingProviderContext => ({
   tenantId,
@@ -31,6 +33,7 @@ const makeContext = (tenantId: string): ElectronicBillingProviderContext => ({
   credentialReference: `cred-${tenantId}`,
   settings: {
     factucoreTimeoutMs: 25,
+    factuCoreTenantId: "factucore-tenant-a",
   },
 });
 
@@ -305,6 +308,168 @@ test("issueInvoice runs create then generate then sign then transmit", async () 
   assert.equal(result.providerStatus, "SENT");
   assert.equal(result.normalizedStatus, "PROCESSING");
   assert.equal(result.providerDocumentId, "factu-invoice-1");
+  assert.equal(client.calls[0].context.factuCoreTenantId, "factucore-tenant-a");
+});
+
+test("FactuCore provider requires an explicit external tenant mapping", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const command = makeInvoiceCommand();
+  command.context.settings = { factucoreTimeoutMs: 25 };
+
+  await assert.rejects(
+    () => provider.issueInvoice(command),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreConfigurationError");
+      assert.match((error as Error).message, /factuCoreTenantId/);
+      return true;
+    },
+  );
+  assert.equal(client.calls.length, 0);
+});
+
+const makeRuntimeContext = (tenantId: string): FactuCoreRuntimeContext => ({
+  baseUrl: "https://factucore.test",
+  credentials: { clientKey: "test-key", clientSecret: "test-secret" },
+  timeoutMs: 25,
+});
+
+test("FactuCore client preserves nested sanitized validation details", async () => {
+  const client = new FactuCoreClient(async () => new Response(JSON.stringify({
+    statusCode: 400,
+    message: [
+      { property: "lines[0]", children: [{ property: "taxes[0]", constraints: { isNumber: "rate must be a number" } }] },
+      { property: "customer", constraints: { isNotEmpty: "customer is required" } },
+    ],
+    error: "Bad Request",
+  }), { status: 400, headers: { "content-type": "application/json" } }));
+
+  await assert.rejects(
+    () => client.createInvoice(makeRuntimeContext("tenant-a"), {} as never),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreValidationError");
+      assert.equal((error as FactuCoreValidationError).httpStatus, 400);
+      assert.deepEqual((error as FactuCoreValidationError).validationDetails, [
+        { path: "lines[0].taxes[0]", message: "rate must be a number" },
+        { path: "customer", message: "customer is required" },
+      ]);
+      assert.match((error as Error).message, /lines\[0\]\.taxes\[0\]: rate must be a number/);
+      return true;
+    },
+  );
+});
+
+test("FactuCore client bounds non-JSON validation errors safely", async () => {
+  const client = new FactuCoreClient(async () => new Response("provider validation unavailable", { status: 400 }));
+
+  await assert.rejects(
+    () => client.createInvoice(makeRuntimeContext("tenant-a"), {} as never),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreValidationError");
+      assert.equal((error as FactuCoreValidationError).httpStatus, 400);
+      assert.deepEqual((error as FactuCoreValidationError).validationDetails, []);
+      assert.equal((error as Error).message, "FactuCore request failed with status 400");
+      return true;
+    },
+  );
+});
+
+test("FactuCore validation details redact secret fields", async () => {
+  const client = new FactuCoreClient(async () => new Response(JSON.stringify({
+    statusCode: 400,
+    message: [{ property: "customer", constraints: { clientSecret: "do-not-store", clientKey: "do-not-store-either", isNotEmpty: "customer invalid" } }],
+  }), { status: 400 }));
+
+  await assert.rejects(
+    () => client.createInvoice(makeRuntimeContext("tenant-a"), {} as never),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreValidationError");
+      assert.equal((error as FactuCoreValidationError).validationDetails.length, 1);
+      assert.equal((error as FactuCoreValidationError).validationDetails[0].message, "customer invalid");
+      assert.doesNotMatch((error as Error).message, /do-not-store/);
+      return true;
+    },
+  );
+});
+
+test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
+  const mapper = new FactuCoreMapper();
+  const taxed = mapper.buildInvoiceRequest(makeInvoiceCommand());
+  const taxedTax = taxed.lines[0].taxes?.[0] as Record<string, unknown>;
+
+  assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxType", "taxableBase"].sort());
+  assert.equal((taxedTax.metadata as Record<string, unknown>).taxCode, "01");
+
+  const excluded = makeInvoiceCommand();
+  excluded.lines = [{
+    ...excluded.lines[0],
+    taxTreatment: "EXCLUDED",
+    taxes: [{ type: "Exento", code: "20000000-0000-0000-0000-000000000002", rate: 0, taxableBase: 1000, amount: 0 }],
+  }];
+  const excludedRequest = mapper.buildInvoiceRequest(excluded);
+
+  assert.equal(excludedRequest.lines[0].taxes, undefined);
+  assert.equal(excludedRequest.lines[0].taxTreatment, "EXCLUDED");
+});
+
+test("mapper normalizes Manus CASH payment to FactuCore fiscal means", () => {
+  const command = makeInvoiceCommand();
+  command.payment = { ...command.payment, methodCode: "CASH" };
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+
+  assert.equal(request.paymentMeansCode, "10");
+  assert.equal(request.paymentMeansId, "1");
+  assert.notEqual(request.paymentMeansCode, "CASH");
+  assert.notEqual(request.paymentMeansId, "CASH");
+});
+
+test("mapper rejects unmapped payment methods before provider request construction", () => {
+  const command = makeInvoiceCommand();
+  command.payment = { ...command.payment, methodCode: "CRYPTO" };
+
+  assert.throws(
+    () => new FactuCoreMapper().buildInvoiceRequest(command),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreConfigurationError");
+      assert.match((error as Error).message, /payment method/i);
+      return true;
+    },
+  );
+});
+
+test("mapper translates generic and Manus UND units to FactuCore-compatible EA", () => {
+  const command = makeInvoiceCommand();
+  command.lines = [{ ...command.lines[0], unitCode: "UNIT" }];
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+
+  assert.equal(request.lines[0].unitCode, "EA");
+
+  command.lines = [{ ...command.lines[0], unitCode: "UND" }];
+  const manusRequest = new FactuCoreMapper().buildInvoiceRequest(command);
+
+  assert.equal(manusRequest.lines[0].unitCode, "EA");
+});
+
+test("issueInvoice exposes provider ID when a later step fails", async () => {
+  const client = new RecordingFactuCoreClient();
+  client.generateXml = async (context, documentId) => {
+    client.calls.push({ op: "generateXml", context, documentId });
+    throw new Error("generate XML failed");
+  };
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+
+  await assert.rejects(
+    () => provider.issueInvoice(makeInvoiceCommand()),
+    (error: unknown) => {
+      assert.equal((error as Error & { providerDocumentId?: string }).providerDocumentId, "factu-invoice-1");
+      return true;
+    },
+  );
+  assert.deepEqual(client.calls.map((call) => call.op), ["createInvoice", "generateXml"]);
 });
 
 test("issueCreditNote maps origin fields and provider line identity", async () => {

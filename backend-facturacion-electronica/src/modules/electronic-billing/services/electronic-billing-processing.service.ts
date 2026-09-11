@@ -79,6 +79,7 @@ type ClaimedAggregateDocument = ElectronicDocumentRecord & {
 const PROCESSABLE_STATUSES = new Set<ElectronicDocumentStatus>(["PENDING"]);
 const RETRYABLE_STATUSES = new Set<ElectronicDocumentStatus>(["TECHNICAL_ERROR"]);
 const TERMINAL_STATUSES = new Set<ElectronicDocumentStatus>(["ACCEPTED", "REJECTED", "CANCELLED"]);
+const RECOVERABLE_PRE_PROVIDER_ERROR_CODE = "FACTUCORE_VALIDATION";
 const DEFAULT_PROCESSING_REFRESH_AFTER_MS = 60_000;
 const DEFAULT_RETRY_BASE_DELAY_MS = 300_000;
 const DEFAULT_RETRY_BACKOFF_CAP_MS = 3_600_000;
@@ -212,7 +213,31 @@ export class ElectronicBillingProcessingService {
   }
 
   async retryDocument(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
-    return this.runProcessing("RETRY_REQUESTED", tenantId, electronicDocumentId, "retry");
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    if (!aggregate.document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+
+    return this.runProcessing(
+      "RETRY_REQUESTED",
+      tenantId,
+      electronicDocumentId,
+      "retry",
+      this.isApprovedPreProviderRecovery(aggregate.document),
+    );
+  }
+
+  async recoverPreProviderDocument(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    if (!aggregate.document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+
+    if (!this.isApprovedPreProviderRecovery(aggregate.document)) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document is not eligible for pre-provider recovery");
+    }
+
+    return this.runProcessing("RETRY_REQUESTED", tenantId, electronicDocumentId, "retry", true);
   }
 
   async refreshDocumentStatus(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
@@ -235,6 +260,7 @@ export class ElectronicBillingProcessingService {
     tenantId: string,
     electronicDocumentId: string,
     mode: "process" | "retry",
+    allowApprovedPreProviderRecovery = false,
   ): Promise<ProcessingResult> {
     const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
     if (!aggregate.document) {
@@ -264,7 +290,8 @@ export class ElectronicBillingProcessingService {
       if (aggregate.document.status === "PROCESSING") {
         throw new ElectronicDocumentAlreadyProcessingError();
       }
-      if (!RETRYABLE_STATUSES.has(aggregate.document.status)) {
+      if (!RETRYABLE_STATUSES.has(aggregate.document.status)
+        && !(allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document))) {
         throw new ElectronicDocumentNotProcessableError("Electronic document can only be retried from TECHNICAL_ERROR");
       }
     }
@@ -274,7 +301,14 @@ export class ElectronicBillingProcessingService {
       providerConfigId: aggregate.document.provider_config_id,
     });
 
-    const claimed = await this.claimDocument(tenantId, electronicDocumentId, claimEventType, aggregate.document.status, aggregate.events);
+    const claimed = await this.claimDocument(
+      tenantId,
+      electronicDocumentId,
+      claimEventType,
+      aggregate.document.status,
+      aggregate.events,
+      allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document),
+    );
     if (!claimed) {
       const current = await this.documentRepository.findById(tenantId, electronicDocumentId);
       if (!current) {
@@ -302,10 +336,9 @@ export class ElectronicBillingProcessingService {
     }
 
     try {
-      const providerResult =
-        mode === "process"
-          ? await this.issueWithProvider(resolved, aggregate)
-          : await this.retryWithProvider(resolved, aggregate);
+      const providerResult = mode === "process"
+        ? await this.issueWithProvider(resolved, aggregate)
+        : await this.retryWithProviderOrIssue(resolved, aggregate);
 
       return await this.persistProviderResult(
         tenantId,
@@ -355,6 +388,7 @@ export class ElectronicBillingProcessingService {
     eventType: ElectronicDocumentEventType,
     currentStatus: ElectronicDocumentStatus,
     events: ElectronicDocumentEventRecord[],
+    allowRecoverableRejected = false,
   ): Promise<ClaimedAggregateDocument | null> {
     const client = await this.db.getClient();
     const attempt = this.nextAttemptFromEvents(events);
@@ -364,7 +398,12 @@ export class ElectronicBillingProcessingService {
         tenantId,
         electronicDocumentId,
         {
-          allowedStatuses: currentStatus === "TECHNICAL_ERROR" ? ["TECHNICAL_ERROR"] : ["PENDING"],
+          allowedStatuses:
+            currentStatus === "TECHNICAL_ERROR"
+              ? ["TECHNICAL_ERROR"]
+              : allowRecoverableRejected
+                ? ["REJECTED"]
+                : ["PENDING"],
         },
         client,
       );
@@ -442,6 +481,25 @@ export class ElectronicBillingProcessingService {
       metadata: aggregate.document.metadata,
       reason: "electronic document retry",
     });
+  }
+
+  private async retryWithProviderOrIssue(
+    resolved: ResolvedElectronicBillingProvider,
+    aggregate: LoadedAggregate,
+  ): Promise<ElectronicBillingProviderDocumentResult | ElectronicBillingProviderStatusResult> {
+    if (aggregate.document.provider_document_id) {
+      return this.retryWithProvider(resolved, aggregate);
+    }
+
+    try {
+      return await this.getProviderStatus(resolved, aggregate);
+    } catch (error) {
+      if (!this.isProviderNotFoundError(error)) {
+        throw error;
+      }
+
+      return this.issueWithProvider(resolved, aggregate);
+    }
   }
 
   private async getProviderStatus(
@@ -779,6 +837,16 @@ export class ElectronicBillingProcessingService {
       const message = error instanceof Error ? error.message : "Unknown provider error";
       const code = this.readErrorCode(error);
       const nextStatusCheckAt = this.resolveNextStatusCheckAt(status, attempt);
+      const providerDocumentId = this.readProviderDocumentId(error);
+
+      if (providerDocumentId) {
+        await this.documentRepository.updateProviderIdentity(
+          tenantId,
+          aggregate.document.id,
+          { providerDocumentId },
+          client,
+        );
+      }
 
       await this.documentRepository.updateStatus(
         tenantId,
@@ -944,6 +1012,10 @@ export class ElectronicBillingProcessingService {
   }
 
   private classifyError(error: unknown) {
+    if (this.isProviderNotFoundError(error)) {
+      return { rejected: false, retryable: true };
+    }
+
     const code = this.readErrorCode(error).toUpperCase();
     if (isValidationProviderCode(code)) {
       return { rejected: true, retryable: false };
@@ -954,6 +1026,24 @@ export class ElectronicBillingProcessingService {
     }
 
     return { rejected: false, retryable: false };
+  }
+
+  private isProviderNotFoundError(error: unknown) {
+    return error instanceof ElectronicBillingProviderError
+      && Number((error as ElectronicBillingProviderError & { httpStatus?: number }).httpStatus) === 404;
+  }
+
+  private isApprovedPreProviderRecovery(document: ElectronicDocumentRecord) {
+    return document.status === "REJECTED"
+      && !document.provider_document_id
+      && document.last_error_code === RECOVERABLE_PRE_PROVIDER_ERROR_CODE;
+  }
+
+  private readProviderDocumentId(error: unknown) {
+    const value = error instanceof Error
+      ? (error as Error & { providerDocumentId?: unknown }).providerDocumentId
+      : null;
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }
 
   private readErrorCode(error: unknown) {

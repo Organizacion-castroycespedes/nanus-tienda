@@ -26,6 +26,7 @@ export type {
   FactuCoreRuntimeContext,
   FactuCoreStatusMapping,
 } from "./factucore.types";
+export { FACTUCORE_TENANT_ID_SETTING } from "./factucore.types";
 export { FactuCoreClient as ElectronicBillingClient } from "./factucore.client";
 export { FactuCoreClient } from "./factucore.client";
 export {

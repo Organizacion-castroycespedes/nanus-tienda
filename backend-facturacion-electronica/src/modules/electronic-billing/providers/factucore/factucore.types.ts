@@ -206,6 +206,7 @@ export type FactuCoreBinaryResponse = {
 };
 
 export const FACTUCORE_DEFAULT_TIMEOUT_MS = 15_000;
+export const FACTUCORE_TENANT_ID_SETTING = "factuCoreTenantId";
 
 export const FACTUCORE_DOCUMENT_ENDPOINT = "/api/v1/external/documents";
 
@@ -213,6 +214,7 @@ export type FactuCoreRuntimeContext = {
   baseUrl: string;
   credentials: FactuCoreCredentials;
   timeoutMs: number;
+  factuCoreTenantId?: string;
 };
 
 export type FactuCoreStatusMapping = {
