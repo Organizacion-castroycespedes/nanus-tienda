@@ -355,9 +355,63 @@ Embedded Agent: `0.1.1-qa.4`.
 ### Certificacion fisica definitiva 7.1G2
 
 `--remove-data`: PASS. Con el mismo artefacto certificado, fresh install y
-remove-data terminaron sin servicio, procesos, Program Files, ProgramData,
-registry ni tareas. TEMP residues: NONE. Health: NOT AVAILABLE. Preflight
-posterior: `CLEAN`, `fresh install`, sin warning ni rollback candidate.
+  remove-data terminaron sin servicio, procesos, Program Files, ProgramData,
+  registry ni tareas. TEMP residues: NONE. Health: NOT AVAILABLE. Preflight
+  posterior: `CLEAN`, `fresh install`, sin warning ni rollback candidate.
+
+### P8 final lifecycle certification - 7.2AB
+
+Physical P8 lifecycle is PASS / CLOSED. Same-version repair, reboot/relaunch,
+single-instance, standard uninstall with POS running, reinstall, `--remove-data`,
+fresh install, first-launch CTA, POS launch, QA `/pos` load and fullscreen all
+passed physically.
+
+The original standard-uninstall defect was `POS_PROCESS_NOT_TERMINATED` plus
+cleanup-helper failure. 7.2AB scopes processes by canonical executable path
+under the POS root, performs bounded termination before POS deletion, preserves
+ProgramData for standard uninstall, keeps `--remove-data` separate, and removes
+registry metadata after successful payload cleanup.
+
+Certified installer: `ManusTerminalSetup-Integrated-7.2AB-QA-standard-uninstall-cleanup-qa9.exe`,
+490257408 bytes, SHA256
+`6C9CCB2FBFAFC88AA4A1F546455F997D410F714A4F63BED79065271DF7123F21`.
+Embedded POS hashes: EXE
+`398A308C7BC5B131D41CB2253DD7651BFAA8D6271DBC211BE2A6BBB66E2E17BF`,
+`app.asar`
+`FDB3D2C0054AE9B118135D2FE9D717EB2D2C3505213AD0B0BEBB2ADAE0A7EAE3`.
+Agent remains `0.1.1-qa.9`; Electron was not rebuilt.
+
+After `--remove-data`, identity remained
+`64e835b5-5a09-4865-817a-55cd10931a7e`, as expected: it is a random UUID
+persisted in the LocalService `%LOCALAPPDATA%` state file, outside the
+ProgramData removal scope. OpenSpec does not require regeneration. The fresh
+config hash matched the deterministic embedded seed
+`A0898183C3E0ABF7F6F4BBEFD32A0A0B39F9506204F22DD98CA923A9518A2204`.
+
+TEMP directory `ManusTerminalSetup-uninstall-7372` was an unlocked inactive
+orphan from the earlier failed standard uninstall, not from successful 7.2AB
+remove-data; it was removed with explicit operator authorization.
+
+Non-blocking findings remain separate: installer repair UI drawer hydration
+displayed XP-58 while persisted drawer parent was POS-80, and the documented
+ProgramData-vs-LocalService identity-path alignment.
+
+### P8 standard uninstall process-lock regression
+
+Physical P8 standard uninstall with `--remove-data` **not used** removed the
+Agent service and current payload, but left `POS\\versions\\0.1.0` and the
+uninstall registry entry. The cleanup helper stopped after confirming the
+parent exit because multiple `Manus POS.exe` processes were still running
+from the configured POS root. POS removal returned early, so registry
+cleanup was never reached. ProgramData and `config\\agent.config.local.json`
+remained byte-identical (SHA256
+`A0898183C3E0ABF7F6F4BBEFD32A0A0B39F9506204F22DD98CA923A9518A2204`).
+
+P8 standard uninstall remains **OPEN / pending fixed-candidate physical
+retest**. The fix scopes process discovery by canonical executable path under
+the POS root, performs bounded termination before POS deletion, preserves
+ProgramData for standard uninstall, and removes uninstall metadata only after
+payload cleanup succeeds.
 
 Artifact: 114514432 bytes, SHA256
 `39E0A4745DA0BBAD09153CB4882B7132B22738CFC43EAD816E7E9E0668856F18`.
