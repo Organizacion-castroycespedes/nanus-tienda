@@ -794,6 +794,25 @@ func TestUninstallCleanupRequiresParentAndRoots(t *testing.T) {
 	}
 }
 
+func TestPOSProcessScopeRequiresPathContainment(t *testing.T) {
+	root := `C:\Program Files\Manus\POS`
+	if !pathWithinRoot(`C:\Program Files\Manus\POS\current\Manus POS.exe`, root) {
+		t.Fatal("POS executable under root was not accepted")
+	}
+	if !pathWithinRoot(`c:\program files\manus\pos\versions\0.1.0\Manus POS.exe`, root) {
+		t.Fatal("case-insensitive POS path was not accepted")
+	}
+	for _, outside := range []string{
+		`C:\Program Files\Manus\POS-other\Manus POS.exe`,
+		`C:\Program Files\Other\Manus POS.exe`,
+		`C:\Windows\System32\electron.exe`,
+	} {
+		if pathWithinRoot(outside, root) {
+			t.Fatalf("outside process path accepted: %s", outside)
+		}
+	}
+}
+
 func TestProgramDataAloneIsNotProductiveFootprint(t *testing.T) {
 	root := t.TempDir()
 	layout := runtimeLayout{

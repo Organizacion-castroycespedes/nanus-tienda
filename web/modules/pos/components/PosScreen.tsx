@@ -2718,7 +2718,7 @@ export const PosScreen = () => {
                     onClick={() => setProductViewMode("grid")}
                   >
                     <Grid3X3 className="h-4 w-4" />
-                    CuadrÃ­cula
+                    Cuadricula
                   </Button>
                   <Button
                     variant={productViewMode === "list" ? "primary" : "outline"}
@@ -2834,7 +2834,7 @@ export const PosScreen = () => {
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                        Scanner MOCK/SIMULATOR
+                        Scanner
                       </span>
                       <span
                         className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
@@ -2853,7 +2853,7 @@ export const PosScreen = () => {
                       </span>
                     </div>
                     <Input
-                      label="CÃ³digo scanner MOCK"
+                      label="Código scanner"
                       placeholder="SKU, codigo de barras o referencia"
                       value={scannerMockCode}
                       onChange={(event) => setScannerMockCode(event.target.value)}
@@ -3154,7 +3154,7 @@ export const PosScreen = () => {
 
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                 <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">â€¢</span>
+                                <span className="text-slate-300 dark:text-slate-600">•</span>
                                 <span className="text-slate-600 dark:text-slate-300">
                                   {productSaleTypeLabels[productSaleType]} /{" "}
                                   {product.measurementUnit ??

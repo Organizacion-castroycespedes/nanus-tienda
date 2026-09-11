@@ -676,6 +676,33 @@ func runUninstallCleanup(manifest installerManifest, args []string) error {
 	if logger != nil {
 		logger.Printf("cleanup helper start parent pid=%d", parentPID)
 		logger.Printf("cleanup parent exit confirmed")
+	}
+	if posRoot != "" {
+		if err := closeScopedPOSProcesses(posRoot, logger); err != nil {
+			if logger != nil {
+				logger.Printf("POS process cleanup failure error=%v", err)
+			}
+			return fmt.Errorf("uninstall cleanup POS processes: %w", err)
+		}
+		if logger != nil {
+			logger.Printf("POS delete start root=%s", posRoot)
+		}
+		_ = removePOSShortcuts()
+		if err := os.RemoveAll(posRoot); err != nil {
+			if logger != nil {
+				logger.Printf("POS delete failure error=%v", err)
+			}
+			return fmt.Errorf("uninstall cleanup POS: %w", err)
+		}
+		if exists(posRoot) {
+			return fmt.Errorf("uninstall cleanup POS still exists: %s", posRoot)
+		}
+		_, _ = removeEmptyManusParent(filepath.Dir(posRoot))
+		if logger != nil {
+			logger.Printf("POS delete success")
+		}
+	}
+	if logger != nil {
 		logger.Printf("PeripheralAgent delete start root=%s", installRoot)
 	}
 	if err := os.RemoveAll(installRoot); err != nil {
@@ -686,16 +713,6 @@ func runUninstallCleanup(manifest installerManifest, args []string) error {
 	}
 	if exists(installRoot) {
 		return fmt.Errorf("uninstall cleanup Program Files still exists: %s", installRoot)
-	}
-	if posRoot != "" {
-		_ = removePOSShortcuts()
-		if err := os.RemoveAll(posRoot); err != nil {
-			return fmt.Errorf("uninstall cleanup POS: %w", err)
-		}
-		if exists(posRoot) {
-			return fmt.Errorf("uninstall cleanup POS still exists: %s", posRoot)
-		}
-		_, _ = removeEmptyManusParent(filepath.Dir(posRoot))
 	}
 	if logger != nil {
 		logger.Printf("PeripheralAgent delete success")
