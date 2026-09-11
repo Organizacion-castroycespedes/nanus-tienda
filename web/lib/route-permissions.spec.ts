@@ -1,7 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MENU_KEYS } from "../domains/menu/constants";
-import { getRoutePermissionRequirement } from "./route-permissions";
+import {
+  canAccessInfrastructureAdminRoute,
+  getRoutePermissionRequirement,
+} from "./route-permissions";
+
+test("infrastructure administration routes are SUPER_ADMIN only", () => {
+  assert.equal(
+    canAccessInfrastructureAdminRoute(
+      "/00000000-0000-0000-0000-000000000001/config/terminals",
+      "SUPER_ADMIN"
+    ),
+    true
+  );
+  assert.equal(
+    canAccessInfrastructureAdminRoute(
+      "/00000000-0000-0000-0000-000000000001/config/terminals",
+      "SUPER_USER"
+    ),
+    false
+  );
+  assert.equal(
+    canAccessInfrastructureAdminRoute(
+      "/00000000-0000-0000-0000-000000000001/config/terminals",
+      "USER"
+    ),
+    false
+  );
+  assert.equal(
+    canAccessInfrastructureAdminRoute(
+      "/00000000-0000-0000-0000-000000000001/admin/peripherals",
+      "USER"
+    ),
+    false
+  );
+  assert.equal(
+    canAccessInfrastructureAdminRoute(
+      "/00000000-0000-0000-0000-000000000001/admin/peripherals",
+      "SUPER_USER"
+    ),
+    false
+  );
+});
 
 test("terminal route uses canonical CONFIG_TERMINALS permission", () => {
   assert.deepEqual(

@@ -35,7 +35,7 @@ type UpdateTerminalStatusDto = {
 
 @Controller("terminals")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER")
+@Roles("SUPER_ADMIN")
 export class TerminalsController {
   constructor(
     @Inject(TerminalsService)
