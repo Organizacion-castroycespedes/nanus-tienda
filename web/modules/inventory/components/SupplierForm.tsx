@@ -387,10 +387,17 @@ export const SupplierForm = ({
         }
 
         setCountries(items);
-        setValues((prev) => ({
-          ...prev,
-          countryId: prev.countryId || items[0]?.id || "",
-        }));
+        setValues((prev) => {
+          const selected =
+            items.find((country) => country.codigo_iso2 === prev.countryCode) ??
+            items.find((country) => country.id === prev.countryId) ??
+            items[0];
+          return {
+            ...prev,
+            countryId: selected?.id ?? "",
+            countryCode: selected?.codigo_iso2 ?? "",
+          };
+        });
       } catch {
         if (mounted) {
           setLocationError("No se pudo cargar la ubicacion.");
@@ -425,6 +432,16 @@ export const SupplierForm = ({
           return;
         }
         setDepartments(items);
+        setValues((prev) => {
+          const selected =
+            items.find((department) => department.codigo_dane === prev.departmentCode) ??
+            items.find((department) => department.id === prev.departamentoId);
+          return {
+            ...prev,
+            departamentoId: selected?.id ?? "",
+            departmentCode: selected?.codigo_dane ?? "",
+          };
+        });
       } catch {
         if (mounted) {
           setLocationError("No se pudieron cargar los departamentos.");
@@ -459,6 +476,16 @@ export const SupplierForm = ({
           return;
         }
         setMunicipalities(items);
+        setValues((prev) => {
+          const selected =
+            items.find((municipality) => municipality.codigo_dane === prev.municipalityCode) ??
+            items.find((municipality) => municipality.id === prev.municipioId);
+          return {
+            ...prev,
+            municipioId: selected?.id ?? "",
+            municipalityCode: selected?.codigo_dane ?? "",
+          };
+        });
       } catch {
         if (mounted) {
           setLocationError("No se pudieron cargar los municipios.");
@@ -476,6 +503,33 @@ export const SupplierForm = ({
       mounted = false;
     };
   }, [values.departamentoId]);
+
+  useEffect(() => {
+    const selected = countries.find(
+      (country) => country.codigo_iso2 === values.countryCode
+    );
+    if (selected && selected.id !== values.countryId) {
+      setValues((prev) => ({ ...prev, countryId: selected.id }));
+    }
+  }, [countries, values.countryCode, values.countryId]);
+
+  useEffect(() => {
+    const selected = departments.find(
+      (department) => department.codigo_dane === values.departmentCode
+    );
+    if (selected && selected.id !== values.departamentoId) {
+      setValues((prev) => ({ ...prev, departamentoId: selected.id }));
+    }
+  }, [departments, values.departmentCode, values.departamentoId]);
+
+  useEffect(() => {
+    const selected = municipalities.find(
+      (municipality) => municipality.codigo_dane === values.municipalityCode
+    );
+    if (selected && selected.id !== values.municipioId) {
+      setValues((prev) => ({ ...prev, municipioId: selected.id }));
+    }
+  }, [municipalities, values.municipalityCode, values.municipioId]);
 
   const resetLookupState = () => {
     setPreview(null);
@@ -505,6 +559,15 @@ export const SupplierForm = ({
     }
     if (!isValidEmail(values.invoiceEmail)) {
       nextErrors.invoiceEmail = "El correo fiscal no es valido.";
+    }
+    if (!values.countryCode) {
+      nextErrors.countryCode = "El pais es requerido.";
+    }
+    if (values.countryCode === "CO" && !values.departmentCode) {
+      nextErrors.departmentCode = "El departamento es requerido.";
+    }
+    if (values.countryCode === "CO" && !values.municipalityCode) {
+      nextErrors.municipalityCode = "El municipio es requerido.";
     }
 
     setErrors(nextErrors);
@@ -831,22 +894,6 @@ export const SupplierForm = ({
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Input
-            label="countryCode"
-            value={values.countryCode}
-            onChange={(event) => updateValue("countryCode", event.target.value)}
-          />
-          <Input
-            label="departmentCode"
-            value={values.departmentCode}
-            onChange={(event) => updateValue("departmentCode", event.target.value)}
-          />
-          <Input
-            label="municipalityCode"
-            value={values.municipalityCode}
-            onChange={(event) => updateValue("municipalityCode", event.target.value)}
-          />
-
           <Select
             label="personType"
             value={values.personType}
@@ -1076,7 +1123,7 @@ export const SupplierForm = ({
 
         <div className="grid gap-4 md:grid-cols-3">
           <Select
-            label="Pais"
+            label="País"
             value={values.countryId}
             disabled={countriesLoading || countries.length === 0}
             onChange={(event) => {
@@ -1085,6 +1132,11 @@ export const SupplierForm = ({
                 countryId: event.target.value,
                 departamentoId: "",
                 municipioId: "",
+                countryCode:
+                  countries.find((country) => country.id === event.target.value)?.codigo_iso2 ??
+                  "",
+                departmentCode: "",
+                municipalityCode: "",
               }));
               setErrors((prev) => ({ ...prev, submit: undefined }));
               resetLookupState();
@@ -1097,6 +1149,9 @@ export const SupplierForm = ({
               </option>
             ))}
           </Select>
+          {errors.countryCode ? (
+            <p className="text-xs text-rose-600">{errors.countryCode}</p>
+          ) : null}
 
           <Select
             label="Departamento"
@@ -1107,6 +1162,10 @@ export const SupplierForm = ({
                 ...prev,
                 departamentoId: event.target.value,
                 municipioId: "",
+                departmentCode:
+                  departments.find((department) => department.id === event.target.value)
+                    ?.codigo_dane ?? "",
+                municipalityCode: "",
               }));
               resetLookupState();
             }}
@@ -1120,12 +1179,25 @@ export const SupplierForm = ({
               </option>
             ))}
           </Select>
+          {errors.departmentCode ? (
+            <p className="text-xs text-rose-600">{errors.departmentCode}</p>
+          ) : null}
 
           <Select
             label="Municipio"
             value={values.municipioId}
             disabled={municipalitiesLoading || municipalities.length === 0}
-            onChange={(event) => updateValue("municipioId", event.target.value)}
+            onChange={(event) => {
+              const selected = municipalities.find(
+                (municipality) => municipality.id === event.target.value
+              );
+              setValues((prev) => ({
+                ...prev,
+                municipioId: event.target.value,
+                municipalityCode: selected?.codigo_dane ?? "",
+              }));
+              resetLookupState();
+            }}
           >
             <option value="">
               {municipalitiesLoading ? "Cargando..." : "Selecciona un municipio"}
@@ -1136,6 +1208,9 @@ export const SupplierForm = ({
               </option>
             ))}
           </Select>
+          {errors.municipalityCode ? (
+            <p className="text-xs text-rose-600">{errors.municipalityCode}</p>
+          ) : null}
         </div>
 
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
