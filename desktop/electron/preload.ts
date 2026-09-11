@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS, type ManusTerminalApi } from "./electron-api.js";
 
 const api: ManusTerminalApi = {
+  getRuntimeInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getRuntimeInfo),
   getShellInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getShellInfo),
   getAgentHealth: () => ipcRenderer.invoke(IPC_CHANNELS.getAgentHealth),
   listDevices: () => ipcRenderer.invoke(IPC_CHANNELS.listDevices),

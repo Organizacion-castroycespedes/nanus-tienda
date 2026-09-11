@@ -3,7 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 
 import { createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, testAgentPrint, updateAgentDevice } from "./agent-client.js";
-import { IPC_CHANNELS, type AgentHealth, type ShellInfo } from "./electron-api.js";
+import { buildRuntimeInfo, IPC_CHANNELS, type AgentHealth, type ShellInfo } from "./electron-api.js";
 import {
   DEFAULT_MANUS_WEB_URL,
   resolveElectronConfig,
@@ -94,6 +94,11 @@ const getShellInfo = (): ShellInfo => ({
 });
 
 const registerIpcHandlers = () => {
+  ipcMain.removeHandler(IPC_CHANNELS.getRuntimeInfo);
+  ipcMain.handle(IPC_CHANNELS.getRuntimeInfo, async () => buildRuntimeInfo(
+    app.getVersion(),
+    packagedShellConfig ? await getAgentHealth(packagedShellConfig) : { available: false },
+  ));
   ipcMain.removeHandler(IPC_CHANNELS.getShellInfo);
   ipcMain.removeHandler(IPC_CHANNELS.getAgentHealth);
   ipcMain.removeHandler(IPC_CHANNELS.listDevices);

@@ -5,6 +5,7 @@ import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
 import type { PeripheralsMode } from "../../shared/config/peripherals.config";
 
 export type HealthResponse = {
+  agentApiVersion: 1;
   status: "ok";
   agent: string;
   mode: PeripheralsMode;
@@ -33,6 +34,7 @@ export class HealthController {
     const runtime = this.devicesService.getHealthSnapshot();
 
     return {
+      agentApiVersion: 1,
       status: "ok",
       agent: config.agentName,
       mode: config.mode,

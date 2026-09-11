@@ -14,7 +14,7 @@ type RequestOptions = { timeoutMs?: number };
 const requestJson = (shellConfig: VersionedShellConfig, path: string, method = "GET", body?: unknown, options: RequestOptions = {}): Promise<unknown> => new Promise((resolve, reject) => {
   const target = new URL(path, shellConfig.agentLoopbackOrigin);
   const payload = body === undefined ? undefined : JSON.stringify(body);
-  const request = http.request({ hostname: target.hostname, port: Number(target.port), path: target.pathname, method, timeout: options.timeoutMs ?? DEFAULT_AGENT_REQUEST_TIMEOUT_MS, headers: { Accept: "application/json", ...(payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}) } }, (response) => {
+  const request = http.request({ hostname: target.hostname, port: Number(target.port), path: target.pathname + target.search, method, timeout: options.timeoutMs ?? DEFAULT_AGENT_REQUEST_TIMEOUT_MS, headers: { Accept: "application/json", ...(payload ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) } : {}) } }, (response) => {
     let text = ""; let bytes = 0;
     response.setEncoding("utf8");
     response.on("data", (chunk: string) => { bytes += Buffer.byteLength(chunk); if (bytes <= MAX_RESPONSE_BYTES) text += chunk; });
@@ -37,6 +37,9 @@ const normalizeHealth = (value: unknown): AgentHealth => {
   }
 
   const result: AgentHealth = { available: true, status: "ok" };
+  if (typeof source.agentApiVersion === "number" && Number.isSafeInteger(source.agentApiVersion) && source.agentApiVersion > 0) {
+    result.agentApiVersion = source.agentApiVersion;
+  }
   for (const key of ["mode", "version", "agentInstallationId", "platform"] as const) {
     if (typeof source[key] === "string") {
       result[key] = source[key];
