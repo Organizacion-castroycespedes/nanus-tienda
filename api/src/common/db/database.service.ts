@@ -24,6 +24,9 @@ export class DatabaseService {
                   ? { rejectUnauthorized: false }
                   : false,
                   });
+    this.pool.on("error", (error) => {
+      console.error("PostgreSQL pool error:", error);
+    });
   }
   async query<T = any>(text: string, params?: any[]): Promise<{ rows: T[] }> {
     const client = await this.pool.connect();

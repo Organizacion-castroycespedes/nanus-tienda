@@ -1,0 +1,135 @@
+{
+  "eventId": "11111111-1111-1111-1111-111111111111",
+  "eventType": "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+  "schemaVersion": 1,
+  "tenantId": "22222222-2222-2222-2222-222222222222",
+  "correlationId": "33333333-3333-3333-3333-333333333333",
+  "occurredAt": "2026-08-28T12:00:00.000Z",
+  "source": {
+    "type": "SALE",
+    "id": "44444444-4444-4444-4444-444444444444"
+  },
+  "payload": {
+    "sale": {
+      "saleId": "44444444-4444-4444-4444-444444444444",
+      "saleNumber": "S-2026-0001",
+      "saleType": "CASH",
+      "saleStatus": "COMPLETED",
+      "branchId": "55555555-5555-5555-5555-555555555555",
+      "terminalId": "66666666-6666-6666-6666-666666666666",
+      "posSessionId": "77777777-7777-7777-7777-777777777777",
+      "orderId": "88888888-8888-8888-8888-888888888888",
+      "completedAt": "2026-08-28T11:59:30.000Z",
+      "currencyCode": "COP"
+    },
+    "customer": {
+      "customerId": "99999999-9999-9999-9999-999999999999",
+      "customerType": "COMPANY",
+      "identificationType": "NIT",
+      "identificationTypeCode": "31",
+      "identificationNumber": "900123456",
+      "verificationDigit": "7",
+      "legalName": "Manus Store SAS",
+      "email": "billing@example.com",
+      "phone": "3001234567",
+      "addressLine1": "Calle 123 # 45-67",
+      "countryCode": "CO",
+      "departmentCode": "11",
+      "municipalityCode": "11001",
+      "cityName": "Bogota",
+      "departmentName": "Bogota D.C.",
+      "countryName": "Colombia",
+      "taxLevelCode": "O-13",
+      "taxSchemeId": "ZZ",
+      "taxSchemeName": "No aplica",
+      "fiscalResponsibilityCodes": ["R-99-PN"],
+      "metadata": {
+        "consumerFinal": false
+      }
+    },
+    "lines": [
+      {
+        "sourceLineId": "line-weighted-1",
+        "productId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "sku": "WEIGHT-001",
+        "description": "Product weighted",
+        "quantity": "1.25",
+        "unitCode": "KGM",
+        "unitPrice": "4000.00",
+        "discountAmount": "0.00",
+        "subtotalAmount": "5000.00",
+        "taxAmount": "950.00",
+        "totalAmount": "5950.00",
+        "taxTreatment": "TAXED",
+        "standardItemId": "1001",
+        "standardItemSchemeId": "999",
+        "taxes": [
+          {
+            "type": "VAT",
+            "code": "01",
+            "schemeId": "01",
+            "schemeName": "IVA",
+            "rate": "19.00",
+            "taxableBase": "5000.00",
+            "amount": "950.00"
+          }
+        ]
+      },
+      {
+        "sourceLineId": "line-excluded-1",
+        "productId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "sku": "EXCL-001",
+        "description": "Product excluded",
+        "quantity": "2.00",
+        "unitCode": "EA",
+        "unitPrice": "600.00",
+        "discountAmount": "0.00",
+        "subtotalAmount": "1200.00",
+        "taxAmount": "0.00",
+        "totalAmount": "1200.00",
+        "taxTreatment": "EXCLUDED",
+        "standardItemId": "2001",
+        "standardItemSchemeId": "999",
+        "taxes": []
+      }
+    ],
+    "taxes": [
+      {
+        "sourceLineId": "line-weighted-1",
+        "type": "VAT",
+        "code": "01",
+        "schemeId": "01",
+        "schemeName": "IVA",
+        "rate": "19.00",
+        "taxableBase": "5000.00",
+        "amount": "950.00"
+      }
+    ],
+    "payments": [
+      {
+        "methodCode": "10",
+        "amount": "5000.00",
+        "term": "CONTADO",
+        "reference": "cash"
+      },
+      {
+        "methodCode": "48",
+        "amount": "2150.00",
+        "term": "CONTADO",
+        "reference": "card"
+      }
+    ],
+    "totals": {
+      "subtotalAmount": "6200.00",
+      "discountAmount": "0.00",
+      "taxAmount": "950.00",
+      "totalAmount": "7150.00"
+    },
+    "currencyCode": "COP",
+    "metadata": {
+      "source": "sale-service",
+      "mixedPayment": true,
+      "integrationEventFixture": true
+    }
+  }
+}

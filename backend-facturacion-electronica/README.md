@@ -150,6 +150,7 @@ Ver `.env.example`.
 | `FISCAL_PROVIDER` | Provider fiscal actual. En esta fase debe ser `MOCK_LOCAL`. |
 | `API_BASE_URL` | URL local/controlada de `api/`, por ejemplo `http://localhost:4022`. |
 | `API_INTERNAL_TOKEN` | Bearer token interno para llamar `api/`. No incluir secretos reales. |
+| `credential_reference` | Referencia neutral al secreto del provider. En 8C se resuelve desde `env:<NOMBRE_ENV>`. |
 | `DIAN_WSDL_URL` | URL futura DIAN. No se usa todavia. |
 | `DIAN_ENDPOINT_URL` | Endpoint SOAP controlado. En pruebas debe ser localhost. |
 | `DIAN_ALLOW_EXTERNAL_CALLS` | Bloquea llamadas externas por defecto. Mantener `false` en local/CI. |
@@ -161,6 +162,16 @@ Ver `.env.example`.
 | `DIAN_WS_SECURITY_TIMESTAMP_TTL_MS` | Vigencia conceptual de Timestamp WS-Security en milisegundos. |
 | `DIAN_GET_ACQUIRER_FIXTURE_PATH` | Ruta local opcional de fixture SOAP/XML sintetico para `DIAN_DIRECT`. Solo pruebas/local. |
 | `LOG_LEVEL` | Nivel de logs. |
+
+## Secretos de provider
+
+La fase 8C usa resolucion por entorno.
+
+- La base de datos guarda solo `credential_reference`.
+- El valor secreto vive en la variable de entorno nombrada por la referencia.
+- La variable de entorno debe contener JSON con campos string.
+- Ejemplo: `env:FACTUCORE_TENANT_A` lee `FACTUCORE_TENANT_A`.
+- No guardar valores reales en el repo, docs, OpenSpec ni logs.
 
 ## DIAN_DIRECT fixture mode
 
