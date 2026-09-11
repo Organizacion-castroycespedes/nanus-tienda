@@ -16,4 +16,5 @@
 - [x] Implement accepted electronic invoice representation and thermal rendering.
 - [x] Guard non-accepted documents from accepted fiscal representation.
 - [x] Preserve CUFE and available provider metadata without provider calls.
+- [x] Add tenant-scoped sale electronic-document lookup and accepted-only reprint endpoint.
 - [ ] Implement automatic and on-demand processing.

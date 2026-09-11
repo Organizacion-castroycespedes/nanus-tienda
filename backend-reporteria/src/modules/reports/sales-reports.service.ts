@@ -10,6 +10,8 @@ import { PdfmakeEngine } from "../pdf/pdfmake.engine";
 import { buildPosSalesReportLayout } from "../pdf/templates/reports/pos-sales-report.template";
 import { buildPosSaleTicketTemplate } from "../pdf/templates/tickets/pos-sale-ticket.template";
 import { buildSaleCancelTicketTemplate } from "../pdf/templates/tickets/sale-cancel-ticket.template";
+import { buildElectronicInvoiceRepresentation } from "./electronic-invoice-representation";
+import { buildElectronicInvoiceRepresentationTemplate } from "../pdf/templates/tickets/electronic-invoice-representation.template";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import type {
   PosSaleCancelTicketDataset,
@@ -245,6 +247,72 @@ export class SalesReportsService {
     const ticket = await this.getSaleTicket(saleId, user);
 
     return { tenantId: actor.tenantId, ticket };
+  }
+
+  async getElectronicInvoice(saleId: string, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const document = await this.salesReportAdapter.getElectronicInvoice(actor, saleId);
+    if (!document) {
+      throw new NotFoundException("electronic document not found for sale");
+    }
+    return document;
+  }
+
+  async getElectronicInvoicePdf(saleId: string, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const ticket = await this.getSaleTicket(saleId, user);
+    const document = await this.getElectronicInvoice(saleId, user);
+    const representation = buildElectronicInvoiceRepresentation({
+      status: document.status,
+      issuer: {
+        name: ticket.header.tenantName ?? "POS",
+        identificationType: null,
+        identificationNumber: null,
+        address: ticket.header.branch,
+        country: null,
+        department: null,
+        municipality: null,
+      },
+      customer: {
+        name: ticket.header.customer,
+        identificationType: null,
+        identificationNumber: null,
+        address: null,
+        country: null,
+        department: null,
+        municipality: null,
+      },
+      invoice: {
+        prefix: null,
+        number: document.documentNumber ?? "",
+        issuedAt: ticket.header.date,
+        acceptedAt: document.acceptedAt,
+        providerStatusCode: document.providerStatusCode,
+        providerStatusMessage: document.providerStatusMessage,
+        trackingId: document.trackingId,
+        cufe: document.cufe,
+      },
+      sale: {
+        saleId: ticket.header.saleId,
+        items: ticket.items.map((item) => ({
+          productName: item.productName,
+          quantity: item.quantity,
+          unitValue: item.unitPrice,
+          discount: 0,
+          tax: 0,
+          subtotal: item.subtotal,
+          total: item.subtotal,
+        })),
+        paymentMethod: ticket.paymentBreakdown.map((payment) => payment.method).join(", "),
+        subtotal: ticket.totals.subtotal,
+        discounts: 0,
+        taxes: ticket.totals.taxes,
+        total: ticket.totals.total,
+      },
+    });
+    return this.pdfEngine.generatePdf(
+      buildElectronicInvoiceRepresentationTemplate(representation)
+    );
   }
 
   async getSaleCancelTicket(saleId: string, user?: ReportUser) {

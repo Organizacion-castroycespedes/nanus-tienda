@@ -90,6 +90,35 @@ export class SalesReportsController {
     );
   }
 
+  @Get(":saleId/electronic-invoice")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  async getElectronicInvoice(
+    @Param("saleId") saleId: string,
+    @Req() request: AuthenticatedRequest,
+    @Res() response: Response
+  ) {
+    const pdfBuffer = await this.salesReportsService.getElectronicInvoicePdf(
+      saleId,
+      request.user
+    );
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader(
+      "Content-Disposition",
+      `inline; filename="factura-electronica-${saleId}.pdf"`
+    );
+    response.setHeader("Content-Length", pdfBuffer.length);
+    response.end(pdfBuffer);
+  }
+
+  @Get(":saleId/electronic-invoice-data")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  getElectronicInvoiceData(
+    @Param("saleId") saleId: string,
+    @Req() request: AuthenticatedRequest
+  ) {
+    return this.salesReportsService.getElectronicInvoice(saleId, request.user);
+  }
+
   @Get(":saleId/cancel-ticket")
   async getSaleCancelTicket(
     @Param("saleId") saleId: string,

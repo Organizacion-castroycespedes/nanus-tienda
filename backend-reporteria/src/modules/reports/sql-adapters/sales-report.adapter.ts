@@ -7,6 +7,7 @@ import type {
   PosSalesListDataset,
   ReportActorContext,
 } from "../types/sales-report.types";
+import type { ElectronicInvoiceReadModel } from "../types/electronic-invoice-representation.types";
 
 type SalesListParams = {
   tenantId?: string;
@@ -59,6 +60,33 @@ export class SalesReportAdapter {
       [saleId]
     );
     return result.rows[0]?.exists === true;
+  }
+
+  async getElectronicInvoice(actor: ReportActorContext, saleId: string) {
+    const result = await this.databaseService.query<ElectronicInvoiceReadModel>(
+      `SELECT s.id AS "saleId", document.id AS "electronicDocumentId",
+              document.status,
+              COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) AS "documentNumber",
+              document.cufe, document.accepted_at AS "acceptedAt",
+              document.metadata #>> '{providerResponse,code}' AS "providerStatusCode",
+              document.metadata #>> '{providerResponse,message}' AS "providerStatusMessage",
+              document.metadata #>> '{providerResponse,trackingId}' AS "trackingId",
+              (document.status = 'ACCEPTED' AND COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) IS NOT NULL) AS "representationAvailable"
+         FROM sales AS s
+         INNER JOIN electronic_documents AS document
+           ON document.tenant_id = s.tenant_id
+          AND document.source_type = 'SALE'
+          AND document.source_id = s.id
+        WHERE s.id = $1 AND s.tenant_id = $2
+          AND ($3 = 'SUPER_ADMIN' OR $4 IS NULL OR s.branch_id = $4)
+        ORDER BY document.created_at DESC
+        LIMIT 2`,
+      [saleId, actor.tenantId, actor.role, actor.branchId]
+    );
+    if (result.rows.length > 1) {
+      throw new Error("sale has ambiguous electronic documents");
+    }
+    return result.rows[0] ?? null;
   }
 
   async getSaleCancelTicket(

@@ -52,6 +52,19 @@ export type ElectronicInvoiceRepresentation = {
   };
 };
 
+export type ElectronicInvoiceReadModel = {
+  saleId: string;
+  electronicDocumentId: string;
+  status: ElectronicInvoiceStatus;
+  documentNumber: string | null;
+  cufe: string | null;
+  acceptedAt: string | null;
+  providerStatusCode: string | null;
+  providerStatusMessage: string | null;
+  trackingId: string | null;
+  representationAvailable: boolean;
+};
+
 export type ElectronicInvoiceRepresentationInput = Omit<
   ElectronicInvoiceRepresentation,
   "documentType" | "status"

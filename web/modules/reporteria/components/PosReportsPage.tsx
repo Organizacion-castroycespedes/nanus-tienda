@@ -14,6 +14,7 @@ import { printReporteriaSaleTicket } from "../direct-print";
 import {
   getPosSaleTicket,
   getPosSaleTicketPrintData,
+  getElectronicInvoice,
 } from "../services/reporting.service";
 import type { PosSalesListRow } from "../types";
 import {
@@ -206,6 +207,20 @@ const PosReportsPage = () => {
             >
               <Eye className="h-4 w-4" />
               Ver ticket
+              </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setPdfConfig({
+                  title: `Factura electrónica ${row.saleId.slice(0, 8)}`,
+                  fileName: `factura-electronica-${row.saleId}.pdf`,
+                  getPdf: () => getElectronicInvoice(row.saleId),
+                })
+              }
+            >
+              <Eye className="h-4 w-4" />
+              Ver factura electrónica
             </Button>
             <Button
               variant="outline"
