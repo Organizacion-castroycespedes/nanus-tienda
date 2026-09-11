@@ -6,11 +6,13 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "npm run build && electron .",
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run clean && tsc -p tsconfig.json && npm run bundle:preload",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "bundle:preload": "esbuild preload.ts --bundle --platform=browser --format=cjs --external:electron --outfile=dist/preload.js",
     "pack": "npm run build && electron-builder --win dir --publish never",
     "pack:win": "npm run build && electron-builder --win dir --publish never",
     "dist:win": "npm run build && electron-builder --win portable --publish never",
-    "test": "npm run build && node --test dist/config.spec.js",
+    "test": "npm run build && node --test dist/*.spec.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "build": {
@@ -23,7 +25,16 @@
       "dist/main.js",
       "dist/preload.js",
       "dist/config.js",
+      "dist/agent-client.js",
+      "dist/electron-api.js",
+      "dist/window-policy.js",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/manus-shell.config.json",
+        "to": "manus-shell.config.json"
+      }
     ],
     "win": {
       "target": [
@@ -42,6 +53,7 @@
     "@types/node": "^26.0.0",
     "electron": "^42.4.1",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.12",
     "typescript": "^6.0.3"
   }
 }

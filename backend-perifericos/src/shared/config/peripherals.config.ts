@@ -1,4 +1,8 @@
-export type PeripheralsMode = "MOCK";
+import { resolveAgentVersion } from "../runtime/runtime-version";
+
+import type { NextFunction, Request, Response } from "express";
+
+export type PeripheralsMode = "MOCK" | "REAL";
 export type UsbPrintTransport = "RAW" | "GDI";
 export type AgentLogLevel = "INFO" | "WARN" | "ERROR";
 
@@ -20,8 +24,7 @@ export type PeripheralsConfig = {
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:3000",
-  "http://localhost:3029",
-  "http://localhost:5173",
+  "https://apptiendamanus.space",
 ];
 
 const STARTED_AT = Date.now();
@@ -60,9 +63,9 @@ const parseAllowedOrigins = (value: string | undefined): string[] => {
   return parsed.length > 0 ? parsed : DEFAULT_ALLOWED_ORIGINS;
 };
 
-const parseMode = (value: string | undefined): PeripheralsMode => {
+export const parseMode = (value: string | undefined): PeripheralsMode => {
   const mode = value?.trim().toUpperCase();
-  return mode === "MOCK" ? "MOCK" : "MOCK";
+  return mode === "REAL" ? "REAL" : "MOCK";
 };
 
 const parseRealAdaptersEnabled = (value: string | undefined): boolean =>
@@ -107,6 +110,24 @@ export const buildPeripheralsCorsOptions = (allowedOrigins: string[]) => ({
   preflightContinue: false,
 });
 
+export const buildPrivateNetworkAccessMiddleware = (
+  allowedOrigins: string[]
+) => (request: Request, response: Response, next: NextFunction): void => {
+  const origin = Array.isArray(request.headers.origin)
+    ? request.headers.origin[0]
+    : request.headers.origin;
+  const privateNetworkRequested =
+    request.method === "OPTIONS" &&
+    request.headers["access-control-request-private-network"] === "true";
+
+  if (privateNetworkRequested && isOriginAllowed(origin, allowedOrigins)) {
+    response.setHeader("Access-Control-Allow-Private-Network", "true");
+    response.setHeader("Vary", "Origin, Access-Control-Request-Private-Network");
+  }
+
+  next();
+};
+
 export const getPeripheralsConfig = (): PeripheralsConfig => ({
   port: parsePort(process.env.PERIPHERALS_PORT),
   bind: parseBind(process.env.PERIPHERALS_BIND),
@@ -129,6 +150,6 @@ export const getPeripheralsConfig = (): PeripheralsConfig => ({
   printerWidthChars: parsePrinterWidthChars(
     process.env.PERIPHERALS_PRINTER_WIDTH_CHARS
   ),
-  version: "0.1.0",
+  version: resolveAgentVersion(),
   startedAt: STARTED_AT,
 });

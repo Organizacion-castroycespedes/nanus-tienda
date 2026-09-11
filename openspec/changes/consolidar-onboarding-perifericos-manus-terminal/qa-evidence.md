@@ -1,0 +1,269 @@
+# QA evidence
+
+## 7.2Q focused physical QA
+
+Candidate: `ManusTerminalSetup-Integrated-7.2Q-QA-drawer-result-ux-qa9.exe`
+
+- SHA256: `F4058EB316753702B5F3DC1FC0122277079271CC293898650103C5CD844568B5`
+- Embedded Agent: `0.1.1-qa.9`
+- XP-58 physical print: PASS.
+- Cash drawer physical open through XP-58: PASS.
+- Drawer parent: `usb-printer-0eb3fdb5ae50675c`.
+- Explicit drawer certification: PASS.
+- Drawer result semantics: PASS (`PULSE_SENT`).
+- Ambiguous-result model and no automatic retry: PASS.
+- Drawer layout: PASS.
+- Bridge timeout: 17000 ms for the 15000 ms raw operation budget.
+- PRIMARY_PRINTER state was unchanged; POS-80 remained primary and XP-58
+  remained the explicit drawer parent.
+
+This closes the XP-58 print and VIA_PRINTER cash-drawer physical QA block.
+It does not complete the full P7 gate.
+
+## 7.2U XP-80 cash-drawer physical QA
+
+Candidate: `ManusTerminalSetup-Integrated-7.2U-QA-drawer-certification-state-qa9.exe`
+
+- SHA256: `0FE807BBB683FE286205D54CDD578D659F4BDA2A31C14C8C13C517769DE8E109`
+- Embedded Agent: `0.1.1-qa.9`.
+- POS-80 physical device: `usb-printer-804a1994045911fd`.
+- POS-80 queue/port: `XP-80` / `USB001`.
+- POS-80 physical print and cutter: PASS.
+- Drawer parent: POS-80 (`usb-printer-804a1994045911fd`).
+- Certification transition: `false -> true` from the live DOM checkbox snapshot.
+- Certification PATCH: `enabled=true`, HTTP 2xx.
+- Canonical GET/verification: PASS; parent, queue, certification, and primary
+  assignment were preserved without discovery.
+- Drawer bridge: request `1`, timeout `17000 ms`, duration `5983 ms`, SUCCESS.
+- UI result: `TESTING -> PULSE_SENT`; no automatic retry.
+- Cash drawer physically opened through XP-80: PASS.
+- XP-58 queue, drawer state, and transport remained preserved.
+
+This closes the XP-80 print/cutter and VIA_PRINTER cash-drawer physical QA
+block. It does not complete the full P7 gate.
+
+## Primary/default printer switching physical QA
+
+Using the certified 7.2U environment:
+
+- POS-80 -> XP-58 primary: PASS.
+- XP-58 -> POS-80 primary: PASS.
+- Exactly one `PRIMARY_PRINTER` assignment was present after each switch.
+- POS-80 -> `XP-80` and XP-58 -> `XP-58` queue associations were preserved.
+- Drawer parent stayed POS-80 and POS-80 drawer certification stayed true.
+- No discovery, reinstall, restart, print, or drawer operation was needed.
+- Queue-only XP-80 API identity remained present internally, with
+  `physicalDetected=false`/`OFFLINE`; the productive device controller filters
+  it when the associated physical POS-80 owns `XP-80`, so it is not actionable
+  in the user-facing inventory.
+
+The Installer persists primary status as the local Agent metadata field
+`manusAssignmentRole=PRIMARY_PRINTER`. `assignDevice()` clears that role from
+the previous physical printer before setting it on the selected printer. POS
+cloud synchronization reads that logical role in
+`web/domains/peripherals/local-config-sync.ts`; Windows default-printer state
+is not used.
+
+## Controlled Agent restart persistence
+
+- Agent `0.1.1-qa.9` recovered after exactly one service restart.
+- Installation ID `64e835b5-5a09-4865-817a-55cd10931a7e` was preserved.
+- Health returned `ok`, `REAL`, and `0.1.1-qa.9`; the 4050 listener returned.
+- POS-80 `XP-80` association, `PRIMARY_PRINTER`, drawer parent, and drawer
+  certification remained unchanged.
+- XP-58 `XP-58` association remained unchanged.
+- One post-restart `/devices/discover` also preserved all logical state.
+
+This closes the controlled multi-printer restart-persistence gate. Scanner
+barcode capture remains open.
+
+## Local Web physical scanner smoke
+
+- Branch: `feat/develop/despliegue-manus-terminal`.
+- Frontend source: `web/modules/pos/components/PosScreen.tsx`.
+- Local Web URL: `http://localhost:3000`.
+- Panel operativo POS: CLOSED.
+- Permanent main search: USED and focused.
+- Physical USB HID scanner: USED; no manual Enter.
+- Product: `Contra Muslo`.
+- Barcode: `353962561087655`.
+- Cart quantity: `8 -> 9` (delta `+1`).
+- Single add: PASS; duplicate add: NO.
+- Focus returned to the permanent main search: PASS.
+- `/scanner/simulate`: not used.
+- Agent scanner path: not used.
+
+This is a LOCAL WEB PHYSICAL SMOKE PASS. It does not certify the final QA
+frontend deployment or the packaged Electron physical flow.
+
+## Final packaged Electron physical scanner QA
+
+- QA frontend: `https://www.apptiendamanus.space`.
+- Packaged Manus POS Electron: PASS.
+- Panel operativo POS: CLOSED; permanent main search: VISIBLE.
+- Physical USB HID scanner: PASS; manual Enter: NO.
+- Product: `Contra Muslo`; barcode: `353962561087655`.
+- Main-view product add: PASS; single add: PASS; duplicate add: NO.
+- Panel operativo required: NO.
+- Scanner-generated terminator and focus return: PASS.
+
+This is the FINAL QA PHYSICAL PASS for the real HID scanner P7 block. It is
+distinct from the preceding local Web physical smoke PASS.
+
+## Final packaged Electron fullscreen QA
+
+- Candidate: `ManusTerminalSetup-Integrated-7.2X-QA-display-bounds-fullscreen-qa9.exe`.
+- Installer SHA256: `302ABA4DC518807A9A340A42F870E13B759291C7A935129F3CA92873993966A6`.
+- POS reconciliation: PASS; installed Electron payload hashes matched the
+  fresh embedded payload.
+- Physical fullscreen: PASS; the terminal covered the full display.
+- Taskbar visible: NO; desktop exposed: NO.
+- Frameless: PASS; fullscreen remained enforced: PASS.
+- Alt+F4: PASS; SSH HWND diagnostics were unavailable outside the interactive
+  desktop session and did not block human physical acceptance.
+
+This closes the P7 fullscreen physical QA block. Scanner remains PASS/FROZEN.
+
+## Separate configuration finding
+
+- QA WARNING: `NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL` must be a public HTTPS
+  URL in production.
+- Classification: OPEN / separate configuration finding.
+- This warning does not block the real HID scanner result and is not fixed in
+  this scanner closure.
+
+## P7 authenticated local-to-cloud handoff blocker
+
+The following gates remain CLOSED and frozen: fullscreen, real HID scanner,
+POS reconciliation, cold-boot Agent persistence, installation ID persistence,
+and primary/drawer persistence.
+
+The authenticated local-to-cloud handoff is OPEN. Physical QA showed that the
+packaged Electron Agent was healthy on `http://127.0.0.1:4050` with persisted
+devices, but the peripheral configuration UI selected the browser transport
+and rejected the local endpoint under production HTTPS validation. The fix is
+tracked separately in
+`corregir-handoff-agent-local-perifericos-electron`.
+
+The required split is explicit: packaged Electron uses the existing typed
+`window.manusTerminal` bridge and fixed Agent loopback; pure Web keeps its
+existing configured HTTPS validation. No generic IPC/HTTP proxy is allowed.
+
+## Physical QA regression: Electron runtime transport
+
+- QA Web deployment was current, and the local Agent remained healthy,
+  `REAL`, `0.1.1-qa.9`, with three persisted devices.
+- Packaged Electron `/pos` and `Configuracion -> Perifericos POS` still
+  displayed the production HTTPS warning and an offline Agent.
+- Root cause was confirmed in `web/domains/peripherals/contracts.ts`:
+  `subscribePeripheralEvents()` directly called `getPeripheralAgentConfig()`
+  and opened `new WebSocket(config.wsUrl)`, bypassing the Electron bridge.
+- Classification: **PHYSICAL QA FAIL / OPEN**. The handoff change remains
+  active until the corrected Web bundle is deployed and physically retested.
+- Fullscreen, scanner, persistence, and POS reconciliation gates remain
+  CLOSED and are not reopened by this regression.
+
+## P7 gates still open
+
+1. Installer completion to POS launch and same-configuration visibility in
+   POS, including post-install edit without reinstall.
+2. Final authenticated local-to-cloud handoff regression in the packaged
+   workflow.
+3. Final packaging/regression certification and the remaining fresh,
+   repair, uninstall, and remove-data evidence tracked by P7/P8.
+
+## Electron discovery timeout regression
+
+After a complete packaged-POS restart, the Electron bridge and local Agent
+health were healthy: the UI showed Agent `0.1.1-qa.9`, loopback
+`127.0.0.1:4050`, and technical status `ok`. Direct physical discovery at
+`POST http://127.0.0.1:4050/devices/discover` passed in 8356 ms.
+
+The same operation through `Buscar dispositivos` failed with `AGENT_TIMEOUT`.
+The source root cause was the Electron client applying its 2500 ms default
+timeout to discovery, even though Windows PnP/print-queue enumeration is a
+longer physical operation. The fix uses an operation-specific finite
+discovery timeout of 15000 ms while retaining the 2500 ms default for normal
+Agent operations. `AGENT_TIMEOUT` remains the controlled error when discovery
+exceeds its dedicated limit.
+
+This keeps the authenticated Electron handoff **OPEN / pending physical
+retest**. Fullscreen, scanner, persistence, POS reconciliation, and the
+Electron transport selection gates remain CLOSED and are not reopened.
+
+Discovery also reported a queue-only XP-58 record
+`usb-printer-45207a0cc744eb10` (`physicalDetected=false`,
+`queueInstalled=true`, `reconciliationStatus=OFFLINE`,
+`discoverySource=WINDOWS_PRINT_QUEUE`). This is an **OPEN, non-blocking QA
+observation** until the UI confirms queue-only records are hidden or
+non-actionable and cannot appear as duplicate physical printers.
+
+## P7 real peripheral actions: print-ticket and cash-sale feedback
+
+The certified POS-80 test print and manual drawer actions remain physical
+PASS. A real cash sale was saved and the drawer physically opened, but the
+sale ticket did not print and the UI reported legacy `MOCK` failures. Source
+trace showed two related defects:
+
+- Electron's typed bridge mapped `/printer/test-print` but not the existing
+  Agent `/printer/print-ticket` operation. POS sale tickets and Reporteria
+  sale reprints therefore failed in packaged Electron with the unmapped
+  operation error.
+- The Agent returns successful NestJS POST responses with HTTP `201`, while
+  the Electron JSON client accepted only `200`. The drawer pulse completed,
+  then its successful response was rejected as `AGENT_RESPONSE_INVALID`, so
+  sale feedback incorrectly warned even though the drawer opened.
+
+The fix adds one explicit `printTicket` IPC capability through preload/main
+to the fixed Agent loopback and accepts all successful `2xx` Agent responses
+without changing payload validation. POS sale feedback no longer says
+`MOCK`; it reports ticket and drawer results in real terminal language.
+
+Physical acceptance remains **OPEN / pending fresh packaged QA** for the
+automatic sale ticket, sale drawer feedback, and Reporteria sale print. The
+discovery timeout, fullscreen, scanner, persistence, POS reconciliation,
+test-print, and manual drawer gates remain CLOSED and are not reopened.
+
+## P7 physical action response-timeout regression
+
+7.2Z physical QA confirmed that the real cash sale saved, the ticket printed,
+and the drawer opened, but Electron reported timeout-derived warnings. Report
+reprint also printed physically while the typed Electron call returned
+`AGENT_TIMEOUT`. The Agent endpoints complete their adapter work synchronously
+and return successful HTTP `201` responses; Electron's 2500 ms default expired
+after the side effect and before the response was observed.
+
+The fix keeps the 2500 ms default for fast Agent operations and the 15000 ms
+discovery timeout. It adds separate finite 15000 ms response windows only for
+`/printer/print-ticket` and `/cash-drawer/open`. No automatic retries were
+added, because retrying after a post-side-effect timeout could duplicate a
+ticket or drawer pulse.
+
+P7 remains **OPEN / pending 7.2AA physical retest** for successful UI feedback
+on cash-sale print/drawer and Reporteria print. Fullscreen, scanner,
+discovery, Web transport, typed printTicket IPC, Agent 2xx handling, POS
+reconciliation, persistence, test-print, and manual drawer remain CLOSED and
+are not reopened.
+
+## 7.2AA final physical peripheral handoff
+
+Candidate: `ManusTerminalSetup-Integrated-7.2AA-QA-peripheral-action-timeout-qa9.exe`.
+Installer SHA256:
+`7977879FA905AFC156EE3636B576A7D8EF4835740719C8708D671A8FCB4442C5`.
+The installed Electron EXE and `app.asar` hashes matched the fresh payload.
+
+Physical QA passed: cash sale save, automatic ticket print, cash drawer
+opening, Reporteria print, scanner, discovery, test print, manual drawer, and
+fullscreen. No cash-sale warning or `AGENT_TIMEOUT` appeared. Reporteria had
+no UI error or timeout.
+
+The final timeout model is operation-specific and finite: default 2500 ms,
+discovery 15000 ms, print-ticket 15000 ms, and cash-drawer 15000 ms. No global
+increase or automatic retry was introduced. Retries remain forbidden for
+side-effecting print and drawer operations because an ambiguous timeout could
+duplicate the physical action.
+
+**P7 authenticated local-to-cloud peripheral handoff: PASS / CLOSED.**
+Fullscreen, scanner, discovery, Web transport, typed printTicket IPC, Agent
+2xx handling, POS reconciliation, persistence, test-print, and manual drawer
+remain PASS/CLOSED.

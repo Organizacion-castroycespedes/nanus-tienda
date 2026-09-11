@@ -106,8 +106,21 @@
 - [x] 10.17 Run build if feasible.
 - [x] 10.18 Run visual/browser validation if available.
 
+## 11. Regression Fixes
+
+- [x] 11.1 Bootstrap POS context from app providers after authentication.
+- [x] 11.2 Share POS cart open state between the global header and POS screen.
+- [x] 11.3 Keep sidebar labels visible in the mobile drawer from `/pos`.
+- [x] 11.4 Add tests for POS session context resolution.
+- [x] 11.5 Add tests for shared POS cart UI state.
+- [x] 11.6 Update OpenSpec problem statement and acceptance criteria.
+
 ## Validation Notes
 
+- QA manual PASS on 2026-09-03 for bug 1, bug 2 and bug 3:
+  - Carrito responsive: header abre carrito, floating control abre el mismo carrito, cerrar/reabrir funciona, cantidades y cobro accesibles, resize desktop/mobile sin perdida operativa.
+  - Sidebar responsive desde `/pos`: iconos + labels visibles, highlight POS correcto, navegacion y cierre correctos, comportamiento consistente con otras rutas.
+  - Contexto global POS: visible inmediatamente despues del login, sin necesidad de visitar `/pos`, estable entre rutas, correcto tras refresh, sin valores fake y sin contaminacion entre tenants.
 - OpenSpec strict validation: PASS.
 - `cd web && npm.cmd run lint`: PASS with pre-existing warnings outside POS.
 - `cd web && npx.cmd tsx --test modules/pos/components/pos-discount-display.spec.ts`: PASS.

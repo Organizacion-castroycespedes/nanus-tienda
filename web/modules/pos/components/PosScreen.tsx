@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   ChevronDown,
@@ -33,6 +33,7 @@ import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { usePosCartStore } from "../hooks/usePosCartStore";
+import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
@@ -102,7 +103,6 @@ import {
 import {
   createPosScannerHidLogger,
   describePosScannerWedgeIgnoredSequence,
-  resolvePosScannerHidStatus,
 } from "../utils/pos-scanner-hid";
 import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
@@ -161,7 +161,6 @@ type WeighableProductCandidate = ProductResponse & {
   type?: string | null;
   tipo?: string | null;
 };
-
 type PosItemTax = {
   id: string;
   name: string;
@@ -169,12 +168,11 @@ type PosItemTax = {
   amount: number;
   isIncluded: boolean;
 };
-
 const stockFilterLabels: Record<StockFilterKey, string> = {
-  all: "Todos",
   available: "Con stock",
   low: "Stock bajo",
   out: "Sin stock",
+  all: "Todos",
 };
 
 const productViewModeOptions: Array<{
@@ -509,6 +507,7 @@ export const PosScreen = () => {
     setSaleStatus,
     setSelectedCustomerId,
   } = usePosCartStore();
+  const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
   const canCreate = hasMenuAccess("POS", "WRITE");
 
@@ -522,7 +521,7 @@ export const PosScreen = () => {
   const [productCategories, setProductCategories] = useState<ProductCategoryResponse[]>([]);
   const [productSubcategories, setProductSubcategories] = useState<ProductSubcategoryResponse[]>([]);
   const [query, setQuery] = useState("");
-  const [activeStockFilter, setActiveStockFilter] = useState<StockFilterKey>("all");
+  const [activeStockFilter, setActiveStockFilter] = useState<StockFilterKey>("available");
   const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("");
   const [selectedProductSubcategoryId, setSelectedProductSubcategoryId] = useState("");
   const [productToolsOpen, setProductToolsOpen] = useState(false);
@@ -555,8 +554,6 @@ export const PosScreen = () => {
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
 
-  // New state for cart drawer visibility
-  const [isCartOpen, setIsCartOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -626,19 +623,15 @@ export const PosScreen = () => {
       height: 56,
     },
     minTop: 96,
-    onActivate: () => setIsCartOpen(true),
+    onActivate: () => setCartSheetOpen(true),
   });
 
   const focusProductSearch = useCallback(() => {
-    if (!productToolsOpen) {
-      return;
-    }
-
     window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, [productToolsOpen]);
+  }, []);
 
   useEffect(() => {
     if (!productToolsOpen || !shouldFocusProductSearchRef.current) {
@@ -656,19 +649,25 @@ export const PosScreen = () => {
   useEffect(() => {
     const checkViewport = () => {
       const mobile = window.innerWidth < 1280;
-      setIsMobile(mobile);
-      // On mobile, cart is closed by default
-      if (mobile) {
-        setIsCartOpen(false);
-      } else {
-        setIsCartOpen(true);
-      }
-    };
+    setIsMobile(mobile);
+    // On mobile, cart is closed by default
+    if (mobile) {
+      setCartSheetOpen(false);
+    } else {
+      setCartSheetOpen(true);
+    }
+  };
 
     checkViewport();
     window.addEventListener("resize", checkViewport);
     return () => window.removeEventListener("resize", checkViewport);
   }, []);
+
+  useEffect(() => {
+    if (isMobile && cart.length === 0 && cartSheetOpen) {
+      setCartSheetOpen(false);
+    }
+  }, [cart.length, cartSheetOpen, isMobile, setCartSheetOpen]);
 
   useEffect(() => {
     if (paymentModalOpen || quickFiscalCustomerOpen) {
@@ -1289,10 +1288,6 @@ export const PosScreen = () => {
       }, {}),
     [cartWithDerivedValues]
   );
-  const scannerHidStatus = resolvePosScannerHidStatus(
-    scannerHidEnabled,
-    scannerLastCode
-  );
   const scaleStatusLabel = scaleMockEnabled
     ? scaleMockStatus === "reading"
       ? "Leyendo"
@@ -1300,7 +1295,6 @@ export const PosScreen = () => {
         ? "Error"
         : "Lista"
     : "Desactivada";
-  const scannerStatusTone = scannerHidStatus.tone;
   const scaleStatusTone =
     scaleMockStatus === "error" || !scaleMockEnabled
       ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
@@ -1545,7 +1539,7 @@ export const PosScreen = () => {
       const product = findUniquePosScannerProduct(code, productsRef.current);
 
       if (!product) {
-        const message = `Código no encontrado: ${code}`;
+        const message = `CÃ³digo no encontrado: ${code}`;
         scannerHidLogger.productNotFound(code);
         setScannerLastResult(message);
         showToast(message, "warning");
@@ -1735,7 +1729,7 @@ export const PosScreen = () => {
           return;
         }
 
-        const message = `Peso leído: ${reading}`;
+        const message = `Peso leÃ­do: ${reading}`;
         setScaleMockStatus("ready");
         setScaleLastResult(message);
         void playProductAddedSound();
@@ -1963,9 +1957,9 @@ export const PosScreen = () => {
           setProductToolsOpen(false);
           return;
         }
-        if (isCartOpen && isMobile) {
+        if (cartSheetOpen && isMobile) {
           event.preventDefault();
-          setIsCartOpen(false);
+          setCartSheetOpen(false);
           return;
         }
         if (query.trim()) {
@@ -2001,7 +1995,7 @@ export const PosScreen = () => {
   }, [
     canCharge,
     focusProductSearch,
-    isCartOpen,
+    cartSheetOpen,
     isMobile,
     openChargeModal,
     openProductTools,
@@ -2291,24 +2285,22 @@ export const PosScreen = () => {
   // Cart Panel Component (internal)
   const CartPanel = () => (
     <div className="flex h-full flex-col">
-      {/* Cart Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
             Carrito
           </p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">
+          <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
             Venta actual
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="rounded-full border border-slate-200 px-3 py-1 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">
+          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
             {cartWithDerivedValues.length} items
           </div>
-          {/* Close button - visible on mobile or when cart can be collapsed */}
           <button
             type="button"
-            onClick={() => setIsCartOpen(false)}
+            onClick={() => setCartSheetOpen(false)}
             className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden"
             aria-label="Cerrar carrito"
           >
@@ -2317,225 +2309,249 @@ export const PosScreen = () => {
         </div>
       </div>
 
-      {/* Cart Content */}
-      <div className="mt-4 flex flex-1 flex-col overflow-hidden">
+      <div className="mt-3 flex flex-1 min-h-0 flex-col overflow-hidden">
         {cartWithDerivedValues.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-            <ShoppingCart className="mb-3 h-8 w-8" />
-            <p className="font-semibold text-slate-700 dark:text-slate-100">
-              No hay productos en la venta actual.
-            </p>
-            <p className="mt-2 text-sm">
-              Busca, escanea o selecciona un producto para iniciar.
-            </p>
+          <div className="flex flex-1 flex-col justify-between gap-4">
+            <div className="flex min-h-[220px] flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+              <ShoppingCart className="h-8 w-8 text-slate-300 dark:text-slate-500" />
+              <p className="mt-3 text-base font-semibold text-slate-700 dark:text-slate-100">
+                Tu carrito esta vacio
+              </p>
+              <p className="mt-2 max-w-[18rem] text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                Agrega productos para iniciar una venta.
+              </p>
+            </div>
+
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>Subtotal</span>
+                <span>{formatCurrency(0)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>Impuestos</span>
+                <span>{formatCurrency(0)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>Descuentos</span>
+                <span>{formatCurrency(0)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
+                <span>TOTAL</span>
+                <span>{formatCurrency(0)}</span>
+              </div>
+            </div>
+
+            <Button
+              className="min-h-12 w-full rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
+              size="lg"
+              onClick={openChargeModal}
+              disabled={!canCharge}
+            >
+              <Wallet className="h-5 w-5" />
+              COBRAR {formatCurrency(0)}
+            </Button>
           </div>
         ) : (
           <>
-            {/* Cart Items */}
-            <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-              {cartWithDerivedValues.map((item) => {
-                const product = productById[item.productId];
-                const isCartItemWeighable = Boolean(
-                  product && isWeighableProduct(product)
-                );
-                const discountDisplay = buildPosCartDiscountDisplay({
-                  baseUnitPrice: item.baseUnitPrice,
-                  finalUnitPrice: item.finalUnitPrice,
-                  unitPrice: item.unitPrice,
-                  quantity: item.quantity,
-                  discountAmount: item.discountAmount,
-                  discountTotal: item.discountTotal,
-                  discountPercent: item.discountPercent,
-                  isWeighable: isCartItemWeighable,
-                });
-                const discountPercentLabel =
-                  discountDisplay?.percent !== null && discountDisplay?.percent !== undefined
-                    ? ` (${discountDisplay.percent}%)`
-                    : "";
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="space-y-0 divide-y divide-slate-200/80 dark:divide-slate-800">
+                {cartWithDerivedValues.map((item) => {
+                  const product = productById[item.productId];
+                  const isCartItemWeighable = Boolean(product && isWeighableProduct(product));
+                  const productSaleType = product ? getProductSaleType(product) : "UNIT";
+                  const unitLabel = product?.measurementUnit ?? (productSaleType === "WEIGHT" ? "KG" : "UND");
+                  const quantityIsPlural = Number(item.quantity) > 1;
+                  const discountDisplay = buildPosCartDiscountDisplay({
+                    baseUnitPrice: item.baseUnitPrice,
+                    finalUnitPrice: item.finalUnitPrice,
+                    unitPrice: item.unitPrice,
+                    quantity: item.quantity,
+                    discountAmount: item.discountAmount,
+                    discountTotal: item.discountTotal,
+                    discountPercent: item.discountPercent,
+                    isWeighable: isCartItemWeighable,
+                  });
+                  const effectiveImage = product
+                    ? resolveEffectivePosProductImage(product, {
+                        categoryById: productCategoryById,
+                        subcategoryById: productSubcategoryById,
+                      })
+                    : null;
 
-                return (
-                  <article
-                    key={item.productId}
-                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80"
-                  >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-950 dark:text-white">
-                        {item.name}
-                      </h3>
-                      <p className="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {item.sku}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeCartItem(item.productId)}
-                      className="rounded-full p-2 text-slate-400 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-800"
-                      aria-label={`Eliminar ${item.name}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  return (
+                    <article key={item.productId} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex items-start gap-3">
+                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                          <InventoryImagePreview
+                            imageUrl={effectiveImage?.imageUrl ?? null}
+                            altText={effectiveImage?.altText ?? item.name}
+                            lazy
+                            className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-1.5 text-[10px] font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
+                            fallback={<span>{buildImageLabel(item.name)}</span>}
+                          />
+                        </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-center">
-                    <div className="inline-flex items-center rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                      <button
-                        type="button"
-                        onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                        className="rounded-l-full px-3 py-2 text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
-                      >
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <input
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateQuantity(
-                            item.productId,
-                            parseQuantityInput(event.target.value)
-                          )
-                        }
-                        className="w-14 border-x border-slate-200 bg-transparent px-2 py-2 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                        inputMode={isCartItemWeighable ? "decimal" : "numeric"}
-                        aria-label={`Cantidad de ${item.name}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                        className="rounded-r-full px-3 py-2 text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    <div className="text-sm text-slate-600 dark:text-slate-300">
-                      {item.discountTotal > 0 ? (
-                        <p className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs line-through">
-                            {formatCurrency(item.baseUnitPrice ?? item.unitPrice)}
-                          </span>
-                          <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-                            {formatCurrency(item.unitPrice)} c/u
-                          </span>
-                        </p>
-                      ) : (
-                        <p>{formatCurrency(item.unitPrice)} c/u</p>
-                      )}
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Stock disponible: {item.stock}
-                      </p>
-                      {isCartItemWeighable && product ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleReadScaleForProduct(product)}
-                          disabled={!scaleMockEnabled || scaleReading}
-                          className="mt-2 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
-                        >
-                          {scaleReading ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Scale className="h-3.5 w-3.5" />
-                          )}
-                          Leer balanza MOCK
-                        </button>
-                      ) : null}
-                      {item.pricingStatus === "PENDING" ? (
-                        <p className="mt-2 flex items-center gap-2 text-xs text-sky-700 dark:text-sky-300">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Calculando precio/promocion...
-                        </p>
-                      ) : null}
-                      {item.pricingStatus === "ERROR" ? (
-                        <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
-                          {item.pricingError}
-                        </p>
-                      ) : null}
-                      {item.appliedPromotionName ? (
-                        <p className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
-                          {item.appliedPromotionName}
-                        </p>
-                      ) : null}
-                      {discountDisplay ? (
-                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                          {discountDisplay.showLineTotal ? (
-                            <>
-                              Descuento {formatCurrency(discountDisplay.unitDiscount)} c/u{" "}
-                              <span className="font-semibold">
-                                Ahorro total{" "}
-                                {formatCurrency(discountDisplay.totalDiscount)}
-                                {discountPercentLabel}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              Descuento {formatCurrency(discountDisplay.unitDiscount)}
-                              {discountPercentLabel}
-                            </>
-                          )}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Total linea
-                      </p>
-                      <p className="mt-1 text-base font-semibold text-slate-950 dark:text-white">
-                        {formatCurrency(item.subtotal)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Tax Breakdown */}
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/80">
-                    <button
-                      type="button"
-                      onClick={() => toggleTaxBreakdown(item.productId)}
-                      className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100"
-                    >
-                      <span>Impuestos del item</span>
-                      <span className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                        {formatCurrency(item.taxTotal)}
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform duration-200 ${
-                            expandedTaxItems[item.productId] ? "rotate-180" : ""
-                          }`}
-                        />
-                      </span>
-                    </button>
-
-                    {expandedTaxItems[item.productId] ? (
-                      <div className="mt-3 space-y-2 text-sm">
-                        {item.taxes.length === 0 ? (
-                          <p className="text-slate-500 dark:text-slate-400">
-                            Este producto no tiene impuestos asociados.
-                          </p>
-                        ) : (
-                          item.taxes.map((tax) => (
-                            <div
-                              key={tax.id}
-                              className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="font-medium">{tax.name}</span>
-                                <span>{formatCurrency(tax.amount)}</span>
-                              </div>
-                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                {round(tax.rate * 100)}%{" "}
-                                {tax.isIncluded ? "- incluido en el precio" : "- adicional"}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-slate-950 dark:text-white">
+                                {item.name}
+                              </h3>
+                              <p className="mt-0.5 truncate text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                {item.sku} {product ? `• ${productSaleTypeLabels[productSaleType]} / ${unitLabel}` : ""}
                               </p>
                             </div>
-                          ))
-                        )}
+
+                            <button
+                              type="button"
+                              onClick={() => removeCartItem(item.productId)}
+                              className="rounded-full p-1.5 text-slate-400 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-800"
+                              aria-label={`Eliminar ${item.name}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </button>
+                              <input
+                                value={item.quantity}
+                                onChange={(event) =>
+                                  updateQuantity(
+                                    item.productId,
+                                    parseQuantityInput(event.target.value)
+                                  )
+                                }
+                                className="w-12 border-x border-slate-200 bg-transparent px-1 py-1.5 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
+                                inputMode={isCartItemWeighable ? "decimal" : "numeric"}
+                                aria-label={`Cantidad de ${item.name}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            </div>
+
+                            {isCartItemWeighable && product ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleReadScaleForProduct(product)}
+                                disabled={!scaleMockEnabled || scaleReading}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
+                              >
+                                {scaleReading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Scale className="h-3.5 w-3.5" />
+                                )}
+                                Leer balanza
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
+                            {item.pricingStatus === "PENDING" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-semibold text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Calculando precio
+                              </span>
+                            ) : null}
+
+                            {item.pricingStatus === "ERROR" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                                Error: {item.pricingError}
+                              </span>
+                            ) : null}
+
+                            {item.appliedPromotionName ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+                                Promo: {item.appliedPromotionName}
+                              </span>
+                            ) : null}
+
+                            {discountDisplay ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                                Ahorro {formatCurrency(discountDisplay.totalDiscount)}
+                              </span>
+                            ) : null}
+
+                            <span className="text-slate-500 dark:text-slate-400">Stock {item.stock}</span>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => toggleTaxBreakdown(item.productId)}
+                              className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
+                            >
+                              <span>Impuestos</span>
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {formatCurrency(item.taxTotal)}
+                              </span>
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                                  expandedTaxItems[item.productId] ? "rotate-180" : ""
+                                }`}
+                              />
+                            </button>
+
+                            <div className="shrink-0 text-right">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                                {quantityIsPlural ? "Total" : "Precio"}
+                              </p>
+                              <p className="mt-0.5 text-base font-semibold text-slate-950 dark:text-white">
+                                {formatCurrency(item.subtotal)}
+                              </p>
+                              {quantityIsPlural ? (
+                                <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                  {formatCurrency(item.unitPrice)} c/u
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {expandedTaxItems[item.productId] ? (
+                            <div className="mt-2 space-y-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-800 dark:bg-slate-950/80">
+                              {item.taxes.length === 0 ? (
+                                <p className="text-slate-500 dark:text-slate-400">
+                                  Este producto no tiene impuestos asociados.
+                                </p>
+                              ) : (
+                                item.taxes.map((tax) => (
+                                  <div
+                                    key={tax.id}
+                                    className="flex items-center justify-between gap-3"
+                                  >
+                                    <span className="truncate text-slate-700 dark:text-slate-200">
+                                      {tax.name}
+                                    </span>
+                                    <span className="shrink-0 text-slate-600 dark:text-slate-300">
+                                      {formatCurrency(tax.amount)}
+                                    </span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
-                  </article>
-                );
-              })}
+                    </article>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Summary */}
-            <div className="mt-4 space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/80">
+            <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/80">
               <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
                 <span>Subtotal</span>
                 <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
@@ -2544,39 +2560,32 @@ export const PosScreen = () => {
                 <span>Impuestos</span>
                 <span>{formatCurrency(summary.taxesTotal)}</span>
               </div>
-              {summary.discountTotal > 0 ? (
-                <div className="flex items-center justify-between text-sm text-emerald-700 dark:text-emerald-300">
-                  <span>Descuentos aplicados</span>
-                  <span>{formatCurrency(summary.discountTotal)}</span>
-                </div>
-              ) : null}
-              {/* Inline tax summary */}
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Incluye impuestos: {formatCurrency(summary.taxesTotal)}
-              </p>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-lg font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
-                <span>Total final</span>
+              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                <span>Descuentos</span>
+                <span>{formatCurrency(summary.discountTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
+                <span>TOTAL</span>
                 <span>{formatCurrency(summary.total)}</span>
               </div>
             </div>
 
             {hasPricingPending ? (
-              <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+              <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
                 Calculando precio/promocion antes de cobrar.
               </div>
             ) : null}
 
             {pricingErrorItem ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
                 {pricingErrorItem.pricingError ??
                   `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
               </div>
             ) : null}
 
-            {/* Charge Button */}
-            <div className="mt-4">
+            <div className="mt-3">
               <Button
-                className="min-h-14 w-full rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
+                className="min-h-12 w-full rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
                 size="lg"
                 onClick={openChargeModal}
                 disabled={!canCharge}
@@ -2631,32 +2640,12 @@ export const PosScreen = () => {
         {productToolsOpen ? (
           <Modal
             title="Panel operativo POS"
-            description="Buscar productos, ajustar filtros y cambiar cliente sin reservar espacio permanente."
+            description="Ajustar filtros y cambiar cliente sin reservar espacio permanente."
             size="xl"
             onClose={() => setProductToolsOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
           >
             <div className="space-y-5">
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <Search className="h-4 w-4" />
-                  Buscar productos
-                </div>
-                <Input
-                  ref={searchInputRef}
-                  label="Buscador POS principal"
-                  placeholder="Buscar productos por nombre, SKU o codigo"
-                  autoFocus
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Usa nombre, SKU o codigo. Escape limpia o cierra el panel.
-                </p>
-              </section>
-
               <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -2729,7 +2718,7 @@ export const PosScreen = () => {
                     onClick={() => setProductViewMode("grid")}
                   >
                     <Grid3X3 className="h-4 w-4" />
-                    Cuadrícula
+                    Cuadricula
                   </Button>
                   <Button
                     variant={productViewMode === "list" ? "primary" : "outline"}
@@ -2742,7 +2731,7 @@ export const PosScreen = () => {
                 </div>
                 {hasSelectedCategoryWithoutSubcategories ? (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {selectedProductCategory?.name ?? "Categoría"} sin subcategorías.
+                    {selectedProductCategory?.name ?? "CategorÃ­a"} sin subcategorÃ­as.
                   </p>
                 ) : null}
               </section>
@@ -2793,9 +2782,7 @@ export const PosScreen = () => {
                     <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
                       {activeProductFilterLabels.length} filtro(s) activos
                     </span>
-                  ) : (
-                    <span>Sin filtros activos</span>
-                  )}
+                  ) : null}
                 </div>
               </section>
             </div>
@@ -2820,14 +2807,34 @@ export const PosScreen = () => {
         <div className="min-w-0">
           <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
             <div className="flex flex-col gap-4">
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <Search className="h-4 w-4" />
+                  Buscar productos
+                </div>
+                <Input
+                  ref={searchInputRef}
+                  label="Buscador POS principal"
+                  placeholder="Buscar productos por nombre, SKU o codigo"
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Usa nombre, SKU o codigo. Escape limpia la busqueda.
+                </p>
+              </section>
+
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
               <>
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        Scanner MOCK/SIMULATOR
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                        Scanner
                       </span>
                       <span
                         className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
@@ -2846,7 +2853,7 @@ export const PosScreen = () => {
                       </span>
                     </div>
                     <Input
-                      label="Código scanner MOCK"
+                      label="Código scanner"
                       placeholder="SKU, codigo de barras o referencia"
                       value={scannerMockCode}
                       onChange={(event) => setScannerMockCode(event.target.value)}
@@ -2936,19 +2943,6 @@ export const PosScreen = () => {
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/70 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scannerStatusTone}`}
-                  >
-                    {scannerHidStatus.label}
-                    {scannerHidStatus.detail ? (
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-                        {scannerHidStatus.detail}
-                      </span>
-                    ) : null}
-                    {scannerHidEnabled ? (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    ) : null}
-                  </span>
-                  <span
                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
                   >
                     Balanza {scaleStatusLabel}
@@ -2956,54 +2950,41 @@ export const PosScreen = () => {
                       <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     ) : null}
                   </span>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                    Sync {appVersion || "sin version"}
-                  </span>
                 </div>
+                {scaleMockStatus === "error" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                    Balanza no disponible
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
+                    className="inline-flex min-h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Periféricos OK
+                  </button>
+                )}
                 {canShowPeripheralDiagnostics ? (
                   <button
                     type="button"
-                    onClick={() =>
-                      setPeripheralDiagnosticsOpen((current) => !current)
-                    }
-                    className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
+                    className="inline-flex min-h-7 items-center justify-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
-                    {peripheralDiagnosticsOpen ? "Ocultar diagnostico" : "Ver diagnostico"}
+                    Diagnóstico
                   </button>
                 ) : null}
-              </div>
 
-              {/* Filter Chips */}
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
-                    const isActive = activeStockFilter === filter;
-                    return (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => handleStockFilterChange(filter)}
-                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
-                          isActive
-                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <span>{stockFilterLabels[filter]}</span>
-                        <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs dark:bg-white/10">
-                          {stockFilterCounts[filter]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  Sync {appVersion || "sin version"}
+                </span>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                    Vista productos
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                    {filteredProducts.length} productos disponibles
                   </span>
                   <div
-                    className="inline-flex rounded-full border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+                    className="inline-flex rounded-full border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
                     role="group"
                     aria-label="Vista de productos"
                   >
@@ -3017,13 +2998,13 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => setProductViewMode(option.value)}
                           aria-pressed={isActive}
-                          className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
+                          className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
                             isActive
                               ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
                               : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                           }`}
                         >
-                          <Icon className="h-4 w-4" />
+                          <Icon className="h-3.5 w-3.5" />
                           {option.label}
                         </button>
                       );
@@ -3031,10 +3012,61 @@ export const PosScreen = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Filter Chips */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
+                    const isActive = activeStockFilter === filter;
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => handleStockFilterChange(filter)}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none transition-all duration-200 active:scale-95 ${
+                          isActive
+                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <span>{stockFilterLabels[filter]}</span>
+                        <span className="rounded-full bg-black/10 px-1 py-0.5 text-[9px] leading-none dark:bg-white/10">
+                          {stockFilterCounts[filter]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1">
+                  {activeProductFilterLabels.length > 0 ? (
+                    <>
+                      {activeProductFilterLabels.map((label) => (
+                        <span
+                          key={label}
+                          className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearProductCatalogFilters}
+                        disabled={!hasProductCatalogFilters}
+                        className="min-h-7 px-2 py-0.5 text-[10px] leading-none"
+                      >
+                        <X className="h-3 w-3" />
+                        Limpiar
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             {/* Products Catalog */}
-            <div className="mt-5">
+            <div className="mt-3">
               {catalogLoading ? (
                 <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                   <Loader2 className="mr-3 h-5 w-5 animate-spin" />
@@ -3049,8 +3081,8 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid gap-4 sm:grid-cols-2 2xl:grid-cols-3 min-[1800px]:grid-cols-4"
-                      : "grid gap-3"
+                      ? "grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                      : "grid gap-2.5"
                   }
                 >
                   {filteredProducts.map((product) => {
@@ -3059,6 +3091,16 @@ export const PosScreen = () => {
                     const requiresScale = productSaleType === "WEIGHT";
                     const quantityInCart = cartQuantityByProductId[product.id] ?? 0;
                     const hasProductInCart = quantityInCart > 0;
+                    const actionLabel = requiresScale
+                      ? scaleMockEnabled
+                        ? "Leer balanza"
+                        : "Sin balanza"
+                      : "Agregar";
+                    const actionTone = requiresScale
+                      ? scaleMockEnabled
+                        ? "bg-sky-600 text-white shadow-sm ring-1 ring-sky-500/20 group-hover:bg-sky-700 dark:bg-sky-500 dark:text-slate-950 dark:group-hover:bg-sky-400"
+                        : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
+                      : "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/20 group-hover:bg-blue-700 dark:bg-blue-500 dark:text-slate-950 dark:group-hover:bg-blue-400";
                     const effectiveImage = resolveEffectivePosProductImage(product, {
                       categoryById: productCategoryById,
                       subcategoryById: productSubcategoryById,
@@ -3075,25 +3117,30 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => handleProductCardAction(product)}
                           disabled={isProductActionDisabled}
-                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-900 dark:hover:border-slate-700 ${
+                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-900 dark:hover:border-slate-700 ${
                             hasProductInCart
                               ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
                               : "border-slate-200 dark:border-slate-800"
                           }`}
                         >
-                          <div className="flex min-w-0 flex-col gap-4 p-4 sm:flex-row sm:items-center">
-                            <InventoryImagePreview
-                              imageUrl={effectiveImage.imageUrl}
-                              altText={effectiveImage.altText}
-                              lazy
-                              className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 bg-cover bg-center text-sm font-semibold text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                              fallback={<span>{buildImageLabel(product.name)}</span>}
-                            />
+                          <div className="grid min-h-[88px] grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 sm:min-h-[92px] sm:grid-cols-[80px_minmax(0,1fr)_auto] md:min-h-[96px] lg:min-h-[100px]">
+                            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950 sm:h-20 sm:w-20 md:h-[78px] md:w-[78px] lg:h-20 lg:w-20">
+                              <InventoryImagePreview
+                                imageUrl={effectiveImage.imageUrl}
+                                altText={effectiveImage.altText}
+                                lazy
+                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
+                                fallback={<span>{buildImageLabel(product.name)}</span>}
+                              />
+                            </div>
 
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
+                            <div className="min-w-0 py-0.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <h3 className="line-clamp-2 text-[0.98rem] font-semibold leading-tight text-slate-950 dark:text-white sm:text-[1rem]">
+                                  {product.name}
+                                </h3>
                                 <span
-                                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getProductStockTone(
+                                  className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${getProductStockTone(
                                     stock
                                   )}`}
                                 >
@@ -3103,60 +3150,58 @@ export const PosScreen = () => {
                                       ? `Stock bajo ${stock}`
                                       : `Stock ${stock}`}
                                 </span>
-                                {hasProductInCart ? (
-                                  <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                    En carrito {quantityInCart}
-                                  </span>
-                                ) : null}
                               </div>
 
-                              <h3 className="mt-2 line-clamp-2 text-base font-semibold text-slate-950 dark:text-white">
-                                {product.name}
-                              </h3>
-                              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-                                <span className="max-w-full truncate text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                  {product.sku}
-                                </span>
-                                <span
-                                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                                    productSaleType === "UNIT"
-                                      ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-                                      : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
-                                  }`}
-                                >
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <span className="max-w-full truncate">{product.sku}</span>
+                                <span className="text-slate-300 dark:text-slate-600">•</span>
+                                <span className="text-slate-600 dark:text-slate-300">
                                   {productSaleTypeLabels[productSaleType]} /{" "}
                                   {product.measurementUnit ??
                                     (productSaleType === "UNIT" ? "UND" : "KG")}
                                 </span>
                               </div>
+
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                                    Precio final
+                                  </p>
+                                  <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
+                                    {formatCurrency(Number(product.price))}
+                                  </p>
+                                </div>
+                                {hasProductInCart ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                                    En carrito {quantityInCart}
+                                  </span>
+                                ) : null}
+                                {requiresScale ? (
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${actionTone}`}
+                                  >
+                                    {scaleMockEnabled ? (
+                                      <>
+                                        <Scale className="h-3.5 w-3.5" />
+                                        Leer balanza
+                                      </>
+                                    ) : (
+                                      actionLabel
+                                    )}
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
 
-                            <div className="flex w-full min-w-0 items-end justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:w-auto sm:min-w-[180px] sm:flex-col sm:border-t-0 sm:pt-0">
-                              <div className="min-w-0">
-                                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                  Precio final
-                                </p>
-                                <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-                                  {formatCurrency(Number(product.price))}
-                                </p>
-                              </div>
+                            <div className="flex items-center justify-end">
                               <span
-                                className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold transition-colors ${
-                                  requiresScale
-                                    ? scaleMockEnabled
-                                      ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-100 dark:ring-sky-500/30"
-                                      : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
-                                    : "bg-blue-50 text-blue-700 ring-1 ring-blue-100 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-500/10 dark:text-blue-100 dark:ring-blue-500/20"
-                                }`}
+                                className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
                               >
                                 {requiresScale ? (
                                   scaleMockEnabled ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <Scale className="h-4 w-4" />
-                                      Leer
-                                    </span>
+                                    <Scale className="h-4 w-4" />
                                   ) : (
-                                    "Sin balanza"
+                                    actionLabel
                                   )
                                 ) : (
                                   <Plus className="h-5 w-5" />
@@ -3171,27 +3216,36 @@ export const PosScreen = () => {
                     return (
                       <button
                         key={product.id}
-                        type="button"
-                        onClick={() => handleProductCardAction(product)}
-                        disabled={isProductActionDisabled}
-                        className={`group min-h-[230px] overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-900 ${
-                          hasProductInCart
-                            ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                            : "border-slate-200 dark:border-slate-800"
-                        }`}
+                          type="button"
+                          onClick={() => handleProductCardAction(product)}
+                          disabled={isProductActionDisabled}
+                          className={`group min-h-[220px] overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-900 ${
+                            hasProductInCart
+                              ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
+                              : "border-slate-200 dark:border-slate-800"
+                          }`}
                       >
-                        <div className="flex h-full flex-col p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <InventoryImagePreview
-                              imageUrl={effectiveImage.imageUrl}
-                              altText={effectiveImage.altText}
-                              lazy
-                              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 bg-cover bg-center text-sm font-semibold text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                              fallback={<span>{buildImageLabel(product.name)}</span>}
-                            />
-                            <div className="flex flex-col items-end gap-2">
+                        <div className="flex h-full flex-col">
+                          <div className="relative">
+                            <div className="relative aspect-[4/3] w-full overflow-hidden bg-white">
+                              <InventoryImagePreview
+                                imageUrl={effectiveImage.imageUrl}
+                                altText={effectiveImage.altText}
+                                lazy
+                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
+                                fallback={<span>{buildImageLabel(product.name)}</span>}
+                              />
+                            </div>
+                            <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-2">
+                              {hasProductInCart ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
+                                  En carrito {quantityInCart}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="absolute right-3 top-3">
                               <span
-                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getProductStockTone(
+                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
                                   stock
                                 )}`}
                               >
@@ -3201,65 +3255,51 @@ export const PosScreen = () => {
                                     ? `Stock bajo ${stock}`
                                     : `Stock ${stock}`}
                               </span>
-                              {hasProductInCart ? (
-                                <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                  En carrito {quantityInCart}
+                            </div>
+                          </div>
+
+                          <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+                            <div className="min-w-0">
+                              <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-tight text-slate-950 dark:text-white">
+                                {product.name}
+                              </h3>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <span className="max-w-full truncate">{product.sku}</span>
+                                <span className="text-slate-300 dark:text-slate-600">â€¢</span>
+                                <span className="text-slate-600 dark:text-slate-300">
+                                  {productSaleTypeLabels[productSaleType]} /{" "}
+                                  {product.measurementUnit ??
+                                    (productSaleType === "UNIT" ? "UND" : "KG")}
                                 </span>
-                              ) : null}
+                              </div>
                             </div>
-                          </div>
 
-                          <div className="mt-4 min-h-0 flex-1">
-                            <h3 className="line-clamp-2 text-base font-semibold text-slate-950 dark:text-white">
-                              {product.name}
-                            </h3>
-                            <p className="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              {product.sku}
-                            </p>
-                            <span
-                              className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                                productSaleType === "UNIT"
-                                  ? "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
-                                  : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
-                              }`}
-                            >
-                              {productSaleTypeLabels[productSaleType]} /{" "}
-                              {product.measurementUnit ??
-                                (productSaleType === "UNIT" ? "UND" : "KG")}
-                            </span>
-                          </div>
-
-                          <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
-                            <div>
-                              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                Precio final
-                              </p>
-                              <p className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-                                {formatCurrency(Number(product.price))}
-                              </p>
-                            </div>
-                            <span
-                              className={`inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-sm font-bold transition-colors ${
-                                requiresScale
-                                  ? scaleMockEnabled
-                                    ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-100 dark:ring-sky-500/30"
-                                    : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
-                                  : "bg-blue-50 text-blue-700 ring-1 ring-blue-100 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-500/10 dark:text-blue-100 dark:ring-blue-500/20"
-                              }`}
-                            >
-                              {requiresScale ? (
-                                scaleMockEnabled ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <Scale className="h-4 w-4" />
-                                    Leer
-                                  </span>
+                            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+                              <div>
+                                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                                  Precio final
+                                </p>
+                                <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
+                                  {formatCurrency(Number(product.price))}
+                                </p>
+                              </div>
+                              <span
+                                className={`inline-flex h-10 min-w-10 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
+                              >
+                                {requiresScale ? (
+                                  scaleMockEnabled ? (
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <Scale className="h-4 w-4" />
+                                      Leer
+                                    </span>
+                          ) : (
+                                    actionLabel
+                                  )
                                 ) : (
-                                  "Sin balanza"
-                                )
-                              ) : (
-                                <Plus className="h-5 w-5" />
-                              )}
-                            </span>
+                                  <Plus className="h-5 w-5" />
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </button>
@@ -3282,12 +3322,12 @@ export const PosScreen = () => {
         </aside>
 
         {/* Mobile Cart Modal */}
-        {isMobile && isCartOpen ? (
+        {isMobile && cartSheetOpen ? (
           <Modal
             title="Carrito de venta"
             description="Revisa productos, totales y cobro sin perder contexto."
             size="xl"
-            onClose={() => setIsCartOpen(false)}
+            onClose={() => setCartSheetOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
           >
             <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
@@ -3298,7 +3338,7 @@ export const PosScreen = () => {
       </div>
 
       {/* Floating Cart Button - visible when cart is closed and has items */}
-      {!isCartOpen && cartItemCount > 0 ? (
+      {!cartSheetOpen && cartItemCount > 0 ? (
         <button
           type="button"
           ref={cartFloatingControl.buttonRef}

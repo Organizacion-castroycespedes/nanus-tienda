@@ -7,7 +7,7 @@ import { AgentInstallationIdentityProvider } from "../src/shared/identity/agent-
 import { resolvePlatformPaths } from "../src/platform/platform-paths";
 import { FileAgentInstallationStateStore } from "../src/platform/agent-installation-state.store";
 import { loadAgentLocalConfig } from "../src/platform/agent-local-config";
-import { WindowsPrinterDiscoveryProvider } from "../src/platform/windows/windows-printer-discovery.provider";
+import { WindowsPrinterDiscoveryProvider, parseWindowsPrinterDiagnostics } from "../src/platform/windows/windows-printer-discovery.provider";
 
 test("portable core files contain no Windows API names", () => {
   const coreFiles = [
@@ -34,19 +34,66 @@ test("portable core files contain no Windows API names", () => {
   assert.match(windowsRaw, /powershell\.exe/);
   assert.match(windowsDiscovery, /Get-Printer/);
   assert.match(windowsDiscovery, /powershell\.exe/);
+  assert.match(windowsDiscovery, /Where-Object/);
+  assert.match(windowsDiscovery, /Type = \$_.Type\.ToString\(\)/);
+  assert.match(windowsDiscovery, /ConvertTo-Json -InputObject/);
 });
 
-test("Windows discovery provider produces portable queue descriptors", () => {
-  const provider = new WindowsPrinterDiscoveryProvider(() => '"XP-80"');
+test("Windows discovery normalizes XP-58 numeric Type and stable single object", () => {
+  const parsed = parseWindowsPrinterDiagnostics(JSON.stringify({
+    Name: "XP-58", Type: 0, PortName: "USB001", DriverName: "XP-58", Shared: false,
+  }));
+  assert.deepEqual(parsed, [{ Name: "XP-58", Type: "Local", PortName: "USB001", DriverName: "XP-58", Shared: false }]);
+});
+
+test("Windows discovery handles multiple, empty, and excluded ports", () => {
+  const parsed = parseWindowsPrinterDiagnostics(JSON.stringify([
+    { Name: "XP-58", Type: 0, PortName: "USB001", DriverName: "XP-58", Shared: false },
+    { Name: "Network", Type: "Local", PortName: "WSD-1", DriverName: "x", Shared: false },
+    { Name: "Dot4", Type: "Local", PortName: "DOT4USB001", DriverName: "x", Shared: false },
+  ]));
+  const provider = new WindowsPrinterDiscoveryProvider(() => JSON.stringify(parsed));
+  assert.deepEqual(provider.listUsbPrinters().map((printer) => printer.name), ["XP-58", "Dot4"]);
+  assert.deepEqual(parseWindowsPrinterDiagnostics("[]"), []);
+  assert.deepEqual(parseWindowsPrinterDiagnostics("null"), []);
+});
+
+test("Windows discovery reports invalid JSON as parse failure", () => {
+  assert.throws(() => parseWindowsPrinterDiagnostics("not-json"), /PARSE_FAILED/);
+  const provider = new WindowsPrinterDiscoveryProvider(() => "not-json");
+  assert.throws(() => provider.listUsbPrinters(), /PARSE_FAILED/);
+});
+
+test("Windows discovery provider includes XP-58 Local USB001", () => {
+  let inventory: unknown;
+  const provider = new WindowsPrinterDiscoveryProvider(
+    () => JSON.stringify({
+      Name: "XP-58",
+      Type: "Local",
+      PortName: "USB001",
+      DriverName: "XP-58",
+      Shared: false,
+    }),
+    (printers) => {
+      inventory = printers;
+    }
+  );
   const [printer] = provider.listUsbPrinters();
 
   assert.deepEqual(printer, {
-    name: "XP-80",
-    nativeIdentifier: "XP-80",
-    fingerprint: { source: "WINDOWS_PRINT_QUEUE", values: { queueName: "XP-80" } },
+    name: "XP-58",
+    nativeIdentifier: "XP-58",
+    fingerprint: { source: "WINDOWS_PRINT_QUEUE", values: { queueName: "XP-58" } },
     platform: "WINDOWS",
     architecture: process.arch,
   });
+  assert.deepEqual(inventory, [{
+    Name: "XP-58",
+    Type: "Local",
+    PortName: "USB001",
+    DriverName: "XP-58",
+    Shared: false,
+  }]);
 });
 
 test("agent installation identity is persisted through platform paths", () => {
@@ -113,6 +160,7 @@ test("local configuration is whitelisted and environment overrides it", () => {
   writeFileSync(configPath, JSON.stringify({
     port: 4050,
     bind: "127.0.0.1",
+    mode: "REAL",
     allowedOrigins: ["http://localhost:3000"],
     logLevel: "WARN",
     enableRealAdapters: true,
@@ -124,6 +172,7 @@ test("local configuration is whitelisted and environment overrides it", () => {
     assert.equal(loadAgentLocalConfig(environment, configPath), configPath);
     assert.equal(environment.PERIPHERALS_PORT, "4500");
     assert.equal(environment.PERIPHERALS_BIND, "127.0.0.1");
+    assert.equal(environment.PERIPHERALS_MODE, "REAL");
     assert.equal(environment.PERIPHERALS_ALLOWED_ORIGINS, "http://localhost:3000");
     assert.equal(environment.PERIPHERALS_ENABLE_REAL_ADAPTERS, "true");
     assert.equal(environment.PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED, "true");

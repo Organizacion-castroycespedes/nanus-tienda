@@ -86,9 +86,9 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
       throw new BadRequestException("printer drawer pulse is not certified for this device");
     }
 
-    const queueName = input.device.usb?.printerName;
+    const queueName = this.resolveWindowsQueueName(input.device);
     if (!queueName) {
-      throw new BadRequestException("USB printer queue is required");
+      throw new BadRequestException("WINDOWS_PRINT_QUEUE_REQUIRED: configure a Windows print queue before opening the drawer");
     }
 
     const commands = createCashDrawerPulseCommands();
@@ -187,9 +187,9 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     preview: string,
     commands: PrinterAdapterResult["commands"]
   ): number | undefined {
-    const queueName = device.usb?.printerName;
+    const queueName = this.resolveWindowsQueueName(device);
     if (!queueName) {
-      throw new BadRequestException("USB printer queue is required");
+      throw new BadRequestException("PRINT_TRANSPORT_NOT_READY: a Windows print queue is required for USB printing");
     }
 
     try {
@@ -218,7 +218,10 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      const message = error instanceof Error ? error.message : "unknown print error";
+      const rawMessage = error instanceof Error ? error.message : "unknown print error";
+      const message = /(?:1801|invalid printer name|OpenPrinter failed)/i.test(rawMessage)
+        ? `WINDOWS_INVALID_PRINTER_QUEUE: Windows no reconoce una cola de impresión con ese nombre (${queueName}) [win32Error=1801]`
+        : rawMessage;
       const label = this.transport === "RAW" ? "USB RAW printer" : "USB GDI printer";
       throw new BadRequestException(`${label} print failed: ${message}`);
     }
@@ -236,5 +239,24 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     }
 
     throw new BadRequestException(`USB printer transport is not supported on ${this.platform}`);
+  }
+
+  private resolveWindowsQueueName(device: PeripheralDevice): string | undefined {
+    const explicit = device.usb?.windowsQueueName?.trim();
+    if (explicit) {
+      return explicit;
+    }
+    const source = device.descriptor?.fingerprint.source;
+    const queueInstalled = device.metadata?.queueInstalled === true;
+    if (source === "WINDOWS_PRINT_QUEUE" || queueInstalled || source === "LEGACY_QUEUE_NAME") {
+      return device.usb?.printerName?.trim() || undefined;
+    }
+    // Legacy callers created USB devices before physical PnP metadata existed.
+    // Keep that contract working; real PnP descriptors always carry a source
+    // and are therefore blocked above when no queue is resolved.
+    if (!source && device.metadata?.physicalDetected === undefined && device.metadata?.queueInstalled === undefined) {
+      return device.usb?.printerName?.trim() || undefined;
+    }
+    return undefined;
   }
 }

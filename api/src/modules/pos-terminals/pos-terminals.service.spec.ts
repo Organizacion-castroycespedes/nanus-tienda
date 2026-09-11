@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { describe, it } from "node:test";
 import { PosTerminalsService } from "./pos-terminals.service";
+import { PeripheralConfigurationFacade } from "./peripheral-configuration.facade";
 import type {
   OperationalTerminalRecord,
   PosTerminalPeripheralSettingsRecord,
@@ -572,5 +573,56 @@ describe("PosTerminalsService", () => {
         ),
       /branchId does not belong to tenant/
     );
+  });
+
+  it("proves installer-to-POS handoff for network, USB, scanner and drawer", async () => {
+    const { service } = buildService();
+    const facade = new PeripheralConfigurationFacade(service);
+    await facade.createPeripheralConfiguration(terminalId, {
+      printerDeviceId: "network-qa",
+      cashDrawerDeviceId: "drawer-qa",
+      scannerDeviceId: "scanner-qa",
+      enableScanner: true,
+    }, actor);
+    await facade.updatePeripheralConfiguration(terminalId, {
+      printerDeviceId: "usb-qa",
+    }, actor);
+    await facade.assignPrinter(terminalId, "network-qa", actor);
+    const posReload = await facade.getTerminalPeripheralConfiguration(terminalId, actor);
+    assert.equal(posReload.printerDeviceId, "network-qa");
+    assert.equal(posReload.cashDrawerDeviceId, "drawer-qa");
+    assert.equal(posReload.scannerDeviceId, "scanner-qa");
+  });
+
+  it("proves post-install network edit and default reassignment preserve inventory", async () => {
+    const { service } = buildService({
+      settings: buildSettings({ printer_device_id: "printer-a" }),
+    });
+    const facade = new PeripheralConfigurationFacade(service);
+    await facade.updatePeripheralConfiguration(terminalId, {
+      printerDeviceId: "printer-b",
+    }, actor);
+    const reloaded = await facade.listTerminalPeripheralConfiguration(terminalId, actor);
+    assert.equal(reloaded.printerDeviceId, "printer-b");
+    await facade.updatePeripheralConfiguration(terminalId, {
+      printerDeviceId: "printer-b",
+    }, actor);
+    assert.equal((await facade.getTerminalPeripheralConfiguration(terminalId, actor)).printerDeviceId, "printer-b");
+  });
+
+  it("updates drawer assignment without overwriting printer or scanner", async () => {
+    const { service } = buildService({
+      settings: buildSettings({
+        printer_device_id: "printer-a",
+        scanner_device_id: "scanner-a",
+        cash_drawer_device_id: null,
+      }),
+    });
+    const facade = new PeripheralConfigurationFacade(service);
+    await facade.assignCashDrawer(terminalId, "drawer-qa", actor);
+    const reloaded = await facade.getTerminalPeripheralConfiguration(terminalId, actor);
+    assert.equal(reloaded.cashDrawerDeviceId, "drawer-qa");
+    assert.equal(reloaded.printerDeviceId, "printer-a");
+    assert.equal(reloaded.scannerDeviceId, "scanner-a");
   });
 });

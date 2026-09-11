@@ -544,3 +544,47 @@ bytesSent                            1245
   perifericos durante esta QA.
 - `local-terminal` no fue fallback de resolucion. Permanece solo como
   `agentTerminalCode` transitorio.
+
+## Preparacion E2E produccion web + Agent loopback - 2026-08-31
+
+Esta fase es nueva. No reemplaza ni invalida la cronologia de QA fisica
+anterior. Su topologia objetivo es especificamente:
+
+```text
+https://apptiendamanus.space
+  -> http://127.0.0.1:4050
+  -> impresora instalada en Windows
+```
+
+Cambios preparados en fuente:
+
+- `PERIPHERALS_MODE` acepta `MOCK` y `REAL`; valores ausentes o invalidos
+  conservan el fallback seguro `MOCK`.
+- La configuracion JSON local acepta `mode` y lo mapea a
+  `PERIPHERALS_MODE`.
+- Discovery reporta el modo efectivo. En `REAL`, un fallo fisico deja error
+  explicito y no devuelve mocks como fallback. Cero resultados sigue siendo
+  un resultado valido y distinguible.
+- El inventario Windows registra solo `Name`, `Type`, `PortName`,
+  `DriverName` y `Shared`; el filtro fisico permanece limitado a colas
+  `Local` con puertos `USB*` o `DOT4USB*` hasta obtener evidencia del equipo.
+- CORS permite exactamente `https://apptiendamanus.space` y
+  `http://localhost:3000` por defecto. El preflight PNA autorizado responde
+  `Access-Control-Allow-Private-Network: true`.
+- Web usa `http://127.0.0.1:4050` y
+  `ws://127.0.0.1:4050/peripherals` como defaults, incluso en produccion.
+  Los env publicos quedan como overrides tecnicos.
+
+Validacion automatizada de esta fase:
+
+- Backend tests: `84 PASS`, `0 FAIL`.
+- Backend build: `PASS`.
+- Web peripherals tests: `20 PASS`, `0 FAIL`.
+- Web lint: `PASS` con warnings preexistentes fuera del alcance.
+- Web build: `PASS`.
+
+No se genero installer nuevo. No se modifico el change OpenSpec pausado. La
+configuracion del Agent instalado y el despliegue web todavia deben aplicarse
+manualmente para ejecutar la prueba.
+
+**PHYSICAL PRINT: NOT TESTED / NOT PASS.**

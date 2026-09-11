@@ -116,6 +116,33 @@ describe("POS product classification helpers", () => {
     );
   });
 
+  it("defaults the stock filter to available products", () => {
+    const result = filterPosProductsForCatalog(
+      [
+        {
+          id: "prod-1",
+          name: "Leche entera",
+          description: null,
+          sku: "L-001",
+          stock: 10,
+        },
+        {
+          id: "prod-2",
+          name: "Yogur sin stock",
+          description: null,
+          sku: "Y-001",
+          stock: 0,
+        },
+      ],
+      {}
+    );
+
+    assert.deepEqual(
+      result.map((product) => product.id),
+      ["prod-1"]
+    );
+  });
+
   it("keeps products without subcategory when filtering by category only", () => {
     const result = filterPosProductsForCatalog(
       [

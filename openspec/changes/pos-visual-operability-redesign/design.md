@@ -30,9 +30,11 @@ No fiscal, discount, inventory or payment business logic changes are allowed.
 - Make product search the primary POS action and autofocus it on load.
 - Return focus to search after product add, scanner add or scale add.
 - Keep cart visible on desktop and one-action accessible on tablet/mobile.
+- Use a single POS cart open state that can be driven from the POS screen and the global header.
 - Keep total and charge action visible when the cart has items.
 - Collapse scanner and scale MOCK controls into a diagnostic area.
 - Keep compact peripheral status visible without displacing products or cart.
+- Bootstrap the active POS context at application level so the header can render the current terminal and branch before the user visits `/pos`.
 - Preserve current product filtering, pricing preview, tax display, discount display, stock guards and payment modal behavior.
 - Support desktop Web/Electron, tablet and mobile/Capacitor safe area.
 - Document expected visual states in `docs/pos-visual-experience.md`.
@@ -44,7 +46,7 @@ No fiscal, discount, inventory or payment business logic changes are allowed.
 - No new hardware integrations.
 - No new design system library or broad design-system rewrite.
 - No new dependency for drawer/sheet/tooltip.
-- No route, contract or state shape changes.
+- No broad route, contract or state shape changes.
 
 ## Decisions
 
@@ -71,6 +73,18 @@ Alternative considered: make the MOCK scanner input the primary search. Rejected
 Desktop uses a sticky right panel inside the POS workspace. Tablet/mobile use a floating bottom summary and bottom sheet. The cart items, quantity controls, tax expansion, discounts, summary and charge button continue using existing handlers.
 
 Alternative considered: keep the current fixed full-height right drawer. It keeps cart accessible but visually competes with the global app and does not match the reference layout.
+
+### Decision: Cart open state is shared
+
+The mobile cart sheet SHALL use a shared Redux UI state so the global header control and the POS floating control open the same drawer. The desktop cart remains visible by layout, but the shared state avoids divergent behavior between the header and the POS screen.
+
+Alternative considered: keep `isCartOpen` local to `PosScreen` and add a second header-only state. Rejected because it duplicates state and breaks the single-source-of-truth requirement.
+
+### Decision: POS context bootstrap happens above page components
+
+The application SHALL bootstrap the active POS context during provider/session initialization using the authenticated tenant and backend session state. The header SHALL read the resolved context directly from global store, so it does not depend on visiting `/pos` first.
+
+Alternative considered: load terminal and branch inside `PosScreen` or `/pos/select-context` only. Rejected because that couples global header state to a specific page and recreates the regression.
 
 ### Decision: Peripherals become a compact status bar with optional diagnostic panel
 
