@@ -31,6 +31,7 @@ test("runtime HTTP endpoints resolve Nest-injected services under tsx", async (t
 
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
+  assert.equal((await readJson<{ agentApiVersion: number }>(health)).agentApiVersion, 1);
 
   const devices = await fetch(`${baseUrl}/devices`);
   assert.equal(devices.status, 200);

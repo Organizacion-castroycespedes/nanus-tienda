@@ -1,3 +1,4 @@
+import { CAPABILITY_METHODS, getTerminalRuntime, hasRuntimeCapability, type RuntimeCapability, type RuntimeInfo } from "./runtime-contract";
 import type {
   CashDrawerResponse,
   CashDrawerOpenInput,
@@ -18,6 +19,7 @@ import type {
 export type PeripheralAgentConfigStatus = "configured" | "missing" | "invalid";
 
 export type PeripheralAgentRequestErrorCode =
+  | "OPERATION_DISABLED"
   | "MISSING_CONFIG"
   | "INVALID_CONFIG"
   | "AGENT_OFFLINE"
@@ -225,6 +227,7 @@ export const PERIPHERALS_AGENT_HTTP_URL = getPeripheralAgentConfig().httpUrl;
 export const PERIPHERALS_AGENT_WS_URL = getPeripheralAgentConfig().wsUrl;
 
 export type ElectronPeripheralBridge = {
+  getRuntimeInfo?: () => Promise<RuntimeInfo>;
   getAgentHealth: () => Promise<unknown>;
   listDevices: () => Promise<unknown>;
   discoverDevices: (terminalId: string) => Promise<unknown>;
@@ -326,21 +329,29 @@ export const requestPeripheral = async <T>(
   const transport = getPeripheralTransport();
   if (transport.kind === "electron") {
     const terminalBridge = transport.bridge;
-    if (path === "/health" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.getAgentHealth() as Promise<T>;
-    if (path === "/devices" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listDevices() as Promise<T>;
+    const runtime = await getTerminalRuntime(terminalBridge);
+    const invoke = (capability: RuntimeCapability, ...args: unknown[]): Promise<T> => {
+      const method = CAPABILITY_METHODS[capability];
+      if (!hasRuntimeCapability(runtime, capability) || typeof terminalBridge[method] !== "function") {
+        throw new PeripheralAgentRequestError("OPERATION_DISABLED", `La capacidad ${capability} no esta disponible en este runtime (${runtime.state}).`);
+      }
+      return (terminalBridge[method] as (...input: unknown[]) => Promise<T>).apply(terminalBridge, args);
+    };
+    if (path === "/health" && (!init || init.method === undefined || init.method === "GET")) return invoke("agent.health") as Promise<T>;
+    if (path === "/devices" && (!init || init.method === undefined || init.method === "GET")) return invoke("devices.list") as Promise<T>;
     if (path === "/devices/discover" && init?.method === "POST") {
       let terminalId = "local-terminal";
       try { terminalId = String((JSON.parse(String(init.body ?? "{}")) as { terminalId?: unknown }).terminalId ?? terminalId); } catch { /* validation handled by fixed IPC */ }
-      return terminalBridge.discoverDevices(terminalId) as Promise<T>;
+      return invoke("devices.discover", terminalId) as Promise<T>;
     }
-    if (path === "/devices" && init?.method === "POST") return terminalBridge.createDevice(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path.startsWith("/devices/") && init?.method === "PATCH") return terminalBridge.updateDevice(path.slice("/devices/".length), JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/printer/test-print" && init?.method === "POST") return terminalBridge.testPrint(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/printer/print-ticket" && init?.method === "POST") return terminalBridge.printTicket(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/cash-drawer/open" && init?.method === "POST") return terminalBridge.openCashDrawer(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/scanner/simulate" && init?.method === "POST") return terminalBridge.simulateScanner(JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.currentWeight(Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
-    if (path === "/logs" && (!init || init.method === undefined || init.method === "GET")) return terminalBridge.listLogs() as Promise<T>;
+    if (path === "/devices" && init?.method === "POST") return invoke("devices.create", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path.startsWith("/devices/") && init?.method === "PATCH") return invoke("devices.update", path.slice("/devices/".length), JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/printer/test-print" && init?.method === "POST") return invoke("printer.testPrint", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/printer/print-ticket" && init?.method === "POST") return invoke("printer.printTicket", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/cash-drawer/open" && init?.method === "POST") return invoke("drawer.open", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/scanner/simulate" && init?.method === "POST") return invoke("scanner.simulate", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return invoke("scale.currentWeight", Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
+    if (path === "/logs" && (!init || init.method === undefined || init.method === "GET")) return invoke("logs.list") as Promise<T>;
     throw new PeripheralAgentRequestError("HTTP_ERROR", "Esta operación aún no está disponible en Manus POS.");
   }
   const config = requirePeripheralAgentConfig();

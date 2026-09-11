@@ -1,4 +1,5 @@
 export type AgentHealth = {
+  agentApiVersion?: number;
   available: boolean;
   status?: string;
   mode?: string;
@@ -16,6 +17,7 @@ export type ShellInfo = {
 };
 
 export const IPC_CHANNELS = {
+  getRuntimeInfo: "manusTerminal.getRuntimeInfo",
   getShellInfo: "manusTerminal.getShellInfo",
   getAgentHealth: "manusTerminal.getAgentHealth",
   listDevices: "manusTerminal.listDevices",
@@ -31,6 +33,7 @@ export const IPC_CHANNELS = {
 } as const;
 
 export type ManusTerminalApi = {
+  getRuntimeInfo: () => Promise<RuntimeInfo>;
   getShellInfo: () => Promise<ShellInfo>;
   getAgentHealth: () => Promise<AgentHealth>;
   listDevices: () => Promise<unknown[]>;
@@ -44,6 +47,29 @@ export type ManusTerminalApi = {
   currentWeight: (payload: unknown) => Promise<unknown>;
   listLogs: () => Promise<unknown[]>;
 };
+
+export const RUNTIME_CAPABILITIES = [
+  "agent.health", "devices.list", "devices.discover", "devices.create",
+  "devices.update", "printer.testPrint", "printer.printTicket", "drawer.open",
+  "scanner.simulate", "scale.currentWeight", "logs.list",
+] as const;
+
+export type RuntimeCapability = typeof RUNTIME_CAPABILITIES[number];
+export type RuntimeInfo = {
+  electronRuntimeVersion: string;
+  bridgeContractVersion: number;
+  agentApiVersion: number | null;
+  capabilities: RuntimeCapability[];
+};
+
+export const buildRuntimeInfo = (electronRuntimeVersion: string, health: AgentHealth): RuntimeInfo => ({
+  electronRuntimeVersion,
+  bridgeContractVersion: 1,
+  agentApiVersion: health.available ? health.agentApiVersion ?? null : null,
+  capabilities: health.available && health.agentApiVersion === 1
+    ? [...RUNTIME_CAPABILITIES]
+    : ["agent.health"],
+});
 
 declare global {
   interface Window {

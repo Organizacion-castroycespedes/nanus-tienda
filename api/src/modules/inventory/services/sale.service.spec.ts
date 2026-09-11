@@ -3,6 +3,7 @@ import test from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { SaleService } from "./sale.service";
+import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
 import type { CreateSaleInput } from "../repositories/sale.repository";
 import type {
   CalculateLinePriceInput,
@@ -130,6 +131,8 @@ class FakePricingService {
 
 class FakeCreateSaleClient {
   readonly queries: RecordedQuery[] = [];
+
+  constructor(private readonly includeTaxSnapshot = false) {}
   released = false;
 
   async query<T>(text: string, params: unknown[] = []) {
@@ -158,6 +161,35 @@ class FakeCreateSaleClient {
 
     if (sql.includes("FROM public.deliveries") && sql.includes("sale_id = $2")) {
       return { rows: [] as T[] };
+    }
+
+    if (sql.includes("FROM sale_items")) {
+      return {
+        rows: [
+          {
+            id: saleItemRow.id,
+            product_id: ids.product,
+            quantity: 1,
+            price: 3000,
+            order_item_id: null,
+            subtotal: 3000,
+            price_without_tax: 3000,
+            tax_total: 0,
+            base_unit_price: 3000,
+            final_unit_price: 3000,
+            discount_amount: 0,
+            discount_percent: 0,
+            discount_total: 0,
+            tax_id: this.includeTaxSnapshot ? ids.tax : null,
+            tax_rate: this.includeTaxSnapshot ? 0 : null,
+            tax_base: 3000,
+            tax_amount: 0,
+            line_total: 3000,
+            pricing_source: "ORDER_DELIVERY",
+            created_at: new Date("2026-06-02T00:00:00.000Z"),
+          },
+        ] as T[],
+      };
     }
 
     if (sql.startsWith("UPDATE public.deliveries")) {
@@ -375,12 +407,86 @@ const buildService = (scenario: Scenario = {}) => {
   return { service, client, createdMovements };
 };
 
-const buildCreateSaleService = (previews: LinePricePreview[]) => {
-  const client = new FakeCreateSaleClient();
+type SaleBillingHarness = {
+  outboxService?: unknown;
+  customerRepository: {
+    findById: (id: string, tenantId: string, client?: PoolClient) => Promise<{
+      id: string;
+      tenantId: string;
+      name: string;
+      documentNumber: string | null;
+      phone: string | null;
+      email: string | null;
+      address: string | null;
+      municipioId: string | null;
+      isFinalConsumer: boolean;
+    } | null>;
+  };
+  productRepository: {
+    findById: (id: string, tenantId: string) => Promise<{
+      id: string;
+      sku: string;
+      name: string;
+      description: string | null;
+      measurementUnit: string;
+    } | null>;
+  };
+  taxRepository: {
+    findById: (id: string, tenantId: string) => Promise<{
+      id: string;
+      name: string;
+      rate: number;
+    } | null>;
+  };
+  invoicingCustomersRepository: {
+    findByNormalizedDocument: (tenantId: string, documentNumber: string) => Promise<{
+      dianIdentificationType: string | null;
+      documentTypeCode: string | null;
+      identificationNumber: string | null;
+      documentNumberNormalized: string | null;
+      verificationDigit: string | null;
+      legalName: string | null;
+      tradeName: string | null;
+      invoiceEmail: string | null;
+      fiscalEmail: string | null;
+      phone: string | null;
+      address: string | null;
+      municipalityCode: string | null;
+      personType: "NATURAL" | "JURIDICA" | "UNKNOWN" | null;
+      taxResponsibilities: string[];
+      taxRegime: string | null;
+    } | null>;
+    findActiveFinalConsumer: (tenantId: string) => Promise<{
+      dianIdentificationType: string | null;
+      documentTypeCode: string | null;
+      identificationNumber: string | null;
+      documentNumberNormalized: string | null;
+      verificationDigit: string | null;
+      legalName: string | null;
+      tradeName: string | null;
+      invoiceEmail: string | null;
+      fiscalEmail: string | null;
+      phone: string | null;
+      address: string | null;
+      municipalityCode: string | null;
+      personType: "NATURAL" | "JURIDICA" | "UNKNOWN" | null;
+      taxResponsibilities: string[];
+      taxRegime: string | null;
+      } | null>;
+  };
+};
+
+const buildCreateSaleService = (
+  previews: LinePricePreview[],
+  billing?: SaleBillingHarness,
+  includeTaxSnapshot = false,
+) => {
+  const client = new FakeCreateSaleClient(includeTaxSnapshot);
   const repository = new FakeCreateSaleRepository();
   const pricingService = new FakePricingService([...previews]);
   const createdPayments: unknown[] = [];
   const auditEvents: unknown[] = [];
+  const outboxEvents: Array<unknown> = [];
 
   const service = new SaleService(
     {
@@ -414,7 +520,18 @@ const buildCreateSaleService = (previews: LinePricePreview[]) => {
         };
       },
     } as never,
-    pricingService as never
+    pricingService as never,
+    billing?.outboxService
+      ? {
+          enqueueSaleCompletedEvent: async (input: unknown) => {
+            outboxEvents.push(input);
+          },
+        }
+      : undefined,
+    billing?.customerRepository as never,
+    billing?.productRepository as never,
+    billing?.taxRepository as never,
+    billing?.invoicingCustomersRepository as never
   );
 
   (service as unknown as { getSaleById: () => Promise<unknown> }).getSaleById =
@@ -427,6 +544,7 @@ const buildCreateSaleService = (previews: LinePricePreview[]) => {
     pricingService,
     createdPayments,
     auditEvents,
+    outboxEvents,
   };
 };
 
@@ -509,6 +627,119 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
   );
 });
 
+test("SaleService.createSale creates a sale billing outbox event when billing is enabled", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents } = buildCreateSaleService([makePreview()], billing, true);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(outboxEvents.length, 1);
+  const event = outboxEvents[0] as {
+    eventId: string;
+    tenantId: string;
+    correlationId: string;
+    sale: { saleId: string; saleType?: string | null; saleStatus?: string | null };
+    customer: { identificationNumber?: string | null; legalName?: string | null };
+    lines: Array<{
+      sourceLineId: string;
+      description: string;
+      sku?: string | null;
+      taxes: Array<{ rate: string; amount: string }>;
+    }>;
+    taxes: Array<{ sourceLineId?: string | null }>;
+    payments: Array<{ methodCode: string; amount?: string | null }>;
+    totals: { totalAmount: string };
+    currencyCode: string;
+  };
+
+  assert.equal(
+    event.eventId,
+    buildSaleCompletedForElectronicBillingEventId(ids.tenant, ids.sale)
+  );
+  assert.equal(event.tenantId, ids.tenant);
+  assert.equal(event.correlationId, ids.sale);
+  assert.equal(event.sale.saleId, ids.sale);
+  assert.equal(event.sale.saleType, "CASH");
+  assert.equal(event.sale.saleStatus, "CONFIRMED");
+  assert.equal(event.customer.identificationNumber, "900123456");
+  assert.equal((event.customer as { departmentCode?: string }).departmentCode, "05");
+  assert.equal((event.customer as { cityName?: string }).cityName, "Medellin");
+  assert.equal((event.customer as { departmentName?: string }).departmentName, "Antioquia");
+  assert.equal(event.lines[0].description, "Producto factura");
+  assert.equal(event.lines[0].sku, "SKU-1");
+  assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
+  assert.equal(event.lines[0].taxes[0].rate, "0.00");
+  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.taxes.length, 1);
+  assert.equal(event.payments[0].methodCode, "CASH");
+  assert.equal(event.payments[0].amount, "360.00");
+  assert.equal(event.totals.totalAmount, "3000.00");
+  assert.equal(event.currencyCode, "COP");
+});
+
+test("SaleService.createSale skips sale billing outbox event when outbox service is unavailable", async () => {
+  const { service, outboxEvents } = buildCreateSaleService([makePreview()]);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(outboxEvents.length, 0);
+});
+
 test("SaleService.createSaleFromOrderDelivery links existing order delivery to sale", async () => {
   const { service, client, repository } = buildCreateSaleService([]);
 
@@ -556,6 +787,98 @@ test("SaleService.createSaleFromOrderDelivery links existing order delivery to s
   assert(
     client.queries.some((query) => query.text.replace(/\s+/g, " ").trim() === "COMMIT")
   );
+  assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
+});
+
+test("SaleService.createSaleFromOrderDelivery creates an electronic invoice intent when billing is enabled", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents } = buildCreateSaleService([], billing, true);
+
+  const result = await service.createSaleFromOrderDelivery(
+    {
+      orderId: ids.order,
+      type: "CASH",
+      payments: [],
+    },
+    posContext
+  );
+
+  assert.equal(outboxEvents.length, 1);
+  const event = outboxEvents[0] as {
+    eventId: string;
+    sale: { saleId: string };
+    customer: { identificationNumber?: string | null };
+    lines: Array<{ taxes: Array<{ rate: string; amount: string }> }>;
+    taxes: Array<{ sourceLineId?: string | null }>;
+    totals: { totalAmount: string };
+    currencyCode: string;
+  };
+  assert.equal(
+    event.eventId,
+    buildSaleCompletedForElectronicBillingEventId(ids.tenant, ids.sale)
+  );
+  assert.equal(event.sale.saleId, ids.sale);
+  assert.equal(event.customer.identificationNumber, "900123456");
+  assert.equal(event.lines[0].taxes[0].rate, "0.00");
+  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.taxes.length, 1);
+  assert.equal(event.totals.totalAmount, "3000.00");
+  assert.equal(event.currencyCode, "COP");
   assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
 });
 
