@@ -33,6 +33,7 @@ import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup
     DianDocumentTypesService,
   ],
   exports: [
+    ElectronicInvoicingCustomersRepository,
     ElectronicInvoicingCustomersService,
     ElectronicInvoicingSuppliersService,
     ThirdPartyLookupService,

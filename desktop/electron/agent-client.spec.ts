@@ -9,6 +9,7 @@ import {
   PRINT_TICKET_REQUEST_TIMEOUT_MS,
   discoverAgentDevices,
   getAgentHealth,
+  getAgentCurrentWeight,
   openAgentCashDrawer,
   printAgentTicket,
   testAgentPrint,
@@ -40,7 +41,44 @@ const configForPort = (port: number) => ({ ...config, agentLoopbackOrigin: `http
 
 const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+describe("getAgentCurrentWeight", () => {
+  for (const input of [
+    { terminalId: "terminal-review", deviceId: "scale-review" },
+    { terminalId: "terminal & +/?#", deviceId: "scale=1 & deviceId=other" },
+  ]) {
+    it(`preserves received query context for ${input.terminalId}`, async () => {
+      let receivedTarget = "";
+      let receivedMethod = "";
+      await withServer((request, response) => {
+        receivedTarget = request.url ?? "";
+        receivedMethod = request.method ?? "";
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ weight: 1.25 }));
+      }, async (port) => {
+        assert.deepEqual(await getAgentCurrentWeight(configForPort(port), input), { weight: 1.25 });
+      });
+      assert.equal(receivedMethod, "GET");
+      const received = new URL(receivedTarget, "http://127.0.0.1");
+      assert.equal(received.pathname, "/scale/current-weight");
+      assert.equal(received.hash, "");
+      assert.deepEqual([...received.searchParams], [
+        ["terminalId", input.terminalId],
+        ["deviceId", input.deviceId],
+      ]);
+      assert.equal(receivedTarget, `/scale/current-weight?${new URLSearchParams(input)}`);
+    });
+  }
+});
+
 describe("getAgentHealth", () => {
+  it("preserves valid API generations and ignores invalid or absent ones", async () => {
+    for (const agentApiVersion of [1, 2, undefined, "1", 0, 1.5]) {
+      await withServer((_request, response) => response.end(JSON.stringify({ status: "ok", agentApiVersion })), async (port) => {
+        const health = await getAgentHealth(configForPort(port));
+        assert.equal(health.agentApiVersion, agentApiVersion === 1 || agentApiVersion === 2 ? agentApiVersion : undefined);
+      });
+    }
+  });
   it("normalizes a real health response", async () => {
     await withServer((_request, response) => {
       response.setHeader("Content-Type", "application/json");

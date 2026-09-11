@@ -12,6 +12,15 @@ pnpm-debug.log*
 scripts/database/config/*.env
 !scripts/database/config/*.env.example
 
+# Local database configuration and backups
+scripts/config/db.env
+scripts/database/backups/
+*.dump
+
+# Local certificate/private key material
+*.p12
+*.pfx
+
 # Next.js
 .next/
 out/
