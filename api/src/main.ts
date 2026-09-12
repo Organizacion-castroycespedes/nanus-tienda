@@ -79,6 +79,7 @@ const bootstrap = async () => {
   const bodyLimit = process.env.API_BODY_LIMIT?.trim() || "10mb";
 
   const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+  console.log("[CORS] allowed origins:", allowedOrigins.join(", ") || "(none)");
   const { AppModule } = await import("./modules/app.module");
 
   // Register parsers explicitly so the default Express 100kb limit does not
@@ -120,6 +121,9 @@ const bootstrap = async () => {
 
     // 🔥 Manejo explícito de preflight
     if (req.method === "OPTIONS") {
+      if (origin && !isOriginAllowed(origin, allowedOrigins)) {
+        console.warn(`[CORS] blocked preflight origin: ${origin}`);
+      }
       return res.sendStatus(204);
     }
 
