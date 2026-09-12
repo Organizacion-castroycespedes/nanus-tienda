@@ -71,7 +71,7 @@ export class SalesReportAdapter {
                     SELECT 1 FROM integration_outbox_events event
                     WHERE event.tenant_id = s.tenant_id
                       AND event.source_type = 'SALE'
-                      AND event.source_id = s.id
+                      AND event.source_id = s.id::TEXT
                   ) AS request_exists,
                   ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY document.created_at DESC) AS row_number,
                   COUNT(document.id) OVER (PARTITION BY s.id) AS document_count
