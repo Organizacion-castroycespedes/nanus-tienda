@@ -1,3 +1,5 @@
+import type { PosSaleTicketTaxBreakdown } from "./sales-report.types";
+
 export type ElectronicInvoiceStatus =
   | "PENDING"
   | "PROCESSING"
@@ -48,6 +50,7 @@ export type ElectronicInvoiceRepresentation = {
     subtotal: number;
     discounts: number;
     taxes: number;
+    taxBreakdown?: PosSaleTicketTaxBreakdown[];
     total: number;
   };
 };

@@ -152,6 +152,19 @@ type CurrentCashSessionRow = {
   id: string;
 };
 
+type OrderItemSnapshotTax = {
+  taxId: string;
+  taxName: string;
+  dianCode: string | null;
+  taxTypeCode: string | null;
+  calculationMethodCode: string | null;
+  taxRate: number;
+  taxBase: number;
+  taxAmount: number;
+  isIncluded: boolean;
+  calculationOrder: number;
+};
+
 @Injectable()
 export class OrderService {
   constructor(
@@ -433,6 +446,7 @@ export class OrderService {
       calculatedAt: input.pricingCalculatedAt.toISOString(),
       productId: input.preview.productId,
       quantity: input.preview.quantity,
+      taxes: input.preview.taxes,
       result: input.preview,
     };
   }
@@ -678,10 +692,18 @@ export class OrderService {
 
   private async replaceItems(
     orderId: string,
+    tenantId: string,
     items: OrderItemEntity[],
     client: PoolClient
   ) {
+    // Clear fiscal snapshots before replacing order_items (no orphan taxes).
+    await client.query(
+      `SELECT public.prc_replace_order_item_taxes($1::uuid, $2::uuid, '[]'::jsonb) AS ok`,
+      [tenantId, orderId]
+    );
     await client.query(`DELETE FROM order_items WHERE order_id = $1`, [orderId]);
+
+    const orderItemTaxesPayload: Array<Record<string, unknown>> = [];
 
     for (const item of items) {
       await client.query(
@@ -738,7 +760,88 @@ export class OrderService {
           item.pricingCalculatedAt,
         ]
       );
+
+      for (const tax of this.extractSnapshotTaxes(item.pricingSnapshot)) {
+        orderItemTaxesPayload.push({
+          order_item_id: item.id,
+          tax_id: tax.taxId,
+          tax_name: tax.taxName,
+          tax_rate: tax.taxRate,
+          tax_base: tax.taxBase,
+          tax_amount: tax.taxAmount,
+          dian_code: tax.dianCode,
+          tax_type_code: tax.taxTypeCode,
+          calculation_method_code: tax.calculationMethodCode,
+          calculation_order: tax.calculationOrder,
+          is_included: tax.isIncluded,
+        });
+      }
     }
+
+    await client.query(
+      `SELECT public.prc_replace_order_item_taxes($1::uuid, $2::uuid, $3::jsonb) AS ok`,
+      [tenantId, orderId, JSON.stringify(orderItemTaxesPayload)]
+    );
+  }
+
+  private extractSnapshotTaxes(
+    pricingSnapshot: Record<string, unknown> | null
+  ): OrderItemSnapshotTax[] {
+    const result =
+      pricingSnapshot &&
+      typeof pricingSnapshot === "object" &&
+      "result" in pricingSnapshot &&
+      pricingSnapshot.result &&
+      typeof pricingSnapshot.result === "object" &&
+      "taxes" in pricingSnapshot.result
+        ? pricingSnapshot.result.taxes
+        : null;
+
+    if (!Array.isArray(result)) {
+      return [];
+    }
+
+    return result
+      .map((tax, index) => {
+        if (!tax || typeof tax !== "object") {
+          return null;
+        }
+
+        const candidate = tax as Record<string, unknown>;
+        if (
+          typeof candidate.taxId !== "string" ||
+          typeof candidate.taxName !== "string" ||
+          typeof candidate.taxRate !== "number" ||
+          typeof candidate.taxBase !== "number" ||
+          typeof candidate.taxAmount !== "number"
+        ) {
+          return null;
+        }
+
+        return {
+          taxId: candidate.taxId,
+          taxName: candidate.taxName,
+          dianCode:
+            typeof candidate.dianCode === "string" || candidate.dianCode === null
+              ? candidate.dianCode
+              : null,
+          taxTypeCode:
+            typeof candidate.taxTypeCode === "string" || candidate.taxTypeCode === null
+              ? candidate.taxTypeCode
+              : null,
+          calculationMethodCode:
+            typeof candidate.calculationMethodCode === "string" ||
+            candidate.calculationMethodCode === null
+              ? candidate.calculationMethodCode
+              : null,
+          taxRate: candidate.taxRate,
+          taxBase: candidate.taxBase,
+          taxAmount: candidate.taxAmount,
+          isIncluded: Boolean(candidate.isIncluded),
+          calculationOrder: index + 1,
+        };
+      })
+      .filter((tax): tax is OrderItemSnapshotTax => Boolean(tax));
   }
 
   async createOrder(data: CreateOrderInput) {
@@ -842,7 +945,7 @@ export class OrderService {
         ]
       );
 
-      await this.replaceItems(order.id, items, client);
+      await this.replaceItems(order.id, data.tenantId, items, client);
       await client.query("COMMIT");
 
       this.auditService.logEvent({
@@ -1004,7 +1107,7 @@ export class OrderService {
       let items: OrderItemEntity[] = [];
       if (pricedItems) {
         items = pricedItems;
-        await this.replaceItems(id, items, client);
+        await this.replaceItems(id, tenantId, items, client);
       } else {
         const itemsResult = await client.query<OrderItemRow>(
           `

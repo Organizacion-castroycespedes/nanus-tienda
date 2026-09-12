@@ -192,7 +192,7 @@ const PurchasesReportsPage = () => {
         <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria compras</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Compras y tickets de proveedor</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Consulta compras por rango y alcance operativo, valida pagos reales y abre el ticket PDF generado por reporteria.
+          Consulta compras por rango y alcance operativo, valida pagos reales y abre el ticket PDF.
         </p>
       </section>
 

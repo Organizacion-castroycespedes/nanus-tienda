@@ -83,7 +83,7 @@ const buildTotals = (dataset: DemoReportDataset): Content => ({
 
 const buildFooter = (): Content => ({
   margin: [0, 20, 0, 0],
-  text: "Documento demo de reportería generado por backend-reporteria.",
+  text: "Documento de reportería generado por Manus Tienda.",
   style: "footer",
 });
 

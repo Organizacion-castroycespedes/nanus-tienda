@@ -14,6 +14,17 @@ export type PosSalePayload = {
     quantity: number;
     price: number;
     orderItemId?: string | null;
+    taxes?: Array<{
+      taxId: string;
+      taxName: string;
+      dianCode: string | null;
+      taxTypeCode: string | null;
+      calculationMethodCode: string | null;
+      taxRate: number;
+      taxBase: number;
+      taxAmount: number;
+      isIncluded: boolean;
+    }>;
   }>;
   payments?: Array<{
     paymentMethodId: string;
@@ -61,6 +72,17 @@ export type PosLinePricePreviewResponse = {
   taxRate: number;
   taxBase: number;
   taxAmount: number;
+  taxes: Array<{
+    taxId: string;
+    taxName: string;
+    dianCode: string | null;
+    taxTypeCode: string | null;
+    calculationMethodCode: string | null;
+    taxRate: number;
+    taxBase: number;
+    taxAmount: number;
+    isIncluded: boolean;
+  }>;
   lineSubtotal: number;
   lineTotal: number;
   explanation: string;
