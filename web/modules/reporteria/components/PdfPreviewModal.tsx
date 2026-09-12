@@ -80,7 +80,7 @@ export const PdfPreviewModal = ({
   return (
     <Modal
       title={title}
-      description="Vista previa del ticket generado por el backend."
+      description="Vista previa del Ticket"
       onClose={onClose}
       size="xl"
       footer={

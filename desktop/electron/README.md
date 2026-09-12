@@ -70,7 +70,8 @@ http://localhost:3000
 
 | Variable | Default | Uso |
 | --- | --- | --- |
-| `MANUS_WEB_URL` | `http://localhost:3000` | URL base de la web que Electron debe cargar. |
+| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `http://localhost:3000` | URL base de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
+| `NEXT_PUBLIC_MANUS_WEB_URL` | `http://localhost:3000` | URL pública alternativa, útil cuando se comparte la configuración de Next.js. Se usa si no existe `MANUS_WEB_URL`. |
 | `MANUS_START_PATH` | ninguno | Ruta inicial. Debe empezar con un solo `/`. Tiene prioridad sobre `MANUS_TENANT_ID`. |
 | `MANUS_TENANT_ID` | ninguno | Tenant inicial opcional. Si no hay `MANUS_START_PATH`, construye `/<tenantId>`. |
 | `MANUS_BRANCH_ID` | ninguno | Sucursal local reservada. No altera la URL en esta fase. |
