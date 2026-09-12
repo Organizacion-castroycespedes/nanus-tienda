@@ -63,6 +63,27 @@ export type ElectronicInvoiceReadModel = {
   providerStatusMessage: string | null;
   trackingId: string | null;
   representationAvailable: boolean;
+  customerFiscalSnapshot?: {
+    name: string | null;
+    identificationType: string | null;
+    identificationNumber: string | null;
+    address: string | null;
+    country: string | null;
+    department: string | null;
+    municipality: string | null;
+    phone: string | null;
+    email: string | null;
+    taxRegime: string | null;
+    fiscalResponsibilityCodes: string[];
+  } | null;
+  taxLines?: Array<{
+    type: string;
+    code: string | null;
+    rate: number;
+    taxableBase: number;
+    amount: number;
+  }>;
+  qrPayload?: string | null;
 };
 
 export type ElectronicInvoiceRepresentationInput = Omit<

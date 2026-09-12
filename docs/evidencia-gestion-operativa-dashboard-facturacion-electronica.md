@@ -40,3 +40,21 @@ navegador autenticado.
 
 Mutaciones QA: 0. Mutaciones PROD: 0. Llamadas FactuCore: 0. Llamadas DIAN:
 0. Workers: deshabilitados.
+
+## ImpresiÃ³n FE
+
+El endpoint de reportes proyecta el snapshot inmutable de cliente desde
+`metadata.electronicBilling.customer` y lÃ­neas reales desde
+`electronic_document_taxes`. La impresiÃ³n no usa el cliente maestro actual ni
+calcula impuestos desde diferencias del total. El builder exige estado
+`ACCEPTED`, nÃºmero y un QR autoritativo; sin QR, falla con mensaje controlado.
+
+Gap conocido: este repositorio contiene el cliente Electron, pero no contiene
+la implementaciÃ³n del Peripheral Agent ESC/POS. No se inventÃ³ un protocolo de
+imagen o QR. Logo y QR quedan pendientes hasta integrar primitivas soportadas
+por el Agent.
+
+Checklist fÃ­sico pendiente para impresora 80 mm: logo centrado y legible,
+contraste, descripciones largas, cantidades decimales, cÃ³digos, totales,
+impuestos por tasa, CUFE completo, QR escaneable, acentos, ausencia de
+recorte, alimentaciÃ³n y corte. Repetir en 58 mm si el perfil lo soporta.

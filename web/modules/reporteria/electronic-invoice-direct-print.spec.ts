@@ -21,6 +21,9 @@ const invoice: ElectronicInvoicePrintDataset = {
   saleId: "sale-1", electronicDocumentId: "doc-1", status: "ACCEPTED", documentNumber: "FE-1001",
   cufe: "CUFE-AUTHORITATIVE", acceptedAt: "2026-09-12T12:01:00.000Z", providerStatusCode: null,
   providerStatusMessage: null, trackingId: null, representationAvailable: true,
+  qrPayload: "https://validacion.example/fe/1001",
+  customerFiscalSnapshot: { name: "Cliente fiscal QA", identificationType: "CC", identificationNumber: "1", address: "Calle 1", country: "Colombia", department: "Antioquia", municipality: "Medellín", phone: null, email: null, taxRegime: "IVA", fiscalResponsibilityCodes: [] },
+  taxLines: [{ type: "IVA", code: "01", rate: 19, taxableBase: 1680.67, amount: 319.33 }],
 };
 
 test("electronic invoice thermal payload uses persisted accepted values and payments", () => {

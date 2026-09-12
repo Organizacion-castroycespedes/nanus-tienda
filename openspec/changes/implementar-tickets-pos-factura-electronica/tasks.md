@@ -9,4 +9,6 @@
 - [x] Gating `ACCEPTED` y representación fiscal autoritativa.
 - [x] Agregar acción de impresión FE en detalle operativo.
 - [x] Cubrir builder y ausencia de efectos fiscales.
+- [x] Proyectar snapshot fiscal inmutable y lÃ­neas de impuesto persistidas.
+- [x] Bloquear impresiÃ³n cuando falta fuente QR autoritativa.
 - [ ] Certificar logo/QR en hardware con capacidad de imagen/QR.

@@ -95,6 +95,9 @@ test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branc
             providerStatusMessage: "Aceptado",
             trackingId: "track-1",
             representationAvailable: true,
+            customerFiscalSnapshot: { name: "Cliente snapshot", fiscalResponsibilityCodes: ["O-13"] },
+            taxLines: [{ type: "IVA", code: "01", rate: 19, taxableBase: "100", amount: "19" }],
+            qrPayload: null,
           },
         ],
       };
@@ -113,6 +116,8 @@ test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branc
 
   assert.equal(result?.representationAvailable, true);
   assert.equal(result?.cufe, "cufe-1");
+  assert.equal(result?.customerFiscalSnapshot?.name, "Cliente snapshot");
+  assert.equal(result?.taxLines?.[0]?.amount, 19);
 });
 
 test("SalesReportAdapter.getElectronicInvoice: rejects ambiguous documents", async () => {
