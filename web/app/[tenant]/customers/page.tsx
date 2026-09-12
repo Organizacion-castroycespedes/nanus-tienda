@@ -1,7 +1,8 @@
 "use client";
 
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { Input } from "../../../components/design-system/Input";
@@ -98,6 +99,8 @@ const getCustomerDocument = (customer: CustomerResponse) =>
 
 const CustomersPage = () => {
   const confirm = useConfirm();
+  const searchParams = useSearchParams();
+  const requestedCustomerId = searchParams.get("editCustomerId");
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState<CustomerFilters>(defaultFilters);
@@ -231,6 +234,23 @@ const CustomersPage = () => {
     setSelectedCustomer(customer);
     setFormMode("edit");
   };
+
+  useEffect(() => {
+    if (requestedCustomerId && !hasSearched && !loading) {
+      void loadCustomers();
+    }
+  }, [hasSearched, loadCustomers, loading, requestedCustomerId]);
+
+  useEffect(() => {
+    if (!requestedCustomerId || !hasSearched || formMode) {
+      return;
+    }
+    const customer = customers.find((item) => item.id === requestedCustomerId);
+    if (customer && canEdit) {
+      setSelectedCustomer(customer);
+      setFormMode("edit");
+    }
+  }, [canEdit, customers, formMode, hasSearched, requestedCustomerId]);
 
   const isActionMode = formMode !== null;
   const actionTitle = formMode === "edit" ? "Editar cliente" : "Crear cliente";
