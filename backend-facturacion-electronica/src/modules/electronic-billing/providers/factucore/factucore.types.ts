@@ -159,6 +159,9 @@ export type FactuCoreDocumentResponse = {
   cude?: string | null;
   acceptedAt?: string | Date | null;
   rejectedAt?: string | Date | null;
+  providerStatusCode?: string | null;
+  providerStatusMessage?: string | null;
+  trackingId?: string | null;
   queued?: boolean | null;
   lines?: Array<{
     id?: string | null;
@@ -177,6 +180,9 @@ export type FactuCoreDocumentResponse = {
 export type FactuCoreStatusResponse = FactuCoreDocumentResponse & {
   errorCode?: string | null;
   errorMessage?: string | null;
+  providerStatusCode?: string | null;
+  providerStatusMessage?: string | null;
+  trackingId?: string | null;
 };
 
 export type FactuCoreDocumentOperationsResponse = {

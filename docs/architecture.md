@@ -87,7 +87,7 @@ Se maneja en `api/src/modules/finance/cash-sessions`.
 El módulo `auth` implementa:
 
 - `POST /auth/login`
-- `POST /auth/login/force`
+- `POST /auth/login/replace-session`
 - `POST /auth/refresh`
 - `POST /auth/logout`
 - `GET /auth/me`
@@ -99,7 +99,8 @@ El módulo `auth` implementa:
 
 1. El usuario inicia sesión con email y contraseña.
 2. Se valida estado del usuario y estado del tenant.
-3. Se impide sesión concurrente salvo `login/force`.
+3. Se impide sesión concurrente; una sesión activa solo se reemplaza mediante
+   `login/replace-session` después de validar nuevamente la contraseña.
 4. Se crea una fila en `auth_sessions`.
 5. Se crea un refresh token hasheado en `auth_refresh_tokens`.
 6. Se emite JWT con:

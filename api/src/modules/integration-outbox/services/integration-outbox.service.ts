@@ -38,6 +38,10 @@ export class IntegrationOutboxService {
     return this.enqueue(this.buildSaleCompletedEvent(input), client);
   }
 
+  async findByEventId(eventId: string, client?: PoolClient) {
+    return this.repository.findByEventId(eventId, client);
+  }
+
   async claimDueEvents(limit: number, leaseMs: number, client?: PoolClient) {
     return this.repository.claimDueEvents(
       {

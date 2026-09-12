@@ -15,6 +15,7 @@ import {
   Building2,
   Calculator,
   Calendar,
+  ClipboardList,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -29,6 +30,7 @@ import {
   Monitor,
   Package,
   Printer,
+  ReceiptText,
   Ruler,
   Settings,
   ShieldCheck,
@@ -48,10 +50,7 @@ import { fetchMenu, fetchProfile, logout, updatePassword, updateProfile } from "
 import { fetchPermissions } from "../../domains/menu/api";
 import { persistMenuCache, readMenuCache } from "../../domains/auth/menu-cache";
 import { MENU_KEYS } from "../../domains/menu/constants";
-import {
-  canAccessInfrastructureAdminRoute,
-  getRoutePermissionRequirement,
-} from "../../lib/route-permissions";
+import { getRoutePermissionRequirement } from "../../lib/route-permissions";
 import { getAllowedMenuItems, hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
 import { setBranding } from "../../store/brandingSlice";
@@ -63,7 +62,6 @@ import { usePosUiStore } from "../../modules/pos/hooks/usePosUiStore";
 import type { AuthProfile } from "../../domains/auth/types";
 import type { MenuItem, MenuResponse } from "../../domains/menu/types";
 import { Select } from "../../components/design-system/Select";
-import { ThemeToggle } from "../../components/theme/ThemeToggle";
 import { isConfirmCancelledError, useConfirm } from "../../hooks/use-confirm";
 import { useTenantTheme } from "../../hooks/useTenantTheme";
 import { getMenuItemStateStyles } from "../../src/lib/theme/buildTenantTheme";
@@ -95,6 +93,8 @@ const iconByName: Record<string, LucideIcon> = {
   tags: Tags,
   truck: Truck,
   calculator: Calculator,
+  clipboardlist: ClipboardList,
+  receipttext: ReceiptText,
   ruler: Ruler,
   shoppingcart: ShoppingCart,
   barchart3: BarChart3,
@@ -888,11 +888,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    if (!canAccessInfrastructureAdminRoute(pathname, authUser?.role)) {
-      router.replace(`/${authUser?.tenantId ?? tenantSlug}/unauthorized`);
-      return;
-    }
-
     const requirement = getRoutePermissionRequirement(pathname);
     if (!requirement) {
       return;
@@ -1024,7 +1019,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div
-      className="flex h-screen overflow-hidden overscroll-none bg-[var(--brand-background)] text-[var(--brand-text)] dark:bg-slate-950 dark:text-slate-100"
+      className="flex h-screen overflow-hidden overscroll-none bg-[var(--brand-background)] text-[var(--brand-text)]"
       style={{
         ["--brand-primary" as never]: tenantTheme.primary,
         ["--brand-primary-text" as never]: tenantTheme.primaryText,
@@ -1077,7 +1072,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     >
       <a
         href="#contenido-principal"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-slate-900 dark:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-slate-900"
       >
         Saltar al contenido principal
       </a>
@@ -1168,13 +1163,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b bg-[var(--brand-header-bg)]/90 dark:bg-slate-900/90 dark:border-slate-800 px-4 py-4 shadow-sm backdrop-blur-md md:px-6"
+            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b bg-[var(--brand-header-bg)]/90 px-4 py-4 shadow-sm backdrop-blur-md md:px-6"
             style={{ borderColor: tenantTheme.header.border }}
           >
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] lg:hidden"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] lg:hidden"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1191,7 +1186,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       {posOperationalRole ? (
                         <span
-                          className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)] dark:text-slate-100"
+                          className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)]"
                           style={{
                             borderColor: tenantTheme.header.iconButtonBorder,
                             backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1203,7 +1198,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       ) : null}
                       {posOperationalTerminal ? (
                         <span
-                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)] dark:text-slate-100"
+                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
                           style={{
                             borderColor: tenantTheme.header.iconButtonBorder,
                             backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1214,7 +1209,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                         </span>
                       ) : (
                         <span
-                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-muted)] dark:text-slate-400"
+                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-muted)]"
                           style={{
                             borderColor: tenantTheme.header.iconButtonBorder,
                             backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1225,7 +1220,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       )}
                       {posOperationalBranch ? (
                         <span
-                          className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)] dark:text-slate-100"
+                          className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
                           style={{
                             borderColor: tenantTheme.header.iconButtonBorder,
                             backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1236,16 +1231,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-header-muted)] dark:text-slate-400">
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-header-muted)]">
                       {posOperationalDate} · {posOperationalTime}
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)] dark:text-slate-400">
+                    <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)]">
                       Sistema
                     </p>
-                    <h1 className="text-lg font-semibold text-[var(--brand-header-text)] dark:text-slate-100">
+                    <h1 className="text-lg font-semibold text-[var(--brand-header-text)]">
                       Panel de control
                     </h1>
                   </div>
@@ -1264,10 +1259,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               >
                 <LayoutDashboard className="h-4 w-4" />
               </Link>
-              <ThemeToggle />
               <button
                 type="button"
-                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] dark:text-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1280,7 +1274,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] dark:text-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1321,7 +1315,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <div className="relative">
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[var(--brand-header-text)] dark:text-slate-100 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                   style={{
                     borderColor: tenantTheme.header.iconButtonBorder,
                     backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1340,13 +1334,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </button>
                 {userMenuOpen && (
                   <div
-                    className="absolute right-0 mt-2 w-56 rounded-lg border bg-white py-2 text-sm text-slate-700 shadow-lg dark:bg-slate-800 dark:text-slate-200"
+                    className="absolute right-0 mt-2 w-56 rounded-lg border bg-white py-2 text-sm text-slate-700 shadow-lg"
                     style={{ borderColor: tenantTheme.header.border }}
                     role="menu"
                   >
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-50"
                       onClick={() => {
                         setUserMenuOpen(false);
                         openProfileModal();
@@ -1357,7 +1351,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     </button>
                     <button
                       type="button"
-                      className="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-50"
                       onClick={() => {
                         setUserMenuOpen(false);
                         openPasswordModal();
@@ -1371,7 +1365,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
               <button
                 type="button"
-                className="rounded-full border p-2 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] dark:hover:bg-slate-800"
+                className="rounded-full border p-2 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1392,18 +1386,23 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               {children}
             </div>
             <footer
-              className="border-t px-4 py-4 text-sm md:px-6 bg-[var(--brand-surface-card)] border-[var(--brand-surface-border)] text-[var(--brand-surface-muted)] dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400"
+              className="border-t px-4 py-4 text-sm md:px-6"
+              style={{
+                borderColor: tenantTheme.surface.border,
+                backgroundColor: tenantTheme.surface.card,
+                color: tenantTheme.surface.mutedText,
+              }}
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <p className="font-semibold text-[var(--brand-text)] dark:text-slate-100">
+                  <p className="font-semibold" style={{ color: tenantTheme.surface.text }}>
                     {company?.razonSocial || authUser?.tenantName || "Empresa"}
                   </p>
                   <p>
                     {company?.nit ? `NIT ${company.nit}${company.dv ? `-${company.dv}` : ""}` : "Gestion administrativa y operativa."}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-4 text-slate-500 dark:text-slate-400">
+                <div className="flex flex-wrap gap-4 text-slate-500">
                   {company?.emailCorporativo && (
                     <span>{company.emailCorporativo}</span>
                   )}
@@ -1415,14 +1414,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           </main>
           {profileModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-              <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
+              <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  <h2 className="text-lg font-semibold text-slate-900">
                     Editar datos personales
                   </h2>
                   <button
                     type="button"
-                    className="rounded-full p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                    className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
                     aria-label="Cerrar"
                     onClick={() => setProfileModalOpen(false)}
                   >
@@ -1430,11 +1429,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   </button>
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Nombres
                     <input
                       type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={profileForm.nombres}
                       onChange={(event) =>
                         setProfileForm((prev) => ({
@@ -1444,11 +1443,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       }
                     />
                   </label>
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Apellidos
                     <input
                       type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={profileForm.apellidos}
                       onChange={(event) =>
                         setProfileForm((prev) => ({
@@ -1474,11 +1473,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     <option value="NIT">NIT</option>
                     <option value="Pasaporte">Pasaporte</option>
                   </Select>
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Numero de documento
                     <input
                       type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={profileForm.documentoNumero}
                       onChange={(event) =>
                         setProfileForm((prev) => ({
@@ -1488,11 +1487,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       }
                     />
                   </label>
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Telefono
                     <input
                       type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={profileForm.telefono}
                       onChange={(event) =>
                         setProfileForm((prev) => ({
@@ -1502,11 +1501,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       }
                     />
                   </label>
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Direccion
                     <input
                       type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={profileForm.direccion}
                       onChange={(event) =>
                         setProfileForm((prev) => ({
@@ -1516,11 +1515,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       }
                     />
                   </label>
-                  <label className="text-sm text-slate-600 sm:col-span-2 dark:text-slate-300">
+                  <label className="text-sm text-slate-600 sm:col-span-2">
                     Email personal
                     <input
                       type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={profileForm.emailPersonal}
                       onChange={(event) =>
                         setProfileForm((prev) => ({
@@ -1537,7 +1536,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 <div className="mt-5 flex flex-wrap justify-end gap-3">
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:text-slate-300"
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600"
                     onClick={() => setProfileModalOpen(false)}
                   >
                     Cancelar
@@ -1556,14 +1555,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           )}
           {passwordModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
-              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
+              <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  <h2 className="text-lg font-semibold text-slate-900">
                     Cambiar contraseña
                   </h2>
                   <button
                     type="button"
-                    className="rounded-full p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                    className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
                     aria-label="Cerrar"
                     onClick={() => setPasswordModalOpen(false)}
                   >
@@ -1571,11 +1570,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   </button>
                 </div>
                 <div className="mt-4 grid gap-4">
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Nueva contraseña
                     <input
                       type="password"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={passwordForm.password}
                       onChange={(event) =>
                         setPasswordForm((prev) => ({
@@ -1585,11 +1584,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       }
                     />
                   </label>
-                  <label className="text-sm text-slate-600 dark:text-slate-300">
+                  <label className="text-sm text-slate-600">
                     Confirmar contraseña
                     <input
                       type="password"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800 dark:text-slate-100"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-slate-800"
                       value={passwordForm.confirmPassword}
                       onChange={(event) =>
                         setPasswordForm((prev) => ({
@@ -1606,7 +1605,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 <div className="mt-5 flex flex-wrap justify-end gap-3">
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:text-slate-300"
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600"
                     onClick={() => setPasswordModalOpen(false)}
                   >
                     Cancelar

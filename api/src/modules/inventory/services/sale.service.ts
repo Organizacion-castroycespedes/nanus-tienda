@@ -56,6 +56,12 @@ import type {
   SaleTaxSnapshot,
   SaleCustomerSnapshot,
 } from "../../integration-outbox/contracts/integration-outbox-events";
+import {
+  evaluateElectronicBillingEligibility,
+} from "../../integration-outbox/contracts/electronic-billing-eligibility";
+import {
+  getElectronicBillingMode,
+} from "../../integration-outbox/contracts/electronic-billing-mode";
 import { StockMovementService } from "./stock-movement.service";
 
 type SaleListRow = SaleRow & {
@@ -1006,6 +1012,163 @@ export class SaleService {
     await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
   }
 
+  getElectronicBillingMode() {
+    return getElectronicBillingMode();
+  }
+
+  private async requestElectronicBillingForSaleInTransaction(
+    saleId: string,
+    saleContext: SaleContext,
+    client: PoolClient,
+  ) {
+    const saleResult = await client.query<SaleDetailRow>(
+      `SELECT
+        s.id, s.tenant_id, s.branch_id, s.terminal_id, s.user_id,
+        s.pos_session_id, s.customer_id, s.order_id, s.type, s.status,
+        s.total, s.balance, s.payment_status, s.total_paid, s.balance_due,
+        s.created_at, NULL::text AS customer_name
+       FROM sales s
+       WHERE s.id = $1 AND s.tenant_id = $2
+       FOR UPDATE` ,
+      [saleId, saleContext.tenantId],
+    );
+    const saleRow = saleResult.rows[0];
+    if (!saleRow) {
+      throw new NotFoundException("sale not found");
+    }
+
+    const eventId = buildSaleCompletedForElectronicBillingEventId(
+      saleContext.tenantId!,
+      saleId,
+    );
+    const [documentsResult, outboxEvent] = await Promise.all([
+      client.query<{ status: string }>(
+        `SELECT status FROM electronic_documents
+         WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
+         ORDER BY created_at DESC, id DESC`,
+        [saleContext.tenantId, saleId],
+      ),
+      this.integrationOutboxService?.findByEventId(eventId, client),
+    ]);
+    const eligibility = evaluateElectronicBillingEligibility({
+      saleStatus: saleRow.status,
+      paymentStatus: saleRow.payment_status,
+      customerId: saleRow.customer_id,
+      documentStatuses: documentsResult.rows
+        .map((row) => row.status)
+        .filter((status): status is string => Boolean(status)),
+      requestExists: Boolean(outboxEvent),
+    });
+    if (eligibility !== "ELIGIBLE") {
+      return {
+        saleId,
+        result: eligibility,
+        eligibility,
+        requestCreated: false,
+        electronicDocumentId: null,
+      };
+    }
+    if (!this.integrationOutboxService) {
+      throw new BadRequestException("electronic billing outbox is unavailable");
+    }
+
+    const paymentResult = await client.query<{
+      payment_method_id: string;
+      amount: string | number;
+      reference_number: string | null;
+      notes: string | null;
+      cash_session_id: string | null;
+    }>(
+      `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
+              payment.reference_number, payment.notes, payment.cash_session_id
+       FROM payment_allocations allocation
+       INNER JOIN payments payment ON payment.id = allocation.payment_id
+       WHERE allocation.reference_type = 'SALE'
+         AND allocation.reference_id = $1
+         AND payment.tenant_id = $2
+         AND payment.status IN ('PENDING', 'COMPLETED')
+       ORDER BY allocation.created_at ASC, allocation.id ASC`,
+      [saleId, saleContext.tenantId],
+    );
+    const payments = this.normalizePayments(
+      paymentResult.rows.map((row) => ({
+        paymentMethodId: row.payment_method_id,
+        amount: this.toNumber(row.amount),
+        cashSessionId: row.cash_session_id,
+        referenceNumber: row.reference_number,
+        notes: row.notes,
+      })),
+    );
+    const legacyPaymentMethods = await this.buildLegacySalePaymentMethods(
+      saleContext.tenantId!,
+      payments,
+      client,
+    );
+    await this.enqueueSaleCompletedForElectronicBilling(
+      saleContext,
+      saleRow,
+      null,
+      legacyPaymentMethods,
+      payments,
+      client,
+      { customerId: saleRow.customer_id, orderId: saleRow.order_id },
+    );
+    return {
+      saleId,
+      result: "REQUESTED" as const,
+      eligibility: "ELIGIBLE" as const,
+      requestCreated: true,
+      electronicDocumentId: null,
+    };
+  }
+
+  async requestElectronicBillingForSale(saleId: string, actor: BranchScopedActor) {
+    const saleContext = await this.normalizeSaleContext(actor);
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const result = await this.requestElectronicBillingForSaleInTransaction(
+        saleId,
+        saleContext,
+        client,
+      );
+      await client.query("COMMIT");
+      this.auditService.logEvent({
+        tenantId: saleContext.tenantId,
+        userId: saleContext.userId,
+        module: "sales",
+        entity: "sales",
+        entityId: saleId,
+        action: "ELECTRONIC_BILLING_REQUESTED_MANUALLY",
+      });
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async requestElectronicBillingForSales(saleIds: string[], actor: BranchScopedActor) {
+    const uniqueSaleIds = [...new Set(saleIds.filter(Boolean))];
+    const results = [] as Array<Record<string, unknown>>;
+    for (const saleId of uniqueSaleIds) {
+      try {
+        results.push(await this.requestElectronicBillingForSale(saleId, actor));
+      } catch (error) {
+        results.push({
+          saleId,
+          result: "INELIGIBLE",
+          eligibility: "INELIGIBLE",
+          requestCreated: false,
+          reason: error instanceof Error ? error.message : "billing request failed",
+        });
+      }
+    }
+    return { selected: uniqueSaleIds.length, results };
+  }
+
   private async resolveAllowedBranchIds(
     actor: BranchScopedActor,
     tenantId: string
@@ -1842,18 +2005,20 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      await this.enqueueSaleCompletedForElectronicBilling(
-        saleContext,
-        saleRow,
-        pricedItems as PricedSaleItem[],
-        legacyPaymentMethods,
-        payments,
-        client,
-        {
-          customerId: data.customerId,
-          orderId: data.orderId ?? saleRow.order_id ?? null,
-        }
-      );
+      if (getElectronicBillingMode() === "AUTOMATIC") {
+        await this.enqueueSaleCompletedForElectronicBilling(
+          saleContext,
+          saleRow,
+          pricedItems as PricedSaleItem[],
+          legacyPaymentMethods,
+          payments,
+          client,
+          {
+            customerId: data.customerId,
+            orderId: data.orderId ?? saleRow.order_id ?? null,
+          }
+        );
+      }
 
       await client.query("COMMIT");
       this.auditService.logEvent({
@@ -1918,18 +2083,20 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      await this.enqueueSaleCompletedForElectronicBilling(
-        saleContext,
-        saleRow,
-        null,
-        null,
-        payments,
-        client,
-        {
-          customerId: saleRow.customer_id,
-          orderId: data.orderId ?? saleRow.order_id ?? null,
-        }
-      );
+      if (getElectronicBillingMode() === "AUTOMATIC") {
+        await this.enqueueSaleCompletedForElectronicBilling(
+          saleContext,
+          saleRow,
+          null,
+          null,
+          payments,
+          client,
+          {
+            customerId: saleRow.customer_id,
+            orderId: data.orderId ?? saleRow.order_id ?? null,
+          }
+        );
+      }
 
       await client.query("COMMIT");
       this.auditService.logEvent({

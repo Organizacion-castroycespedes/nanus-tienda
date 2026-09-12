@@ -75,6 +75,8 @@ export type ElectronicDocumentRecord = QueryResultRow & {
   accepted_at: string | Date | null;
   rejected_at: string | Date | null;
   last_status_check_at: string | Date | null;
+  processing_stage: string;
+  processing_stage_updated_at: string | Date;
   last_error_code: string | null;
   last_error_message: string | null;
   metadata: Record<string, unknown>;
@@ -236,6 +238,8 @@ export type NewElectronicDocumentInput = {
   acceptedAt?: Date | string | null;
   rejectedAt?: Date | string | null;
   lastStatusCheckAt?: Date | string | null;
+  processingStage?: string;
+  processingStageUpdatedAt?: Date | string;
   lastErrorCode?: string | null;
   lastErrorMessage?: string | null;
   metadata?: Record<string, unknown>;

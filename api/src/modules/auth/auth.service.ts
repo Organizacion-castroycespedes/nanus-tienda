@@ -258,7 +258,7 @@ export class AuthService {
     }
   }
 
-  async forceLogin(
+  async replaceActiveSession(
     payload: LoginDto,
     metadata?: RefreshTokenMetadata
   ): Promise<AuthTokens> {

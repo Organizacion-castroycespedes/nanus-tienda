@@ -75,3 +75,56 @@ test("V061 report_pos_sales: elimina overload legacy y conserva firma del adapte
   assert.match(sql, /legacy report_pos_sales extended overload still exists/);
   assert.match(sql, /report_pos_sales overload count expected 1/);
 });
+
+test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branch", async () => {
+  const adapter = new SalesReportAdapter({
+    executeFunction: async () => null,
+  } as never, {
+    query: async (_sql: string, params: unknown[]) => {
+      assert.deepEqual(params, ["sale-1", "tenant-a", "USER", "branch-a"]);
+      return {
+        rows: [
+          {
+            saleId: "sale-1",
+            electronicDocumentId: "document-1",
+            status: "ACCEPTED",
+            documentNumber: "SETP-1",
+            cufe: "cufe-1",
+            acceptedAt: "2026-09-11T10:00:00.000Z",
+            providerStatusCode: "100",
+            providerStatusMessage: "Aceptado",
+            trackingId: "track-1",
+            representationAvailable: true,
+          },
+        ],
+      };
+    },
+  } as never);
+
+  const result = await adapter.getElectronicInvoice(
+    {
+      userId: "user-1",
+      role: "USER",
+      tenantId: "tenant-a",
+      branchId: "branch-a",
+    },
+    "sale-1"
+  );
+
+  assert.equal(result?.representationAvailable, true);
+  assert.equal(result?.cufe, "cufe-1");
+});
+
+test("SalesReportAdapter.getElectronicInvoice: rejects ambiguous documents", async () => {
+  const adapter = new SalesReportAdapter({ executeFunction: async () => null } as never, {
+    query: async () => ({ rows: [{}, {}] }),
+  } as never);
+
+  await assert.rejects(
+    adapter.getElectronicInvoice(
+      { userId: "user-1", role: "USER", tenantId: "tenant-a", branchId: "branch-a" },
+      "sale-1"
+    ),
+    /ambiguous electronic documents/
+  );
+});

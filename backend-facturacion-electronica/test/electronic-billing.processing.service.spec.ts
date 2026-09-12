@@ -316,9 +316,12 @@ test("refreshDocumentStatus moves processing document to accepted", async () => 
     prefix: "FKE",
     number: "1",
     fullNumber: "FKE-1",
-    cufe: "CUFE-123",
-    cude: null,
-    acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+     cufe: "CUFE-123",
+     cude: null,
+     providerStatusCode: "100",
+     providerStatusMessage: "Accepted by DIAN",
+     trackingId: "TRACK-123",
+     acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
     rejectedAt: null,
     metadata: {},
   });
@@ -328,6 +331,11 @@ test("refreshDocumentStatus moves processing document to accepted", async () => 
   assert.equal(result.document.status, "ACCEPTED");
   assert.equal(result.document.provider_status, "ACCEPTED");
   assert.equal(result.document.cufe, "CUFE-123");
+  assert.deepEqual(result.document.metadata.providerResponse, {
+    code: "100",
+    message: "Accepted by DIAN",
+    trackingId: "TRACK-123",
+  });
 });
 
 test("refreshDocumentStatus recovers accepted provider by external reference without create", async () => {
@@ -354,6 +362,38 @@ test("refreshDocumentStatus recovers accepted provider by external reference wit
   assert.equal(result.document.provider_document_id, "FACTUCORE-EXISTING-1");
   assert.equal(result.document.provider_status, "ACCEPTED");
   assert.equal(result.document.cufe, "CUFE-EXISTING-1");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("repeated accepted reconciliation preserves fiscal metadata without provider mutation", async () => {
+  const harness = buildHarness(buildState({ status: "PROCESSING", provider_document_id: "FACTUCORE-EXISTING-1" }));
+  let lookupCalls = 0;
+  harness.provider.getDocumentStatus = async (command) => {
+    lookupCalls += 1;
+    return {
+      documentId: command.documentId,
+      providerDocumentId: "FACTUCORE-EXISTING-1",
+      providerStatus: "ACCEPTED",
+      normalizedStatus: "ACCEPTED",
+      providerStatusDetail: "accepted",
+      providerStatusCode: "100",
+      providerStatusMessage: "Accepted by DIAN",
+      trackingId: "TRACK-EXISTING-1",
+      cufe: "CUFE-EXISTING-1",
+      acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+      rejectedAt: null,
+      metadata: {},
+    };
+  };
+
+  await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+  const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(lookupCalls, 2);
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(result.document.cufe, "CUFE-EXISTING-1");
+  assert.equal(result.document.metadata.providerResponse.code, "100");
   assert.equal(harness.provider.received.issueInvoice.length, 0);
   assert.equal(harness.provider.received.retryDocument.length, 0);
 });
@@ -393,16 +433,16 @@ const buildNotFoundError = () => {
   return error;
 };
 
-test("retry restarts issuance before provider document creation", async () => {
+test("retry fails closed when provider lookup is not found without pre-provider proof", async () => {
   const harness = buildHarness(buildState({ status: "TECHNICAL_ERROR" }));
   harness.provider.getDocumentStatus = async () => {
     throw buildNotFoundError();
   };
 
   const result = await harness.service.retryDocument(ids.tenant, ids.document);
-
-  assert.equal(result.document.status, "PROCESSING");
-  assert.equal(harness.provider.received.issueInvoice.length, 1);
+  assert.equal(result.document.status, "TECHNICAL_ERROR");
+  assert.match(result.document.last_error_message ?? "", /Provider mutation evidence is ambiguous/);
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
   assert.equal(harness.provider.received.retryDocument.length, 0);
 });
 
@@ -603,4 +643,238 @@ test("provider ID survives failure after create", async () => {
 
   assert.equal(result.document.status, "TECHNICAL_ERROR");
   assert.equal(result.document.provider_document_id, "FAKE-CREATED");
+});
+
+test("stale processing reconciles an accepted provider without transmission", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FAKE-ACCEPTED",
+    provider_status: "PROCESSING",
+  }));
+  harness.provider.getDocumentStatus = async (command) => ({
+    documentId: command.documentId,
+    providerDocumentId: "FAKE-ACCEPTED",
+    providerStatus: "ACCEPTED",
+    normalizedStatus: "ACCEPTED",
+    providerStatusDetail: "accepted",
+    prefix: "FKE",
+    number: "2",
+    fullNumber: "FKE-2",
+    cufe: "CUFE-ACCEPTED",
+    cude: null,
+    acceptedAt: new Date("2026-08-27T02:00:00.000Z"),
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("stale processing reconciles a final rejected provider without retry", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FAKE-REJECTED",
+    provider_status: "PROCESSING",
+  }));
+  harness.provider.getDocumentStatus = async (command) => ({
+    documentId: command.documentId,
+    providerDocumentId: "FAKE-REJECTED",
+    providerStatus: "REJECTED",
+    normalizedStatus: "REJECTED",
+    providerStatusDetail: "final fiscal rejection",
+    prefix: "FKE",
+    number: "3",
+    fullNumber: "FKE-3",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: new Date("2026-08-27T02:00:00.000Z"),
+    metadata: {},
+  });
+
+  const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "REJECTED");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("stale processing recovers a provider link by external reference", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: null,
+    provider_status: null,
+  }));
+  harness.provider.getDocumentStatus = async (command) => ({
+    documentId: command.documentId,
+    providerDocumentId: "FAKE-RECOVERED",
+    providerStatus: "PROCESSING",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "prepared",
+    prefix: "FKE",
+    number: "4",
+    fullNumber: "FKE-4",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(result.document.provider_document_id, "FAKE-RECOVERED");
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+});
+
+test("stale processing with no provider document fails closed without creating", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: null,
+  }));
+  harness.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+
+  await assert.rejects(() => harness.service.refreshDocumentStatus(ids.tenant, ids.document));
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("stale provider response cannot regress an accepted document", async () => {
+  const harness = buildHarness(buildState({
+    status: "ACCEPTED",
+    provider_document_id: "FAKE-ACCEPTED",
+    provider_status: "ACCEPTED",
+    cufe: "CUFE-IMMUTABLE",
+  }));
+  harness.provider.getDocumentStatus = async (command) => ({
+    documentId: command.documentId,
+    providerDocumentId: "FAKE-ACCEPTED",
+    providerStatus: "PROCESSING",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "stale response",
+    prefix: "FKE",
+    number: "5",
+    fullNumber: "FKE-5",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(result.document.cufe, "CUFE-IMMUTABLE");
+});
+
+test("crash after provider create recovers by external reference without creating twice", async () => {
+  const harness = buildHarness();
+  const originalPersist = (harness.service as unknown as { persistProviderResult: unknown }).persistProviderResult;
+  let persistAttempts = 0;
+  (harness.service as unknown as { persistProviderResult: (...args: unknown[]) => Promise<unknown> }).persistProviderResult = async (...args) => {
+    persistAttempts += 1;
+    if (persistAttempts === 1) {
+      throw new Error("simulated crash after provider create");
+    }
+    return (originalPersist as (...persistArgs: unknown[]) => Promise<unknown>).apply(harness.service, args);
+  };
+  harness.provider.getDocumentStatus = async (command) => ({
+    documentId: command.documentId,
+    providerDocumentId: "FAKE-CREATED",
+    providerStatus: "PROCESSING",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "existing provider document",
+    prefix: "FKE",
+    number: "6",
+    fullNumber: "FKE-6",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const failed = await harness.service.processDocument(ids.tenant, ids.document);
+  assert.equal(failed.document.status, "TECHNICAL_ERROR");
+  const recovered = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(recovered.document.provider_document_id, "FAKE-CREATED");
+  assert.equal(harness.provider.received.issueInvoice.length, 1);
+});
+
+test("persistent provider mock recovers a create timeout without duplicating the provider document", async () => {
+  const harness = buildHarness(buildState({ status: "PENDING" }));
+  let createCalls = 0;
+  const providerState = {
+    providerDocumentId: "FAKE-TIMEOUT-PERSISTED",
+    providerStatus: "PROCESSING",
+  };
+  harness.provider.issueInvoice = async () => {
+    createCalls += 1;
+    throw new Error("provider create timeout after persistence");
+  };
+  harness.provider.getDocumentStatus = async (command) => ({
+    documentId: command.documentId,
+    providerDocumentId: providerState.providerDocumentId,
+    providerStatus: providerState.providerStatus,
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "recovered by external reference",
+    prefix: "FKE",
+    number: "7",
+    fullNumber: "FKE-7",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const failed = await harness.service.processDocument(ids.tenant, ids.document);
+  assert.equal(failed.document.status, "TECHNICAL_ERROR");
+  const recovered = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  assert.equal(recovered.document.provider_document_id, providerState.providerDocumentId);
+  assert.equal(recovered.document.status, "PROCESSING");
+  assert.equal(createCalls, 1);
+});
+
+test("persistent provider mock keeps an unresolved create timeout fail-closed", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "NETWORK_TIMEOUT",
+  }));
+  let providerExists = false;
+  harness.provider.getDocumentStatus = async () => {
+    if (!providerExists) {
+      throw buildNotFoundError();
+    }
+
+    return {
+      documentId: ids.document,
+      providerDocumentId: "FAKE-UNEXPECTED",
+      providerStatus: "PROCESSING",
+      normalizedStatus: "PROCESSING",
+      providerStatusDetail: "unexpected provider state",
+      metadata: {},
+    };
+  };
+  harness.provider.issueInvoice = async () => {
+    providerExists = true;
+    throw new Error("provider create timeout");
+  };
+
+  const result = await harness.service.retryDocument(ids.tenant, ids.document);
+  assert.equal(result.document.status, "TECHNICAL_ERROR");
+  assert.match(result.document.last_error_message ?? "", /Provider mutation evidence is ambiguous/);
+  assert.equal(providerExists, false);
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
 });

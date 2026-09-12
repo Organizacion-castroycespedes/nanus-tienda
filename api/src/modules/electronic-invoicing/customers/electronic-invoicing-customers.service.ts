@@ -7,6 +7,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import crypto from "crypto";
+import { LocationsService } from "../../locations/locations.service";
 import { ElectronicInvoicingCustomersRepository } from "./electronic-invoicing-customers.repository";
 import type { CreateElectronicInvoicingCustomerDto } from "./dto/create-electronic-invoicing-customer.dto";
 import type { ListElectronicInvoicingCustomersDto } from "./dto/list-electronic-invoicing-customers.dto";
@@ -84,7 +85,10 @@ export class ElectronicInvoicingCustomersService {
     private readonly customersRepository: ElectronicInvoicingCustomersRepository,
     @Optional()
     @Inject(ThirdPartyLookupService)
-    private readonly thirdPartyLookupService?: ThirdPartyLookupService
+    private readonly thirdPartyLookupService?: ThirdPartyLookupService,
+    @Optional()
+    @Inject(LocationsService)
+    private readonly locationsService?: LocationsService
   ) {}
 
   private parseBoolean(value: unknown, fieldName: string): boolean | undefined {
@@ -517,6 +521,13 @@ export class ElectronicInvoicingCustomersService {
     if (isFinalConsumer && (dto.isActive ?? true)) {
       await this.ensureNoOtherFinalConsumer(tenantId);
     }
+    if (this.locationsService) {
+      await this.locationsService.validateFiscalHierarchy(
+        dto.countryCode,
+        dto.departmentCode,
+        dto.municipalityCode
+      );
+    }
 
     const input: CreateElectronicInvoicingCustomerInput = {
       id: crypto.randomUUID(),
@@ -668,6 +679,13 @@ export class ElectronicInvoicingCustomersService {
     }
     if (hasOwn(dto, "municipalityCode")) {
       update.municipalityCode = this.normalizeText(dto.municipalityCode);
+    }
+    if (this.locationsService) {
+      await this.locationsService.validateFiscalHierarchy(
+        hasOwn(dto, "countryCode") ? update.countryCode : current.countryCode,
+        hasOwn(dto, "departmentCode") ? update.departmentCode : current.departmentCode,
+        hasOwn(dto, "municipalityCode") ? update.municipalityCode : current.municipalityCode
+      );
     }
     if (hasOwn(dto, "personType")) {
       update.personType = this.normalizePersonType(dto.personType) ?? null;

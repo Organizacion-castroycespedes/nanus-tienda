@@ -18,6 +18,20 @@ export type PosSalesListRow = {
   branchId: string;
   branchName?: string | null;
   cashSessionId: string | null;
+  billingStatus:
+    | "NO_DOCUMENT"
+    | "ELIGIBLE_ON_DEMAND"
+    | "REQUESTED"
+    | "PENDING"
+    | "PROCESSING"
+    | "ACCEPTED"
+    | "REJECTED"
+    | "TECHNICAL_ERROR"
+    | "CANCELLED"
+    | "AMBIGUOUS";
+  billingDocumentNumber: string | null;
+  billingCufe: string | null;
+  billingAcceptedAt: string | null;
 };
 
 export type PosSalesListSummary = {

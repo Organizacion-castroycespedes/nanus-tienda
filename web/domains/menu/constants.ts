@@ -25,6 +25,8 @@ export const MENU_KEYS = {
   ORDERS: "ORDERS",
   DELIVERIES: "DELIVERIES",
   CUSTOMERS: "CUSTOMERS",
+  OPERATIONS: "OPERATIONS",
+  OPERATIONS_SALES: "OPERATIONS_SALES",
 } as const;
 
 export const MENU_KEY_ALIASES: Record<string, string[]> = {
@@ -54,6 +56,8 @@ export const MENU_KEY_ALIASES: Record<string, string[]> = {
   [MENU_KEYS.ORDERS]: [],
   [MENU_KEYS.DELIVERIES]: [],
   [MENU_KEYS.CUSTOMERS]: [],
+  [MENU_KEYS.OPERATIONS]: [],
+  [MENU_KEYS.OPERATIONS_SALES]: [],
 };
 
 export const getMenuKeyCandidates = (menuKey: string): string[] => {

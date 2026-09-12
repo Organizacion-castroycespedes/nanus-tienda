@@ -20,6 +20,10 @@ import type {
   ElectronicDocumentSourceType,
   ElectronicDocumentType,
 } from "../repositories/electronic-billing-records";
+import {
+  buildProcessingState,
+  ELECTRONIC_BILLING_PROCESSING_STATE_KEY,
+} from "../contracts/processing-state";
 
 export class ElectronicDocumentValidationError extends Error {
   constructor(message: string) {
@@ -200,6 +204,7 @@ export class ElectronicBillingService {
       metadata: {
         ...(command.metadata ?? {}),
         electronicBilling: buildBillingSnapshotMetadata(command),
+        [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState("PRE_PROVIDER_CREATE"),
       },
     };
   }
@@ -292,6 +297,7 @@ export class ElectronicBillingService {
           metadata: {
             ...(command.metadata ?? {}),
             electronicBilling: buildBillingSnapshotMetadata(command),
+            [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState("PRE_PROVIDER_CREATE"),
           },
           createdAt: new Date(),
           updatedAt: new Date(),
