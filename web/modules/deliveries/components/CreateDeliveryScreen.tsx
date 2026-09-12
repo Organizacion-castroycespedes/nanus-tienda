@@ -62,7 +62,7 @@ export const CreateDeliveryScreen = () => {
 
   if (!permissionsLoaded) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+      <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
         Cargando permisos...
       </section>
     );

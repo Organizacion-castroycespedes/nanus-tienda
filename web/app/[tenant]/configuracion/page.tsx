@@ -930,14 +930,14 @@ const ConfiguracionPage = () => {
   const EmpresaForm = () => (
     <div
       ref={companyFormRef}
-      className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
             Información de la compañía
           </h3>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Datos legales, tributarios y de contacto para facturación e impuestos.
           </p>
         </div>
@@ -966,7 +966,7 @@ const ConfiguracionPage = () => {
         </div>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Los campos marcados con{" "}
         <span className="font-semibold text-red-600">*</span> son obligatorios.
       </p>
@@ -1274,13 +1274,13 @@ const ConfiguracionPage = () => {
   );
 
   const BrandingForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
             Branding de la empresa
           </h3>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Define colores, tipografía y logo visibles en todo el sistema.
           </p>
         </div>
@@ -1301,7 +1301,7 @@ const ConfiguracionPage = () => {
         </div>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
         Los campos marcados con <span className="font-semibold text-red-600">*</span>{" "}
         son obligatorios.
       </p>
@@ -1328,13 +1328,13 @@ const ConfiguracionPage = () => {
           value={brandingForm.font}
           onChange={(event) => handleBrandingChange("font", event.target.value)}
         />
-        <div className="space-y-2 text-sm text-slate-700">
+        <div className="space-y-2 text-sm text-slate-700 dark:text-slate-200">
           <span className="font-medium">Logo</span>
           <label className="flex items-center gap-3 rounded-lg border border-dashed border-slate-200 p-4">
             <UploadCloud className="h-5 w-5 text-slate-400" />
             <div>
-              <p className="text-sm font-medium text-slate-700">Cargar logo</p>
-              <p className="text-xs text-slate-500">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Cargar logo</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 PNG o SVG recomendado (se guarda en la configuración).
               </p>
             </div>
@@ -1349,10 +1349,10 @@ const ConfiguracionPage = () => {
             <img
               src={brandingForm.logo}
               alt="Logo preview"
-              className="h-16 rounded-lg border border-slate-200 bg-white object-contain p-2"
+              className="h-16 rounded-lg border border-slate-200 bg-white object-contain p-2 dark:bg-slate-800 dark:border-slate-700"
             />
           ) : (
-            <p className="text-xs text-slate-500">Sin logo cargado.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Sin logo cargado.</p>
           )}
         </div>
       </div>
@@ -1387,11 +1387,11 @@ const ConfiguracionPage = () => {
   );
 
   const SucursalesForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">Sucursales</h3>
-          <p className="text-sm text-slate-600">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Sucursales</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
             Administra las sucursales y define la principal por tenant.
           </p>
         </div>
@@ -1431,25 +1431,25 @@ const ConfiguracionPage = () => {
       />
 
       {!selectedTenantId && isSuperAdmin ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
           Selecciona un tenant para ver sus sucursales.
         </div>
       ) : branchesLoading ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
           Cargando sucursales...
         </div>
       ) : branches.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
           No hay sucursales registradas.
         </div>
       ) : filteredBranches.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
           No hay sucursales que coincidan con la búsqueda.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="px-4 py-3">Código</th>
                 <th className="px-4 py-3">Nombre</th>
@@ -1462,11 +1462,11 @@ const ConfiguracionPage = () => {
             <tbody>
               {filteredBranches.map((branch) => (
                 <tr key={branch.id} className="border-t border-slate-200">
-                  <td className="px-4 py-3 font-medium text-slate-900">
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                     {branch.codigo}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{branch.nombre}</td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{branch.nombre}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                     {[branch.ciudad, branch.departamento, branch.pais]
                       .filter(Boolean)
                       .join(", ") || "Sin ubicación"}
@@ -1501,7 +1501,7 @@ const ConfiguracionPage = () => {
                           }`}
                         />
                       </button>
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
                         {branch.estado === "ACTIVE" ? "Activa" : "Inactiva"}
                       </span>
                     </div>
@@ -2091,11 +2091,11 @@ const ConfiguracionPage = () => {
 
   if (!isSuperAdmin && !isSuperUser) {
     return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
           Acceso restringido
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Solo los usuarios con rol SUPER_ADMIN o SUPER_USER pueden acceder a la
           configuración.
         </p>
@@ -2106,13 +2106,13 @@ const ConfiguracionPage = () => {
   return (
     <section className="space-y-8">
       <header className="space-y-2">
-        <p className="text-sm uppercase tracking-wide text-slate-500">
+        <p className="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Configuración
         </p>
-        <h2 className="text-2xl font-semibold text-slate-900">
+        <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
           {isSuperAdmin ? "Empresas, Branding y Sucursales" : "Empresa, Branding y Sucursales"}
         </h2>
-        <p className="max-w-2xl text-sm text-slate-600">
+        <p className="max-w-2xl text-sm text-slate-600 dark:text-slate-300">
           {isSuperAdmin
             ? "Administra la información legal, tributaria, branding y sucursales de cada tenant."
             : "Administra la informacion legal, branding y sucursales del tenant al que perteneces."}
@@ -2120,11 +2120,11 @@ const ConfiguracionPage = () => {
       </header>
 
       {authUser?.role === "SUPER_ADMIN" ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Terminales POS</h3>
-              <p className="text-sm text-slate-600">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Terminales POS</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Crea y administra terminales por sucursal desde un modulo dedicado.
               </p>
             </div>
@@ -2140,11 +2140,11 @@ const ConfiguracionPage = () => {
       ) : null}
 
       {isSuperAdmin ? (
-        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Tenants</h3>
-              <p className="text-sm text-slate-600">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Tenants</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Gestiona el estado y selecciona el tenant a modificar.
               </p>
             </div>
@@ -2169,13 +2169,13 @@ const ConfiguracionPage = () => {
           />
 
           {tenantsLoading ? (
-            <p className="text-sm text-slate-500">Cargando tenants...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Cargando tenants...</p>
           ) : tenants.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               No hay tenants registrados.
             </p>
           ) : filteredTenants.length === 0 ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               No hay tenants que coincidan con la búsqueda.
             </p>
           ) : (
@@ -2231,7 +2231,7 @@ const ConfiguracionPage = () => {
             Tenant seleccionado: {selectedTenant.nombre ?? selectedTenant.slug}
           </div>
         ) : (
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
             Selecciona un tenant para editar la información.
           </div>
         )
@@ -2255,7 +2255,7 @@ const ConfiguracionPage = () => {
                     isActive
                       ? "border-blue-600 bg-blue-600 text-white"
                       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
+                  } dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200`}
                   onClick={() => setActiveTab(tab.key)}
                 >
                   <Icon className="h-4 w-4" />
@@ -2266,7 +2266,7 @@ const ConfiguracionPage = () => {
           </div>
 
           {tenantLoading ? (
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
               Cargando información del tenant seleccionado...
             </div>
           ) : null}
@@ -2279,7 +2279,7 @@ const ConfiguracionPage = () => {
           )}
         </>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
           Presiona &quot;Modificar&quot; en un tenant o crea uno nuevo para ver los
           formularios de configuración.
         </div>

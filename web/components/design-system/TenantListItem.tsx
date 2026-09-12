@@ -33,13 +33,13 @@ export const TenantListItem = ({
             onClick={onSelect}
             className="text-left"
           >
-            <p className="text-sm font-semibold text-slate-900">{name}</p>
-            <p className="text-xs text-slate-500">{slug}</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{name}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{slug}</p>
           </button>
         ) : (
           <div>
-            <p className="text-sm font-semibold text-slate-900">{name}</p>
-            <p className="text-xs text-slate-500">{slug}</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">{name}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{slug}</p>
           </div>
         )}
         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusStyles}`}>

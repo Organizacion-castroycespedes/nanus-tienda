@@ -238,12 +238,12 @@ export const ProductBarcodePanel = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Producto</p>
-          <h2 className="text-xl font-semibold text-slate-900">Codigos de barras</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Producto</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Codigos de barras</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Administra codigos alternos de {productName}. El SKU no cambia.
           </p>
         </div>
@@ -352,7 +352,7 @@ export const ProductBarcodePanel = ({
               ) : null}
             </div>
 
-            <label className="flex items-center gap-3 self-end rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+            <label className="flex items-center gap-3 self-end rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 checked={values.isPrimary}
@@ -401,7 +401,7 @@ export const ProductBarcodePanel = ({
 
       <div className="mt-5 overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-slate-600">
+          <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
             <tr>
               <th className="px-4 py-3 font-medium">Codigo</th>
               <th className="px-4 py-3 font-medium">Tipo</th>
@@ -413,21 +413,21 @@ export const ProductBarcodePanel = ({
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                   Cargando codigos...
                 </td>
               </tr>
             ) : barcodes.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                   Este producto aun no tiene codigos de barras.
                 </td>
               </tr>
             ) : (
               barcodes.map((barcode) => (
                 <tr key={barcode.id}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{barcode.barcode}</td>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{barcode.barcode}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                     {barcodeTypeLabels[barcode.barcodeType] ?? barcode.barcodeType}
                   </td>
                   <td className="px-4 py-3">
@@ -436,7 +436,7 @@ export const ProductBarcodePanel = ({
                         barcode.isPrimary
                           ? "border-blue-200 bg-blue-50 text-blue-700"
                           : "border-slate-200 bg-slate-50 text-slate-600"
-                      }`}
+                      } dark:text-slate-300`}
                     >
                       {barcode.isPrimary ? "Si" : "No"}
                     </span>
@@ -447,7 +447,7 @@ export const ProductBarcodePanel = ({
                         barcode.isActive
                           ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                           : "border-slate-200 bg-slate-100 text-slate-600"
-                      }`}
+                      } dark:text-slate-300`}
                     >
                       {barcode.isActive ? "Activo" : "Inactivo"}
                     </span>
@@ -491,7 +491,7 @@ export const ProductBarcodePanel = ({
         </table>
       </div>
 
-      <div className="mt-4 text-xs text-slate-500">
+      <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">
         {activeBarcodes} codigo(s) activo(s). El SKU del producto se mantiene independiente.
       </div>
     </section>

@@ -124,7 +124,7 @@ export const NoticeDialog = ({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+        className="max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:bg-slate-800 dark:border-slate-700"
         onKeyDown={handleKeyDown}
       >
         <div className="flex items-start gap-4">
@@ -134,12 +134,12 @@ export const NoticeDialog = ({
             {config.icon}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="text-lg font-semibold text-slate-900">
+            <h2 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-white">
               {title}
             </h2>
             <p
               id={descriptionId}
-              className="mt-2 whitespace-normal break-words text-sm leading-6 text-slate-600"
+              className="mt-2 whitespace-normal break-words text-sm leading-6 text-slate-600 dark:text-slate-300"
             >
               {message}
             </p>

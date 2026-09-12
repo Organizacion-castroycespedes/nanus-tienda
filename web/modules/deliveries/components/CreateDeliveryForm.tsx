@@ -816,16 +816,16 @@ export const CreateDeliveryForm = ({
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Nuevo domicilio
           </p>
-          <h2 className="text-xl font-semibold text-slate-900">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
             Crear domicilio
           </h2>
-          <p className="mt-2 max-w-3xl text-sm text-slate-600">
+          <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">
             Busca cliente, confirma direccion y registra el domicilio sin escribir
             codigos internos.
           </p>
@@ -1130,7 +1130,7 @@ export const CreateDeliveryForm = ({
       ) : null}
 
       {existingDeliveryLoading ? (
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 dark:text-slate-300">
           Verificando domicilio asociado...
         </div>
       ) : null}

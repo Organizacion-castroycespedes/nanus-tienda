@@ -417,12 +417,12 @@ export const PurchaseForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
-          <h2 className="text-xl font-semibold text-slate-900">Crear compra</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Purchases</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Crear compra</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Registra el proveedor, el tipo de compra y los items. Esta accion aun no
             mueve inventario.
           </p>
@@ -563,8 +563,8 @@ export const PurchaseForm = ({
         <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Items</h3>
-              <p className="text-sm text-slate-600">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-white">Items</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Agrega productos, cantidades y costos para calcular el total.
               </p>
             </div>
@@ -593,7 +593,7 @@ export const PurchaseForm = ({
               return (
               <div
                 key={`${index}-${item.productId}`}
-                className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_auto]"
+                className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_auto] dark:bg-slate-800 dark:border-slate-700"
               >
                 <Select
                   label="Producto"
@@ -640,11 +640,11 @@ export const PurchaseForm = ({
                 ) : null}
 
                 <div className="flex items-end gap-2">
-                  <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       Subtotal
                     </p>
-                    <p className="mt-1 font-semibold text-slate-900">
+                    <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                       {formatCurrency(itemSubtotals[index] ?? 0)}
                     </p>
                   </div>

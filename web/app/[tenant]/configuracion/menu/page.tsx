@@ -156,7 +156,7 @@ const ToggleSection = ({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
             <Button
               size="sm"
               variant="ghost"
@@ -171,7 +171,7 @@ const ToggleSection = ({
             </Button>
           </div>
           {description ? (
-            <p className="text-sm text-slate-500">{description}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
           ) : null}
         </div>
         {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
@@ -534,11 +534,11 @@ const MenuManagementPage = () => {
   const renderTree = (items: MenuTreeNode[], depth = 0) => (
     <ul className={`space-y-2 ${depth > 0 ? "pl-4" : ""}`}>
       {items.map((item) => (
-        <li key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+        <li key={item.id} className="rounded-lg border border-slate-200 bg-white p-3 dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-              <p className="text-xs text-slate-500">{item.route}</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">{item.label}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{item.route}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="ghost" onClick={() => handleEdit(item)}>
@@ -573,14 +573,14 @@ const MenuManagementPage = () => {
         const canRead = access === "READ" || access === "WRITE";
         const canWrite = access === "WRITE";
         return (
-          <li key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+          <li key={item.id} className="rounded-lg border border-slate-200 bg-white p-3 dark:bg-slate-800 dark:border-slate-700">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-                <p className="text-xs text-slate-500">{item.route}</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">{item.label}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{item.route}</p>
               </div>
               <div className="flex flex-wrap items-center gap-4">
-                <label className="flex items-center gap-2 text-xs text-slate-600">
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={canRead}
@@ -590,7 +590,7 @@ const MenuManagementPage = () => {
                   />
                   Lectura
                 </label>
-                <label className="flex items-center gap-2 text-xs text-slate-600">
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={canWrite}
@@ -615,7 +615,7 @@ const MenuManagementPage = () => {
 
   if (!isSuperAdmin) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
         Solo SUPER_ADMIN puede administrar el menú.
       </div>
     );
@@ -624,9 +624,9 @@ const MenuManagementPage = () => {
   return (
     <div className="space-y-8 p-8">
       <header className="space-y-2">
-        <p className="text-sm text-slate-500">Configuración</p>
-        <h1 className="text-2xl font-semibold text-slate-900">Creación de menú</h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">Configuración</p>
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Creación de menú</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Administra las rutas y asigna permisos de lectura y escritura por rol.
         </p>
       </header>
@@ -647,7 +647,7 @@ const MenuManagementPage = () => {
               Limpiar
             </Button>
           }
-          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
           contentClassName="mt-4 space-y-4"
         >
             <Input
@@ -696,11 +696,11 @@ const MenuManagementPage = () => {
                 </option>
               ))}
             </Select>
-            <div className="flex items-center gap-3 text-xs text-slate-600">
-              <span className="font-medium text-slate-700">Vista previa:</span>
+            <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+              <span className="font-medium text-slate-700 dark:text-slate-200">Vista previa:</span>
               <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
                 {SelectedIcon ? (
-                  <SelectedIcon className="h-4 w-4 text-slate-700" aria-hidden="true" />
+                  <SelectedIcon className="h-4 w-4 text-slate-700 dark:text-slate-200" aria-hidden="true" />
                 ) : (
                   <span className="h-4 w-4 rounded bg-slate-200" aria-hidden="true" />
                 )}
@@ -734,7 +734,7 @@ const MenuManagementPage = () => {
                 }))
               }
             />
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 checked={menuForm.visible ?? true}
@@ -747,7 +747,7 @@ const MenuManagementPage = () => {
               />
               Visible
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 checked={menuForm.belowMainMenu ?? false}
@@ -777,15 +777,15 @@ const MenuManagementPage = () => {
               Recargar
             </Button>
           }
-          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
           contentClassName="mt-4 space-y-4"
         >
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
             <div className="mt-4">
               {menuLoading ? (
-                <p className="text-sm text-slate-500">Cargando menú...</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Cargando menú...</p>
               ) : menuItems.length === 0 ? (
-                <p className="text-sm text-slate-500">Sin elementos registrados.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Sin elementos registrados.</p>
               ) : (
                 renderTree(menuTree)
               )}
@@ -820,13 +820,13 @@ const MenuManagementPage = () => {
             </Button>
           </>
         }
-        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
         contentClassName="mt-6"
       >
           {permissionsLoading ? (
-            <p className="text-sm text-slate-500">Cargando permisos...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Cargando permisos...</p>
           ) : menuItems.length === 0 ? (
-            <p className="text-sm text-slate-500">No hay menús para asignar.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">No hay menús para asignar.</p>
           ) : (
             renderPermissionTree(menuTree)
           )}

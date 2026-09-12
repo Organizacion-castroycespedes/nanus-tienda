@@ -8,6 +8,7 @@ import { useAppDispatch, useAppSelector } from "../store/hooks";
 import AuthSessionManager from "../components/auth/AuthSessionManager";
 import { ConfirmProvider } from "../providers/confirm-provider";
 import { useTenantTheme } from "../hooks/useTenantTheme";
+import { ThemeProvider } from "next-themes";
 import {
   clearPersistedPosState,
   clearContext as clearPosContext,
@@ -321,18 +322,20 @@ const LocalPeripheralSyncManager = () => {
 
 const Providers = ({ children }: { children: ReactNode }) => {
   return (
-    <Provider store={store}>
-      <BrandingApplier>
-        <ConfirmProvider>
-          <AuthSessionManager />
-          <PosStateManager />
-          <PosCartStateManager />
-          <InventoryScopeManager />
-          <LocalPeripheralSyncManager />
-          {children}
-        </ConfirmProvider>
-      </BrandingApplier>
-    </Provider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <Provider store={store}>
+        <BrandingApplier>
+          <ConfirmProvider>
+            <AuthSessionManager />
+            <PosStateManager />
+            <PosCartStateManager />
+            <InventoryScopeManager />
+            <LocalPeripheralSyncManager />
+            {children}
+          </ConfirmProvider>
+        </BrandingApplier>
+      </Provider>
+    </ThemeProvider>
   );
 };
 

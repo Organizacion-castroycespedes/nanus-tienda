@@ -143,13 +143,13 @@ const FinanceHomePage = () => {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
                 Rutas rapidas
               </p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-900">
+              <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
                 Operacion financiera base
               </h2>
             </div>
@@ -161,18 +161,18 @@ const FinanceHomePage = () => {
                 <Link
                   key={shortcut.href}
                   href={shortcut.href}
-                  className="group rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md"
+                  className="group rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md dark:bg-slate-800 dark:border-slate-700"
                 >
                   <div className="flex items-center justify-between">
                     <span className="rounded-2xl bg-slate-900 p-2 text-white">
                       <Icon className="h-5 w-5" />
                     </span>
-                    <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:text-slate-900" />
+                    <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:text-slate-900 dark:text-white" />
                   </div>
-                  <p className="mt-4 text-base font-semibold text-slate-900">
+                  <p className="mt-4 text-base font-semibold text-slate-900 dark:text-white">
                     {shortcut.label}
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {shortcut.description}
                   </p>
                 </Link>
@@ -181,16 +181,16 @@ const FinanceHomePage = () => {
           </div>
         </article>
 
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
             Sesiones recientes
           </p>
-          <h2 className="mt-2 text-xl font-semibold text-slate-900">
+          <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
             Ultimos cierres y aperturas
           </h2>
           <div className="mt-5 space-y-3">
             {history.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
                 Aun no hay sesiones para mostrar.
               </div>
             ) : (
@@ -201,14 +201,14 @@ const FinanceHomePage = () => {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-slate-900">
+                      <p className="font-semibold text-slate-900 dark:text-white">
                         {session.cashRegisterNombre ?? "Caja"}
                       </p>
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
                         {session.status} · {session.cashRegisterCodigo ?? "-"}
                       </p>
                     </div>
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
                       {formatCurrency(session.openingAmount)}
                     </p>
                   </div>

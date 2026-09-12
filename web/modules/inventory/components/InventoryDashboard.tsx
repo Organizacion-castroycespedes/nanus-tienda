@@ -192,17 +192,17 @@ const ChartCard = ({
   subtitle: string;
   children: ReactNode;
 }) => (
-  <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+  <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <div className="mb-5">
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+      <h3 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h3>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
     </div>
     {children}
   </section>
 );
 
 const EmptyPanel = ({ message }: { message: string }) => (
-  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
     {message}
   </div>
 );
@@ -222,10 +222,10 @@ const DashboardTableSection = ({
   emptyMessage: string;
   children: ReactNode;
 }) => (
-  <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+  <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <div className="mb-5">
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+      <h3 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h3>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
     </div>
     {children || <EmptyPanel message={emptyMessage} />}
   </section>
@@ -504,7 +504,7 @@ export const InventoryDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.22),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_30%),linear-gradient(135deg,_#0f172a,_#1e293b)] px-6 py-7 text-white">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
@@ -547,11 +547,11 @@ export const InventoryDashboard = () => {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Filtros operativos</h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Filtros operativos</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               El alcance se ajusta automaticamente al rol y al contexto autenticado.
             </p>
           </div>
@@ -761,10 +761,10 @@ export const InventoryDashboard = () => {
           <section className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                   Alertas de inventario
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   Lectura rapida de vencimientos, disponibilidad loteada y reconciliacion.
                 </p>
               </div>
@@ -830,8 +830,8 @@ export const InventoryDashboard = () => {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-slate-900">Accesos rapidos</h3>
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Accesos rapidos</h3>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {quickLinks.map((item) => {
                     const Icon = item.icon;
@@ -843,14 +843,14 @@ export const InventoryDashboard = () => {
                         className="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm transition hover:border-blue-200 hover:bg-blue-50"
                       >
                         <span className="flex items-center gap-3">
-                          <span className="rounded-xl bg-slate-100 p-2 text-slate-700 group-hover:bg-white group-hover:text-blue-700">
+                          <span className="rounded-xl bg-slate-100 p-2 text-slate-700 group-hover:bg-white group-hover:text-blue-700 dark:text-slate-200">
                             <Icon className="h-4 w-4" />
                           </span>
                           <span>
-                            <span className="block font-semibold text-slate-900">
+                            <span className="block font-semibold text-slate-900 dark:text-white">
                               {item.label}
                             </span>
-                            <span className="mt-0.5 block text-xs text-slate-500">
+                            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
                               {item.description}
                             </span>
                           </span>
@@ -950,7 +950,7 @@ export const InventoryDashboard = () => {
                             style={{ height: `${(item.exits / max) * 100}%` }}
                           />
                         </div>
-                        <div className="text-center text-[11px] text-slate-500">
+                        <div className="text-center text-[11px] text-slate-500 dark:text-slate-400">
                           {item.date.slice(5)}
                         </div>
                       </div>
@@ -978,7 +978,7 @@ export const InventoryDashboard = () => {
 
                     return (
                       <div key={item.date} className="space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-500">
+                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                           <span>{item.date}</span>
                           <span>
                             V {formatCurrency(item.total)} / C{" "}
@@ -1020,12 +1020,12 @@ export const InventoryDashboard = () => {
                     <div key={item.id} className="space-y-2">
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <div>
-                          <p className="font-medium text-slate-900">{item.name}</p>
-                          <p className="text-xs text-slate-500">{item.sku}</p>
+                          <p className="font-medium text-slate-900 dark:text-white">{item.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{item.sku}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-medium text-slate-900">{formatNumber(item.quantity)}</p>
-                          <p className="text-xs text-slate-500">{formatCurrency(item.total)}</p>
+                          <p className="font-medium text-slate-900 dark:text-white">{formatNumber(item.quantity)}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(item.total)}</p>
                         </div>
                       </div>
                       <div className="h-2 rounded-full bg-slate-100">
@@ -1044,17 +1044,17 @@ export const InventoryDashboard = () => {
               title="Contexto activo"
               subtitle="Resumen del rango y de la sesion operativa usada."
             >
-              <div className="space-y-3 text-sm text-slate-700">
+              <div className="space-y-3 text-sm text-slate-700 dark:text-slate-200">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs uppercase tracking-wide text-slate-400">Rango</p>
-                  <p className="mt-1 font-medium text-slate-900">
+                  <p className="mt-1 font-medium text-slate-900 dark:text-white">
                     {filters.startDate} al {filters.endDate}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs uppercase tracking-wide text-slate-400">Caja activa</p>
-                  <p className="mt-1 font-medium text-slate-900">{cashName}</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 font-medium text-slate-900 dark:text-white">{cashName}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {dashboard.header.cashSession?.openedAt
                       ? `Abierta ${formatDateTime(dashboard.header.cashSession.openedAt)}`
                       : "Sin sesion de caja abierta"}
@@ -1062,7 +1062,7 @@ export const InventoryDashboard = () => {
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs uppercase tracking-wide text-slate-400">Terminal</p>
-                  <p className="mt-1 font-medium text-slate-900">{terminalName}</p>
+                  <p className="mt-1 font-medium text-slate-900 dark:text-white">{terminalName}</p>
                 </div>
               </div>
             </ChartCard>
@@ -1083,8 +1083,8 @@ export const InventoryDashboard = () => {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium text-slate-900">{item.productName}</p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="font-medium text-slate-900 dark:text-white">{item.productName}</p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             {item.sku} • {item.branchName ?? "Sin sucursal"} •{" "}
                             {item.terminalName ?? "Sin terminal"}
                           </p>
@@ -1099,7 +1099,7 @@ export const InventoryDashboard = () => {
                           {item.type === "IN" ? "Entrada" : "Salida"} {formatNumber(item.quantity)}
                         </span>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
                         <span>{item.referenceType}</span>
                         <span>
                           Stock {formatNumber(Number(item.stockBefore ?? 0))} -&gt;{" "}
@@ -1127,10 +1127,10 @@ export const InventoryDashboard = () => {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium text-slate-900">
+                          <p className="font-medium text-slate-900 dark:text-white">
                             {item.supplierName ?? "Proveedor no registrado"}
                           </p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             {item.branchName ?? "Sin sucursal"} • {item.terminalName ?? "Sin terminal"}
                           </p>
                         </div>
@@ -1142,7 +1142,7 @@ export const InventoryDashboard = () => {
                           {item.status}
                         </span>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
                         <span>Total {formatCurrency(Number(item.total))}</span>
                         <span>Saldo {formatCurrency(Number(item.balanceDue))}</span>
                         <span>{formatDateTime(item.createdAt)}</span>
@@ -1169,8 +1169,8 @@ export const InventoryDashboard = () => {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium text-slate-900">{item.productName}</p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="font-medium text-slate-900 dark:text-white">{item.productName}</p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             {item.sku} • {item.branchName}
                           </p>
                         </div>
@@ -1184,7 +1184,7 @@ export const InventoryDashboard = () => {
                           Stock {formatNumber(Number(item.stock))}
                         </span>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
                         <span>Salida periodo {formatNumber(Number(item.outboundInPeriod))}</span>
                         <span>Ultimo movimiento {formatDateTime(item.lastMovementAt)}</span>
                       </div>
@@ -1208,10 +1208,10 @@ export const InventoryDashboard = () => {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium text-slate-900">
+                          <p className="font-medium text-slate-900 dark:text-white">
                             {item.customerName ?? "Cliente no registrado"}
                           </p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             {item.branchName ?? "Sin sucursal"} • {item.terminalName ?? "Sin terminal"}
                           </p>
                         </div>
@@ -1223,7 +1223,7 @@ export const InventoryDashboard = () => {
                           {item.status}
                         </span>
                       </div>
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
                         <span>Total {formatCurrency(Number(item.total))}</span>
                         <span>Pendiente {formatNumber(Number(item.pendingQuantity))}</span>
                         <span>{formatDateTime(item.createdAt)}</span>

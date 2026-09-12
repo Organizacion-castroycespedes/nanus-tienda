@@ -252,23 +252,23 @@ const CashMovementsPage = () => {
         />
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
               Metodos de pago
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">
+            <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
               Desglose por sesion de caja
             </h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Totalizado desde payments usando el cash_session_id de la sesion activa.
             </p>
           </div>
         </div>
 
         {byPaymentMethod.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
             No hay pagos asociados a esta sesion para discriminar por metodo.
           </div>
         ) : (
@@ -279,16 +279,16 @@ const CashMovementsPage = () => {
                   key={item.paymentMethodId}
                   className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5"
                 >
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                     {item.paymentMethodTipo ?? "Metodo"}
                   </p>
-                  <p className="mt-2 text-lg font-semibold text-slate-900">
+                  <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
                     {item.paymentMethodNombre ?? item.paymentMethod}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {item.count} pago{item.count === 1 ? "" : "s"}
                   </p>
-                  <p className="mt-4 text-2xl font-semibold text-slate-900">
+                  <p className="mt-4 text-2xl font-semibold text-slate-900 dark:text-white">
                     {formatCurrency(item.total)}
                   </p>
                 </article>
@@ -297,7 +297,7 @@ const CashMovementsPage = () => {
 
             <div className="mt-6 overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-slate-600">
+                <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="px-4 py-3 font-medium">Metodo</th>
                     <th className="px-4 py-3 font-medium">Tipo</th>
@@ -308,14 +308,14 @@ const CashMovementsPage = () => {
                 <tbody className="divide-y divide-slate-100">
                   {byPaymentMethod.map((item) => (
                     <tr key={`${item.paymentMethodId}-row`}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         {item.paymentMethodNombre ?? item.paymentMethod}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                         {item.paymentMethodTipo ?? "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{item.count}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{item.count}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                         {formatCurrency(item.total)}
                       </td>
                     </tr>
@@ -338,7 +338,7 @@ const CashMovementsPage = () => {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Select
             label="Sucursal"
@@ -397,14 +397,14 @@ const CashMovementsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="space-y-4">
           {loading ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
               Cargando movimientos...
             </div>
           ) : filteredMovements.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
               No hay movimientos para mostrar.
             </div>
           ) : (
@@ -419,14 +419,14 @@ const CashMovementsPage = () => {
                       <FinanceStatusBadge value={movement.movementType} kind="movement" />
                       <FinanceStatusBadge value={movement.direction} kind="direction" />
                     </div>
-                    <p className="mt-3 text-base font-semibold text-slate-900">
+                    <p className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
                       {movement.cashRegisterNombre ?? "Caja"} · {formatCurrency(movement.amount)}
                     </p>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                       {movement.description ?? "Sin descripcion"}
                     </p>
                   </div>
-                  <div className="text-right text-sm text-slate-500">
+                  <div className="text-right text-sm text-slate-500 dark:text-slate-400">
                     <p>{formatDateTime(movement.createdAt)}</p>
                     <p className="mt-1">{movement.createdByEmail ?? "Usuario"}</p>
                   </div>

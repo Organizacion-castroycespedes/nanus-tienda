@@ -86,8 +86,8 @@ const PurchasesReportsPage = () => {
         header: "Fecha",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatDateTime(row.date)}</p>
-            <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.date)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.branchName ?? "Sucursal"}</p>
           </div>
         ),
       },
@@ -96,8 +96,8 @@ const PurchasesReportsPage = () => {
         header: "Proveedor",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{row.supplierName}</p>
-            <p className="text-xs text-slate-500">Compra #{row.purchaseId.slice(0, 8)}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{row.supplierName}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Compra #{row.purchaseId.slice(0, 8)}</p>
           </div>
         ),
       },
@@ -106,9 +106,9 @@ const PurchasesReportsPage = () => {
         header: "Total",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatCurrency(row.total)}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatCurrency(row.total)}</p>
             {row.status === "CERRADA_PARCIAL" ? (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Pedido: {formatCurrency(row.totalPedido ?? row.total)}
               </p>
             ) : null}
@@ -136,7 +136,7 @@ const PurchasesReportsPage = () => {
         render: (row) => (
           <div className="space-y-2">
             <ReportStatusBadge value={row.status} />
-            <p className="text-sm text-slate-700">{row.paymentStatus}</p>
+            <p className="text-sm text-slate-700 dark:text-slate-200">{row.paymentStatus}</p>
           </div>
         ),
       },
@@ -188,10 +188,10 @@ const PurchasesReportsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Reporteria compras</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Compras y tickets de proveedor</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria compras</p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Compras y tickets de proveedor</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
           Consulta compras por rango y alcance operativo, valida pagos reales y abre el ticket PDF generado por reporteria.
         </p>
       </section>

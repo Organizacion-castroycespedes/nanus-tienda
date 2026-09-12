@@ -719,11 +719,11 @@ export const CustomerForm = ({
         : "border-rose-200 bg-rose-50 text-rose-700";
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Customers</p>
-          <h2 className="text-xl font-semibold text-slate-900">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Customers</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
             {mode === "create" ? "Crear cliente" : "Editar cliente"}
           </h2>
         </div>
@@ -916,7 +916,7 @@ export const CustomerForm = ({
             <option value="NOT_REQUIRED">Consumidor Final</option>
           </Select>
 
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
               checked={values.isDianValidated}
@@ -938,7 +938,7 @@ export const CustomerForm = ({
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
               <ShieldCheck className="h-4 w-4" />
               Consultar DIAN mock
             </div>
@@ -973,32 +973,32 @@ export const CustomerForm = ({
           </div>
 
           {preview ? (
-            <div className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm md:grid-cols-4">
+            <div className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm md:grid-cols-4 dark:bg-slate-800 dark:border-slate-700">
               <div>
-                <span className="block text-xs text-slate-500">Estado</span>
-                <span className="font-semibold text-slate-900">
+                <span className="block text-xs text-slate-500 dark:text-slate-400">Estado</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
                   {preview.lookupStatus}
                 </span>
               </div>
               <div>
-                <span className="block text-xs text-slate-500">Provider</span>
-                <span className="font-semibold text-slate-900">
+                <span className="block text-xs text-slate-500 dark:text-slate-400">Provider</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
                   {preview.provider}
                 </span>
               </div>
               <div>
-                <span className="block text-xs text-slate-500">Codigo</span>
-                <span className="font-semibold text-slate-900">
+                <span className="block text-xs text-slate-500 dark:text-slate-400">Codigo</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
                   {preview.statusCode}
                 </span>
               </div>
               <div>
-                <span className="block text-xs text-slate-500">Campos</span>
-                <span className="font-semibold text-slate-900">
+                <span className="block text-xs text-slate-500 dark:text-slate-400">Campos</span>
+                <span className="font-semibold text-slate-900 dark:text-white">
                   {preview.responseSummary.fieldCount}
                 </span>
               </div>
-              <p className="md:col-span-4 text-xs text-slate-500">
+              <p className="md:col-span-4 text-xs text-slate-500 dark:text-slate-400">
                 {preview.message}
               </p>
             </div>
@@ -1020,7 +1020,7 @@ export const CustomerForm = ({
                       checked
                         ? "border-blue-300 bg-blue-50"
                         : "border-slate-200 bg-white"
-                    }`}
+                    } dark:bg-slate-800 dark:border-slate-700`}
                   >
                     <input
                       type="checkbox"
@@ -1029,7 +1029,7 @@ export const CustomerForm = ({
                       onChange={() => toggleLookupField(field)}
                     />
                     <span className="min-w-0">
-                      <span className="block font-semibold text-slate-800">
+                      <span className="block font-semibold text-slate-800 dark:text-slate-100">
                         {label}
                         {overwrites ? (
                           <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
@@ -1037,7 +1037,7 @@ export const CustomerForm = ({
                           </span>
                         ) : null}
                       </span>
-                      <span className="block break-words text-xs text-slate-500">
+                      <span className="block break-words text-xs text-slate-500 dark:text-slate-400">
                         {formatPreviewValue(value)}
                       </span>
                     </span>
@@ -1139,7 +1139,7 @@ export const CustomerForm = ({
           </Select>
         </div>
 
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
             checked={values.isActive}

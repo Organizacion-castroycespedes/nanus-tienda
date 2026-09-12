@@ -46,10 +46,10 @@ const DetailItem = ({
   value: string | number | null | undefined;
 }) => (
   <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
-    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
       {label}
     </p>
-    <p className="mt-1 break-words text-sm font-medium text-slate-900">
+    <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
       {value === null || value === undefined || value === "" ? "-" : value}
     </p>
   </div>
@@ -93,17 +93,17 @@ export const DeliveryDetailPanel = ({
     }
   >
     {loading ? (
-      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)]">
+      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)] dark:text-slate-400">
         Cargando detalle...
       </div>
     ) : delivery ? (
       <div className="max-h-[calc(100dvh-10rem)] min-w-0 space-y-5 overflow-y-auto overflow-x-hidden pr-1 sm:max-h-[calc(100dvh-12rem)]">
         <div className="flex flex-wrap items-center gap-3">
           <DeliveryStatusBadge status={delivery.status} />
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
             Estado: {deliveryStatusLabels[delivery.status] ?? delivery.status}
           </span>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
             {getDeliveryCashScopeLabel(
               getDeliveryCashScope(delivery, currentCashSessionId)
             )}
@@ -111,8 +111,8 @@ export const DeliveryDetailPanel = ({
         </div>
 
         {permissions && onAction ? (
-          <div className="sticky top-0 z-10 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <div className="sticky top-0 z-10 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Acciones
             </p>
             <DeliveryActions
@@ -193,11 +193,11 @@ export const DeliveryDetailPanel = ({
           <DetailItem label="Actualizado por" value={delivery.updated_by_user_id} />
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Notas
           </p>
-          <p className="mt-2 whitespace-pre-line break-words text-sm text-slate-700">
+          <p className="mt-2 whitespace-pre-line break-words text-sm text-slate-700 dark:text-slate-200">
             {delivery.notes || "Sin notas."}
           </p>
         </div>
@@ -209,7 +209,7 @@ export const DeliveryDetailPanel = ({
         </div>
       </div>
     ) : (
-      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)]">
+      <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 sm:max-h-[calc(100dvh-12rem)] dark:text-slate-400">
         No se encontro el domicilio.
       </div>
     )}

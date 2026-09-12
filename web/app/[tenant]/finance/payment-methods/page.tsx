@@ -219,7 +219,7 @@ const PaymentMethodsPage = () => {
         <FinanceMetricCard label="Total" value={paymentMethods.length} accent="slate" />
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-[1fr_220px_auto]">
           <Input
             label="Buscar"
@@ -253,10 +253,10 @@ const PaymentMethodsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Metodo</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
@@ -269,13 +269,13 @@ const PaymentMethodsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando metodos...
                   </td>
                 </tr>
               ) : filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay metodos para mostrar.
                   </td>
                 </tr>
@@ -284,17 +284,17 @@ const PaymentMethodsPage = () => {
                   <tr key={item.id}>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="font-semibold text-slate-900">{item.nombre}</p>
-                        <p className="text-xs text-slate-500">{item.codigo}</p>
+                        <p className="font-semibold text-slate-900 dark:text-white">{item.nombre}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.codigo}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{item.tipo}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.tipo}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300">
                           Ref: {item.requiresReference ? "Si" : "No"}
                         </span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300">
                           Cambio: {item.allowsChange ? "Si" : "No"}
                         </span>
                       </div>
@@ -302,7 +302,7 @@ const PaymentMethodsPage = () => {
                     <td className="px-4 py-3">
                       <FinanceStatusBadge value={item.active} kind="active" />
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatDate(item.updatedAt)}
                     </td>
                     <td className="px-4 py-3">

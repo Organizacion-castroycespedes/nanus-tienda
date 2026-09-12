@@ -29,9 +29,9 @@ export const ReportExportCard = ({
         <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700">
           Conciliacion
         </p>
-        <h2 className="mt-2 text-xl font-semibold text-slate-900">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-        {helper ? <p className="mt-2 text-xs text-slate-500">{helper}</p> : null}
+        <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{description}</p>
+        {helper ? <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{helper}</p> : null}
       </div>
       <div className="flex flex-wrap gap-3">
         {actions.map((action) => (
