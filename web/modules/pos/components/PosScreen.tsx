@@ -2011,6 +2011,19 @@ export const PosScreen = () => {
     quickFiscalCustomerOpen,
   ]);
 
+  useEffect(() => {
+    if (paymentModalOpen && payments.length > 0) {
+      setTimeout(() => {
+        const firstInput = document.getElementById(`payment-amount-${payments[0]?.id}`);
+        if (firstInput) {
+          firstInput.focus();
+          if (firstInput instanceof HTMLInputElement) firstInput.select();
+        }
+      }, 100);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentModalOpen]);
+
   const updatePayment = (
     id: string,
     field: "paymentMethodId" | "amount" | "reference",
@@ -2032,12 +2045,31 @@ export const PosScreen = () => {
       paymentMethodsCatalog[0] ??
       null;
     setSubmitError(null);
+    const newDraft = createPaymentDraft(firstNonCashMethod?.id ?? "", "");
     setPayments(
       rebalancePaymentsForTotal([
         ...payments,
-        createPaymentDraft(firstNonCashMethod?.id ?? "", ""),
+        newDraft,
       ])
     );
+    setTimeout(() => {
+      const input = document.getElementById(`payment-amount-${newDraft.id}`);
+      if (input) {
+        input.focus();
+        if (input instanceof HTMLInputElement) input.select();
+      }
+    }, 100);
+  };
+
+  const handlePaymentMethodSelect = (paymentId: string, methodId: string) => {
+    updatePayment(paymentId, "paymentMethodId", methodId);
+    setTimeout(() => {
+      const input = document.getElementById(`payment-amount-${paymentId}`);
+      if (input) {
+        input.focus();
+        if (input instanceof HTMLInputElement) input.select();
+      }
+    }, 50);
   };
 
   const removePaymentRow = (id: string) => {
@@ -3381,12 +3413,12 @@ export const PosScreen = () => {
       {paymentModalOpen ? (
         <Modal
           title="Cobrar venta"
-          size="lg"
+          size="xl"
           onClose={closeChargeModal}
-          className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
+          className="dark:bg-slate-950"
         >
-          <div className="space-y-5">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex max-h-[calc(90vh-120px)] flex-col">
+            <div className="mb-5 flex-shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -3407,131 +3439,165 @@ export const PosScreen = () => {
               </div>
             </div>
 
-            <div className="space-y-3">
-              {payments.map((payment, index) => (
-                <div
-                  key={payment.id}
-                  className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-                      <CreditCard className="h-4 w-4" />
-                      Metodo #{index + 1}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="space-y-4">
+                  {payments.map((payment, index) => (
+                    <div
+                      key={payment.id}
+                      className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700"
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                          <CreditCard className="h-4 w-4" />
+                          Metodo #{index + 1}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removePaymentRow(payment.id)}
+                          className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200 dark:text-slate-200"
+                          disabled={payments.length === 1}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <div
+                            className="grid gap-2"
+                            style={{ gridTemplateColumns: `repeat(${Math.min(paymentMethodOptions.length, 4)}, minmax(0, 1fr))` }}
+                          >
+                            {paymentMethodOptions.map((option) => {
+                              const labelLower = option.label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                              let icon = "💲";
+                              if (labelLower.includes("efectivo") || labelLower.includes("cash")) icon = "💵";
+                              else if (labelLower.includes("debito") || labelLower.includes("debit")) icon = "💳";
+                              else if (labelLower.includes("credito") || labelLower.includes("credit")) icon = "💳";
+                              else if (labelLower.includes("transferencia") || labelLower.includes("transfer")) icon = "🏦";
+                              else if (labelLower.includes("nequi") || labelLower.includes("daviplata") || labelLower.includes("app")) icon = "📱";
+
+                              const isSelected = payment.paymentMethodId === option.value;
+
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() =>
+                                    handlePaymentMethodSelect(payment.id, option.value)
+                                  }
+                                  className={`flex min-h-[48px] flex-row items-center justify-center gap-2 rounded-xl border px-2 py-2 text-center transition-all ${
+                                    isSelected
+                                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-600 dark:border-blue-500 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500"
+                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                                  }`}
+                                  title={option.label}
+                                >
+                                  <span className="text-xl flex-shrink-0">{icon}</span>
+                                  <span className="truncate text-sm font-medium leading-tight">
+                                    {option.label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Input
+                            id={`payment-amount-${payment.id}`}
+                            label="Monto"
+                            inputMode="decimal"
+                            value={payment.amount}
+                            onChange={(event) =>
+                              updatePayment(payment.id, "amount", event.target.value)
+                            }
+                            placeholder="0"
+                          />
+
+                          <Input
+                            label={
+                              paymentMethodById[payment.paymentMethodId]?.requiresReference
+                                ? "Referencia obligatoria"
+                                : "Referencia"
+                            }
+                            value={payment.reference}
+                            onChange={(event) =>
+                              updatePayment(payment.id, "reference", event.target.value)
+                            }
+                            placeholder="Opcional"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removePaymentRow(payment.id)}
-                      className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200 dark:text-slate-200"
-                      disabled={payments.length === 1}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
+                  ))}
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Select
-                      label="Metodo"
-                      value={payment.paymentMethodId}
-                      onChange={(event) =>
-                        updatePayment(
-                          payment.id,
-                          "paymentMethodId",
-                          event.target.value
-                        )
-                      }
-                    >
-                      <option value="">Selecciona un metodo</option>
-                      {paymentMethodOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
+                  <Button variant="outline" onClick={addPaymentRow} className="w-full">
+                    <Plus className="h-4 w-4" />
+                    Agregar metodo de pago
+                  </Button>
+                </div>
 
-                    <Input
-                      label="Monto"
-                      inputMode="decimal"
-                      value={payment.amount}
-                      onChange={(event) =>
-                        updatePayment(payment.id, "amount", event.target.value)
-                      }
-                      placeholder="0"
-                    />
+                <div className="space-y-4">
+                  <div className="sticky top-0 space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-600 dark:text-slate-300">Total pagado</span>
+                        <span className="font-semibold text-slate-950 dark:text-white">
+                          {formatCurrency(totalPaid)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className="text-slate-600 dark:text-slate-300">Cambio</span>
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          {formatCurrency(paymentDerivedState.change)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <span className="text-slate-600 dark:text-slate-300">Saldo pendiente</span>
+                        <span className="font-semibold text-amber-700 dark:text-amber-300">
+                          {formatCurrency(paymentDerivedState.pending)}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                        Si el total pagado no cubre la venta completa, se registrara como venta a credito.
+                      </p>
+                      {currentCashSession ? (
+                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                          Caja activa: {currentCashSession.cashRegisterNombre ?? "Caja actual"}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                          No hay caja abierta para este usuario. El efectivo quedara bloqueado.
+                        </p>
+                      )}
+                    </div>
 
-                    <Input
-                      label={
-                        paymentMethodById[payment.paymentMethodId]?.requiresReference
-                          ? "Referencia obligatoria"
-                          : "Referencia"
-                      }
-                      value={payment.reference}
-                      onChange={(event) =>
-                        updatePayment(payment.id, "reference", event.target.value)
-                      }
-                      placeholder="Opcional"
-                    />
+                    {paymentWarning ? (
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                        {paymentWarning}
+                      </div>
+                    ) : null}
+
+                    {submitError ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                        {submitError}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              ))}
-
-              <Button variant="outline" onClick={addPaymentRow} className="w-full">
-                <Plus className="h-4 w-4" />
-                Agregar metodo de pago
-              </Button>
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-600 dark:text-slate-300">Total pagado</span>
-                <span className="font-semibold text-slate-950 dark:text-white">
-                  {formatCurrency(totalPaid)}
-                </span>
+            <div className="mt-5 flex-shrink-0 border-t border-slate-200 pt-5 dark:border-slate-800">
+              <div className="flex flex-wrap justify-end gap-3">
+                <Button variant="ghost" onClick={closeChargeModal} disabled={processingSale}>
+                  Cancelar
+                </Button>
+                <Button isLoading={processingSale} onClick={() => void submitSale()}>
+                  Confirmar venta
+                </Button>
               </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-slate-600 dark:text-slate-300">Cambio</span>
-                <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-                  {formatCurrency(paymentDerivedState.change)}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-slate-600 dark:text-slate-300">Saldo pendiente</span>
-                <span className="font-semibold text-amber-700 dark:text-amber-300">
-                  {formatCurrency(paymentDerivedState.pending)}
-                </span>
-              </div>
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                Si el total pagado no cubre la venta completa, se registrara como venta a credito.
-              </p>
-              {currentCashSession ? (
-                <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                  Caja activa: {currentCashSession.cashRegisterNombre ?? "Caja actual"}
-                </p>
-              ) : (
-                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                  No hay caja abierta para este usuario. El efectivo quedara bloqueado.
-                </p>
-              )}
-            </div>
-
-            {paymentWarning ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                {paymentWarning}
-              </div>
-            ) : null}
-
-            {submitError ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                {submitError}
-              </div>
-            ) : null}
-
-            <div className="flex flex-wrap justify-end gap-3">
-              <Button variant="ghost" onClick={closeChargeModal} disabled={processingSale}>
-                Cancelar
-              </Button>
-              <Button isLoading={processingSale} onClick={() => void submitSale()}>
-                Confirmar venta
-              </Button>
             </div>
           </div>
         </Modal>
