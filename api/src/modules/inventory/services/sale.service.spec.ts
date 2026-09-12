@@ -812,7 +812,7 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
       sourceLineId: string;
       description: string;
       sku?: string | null;
-      taxes: Array<{ rate: string; amount: string; code?: string | null }>;
+      taxes: Array<{ type?: string; rate: string; amount: string; code?: string | null }>;
     }>;
     taxes: Array<{ sourceLineId?: string | null }>;
     payments: Array<{ methodCode: string; amount?: string | null }>;
@@ -836,14 +836,196 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
   assert.equal(event.lines[0].description, "Producto factura");
   assert.equal(event.lines[0].sku, "SKU-1");
   assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
+  assert.equal(event.lines[0].taxes.length, 1);
+  assert.equal(event.lines[0].taxes[0].type, "VAT");
   assert.equal(event.lines[0].taxes[0].rate, "0.19");
   assert.equal(event.lines[0].taxes[0].amount, "570.00");
   assert.equal(event.lines[0].taxes[0].code, "01");
+  assert.notEqual(event.lines[0].taxes[0].code, ids.tax);
   assert.equal(event.taxes.length, 1);
   assert.equal(event.payments[0].methodCode, "CASH");
   assert.equal(event.payments[0].amount, "360.00");
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");
+});
+
+test("SaleService.createSale maps multi-tax whisky snapshot for electronic billing", async () => {
+  const iclTaxId = "10000000-0000-0000-0000-000000000031";
+  const advTaxId = "10000000-0000-0000-0000-000000000032";
+  const ivaTaxId = "10000000-0000-0000-0000-000000000033";
+  const whiskyTaxes = [
+    {
+      id: "10000000-0000-0000-0000-000000000041",
+      tenant_id: ids.tenant,
+      sale_item_id: saleItemRow.id,
+      tax_id: iclTaxId,
+      tax_name: "ICL",
+      tax_rate: 0,
+      tax_base: 40,
+      tax_amount: 14400,
+      is_included: true,
+      dian_code: "02",
+      tax_type_code: "ICL",
+      calculation_method_code: "PER_ALCOHOL_DEGREE_VOLUME",
+      created_at: new Date("2026-06-02T00:00:00.000Z"),
+    },
+    {
+      id: "10000000-0000-0000-0000-000000000042",
+      tenant_id: ids.tenant,
+      sale_item_id: saleItemRow.id,
+      tax_id: advTaxId,
+      tax_name: "ADV",
+      tax_rate: 0.25,
+      tax_base: 400000,
+      tax_amount: 100000,
+      is_included: true,
+      dian_code: "04",
+      tax_type_code: "AD_VALOREM",
+      calculation_method_code: "AD_VALOREM",
+      created_at: new Date("2026-06-02T00:00:01.000Z"),
+    },
+    {
+      id: "10000000-0000-0000-0000-000000000043",
+      tenant_id: ids.tenant,
+      sale_item_id: saleItemRow.id,
+      tax_id: ivaTaxId,
+      tax_name: "IVA 5%",
+      tax_rate: 0.05,
+      tax_base: 452952.38,
+      tax_amount: 22647.62,
+      is_included: true,
+      dian_code: "01",
+      tax_type_code: "VAT",
+      calculation_method_code: "PERCENTAGE",
+      created_at: new Date("2026-06-02T00:00:02.000Z"),
+    },
+  ];
+
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente whisky",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "WHISKY-1",
+        name: "Whisky",
+        description: "Whisky",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => null,
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents, repository } = buildCreateSaleService(
+    [
+      makePreview({
+        taxId: ivaTaxId,
+        taxRate: 0.05,
+        taxBase: 452952.38,
+        taxAmount: 137047.62,
+        lineSubtotal: 452952.38,
+        lineTotal: 590000,
+        finalUnitPrice: 590000,
+        baseUnitPrice: 590000,
+        discountAmount: 0,
+        discountPercent: 0,
+        taxes: whiskyTaxes.map((tax) => ({
+          taxId: String(tax.tax_id),
+          taxName: String(tax.tax_name),
+          dianCode: String(tax.dian_code),
+          taxTypeCode: String(tax.tax_type_code),
+          calculationMethodCode: String(tax.calculation_method_code),
+          taxRate: Number(tax.tax_rate),
+          taxBase: Number(tax.tax_base),
+          taxAmount: Number(tax.tax_amount),
+          isIncluded: true,
+        })),
+      }),
+    ],
+    billing,
+    true,
+    whiskyTaxes
+  );
+
+  await service.createSale(
+    createSalePayload({
+      payments: [
+        {
+          paymentMethodId: ids.paymentMethod,
+          amount: 590000,
+          cashSessionId: ids.posSession,
+        },
+      ],
+    }),
+    posContext
+  );
+
+  assert.equal(repository.createSaleCalls[0].data.items[0].taxes?.length, 3);
+  assert.equal(outboxEvents.length, 1);
+  const event = outboxEvents[0] as {
+    lines: Array<{
+      taxes: Array<{ type: string; code: string | null; amount: string; rate: string }>;
+    }>;
+    taxes: Array<{ sourceLineId?: string | null }>;
+  };
+
+  assert.equal(event.lines[0].taxes.length, 3);
+  assert.deepEqual(
+    event.lines[0].taxes.map((tax) => ({
+      type: tax.type,
+      code: tax.code,
+      rate: tax.rate,
+      amount: tax.amount,
+    })),
+    [
+      { type: "ICL", code: "02", rate: "0.00", amount: "14400.00" },
+      { type: "AD_VALOREM", code: "04", rate: "0.25", amount: "100000.00" },
+      { type: "VAT", code: "01", rate: "0.05", amount: "22647.62" },
+    ]
+  );
+  assert.equal(event.taxes.length, 3);
+  for (const tax of event.lines[0].taxes) {
+    assert.notEqual(tax.code, iclTaxId);
+    assert.notEqual(tax.code, advTaxId);
+    assert.notEqual(tax.code, ivaTaxId);
+  }
 });
 
 test("SaleService.createSale skips sale billing outbox event when outbox service is unavailable", async () => {
