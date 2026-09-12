@@ -119,7 +119,7 @@ export type PeripheralTicketPayload = {
   branchId?: string;
   terminalId?: string;
   deviceId?: string;
-  ticketType: "SALE" | "PURCHASE" | "ORDER";
+  ticketType: "SALE" | "PURCHASE" | "ORDER" | "ELECTRONIC_INVOICE";
   content: PeripheralTicketContent;
 };
 
