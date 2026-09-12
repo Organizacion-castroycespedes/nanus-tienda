@@ -81,7 +81,7 @@ export class SalesReportAdapter {
               AND document.source_type = 'SALE'
               AND document.source_id = s.id
             WHERE s.tenant_id = $1 AND s.id = ANY($2::UUID[])
-              AND ($3 = 'SUPER_ADMIN' OR $4 IS NULL OR s.branch_id = $4)
+              AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR s.branch_id = $4::UUID)
          ) AS documents
         WHERE row_number = 1`,
       [actor.tenantId, saleIds, actor.role, actor.branchId]
@@ -151,7 +151,7 @@ export class SalesReportAdapter {
           AND document.source_type = 'SALE'
           AND document.source_id = s.id
         WHERE s.id = $1 AND s.tenant_id = $2
-          AND ($3 = 'SUPER_ADMIN' OR $4 IS NULL OR s.branch_id = $4)
+          AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR s.branch_id = $4::UUID)
         ORDER BY document.created_at DESC
         LIMIT 2`,
       [saleId, actor.tenantId, actor.role, actor.branchId]

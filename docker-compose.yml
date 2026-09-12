@@ -1,0 +1,115 @@
+# Local development backends only.
+# Web, PostgreSQL, peripherals agent and Electron run on the host.
+# See docs/docker-local.md
+
+name: manus-tienda-local
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    container_name: manus-api
+    ports:
+      - "4020:4020"
+    environment:
+      NODE_ENV: ${NODE_ENV:-local}
+      PORT: "4020"
+      CORS_ORIGIN: http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      DB_HOST: host.docker.internal
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_DATABASE: ${DB_DATABASE:-manus_tienda}
+      DB_SSL: ${DB_SSL:-false}
+      DB_LOGGING: "false"
+      LOCAL_UPLOADS_DIR: storage/uploads
+      REPORTS_API_BASE_URL: http://reporteria:4021/api
+      BILLING_BACKEND_INTERNAL_BASE_URL: http://facturacion:4030
+      API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-}
+      LEADS_WEBHOOK_TOKEN: ${LEADS_WEBHOOK_TOKEN:-}
+      INTEGRATION_OUTBOX_DISPATCHER_ENABLED: ${INTEGRATION_OUTBOX_DISPATCHER_ENABLED:-false}
+      ELECTRONIC_BILLING_MODE: ${ELECTRONIC_BILLING_MODE:-AUTOMATIC}
+      DIAN_THIRD_PARTY_LOOKUP_ENABLED: "true"
+      DIAN_THIRD_PARTY_LOOKUP_MODE: ${DIAN_THIRD_PARTY_LOOKUP_MODE:-mock}
+      DIAN_GET_ACQUIRER_HTTP_ENABLED: "false"
+    volumes:
+      - ./api:/app
+      - api_node_modules:/app/node_modules
+      - ./storage/uploads:/app/storage/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - reporteria
+      - facturacion
+    restart: unless-stopped
+
+  reporteria:
+    build:
+      context: .
+      dockerfile: docker/reporteria/Dockerfile
+    container_name: manus-reporteria
+    ports:
+      - "4021:4021"
+    environment:
+      NODE_ENV: ${NODE_ENV:-local}
+      PORT: "4021"
+      CORS_ORIGIN: http://localhost:3000
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      DB_HOST: host.docker.internal
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USERNAME:-postgres}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_NAME: ${DB_DATABASE:-manus_tienda}
+      DB_DATABASE: ${DB_DATABASE:-manus_tienda}
+      DB_SSL: ${DB_SSL:-false}
+      REPORTS_ALLOW_MOCK_AUTH: ${REPORTS_ALLOW_MOCK_AUTH:-false}
+      ELECTRONIC_BILLING_MODE: ${ELECTRONIC_BILLING_MODE:-AUTOMATIC}
+    volumes:
+      - ./backend-reporteria:/app
+      - reporteria_node_modules:/app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  facturacion:
+    build:
+      context: .
+      dockerfile: docker/facturacion-electronica/Dockerfile
+    container_name: manus-facturacion
+    ports:
+      - "4030:4030"
+    environment:
+      NODE_ENV: ${NODE_ENV:-local}
+      PORT: "4030"
+      SERVICE_NAME: backend-facturacion-electronica
+      FISCAL_PROVIDER: ${FISCAL_PROVIDER:-MOCK_LOCAL}
+      API_BASE_URL: http://api:4020
+      API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-}
+      DB_HOST: host.docker.internal
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_DATABASE: ${BILLING_DB_DATABASE:-manus_tienda_electronic_billing}
+      DB_SSL: ${DB_SSL:-false}
+      DB_LOGGING: "false"
+      DIAN_THIRD_PARTY_LOOKUP_ENABLED: "true"
+      DIAN_THIRD_PARTY_LOOKUP_MODE: ${DIAN_THIRD_PARTY_LOOKUP_MODE:-mock}
+      DIAN_GET_ACQUIRER_HTTP_ENABLED: "false"
+      DIAN_ALLOW_EXTERNAL_CALLS: "false"
+      ELECTRONIC_BILLING_BACKGROUND_ENABLED: "false"
+      LOG_LEVEL: debug
+    volumes:
+      - ./backend-facturacion-electronica:/app
+      - facturacion_node_modules:/app/node_modules
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  api_node_modules:
+  reporteria_node_modules:
+  facturacion_node_modules:

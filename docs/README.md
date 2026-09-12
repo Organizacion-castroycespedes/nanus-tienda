@@ -72,6 +72,7 @@ Esta carpeta resume el estado real del sistema segun el codigo fuente actual de 
 ### Despliegue
 
 - [Despliegue actual](deployment/overview.md)
+- [Docker local (backends + Postgres host)](docker-local.md)
 
 ### Desarrollo
 
