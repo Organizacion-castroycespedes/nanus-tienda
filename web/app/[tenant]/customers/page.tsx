@@ -1,7 +1,8 @@
 "use client";
 
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { Input } from "../../../components/design-system/Input";
@@ -98,6 +99,8 @@ const getCustomerDocument = (customer: CustomerResponse) =>
 
 const CustomersPage = () => {
   const confirm = useConfirm();
+  const searchParams = useSearchParams();
+  const requestedCustomerId = searchParams.get("editCustomerId");
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState<CustomerFilters>(defaultFilters);
@@ -232,6 +235,23 @@ const CustomersPage = () => {
     setFormMode("edit");
   };
 
+  useEffect(() => {
+    if (requestedCustomerId && !hasSearched && !loading) {
+      void loadCustomers();
+    }
+  }, [hasSearched, loadCustomers, loading, requestedCustomerId]);
+
+  useEffect(() => {
+    if (!requestedCustomerId || !hasSearched || formMode) {
+      return;
+    }
+    const customer = customers.find((item) => item.id === requestedCustomerId);
+    if (customer && canEdit) {
+      setSelectedCustomer(customer);
+      setFormMode("edit");
+    }
+  }, [canEdit, customers, formMode, hasSearched, requestedCustomerId]);
+
   const isActionMode = formMode !== null;
   const actionTitle = formMode === "edit" ? "Editar cliente" : "Crear cliente";
   const actionDescription =
@@ -287,12 +307,12 @@ const CustomersPage = () => {
         onConfirm={() => setActionFeedback(null)}
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Customers</p>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Clientes</h1>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Customers</p>
+            <h1 className="text-2xl font-semibold text-slate-900">Clientes</h1>
+            <p className="mt-2 text-sm text-slate-600">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Administra clientes, contactos y ubicacion comercial."}
@@ -333,7 +353,7 @@ const CustomersPage = () => {
       ) : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
             label="Buscar"
@@ -385,10 +405,10 @@ const CustomersPage = () => {
       {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
+            <thead className="bg-slate-50 text-left text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Documento</th>
@@ -402,19 +422,19 @@ const CustomersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Cargando clientes...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     Usa el boton Buscar para consultar clientes.
                   </td>
                 </tr>
               ) : paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                     No hay clientes para mostrar.
                   </td>
                 </tr>
@@ -423,13 +443,13 @@ const CustomersPage = () => {
                   const fiscalBadge = resolveFiscalBadge(customer);
                   return (
                     <tr key={customer.id}>
-                      <td className="px-4 py-3 text-slate-900 dark:text-white">
+                      <td className="px-4 py-3 text-slate-900">
                         <div className="font-medium">{customer.name}</div>
                         {customer.legalName && customer.legalName !== customer.name ? (
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{customer.legalName}</div>
+                          <div className="text-xs text-slate-500">{customer.legalName}</div>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                      <td className="px-4 py-3 text-slate-700">
                         {getCustomerDocument(customer)}
                       </td>
                       <td className="px-4 py-3">
@@ -439,13 +459,13 @@ const CustomersPage = () => {
                           {fiscalBadge.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                      <td className="px-4 py-3 text-slate-700">
                         {customer.phone || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                      <td className="px-4 py-3 text-slate-700">
                         {customer.invoiceEmail || customer.fiscalEmail || customer.email || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                      <td className="px-4 py-3 text-slate-700">
                         {[customer.ciudad, customer.departamento].filter(Boolean).join(", ") ||
                           [customer.municipalityCode, customer.departmentCode]
                             .filter(Boolean)
@@ -490,7 +510,7 @@ const CustomersPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

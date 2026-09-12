@@ -343,3 +343,27 @@ QA/PROD.
 - Relevant OpenSpec: `PASS`; full OpenSpec retains inherited unrelated failure
   `corregir-handoff-agent-local-perifericos-electron`.
 - Worktree preserved. No deployment or push performed.
+
+## Phase 5.25 — controlled QA deploy auth session fix
+
+- QA TARGET: `https://api.apptiendamanus.space`; PROD excluded: `YES`.
+- SOURCE COMMIT: `d4bd9db9e29179bc13967095d7c94697fd8fb03f`.
+- Approved mechanism: GitHub Actions workflow
+  `.github/workflows/deploy-qa-backends.yml`, dispatched from the certified
+  ref. It builds and deploys the four repository backend binaries through
+  `scripts/deploy/qa-deploy-backends.sh`; Web has no repository deploy command
+  in this workspace.
+- DEPLOY RESULT: `BLOCKED_BEFORE_EXECUTION`. Local `gh` and `vercel` tools are
+  unavailable, and the Git remote cannot authenticate. No push or deploy was
+  attempted.
+- API health remains `PASS` (`/api/system/version` and
+  `/api/reports/health` return `200`). `POST /api/auth/login/replace-session`
+  remains unavailable on QA (`404`), so authenticated QA re-test was not run.
+- USER/ADMIN/SUPER_USER/SUPER_ADMIN QA login: `NOT_TESTED_DEPLOY_BLOCKED`.
+  Role identities, session replacement, old refresh rejection, and CDP role
+  authentication remain unverified against deployed QA.
+- SALES CREATED: `0`; ELECTRONIC DOCUMENTS CREATED: `0`; BILLING OUTBOX
+  EVENTS CREATED: `0`; FACTUCORE MUTATIONS: `0`; DIAN CALLS: `0`.
+- Global Manus billing worker and FactuCore background jobs remain disabled.
+- Unrelated dirty worktree changes were preserved and are not part of the
+  certified commit. No evidence commit was created in this blocked attempt.
