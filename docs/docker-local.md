@@ -14,10 +14,10 @@ Config compartida para desarrollo local en Windows. **Postgres, web, periférico
 | `backend-perifericos` | Host | `4050` (`127.0.0.1`) |
 | Electron | Host | carga `http://localhost:3000` |
 
-Bases:
+Bases (local QA típico):
 
-- `manus_tienda` — API + reportería
-- `manus_tienda_electronic_billing` — facturación electrónica
+- `manus_tienda_qa` — API + reportería + FE (usuario app: `manus_user`)
+- Si tienes BD de billing separada, ponla en `BILLING_DB_DATABASE`
 
 JWT: el mismo valor en API y reportería (variable `JWT_SECRET` del `.env` raíz).
 
