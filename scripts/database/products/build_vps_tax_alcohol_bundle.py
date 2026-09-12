@@ -32,6 +32,11 @@ def strip_v077_outer_tx(text: str) -> str:
     return "\n".join(cleaned) + "\n"
 
 
+def read_sql(path: Path) -> str:
+    # utf-8-sig strips leading BOM that breaks PostgreSQL parsers.
+    return path.read_text(encoding="utf-8-sig")
+
+
 def main() -> None:
     chunks: list[str] = [
         """-- =============================================================================
@@ -52,7 +57,7 @@ def main() -> None:
         path = ROOT / rel
         if not path.exists():
             raise SystemExit(f"Missing: {path}")
-        text = path.read_text(encoding="utf-8")
+        text = read_sql(path)
         if is_v077:
             text = strip_v077_outer_tx(text)
         chunks.append(f"\n-- >>> BEGIN SECTION: {rel}\n")
@@ -74,7 +79,8 @@ ON CONFLICT (version) DO NOTHING;
 """
     )
 
-    OUT.write_text("".join(chunks), encoding="utf-8")
+    # Write UTF-8 without BOM (PostgreSQL rejects U+FEFF).
+    OUT.write_bytes("".join(chunks).encode("utf-8"))
     print(f"Wrote {OUT} bytes={OUT.stat().st_size}")
 
 

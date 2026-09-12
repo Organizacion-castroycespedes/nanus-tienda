@@ -1,4 +1,4 @@
-﻿-- V078 multi-tax snapshot enrichment
+-- V078 multi-tax snapshot enrichment
 -- Adds fiscal detail columns, order_item_taxes, and multi-tax inserts in inventory_create_sale_v2.
 -- PostgreSQL 16+
 

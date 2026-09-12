@@ -518,7 +518,7 @@ $migration$;
 -- <<< END SECTION: migrations/V077__tax_model_extension.sql
 
 -- >>> BEGIN SECTION: migrations/V078__sale_item_taxes_multi_tax_snapshot.sql
-﻿-- V078 multi-tax snapshot enrichment
+-- V078 multi-tax snapshot enrichment
 -- Adds fiscal detail columns, order_item_taxes, and multi-tax inserts in inventory_create_sale_v2.
 -- PostgreSQL 16+
 
