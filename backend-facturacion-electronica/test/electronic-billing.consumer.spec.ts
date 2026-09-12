@@ -127,7 +127,9 @@ const buildHarness = (overrides: {
 
   if (overrides.existing) {
     records.set(overrides.existing.event_id, overrides.existing);
-    records.set(sourceKey(overrides.existing.tenant_id, overrides.existing.source_type, overrides.existing.source_id), overrides.existing);
+    if (["RECEIVED", "PROCESSED"].includes(overrides.existing.status)) {
+      records.set(sourceKey(overrides.existing.tenant_id, overrides.existing.source_type, overrides.existing.source_id), overrides.existing);
+    }
   }
 
   const inboxRepository = {
@@ -160,7 +162,9 @@ const buildHarness = (overrides: {
         updated_at: input.updatedAt,
       };
       records.set(record.event_id, record);
-      records.set(sourceKey(record.tenant_id, record.source_type, record.source_id), record);
+      if (["RECEIVED", "PROCESSED"].includes(record.status)) {
+        records.set(sourceKey(record.tenant_id, record.source_type, record.source_id), record);
+      }
       return record;
     },
     markProcessed: async (eventId: string, input: any) => {
@@ -192,7 +196,7 @@ const buildHarness = (overrides: {
         last_error_message: input.errorMessage,
       };
       records.set(eventId, updated);
-      records.set(sourceKey(updated.tenant_id, updated.source_type, updated.source_id), updated);
+      records.delete(sourceKey(updated.tenant_id, updated.source_type, updated.source_id));
       return updated;
     },
   };
@@ -456,6 +460,39 @@ test("snapshot totals reject inconsistent totals before provider invocation", as
 
   assert.equal(result.status, "INVALID_EVENT");
   assert.equal(harness.billingService.calls.length, 0);
+});
+
+test("consumer allows a replacement event after FAILED history for the same business source", async () => {
+  const failed = {
+    id: "inbox-failed",
+    event_id: "event-failed",
+    event_type: "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+    schema_version: 1,
+    tenant_id: ids.tenant,
+    correlation_id: "corr-failed",
+    source_type: "SALE",
+    source_id: "sale-1",
+    external_reference: "SALE-tenant-sale-1",
+    payload_hash: "hash-failed",
+    payload: buildEnvelope().payload,
+    status: "FAILED",
+    electronic_document_id: null,
+    received_at: new Date("2026-08-28T00:00:00.000Z"),
+    processed_at: null,
+    last_error_code: "LOCAL_VALIDATION",
+    last_error_message: "validation failed",
+    created_at: new Date("2026-08-28T00:00:00.000Z"),
+    updated_at: new Date("2026-08-28T00:01:00.000Z"),
+  };
+
+  const replacement = buildEnvelope({ eventId: "event-replacement" });
+  const harness = buildHarness({ existing: failed });
+  const result = await harness.consumer.consume(replacement);
+
+  assert.equal(result.status, "ACCEPTED");
+  assert.equal(harness.billingService.calls.length, 1);
+  assert.equal(harness.records.get("event-failed")?.status, "FAILED");
+  assert.equal(harness.records.get("event-replacement")?.status, "PROCESSED");
 });
 
 test("controller rejects missing internal token", async () => {
