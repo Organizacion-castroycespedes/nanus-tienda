@@ -110,7 +110,7 @@ const getTicketPdf = (type: CurrentShiftTicketType, entityId: string) => {
 };
 
 const EmptyTab = ({ message }: { message: string }) => (
-  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
     {message}
   </div>
 );
@@ -247,25 +247,27 @@ const CurrentShiftPage = () => {
     try {
       const blob = await getPdf();
       const objectUrl = window.URL.createObjectURL(blob);
-      const printWindow = window.open(objectUrl, "_blank");
-      if (!printWindow) {
-        window.URL.revokeObjectURL(objectUrl);
-        setToastMessage("El navegador bloqueo la impresion. Usa Ver ticket.");
-        setToastVariant("warning");
-        return;
-      }
-      const print = () => {
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = objectUrl;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
         try {
-          printWindow.focus();
-          printWindow.print();
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
         } catch {
           setToastMessage("No se pudo imprimir automaticamente. Usa Ver ticket.");
           setToastVariant("warning");
         }
       };
-      printWindow.addEventListener("load", print, { once: true });
-      window.setTimeout(print, 1000);
-      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60000);
+
+      window.setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
     } catch (error) {
       showTicketError(error, "No se pudo imprimir el ticket.");
     }
@@ -374,11 +376,11 @@ const CurrentShiftPage = () => {
       <FinanceSectionNav tenantSlug={tenantSlug} />
 
       {!shift?.hasOpenCashSession ? (
-        <section className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm">
-          <p className="text-sm font-semibold text-slate-900">
+        <section className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">
             {shift?.message ?? "No hay cajas abiertas para el alcance seleccionado."}
           </p>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             Abre caja desde seleccion de contexto o ajusta el alcance operativo.
           </p>
           <Button
@@ -391,18 +393,18 @@ const CurrentShiftPage = () => {
       ) : (
         <>
           {availableCashSessions.length > 0 ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                     Turno actual
                   </p>
-                  <h2 className="mt-2 text-lg font-semibold text-slate-900">
+                  <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
                     {availableCashSessions.length > 1
                       ? "Seleccionar caja abierta"
                       : "Caja abierta actual"}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {availableCashSessions.length > 1
                       ? `${availableCashSessions.length} cajas abiertas disponibles para este alcance.`
                       : "Una caja abierta disponible para este alcance."}
@@ -412,7 +414,7 @@ const CurrentShiftPage = () => {
                 {availableCashSessions.length > 1 ? (
                   <div className="grid w-full gap-2 lg:max-w-3xl lg:grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,1.6fr)]">
                     <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         Buscar
                       </span>
                       <input
@@ -423,7 +425,7 @@ const CurrentShiftPage = () => {
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         Sesion abierta
                       </span>
                       <select
@@ -456,44 +458,44 @@ const CurrentShiftPage = () => {
 
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Sucursal
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                     {cashSession?.branchName ?? cashSession?.branchId ?? "-"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Terminal
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                     {cashSession?.terminalName ?? "Sin terminal"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Caja
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                     {cashSession
                       ? getCurrentShiftSessionCashRegisterLabel(cashSession)
                       : "Caja abierta"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Apertura
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                     {formatDateTime(cashSession?.openedAt ?? null)}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     {cashSession?.userName ?? "Usuario operativo"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Estado
                   </p>
                   <div className="mt-1">
@@ -537,16 +539,16 @@ const CurrentShiftPage = () => {
             />
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Apertura
                 </p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">
+                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
                   {formatDateTime(cashSession?.openedAt ?? null)}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {cashSession?.userName ?? "Usuario operativo"}
                 </p>
               </div>
@@ -594,7 +596,7 @@ const CurrentShiftPage = () => {
           </section>
 
           <section className="space-y-4">
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between dark:bg-slate-800 dark:border-slate-700">
               <div className="flex flex-wrap gap-2">
                 {tabs.map((tab) => (
                   <button
@@ -605,7 +607,7 @@ const CurrentShiftPage = () => {
                       activeTab === tab.key
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    }`}
+                    } dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200`}
                   >
                     {tab.label} ({tabCounters[tab.key]})
                   </button>
@@ -631,7 +633,7 @@ const CurrentShiftPage = () => {
               </form>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700">
               {activeTab === "sales" ? (
                 <SalesTable rows={shift.tabs.sales.rows} actions={TicketActions} />
               ) : null}
@@ -686,7 +688,7 @@ const SalesTable = ({
   }
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
         <tr>
           <th className="px-4 py-3">Fecha</th>
           <th className="px-4 py-3">Cliente</th>
@@ -699,7 +701,7 @@ const SalesTable = ({
         {rows.map((row) => (
           <tr key={row.id}>
             <td className="px-4 py-3">{formatDateTime(row.createdAt)}</td>
-            <td className="px-4 py-3 font-medium text-slate-900">
+            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
               {row.customerName ?? "Consumidor final"}
             </td>
             <td className="px-4 py-3">{row.paymentMethod ?? "-"}</td>
@@ -730,7 +732,7 @@ const OrdersTable = ({
   }
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
         <tr>
           <th className="px-4 py-3">Fecha</th>
           <th className="px-4 py-3">Pedido</th>
@@ -743,7 +745,7 @@ const OrdersTable = ({
         {rows.map((row) => (
           <tr key={row.id}>
             <td className="px-4 py-3">{formatDateTime(row.createdAt)}</td>
-            <td className="px-4 py-3 font-medium text-slate-900">
+            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
               {(row.orderNumber ?? row.id).slice(0, 8)}
             </td>
             <td className="px-4 py-3">{row.customerName ?? "-"}</td>
@@ -770,7 +772,7 @@ const PurchasesTable = ({
   }
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
         <tr>
           <th className="px-4 py-3">Fecha</th>
           <th className="px-4 py-3">Proveedor</th>
@@ -783,7 +785,7 @@ const PurchasesTable = ({
         {rows.map((row) => (
           <tr key={row.id}>
             <td className="px-4 py-3">{formatDateTime(row.createdAt)}</td>
-            <td className="px-4 py-3 font-medium text-slate-900">
+            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
               {row.supplierName ?? "-"}
             </td>
             <td className="px-4 py-3">{row.status}</td>
@@ -808,7 +810,7 @@ const MovementsTable = ({ rows }: { rows: CurrentShiftMovementRow[] }) => {
   }
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
         <tr>
           <th className="px-4 py-3">Fecha</th>
           <th className="px-4 py-3">Tipo</th>
@@ -821,7 +823,7 @@ const MovementsTable = ({ rows }: { rows: CurrentShiftMovementRow[] }) => {
         {rows.map((row) => (
           <tr key={row.id}>
             <td className="px-4 py-3">{formatDateTime(row.createdAt)}</td>
-            <td className="px-4 py-3 font-medium text-slate-900">{row.type}</td>
+            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{row.type}</td>
             <td className="px-4 py-3">{row.description ?? row.referenceType ?? "-"}</td>
             <td className="px-4 py-3">{row.direction}</td>
             <td className="px-4 py-3 font-semibold">
@@ -847,7 +849,7 @@ const CashCountTable = ({
   }
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
         <tr>
           <th className="px-4 py-3">Fecha</th>
           <th className="px-4 py-3">Esperado</th>
@@ -889,7 +891,7 @@ const TicketsTable = ({
   }
   return (
     <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+      <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
         <tr>
           <th className="px-4 py-3">Fecha</th>
           <th className="px-4 py-3">Tipo</th>
@@ -901,7 +903,7 @@ const TicketsTable = ({
         {rows.map((row) => (
           <tr key={`${row.type}-${row.entityId}`}>
             <td className="px-4 py-3">{formatDateTime(row.createdAt)}</td>
-            <td className="px-4 py-3 font-medium text-slate-900">
+            <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
               {ticketLabelByType[row.type]}
             </td>
             <td className="px-4 py-3">{row.label}</td>

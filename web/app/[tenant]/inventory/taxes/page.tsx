@@ -199,12 +199,12 @@ const TaxesPage = () => {
         onConfirm={() => setActionFeedback(null)}
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Impuestos</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Impuestos</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Configura los impuestos disponibles para el catalogo de productos."}
@@ -275,7 +275,7 @@ const TaxesPage = () => {
       ) : null}
 
       {!isActionMode ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
             <Input
               label="Buscar"
@@ -321,10 +321,10 @@ const TaxesPage = () => {
       {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Porcentaje</th>
@@ -336,31 +336,31 @@ const TaxesPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando impuestos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar impuestos.
                   </td>
                 </tr>
               ) : paginatedTaxes.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay impuestos para mostrar.
                   </td>
                 </tr>
               ) : (
                 paginatedTaxes.map((tax) => (
                   <tr key={tax.id}>
-                    <td className="px-4 py-3 text-slate-900">{tax.name}</td>
-                    <td className="px-4 py-3 text-slate-700">{tax.rate * 100}%</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">{tax.name}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{tax.rate * 100}%</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {tax.isIncluded ? "Incluido" : "No incluido"}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {tax.isActive ? "Activo" : "Inactivo"}
                     </td>
                     <td className="px-4 py-3">
@@ -394,7 +394,7 @@ const TaxesPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

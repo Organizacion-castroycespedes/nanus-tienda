@@ -379,23 +379,23 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     `${terminal.name} (${terminal.code})`;
 
   return (
-    <section className="mx-auto max-w-3xl rounded-[28px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)]">
+    <section className="mx-auto max-w-3xl rounded-[28px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
           Contexto POS
         </p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-950">
           Selecciona sucursal y terminal
         </h1>
         {selectedTenant ? (
-          <p className="mt-3 text-sm text-slate-600">
-            Empresa activa: <span className="font-medium text-slate-900">{canSelectTenant ? selectedTenant.name : authTenantName ?? selectedTenant.name}</span>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            Empresa activa: <span className="font-medium text-slate-900 dark:text-white">{canSelectTenant ? selectedTenant.name : authTenantName ?? selectedTenant.name}</span>
           </p>
         ) : null}
       </div>
 
       {uiLoading ? (
-        <div className="flex min-h-[220px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500">
+        <div className="flex min-h-[220px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:text-slate-400">
           <Loader2 className="mr-3 h-5 w-5 animate-spin" />
           Cargando contexto disponible...
         </div>
@@ -450,8 +450,8 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
           </Select>
 
           {mustUseAssignedBranch ? (
-            <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+            <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
               <span>
                 {authBranchId
                   ? "Tu rol usa la sucursal asignada. No puedes abrir caja en otra sucursal."
@@ -481,12 +481,12 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
           {selectedCashRegister ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-start gap-3">
-                <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
                     Caja asociada: {selectedCashRegister.nombre}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                     {currentCashMatchesSelection
                       ? "Hay una caja abierta en este contexto."
                       : "Se abrira una caja en este contexto antes de entrar al POS."}

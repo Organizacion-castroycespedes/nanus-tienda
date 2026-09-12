@@ -633,12 +633,12 @@ const ProductsPage = () => {
         onError={handlePriceChangeError}
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Productos</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Productos</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Consulta el catalogo de productos y su stock actual.
             </p>
           </div>
@@ -733,7 +733,7 @@ const ProductsPage = () => {
         </FocusActionLayout>
       ) : (
         <>
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div
           className={
             isSuperRole
@@ -830,10 +830,10 @@ const ProductsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">SKU</th>
@@ -849,19 +849,19 @@ const ProductsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando productos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar productos.
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay productos para mostrar.
                   </td>
                 </tr>
@@ -875,7 +875,7 @@ const ProductsPage = () => {
 
                   return (
                     <tr key={product.id}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         <div className="space-y-2">
                           <span className="font-medium">{product.name}</span>
                           {badges.length > 0 ? (
@@ -892,16 +892,16 @@ const ProductsPage = () => {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{product.sku}</td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{product.sku}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         <div className="max-w-[180px] space-y-1">
-                          <p className="truncate text-sm font-medium text-slate-800">
+                          <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
                             {product.categoryId
                               ? category?.name ?? "Categoria no cargada"
                               : "Sin categoria"}
                           </p>
                           {subcategory ? (
-                            <p className="truncate text-xs text-slate-500">
+                            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                               {subcategory.name}
                             </p>
                           ) : product.categoryId ? (
@@ -911,13 +911,13 @@ const ProductsPage = () => {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{product.branchName ?? "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">{product.terminalName ?? "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{product.branchName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{product.terminalName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {saleTypeLabels[product.saleType ?? "UNIT"]} /{" "}
                         {measurementUnitLabels[product.measurementUnit ?? "UND"]}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatCurrency(product.price)}
                       </td>
                       <td className="px-4 py-3">
@@ -927,7 +927,7 @@ const ProductsPage = () => {
 
                           return (
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium text-slate-900">{stock}</span>
+                              <span className="font-medium text-slate-900 dark:text-white">{stock}</span>
                               <span
                                 className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${indicator.className}`}
                               >
@@ -996,7 +996,7 @@ const ProductsPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

@@ -120,14 +120,14 @@ export const InventoryImageUploadPanel = ({
       <InventoryImagePreview
         imageUrl={previewImageUrl}
         altText={imageAltText ?? fallbackLabel}
-        className="flex h-32 w-32 items-center justify-center rounded-xl border border-slate-200 bg-white bg-cover bg-center text-slate-500"
+        className="flex h-32 w-32 items-center justify-center rounded-xl border border-slate-200 bg-white bg-cover bg-center text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400"
         fallback={<ImageIcon className="h-8 w-8" />}
       />
 
       <div className="min-w-0 space-y-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-          <p className="mt-1 text-xs text-slate-500">{metaText}</p>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{metaText}</p>
         </div>
 
         {isDisabled ? (
@@ -140,7 +140,7 @@ export const InventoryImageUploadPanel = ({
               id={inputId}
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              className="block w-full max-w-sm rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+              className="block w-full max-w-sm rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
               onChange={(event) => {
                 const file = event.target.files?.[0] ?? null;
                 setSelectedFile(file);

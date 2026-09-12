@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 
 const Footer = () => (
-  <footer className="border-t border-slate-200 bg-white px-6 py-12">
+  <footer className="border-t border-slate-200 bg-white px-6 py-12 dark:bg-slate-800 dark:border-slate-700">
     <div className="mx-auto max-w-6xl">
       <div className="grid gap-8 md:grid-cols-[1.4fr_0.8fr_0.8fr]">
         <div>
@@ -17,7 +17,7 @@ const Footer = () => (
               />
             </span>
           </Link>
-          <p className="mt-4 max-w-sm text-sm leading-6 text-slate-600">
+          <p className="mt-4 max-w-sm text-sm leading-6 text-slate-600 dark:text-slate-300">
             Software web para operar ventas, inventario, caja, pedidos y
             reportes en tiendas, minimarkets y negocios pequeños.
           </p>
@@ -36,7 +36,7 @@ const Footer = () => (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
+                  className="text-sm font-medium text-slate-600 transition hover:text-slate-950 dark:text-slate-300"
                 >
                   {item.label}
                 </Link>
@@ -53,7 +53,7 @@ const Footer = () => (
             <li>
               <Link
                 href="/login"
-                className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
+                className="text-sm font-medium text-slate-600 transition hover:text-slate-950 dark:text-slate-300"
               >
                 Iniciar sesión
               </Link>
@@ -61,7 +61,7 @@ const Footer = () => (
             <li>
               <Link
                 href="#contacto"
-                className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
+                className="text-sm font-medium text-slate-600 transition hover:text-slate-950 dark:text-slate-300"
               >
                 Solicitar demo
               </Link>
@@ -71,7 +71,7 @@ const Footer = () => (
       </div>
 
       <div className="mt-10 border-t border-slate-100 pt-6">
-        <p className="text-center text-xs text-slate-500">
+        <p className="text-center text-xs text-slate-500 dark:text-slate-400">
           &copy; {new Date().getFullYear()} Manus POS. Todos los derechos
           reservados.
         </p>

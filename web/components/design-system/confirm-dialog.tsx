@@ -112,7 +112,7 @@ export const ConfirmDialog = ({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
-        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:bg-slate-800 dark:border-slate-700"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
@@ -123,13 +123,13 @@ export const ConfirmDialog = ({
             {config.icon}
           </div>
           <div className="space-y-2">
-            <h2 id={titleId} className="text-lg font-semibold text-slate-900">
+            <h2 id={titleId} className="text-lg font-semibold text-slate-900 dark:text-white">
               {title}
             </h2>
             {description ? (
               <p
                 id={descriptionId}
-                className="whitespace-pre-line break-words text-sm leading-6 text-slate-600"
+                className="whitespace-pre-line break-words text-sm leading-6 text-slate-600 dark:text-slate-300"
               >
                 {description}
               </p>

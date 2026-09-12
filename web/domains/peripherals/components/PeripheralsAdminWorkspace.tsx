@@ -87,9 +87,9 @@ const terminalLabel = (terminal: TerminalResponse) =>
   `${terminal.code}  ${terminal.name}  ${terminal.branchName ?? "-"}`;
 
 const infoBox = (label: string, value: string) => (
-  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-    <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
-    <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
+  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:bg-slate-800 dark:border-slate-700">
+    <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+    <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{value}</p>
   </div>
 );
 
@@ -111,17 +111,17 @@ const BlockCard = ({
   state: BlockState;
   children: ReactNode;
 }) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
-        <h3 className="mt-1 text-lg font-semibold text-slate-900">{state.title}</h3>
+        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</p>
+        <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{state.title}</h3>
       </div>
       <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${blockTone(state.status)}`}>
         {state.status}
       </span>
     </div>
-    <p className="mt-2 text-sm text-slate-600">{state.detail}</p>
+    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{state.detail}</p>
     <div className="mt-4">{children}</div>
   </section>
 );
@@ -459,12 +459,12 @@ const PeripheralsAdminWorkspace = () => {
         />
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Configuración operativa</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Periféricos por terminal</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Configuración operativa</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Periféricos por terminal</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Terminal canónica, periféricos asociados y dispositivos disponibles en Agent local.
             </p>
           </div>
@@ -481,7 +481,7 @@ const PeripheralsAdminWorkspace = () => {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {infoBox("Terminal", selectedTerminal ? terminalLabel(selectedTerminal) : "Sin seleccionar")}
           {infoBox("Estado", currentBlockState.title)}
@@ -490,10 +490,10 @@ const PeripheralsAdminWorkspace = () => {
         </div>
 
         <div className="mt-4">
-          <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">Terminal canónica</span>
             <select
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700"
               value={selectedTerminalId}
               onChange={(event) => {
                 const nextTerminalId = event.target.value;
@@ -513,11 +513,11 @@ const PeripheralsAdminWorkspace = () => {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Servicio Manus</p>
-            <h2 className="text-lg font-semibold text-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Servicio Manus</p>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
               {health ? "Servicio Manus conectado" : "No encontramos el servicio Manus en este equipo"}
             </h2>
           </div>
@@ -548,10 +548,10 @@ const PeripheralsAdminWorkspace = () => {
             {infoBox("cajon", printerBackedDrawer ? "Vía impresora" : "Independiente")}
           </div>
           <div className="space-y-3">
-            <label className="flex flex-col gap-2 text-sm text-slate-700">
+            <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
               <span className="font-medium">Dispositivo</span>
               <select
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700"
                 value={printerDeviceId}
                 onChange={(event) => setPrinterDeviceId(event.target.value)}
               >
@@ -563,10 +563,10 @@ const PeripheralsAdminWorkspace = () => {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-2 text-sm text-slate-700">
+            <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
               <span className="font-medium">Perfil de impresión</span>
               <select
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700"
                 value={printerProfileId}
                 onChange={(event) => setPrinterProfileId(event.target.value as PrinterProfileId)}
               >
@@ -577,7 +577,7 @@ const PeripheralsAdminWorkspace = () => {
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
@@ -587,7 +587,7 @@ const PeripheralsAdminWorkspace = () => {
               />
               <span>
                 Cajón vía impresora
-                <span className="ml-2 font-semibold text-slate-900">
+                <span className="ml-2 font-semibold text-slate-900 dark:text-white">
                   {selectedPrinterDevice?.connectionType === "USB"
                     ? selectedPrinterDrawerCertified
                       ? "CERTIFICADO"
@@ -680,8 +680,8 @@ const PeripheralsAdminWorkspace = () => {
         </BlockCard>
       </div>
 
-      <details className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
+      <details className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
           <ChevronRight className="h-4 w-4" />
           Herramientas técnicas / QA
         </summary>
@@ -694,7 +694,7 @@ const PeripheralsAdminWorkspace = () => {
           </div>
           <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-slate-600">
+              <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                 <tr>
                   <th className="px-4 py-3 font-medium">ID</th>
                   <th className="px-4 py-3 font-medium">Tipo</th>
@@ -707,21 +707,21 @@ const PeripheralsAdminWorkspace = () => {
               <tbody className="divide-y divide-slate-100">
                 {devices.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       Sin dispositivos descubiertos.
                     </td>
                   </tr>
                 ) : (
                   devices.map((device) => (
                     <tr key={device.id}>
-                      <td className="px-4 py-3 text-slate-700">{device.id}</td>
-                      <td className="px-4 py-3 text-slate-700">{device.type}</td>
-                      <td className="px-4 py-3 text-slate-700">{device.name}</td>
-                      <td className="px-4 py-3 text-slate-700">{device.connectionType}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{device.id}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{device.type}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{device.name}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{device.connectionType}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-200">
                         {formatEndpoint(device)}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">-</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">-</td>
                     </tr>
                   ))
                 )}

@@ -49,13 +49,13 @@ export const CancelPurchaseForm = ({
   const confirmDisabled = isSubmitting || Boolean(validationError);
 
   return (
-    <section className="rounded-2xl border border-rose-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="rounded-2xl border border-rose-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800">
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-wide text-rose-600">Accion de compra</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-900">Cancelar compra</h2>
-            <p className="mt-2 text-sm text-slate-600">
+            <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">Cancelar compra</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Esta accion cambiara el estado de la compra y bloqueara nuevas operaciones sobre
               ella.
             </p>
@@ -67,28 +67,28 @@ export const CancelPurchaseForm = ({
 
         <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Compra</p>
-            <p className="mt-1 font-medium text-slate-900">{purchase.id.slice(0, 8)}</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Compra</p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-white">{purchase.id.slice(0, 8)}</p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Proveedor</p>
-            <p className="mt-1 font-medium text-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Proveedor</p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-white">
               {purchase.supplierName || purchase.supplierId}
             </p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Estado actual</p>
-            <p className="mt-1 font-medium text-slate-900">{purchase.status}</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado actual</p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-white">{purchase.status}</p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-            <p className="mt-1 font-medium text-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-white">
               {formatCurrency(Number(purchase.total))}
             </p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Pago</p>
-            <p className="mt-1 font-medium text-slate-900">{purchase.paymentStatus}</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Pago</p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-white">{purchase.paymentStatus}</p>
           </div>
         </div>
 

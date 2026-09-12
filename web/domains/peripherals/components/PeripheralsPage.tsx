@@ -350,13 +350,13 @@ const SectionCard = ({
   children: ReactNode;
   actions?: ReactNode;
 }) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div>
         {eyebrow ? (
-          <p className="text-xs uppercase tracking-wide text-slate-500">{eyebrow}</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{eyebrow}</p>
         ) : null}
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h2>
       </div>
       {actions}
     </div>
@@ -398,8 +398,8 @@ const PeripheralDeviceProfileBadge = ({ device }: { device: PeripheralDevice }) 
 
 const InfoField = ({ label, value }: { label: string; value: ReactNode }) => (
   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-    <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-    <div className="mt-1 break-words text-sm font-semibold text-slate-900">{value}</div>
+    <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+    <div className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-white">{value}</div>
   </div>
 );
 
@@ -418,7 +418,7 @@ const PeripheralCapabilitiesList = ({
   const commandCount = getCommandCount(response);
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap gap-2">
         <Badge className="border-indigo-200 bg-indigo-50 text-indigo-700">
           {response.mode ?? capabilities?.mode ?? "MOCK"}
@@ -462,7 +462,7 @@ const PeripheralAdapterMetadata = ({
   response?: PeripheralActionResponse;
 }) => (
   <div className="space-y-3">
-    <h3 className="text-sm font-semibold text-slate-900">Adapter y profile</h3>
+    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Adapter y profile</h3>
     <PeripheralCapabilitiesList response={response} />
   </div>
 );
@@ -659,7 +659,7 @@ const PrinterRegistrationPanel = ({
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="flex flex-wrap gap-2">
           <Badge className={connectionTone[form.connectionType]}>{form.connectionType}</Badge>
-          <Badge className="border-slate-200 bg-slate-50 text-slate-700">
+          <Badge className="border-slate-200 bg-slate-50 text-slate-700 dark:text-slate-200">
             PRINTER
           </Badge>
           <Badge className={statusTone.CONNECTED}>CONNECTED</Badge>
@@ -678,10 +678,10 @@ const PrinterRegistrationPanel = ({
             required
             onChange={(event) => updateForm("name", event.target.value)}
           />
-          <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">Conexión</span>
             <select
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               value={form.connectionType}
               onChange={(event) => updateForm("connectionType", event.target.value)}
             >
@@ -718,10 +718,10 @@ const PrinterRegistrationPanel = ({
               />
             </>
           ) : (
-            <label className="flex flex-col gap-2 text-sm text-slate-700">
+            <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
               <span className="font-medium">Dispositivo USB descubierto</span>
               <select
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                 value={form.usbDeviceId}
                 onChange={(event) => updateForm("usbDeviceId", event.target.value)}
               >
@@ -734,10 +734,10 @@ const PrinterRegistrationPanel = ({
               </select>
             </label>
           )}
-          <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">profileId</span>
             <select
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               value={form.profileId}
               onChange={(event) =>
                 updateForm(
@@ -1262,10 +1262,10 @@ const TerminalPosPanel = ({
                 updateTerminalForm("description", event.target.value)
               }
             />
-            <label className="flex flex-col gap-2 text-sm text-slate-700">
+            <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
               <span className="font-medium">mode</span>
               <select
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                 value={terminalForm.mode}
                 onChange={(event) => updateTerminalForm("mode", event.target.value)}
               >
@@ -1284,10 +1284,10 @@ const TerminalPosPanel = ({
         </form>
 
         <form className="space-y-4" onSubmit={handleSaveSettings}>
-          <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">Perfil de perifericos configurado</span>
             <select
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               value={selectedTerminalId}
               onChange={(event) => void handleSelectTerminal(event.target.value)}
             >
@@ -1300,13 +1300,13 @@ const TerminalPosPanel = ({
             </select>
           </label>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">Terminal operativa asociada: </span>
             {operationalTerminalLabel(
               terminals.find((terminal) => terminal.id === selectedTerminalId)
             )}
             {selectedTerminalId ? (
-              <span className="ml-2 text-slate-500">
+              <span className="ml-2 text-slate-500 dark:text-slate-400">
                 `local-terminal` es solo Agent code/compatibilidad; no es otra caja comercial.
               </span>
             ) : null}
@@ -1363,7 +1363,7 @@ const TerminalPosPanel = ({
             ].map(([field, label]) => (
               <label
                 key={field}
-                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700"
+                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200"
               >
                 <input
                   type="checkbox"
@@ -1427,7 +1427,7 @@ const PeripheralDevicesTable = ({
   >
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
-        <thead className="bg-slate-50 text-left text-slate-600">
+        <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
           <tr>
             <th className="px-4 py-3 font-medium">ID</th>
             <th className="px-4 py-3 font-medium">Tipo</th>
@@ -1443,24 +1443,24 @@ const PeripheralDevicesTable = ({
         <tbody className="divide-y divide-slate-100">
           {loading ? (
             <tr>
-              <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+              <td colSpan={9} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                 Cargando dispositivos...
               </td>
             </tr>
           ) : devices.length === 0 ? (
             <tr>
-              <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+              <td colSpan={9} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                 No se detectaron periféricos.
               </td>
             </tr>
           ) : (
             devices.map((device) => (
               <tr key={device.id}>
-                <td className="max-w-[220px] break-all px-4 py-3 text-slate-700">
+                <td className="max-w-[220px] break-all px-4 py-3 text-slate-700 dark:text-slate-200">
                   {device.id}
                 </td>
-                <td className="px-4 py-3 text-slate-900">{device.type}</td>
-                <td className="px-4 py-3 text-slate-700">{device.name}</td>
+                <td className="px-4 py-3 text-slate-900 dark:text-white">{device.type}</td>
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{device.name}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">
                     <Badge className={statusTone[device.status] ?? statusTone.DISCONNECTED}>
@@ -1492,10 +1492,10 @@ const PeripheralDevicesTable = ({
                 <td className="px-4 py-3">
                   <PeripheralDeviceProfileBadge device={device} />
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-slate-700">
+                <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-200">
                   {getNetworkEndpoint(device)}
                 </td>
-                <td className="px-4 py-3 text-slate-700">{device.terminalId}</td>
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{device.terminalId}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
                     {device.type === "PRINTER" ? (
@@ -1618,7 +1618,7 @@ const PeripheralScannerSimulator = ({
 
   return (
     <SectionCard title="Scanner">
-      <div className="mb-3 text-sm text-slate-600">Modo: USB HID / teclado</div>
+      <div className="mb-3 text-sm text-slate-600 dark:text-slate-300">Modo: USB HID / teclado</div>
       <form className="grid gap-4 md:grid-cols-[1fr_180px_auto]" onSubmit={handleSubmit}>
         <Input
           label="Escanea un código de barras para verificar el lector"
@@ -1646,7 +1646,7 @@ const PeripheralScannerSimulator = ({
           <ScanLine className="h-4 w-4" />
           Validar scanner
         </Button>
-        <span className="text-sm text-slate-600">
+        <span className="text-sm text-slate-600 dark:text-slate-300">
           {capture.state === "COMPLETE" ? "Lectura detectada" : active ? "Listo para escanear" : "Validación inactiva"}
         </span>
       </div>
@@ -1666,13 +1666,13 @@ const PeripheralCommandList = ({
 }) => (
   <div className="space-y-3">
     <div className="flex items-center justify-between gap-3">
-      <h3 className="text-sm font-semibold text-slate-900">Comandos ESC/POS MOCK</h3>
-      <Badge className="border-slate-200 bg-slate-50 text-slate-700">
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Comandos ESC/POS MOCK</h3>
+      <Badge className="border-slate-200 bg-slate-50 text-slate-700 dark:text-slate-200">
         {commands?.length ?? 0}
       </Badge>
     </div>
     {!commands?.length ? (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:text-slate-400">
         Sin comandos conceptuales.
       </div>
     ) : (
@@ -1680,7 +1680,7 @@ const PeripheralCommandList = ({
         {commands.map((command, index) => (
           <div
             key={`${command.name}-${index}`}
-            className="rounded-lg border border-slate-200 bg-white p-3"
+            className="rounded-lg border border-slate-200 bg-white p-3 dark:bg-slate-800 dark:border-slate-700"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <Badge className={commandTone(command.name)}>{command.name}</Badge>
@@ -1688,7 +1688,7 @@ const PeripheralCommandList = ({
                 #{String(index + 1).padStart(2, "0")}
               </span>
             </div>
-            <p className="mt-2 text-sm text-slate-600">{command.description}</p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{command.description}</p>
           </div>
         ))}
       </div>
@@ -1707,7 +1707,7 @@ const PeripheralPrintPreviewPanel = ({
 }) => (
   <div className="space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h3 className="text-sm font-semibold text-slate-900">Preview termico</h3>
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Preview termico</h3>
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -1727,12 +1727,12 @@ const PeripheralPrintPreviewPanel = ({
     </div>
     {preview ? (
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-100 p-4">
-        <pre className="mx-auto max-w-[430px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-white px-4 py-5 font-mono text-[12px] leading-5 text-slate-900 shadow-sm">
+        <pre className="mx-auto max-w-[430px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-white px-4 py-5 font-mono text-[12px] leading-5 text-slate-900 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white">
           {preview}
         </pre>
       </div>
     ) : (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:text-slate-400">
         Sin preview textual. Para caja registradora se muestran comandos conceptuales.
       </div>
     )}
@@ -1813,7 +1813,7 @@ const PeripheralActionResult = ({
             <PeripheralCommandList commands={response?.commands} />
           </>
         ) : (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:text-slate-400">
             Ejecuta una impresion MOCK o apertura de caja para ver preview y comandos.
           </div>
         )}
@@ -1842,7 +1842,7 @@ const PeripheralLogsPanel = ({
   >
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
-        <thead className="bg-slate-50 text-left text-slate-600">
+        <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
           <tr>
             <th className="px-4 py-3 font-medium">Timestamp</th>
             <th className="px-4 py-3 font-medium">Level</th>
@@ -1854,20 +1854,20 @@ const PeripheralLogsPanel = ({
         <tbody className="divide-y divide-slate-100">
           {loading ? (
             <tr>
-              <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+              <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                 Cargando logs...
               </td>
             </tr>
           ) : logs.length === 0 ? (
             <tr>
-              <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+              <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                 Sin logs tecnicos.
               </td>
             </tr>
           ) : (
             logs.slice(0, 60).map((log) => (
               <tr key={log.id}>
-                <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-200">
                   {formatTimestamp(log.timestamp)}
                 </td>
                 <td className="px-4 py-3">
@@ -1883,9 +1883,9 @@ const PeripheralLogsPanel = ({
                     {log.level}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-slate-700">{log.source}</td>
-                <td className="px-4 py-3 text-slate-700">{log.event}</td>
-                <td className="max-w-[320px] break-words px-4 py-3 text-slate-700">
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{log.source}</td>
+                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{log.event}</td>
+                <td className="max-w-[320px] break-words px-4 py-3 text-slate-700 dark:text-slate-200">
                   {log.message}
                 </td>
               </tr>
@@ -1922,11 +1922,11 @@ const PeripheralEventsPanel = ({
         {state === "connected" ? <Wifi className="mr-1 h-3.5 w-3.5" /> : <WifiOff className="mr-1 h-3.5 w-3.5" />}
         {state}
       </Badge>
-      <span className="break-all text-sm text-slate-500">{getEndpointLabel(wsUrl)}</span>
+      <span className="break-all text-sm text-slate-500 dark:text-slate-400">{getEndpointLabel(wsUrl)}</span>
     </div>
     <div className="space-y-3">
       {events.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500 dark:text-slate-400">
           Sin eventos recibidos.
         </div>
       ) : (
@@ -1936,15 +1936,15 @@ const PeripheralEventsPanel = ({
             className="rounded-lg border border-slate-200 bg-slate-50 p-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-mono text-xs font-semibold text-slate-900">
+              <span className="font-mono text-xs font-semibold text-slate-900 dark:text-white">
                 {event.event}
               </span>
-              <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+              <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                 <Clock className="h-3.5 w-3.5" />
                 {formatTimestamp(event.timestamp)}
               </span>
             </div>
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-white p-2 text-xs text-slate-700">
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-white p-2 text-xs text-slate-700 dark:text-slate-200">
               {renderJson(event.payload)}
             </pre>
           </div>
@@ -2370,16 +2370,16 @@ const PeripheralsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Administracion tecnica
             </p>
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
               Perifericos POS
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Diagnostico local de agent, dispositivos, logs y eventos. USB se descubre por el agent local.
             </p>
           </div>
@@ -2551,9 +2551,9 @@ const PeripheralsPage = () => {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
         <div className="flex flex-wrap items-center gap-3">
-          <Terminal className="h-4 w-4 text-slate-500" />
+          <Terminal className="h-4 w-4 text-slate-500 dark:text-slate-400" />
           <span className="break-all">HTTP {getEndpointLabel(agentConfig.httpUrl)}</span>
           <span className="break-all">WS {getEndpointLabel(agentConfig.wsUrl)}</span>
         </div>

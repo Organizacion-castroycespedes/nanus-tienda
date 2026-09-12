@@ -51,7 +51,7 @@ const IdealFor = () => (
         {audiences.map(({ title, description, imageSrc, imageAlt, highlight }) => (
           <article
             key={title}
-            className="group flex h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+            className="group flex h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl dark:bg-slate-800 dark:border-slate-700"
           >
             <div className="flex min-h-full w-full flex-col">
               <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
@@ -63,14 +63,14 @@ const IdealFor = () => (
                   className="object-cover transition duration-500 group-hover:scale-[1.03]"
                 />
                 <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/45 to-transparent" />
-                <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-slate-900 shadow-sm">
+                <span className="absolute bottom-3 left-3 rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white">
                   {highlight}
                 </span>
               </div>
 
               <div className="flex flex-1 flex-col p-5">
                 <h3 className="text-lg font-bold text-slate-950">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-slate-600">
+                <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
                   {description}
                 </p>
               </div>

@@ -325,12 +325,12 @@ export const DocumentPaymentForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Finance</p>
-          <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
-          <p className="mt-2 text-sm text-slate-600">{description}</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Finance</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{description}</p>
         </div>
         <Button variant="ghost" onClick={onCancel} disabled={submitting} className="w-full sm:w-auto">
           {cancelLabel}
@@ -338,7 +338,7 @@ export const DocumentPaymentForm = ({
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:text-slate-300">
           Cargando configuracion de pagos...
         </div>
       ) : loadError ? (
@@ -349,22 +349,22 @@ export const DocumentPaymentForm = ({
         <form className="grid gap-5" onSubmit={handleSubmit}>
           <section className="grid gap-4 md:grid-cols-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">{totalLabel}</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{formatCurrency(total)}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{totalLabel}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{formatCurrency(total)}</p>
             </div>
             {effectiveTotal == null ? null : (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {effectiveTotalLabel}
                 </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                   {formatCurrency(effectiveTotal)}
                 </p>
               </div>
             )}
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total pagado</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total pagado</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                 {formatCurrency(totalPaid)}
               </p>
             </div>
@@ -375,17 +375,17 @@ export const DocumentPaymentForm = ({
               </p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{paymentStatus}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{paymentStatus}</p>
             </div>
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
               <Wallet className="h-4 w-4" />
               Caja actual
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
               {cashSession
                 ? `${cashSession.cashRegisterNombre ?? "Caja"} abierta con fondo ${formatCurrency(
                     cashSession.openingAmount
@@ -407,16 +407,16 @@ export const DocumentPaymentForm = ({
               return (
                 <div
                   key={payment.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4"
+                  className="rounded-2xl border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700"
                 >
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
                       Pago #{index + 1}
                     </div>
                     <button
                       type="button"
                       onClick={() => removePaymentRow(payment.id)}
-                      className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
                       disabled={payments.length === 1}
                     >
                       <X className="h-4 w-4" />

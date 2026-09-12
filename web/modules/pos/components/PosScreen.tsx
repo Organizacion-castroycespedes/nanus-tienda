@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   ChevronDown,
@@ -125,8 +125,10 @@ import { createProductAddedSoundPlayer } from "../utils/product-added-sound";
 import {
   FLOATING_CART_STORAGE_KEY,
   FLOATING_POS_STORAGE_KEY,
+  FLOATING_CHARGE_STORAGE_KEY,
 } from "../utils/floating-control-position";
 import { useDraggableFloatingControl } from "../hooks/useDraggableFloatingControl";
+import { usePosFiltersStorage } from "../hooks/usePosFiltersStorage";
 
 type StockFilterKey = PosStockFilterKey;
 type ProductViewMode = "grid" | "list";
@@ -521,12 +523,16 @@ export const PosScreen = () => {
   const [productCategories, setProductCategories] = useState<ProductCategoryResponse[]>([]);
   const [productSubcategories, setProductSubcategories] = useState<ProductSubcategoryResponse[]>([]);
   const [query, setQuery] = useState("");
-  const [activeStockFilter, setActiveStockFilter] = useState<StockFilterKey>("available");
-  const [selectedProductCategoryId, setSelectedProductCategoryId] = useState("");
-  const [selectedProductSubcategoryId, setSelectedProductSubcategoryId] = useState("");
+  const { filters, updateFilters } = usePosFiltersStorage();
+  const activeStockFilter = filters.activeStockFilter;
+  const setActiveStockFilter = (filter: StockFilterKey) => updateFilters({ activeStockFilter: filter });
+  const selectedProductCategoryId = filters.selectedProductCategoryId;
+  const setSelectedProductCategoryId = (id: string) => updateFilters({ selectedProductCategoryId: id });
+  const selectedProductSubcategoryId = filters.selectedProductSubcategoryId;
+  const setSelectedProductSubcategoryId = (id: string) => updateFilters({ selectedProductSubcategoryId: id });
+  const productViewMode = filters.productViewMode;
+  const setProductViewMode = (mode: ProductViewMode) => updateFilters({ productViewMode: mode });
   const [productToolsOpen, setProductToolsOpen] = useState(false);
-  const [productViewMode, setProductViewMode] =
-    useState<ProductViewMode>("grid");
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -2284,8 +2290,8 @@ export const PosScreen = () => {
 
   // Cart Panel Component (internal)
   const CartPanel = () => (
-    <div className="flex h-full flex-col">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-700">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
             Carrito
@@ -2301,7 +2307,7 @@ export const PosScreen = () => {
           <button
             type="button"
             onClick={() => setCartSheetOpen(false)}
-            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden"
+            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden dark:text-slate-200"
             aria-label="Cerrar carrito"
           >
             <X className="h-5 w-5" />
@@ -2311,8 +2317,8 @@ export const PosScreen = () => {
 
       <div className="mt-3 flex flex-1 min-h-0 flex-col overflow-hidden">
         {cartWithDerivedValues.length === 0 ? (
-          <div className="flex flex-1 flex-col justify-between gap-4">
-            <div className="flex min-h-[220px] flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
               <ShoppingCart className="h-8 w-8 text-slate-300 dark:text-slate-500" />
               <p className="mt-3 text-base font-semibold text-slate-700 dark:text-slate-100">
                 Tu carrito esta vacio
@@ -2322,7 +2328,7 @@ export const PosScreen = () => {
               </p>
             </div>
 
-            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/80">
+            <div className="shrink-0 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
               <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
                 <span>Subtotal</span>
                 <span>{formatCurrency(0)}</span>
@@ -2335,14 +2341,14 @@ export const PosScreen = () => {
                 <span>Descuentos</span>
                 <span>{formatCurrency(0)}</span>
               </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
+              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-700 dark:text-white">
                 <span>TOTAL</span>
                 <span>{formatCurrency(0)}</span>
               </div>
             </div>
 
             <Button
-              className="min-h-12 w-full rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
+              className="min-h-12 w-full shrink-0 rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
               size="lg"
               onClick={openChargeModal}
               disabled={!canCharge}
@@ -2521,7 +2527,7 @@ export const PosScreen = () => {
                           </div>
 
                           {expandedTaxItems[item.productId] ? (
-                            <div className="mt-2 space-y-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-800 dark:bg-slate-950/80">
+                            <div className="mt-2 space-y-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-950/80">
                               {item.taxes.length === 0 ? (
                                 <p className="text-slate-500 dark:text-slate-400">
                                   Este producto no tiene impuestos asociados.
@@ -2551,41 +2557,41 @@ export const PosScreen = () => {
               </div>
             </div>
 
-            <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/80">
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Subtotal</span>
-                <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
+            <div className="mt-3 flex shrink-0 flex-col gap-3">
+              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
+                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                  <span>Impuestos</span>
+                  <span>{formatCurrency(summary.taxesTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+                  <span>Descuentos</span>
+                  <span>{formatCurrency(summary.discountTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-700 dark:text-white">
+                  <span>TOTAL</span>
+                  <span>{formatCurrency(summary.total)}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Impuestos</span>
-                <span>{formatCurrency(summary.taxesTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Descuentos</span>
-                <span>{formatCurrency(summary.discountTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-800 dark:text-white">
-                <span>TOTAL</span>
-                <span>{formatCurrency(summary.total)}</span>
-              </div>
-            </div>
 
-            {hasPricingPending ? (
-              <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
-                Calculando precio/promocion antes de cobrar.
-              </div>
-            ) : null}
+              {hasPricingPending ? (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+                  Calculando precio/promocion antes de cobrar.
+                </div>
+              ) : null}
 
-            {pricingErrorItem ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                {pricingErrorItem.pricingError ??
-                  `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
-              </div>
-            ) : null}
+              {pricingErrorItem ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+                  {pricingErrorItem.pricingError ??
+                    `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
+                </div>
+              ) : null}
 
-            <div className="mt-3">
               <Button
-                className="min-h-12 w-full rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
+                className="min-h-12 w-full shrink-0 rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
                 size="lg"
                 onClick={openChargeModal}
                 disabled={!canCharge}
@@ -2805,7 +2811,7 @@ export const PosScreen = () => {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/80">
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-700 dark:bg-slate-950/80">
             <div className="flex flex-col gap-4">
               <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -2829,7 +2835,7 @@ export const PosScreen = () => {
 
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
               <>
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -2887,7 +2893,7 @@ export const PosScreen = () => {
                 ) : null}
               </div>
 
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -2940,7 +2946,7 @@ export const PosScreen = () => {
               </>
               ) : null}
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-800 dark:bg-slate-900/70 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/70 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
@@ -2984,7 +2990,7 @@ export const PosScreen = () => {
                     {filteredProducts.length} productos disponibles
                   </span>
                   <div
-                    className="inline-flex rounded-full border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
+                    className="inline-flex rounded-full border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-800"
                     role="group"
                     aria-label="Vista de productos"
                   >
@@ -3026,7 +3032,7 @@ export const PosScreen = () => {
                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none transition-all duration-200 active:scale-95 ${
                           isActive
                             ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
                         }`}
                       >
                         <span>{stockFilterLabels[filter]}</span>
@@ -3068,12 +3074,12 @@ export const PosScreen = () => {
             {/* Products Catalog */}
             <div className="mt-3">
               {catalogLoading ? (
-                <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   <Loader2 className="mr-3 h-5 w-5 animate-spin" />
                   Cargando productos...
                 </div>
               ) : filteredProducts.length === 0 ? (
-                <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   <Package className="mb-3 h-8 w-8" />
                   No hay productos que coincidan con la busqueda actual.
                 </div>
@@ -3117,10 +3123,10 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => handleProductCardAction(product)}
                           disabled={isProductActionDisabled}
-                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-900 dark:hover:border-slate-700 ${
+                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-800 dark:hover:border-slate-700 ${
                             hasProductInCart
                               ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                              : "border-slate-200 dark:border-slate-800"
+                              : "border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           <div className="grid min-h-[88px] grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 sm:min-h-[92px] sm:grid-cols-[80px_minmax(0,1fr)_auto] md:min-h-[96px] lg:min-h-[100px]">
@@ -3219,10 +3225,10 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => handleProductCardAction(product)}
                           disabled={isProductActionDisabled}
-                          className={`group min-h-[220px] overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-900 ${
+                          className={`group min-h-[220px] overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
                             hasProductInCart
                               ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                              : "border-slate-200 dark:border-slate-800"
+                              : "border-slate-200 dark:border-slate-700"
                           }`}
                       >
                         <div className="flex h-full flex-col">
@@ -3274,7 +3280,7 @@ export const PosScreen = () => {
                               </div>
                             </div>
 
-                            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+                            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">
                               <div>
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                                   Precio final
@@ -3314,9 +3320,9 @@ export const PosScreen = () => {
         {/* Cart Panel - Desktop: sticky sidebar, Mobile: centered modal */}
         {/* Desktop Cart */}
         <aside
-          className="sticky top-3 hidden h-[calc(100vh-1.5rem)] min-h-0 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95 xl:block"
+          className="sticky top-3 hidden max-h-[calc(100vh-8.5rem)] min-h-0 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] backdrop-blur-sm dark:border-slate-700 dark:bg-slate-950/95 xl:block"
         >
-          <div className="h-full overflow-hidden pt-2">
+          <div className="flex max-h-full flex-col overflow-hidden pt-2">
             <CartPanel />
           </div>
         </aside>
@@ -3380,7 +3386,7 @@ export const PosScreen = () => {
           className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
         >
           <div className="space-y-5">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -3405,7 +3411,7 @@ export const PosScreen = () => {
               {payments.map((payment, index) => (
                 <div
                   key={payment.id}
-                  className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800"
+                  className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700"
                 >
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
@@ -3415,7 +3421,7 @@ export const PosScreen = () => {
                     <button
                       type="button"
                       onClick={() => removePaymentRow(payment.id)}
-                      className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+                      className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200 dark:text-slate-200"
                       disabled={payments.length === 1}
                     >
                       <X className="h-4 w-4" />
@@ -3474,7 +3480,7 @@ export const PosScreen = () => {
               </Button>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-600 dark:text-slate-300">Total pagado</span>
                 <span className="font-semibold text-slate-950 dark:text-white">

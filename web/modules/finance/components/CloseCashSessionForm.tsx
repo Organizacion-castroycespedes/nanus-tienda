@@ -62,7 +62,7 @@ export const CloseCashSessionForm = ({
             <p className="text-xs uppercase tracking-[0.25em] text-amber-700">
               Efectivo esperado
             </p>
-            <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl">
+            <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl dark:text-white">
               {formatCurrency(expectedAmount)}
             </p>
           </div>
@@ -75,10 +75,10 @@ export const CloseCashSessionForm = ({
                   : "border-rose-200 bg-rose-50"
             }`}
           >
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-600">
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-600 dark:text-slate-300">
               Diferencia
             </p>
-            <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl">
+            <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl dark:text-white">
               {formatCurrency(differenceAmount)}
             </p>
           </div>
@@ -89,16 +89,16 @@ export const CloseCashSessionForm = ({
         ) : null}
 
         <div className="grid gap-4">
-          <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">
               Efectivo contado <span className="text-rose-600">*</span>
             </span>
-            <div className="flex min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-100">
-              <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+            <div className="flex min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-100 dark:bg-slate-800">
+              <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
                 $
               </span>
               <input
-                className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:text-white"
                 inputMode="decimal"
                 pattern="[0-9]*[.]?[0-9]{0,2}"
                 placeholder="0.00"
@@ -123,7 +123,7 @@ export const CloseCashSessionForm = ({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white pt-4 sm:flex-row sm:justify-end">
+      <div className="mt-4 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white pt-4 sm:flex-row sm:justify-end dark:bg-slate-800 dark:border-slate-700">
         <Button variant="ghost" onClick={onCancel}>
           Cancelar
         </Button>
