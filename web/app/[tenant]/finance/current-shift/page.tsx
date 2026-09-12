@@ -247,25 +247,27 @@ const CurrentShiftPage = () => {
     try {
       const blob = await getPdf();
       const objectUrl = window.URL.createObjectURL(blob);
-      const printWindow = window.open(objectUrl, "_blank");
-      if (!printWindow) {
-        window.URL.revokeObjectURL(objectUrl);
-        setToastMessage("El navegador bloqueo la impresion. Usa Ver ticket.");
-        setToastVariant("warning");
-        return;
-      }
-      const print = () => {
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = objectUrl;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
         try {
-          printWindow.focus();
-          printWindow.print();
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
         } catch {
           setToastMessage("No se pudo imprimir automaticamente. Usa Ver ticket.");
           setToastVariant("warning");
         }
       };
-      printWindow.addEventListener("load", print, { once: true });
-      window.setTimeout(print, 1000);
-      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60000);
+
+      window.setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
     } catch (error) {
       showTicketError(error, "No se pudo imprimir el ticket.");
     }
