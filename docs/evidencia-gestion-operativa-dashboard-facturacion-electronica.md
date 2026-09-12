@@ -28,3 +28,15 @@ corresponde, estados de carga/error/sin datos y enlaces a ventas filtradas.
 Pendiente: captura y validación visual en desktop POS, tablet y Electron con
 datos QA autorizados. Este cambio no ejecuta migraciones, seeds, FactuCore,
 DIAN ni workers.
+
+## Smoke runtime
+
+Fecha: 2026-09-12. El health endpoint QA respondió `200`, pero el despliegue
+QA actual respondió `404` para `GET /api/operations/dashboard`. El conector
+de navegador no encontró una sesión utilizable. Por eso no se intentó login,
+no se consultaron métricas, y no se fabricaron valores. La certificación con
+datos QA queda `BLOCKED` hasta desplegar esta rama y adjuntar un contexto de
+navegador autenticado.
+
+Mutaciones QA: 0. Mutaciones PROD: 0. Llamadas FactuCore: 0. Llamadas DIAN:
+0. Workers: deshabilitados.
