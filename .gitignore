@@ -9,6 +9,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!.env.docker.example
 scripts/database/config/*.env
 !scripts/database/config/*.env.example
 
@@ -64,3 +65,5 @@ backend-perifericos/windows-installer/assets/pos/*.exe
 
 # Local database credentials
 scripts/config/db.env
+
+database
