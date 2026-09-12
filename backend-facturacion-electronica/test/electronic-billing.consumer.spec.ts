@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { SaleCompletedForElectronicBillingConsumerService } from "../src/modules/electronic-billing";
+import {
+  SaleCompletedForElectronicBillingConsumerService,
+  validateSnapshotTotals,
+} from "../src/modules/electronic-billing";
 import {
   ElectronicBillingSaleEventTemporaryFailureError,
   ElectronicBillingSaleEventValidationError,
@@ -327,6 +330,132 @@ test("consumer rejects bad totals as invalid event", async () => {
   assert.equal(result.retryable, false);
   assert.equal(harness.billingService.calls.length, 0);
   assert.equal(harness.records.get("event-1")?.status, "FAILED");
+});
+
+test("snapshot totals do not subtract line discounts twice", () => {
+  assert.doesNotThrow(() =>
+    validateSnapshotTotals(
+      [
+        {
+          sourceLineId: "line-1",
+          description: "Discounted product",
+          quantity: "2.5",
+          unitPrice: "100.00",
+          discountAmount: "25.00",
+          subtotalAmount: "225.00",
+          taxAmount: "42.75",
+          totalAmount: "267.75",
+          taxes: [],
+        },
+      ],
+      {
+        subtotalAmount: "225.00",
+        discountAmount: "25.00",
+        taxAmount: "42.75",
+        totalAmount: "267.75",
+      },
+    ),
+  );
+});
+
+test("snapshot totals reconcile mixed discounts, multi-rate taxes and fractional rounding", () => {
+  assert.doesNotThrow(() =>
+    validateSnapshotTotals(
+      [
+        {
+          sourceLineId: "line-1",
+          description: "IVA 19",
+          quantity: "1",
+          unitPrice: "100.00",
+          discountAmount: "10.00",
+          subtotalAmount: "90.00",
+          taxAmount: "17.10",
+          totalAmount: "107.10",
+          taxes: [],
+        },
+        {
+          sourceLineId: "line-2",
+          description: "IVA 5",
+          quantity: "3",
+          unitPrice: "33.3333",
+          discountAmount: "0",
+          subtotalAmount: "99.9999",
+          taxAmount: "5.00",
+          totalAmount: "104.9999",
+          taxes: [],
+        },
+      ],
+      {
+        subtotalAmount: "189.9999",
+        discountAmount: "10.00",
+        taxAmount: "22.10",
+        totalAmount: "212.0999",
+      },
+    ),
+  );
+});
+
+test("reconciles the reproduced target sale snapshot without double discount", () => {
+  assert.doesNotThrow(() =>
+    validateSnapshotTotals(
+      [
+        {
+          sourceLineId: "target-line-1",
+          description: "Target line 1",
+          quantity: "1",
+          unitPrice: "52941.18",
+          discountAmount: "0",
+          subtotalAmount: "52941.18",
+          taxAmount: "10058.82",
+          totalAmount: "63000.00",
+          taxes: [],
+        },
+        {
+          sourceLineId: "target-line-2",
+          description: "Target line 2",
+          quantity: "1",
+          unitPrice: "150336.13",
+          discountAmount: "0",
+          subtotalAmount: "150336.13",
+          taxAmount: "28563.87",
+          totalAmount: "178900.00",
+          taxes: [],
+        },
+        {
+          sourceLineId: "target-line-3",
+          description: "Target line 3",
+          quantity: "1",
+          unitPrice: "59297.52",
+          discountAmount: "3495.00",
+          subtotalAmount: "55802.52",
+          taxAmount: "10602.48",
+          totalAmount: "66405.00",
+          taxes: [],
+        },
+      ],
+      {
+        subtotalAmount: "259079.83",
+        discountAmount: "3495.00",
+        taxAmount: "49225.17",
+        totalAmount: "308305.00",
+      },
+    ),
+  );
+});
+
+test("snapshot totals reject inconsistent totals before provider invocation", async () => {
+  const harness = buildHarness();
+  const envelope = buildEnvelope({
+    payload: {
+      ...buildEnvelope().payload,
+      totals: { subtotalAmount: "1000", discountAmount: "0", taxAmount: "190", totalAmount: "1191" },
+    },
+  });
+
+  const result = await harness.consumer.consume(envelope);
+
+  assert.equal(result.status, "INVALID_EVENT");
+  assert.equal(harness.billingService.calls.length, 0);
 });
 
 test("controller rejects missing internal token", async () => {
