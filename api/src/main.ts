@@ -78,7 +78,12 @@ const bootstrap = async () => {
 
   const bodyLimit = process.env.API_BODY_LIMIT?.trim() || "10mb";
 
-  const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+  const configuredCorsOrigin =
+    process.env.CORS_ORIGIN?.trim() || process.env.CORS_ORIGINS?.trim();
+  const allowedOrigins = parseAllowedOrigins(configuredCorsOrigin);
+  if (!process.env.CORS_ORIGIN?.trim() && process.env.CORS_ORIGINS?.trim()) {
+    console.warn("[CORS] CORS_ORIGINS is deprecated; use CORS_ORIGIN");
+  }
   console.log("[CORS] allowed origins:", allowedOrigins.join(", ") || "(none)");
   const { AppModule } = await import("./modules/app.module");
 

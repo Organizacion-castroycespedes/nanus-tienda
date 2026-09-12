@@ -55,7 +55,6 @@ jobs:
           cp api/dist-bin/api-linux artifact/linux/api-linux
           cp backend-reporteria/dist-bin/backend-reporteria-linux artifact/linux/backend-reporteria-linux
           cp backend-facturacion-electronica/dist-bin/backend-facturacion-electronica-linux artifact/linux/backend-facturacion-electronica-linux
-          cp backend-perifericos/dist-bin/backend-perifericos-linux artifact/linux/backend-perifericos-linux
           cp scripts/deploy/qa-deploy-backends.sh artifact/scripts/deploy/qa-deploy-backends.sh
           cp scripts/pm2/ecosystem.qa.config.js artifact/scripts/pm2/ecosystem.qa.config.js
           tar -C artifact -czf qa-backends-linux.tar.gz .

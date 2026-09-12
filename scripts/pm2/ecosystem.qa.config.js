@@ -16,7 +16,7 @@ module.exports = {
       env: {
         NODE_ENV: "qa",
         PORT: "4020",
-        "CORS_ORIGINS": "https://www.apptiendamanus.space,http://localhost:3000"
+        CORS_ORIGIN: "https://www.apptiendamanus.space,http://localhost:3000",
       },
     },
     {

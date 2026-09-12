@@ -54,7 +54,6 @@ SERVICES=(
   "api-linux|build|api-linux|4020|/api/system/version"
   "backend-reporteria-linux|build-reporteria|backend-reporteria-linux|4021|/api/reports/health"
   "backend-facturacion-electronica-linux|build-facturacion-electronica|backend-facturacion-electronica-linux|4022|/health"
-  "backend-perifericos-linux|build-perifericos|backend-perifericos-linux|4023|/health"
 )
 
 mkdir -p "${BACKUP_ROOT}"
@@ -89,8 +88,19 @@ for service_entry in "${SERVICES[@]}"; do
 done
 
 pm2 startOrReload "${ECOSYSTEM_TARGET}" \
-  --only "api-linux,backend-reporteria-linux,backend-facturacion-electronica-linux,backend-perifericos-linux" \
+  --only "api-linux,backend-reporteria-linux,backend-facturacion-electronica-linux" \
   --update-env
+
+echo "Validating PM2 process registration"
+for service_entry in "${SERVICES[@]}"; do
+  IFS="|" read -r service_name _ <<< "${service_entry}"
+  pm2 describe "${service_name}" >/dev/null
+  pid="$(pm2 pid "${service_name}" | tr -d '[:space:]')"
+  if [[ ! "${pid}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "PM2 process is not running: ${service_name} (pid=${pid:-none})" >&2
+    exit 68
+  fi
+done
 
 if [[ "${RUN_LOCAL_SMOKE}" == "YES" ]]; then
   echo "Running local smoke checks"
@@ -100,6 +110,18 @@ if [[ "${RUN_LOCAL_SMOKE}" == "YES" ]]; then
     wait_for_http "${smoke_url}" 30 2
     echo "Smoke OK ${service_name} ${smoke_url}"
   done
+
+  echo "Checking API CORS preflight"
+  if ! curl -fsS -D - -o /dev/null -X OPTIONS \
+    "http://127.0.0.1:4020/api/auth/login" \
+    -H "Origin: http://localhost:3000" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "Access-Control-Request-Headers: content-type" \
+    | grep -Fqi "access-control-allow-origin: http://localhost:3000"; then
+    echo "Smoke FAILED API CORS preflight for http://localhost:3000" >&2
+    exit 69
+  fi
+  echo "Smoke OK API CORS preflight"
 else
   echo "Skipping local smoke checks"
 fi
