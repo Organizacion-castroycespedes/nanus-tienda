@@ -14,7 +14,7 @@ type TabsProps = {
 export const Tabs = ({ items, value, onChange, className }: TabsProps) => {
   return (
     <div
-      className={`inline-flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm ${className ?? ""}`}
+      className={`inline-flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm ${className ?? ""} dark:bg-slate-800 dark:border-slate-700`}
       role="tablist"
       aria-label="Pestanas"
     >
@@ -30,12 +30,12 @@ export const Tabs = ({ items, value, onChange, className }: TabsProps) => {
               active
                 ? "bg-slate-900 text-white shadow-sm"
                 : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            }`}
+            } dark:text-white dark:hover:bg-slate-800`}
             onClick={() => onChange(item.value)}
           >
             <span className="block text-sm font-semibold">{item.label}</span>
             {item.helper ? (
-              <span className={`block text-xs ${active ? "text-white/75" : "text-slate-500"}`}>
+              <span className={`block text-xs ${active ? "text-white/75" : "text-slate-500"} dark:text-slate-400`}>
                 {item.helper}
               </span>
             ) : null}

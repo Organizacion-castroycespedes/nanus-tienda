@@ -295,14 +295,14 @@ const InventoryLocationsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
               Ubicaciones fisicas
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Administra codigos fisicos por sucursal para bodega, vitrina,
               estantes y mostradores.
             </p>
@@ -398,7 +398,7 @@ const InventoryLocationsPage = () => {
 
       {!isFocusMode ? (
         <>
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_180px_160px_auto_auto]">
           <Input
             label="Buscar"
@@ -494,10 +494,10 @@ const InventoryLocationsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Codigo</th>
                 <th className="px-4 py-3 font-medium">Nombre</th>
@@ -511,33 +511,33 @@ const InventoryLocationsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando ubicaciones...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar ubicaciones.
                   </td>
                 </tr>
               ) : paginatedLocations.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay ubicaciones para mostrar.
                   </td>
                 </tr>
               ) : (
                 paginatedLocations.map((location) => (
                   <tr key={location.id}>
-                    <td className="px-4 py-3 font-semibold text-slate-900">
+                    <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                       <span className="inline-flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-slate-400" />
                         {location.code}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-900">{location.name}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">{location.name}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {branchNameById.get(location.branchId) ?? location.branchId}
                     </td>
                     <td className="px-4 py-3">
@@ -558,7 +558,7 @@ const InventoryLocationsPage = () => {
                         {location.isActive ? "Activa" : "Inactiva"}
                       </span>
                     </td>
-                    <td className="max-w-xs px-4 py-3 text-slate-700">
+                    <td className="max-w-xs px-4 py-3 text-slate-700 dark:text-slate-200">
                       <span className="line-clamp-2">
                         {location.description ?? "-"}
                       </span>
@@ -594,7 +594,7 @@ const InventoryLocationsPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

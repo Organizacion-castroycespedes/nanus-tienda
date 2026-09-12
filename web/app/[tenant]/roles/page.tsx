@@ -255,11 +255,11 @@ const RolesPage = () => {
 
   if (!hasAccess) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
           Acceso restringido
         </h2>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           No cuentas con permisos para gestionar roles.
         </p>
       </div>
@@ -268,11 +268,11 @@ const RolesPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">Roles</h2>
-            <p className="text-sm text-slate-500">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Roles</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Administra los roles disponibles y sus tenants asignados.
             </p>
           </div>
@@ -311,25 +311,25 @@ const RolesPage = () => {
 
       <div className="space-y-4">
         {rolesLoading ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
             Cargando roles...
           </div>
         ) : filteredRoles.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
             No hay roles para mostrar.
           </div>
         ) : (
           filteredRoles.map((role) => (
             <div
               key={role.id}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                     {role.nombre}
                   </h3>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     {role.descripcion || "Sin descripción"}
                   </p>
                   <p className="mt-2 text-xs text-slate-400">
@@ -344,7 +344,7 @@ const RolesPage = () => {
                   Editar
                 </Button>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-300">
                 {(role.tenant_ids?.length ?? 0) > 0 ? (
                   role.tenant_ids.map((tenantId) => {
                     const tenant = tenantLookup.get(tenantId);

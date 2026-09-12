@@ -463,7 +463,7 @@ const UsuariosPage = () => {
 
   if (!hasAccess) {
     return (
-      <div className="p-8 text-center text-slate-500">
+      <div className="p-8 text-center text-slate-500 dark:text-slate-400">
         No tienes permisos para ver esta sección.
       </div>
     );
@@ -473,8 +473,8 @@ const UsuariosPage = () => {
     <div className="space-y-8 p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-slate-500">Configuración</p>
-          <h1 className="text-2xl font-semibold text-slate-900">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Configuración</p>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
             Gestión de usuarios
           </h1>
         </div>
@@ -494,7 +494,7 @@ const UsuariosPage = () => {
         </div>
       </header>
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-800">
         <div className="space-y-4">
           <SearchFilters
             query={filters.query}
@@ -535,17 +535,17 @@ const UsuariosPage = () => {
             </Select>
           ) : null}
           {tenantsLoading ? (
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-500 dark:text-slate-400">
               Cargando tenants...
             </span>
           ) : null}
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-6 shadow-sm">
+      <section className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-800">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Email</th>
@@ -563,7 +563,7 @@ const UsuariosPage = () => {
                 <tr>
                   <td
                     colSpan={isSuperAdmin ? 7 : 6}
-                    className="px-4 py-6 text-center text-slate-500"
+                    className="px-4 py-6 text-center text-slate-500 dark:text-slate-400"
                   >
                     Cargando usuarios...
                   </td>
@@ -572,7 +572,7 @@ const UsuariosPage = () => {
                 <tr>
                   <td
                     colSpan={isSuperAdmin ? 7 : 6}
-                    className="px-4 py-6 text-center text-slate-500"
+                    className="px-4 py-6 text-center text-slate-500 dark:text-slate-400"
                   >
                     No hay usuarios registrados.
                   </td>
@@ -580,24 +580,24 @@ const UsuariosPage = () => {
               ) : (
                 users.map((user) => (
                   <tr key={user.id}>
-                    <td className="px-4 py-3 text-slate-900">
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">
                       {`${user.persona?.nombres ?? ""} ${
                         user.persona?.apellidos ?? ""
                       }`.trim() || "Sin nombre"}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{user.email}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{user.email}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {user.estado}
                     </td>
                     {isSuperAdmin ? (
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {user.tenantNombre ?? user.tenantId}
                       </td>
                     ) : null}
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {user.role?.nombre ?? "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {user.branch?.nombre ?? "-"}
                     </td>
                     <td className="px-4 py-3">
@@ -615,7 +615,7 @@ const UsuariosPage = () => {
           </table>
         </div>
         {users.length > 0 || hasNextPage || page > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-3">
               <span>
                 Página {page + 1}
@@ -662,7 +662,7 @@ const UsuariosPage = () => {
           }
         >
           <div className="space-y-6">
-            <div className="flex flex-wrap gap-2 text-sm text-slate-500">
+            <div className="flex flex-wrap gap-2 text-sm text-slate-500 dark:text-slate-400">
               {wizardSteps.map((step, index) => (
                 <span
                   key={step}
@@ -710,7 +710,7 @@ const UsuariosPage = () => {
                     }
                   />
                 ) : (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
                     La contraseña se gestiona por separado.
                   </div>
                 )}
@@ -850,7 +850,7 @@ const UsuariosPage = () => {
                   ))}
                 </Select>
                 {branchesLoading ? (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     Cargando sucursales...
                   </span>
                 ) : null}
@@ -875,7 +875,7 @@ const UsuariosPage = () => {
                   ))}
                 </Select>
                 {rolesLoading ? (
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     Cargando roles...
                   </span>
                 ) : null}
@@ -883,7 +883,7 @@ const UsuariosPage = () => {
             ) : null}
 
             {wizardStep === 5 ? (
-              <div className="space-y-3 text-sm text-slate-600">
+              <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
                 <p>
                   <strong>Email:</strong> {form.email}
                 </p>

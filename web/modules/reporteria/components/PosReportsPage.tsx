@@ -142,8 +142,8 @@ const PosReportsPage = () => {
         header: "Fecha",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatDateTime(row.date)}</p>
-            <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.date)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.branchName ?? "Sucursal"}</p>
           </div>
         ),
       },
@@ -152,15 +152,15 @@ const PosReportsPage = () => {
         header: "Cliente",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{row.customerName || "Consumidor final"}</p>
-            <p className="text-xs text-slate-500">Venta #{row.saleId.slice(0, 8)}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{row.customerName || "Consumidor final"}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Venta #{row.saleId.slice(0, 8)}</p>
           </div>
         ),
       },
       {
         key: "total",
         header: "Total",
-        render: (row) => <span className="font-medium text-slate-900">{formatCurrency(row.total)}</span>,
+        render: (row) => <span className="font-medium text-slate-900 dark:text-white">{formatCurrency(row.total)}</span>,
       },
       {
         key: "paid",
@@ -179,10 +179,10 @@ const PosReportsPage = () => {
           <div className="space-y-2">
             <ReportStatusBadge value={row.status} />
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                 Pago
               </p>
-              <p className="text-sm text-slate-700">{row.paymentStatus}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-200">{row.paymentStatus}</p>
             </div>
           </div>
         ),
@@ -259,10 +259,10 @@ const PosReportsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Reporteria POS</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Ventas y tickets POS</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria POS</p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Ventas y tickets POS</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
           Filtra ventas por rango y alcance operativo, revisa saldos y abre el ticket PDF generado por el backend.
         </p>
       </section>

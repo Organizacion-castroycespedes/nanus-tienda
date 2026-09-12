@@ -49,7 +49,7 @@ export const FiltersBar = ({
   onSearch,
 }: FiltersBarProps) => {
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap items-end justify-center gap-4">
         <div className="order-2 w-full min-w-[280px] max-w-[360px] sm:order-1 xl:flex-1 xl:basis-[280px]">
           {showTenantSelector ? (
@@ -70,10 +70,10 @@ export const FiltersBar = ({
             </Select>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Tenant
               </p>
-              <p className="mt-2 text-sm font-medium text-slate-900">
+              <p className="mt-2 text-sm font-medium text-slate-900 dark:text-white">
                 {tenantLabel ?? "Tenant actual"}
               </p>
             </div>
@@ -102,10 +102,10 @@ export const FiltersBar = ({
             </Select>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Sucursal
               </p>
-              <p className="mt-2 text-sm font-medium text-slate-900">
+              <p className="mt-2 text-sm font-medium text-slate-900 dark:text-white">
                 {branchLabel ?? "Sucursal asignada"}
               </p>
             </div>

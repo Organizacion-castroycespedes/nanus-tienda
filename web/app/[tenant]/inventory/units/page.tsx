@@ -199,12 +199,12 @@ const UnitsPage = () => {
         onConfirm={() => setActionFeedback(null)}
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Unidades</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Unidades</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Administra las unidades de medida disponibles para los productos."}
@@ -275,7 +275,7 @@ const UnitsPage = () => {
       ) : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
             label="Buscar"
@@ -321,10 +321,10 @@ const UnitsPage = () => {
       {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Abreviacion</th>
@@ -335,28 +335,28 @@ const UnitsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando unidades...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar unidades.
                   </td>
                 </tr>
               ) : paginatedUnits.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay unidades para mostrar.
                   </td>
                 </tr>
               ) : (
                 paginatedUnits.map((unit) => (
                   <tr key={unit.id}>
-                    <td className="px-4 py-3 text-slate-900">{unit.name}</td>
-                    <td className="px-4 py-3 text-slate-700">{unit.abbreviation}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">{unit.name}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{unit.abbreviation}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {unit.isActive ? "Activa" : "Inactiva"}
                     </td>
                     <td className="px-4 py-3">
@@ -390,7 +390,7 @@ const UnitsPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

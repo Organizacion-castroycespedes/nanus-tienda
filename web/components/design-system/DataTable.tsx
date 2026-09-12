@@ -32,7 +32,7 @@ export const DataTable = <T,>({
   const colSpan = columns.length;
 
   return (
-    <div className={`overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm ${className ?? ""}`}>
+    <div className={`overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm ${className ?? ""} dark:bg-slate-800 dark:border-slate-700`}>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
@@ -40,7 +40,7 @@ export const DataTable = <T,>({
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 ${column.className ?? ""}`}
+                  className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 ${column.className ?? ""} dark:text-slate-400`}
                 >
                   {column.header}
                 </th>
@@ -50,7 +50,7 @@ export const DataTable = <T,>({
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={colSpan} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={colSpan} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
                   {loadingState ?? "Cargando informacion..."}
                 </td>
               </tr>
@@ -62,7 +62,7 @@ export const DataTable = <T,>({
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={colSpan} className="px-4 py-10 text-center text-sm text-slate-500">
+                <td colSpan={colSpan} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
                   {emptyState ?? "No hay resultados para mostrar."}
                 </td>
               </tr>
@@ -72,7 +72,7 @@ export const DataTable = <T,>({
                   {columns.map((column) => (
                     <td
                       key={column.key}
-                      className={`px-4 py-4 text-sm text-slate-700 ${column.cellClassName ?? ""}`}
+                      className={`px-4 py-4 text-sm text-slate-700 ${column.cellClassName ?? ""} dark:text-slate-200`}
                     >
                       {column.render(row)}
                     </td>

@@ -529,12 +529,12 @@ const OrdersPage = () => {
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden">
-      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Pedidos</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Orders</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Pedidos</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Consulta pedidos registrados por cliente, sucursal, tipo y estado."}
@@ -612,7 +612,7 @@ const OrdersPage = () => {
               <h2 className="mt-1 text-xl font-semibold text-slate-950">
                 {actionHeaderCopy.title}
               </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
+              <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
                 {actionHeaderCopy.description}
               </p>
             </div>
@@ -635,7 +635,7 @@ const OrdersPage = () => {
 
       {formMode === "edit" ? (
         loadingOrder ? (
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
             Cargando pedido...
           </section>
         ) : selectedOrder ? (
@@ -772,7 +772,7 @@ const OrdersPage = () => {
       />
 
       {!isActionMode ? (
-      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
         <div
           className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
         >
@@ -873,10 +873,10 @@ const OrdersPage = () => {
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {!isActionMode ? (
-      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
         <div className="w-full max-w-full overflow-x-auto">
           <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Cliente</th>
                 <th className="px-4 py-3 font-medium">Sucursal</th>
@@ -894,43 +894,43 @@ const OrdersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando pedidos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar pedidos.
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay pedidos para mostrar.
                   </td>
                 </tr>
               ) : (
                 paginatedOrders.map((order) => (
                   <tr key={order.id}>
-                    <td className="px-4 py-3 text-slate-900">
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">
                       {order.customerName || order.customerId}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{order.branchName ?? "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">{order.terminalName ?? "-"}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.branchName ?? "-"}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.terminalName ?? "-"}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatCurrency(Number(order.total))}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatCurrency(Number(order.totalPaid))}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatCurrency(Number(order.balanceDue))}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{order.type}</td>
-                    <td className="px-4 py-3 text-slate-700">{order.status}</td>
-                    <td className="px-4 py-3 text-slate-700">{order.paymentStatus}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.type}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.status}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.paymentStatus}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatDate(order.createdAt)}
                     </td>
                     <td className="px-4 py-3">
@@ -1046,7 +1046,7 @@ const OrdersPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

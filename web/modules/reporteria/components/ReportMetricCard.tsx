@@ -20,13 +20,13 @@ export const ReportMetricCard = ({
   helper,
   accent = "blue",
 }: ReportMetricCardProps) => (
-  <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+  <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <span
       className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${accentStyles[accent]}`}
     >
       {label}
     </span>
-    <p className="mt-4 text-2xl font-semibold text-slate-900">{value}</p>
-    {helper ? <p className="mt-2 text-sm text-slate-500">{helper}</p> : null}
+    <p className="mt-4 text-2xl font-semibold text-slate-900 dark:text-white">{value}</p>
+    {helper ? <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{helper}</p> : null}
   </article>
 );

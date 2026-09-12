@@ -26,12 +26,12 @@ const ForgotPasswordPage = () => {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
-      <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <h1 className="text-2xl font-semibold text-slate-900">
+      <section className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl dark:bg-slate-800">
+        <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
           Recuperar contraseña
         </h1>
         {submitted ? (
-          <p className="mt-4 text-sm text-slate-600">
+          <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
             Si el email existe, recibirás un enlace de recuperación.
           </p>
         ) : (
