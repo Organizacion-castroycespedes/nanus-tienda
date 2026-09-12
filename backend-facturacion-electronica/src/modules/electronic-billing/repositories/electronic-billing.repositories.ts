@@ -361,7 +361,10 @@ export type ElectronicDocumentIdentityUpdate = {
   cude?: string | null;
   providerStatus?: string | null;
   providerStatusDetail?: string | null;
+  metadata?: Record<string, unknown>;
   lastStatusCheckAt?: Date | string | null;
+  processingStage?: string;
+  processingStageUpdatedAt?: Date | string;
 };
 
 export type ElectronicDocumentStatusUpdate = {
@@ -428,6 +431,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
           accepted_at,
           rejected_at,
           last_status_check_at,
+          processing_stage,
+          processing_stage_updated_at,
           last_error_code,
           last_error_message,
           metadata,
@@ -437,7 +442,7 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
           $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-          $31, $32, $33
+          $31, $32, $33, $34, $35
         )
         RETURNING
           id,
@@ -468,6 +473,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
           accepted_at,
           rejected_at,
           last_status_check_at,
+          processing_stage,
+          processing_stage_updated_at,
           last_error_code,
           last_error_message,
           metadata,
@@ -502,6 +509,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
           toDateValue(input.acceptedAt),
           toDateValue(input.rejectedAt),
           toDateValue(input.lastStatusCheckAt),
+          input.processingStage ?? "PRE_PROVIDER_CREATE",
+          toDateValue(input.processingStageUpdatedAt ?? input.updatedAt),
           input.lastErrorCode ?? null,
           input.lastErrorMessage ?? null,
           input.metadata ?? {},
@@ -554,6 +563,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -613,6 +624,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -678,6 +691,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -728,6 +743,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -765,7 +782,10 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
     if (updates.cude !== undefined) add("cude", updates.cude);
     if (updates.providerStatus !== undefined) add("provider_status", updates.providerStatus);
     if (updates.providerStatusDetail !== undefined) add("provider_status_detail", updates.providerStatusDetail);
+    if (updates.metadata !== undefined) add("metadata", updates.metadata);
     if (updates.lastStatusCheckAt !== undefined) add("last_status_check_at", toDateValue(updates.lastStatusCheckAt));
+    if (updates.processingStage !== undefined) add("processing_stage", updates.processingStage);
+    if (updates.processingStageUpdatedAt !== undefined) add("processing_stage_updated_at", toDateValue(updates.processingStageUpdatedAt));
 
     if (sets.length === 0) {
       return this.findById(tenantId, id, client);
@@ -805,6 +825,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -874,6 +896,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -938,6 +962,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -995,6 +1021,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         accepted_at,
         rejected_at,
         last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
         last_error_code,
         last_error_message,
         metadata,
@@ -1057,6 +1085,8 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         d.accepted_at,
         d.rejected_at,
         d.last_status_check_at,
+        d.processing_stage,
+        d.processing_stage_updated_at,
         d.last_error_code,
         d.last_error_message,
         d.metadata,

@@ -18,6 +18,46 @@ export type BillingIntegrationDeliveryResult = {
 };
 
 const SALE_COMPLETED_ENDPOINT = "/internal/electronic-billing/events/sale-completed";
+const STATUS_REFRESH_ENDPOINT = "/internal/electronic-billing/documents";
+const RETRY_ENDPOINT = "/internal/electronic-billing/documents";
+
+export type BillingStatusRefreshResult = {
+  outcome: "UPDATED" | "UNCHANGED" | "PROVIDER_DOCUMENT_NOT_FOUND" | "NO_ELECTRONIC_DOCUMENT";
+  electronicDocumentId: string;
+  status: string;
+  providerStatus: string | null;
+  providerDocumentId: string | null;
+  documentNumber: string | null;
+  cufe: string | null;
+  acceptedAt: string | null;
+  providerStatusCode: string | null;
+  providerStatusMessage: string | null;
+  trackingId: string | null;
+  refreshedAt: string;
+};
+
+export type BillingRetryabilityResult = {
+  canRetry: boolean;
+  retryClass: string;
+  decision: string;
+  reasonCode: string;
+  requiredAction: string;
+  requiresReconciliation: boolean;
+  providerDocumentExists: boolean;
+  processingStage: string;
+  safeUserMessage: string;
+};
+
+export type BillingRetryResult = {
+  allowed: boolean;
+  canRetry: boolean;
+  disposition: string;
+  reasonCode: string;
+  requiredAction: string;
+  status: string | null;
+  processingStage: string | null;
+  safeUserMessage: string;
+};
 
 const isSuccessStatus = (status: string) =>
   status === "ACCEPTED" || status === "ALREADY_PROCESSED";
@@ -108,6 +148,92 @@ export class BillingIntegrationClient {
         message: error instanceof Error ? error.message : "Billing backend request failed",
         retryAfterMs: null,
       };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async refreshElectronicDocumentStatus(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<BillingStatusRefreshResult> {
+    if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
+      throw new Error("Billing backend internal client is not configured");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    try {
+      const response = await fetch(
+        new URL(
+          `${STATUS_REFRESH_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/status-refresh`,
+          withTrailingSlash(this.config.billingBackendBaseUrl),
+        ),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.config.internalToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ tenantId }),
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Billing status refresh was rejected");
+      }
+      return await response.json() as BillingStatusRefreshResult;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async getElectronicDocumentRetryability(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<BillingRetryabilityResult> {
+    return this.postDocumentAction<BillingRetryabilityResult>(
+      `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/retryability`,
+      tenantId,
+    );
+  }
+
+  async retryElectronicDocument(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<BillingRetryResult> {
+    return this.postDocumentAction<BillingRetryResult>(
+      `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/retry`,
+      tenantId,
+    );
+  }
+
+  private async postDocumentAction<T>(endpoint: string, tenantId: string): Promise<T> {
+    if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
+      throw new Error("Billing backend internal client is not configured");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    try {
+      const response = await fetch(
+        new URL(endpoint, withTrailingSlash(this.config.billingBackendBaseUrl)),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.config.internalToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ tenantId }),
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Billing document action was rejected");
+      }
+      return await response.json() as T;
     } finally {
       clearTimeout(timeout);
     }

@@ -13,9 +13,10 @@ import { ElectronicInvoicingSuppliersService } from "./suppliers/electronic-invo
 import { ThirdPartyLookupGetAcquirerAdapter } from "./third-party-lookup/third-party-lookup.get-acquirer-adapter";
 import { ThirdPartyLookupMockAdapter } from "./third-party-lookup/third-party-lookup.mock-adapter";
 import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup.service";
+import { LocationsModule } from "../locations/locations.module";
 
 @Module({
-  imports: [DatabaseModule, AccessControlModule],
+  imports: [DatabaseModule, AccessControlModule, LocationsModule],
   controllers: [
     ElectronicInvoicingCustomersController,
     ElectronicInvoicingSuppliersController,

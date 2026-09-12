@@ -34,6 +34,11 @@ import {
   ElectronicDocumentRepository,
   ElectronicDocumentTaxRepository,
 } from "../repositories/electronic-billing.repositories";
+import {
+  buildProcessingState,
+  ELECTRONIC_BILLING_PROCESSING_STATE_KEY,
+  type ElectronicBillingProcessingStage,
+} from "../contracts/processing-state";
 
 type LoadedAggregate = {
   document: ElectronicDocumentRecord;
@@ -43,7 +48,7 @@ type LoadedAggregate = {
   events: ElectronicDocumentEventRecord[];
 };
 
-type ProcessingResult = {
+export type ProcessingResult = {
   document: ElectronicDocumentRecord;
   lines: ElectronicDocumentLineRecord[];
   taxes: ElectronicDocumentTaxRecord[];
@@ -52,6 +57,47 @@ type ProcessingResult = {
   providerResult: ElectronicBillingProviderDocumentResult | ElectronicBillingProviderStatusResult | null;
   idempotent: boolean;
   retryable: boolean;
+};
+
+export type SafeStatusReconciliationOutcome =
+  | "UPDATED"
+  | "UNCHANGED"
+  | "PROVIDER_DOCUMENT_NOT_FOUND"
+  | "NO_ELECTRONIC_DOCUMENT";
+
+export type SafeStatusReconciliationResult = ProcessingResult & {
+  outcome: SafeStatusReconciliationOutcome;
+};
+
+export type StaleRecoveryDisposition =
+  | "NOT_STALE"
+  | "TERMINAL"
+  | "RECOVERED_PRE_PROVIDER"
+  | "RECONCILIATION_REQUIRED"
+  | "MANUAL_REVIEW";
+
+export type StaleRecoveryResult = ProcessingResult & {
+  disposition: StaleRecoveryDisposition;
+};
+
+export type ElectronicBillingRetryDecision =
+  | "SAFE_PRE_PROVIDER_RECOVERY"
+  | "RECONCILE_FIRST"
+  | "FORBIDDEN_TERMINAL"
+  | "ALREADY_PROCESSING"
+  | "NOT_RETRYABLE";
+
+export type ElectronicBillingRetryability = {
+  canRetry: boolean;
+  retryClass: "NONE" | "RECONCILE_ONLY" | "TERMINAL" | "IN_PROGRESS" | "PRE_PROVIDER";
+  decision: ElectronicBillingRetryDecision;
+  reason: "PROVIDER_STATE_MUST_BE_RECONCILED" | "TERMINAL_DOCUMENT" | "DOCUMENT_IN_PROCESSING" | "NO_SAFE_RETRY_CONTRACT" | "PRE_PROVIDER_RECOVERABLE";
+  requiredAction: "RECONCILE_PROVIDER" | "NO_ACTION" | "PROCESS_DOCUMENT";
+  requiresReconciliation: boolean;
+  providerDocumentExists: boolean;
+  processingStage: string;
+  transmissionState: "UNKNOWN";
+  safeUserMessage: string;
 };
 
 type BillingSnapshot = {
@@ -160,6 +206,13 @@ const readLineResults = (metadata: Record<string, unknown>): LineResultMetadata[
 
 const isProcessingTerminalStatus = (status: ElectronicDocumentStatus) => TERMINAL_STATUSES.has(status);
 
+const resolveMonotonicStatus = (
+  currentStatus: ElectronicDocumentStatus,
+  proposedStatus: ElectronicDocumentStatus,
+) => isProcessingTerminalStatus(currentStatus) && currentStatus !== proposedStatus
+  ? currentStatus
+  : proposedStatus;
+
 const isRetryableProviderCode = (code: string) => {
   const normalized = code.toUpperCase();
   return (
@@ -189,6 +242,10 @@ export class ElectronicBillingProcessingService {
   private readonly retryBackoffCapMs = readPositiveIntegerEnv(
     "ELECTRONIC_BILLING_BACKGROUND_RETRY_BACKOFF_CAP_MS",
     DEFAULT_RETRY_BACKOFF_CAP_MS,
+  );
+  private readonly processingLeaseMs = readPositiveIntegerEnv(
+    "ELECTRONIC_BILLING_BACKGROUND_LEASE_MS",
+    300_000,
   );
 
   constructor(
@@ -241,6 +298,15 @@ export class ElectronicBillingProcessingService {
   }
 
   async refreshDocumentStatus(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.refreshDocumentStatusUnlocked(tenantId, electronicDocumentId),
+    );
+  }
+
+  private async refreshDocumentStatusUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
     const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
     if (!aggregate.document) {
       throw new ElectronicDocumentNotProcessableError("Electronic document not found");
@@ -255,7 +321,336 @@ export class ElectronicBillingProcessingService {
     return this.persistProviderResult(tenantId, aggregate, providerResult, resolved, "STATUS_CHANGED", false, this.nextAttemptFromEvents(aggregate.events));
   }
 
+  async reconcileExistingProviderStatus(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<SafeStatusReconciliationResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.reconcileExistingProviderStatusUnlocked(tenantId, electronicDocumentId),
+    );
+  }
+
+  async recoverStaleDocument(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<StaleRecoveryResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.recoverStaleDocumentUnlocked(tenantId, electronicDocumentId),
+    );
+  }
+
+  private async recoverStaleDocumentUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<StaleRecoveryResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    if (!aggregate.document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+
+    const current = aggregate.document;
+    const base = {
+      document: current,
+      lines: aggregate.lines,
+      taxes: aggregate.taxes,
+      references: aggregate.references,
+      events: aggregate.events,
+      providerResult: null,
+      idempotent: true,
+      retryable: false,
+    } satisfies ProcessingResult;
+
+    if (isProcessingTerminalStatus(current.status)) {
+      return { ...base, disposition: "TERMINAL" };
+    }
+
+    const leaseExpired = !current.last_status_check_at
+      || new Date(current.last_status_check_at).getTime() <= Date.now();
+    const stageUpdatedAt = current.processing_stage_updated_at
+      ? new Date(current.processing_stage_updated_at).getTime()
+      : 0;
+    const leaseExpiredByStage = !stageUpdatedAt
+      || stageUpdatedAt + this.processingLeaseMs <= Date.now();
+    if (current.status !== "PROCESSING" || !leaseExpired || !leaseExpiredByStage) {
+      return { ...base, disposition: "NOT_STALE" };
+    }
+
+    switch (current.processing_stage) {
+      case "PRE_PROVIDER_CREATE": {
+        await this.documentRepository.updateStatus(tenantId, current.id, {
+          status: "PENDING",
+          providerStatus: current.provider_status,
+          providerStatusDetail: current.provider_status_detail,
+          lastStatusCheckAt: new Date(0),
+        });
+        const recovered = await this.runProcessingUnlocked(
+          "PROCESSING_STARTED",
+          tenantId,
+          electronicDocumentId,
+          "process",
+        );
+        return { ...recovered, disposition: "RECOVERED_PRE_PROVIDER" };
+      }
+      case "PROVIDER_CREATE_INTENT":
+      case "PROVIDER_LINKED":
+      case "PRE_TRANSMIT":
+      case "TRANSMISSION_INTENT":
+      case "RECONCILIATION_REQUIRED": {
+        const reconciled = await this.reconcileExistingProviderStatusUnlocked(tenantId, electronicDocumentId);
+        return { ...reconciled, disposition: "RECONCILIATION_REQUIRED" };
+      }
+      case "UNKNOWN":
+      default:
+        return { ...base, disposition: "MANUAL_REVIEW" };
+    }
+  }
+
+  private async reconcileExistingProviderStatusUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<SafeStatusReconciliationResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    if (!aggregate.document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+
+    if (aggregate.document.status === "CANCELLED") {
+      return {
+        ...aggregate,
+        providerResult: null,
+        idempotent: true,
+        retryable: false,
+        outcome: "UNCHANGED",
+      };
+    }
+
+    if (!aggregate.document.provider_document_id && !aggregate.document.external_reference) {
+      return {
+        ...aggregate,
+        providerResult: null,
+        idempotent: true,
+        retryable: false,
+        outcome: "PROVIDER_DOCUMENT_NOT_FOUND",
+      };
+    }
+
+    const resolved = await this.providerResolver.resolve({
+      tenantId,
+      providerConfigId: aggregate.document.provider_config_id,
+    });
+
+    let providerResult: ElectronicBillingProviderStatusResult;
+    try {
+      providerResult = await this.getProviderStatus(resolved, aggregate);
+    } catch (error) {
+      if (this.isProviderNotFoundError(error)) {
+        return {
+          ...aggregate,
+          providerResult: null,
+          idempotent: true,
+          retryable: false,
+          outcome: "PROVIDER_DOCUMENT_NOT_FOUND",
+        };
+      }
+      throw error;
+    }
+
+    const persisted = await this.persistProviderResult(
+      tenantId,
+      aggregate,
+      providerResult,
+      resolved,
+      "STATUS_CHANGED",
+      false,
+      this.nextAttemptFromEvents(aggregate.events),
+    );
+    const changed = persisted.document.provider_document_id !== aggregate.document.provider_document_id
+      || persisted.document.status !== aggregate.document.status
+      || persisted.document.provider_status !== aggregate.document.provider_status
+      || persisted.document.cufe !== aggregate.document.cufe
+      || String(persisted.document.accepted_at ?? "") !== String(aggregate.document.accepted_at ?? "");
+
+    return {
+      ...persisted,
+      outcome: changed ? "UPDATED" : "UNCHANGED",
+    };
+  }
+
+  async evaluateRetryability(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ElectronicBillingRetryability> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    if (!aggregate.document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+
+    if (this.isApprovedPreProviderRecovery(aggregate.document)) {
+      return {
+        canRetry: true,
+        retryClass: "PRE_PROVIDER",
+        decision: "SAFE_PRE_PROVIDER_RECOVERY",
+        reason: "PRE_PROVIDER_RECOVERABLE",
+        requiredAction: "PROCESS_DOCUMENT",
+        requiresReconciliation: false,
+        providerDocumentExists: false,
+        processingStage: aggregate.document.processing_stage,
+        transmissionState: "UNKNOWN",
+        safeUserMessage: "El documento puede reintentarse de forma segura.",
+      };
+    }
+
+    if (aggregate.document.status === "PROCESSING") {
+      return {
+        canRetry: false,
+        retryClass: "IN_PROGRESS",
+        decision: "ALREADY_PROCESSING",
+        reason: "DOCUMENT_IN_PROCESSING",
+        requiredAction: "NO_ACTION",
+        requiresReconciliation: false,
+        providerDocumentExists: Boolean(aggregate.document.provider_document_id),
+        processingStage: aggregate.document.processing_stage,
+        transmissionState: "UNKNOWN",
+        safeUserMessage: "El documento ya está en procesamiento.",
+      };
+    }
+
+    if (TERMINAL_STATUSES.has(aggregate.document.status)) {
+      return {
+        canRetry: false,
+        retryClass: "TERMINAL",
+        decision: "FORBIDDEN_TERMINAL",
+        reason: "TERMINAL_DOCUMENT",
+        requiredAction: "NO_ACTION",
+        requiresReconciliation: false,
+        providerDocumentExists: Boolean(aggregate.document.provider_document_id),
+        processingStage: aggregate.document.processing_stage,
+        transmissionState: "UNKNOWN",
+        safeUserMessage: "El documento no admite reintento.",
+      };
+    }
+
+    if (aggregate.document.status === "PENDING" || aggregate.document.status === "TECHNICAL_ERROR") {
+      const preProviderTechnicalRecovery = aggregate.document.status === "TECHNICAL_ERROR"
+        && !aggregate.document.provider_document_id
+        && Boolean(aggregate.document.external_reference)
+        && isRetryableProviderCode(aggregate.document.last_error_code ?? "");
+      const requiresProviderReconciliation = aggregate.document.status === "PENDING" || preProviderTechnicalRecovery;
+      return {
+        canRetry: false,
+        retryClass: requiresProviderReconciliation ? "RECONCILE_ONLY" : "NONE",
+        decision: requiresProviderReconciliation ? "RECONCILE_FIRST" : "NOT_RETRYABLE",
+        reason: "PROVIDER_STATE_MUST_BE_RECONCILED",
+        requiredAction: requiresProviderReconciliation ? "RECONCILE_PROVIDER" : "NO_ACTION",
+        requiresReconciliation: requiresProviderReconciliation,
+        providerDocumentExists: Boolean(aggregate.document.provider_document_id),
+        processingStage: aggregate.document.processing_stage,
+        transmissionState: "UNKNOWN",
+        safeUserMessage: requiresProviderReconciliation
+          ? "Se debe reconciliar el proveedor antes de continuar."
+          : "El documento no tiene una condición segura de recuperación.",
+      };
+    }
+
+    return {
+      canRetry: false,
+      retryClass: "NONE",
+      decision: "NOT_RETRYABLE",
+      reason: "NO_SAFE_RETRY_CONTRACT",
+      requiredAction: "NO_ACTION",
+      requiresReconciliation: false,
+      providerDocumentExists: Boolean(aggregate.document.provider_document_id),
+      processingStage: aggregate.document.processing_stage,
+      transmissionState: "UNKNOWN",
+      safeUserMessage: "No existe un reintento seguro para este documento.",
+    };
+  }
+
+  async retryRecoverableDocument(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.retryRecoverableDocumentUnlocked(tenantId, electronicDocumentId),
+    );
+  }
+
+  private async retryRecoverableDocumentUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    if (!aggregate.document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+    if (this.isApprovedPreProviderRecovery(aggregate.document)) {
+      return this.runProcessingUnlocked(
+        "RETRY_REQUESTED",
+        tenantId,
+        electronicDocumentId,
+        "retry",
+        true,
+      );
+    }
+    if (aggregate.document.provider_document_id) {
+      throw new ElectronicDocumentNotProcessableError("Provider state must be reconciled before retry");
+    }
+    if (aggregate.document.status === "PROCESSING") {
+      throw new ElectronicDocumentAlreadyProcessingError();
+    }
+    if (aggregate.document.status === "ACCEPTED" || aggregate.document.status === "REJECTED" || aggregate.document.status === "CANCELLED") {
+      throw new ElectronicDocumentNotProcessableError("Terminal electronic documents cannot be retried");
+    }
+    if (aggregate.document.status !== "TECHNICAL_ERROR" || !isRetryableProviderCode(aggregate.document.last_error_code ?? "")) {
+      throw new ElectronicDocumentNotProcessableError("Only classified pre-provider technical errors can be recovered");
+    }
+    if (!aggregate.document.external_reference) {
+      throw new ElectronicDocumentNotProcessableError("External reference is required for safe recovery");
+    }
+
+    const resolved = await this.providerResolver.resolve({
+      tenantId,
+      providerConfigId: aggregate.document.provider_config_id,
+    });
+    try {
+      const providerResult = await this.getProviderStatus(resolved, aggregate);
+      return await this.persistProviderResult(
+        tenantId,
+        aggregate,
+        providerResult,
+        resolved,
+        "STATUS_CHANGED",
+        false,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+    } catch (error) {
+      if (!this.isProviderNotFoundError(error)) {
+        throw error;
+      }
+    }
+
+    return this.runProcessingUnlocked("RETRY_REQUESTED", tenantId, electronicDocumentId, "retry");
+  }
+
   private async runProcessing(
+    claimEventType: ElectronicDocumentEventType,
+    tenantId: string,
+    electronicDocumentId: string,
+    mode: "process" | "retry",
+    allowApprovedPreProviderRecovery = false,
+  ): Promise<ProcessingResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.runProcessingUnlocked(
+        claimEventType,
+        tenantId,
+        electronicDocumentId,
+        mode,
+        allowApprovedPreProviderRecovery,
+      ),
+    );
+  }
+
+  private async runProcessingUnlocked(
     claimEventType: ElectronicDocumentEventType,
     tenantId: string,
     electronicDocumentId: string,
@@ -335,10 +730,16 @@ export class ElectronicBillingProcessingService {
       throw new ElectronicDocumentStatusTransitionError();
     }
 
+    await this.persistProcessingStage(tenantId, aggregate.document, "PROVIDER_CREATE_INTENT");
+
     try {
       const providerResult = mode === "process"
         ? await this.issueWithProvider(resolved, aggregate)
-        : await this.retryWithProviderOrIssue(resolved, aggregate);
+        : await this.retryWithProviderOrIssue(
+          resolved,
+          aggregate,
+          allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document),
+        );
 
       return await this.persistProviderResult(
         tenantId,
@@ -380,6 +781,78 @@ export class ElectronicBillingProcessingService {
       references,
       events,
     };
+  }
+
+  private resolveProcessingStageAfterProviderResult(
+    status: ElectronicDocumentStatus,
+    providerDocumentId: string | null | undefined,
+  ): ElectronicBillingProcessingStage {
+    if (TERMINAL_STATUSES.has(status)) {
+      return "COMPLETED";
+    }
+    return providerDocumentId ? "RECONCILIATION_REQUIRED" : "UNKNOWN";
+  }
+
+  private isProcessingStage(value: unknown): value is ElectronicBillingProcessingStage {
+    return typeof value === "string" && [
+      "PRE_PROVIDER_CREATE",
+      "PROVIDER_CREATE_INTENT",
+      "PROVIDER_LINKED",
+      "PRE_TRANSMIT",
+      "TRANSMISSION_INTENT",
+      "RECONCILIATION_REQUIRED",
+      "COMPLETED",
+      "UNKNOWN",
+    ].includes(value);
+  }
+
+  private async persistProcessingStage(
+    tenantId: string,
+    document: ElectronicDocumentRecord,
+    stage: ElectronicBillingProcessingStage,
+  ) {
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      await this.documentRepository.updateProviderIdentity(
+        tenantId,
+        document.id,
+        {
+          processingStage: stage,
+          processingStageUpdatedAt: new Date(),
+          metadata: {
+            ...document.metadata,
+            [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState(stage),
+          },
+        },
+        client,
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async withDocumentProcessingLock<T>(
+    tenantId: string,
+    electronicDocumentId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const client = await this.db.getClient();
+    const lockKey = `${tenantId}:${electronicDocumentId}`;
+    try {
+      await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [lockKey]);
+      return await operation();
+    } finally {
+      try {
+        await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [lockKey]);
+      } finally {
+        client.release();
+      }
+    }
   }
 
   private async claimDocument(
@@ -486,6 +959,7 @@ export class ElectronicBillingProcessingService {
   private async retryWithProviderOrIssue(
     resolved: ResolvedElectronicBillingProvider,
     aggregate: LoadedAggregate,
+    allowProviderCreate: boolean,
   ): Promise<ElectronicBillingProviderDocumentResult | ElectronicBillingProviderStatusResult> {
     if (aggregate.document.provider_document_id) {
       return this.retryWithProvider(resolved, aggregate);
@@ -496,6 +970,12 @@ export class ElectronicBillingProcessingService {
     } catch (error) {
       if (!this.isProviderNotFoundError(error)) {
         throw error;
+      }
+
+      if (!allowProviderCreate) {
+        throw new ElectronicDocumentNotProcessableError(
+          "Provider mutation evidence is ambiguous; reconciliation is required before retry",
+        );
       }
 
       return this.issueWithProvider(resolved, aggregate);
@@ -719,12 +1199,23 @@ export class ElectronicBillingProcessingService {
         throw new ElectronicDocumentProviderResultConflictError();
       }
 
-      const normalizedStatus = providerResult.normalizedStatus ?? currentDocument.status;
+      const normalizedStatus = resolveMonotonicStatus(
+        currentDocument.status,
+        providerResult.normalizedStatus ?? currentDocument.status,
+      );
       const statusChanged = currentDocument.status !== normalizedStatus;
       const sentAt = this.resolveSentAt(currentDocument, providerResult);
       const acceptedAt = this.resolveAcceptedAt(providerResult);
       const rejectedAt = this.resolveRejectedAt(providerResult);
       const nextStatusCheckAt = this.resolveNextStatusCheckAt(normalizedStatus, attempt);
+      const existingProviderMetadata = currentDocument.metadata?.providerResponse;
+      const providerResponseMetadata = existingProviderMetadata && typeof existingProviderMetadata === "object"
+        ? existingProviderMetadata as Record<string, unknown>
+        : {};
+      const nextProcessingStage = this.resolveProcessingStageAfterProviderResult(
+        normalizedStatus,
+        providerResult.providerDocumentId ?? currentDocument.provider_document_id,
+      );
 
       await this.documentRepository.updateProviderIdentity(
         tenantId,
@@ -738,7 +1229,20 @@ export class ElectronicBillingProcessingService {
           cude: providerResult.cude ?? currentDocument.cude,
           providerStatus: providerResult.providerStatus,
           providerStatusDetail: providerResult.providerStatusDetail ?? null,
+          metadata: {
+            ...currentDocument.metadata,
+            [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState(nextProcessingStage),
+            providerResponse: {
+              ...providerResponseMetadata,
+              ...(providerResult.providerStatusCode ? { code: providerResult.providerStatusCode } : {}),
+              ...(providerResult.providerStatusMessage ? { message: providerResult.providerStatusMessage } : {}),
+              ...(providerResult.trackingId ? { trackingId: providerResult.trackingId } : {}),
+              ...(providerResult.metadata ?? {}),
+            },
+          },
           lastStatusCheckAt: nextStatusCheckAt,
+          processingStage: nextProcessingStage,
+          processingStageUpdatedAt: new Date(),
         },
         client,
       );
@@ -838,15 +1342,33 @@ export class ElectronicBillingProcessingService {
       const code = this.readErrorCode(error);
       const nextStatusCheckAt = this.resolveNextStatusCheckAt(status, attempt);
       const providerDocumentId = this.readProviderDocumentId(error);
+      const previousState = currentDocument.metadata?.[ELECTRONIC_BILLING_PROCESSING_STATE_KEY];
+      const previousStage = this.isProcessingStage(currentDocument.processing_stage)
+        ? currentDocument.processing_stage
+        : previousState && typeof previousState === "object" && "stage" in previousState
+          && this.isProcessingStage(previousState.stage)
+          ? previousState.stage
+          : "UNKNOWN";
+      const processingStage: ElectronicBillingProcessingStage = providerDocumentId || currentDocument.provider_document_id
+        ? "RECONCILIATION_REQUIRED"
+        : previousStage === "PROVIDER_CREATE_INTENT" || previousStage === "TRANSMISSION_INTENT"
+          ? previousStage
+          : "UNKNOWN";
 
-      if (providerDocumentId) {
-        await this.documentRepository.updateProviderIdentity(
-          tenantId,
-          aggregate.document.id,
-          { providerDocumentId },
-          client,
-        );
-      }
+      await this.documentRepository.updateProviderIdentity(
+        tenantId,
+        aggregate.document.id,
+        {
+          ...(providerDocumentId ? { providerDocumentId } : {}),
+          metadata: {
+            ...currentDocument.metadata,
+            [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState(processingStage),
+          },
+          processingStage,
+          processingStageUpdatedAt: new Date(),
+        },
+        client,
+      );
 
       await this.documentRepository.updateStatus(
         tenantId,
@@ -1036,7 +1558,8 @@ export class ElectronicBillingProcessingService {
   private isApprovedPreProviderRecovery(document: ElectronicDocumentRecord) {
     return document.status === "REJECTED"
       && !document.provider_document_id
-      && document.last_error_code === RECOVERABLE_PRE_PROVIDER_ERROR_CODE;
+      && document.last_error_code === RECOVERABLE_PRE_PROVIDER_ERROR_CODE
+      && (!document.processing_stage || document.processing_stage === "PRE_PROVIDER_CREATE");
   }
 
   private readProviderDocumentId(error: unknown) {

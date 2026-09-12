@@ -3,7 +3,7 @@
 ## Componentes
 
 - Login: `POST /api/auth/login`
-- Force login: `POST /api/auth/login/force`
+- Replace session: `POST /api/auth/login/replace-session`
 - Refresh: `POST /api/auth/refresh`
 - Logout: `POST /api/auth/logout`
 - Perfil: `GET /api/auth/me`
@@ -13,7 +13,9 @@
 
 1. El backend valida email, estado del usuario y tenant.
 2. Si ya existe una sesion activa en `auth_sessions`, responde `409 SESSION_ACTIVE`.
-3. El frontend puede invocar `login/force` para invalidar la sesion anterior.
+3. Tras confirmar la sesion activa, el frontend puede invocar
+   `login/replace-session`; el backend valida nuevamente la contrasena y
+   reemplaza atomicamente la sesion anterior.
 4. El backend crea `auth_sessions` y emite JWT con `sub`, `tenant_id`, `roles` y `session_id`.
 5. El frontend guarda refresh token y programa rotacion automatica.
 6. Cada request protegida pasa por `JwtAuthGuard`, que valida firma y sesion activa.

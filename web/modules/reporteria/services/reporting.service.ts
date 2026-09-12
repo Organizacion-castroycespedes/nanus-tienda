@@ -76,6 +76,12 @@ export const getPosSaleTicketPrintData = (saleId: string) =>
     `/reports/pos-sales/${saleId}/ticket-data`
   );
 
+export const getElectronicInvoice = (saleId: string) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/pos-sales/${saleId}/electronic-invoice`
+  );
+
 export const getCashClosingsReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CashClosingListDataset>(
     reportsBaseUrl,

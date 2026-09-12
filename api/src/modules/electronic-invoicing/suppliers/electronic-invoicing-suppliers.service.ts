@@ -7,6 +7,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import crypto from "crypto";
+import { LocationsService } from "../../locations/locations.service";
 import type { CreateElectronicInvoicingSupplierDto } from "./dto/create-electronic-invoicing-supplier.dto";
 import type { ListElectronicInvoicingSuppliersDto } from "./dto/list-electronic-invoicing-suppliers.dto";
 import type { UpdateElectronicInvoicingSupplierDto } from "./dto/update-electronic-invoicing-supplier.dto";
@@ -85,7 +86,10 @@ export class ElectronicInvoicingSuppliersService {
     private readonly suppliersRepository: ElectronicInvoicingSuppliersRepository,
     @Optional()
     @Inject(ThirdPartyLookupService)
-    private readonly thirdPartyLookupService?: ThirdPartyLookupService
+    private readonly thirdPartyLookupService?: ThirdPartyLookupService,
+    @Optional()
+    @Inject(LocationsService)
+    private readonly locationsService?: LocationsService
   ) {}
 
   private parseBoolean(value: unknown, fieldName: string): boolean | undefined {
@@ -541,6 +545,14 @@ export class ElectronicInvoicingSuppliersService {
       isActive: dto.isActive ?? true,
     };
 
+    if (this.locationsService) {
+      await this.locationsService.validateFiscalHierarchy(
+        input.countryCode,
+        input.departmentCode,
+        input.municipalityCode
+      );
+    }
+
     try {
       return await this.suppliersRepository.create(input);
     } catch (error) {
@@ -651,6 +663,13 @@ export class ElectronicInvoicingSuppliersService {
     }
     if (hasOwn(dto, "municipalityCode")) {
       update.municipalityCode = this.normalizeText(dto.municipalityCode);
+    }
+    if (this.locationsService) {
+      await this.locationsService.validateFiscalHierarchy(
+        hasOwn(dto, "countryCode") ? update.countryCode : current.countryCode,
+        hasOwn(dto, "departmentCode") ? update.departmentCode : current.departmentCode,
+        hasOwn(dto, "municipalityCode") ? update.municipalityCode : current.municipalityCode
+      );
     }
     if (hasOwn(dto, "personType")) {
       update.personType = this.normalizePersonType(dto.personType) ?? null;
