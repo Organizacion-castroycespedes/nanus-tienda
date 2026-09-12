@@ -119,13 +119,27 @@ const ROUTE_PERMISSION_RULES: Array<{
   },
   {
     pattern: /^\/[^/]+\/operations\/sales(?:\/.*)?$/i,
-    requirement: { module: MENU_KEYS.OPERATIONS_SALES, action: "read" },
+    // Operational sales is a POS read surface. The API applies the
+    // OperationalSaleScopeService after this navigation check.
+    requirement: { module: "POS", action: "read" },
   },
   {
     pattern: /^\/[^/]+\/operations\/?$/i,
-    requirement: { module: MENU_KEYS.OPERATIONS, action: "read" },
+    // The dashboard uses the same certified POS READ policy as its API.
+    requirement: { module: "POS", action: "read" },
   },
 ];
+
+export const canAccessInfrastructureAdminRoute = (
+  pathname: string,
+  role: string
+) => {
+  const isInfrastructureRoute =
+    /^\/[^/]+\/(?:config\/terminals|admin\/peripherals)(?:\/.*)?$/i.test(
+      pathname
+    );
+  return !isInfrastructureRoute || role.trim().toUpperCase() === "SUPER_ADMIN";
+};
 
 export const getRoutePermissionRequirement = (
   pathname: string

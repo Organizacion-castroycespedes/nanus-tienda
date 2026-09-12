@@ -5,6 +5,7 @@ import type { PermissionSummary } from "../domains/menu/types";
 import { store } from "../store";
 import { clearAuth, setAuthPermissions, setUser } from "../store/authSlice";
 import { getAllowedMenuItems, hasMenuAccess, hasPermission } from "./permissions";
+import { getRoutePermissionRequirement } from "./route-permissions";
 
 const permissionFor = (key: string): PermissionSummary => ({
   key,
@@ -263,4 +264,17 @@ test("route permissions allow terminal module only for SUPER_ADMIN", () => {
 
   setRole("SUPER_ADMIN");
   assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), true);
+});
+
+test("all POS roles can pass the operations parent and sales route guard", () => {
+  const posPermission = permissionFor("POS");
+
+  for (const role of ["USER", "ADMIN", "SUPER_USER", "SUPER_ADMIN"]) {
+    setRole(role, [posPermission]);
+    for (const pathname of ["/tenant/operations", "/tenant/operations/sales"]) {
+      const requirement = getRoutePermissionRequirement(pathname);
+      assert.ok(requirement);
+      assert.equal(hasPermission(requirement.module, requirement.action), true);
+    }
+  }
 });
