@@ -179,29 +179,17 @@ export class SalesReportsService {
       taxAmount: string | number | null;
     }>(
       `SELECT
-          COALESCE(NULLIF(BTRIM(taxes.tax_name), ''), 'Impuesto') AS label,
-          COALESCE(taxes.dian_code, '') AS "dianCode",
-          COALESCE(taxes.tax_type_code, '') AS "taxTypeCode",
-          SUM(COALESCE(taxes.tax_base, 0)) AS "taxBase",
-          SUM(COALESCE(taxes.tax_amount, 0)) AS "taxAmount"
-       FROM sale_item_taxes AS taxes
-       INNER JOIN sale_items AS items
-               ON items.id = taxes.sale_item_id
-              AND items.tenant_id = taxes.tenant_id
-       INNER JOIN sales AS sale
-               ON sale.id = items.sale_id
-              AND sale.tenant_id = items.tenant_id
-       WHERE sale.id = $1
-         AND sale.tenant_id = $2
-         AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR sale.branch_id = $4::UUID)
-       GROUP BY
-         COALESCE(taxes.tax_type_code, ''),
-         COALESCE(NULLIF(BTRIM(taxes.tax_name), ''), 'Impuesto'),
-         COALESCE(taxes.dian_code, '')
-       ORDER BY
-         COALESCE(NULLIF(BTRIM(taxes.tax_name), ''), 'Impuesto') ASC,
-         COALESCE(taxes.dian_code, '') ASC,
-         COALESCE(taxes.tax_type_code, '') ASC`,
+          label,
+          "dianCode",
+          "taxTypeCode",
+          "taxBase",
+          "taxAmount"
+       FROM public.fnc_report_pos_sale_tax_breakdown(
+         $2::uuid,
+         $1::uuid,
+         $3::text,
+         $4::uuid
+       )`,
       [saleId, actor.tenantId, actor.role, actor.branchId]
     );
 

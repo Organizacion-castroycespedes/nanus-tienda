@@ -696,19 +696,14 @@ export class OrderService {
     items: OrderItemEntity[],
     client: PoolClient
   ) {
+    // Clear fiscal snapshots before replacing order_items (no orphan taxes).
     await client.query(
-      `
-        DELETE FROM order_item_taxes
-        WHERE tenant_id = $2
-          AND order_item_id IN (
-            SELECT id
-            FROM order_items
-            WHERE order_id = $1
-          )
-      `,
-      [orderId, tenantId]
+      `SELECT public.prc_replace_order_item_taxes($1::uuid, $2::uuid, '[]'::jsonb) AS ok`,
+      [tenantId, orderId]
     );
     await client.query(`DELETE FROM order_items WHERE order_id = $1`, [orderId]);
+
+    const orderItemTaxesPayload: Array<Record<string, unknown>> = [];
 
     for (const item of items) {
       await client.query(
@@ -766,59 +761,27 @@ export class OrderService {
         ]
       );
 
-      const snapshotTaxes = this.extractSnapshotTaxes(item.pricingSnapshot);
-      for (const tax of snapshotTaxes) {
-        await client.query(
-          `
-            INSERT INTO order_item_taxes (
-              id,
-              tenant_id,
-              order_item_id,
-              tax_id,
-              tax_name,
-              tax_rate,
-              tax_base,
-              tax_amount,
-              dian_code,
-              tax_type_code,
-              calculation_method_code,
-              calculation_order,
-              is_included,
-              created_at
-            ) VALUES (
-              gen_random_uuid(),
-              $1,
-              $2,
-              $3,
-              $4,
-              $5,
-              $6,
-              $7,
-              $8,
-              $9,
-              $10,
-              $11,
-              $12,
-              NOW()
-            )
-          `,
-          [
-            tenantId,
-            item.id,
-            tax.taxId,
-            tax.taxName,
-            tax.taxRate,
-            tax.taxBase,
-            tax.taxAmount,
-            tax.dianCode,
-            tax.taxTypeCode,
-            tax.calculationMethodCode,
-            tax.calculationOrder,
-            tax.isIncluded,
-          ]
-        );
+      for (const tax of this.extractSnapshotTaxes(item.pricingSnapshot)) {
+        orderItemTaxesPayload.push({
+          order_item_id: item.id,
+          tax_id: tax.taxId,
+          tax_name: tax.taxName,
+          tax_rate: tax.taxRate,
+          tax_base: tax.taxBase,
+          tax_amount: tax.taxAmount,
+          dian_code: tax.dianCode,
+          tax_type_code: tax.taxTypeCode,
+          calculation_method_code: tax.calculationMethodCode,
+          calculation_order: tax.calculationOrder,
+          is_included: tax.isIncluded,
+        });
       }
     }
+
+    await client.query(
+      `SELECT public.prc_replace_order_item_taxes($1::uuid, $2::uuid, $3::jsonb) AS ok`,
+      [tenantId, orderId, JSON.stringify(orderItemTaxesPayload)]
+    );
   }
 
   private extractSnapshotTaxes(

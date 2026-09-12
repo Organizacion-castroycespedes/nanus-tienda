@@ -145,61 +145,20 @@ export class PricingRepository {
       this.db.query<PricingProductTaxRow>(
         `
         SELECT
-          pt.tax_id,
-          t.name AS tax_name,
-          tt.dian_code AS dian_code,
-          tt.code AS tax_type_code,
-          cm.code AS calculation_method_code,
-          bt.code AS tax_base_type_code,
-          pt.calculation_order,
-          COALESCE(t.is_included, FALSE) AS is_included,
-          COALESCE(t.rate, 0) AS tax_rate,
-          tr.percentage_rate,
-          tr.fixed_amount,
-          tr.base_quantity,
-          tr.base_unit_code
-        FROM product_taxes pt
-        LEFT JOIN taxes t
-          ON t.id = pt.tax_id
-         AND t.tenant_id = pt.tenant_id
-        LEFT JOIN tax_types tt
-          ON tt.id = t.tax_type_id
-        LEFT JOIN tax_calculation_methods cm
-          ON cm.id = t.calculation_method_id
-        LEFT JOIN tax_base_types bt
-          ON bt.id = t.tax_base_type_id
-        LEFT JOIN product_tax_profiles ptp
-          ON ptp.tenant_id = pt.tenant_id
-         AND ptp.product_id = pt.product_id
-        LEFT JOIN LATERAL (
-          SELECT
-            tr.percentage_rate,
-            tr.fixed_amount,
-            tr.base_quantity,
-            tr.base_unit_code
-          FROM tax_rates tr
-          WHERE tr.tenant_id = pt.tenant_id
-            AND tr.tax_id = pt.tax_id
-            AND (
-              tr.tax_product_category_id = ptp.tax_product_category_id
-              OR tr.tax_product_category_id IS NULL
-            )
-            AND tr.effective_from <= $3::date
-            AND (tr.effective_to IS NULL OR tr.effective_to >= $3::date)
-            AND tr.is_active = TRUE
-          ORDER BY
-            CASE
-              WHEN tr.tax_product_category_id = ptp.tax_product_category_id THEN 0
-              ELSE 1
-            END ASC,
-            tr.effective_from DESC,
-            tr.effective_to DESC NULLS LAST
-          LIMIT 1
-        ) tr ON TRUE
-        WHERE pt.tenant_id = $1
-          AND pt.product_id = $2
-          AND pt.is_active = TRUE
-        ORDER BY pt.calculation_order ASC, pt.created_at ASC
+          tax_id,
+          tax_name,
+          dian_code,
+          tax_type_code,
+          calculation_method_code,
+          tax_base_type_code,
+          calculation_order,
+          is_included,
+          tax_rate,
+          percentage_rate,
+          fixed_amount,
+          base_quantity,
+          base_unit_code
+        FROM public.fnc_list_product_taxes_for_pricing($1::uuid, $2::uuid, $3::date)
         `,
         [tenantId, productId, pricingDate]
       ),
@@ -210,10 +169,7 @@ export class PricingRepository {
           alcohol_degree,
           net_volume_ml,
           dane_certified_retail_price
-        FROM product_tax_profiles
-        WHERE tenant_id = $1
-          AND product_id = $2
-        LIMIT 1
+        FROM public.fnc_get_product_tax_profile($1::uuid, $2::uuid)
         `,
         [tenantId, productId]
       ),

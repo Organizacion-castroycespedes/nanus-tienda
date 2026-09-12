@@ -529,15 +529,7 @@ export class SaleService {
           tax_type_code,
           calculation_method_code,
           created_at
-        FROM sale_item_taxes
-        WHERE tenant_id = $2
-          AND sale_item_id IN (
-            SELECT id
-            FROM sale_items
-            WHERE sale_id = $1
-              AND tenant_id = $2
-          )
-        ORDER BY sale_item_id ASC, created_at ASC, id ASC
+        FROM public.fnc_list_sale_item_taxes($2::uuid, $1::uuid)
       `,
       [saleId, tenantId]
     );
@@ -686,209 +678,10 @@ export class SaleService {
     tenantId: string,
     client: PoolClient
   ) {
-    const saleItemsResult = await client.query<{
-      id: string;
-      order_item_id: string | null;
-      quantity: string | number;
-      tax_base: string | number | null;
-      tax_amount: string | number | null;
-    }>(
-      `
-        SELECT id, order_item_id, quantity, tax_base, tax_amount
-        FROM sale_items
-        WHERE sale_id = $1
-          AND tenant_id = $2
-          AND order_item_id IS NOT NULL
-        ORDER BY created_at ASC, id ASC
-      `,
-      [saleId, tenantId]
+    await client.query(
+      `SELECT public.prc_sync_sale_item_taxes_from_order($1::uuid, $2::uuid, NULL::uuid) AS ok`,
+      [tenantId, saleId]
     );
-
-    if (saleItemsResult.rows.length === 0) {
-      return;
-    }
-
-    const orderItemIds = saleItemsResult.rows
-      .map((row) => row.order_item_id)
-      .filter((value): value is string => Boolean(value));
-    if (orderItemIds.length === 0) {
-      return;
-    }
-
-    const [orderItemsResult, orderTaxesResult] = await Promise.all([
-      client.query<{
-        id: string;
-        ordered_quantity: string | number;
-      }>(
-        `
-          SELECT id, ordered_quantity
-          FROM order_items
-          WHERE id = ANY($1::uuid[])
-        `,
-        [orderItemIds]
-      ),
-      client.query<{
-        order_item_id: string;
-        tax_id: string;
-        tax_name: string;
-        tax_rate: string | number;
-        tax_base: string | number;
-        tax_amount: string | number;
-        is_included: boolean;
-        dian_code: string | null;
-        tax_type_code: string | null;
-        calculation_method_code: string | null;
-        calculation_order: number;
-      }>(
-        `
-          SELECT
-            order_item_id,
-            tax_id,
-            tax_name,
-            tax_rate,
-            tax_base,
-            tax_amount,
-            is_included,
-            dian_code,
-            tax_type_code,
-            calculation_method_code,
-            calculation_order
-          FROM order_item_taxes
-          WHERE tenant_id = $1
-            AND order_item_id = ANY($2::uuid[])
-          ORDER BY order_item_id ASC, calculation_order ASC, created_at ASC, id ASC
-        `,
-        [tenantId, orderItemIds]
-      ),
-    ]);
-
-    const orderedQuantityByOrderItemId = new Map(
-      orderItemsResult.rows.map((row) => [row.id, this.toNumber(row.ordered_quantity)] as const)
-    );
-    const taxesByOrderItemId = orderTaxesResult.rows.reduce<
-      Map<
-        string,
-        Array<{
-          taxId: string;
-          taxName: string;
-          taxRate: number;
-          taxBase: number;
-          taxAmount: number;
-          isIncluded: boolean;
-          dianCode: string | null;
-          taxTypeCode: string | null;
-          calculationMethodCode: string | null;
-        }>
-      >
-    >((acc, row) => {
-      const current = acc.get(row.order_item_id) ?? [];
-      current.push({
-        taxId: row.tax_id,
-        taxName: row.tax_name,
-        taxRate: this.toNumber(row.tax_rate),
-        taxBase: this.toNumber(row.tax_base),
-        taxAmount: this.toNumber(row.tax_amount),
-        isIncluded: row.is_included,
-        dianCode: row.dian_code ?? null,
-        taxTypeCode: row.tax_type_code ?? null,
-        calculationMethodCode: row.calculation_method_code ?? null,
-      });
-      acc.set(row.order_item_id, current);
-      return acc;
-    }, new Map());
-
-    const saleItemsWithSnapshotTaxes = saleItemsResult.rows.filter(
-      (saleItem) =>
-        Boolean(saleItem.order_item_id) &&
-        (taxesByOrderItemId.get(saleItem.order_item_id as string)?.length ?? 0) > 0
-    );
-
-    if (saleItemsWithSnapshotTaxes.length > 0) {
-      const saleItemIdsWithSnapshotTaxes = saleItemsWithSnapshotTaxes.map((saleItem) => saleItem.id);
-      await client.query(
-        `
-          DELETE FROM sale_item_taxes
-          WHERE tenant_id = $1
-            AND sale_item_id = ANY($2::uuid[])
-        `,
-        [tenantId, saleItemIdsWithSnapshotTaxes]
-      );
-    }
-
-    for (const saleItem of saleItemsWithSnapshotTaxes) {
-      const orderItemId = saleItem.order_item_id as string;
-      const orderItemTaxes = taxesByOrderItemId.get(orderItemId) ?? [];
-      const orderedQuantity = orderedQuantityByOrderItemId.get(orderItemId) ?? 0;
-      const saleQuantity = this.toNumber(saleItem.quantity);
-      if (!Number.isFinite(orderedQuantity) || orderedQuantity <= 0) {
-        continue;
-      }
-
-      const ratio = saleQuantity / orderedQuantity;
-      let remainingBase = this.roundCurrency(this.toNumber(saleItem.tax_base ?? 0));
-      let remainingAmount = this.roundCurrency(this.toNumber(saleItem.tax_amount ?? 0));
-
-      for (let index = 0; index < orderItemTaxes.length; index += 1) {
-        const orderTax = orderItemTaxes[index];
-        const isLastTax = index === orderItemTaxes.length - 1;
-        const proratedBase = isLastTax
-          ? remainingBase
-          : this.roundCurrency(orderTax.taxBase * ratio);
-        const proratedAmount = isLastTax
-          ? remainingAmount
-          : this.roundCurrency(orderTax.taxAmount * ratio);
-
-        remainingBase = this.roundCurrency(remainingBase - proratedBase);
-        remainingAmount = this.roundCurrency(remainingAmount - proratedAmount);
-
-        await client.query(
-          `
-            INSERT INTO sale_item_taxes (
-              id,
-              tenant_id,
-              sale_item_id,
-              tax_id,
-              tax_name,
-              tax_rate,
-              tax_amount,
-              is_included,
-              created_at,
-              tax_base,
-              dian_code,
-              tax_type_code,
-              calculation_method_code
-            ) VALUES (
-              gen_random_uuid(),
-              $1,
-              $2,
-              $3,
-              $4,
-              $5,
-              $6,
-              $7,
-              NOW(),
-              $8,
-              $9,
-              $10,
-              $11
-            )
-          `,
-          [
-            tenantId,
-            saleItem.id,
-            orderTax.taxId,
-            orderTax.taxName,
-            orderTax.taxRate,
-            Math.max(proratedAmount, 0),
-            orderTax.isIncluded,
-            Math.max(proratedBase, 0),
-            orderTax.dianCode,
-            orderTax.taxTypeCode,
-            orderTax.calculationMethodCode,
-          ]
-        );
-      }
-    }
   }
 
   private calculateBackendSaleTotal(items: CreateSaleInput["items"]) {
@@ -2549,16 +2342,12 @@ export class SaleService {
             tax_rate,
             tax_amount,
             is_included,
-            created_at
-          FROM sale_item_taxes
-          WHERE sale_item_id IN (
-            SELECT id
-            FROM sale_items
-            WHERE sale_id = $1
-              AND tenant_id = $2
-          )
-            AND tenant_id = $2
-          ORDER BY created_at ASC, id ASC
+            created_at,
+            tax_base,
+            dian_code,
+            tax_type_code,
+            calculation_method_code
+          FROM public.fnc_list_sale_item_taxes($2::uuid, $1::uuid)
         `,
         [id, tenantId]
       ),

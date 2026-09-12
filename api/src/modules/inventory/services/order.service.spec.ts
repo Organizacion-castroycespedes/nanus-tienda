@@ -256,9 +256,29 @@ class FakeOrderClient {
       };
     }
 
-    if (sql.startsWith("DELETE FROM order_item_taxes")) {
+    if (sql.includes("prc_replace_order_item_taxes")) {
       this.deletedItemTaxes = true;
-      return { rows: [] as T[] };
+      const taxesJson = params[2];
+      if (typeof taxesJson === "string") {
+        const taxes = JSON.parse(taxesJson) as Array<Record<string, unknown>>;
+        for (const tax of taxes) {
+          this.insertedItemTaxes.push({
+            orderItemId: String(tax.order_item_id),
+            taxId: String(tax.tax_id),
+            taxName: String(tax.tax_name),
+            taxRate: Number(tax.tax_rate),
+            taxBase: Number(tax.tax_base),
+            taxAmount: Number(tax.tax_amount),
+            dianCode: (tax.dian_code as string | null) ?? null,
+            taxTypeCode: (tax.tax_type_code as string | null) ?? null,
+            calculationMethodCode:
+              (tax.calculation_method_code as string | null) ?? null,
+            calculationOrder: Number(tax.calculation_order ?? 0),
+            isIncluded: Boolean(tax.is_included),
+          });
+        }
+      }
+      return { rows: [{ ok: true }] as T[] };
     }
 
     if (sql.startsWith("DELETE FROM order_items")) {
@@ -289,23 +309,6 @@ class FakeOrderClient {
             ? (JSON.parse(params[19]) as Record<string, unknown>)
             : null,
         pricingCalculatedAt: params[20],
-      });
-      return { rows: [] as T[] };
-    }
-
-    if (sql.startsWith("INSERT INTO order_item_taxes")) {
-      this.insertedItemTaxes.push({
-        orderItemId: params[1],
-        taxId: params[2],
-        taxName: params[3],
-        taxRate: params[4],
-        taxBase: params[5],
-        taxAmount: params[6],
-        dianCode: params[7],
-        taxTypeCode: params[8],
-        calculationMethodCode: params[9],
-        calculationOrder: params[10],
-        isIncluded: params[11],
       });
       return { rows: [] as T[] };
     }

@@ -644,36 +644,15 @@ export class ProductRepository {
     },
     client?: PoolClient
   ): Promise<void> {
+    const payload = input.taxes.map((tax) => ({
+      tax_id: tax.taxId,
+      calculation_order: tax.calculationOrder,
+    }));
     await this.query(
-      `
-      DELETE FROM product_taxes
-      WHERE tenant_id = $1
-        AND product_id = $2
-      `,
-      [input.tenantId, input.productId],
+      `SELECT public.prc_replace_product_taxes($1::uuid, $2::uuid, $3::jsonb) AS ok`,
+      [input.tenantId, input.productId, JSON.stringify(payload)],
       client
     );
-
-    for (const tax of input.taxes) {
-      await this.query(
-        `
-        INSERT INTO product_taxes (
-          tenant_id,
-          product_id,
-          tax_id,
-          calculation_order,
-          is_active
-        ) VALUES ($1, $2, $3, $4, TRUE)
-        `,
-        [
-          input.tenantId,
-          input.productId,
-          tax.taxId,
-          tax.calculationOrder,
-        ],
-        client
-      );
-    }
   }
 
   async findProductTaxes(
@@ -710,27 +689,17 @@ export class ProductRepository {
     >(
       `
       SELECT
-        pt.id,
-        pt.tax_id,
-        pt.calculation_order,
-        pt.is_active,
-        t.name AS tax_name,
-        t.rate AS tax_rate,
-        t.is_included,
-        cm.code AS calculation_method_code,
-        tt.code AS tax_type_code,
-        tt.dian_code AS tax_type_dian_code
-      FROM product_taxes pt
-      LEFT JOIN taxes t
-        ON t.id = pt.tax_id
-       AND t.tenant_id = pt.tenant_id
-      LEFT JOIN tax_calculation_methods cm
-        ON cm.id = t.calculation_method_id
-      LEFT JOIN tax_types tt
-        ON tt.id = t.tax_type_id
-      WHERE pt.tenant_id = $1
-        AND pt.product_id = $2
-      ORDER BY pt.calculation_order ASC, pt.created_at ASC
+        id,
+        tax_id,
+        calculation_order,
+        is_active,
+        tax_name,
+        tax_rate,
+        is_included,
+        calculation_method_code,
+        tax_type_code,
+        tax_type_dian_code
+      FROM public.fnc_list_product_taxes($1::uuid, $2::uuid)
       `,
       [tenantId, productId],
       client
@@ -764,36 +733,18 @@ export class ProductRepository {
     client?: PoolClient
   ): Promise<void> {
     await this.query(
-      `
-      INSERT INTO product_tax_profiles (
-        tenant_id,
-        product_id,
-        tax_product_category_id,
-        alcohol_degree,
-        net_volume_ml,
-        dane_certified_retail_price,
-        dane_price_effective_from,
-        dane_price_effective_to
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8::date)
-      ON CONFLICT (tenant_id, product_id) DO UPDATE
-      SET
-        tax_product_category_id = EXCLUDED.tax_product_category_id,
-        alcohol_degree = EXCLUDED.alcohol_degree,
-        net_volume_ml = EXCLUDED.net_volume_ml,
-        dane_certified_retail_price = EXCLUDED.dane_certified_retail_price,
-        dane_price_effective_from = EXCLUDED.dane_price_effective_from,
-        dane_price_effective_to = EXCLUDED.dane_price_effective_to,
-        updated_at = now()
-      `,
+      `SELECT public.prc_upsert_product_tax_profile($1::uuid, $2::uuid, $3::jsonb) AS ok`,
       [
         input.tenantId,
         input.productId,
-        input.taxProductCategoryId,
-        input.alcoholDegree ?? null,
-        input.netVolumeMl ?? null,
-        input.daneCertifiedRetailPrice ?? null,
-        input.danePriceEffectiveFrom ?? null,
-        input.danePriceEffectiveTo ?? null,
+        JSON.stringify({
+          tax_product_category_id: input.taxProductCategoryId,
+          alcohol_degree: input.alcoholDegree ?? null,
+          net_volume_ml: input.netVolumeMl ?? null,
+          dane_certified_retail_price: input.daneCertifiedRetailPrice ?? null,
+          dane_price_effective_from: input.danePriceEffectiveFrom ?? null,
+          dane_price_effective_to: input.danePriceEffectiveTo ?? null,
+        }),
       ],
       client
     );
@@ -805,11 +756,7 @@ export class ProductRepository {
     client?: PoolClient
   ): Promise<void> {
     await this.query(
-      `
-      DELETE FROM product_tax_profiles
-      WHERE tenant_id = $1
-        AND product_id = $2
-      `,
+      `SELECT public.prc_delete_product_tax_profile($1::uuid, $2::uuid) AS ok`,
       [tenantId, productId],
       client
     );
@@ -843,20 +790,15 @@ export class ProductRepository {
     >(
       `
       SELECT
-        ptp.tax_product_category_id,
-        tpc.code AS tax_product_category_code,
-        tpc.is_alcoholic_beverage,
-        ptp.alcohol_degree,
-        ptp.net_volume_ml,
-        ptp.dane_certified_retail_price,
-        ptp.dane_price_effective_from,
-        ptp.dane_price_effective_to
-      FROM product_tax_profiles ptp
-      JOIN tax_product_categories tpc
-        ON tpc.id = ptp.tax_product_category_id
-      WHERE ptp.tenant_id = $1
-        AND ptp.product_id = $2
-      LIMIT 1
+        tax_product_category_id,
+        tax_product_category_code,
+        is_alcoholic_beverage,
+        alcohol_degree,
+        net_volume_ml,
+        dane_certified_retail_price,
+        dane_price_effective_from,
+        dane_price_effective_to
+      FROM public.fnc_get_product_tax_profile($1::uuid, $2::uuid)
       `,
       [tenantId, productId],
       client

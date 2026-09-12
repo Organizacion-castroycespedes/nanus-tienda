@@ -58,16 +58,11 @@ export class TaxService {
   }
 
   listCatalogs() {
-    return Promise.all([
-      this.taxRepository.listTaxTypes(),
-      this.taxRepository.listCalculationMethods(),
-      this.taxRepository.listBaseTypes(),
-      this.taxRepository.listProductCategories(),
-    ]).then(([types, calculationMethods, baseTypes, productCategories]) => ({
-      types,
-      calculationMethods,
-      baseTypes,
-      productCategories,
+    return this.taxRepository.listTaxCatalogs().then((catalogs) => ({
+      types: catalogs.taxTypes,
+      calculationMethods: catalogs.calculationMethods,
+      baseTypes: catalogs.baseTypes,
+      productCategories: catalogs.productCategories,
     }));
   }
 

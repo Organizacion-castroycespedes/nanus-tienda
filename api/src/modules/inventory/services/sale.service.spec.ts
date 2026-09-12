@@ -186,12 +186,19 @@ class FakeCreateSaleClient {
       return { rows: [] as T[] };
     }
 
-    if (sql.includes("FROM sale_item_taxes")) {
+    if (
+      sql.includes("fnc_list_sale_item_taxes") ||
+      sql.includes("FROM sale_item_taxes")
+    ) {
       return {
         rows: this.includeTaxSnapshot
           ? (this.saleItemTaxRows as T[])
           : ([] as T[]),
       };
+    }
+
+    if (sql.includes("prc_sync_sale_item_taxes_from_order")) {
+      return { rows: [{ ok: true }] as T[] };
     }
 
     if (sql.includes("SELECT id, ordered_quantity") && sql.includes("FROM order_items")) {
@@ -266,14 +273,6 @@ class FakeCreateSaleClient {
           },
         ] as T[],
       };
-    }
-
-    if (sql.startsWith("DELETE FROM sale_item_taxes")) {
-      return { rows: [] as T[] };
-    }
-
-    if (sql.startsWith("INSERT INTO sale_item_taxes")) {
-      return { rows: [] as T[] };
     }
 
     if (sql.startsWith("UPDATE public.deliveries")) {

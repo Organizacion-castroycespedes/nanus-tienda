@@ -296,109 +296,66 @@ export class TaxRepository {
   }
 
   async listTaxTypes(): Promise<TaxCatalogItem[]> {
-    const result = await this.db.query<
-      QueryResultRow & {
-        id: string;
-        code: string;
-        name: string;
-        is_active: boolean;
-        dian_code: string | null;
-        tax_category_id: string;
-      }
-    >(
-      `
-        SELECT id, code, name, is_active, dian_code, tax_category_id
-        FROM tax_types
-        WHERE is_active = TRUE
-        ORDER BY code ASC
-      `
-    );
-
-    return (result.rows ?? []).map((row) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      isActive: row.is_active,
-      dianCode: row.dian_code,
-      taxCategoryId: row.tax_category_id,
-    }));
+    const catalogs = await this.listTaxCatalogs();
+    return catalogs.taxTypes;
   }
 
   async listCalculationMethods(): Promise<TaxCatalogItem[]> {
-    const result = await this.db.query<
-      QueryResultRow & {
-        id: string;
-        code: string;
-        name: string;
-        is_active: boolean;
-      }
-    >(
-      `
-        SELECT id, code, name, is_active
-        FROM tax_calculation_methods
-        WHERE is_active = TRUE
-        ORDER BY code ASC
-      `
-    );
-
-    return (result.rows ?? []).map((row) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      isActive: row.is_active,
-    }));
+    const catalogs = await this.listTaxCatalogs();
+    return catalogs.calculationMethods;
   }
 
   async listBaseTypes(): Promise<TaxCatalogItem[]> {
-    const result = await this.db.query<
-      QueryResultRow & {
-        id: string;
-        code: string;
-        name: string;
-        is_active: boolean;
-      }
-    >(
-      `
-        SELECT id, code, name, is_active
-        FROM tax_base_types
-        WHERE is_active = TRUE
-        ORDER BY code ASC
-      `
-    );
-
-    return (result.rows ?? []).map((row) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      isActive: row.is_active,
-    }));
+    const catalogs = await this.listTaxCatalogs();
+    return catalogs.baseTypes;
   }
 
   async listProductCategories(): Promise<TaxCatalogItem[]> {
-    const result = await this.db.query<
-      QueryResultRow & {
-        id: string;
-        code: string;
-        name: string;
-        is_active: boolean;
-        is_alcoholic_beverage: boolean;
-      }
-    >(
-      `
-        SELECT id, code, name, is_active, is_alcoholic_beverage
-        FROM tax_product_categories
-        WHERE is_active = TRUE
-        ORDER BY code ASC
-      `
-    );
+    const catalogs = await this.listTaxCatalogs();
+    return catalogs.productCategories;
+  }
 
-    return (result.rows ?? []).map((row) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      isActive: row.is_active,
-      isAlcoholicBeverage: row.is_alcoholic_beverage,
-    }));
+  async listTaxCatalogs(): Promise<{
+    taxTypes: TaxCatalogItem[];
+    calculationMethods: TaxCatalogItem[];
+    baseTypes: TaxCatalogItem[];
+    productCategories: TaxCatalogItem[];
+  }> {
+    const result = await this.db.query<{ catalogs: Record<string, unknown> }>(
+      `SELECT public.fnc_list_tax_catalogs() AS catalogs`
+    );
+    const catalogs = (result.rows[0]?.catalogs ?? {}) as {
+      taxTypes?: Array<Record<string, unknown>>;
+      calculationMethods?: Array<Record<string, unknown>>;
+      baseTypes?: Array<Record<string, unknown>>;
+      productCategories?: Array<Record<string, unknown>>;
+    };
+
+    const mapItem = (row: Record<string, unknown>): TaxCatalogItem => ({
+      id: String(row.id),
+      code: String(row.code),
+      name: String(row.name),
+      isActive: Boolean(row.isActive),
+      dianCode:
+        row.dianCode === undefined || row.dianCode === null
+          ? undefined
+          : String(row.dianCode),
+      taxCategoryId:
+        row.taxCategoryId === undefined || row.taxCategoryId === null
+          ? undefined
+          : String(row.taxCategoryId),
+      isAlcoholicBeverage:
+        row.isAlcoholicBeverage === undefined
+          ? undefined
+          : Boolean(row.isAlcoholicBeverage),
+    });
+
+    return {
+      taxTypes: (catalogs.taxTypes ?? []).map(mapItem),
+      calculationMethods: (catalogs.calculationMethods ?? []).map(mapItem),
+      baseTypes: (catalogs.baseTypes ?? []).map(mapItem),
+      productCategories: (catalogs.productCategories ?? []).map(mapItem),
+    };
   }
 
   async upsertTaxRate(
@@ -407,43 +364,31 @@ export class TaxRepository {
   ): Promise<void> {
     await this.query(
       `
-        INSERT INTO tax_rates (
-          tenant_id,
-          tax_id,
-          tax_product_category_id,
-          calculation_method_id,
-          tax_base_type_id,
-          percentage_rate,
-          fixed_amount,
-          base_quantity,
-          base_unit_code,
-          effective_from,
-          effective_to,
-          is_active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11::date, TRUE)
-        ON CONFLICT ON CONSTRAINT uq_tax_rates_scope DO UPDATE
-        SET
-          calculation_method_id = EXCLUDED.calculation_method_id,
-          tax_base_type_id = EXCLUDED.tax_base_type_id,
-          percentage_rate = EXCLUDED.percentage_rate,
-          fixed_amount = EXCLUDED.fixed_amount,
-          base_quantity = EXCLUDED.base_quantity,
-          base_unit_code = EXCLUDED.base_unit_code,
-          effective_to = EXCLUDED.effective_to,
-          is_active = TRUE,
-          updated_at = now()
+        SELECT public.prc_upsert_tax_rate(
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          $4::uuid,
+          $5::date,
+          $6::uuid,
+          $7::numeric,
+          $8::numeric,
+          $9::numeric,
+          $10::varchar,
+          $11::date
+        ) AS ok
       `,
       [
         data.tenantId,
         data.taxId,
-        data.taxProductCategoryId ?? null,
         data.calculationMethodId,
         data.taxBaseTypeId,
+        data.effectiveFrom,
+        data.taxProductCategoryId ?? null,
         data.percentageRate ?? null,
         data.fixedAmount ?? null,
         data.baseQuantity ?? null,
         data.baseUnitCode ?? null,
-        data.effectiveFrom,
         data.effectiveTo ?? null,
       ],
       client
