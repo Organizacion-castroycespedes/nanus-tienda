@@ -94,10 +94,9 @@ export const rebalanceCashPayment = <TPayment extends PaymentDraftLike>(
   const cashIndex = payments.findIndex(
     (payment) => payment.paymentMethodId === cashMethod.id
   );
-  const cashPayment =
-    cashIndex >= 0 ? payments[cashIndex] : createPayment(cashMethod.id, "0");
+  
   const nonCashPayments = payments.filter(
-    (payment, index) => index !== cashIndex && payment.paymentMethodId !== cashMethod.id
+    (payment) => payment.paymentMethodId !== cashMethod.id
   );
   const nonCashTotal = round(
     nonCashPayments.reduce(
@@ -106,17 +105,22 @@ export const rebalanceCashPayment = <TPayment extends PaymentDraftLike>(
     )
   );
   const remaining = round(Math.max(total - nonCashTotal, 0));
-  const updatedCashPayment = {
-    ...cashPayment,
-    paymentMethodId: cashMethod.id,
-    amount: formatPaymentAmount(remaining),
-  };
+
   const result = [...nonCashPayments];
 
-  if (cashIndex < 0) {
-    result.unshift(updatedCashPayment);
-  } else {
-    result.splice(Math.min(cashIndex, result.length), 0, updatedCashPayment);
+  if (remaining > 0 || result.length === 0) {
+    if (cashIndex >= 0) {
+      const cashPayment = payments[cashIndex];
+      const updatedCashPayment = {
+        ...cashPayment,
+        paymentMethodId: cashMethod.id,
+        amount: formatPaymentAmount(remaining),
+      };
+      result.splice(Math.min(cashIndex, result.length), 0, updatedCashPayment);
+    } else {
+      const cashPayment = createPayment(cashMethod.id, formatPaymentAmount(remaining));
+      result.unshift(cashPayment);
+    }
   }
 
   return {
