@@ -30,6 +30,7 @@ import type {
   ListElectronicInvoicingCustomersFilters,
   PersonType,
   UpdateElectronicInvoicingCustomerInput,
+  ElectronicInvoicingCustomer,
 } from "./electronic-invoicing-customer.types";
 
 type PgErrorLike = {
@@ -113,6 +114,49 @@ export class ElectronicInvoicingCustomersService {
   private normalizeText(value?: string | null): string | null {
     const normalized = value?.trim() ?? "";
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private async resolveCustomerLocation(
+    dto: CreateElectronicInvoicingCustomerDto | UpdateElectronicInvoicingCustomerDto,
+    current?: ElectronicInvoicingCustomer
+  ) {
+    const countryId = hasOwn(dto, "countryId") ? dto.countryId : undefined;
+    const departamentoId = hasOwn(dto, "departamentoId")
+      ? dto.departamentoId
+      : current?.departamentoId;
+    const municipioId = hasOwn(dto, "municipioId")
+      ? dto.municipioId
+      : current?.municipioId;
+    const country = countryId ?? (current ? undefined : null);
+    if (!current && !country) {
+      throw new BadRequestException("countryId, departamentoId and municipioId are required");
+    }
+    if (!this.locationsService) {
+      throw new BadRequestException("location catalog is not configured");
+    }
+    return this.locationsService.resolveCanonicalLocation({
+      countryId: country,
+      departmentId: departamentoId,
+      municipalityId: municipioId,
+    });
+  }
+
+  private validateRequiredFiscalProfile(input: {
+    isFinalConsumer: boolean;
+    personType?: PersonType | null;
+    taxRegime?: string | null;
+    taxResponsibilities?: string[] | null;
+  }) {
+    if (input.isFinalConsumer) return;
+    const missing: string[] = [];
+    if (!input.personType || input.personType === "UNKNOWN") missing.push("personType");
+    if (!input.taxRegime?.trim()) missing.push("taxRegime");
+    if (!input.taxResponsibilities?.length) missing.push("taxResponsibilities");
+    if (missing.length) {
+      throw new BadRequestException(
+        `fiscal profile is incomplete: ${missing.join(", ")}`
+      );
+    }
   }
 
   private normalizeFiscalEmail(value?: string | null): string | null {
@@ -521,13 +565,18 @@ export class ElectronicInvoicingCustomersService {
     if (isFinalConsumer && (dto.isActive ?? true)) {
       await this.ensureNoOtherFinalConsumer(tenantId);
     }
-    if (this.locationsService) {
-      await this.locationsService.validateFiscalHierarchy(
-        dto.countryCode,
-        dto.departmentCode,
-        dto.municipalityCode
-      );
-    }
+    const location = isFinalConsumer
+      ? null
+      : await this.resolveCustomerLocation(dto);
+    const personType = this.normalizePersonType(dto.personType) ?? null;
+    const taxRegime = this.normalizeText(dto.taxRegime);
+    const taxResponsibilities = this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
+    this.validateRequiredFiscalProfile({
+      isFinalConsumer,
+      personType,
+      taxRegime,
+      taxResponsibilities,
+    });
 
     const input: CreateElectronicInvoicingCustomerInput = {
       id: crypto.randomUUID(),
@@ -545,14 +594,15 @@ export class ElectronicInvoicingCustomersService {
       invoiceEmail,
       phone: this.normalizeText(dto.phone),
       address: this.normalizeText(dto.address),
-      countryCode: this.normalizeText(dto.countryCode),
-      departmentCode: this.normalizeText(dto.departmentCode),
-      municipalityCode: this.normalizeText(dto.municipalityCode),
-      personType: this.normalizePersonType(dto.personType) ?? null,
-      taxRegime: this.normalizeText(dto.taxRegime),
-      taxResponsibilities: this.normalizeTaxResponsibilities(
-        dto.taxResponsibilities
-      ) ?? [],
+      countryId: location?.country_id ?? null,
+      departamentoId: location?.department_id ?? null,
+      municipioId: location?.municipality_id ?? null,
+      countryCode: location?.country_code ?? null,
+      departmentCode: location?.department_code ?? null,
+      municipalityCode: location?.municipality_code ?? null,
+      personType,
+      taxRegime,
+      taxResponsibilities,
       isFinalConsumer,
       isDianValidated: dto.isDianValidated ?? fiscalStatus === "VALIDATED",
       dianLastLookupAt: this.normalizeTimestamp(dto.dianLastLookupAt) ?? null,
@@ -680,12 +730,15 @@ export class ElectronicInvoicingCustomersService {
     if (hasOwn(dto, "municipalityCode")) {
       update.municipalityCode = this.normalizeText(dto.municipalityCode);
     }
-    if (this.locationsService) {
-      await this.locationsService.validateFiscalHierarchy(
-        hasOwn(dto, "countryCode") ? update.countryCode : current.countryCode,
-        hasOwn(dto, "departmentCode") ? update.departmentCode : current.departmentCode,
-        hasOwn(dto, "municipalityCode") ? update.municipalityCode : current.municipalityCode
-      );
+    const nextFinalConsumer = dto.isFinalConsumer ?? current.isFinalConsumer;
+    if (!nextFinalConsumer) {
+      const location = await this.resolveCustomerLocation(dto, current);
+      update.countryId = location.country_id;
+      update.departamentoId = location.department_id;
+      update.municipioId = location.municipality_id;
+      update.countryCode = location.country_code;
+      update.departmentCode = location.department_code;
+      update.municipalityCode = location.municipality_code;
     }
     if (hasOwn(dto, "personType")) {
       update.personType = this.normalizePersonType(dto.personType) ?? null;
@@ -737,6 +790,14 @@ export class ElectronicInvoicingCustomersService {
         update.fiscalStatus = "NOT_REQUIRED";
       }
     }
+    this.validateRequiredFiscalProfile({
+      isFinalConsumer: nextFinalConsumer,
+      personType: hasOwn(dto, "personType") ? update.personType : current.personType,
+      taxRegime: hasOwn(dto, "taxRegime") ? update.taxRegime : current.taxRegime,
+      taxResponsibilities: hasOwn(dto, "taxResponsibilities")
+        ? update.taxResponsibilities
+        : current.taxResponsibilities,
+    });
 
     try {
       const updated = await this.customersRepository.update(id, tenantId, update);

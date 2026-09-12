@@ -20,6 +20,7 @@ const buildCustomerRow = (overrides: Record<string, unknown> = {}) => ({
   invoice_email: null,
   phone: null,
   address: null,
+  country_id: null,
   country_code: null,
   department_code: null,
   municipality_code: null,
@@ -61,7 +62,7 @@ describe("ElectronicInvoicingCustomersRepository", () => {
       taxResponsibilities: ["R-99-PN"],
     });
 
-    assert.equal(calls[0][20], "[\"R-99-PN\"]");
+    assert.equal(calls[0][22], "[\"R-99-PN\"]");
     assert.deepEqual(customer.taxResponsibilities, ["R-99-PN"]);
   });
 

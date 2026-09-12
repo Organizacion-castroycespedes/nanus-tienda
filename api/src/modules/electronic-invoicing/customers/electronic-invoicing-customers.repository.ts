@@ -24,6 +24,9 @@ type CustomerRow = QueryResultRow & {
   invoice_email: string | null;
   phone: string | null;
   address: string | null;
+  country_id: string | null;
+  departamento_id: string | null;
+  municipio_id: string | null;
   country_code: string | null;
   department_code: string | null;
   municipality_code: string | null;
@@ -63,6 +66,9 @@ const customerSelect = `
   invoice_email,
   phone,
   address,
+  (SELECT d.pais_id FROM departamentos d WHERE d.id = customers.departamento_id) AS country_id,
+  departamento_id,
+  municipio_id,
   country_code,
   department_code,
   municipality_code,
@@ -105,6 +111,9 @@ export class ElectronicInvoicingCustomersRepository {
       invoiceEmail: row.invoice_email,
       phone: row.phone,
       address: row.address,
+      countryId: row.country_id,
+      departamentoId: row.departamento_id,
+      municipioId: row.municipio_id,
       countryCode: row.country_code,
       departmentCode: row.department_code,
       municipalityCode: row.municipality_code,
@@ -322,6 +331,8 @@ export class ElectronicInvoicingCustomersRepository {
           invoice_email,
           phone,
           address,
+          departamento_id,
+          municipio_id,
           country_code,
           department_code,
           municipality_code,
@@ -342,7 +353,7 @@ export class ElectronicInvoicingCustomersRepository {
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-          $21, $22, $22, $23, $24, $25, $26, $27, $28, $29,
+          $21, $22, $23, $24, $24, $25, $26, $27, $28, $29, $30, $31,
           NOW(), NOW()
         )
         RETURNING ${customerSelect}
@@ -363,6 +374,8 @@ export class ElectronicInvoicingCustomersRepository {
         customer.invoiceEmail ?? null,
         customer.phone ?? null,
         customer.address ?? null,
+        customer.departamentoId ?? null,
+        customer.municipioId ?? null,
         customer.countryCode ?? null,
         customer.departmentCode ?? null,
         customer.municipalityCode ?? null,
@@ -437,6 +450,12 @@ export class ElectronicInvoicingCustomersRepository {
     }
     if (hasOwn(data, "countryCode")) {
       addSet("country_code", data.countryCode ?? null);
+    }
+    if (hasOwn(data, "departamentoId")) {
+      addSet("departamento_id", data.departamentoId ?? null);
+    }
+    if (hasOwn(data, "municipioId")) {
+      addSet("municipio_id", data.municipioId ?? null);
     }
     if (hasOwn(data, "departmentCode")) {
       addSet("department_code", data.departmentCode ?? null);
