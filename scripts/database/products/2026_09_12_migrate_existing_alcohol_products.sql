@@ -17,7 +17,7 @@ BEGIN
   SELECT id INTO v_iva19 FROM taxes WHERE tenant_id = v_tenant AND UPPER(BTRIM(name)) = 'IVA 19%' LIMIT 1;
   SELECT id INTO v_iva5 FROM taxes WHERE tenant_id = v_tenant AND UPPER(BTRIM(name)) = 'IVA 5%' LIMIT 1;
   SELECT id INTO v_icl FROM taxes WHERE tenant_id = v_tenant AND UPPER(BTRIM(name)) = UPPER('Impuesto al consumo de licores') LIMIT 1;
-  SELECT id INTO v_adv
+  SELECT t.id INTO v_adv
   FROM taxes t
   JOIN tax_types tt ON tt.id = t.tax_type_id
   WHERE t.tenant_id = v_tenant AND tt.code = 'AD_VALOREM'
