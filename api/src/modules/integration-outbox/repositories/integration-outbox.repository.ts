@@ -299,6 +299,37 @@ export class IntegrationOutboxRepository {
     return result.rows.length === 1;
   }
 
+  async recordFailedPreProviderRecovery(
+    eventId: string,
+    replacementEventId: string,
+    originalError: string | null,
+    recoveredAt: Date,
+    client?: PoolClient,
+  ): Promise<boolean> {
+    const result = await this.query<QueryResultRow>(
+      `UPDATE integration_outbox_events
+       SET last_error = $2, updated_at = $3
+       WHERE event_id = $1
+         AND event_type = 'SALE_COMPLETED_FOR_ELECTRONIC_BILLING'
+         AND status = 'FAILED'
+         AND attempt_count = 1
+         AND lease_until IS NULL
+       RETURNING event_id`,
+      [
+        eventId,
+        JSON.stringify({
+          code: "OUTBOX_EVENT_RECOVERED_PRE_PROVIDER",
+          replacementEventId,
+          originalError,
+        }),
+        recoveredAt.toISOString(),
+      ],
+      client,
+    );
+
+    return result.rows.length === 1;
+  }
+
   async claimDueEvents(
     input: ClaimDueIntegrationOutboxEventsInput,
     client?: PoolClient,

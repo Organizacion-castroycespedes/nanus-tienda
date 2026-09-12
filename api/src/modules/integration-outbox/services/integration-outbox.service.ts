@@ -66,6 +66,22 @@ export class IntegrationOutboxService {
     );
   }
 
+  async recordFailedPreProviderRecovery(
+    eventId: string,
+    replacementEventId: string,
+    originalError: string | null,
+    recoveredAt: Date,
+    client?: PoolClient,
+  ) {
+    return this.repository.recordFailedPreProviderRecovery(
+      eventId,
+      replacementEventId,
+      originalError,
+      recoveredAt,
+      client,
+    );
+  }
+
   async claimDueEvents(limit: number, leaseMs: number, client?: PoolClient) {
     return this.repository.claimDueEvents(
       {

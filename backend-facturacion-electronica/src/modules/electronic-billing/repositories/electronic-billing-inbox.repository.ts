@@ -85,6 +85,7 @@ export class ElectronicBillingInboxRepository {
       WHERE tenant_id = $1
         AND source_type = $2
         AND source_id = $3
+        AND status IN ('RECEIVED', 'PROCESSED')
       ORDER BY created_at DESC, id DESC
       LIMIT 1`,
       [tenantId, sourceType, sourceId],

@@ -916,7 +916,8 @@ export class SaleService {
       customerId: string;
       orderId?: string | null;
       eventId?: string;
-    }
+    },
+    enqueueEvent = true,
   ) {
     const tenantId = saleContext.tenantId;
     if (!tenantId) {
@@ -1015,7 +1016,11 @@ export class SaleService {
       },
     };
 
-    await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
+    if (enqueueEvent) {
+      await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
+    }
+
+    return event;
   }
 
   getElectronicBillingMode() {
@@ -1026,6 +1031,7 @@ export class SaleService {
     saleId: string,
     saleContext: SaleContext,
     client: PoolClient,
+    recoveryEventId?: string,
   ) {
     const saleResult = await client.query<SaleDetailRow>(
       `SELECT
@@ -1070,6 +1076,46 @@ export class SaleService {
       (event) => event.event_id !== deterministicEventId && event.status === "PENDING",
     );
 
+    const failedRecoveryEvent = recoveryEventId
+      ? existingEvents.find((event) => event.event_id === recoveryEventId)
+      : null;
+
+    if (recoveryEventId) {
+      if (
+        !failedRecoveryEvent ||
+        failedRecoveryEvent.event_type !== "SALE_COMPLETED_FOR_ELECTRONIC_BILLING" ||
+        failedRecoveryEvent.status !== "FAILED" ||
+        failedRecoveryEvent.attempt_count !== 1
+      ) {
+        throw new BadRequestException("failed pre-provider event is not recoverable");
+      }
+
+      const inboxResult = await client.query<{
+        id: string;
+        status: string;
+        electronic_document_id: string | null;
+        last_error_code: string | null;
+        last_error_message: string | null;
+      }>(
+        `SELECT id, status, electronic_document_id, last_error_code, last_error_message
+         FROM electronic_billing_inbox_events
+         WHERE tenant_id = $1 AND event_id = $2 AND source_type = 'SALE' AND source_id = $3
+         FOR UPDATE`,
+        [saleContext.tenantId, recoveryEventId, saleId],
+      );
+      const inbox = inboxResult.rows[0];
+      const failureText = `${failedRecoveryEvent.last_error ?? ""} ${inbox?.last_error_message ?? ""}`;
+      if (
+        !inbox ||
+        inbox.status !== "FAILED" ||
+        inbox.electronic_document_id ||
+        inbox.last_error_code !== "ELECTRONIC_DOCUMENT_VALIDATION_ERROR" ||
+        !failureText.includes("Sale total does not match snapshot totals")
+      ) {
+        throw new BadRequestException("failed event provenance is not pre-provider local-only");
+      }
+    }
+
     if (documentsResult.rows.length > 0) {
       return {
         saleId,
@@ -1095,13 +1141,14 @@ export class SaleService {
       deterministicEvent?.status === "PENDING" && deterministicEvent.attempt_count === 0
         ? deterministicEvent
         : null;
+    const eventToReplace = failedRecoveryEvent ?? stalePendingEvent;
 
     const eligibility = evaluateElectronicBillingEligibility({
       saleStatus: saleRow.status,
       paymentStatus: saleRow.payment_status,
       customerId: saleRow.customer_id,
       documentStatuses: [],
-      requestExists: Boolean(deterministicEvent) && !stalePendingEvent,
+      requestExists: Boolean(deterministicEvent) && !stalePendingEvent && !failedRecoveryEvent,
     });
     if (eligibility !== "ELIGIBLE") {
       return {
@@ -1148,8 +1195,8 @@ export class SaleService {
       payments,
       client,
     );
-    const replacementEventId = stalePendingEvent ? crypto.randomUUID() : undefined;
-    if (stalePendingEvent) {
+    const replacementEventId = eventToReplace ? crypto.randomUUID() : undefined;
+    if (eventToReplace) {
       const currentCustomer = await this.buildElectronicBillingCustomerSnapshot(
         saleContext.tenantId!,
         saleRow.customer_id,
@@ -1165,17 +1212,19 @@ export class SaleService {
         );
       }
 
-      const superseded = await this.integrationOutboxService.supersedePendingEvent(
-        stalePendingEvent.event_id,
-        replacementEventId!,
-        new Date(),
-        client,
-      );
-      if (!superseded) {
-        throw new BadRequestException("stale outbox event changed before recovery");
+      if (stalePendingEvent) {
+        const superseded = await this.integrationOutboxService.supersedePendingEvent(
+          stalePendingEvent.event_id,
+          replacementEventId!,
+          new Date(),
+          client,
+        );
+        if (!superseded) {
+          throw new BadRequestException("stale outbox event changed before recovery");
+        }
       }
     }
-    await this.enqueueSaleCompletedForElectronicBilling(
+    const event = await this.enqueueSaleCompletedForElectronicBilling(
       saleContext,
       saleRow,
       null,
@@ -1187,7 +1236,38 @@ export class SaleService {
         orderId: saleRow.order_id,
         eventId: replacementEventId,
       },
+      Boolean(failedRecoveryEvent) ? false : true,
     );
+
+    if (failedRecoveryEvent) {
+      if (!event) {
+        throw new BadRequestException("electronic billing outbox is unavailable");
+      }
+      const lineSubtotal = event.lines.reduce((sum, line) => sum + this.toNumber(line.subtotalAmount), 0);
+      const lineTax = event.lines.reduce((sum, line) => sum + this.toNumber(line.taxAmount), 0);
+      const subtotal = this.toNumber(event.totals.subtotalAmount);
+      const tax = this.toNumber(event.totals.taxAmount);
+      const total = this.toNumber(event.totals.totalAmount);
+      if (
+        Math.abs(lineSubtotal - subtotal) > 0.0001 ||
+        Math.abs(lineTax - tax) > 0.0001 ||
+        Math.abs(subtotal + tax - total) > 0.0001
+      ) {
+        throw new BadRequestException("current sale snapshot totals are inconsistent");
+      }
+
+      const recorded = await this.integrationOutboxService.recordFailedPreProviderRecovery(
+        failedRecoveryEvent.event_id,
+        replacementEventId!,
+        failedRecoveryEvent.last_error,
+        new Date(),
+        client,
+      );
+      if (!recorded) {
+        throw new BadRequestException("failed event changed before recovery");
+      }
+      await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
+    }
     return {
       saleId,
       result: "REQUESTED" as const,
@@ -1216,6 +1296,39 @@ export class SaleService {
         entity: "sales",
         entityId: saleId,
         action: "ELECTRONIC_BILLING_REQUESTED_MANUALLY",
+      });
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async recoverFailedPreProviderElectronicBillingIntent(
+    saleId: string,
+    eventId: string,
+    actor: BranchScopedActor,
+  ) {
+    const saleContext = await this.normalizeSaleContext(actor);
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const result = await this.requestElectronicBillingForSaleInTransaction(
+        saleId,
+        saleContext,
+        client,
+        eventId,
+      );
+      await client.query("COMMIT");
+      this.auditService.logEvent({
+        tenantId: saleContext.tenantId,
+        userId: saleContext.userId,
+        module: "sales",
+        entity: "sales",
+        entityId: saleId,
+        action: "ELECTRONIC_BILLING_PRE_PROVIDER_RECOVERY_REQUESTED",
       });
       return result;
     } catch (error) {
