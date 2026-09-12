@@ -171,8 +171,6 @@ export class SalesReportsService {
     actor: ReportActorContext,
     saleId: string
   ): Promise<PosSaleTicketTaxBreakdown[]> {
-    // Load ALL sale_item_taxes rows (no DISTINCT ON). Group by tax identity:
-    // tax_type_code when present, else tax_name + dian_code. Columns from V078.
     const result = await this.databaseService.query<{
       label: string | null;
       dianCode: string | null;
@@ -197,7 +195,7 @@ export class SalesReportsService {
          AND sale.tenant_id = $2
          AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR sale.branch_id = $4::UUID)
        GROUP BY
-         COALESCE(NULLIF(BTRIM(taxes.tax_type_code), ''), ''),
+         COALESCE(taxes.tax_type_code, ''),
          COALESCE(NULLIF(BTRIM(taxes.tax_name), ''), 'Impuesto'),
          COALESCE(taxes.dian_code, '')
        ORDER BY

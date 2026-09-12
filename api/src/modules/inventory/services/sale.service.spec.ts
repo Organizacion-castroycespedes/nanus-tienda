@@ -131,10 +131,31 @@ class FakePricingService {
   }
 }
 
+const defaultSaleItemTaxRows = [
+  {
+    id: "10000000-0000-0000-0000-000000000023",
+    tenant_id: ids.tenant,
+    sale_item_id: saleItemRow.id,
+    tax_id: ids.tax,
+    tax_name: "IVA",
+    tax_rate: 0.19,
+    tax_base: 3000,
+    tax_amount: 570,
+    is_included: true,
+    dian_code: "01",
+    tax_type_code: "VAT",
+    calculation_method_code: "PERCENTAGE",
+    created_at: new Date("2026-06-02T00:00:00.000Z"),
+  },
+];
+
 class FakeCreateSaleClient {
   readonly queries: RecordedQuery[] = [];
 
-  constructor(private readonly includeTaxSnapshot = false) {}
+  constructor(
+    private readonly includeTaxSnapshot = false,
+    private readonly saleItemTaxRows: Array<Record<string, unknown>> = defaultSaleItemTaxRows
+  ) {}
   released = false;
 
   async query<T>(text: string, params: unknown[] = []) {
@@ -168,23 +189,7 @@ class FakeCreateSaleClient {
     if (sql.includes("FROM sale_item_taxes")) {
       return {
         rows: this.includeTaxSnapshot
-          ? ([
-              {
-                id: "10000000-0000-0000-0000-000000000023",
-                tenant_id: ids.tenant,
-                sale_item_id: saleItemRow.id,
-                tax_id: ids.tax,
-                tax_name: "IVA",
-                tax_rate: 0,
-                tax_base: 3000,
-                tax_amount: 0,
-                is_included: true,
-                dian_code: "01",
-                tax_type_code: "VAT",
-                calculation_method_code: "PERCENTAGE",
-                created_at: new Date("2026-06-02T00:00:00.000Z"),
-              },
-            ] as T[])
+          ? (this.saleItemTaxRows as T[])
           : ([] as T[]),
       };
     }
@@ -559,8 +564,9 @@ const buildCreateSaleService = (
   previews: LinePricePreview[],
   billing?: SaleBillingHarness,
   includeTaxSnapshot = false,
+  saleItemTaxRows: Array<Record<string, unknown>> = defaultSaleItemTaxRows,
 ) => {
-  const client = new FakeCreateSaleClient(includeTaxSnapshot);
+  const client = new FakeCreateSaleClient(includeTaxSnapshot, saleItemTaxRows);
   const repository = new FakeCreateSaleRepository();
   const pricingService = new FakePricingService([...previews]);
   const createdPayments: unknown[] = [];
@@ -806,7 +812,7 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
       sourceLineId: string;
       description: string;
       sku?: string | null;
-      taxes: Array<{ rate: string; amount: string }>;
+      taxes: Array<{ rate: string; amount: string; code?: string | null }>;
     }>;
     taxes: Array<{ sourceLineId?: string | null }>;
     payments: Array<{ methodCode: string; amount?: string | null }>;
@@ -830,8 +836,9 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
   assert.equal(event.lines[0].description, "Producto factura");
   assert.equal(event.lines[0].sku, "SKU-1");
   assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
-  assert.equal(event.lines[0].taxes[0].rate, "0.00");
-  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.lines[0].taxes[0].rate, "0.19");
+  assert.equal(event.lines[0].taxes[0].amount, "570.00");
+  assert.equal(event.lines[0].taxes[0].code, "01");
   assert.equal(event.taxes.length, 1);
   assert.equal(event.payments[0].methodCode, "CASH");
   assert.equal(event.payments[0].amount, "360.00");
@@ -970,7 +977,7 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
     eventId: string;
     sale: { saleId: string };
     customer: { identificationNumber?: string | null };
-    lines: Array<{ taxes: Array<{ rate: string; amount: string }> }>;
+    lines: Array<{ taxes: Array<{ rate: string; amount: string; code?: string | null }> }>;
     taxes: Array<{ sourceLineId?: string | null }>;
     totals: { totalAmount: string };
     currencyCode: string;
@@ -981,8 +988,9 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
   );
   assert.equal(event.sale.saleId, ids.sale);
   assert.equal(event.customer.identificationNumber, "900123456");
-  assert.equal(event.lines[0].taxes[0].rate, "0.00");
-  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.lines[0].taxes[0].rate, "0.19");
+  assert.equal(event.lines[0].taxes[0].amount, "570.00");
+  assert.equal(event.lines[0].taxes[0].code, "01");
   assert.equal(event.taxes.length, 1);
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");
