@@ -472,6 +472,81 @@ test("OrderService.createOrder persists snapshot without promotion", async () =>
   assert.ok(item.pricingCalculatedAt instanceof Date);
 });
 
+test("OrderService.createOrder persists multi-tax whisky into order_item_taxes", async () => {
+  const iclTaxId = "10000000-0000-0000-0000-000000000031";
+  const advTaxId = "10000000-0000-0000-0000-000000000032";
+  const ivaTaxId = "10000000-0000-0000-0000-000000000033";
+  const { service, client } = buildService([
+    makePreview({
+      baseUnitPrice: 590000,
+      finalUnitPrice: 590000,
+      discountAmount: 0,
+      discountPercent: 0,
+      appliedPromotionId: null,
+      appliedPromotionName: null,
+      taxId: ivaTaxId,
+      taxRate: 0.05,
+      taxBase: 452952.38,
+      taxAmount: 137047.62,
+      taxes: [
+        {
+          taxId: iclTaxId,
+          taxName: "ICL",
+          dianCode: "02",
+          taxTypeCode: "ICL",
+          calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
+          taxRate: 0,
+          taxBase: 40,
+          taxAmount: 14400,
+          isIncluded: true,
+        },
+        {
+          taxId: advTaxId,
+          taxName: "ADV",
+          dianCode: "04",
+          taxTypeCode: "AD_VALOREM",
+          calculationMethodCode: "AD_VALOREM",
+          taxRate: 0.25,
+          taxBase: 400000,
+          taxAmount: 100000,
+          isIncluded: true,
+        },
+        {
+          taxId: ivaTaxId,
+          taxName: "IVA 5%",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.05,
+          taxBase: 452952.38,
+          taxAmount: 22647.62,
+          isIncluded: true,
+        },
+      ],
+      lineSubtotal: 452952.38,
+      lineTotal: 590000,
+    }),
+  ]);
+
+  await service.createOrder(createPayload());
+
+  assert.equal(client.insertedItems[0]?.taxAmount, 137047.62);
+  assert.equal(client.insertedItemTaxes.length, 3);
+  assert.deepEqual(
+    client.insertedItemTaxes.map((tax) => ({
+      taxId: tax.taxId,
+      taxName: tax.taxName,
+      dianCode: tax.dianCode,
+      taxAmount: tax.taxAmount,
+    })),
+    [
+      { taxId: iclTaxId, taxName: "ICL", dianCode: "02", taxAmount: 14400 },
+      { taxId: advTaxId, taxName: "ADV", dianCode: "04", taxAmount: 100000 },
+      { taxId: ivaTaxId, taxName: "IVA 5%", dianCode: "01", taxAmount: 22647.62 },
+    ]
+  );
+});
+
 test("OrderService.createOrder persists snapshot with promotion", async () => {
   const { service, client } = buildService([
     makePreview({
