@@ -136,15 +136,18 @@ const normalizeTaxLabel = (value: unknown) => normalizeString(value)
 
 const TAX_TYPE_ALIASES: Record<string, FactuCoreTaxType> = {
   IVA: "IVA",
+  VAT: "IVA",
   IVA_0: "IVA",
   IVA_5: "IVA",
   IVA_19: "IVA",
   INC: "INC",
   IMPUESTO_NACIONAL_AL_CONSUMO: "INC",
   IMPUESTO_AL_CONSUMO: "INC",
+  LIQUOR_CONSUMPTION: "INC",
   ICA: "ICA",
   IMPUESTO_DE_INDUSTRIA_Y_COMERCIO: "ICA",
   INDUSTRIA_Y_COMERCIO: "ICA",
+  AD_VALOREM: "OTHER",
   RETE_FUENTE: "RETE_FUENTE",
   RETENCION_EN_LA_FUENTE: "RETE_FUENTE",
   RETENCION_FUENTE: "RETE_FUENTE",
@@ -225,9 +228,11 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
     addressLine1: normalizeNullableString(customer.address),
     countryCode: "CO",
     departmentCode: normalizeNullableString(
-      customer.metadata?.departmentCode,
+      customer.metadata?.departmentCode ?? customer.departmentCode,
     ),
-    municipalityCode: normalizeNullableString(customer.municipalityCode),
+    municipalityCode: normalizeNullableString(
+      customer.municipalityCode ?? customer.metadata?.municipalityCode,
+    ),
     cityName: normalizeNullableString(customer.metadata?.cityName),
     departmentName: normalizeNullableString(customer.metadata?.departmentName),
     countryName: normalizeNullableString(customer.metadata?.countryName),

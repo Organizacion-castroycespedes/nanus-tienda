@@ -420,14 +420,17 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
 test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
   const labels = [
     ["IVA 19%", "IVA"],
+    ["VAT", "IVA"],
     ["IVA 5%", "IVA"],
     ["IVA 0%", "IVA"],
     ["INC", "INC"],
+    ["LIQUOR_CONSUMPTION", "INC"],
     ["ICA", "ICA"],
     ["Retención en la fuente", "RETE_FUENTE"],
     ["RETE IVA", "RETE_IVA"],
     ["RETE-ICA", "RETE_ICA"],
     ["Exento", "OTHER"],
+    ["AD_VALOREM", "OTHER"],
   ] as const;
 
   for (const [type, expected] of labels) {

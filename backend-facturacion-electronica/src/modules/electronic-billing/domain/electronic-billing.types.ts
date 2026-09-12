@@ -97,6 +97,7 @@ export type ElectronicCustomer = {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  departmentCode?: string | null;
   municipalityCode?: string | null;
   taxProfile?: {
     identificationTypeCode?: string | null;

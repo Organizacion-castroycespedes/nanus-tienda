@@ -103,6 +103,9 @@ export const buildElectronicBillingCustomer = (
       ...(typeof flattened.departmentCode === "string"
         ? { departmentCode: flattened.departmentCode }
         : {}),
+      ...(typeof flattened.municipalityCode === "string"
+        ? { municipalityCode: flattened.municipalityCode }
+        : {}),
       ...(typeof flattened.departmentName === "string"
         ? { departmentName: flattened.departmentName }
         : {}),
