@@ -94,14 +94,14 @@ export const PurchaseDetailPanel = ({
     purchase?.totalLiquidado == null ? null : Number(purchase.totalLiquidado);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Detalle de compra</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Detalle de compra</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
             {purchase ? `Compra ${purchase.id.slice(0, 8)}` : "Compra"}
           </h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Consulta estado, items y trazabilidad en modo enfocado.
           </p>
         </div>
@@ -111,53 +111,53 @@ export const PurchaseDetailPanel = ({
       </div>
 
       {loading ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:text-slate-300">
           Cargando detalle de la compra...
         </div>
       ) : purchase ? (
         <div className="space-y-4">
           <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-3 xl:grid-cols-4">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Proveedor</p>
-              <p className="mt-1 font-medium text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Proveedor</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">
                 {purchase.supplierName || purchase.supplierId}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-              <p className="mt-1 font-medium text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">
                 {displayStatus(purchase.status)}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Pago</p>
-              <p className="mt-1 font-medium text-slate-900">{purchase.paymentStatus}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Pago</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">{purchase.paymentStatus}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Fecha</p>
-              <p className="mt-1 font-medium text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Fecha</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">
                 {formatDateTime(purchase.createdAt)}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total pedido</p>
-              <p className="mt-1 font-medium text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total pedido</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">
                 {formatCurrency(totalPedido)}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total recibido</p>
-              <p className="mt-1 font-medium text-slate-900">{formatCurrency(totalRecibido)}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total recibido</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">{formatCurrency(totalRecibido)}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Total liquidado</p>
-              <p className="mt-1 font-medium text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total liquidado</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">
                 {totalLiquidado == null ? "-" : formatCurrency(totalLiquidado)}
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Saldo</p>
-              <p className="mt-1 font-medium text-slate-900">
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Saldo</p>
+              <p className="mt-1 font-medium text-slate-900 dark:text-white">
                 {formatCurrency(Number(purchase.balanceDue))}
               </p>
             </div>
@@ -227,10 +227,10 @@ export const PurchaseDetailPanel = ({
             </section>
           ) : null}
 
-          <section className="rounded-lg border border-slate-200 bg-white">
+          <section className="rounded-lg border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
             <div className="overflow-x-auto">
               <table className="min-w-[760px] divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-slate-600">
+                <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
                     <th className="px-4 py-3 font-medium">Pedido</th>
@@ -245,13 +245,13 @@ export const PurchaseDetailPanel = ({
 
                     return (
                       <tr key={item.id}>
-                        <td className="px-4 py-3 text-slate-900">
+                        <td className="px-4 py-3 text-slate-900 dark:text-white">
                           {item.productName || item.productId}
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{item.orderedQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700">{item.receivedQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700">{pending}</td>
-                        <td className="px-4 py-3 text-slate-700">
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.receivedQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{pending}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                           {formatCurrency(Number(item.subtotal))}
                         </td>
                       </tr>
@@ -262,8 +262,8 @@ export const PurchaseDetailPanel = ({
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-            <h3 className="font-semibold text-slate-900">Historial de cambio de estado</h3>
+          <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:bg-slate-800 dark:border-slate-700">
+            <h3 className="font-semibold text-slate-900 dark:text-white">Historial de cambio de estado</h3>
             {history.length > 0 ? (
               <div className="mt-3 space-y-3">
                 {history.map((event) => (
@@ -271,27 +271,27 @@ export const PurchaseDetailPanel = ({
                     key={`${event.action}-${event.createdAt}`}
                     className="rounded-lg border border-slate-200 bg-slate-50 p-3"
                   >
-                    <p className="font-medium text-slate-900">
+                    <p className="font-medium text-slate-900 dark:text-white">
                       {event.action === "PURCHASE_PARTIAL_CLOSED"
                         ? "Compra cerrada parcialmente"
                         : "Compra cancelada"}
                     </p>
-                    <p className="mt-1 text-slate-700">
+                    <p className="mt-1 text-slate-700 dark:text-slate-200">
                       Estado anterior: {displayStatus(event.estadoAnterior)} | Estado nuevo:{" "}
                       {displayStatus(event.estadoNuevo)}
                     </p>
-                    <p className="mt-1 text-slate-700">Motivo: {event.motivo || "-"}</p>
-                    <p className="mt-1 text-slate-700">
+                    <p className="mt-1 text-slate-700 dark:text-slate-200">Motivo: {event.motivo || "-"}</p>
+                    <p className="mt-1 text-slate-700 dark:text-slate-200">
                       Usuario: {event.usuarioNombre || event.usuarioId || "-"}
                     </p>
-                    <p className="mt-1 text-slate-500">
+                    <p className="mt-1 text-slate-500 dark:text-slate-400">
                       Fecha/hora: {formatDateTime(event.createdAt)}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-slate-500">Sin eventos de trazabilidad registrados.</p>
+              <p className="mt-2 text-slate-500 dark:text-slate-400">Sin eventos de trazabilidad registrados.</p>
             )}
           </section>
 

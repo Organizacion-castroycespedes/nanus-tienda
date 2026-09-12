@@ -63,7 +63,7 @@ const CategoryImage = ({ category }: { category: ProductCategoryResponse }) => {
     <InventoryImagePreview
       imageUrl={category.defaultImageUrl}
       altText={category.defaultImageAltText ?? category.name}
-      className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600"
+      className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600 dark:text-slate-300"
       fallback={getClassificationInitials(category.name)}
     />
   );
@@ -243,10 +243,10 @@ const ProductCategoriesPage = () => {
         <div className="flex min-w-[260px] items-start gap-3">
           <CategoryImage category={category} />
           <div className="min-w-0 space-y-1">
-            <p className="font-semibold text-slate-900">{category.name}</p>
-            <p className="text-xs text-slate-500">{category.slug}</p>
+            <p className="font-semibold text-slate-900 dark:text-white">{category.name}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{category.slug}</p>
             {category.description ? (
-              <p className="line-clamp-2 text-xs text-slate-600">
+              <p className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300">
                 {category.description}
               </p>
             ) : null}
@@ -280,7 +280,7 @@ const ProductCategoriesPage = () => {
       key: "image",
       header: "Imagen",
       render: (category) => (
-        <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <ImageIcon className="h-4 w-4" />
           {category.defaultImageUrl ? "URL configurada" : "Placeholder"}
         </span>
@@ -324,7 +324,7 @@ const ProductCategoriesPage = () => {
 
   if (!permissionsLoaded) {
     return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
         Validando permisos...
       </section>
     );
@@ -412,16 +412,16 @@ const ProductCategoriesPage = () => {
 
       {!isActionMode ? (
         <>
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Inventory
                 </p>
-                <h1 className="text-2xl font-semibold text-slate-900">
+                <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
                   Categorias de productos
                 </h1>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                   Administra la clasificacion principal del catalogo.
                 </p>
               </div>
@@ -444,7 +444,7 @@ const ProductCategoriesPage = () => {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
             <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto]">
               <Input
                 label="Buscar"

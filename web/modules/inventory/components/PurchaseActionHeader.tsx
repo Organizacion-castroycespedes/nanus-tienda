@@ -18,16 +18,16 @@ export const PurchaseActionHeader = ({
   status,
   onBack,
 }: PurchaseActionHeaderProps) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Compras</p>
-        <h2 className="mt-1 text-2xl font-semibold text-slate-900">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">{subtitle}</p>
+        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Compras</p>
+        <h2 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{subtitle}</p>
         {purchaseCode || status ? (
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium uppercase tracking-wide">
             {purchaseCode ? (
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700 dark:text-slate-200">
                 Compra {purchaseCode}
               </span>
             ) : null}

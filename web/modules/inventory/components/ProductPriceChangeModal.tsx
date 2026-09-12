@@ -132,17 +132,17 @@ export const ProductPriceChangeModal = ({
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:bg-slate-800 dark:border-slate-700"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Cambio de precio
             </p>
-            <h2 className="text-xl font-semibold text-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               {product.name}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{product.sku}</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{product.sku}</p>
           </div>
           <Button variant="ghost" onClick={handleClose} disabled={isSubmitting}>
             Cancelar
@@ -152,23 +152,23 @@ export const ProductPriceChangeModal = ({
         <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
           <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-3">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Actual
               </p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
+              <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">
                 {formatCurrency(currentPrice)}
               </p>
             </div>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Nuevo
               </p>
-              <p className="mt-1 text-base font-semibold text-slate-900">
+              <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">
                 {hasParsedPrice ? formatCurrency(parsedNewPrice) : "-"}
               </p>
             </div>
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Diferencia
               </p>
               <p
@@ -178,7 +178,7 @@ export const ProductPriceChangeModal = ({
                     : difference > 0
                       ? "text-emerald-700"
                       : "text-slate-700"
-                }`}
+                } dark:text-slate-200`}
               >
                 {hasParsedPrice ? formatDifference(difference) : "-"}
               </p>
@@ -204,12 +204,12 @@ export const ProductPriceChangeModal = ({
             ) : null}
           </div>
 
-          <label className="flex flex-col gap-2 text-sm text-slate-700">
+          <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
             <span className="font-medium">
               Motivo <span className="text-red-600">*</span>
             </span>
             <textarea
-              className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="min-h-24 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               value={reason}
               onChange={(event) => {
                 setReason(event.target.value);
@@ -220,7 +220,7 @@ export const ProductPriceChangeModal = ({
             {errors.reason ? (
               <span className="text-xs text-rose-600">{errors.reason}</span>
             ) : (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 Minimo 5 caracteres. Este texto queda en historial.
               </span>
             )}

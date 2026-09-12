@@ -537,7 +537,7 @@ export const DeliveryRelationCard = ({
 
   if (!permissionsLoaded) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:text-slate-300">
         Cargando permisos de domicilios...
       </div>
     );
@@ -563,11 +563,11 @@ export const DeliveryRelationCard = ({
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Domicilio asociado
           </p>
-          <h3 className="text-lg font-semibold text-slate-900">{relationLabel}</h3>
-          <p className="mt-1 text-sm text-slate-600">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{relationLabel}</h3>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Consulta o crea un domicilio sin modificar POS, facturacion, totales
             ni impuestos.
           </p>
@@ -596,17 +596,17 @@ export const DeliveryRelationCard = ({
       ) : null}
 
       {loading ? (
-        <div className="rounded-lg border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+        <div className="rounded-lg border border-dashed border-slate-200 p-5 text-sm text-slate-500 dark:text-slate-400">
           Cargando domicilio asociado...
         </div>
       ) : delivery ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">
                 {delivery.delivery_number || delivery.id}
               </p>
-              <p className="mt-1 break-words text-sm text-slate-600">
+              <p className="mt-1 break-words text-sm text-slate-600 dark:text-slate-300">
                 {delivery.customer_name || "Sin contacto"} -{" "}
                 {delivery.delivery_address}
               </p>
@@ -614,7 +614,7 @@ export const DeliveryRelationCard = ({
             <DeliveryStatusBadge status={delivery.status} />
           </div>
 
-          <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+          <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 dark:text-slate-300">
             <p>Telefono: {delivery.customer_phone || "-"}</p>
             <p>
               Repartidor:{" "}
@@ -648,14 +648,14 @@ export const DeliveryRelationCard = ({
       ) : (
         <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
           <div className="flex items-start gap-3">
-            <Truck className="mt-0.5 h-5 w-5 text-slate-500" />
+            <Truck className="mt-0.5 h-5 w-5 text-slate-500 dark:text-slate-400" />
             <div className="min-w-0">
-              <p className="font-medium text-slate-900">
+              <p className="font-medium text-slate-900 dark:text-white">
                 {sourceType === "order"
                   ? "Este pedido no tiene domicilio asociado."
                   : "Esta venta no tiene domicilio asociado."}
               </p>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                 Puedes crear uno si el backend y tus permisos lo permiten.
               </p>
             </div>
@@ -685,7 +685,7 @@ export const DeliveryRelationCard = ({
       )}
 
       {isCreating && !delivery ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div
             className={`mb-4 rounded-lg border p-3 text-sm ${
               currentCashSession

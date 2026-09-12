@@ -589,14 +589,14 @@ export const ProductForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Producto</p>
-          <h2 className="text-xl font-semibold text-slate-900">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Producto</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
             {mode === "create" ? "Crear producto" : "Editar producto"}
           </h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Completa los campos requeridos para guardar el producto.
           </p>
         </div>
@@ -779,10 +779,10 @@ export const ProductForm = ({
         <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                 Clasificacion
               </h3>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 La subcategoria depende de la categoria seleccionada.
               </p>
             </div>
@@ -889,7 +889,7 @@ export const ProductForm = ({
           onDelete={handleImageDelete}
         />
 
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
             checked={values.isActive}
@@ -901,14 +901,14 @@ export const ProductForm = ({
 
         <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Configuracion operativa</h3>
-            <p className="mt-1 text-xs text-slate-500">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Configuracion operativa</h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Define reglas de lote, vencimiento, estado y stock objetivo.
             </p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 checked={values.isPerishable}
@@ -918,14 +918,14 @@ export const ProductForm = ({
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
               />
               <span>
-                <span className="block font-medium text-slate-900">Producto perecedero</span>
-                <span className="mt-1 block text-xs text-slate-500">
+                <span className="block font-medium text-slate-900 dark:text-white">Producto perecedero</span>
+                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
                   Recomendado para alimentos, farmacia o productos con vida util.
                 </span>
               </span>
             </label>
 
-            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 checked={values.requiresLot}
@@ -935,14 +935,14 @@ export const ProductForm = ({
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
               />
               <span>
-                <span className="block font-medium text-slate-900">Requiere lote</span>
-                <span className="mt-1 block text-xs text-slate-500">
+                <span className="block font-medium text-slate-900 dark:text-white">Requiere lote</span>
+                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
                   Activa trazabilidad por lote en compras, ajustes y ventas v2.
                 </span>
               </span>
             </label>
 
-            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
                 checked={values.requiresExpiration}
@@ -952,8 +952,8 @@ export const ProductForm = ({
                 className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
               />
               <span>
-                <span className="block font-medium text-slate-900">Requiere vencimiento</span>
-                <span className="mt-1 block text-xs text-slate-500">
+                <span className="block font-medium text-slate-900 dark:text-white">Requiere vencimiento</span>
+                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
                   Al activarlo, lote queda marcado automaticamente.
                 </span>
               </span>
@@ -1051,7 +1051,7 @@ export const ProductForm = ({
         </section>
 
         {catalogLoading ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
             Cargando unidades e impuestos...
           </div>
         ) : null}

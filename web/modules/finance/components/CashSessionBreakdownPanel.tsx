@@ -61,11 +61,11 @@ export const CashSessionBreakdownPanel = ({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+        <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
             Apertura efectivo
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums">
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
             {formatCurrency(cashControl.openingCash)}
           </p>
         </div>
@@ -73,7 +73,7 @@ export const CashSessionBreakdownPanel = ({
           <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-700">
             Efectivo esperado
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums">
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
             {formatCurrency(cashControl.expectedCashAmount)}
           </p>
         </div>
@@ -81,15 +81,15 @@ export const CashSessionBreakdownPanel = ({
           <p className="text-[11px] uppercase tracking-[0.18em] text-blue-700">
             Otros medios neto
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums">
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
             {formatCurrency(cashControl.nonCashNet)}
           </p>
         </div>
         <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
             Neto operativo
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums">
+          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
             {formatCurrency(cashControl.totalNetAmount)}
           </p>
         </div>
@@ -97,26 +97,26 @@ export const CashSessionBreakdownPanel = ({
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-medium text-slate-500">Ventas POS</p>
-          <p className="mt-1 font-semibold text-slate-900">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Ventas POS</p>
+          <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.posSales)}
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-medium text-slate-500">Pedidos</p>
-          <p className="mt-1 font-semibold text-slate-900">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Pedidos</p>
+          <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.orders)}
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-medium text-slate-500">Domicilios</p>
-          <p className="mt-1 font-semibold text-slate-900">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Domicilios</p>
+          <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.deliveries)}
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-medium text-slate-500">Compras / salidas</p>
-          <p className="mt-1 font-semibold text-slate-900">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Compras / salidas</p>
+          <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.purchases + source.refunds + source.manualOut)}
           </p>
         </div>
@@ -124,7 +124,7 @@ export const CashSessionBreakdownPanel = ({
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="min-w-[780px] divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-slate-600">
+          <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
             <tr>
               <th className="px-3 py-2 font-medium">Medio</th>
               <th className="px-3 py-2 font-medium">Tipo</th>
@@ -138,17 +138,17 @@ export const CashSessionBreakdownPanel = ({
           <tbody className="divide-y divide-slate-100 bg-white">
             {methods.length === 0 ? (
               <tr>
-                <td className="px-3 py-4 text-slate-500" colSpan={7}>
+                <td className="px-3 py-4 text-slate-500 dark:text-slate-400" colSpan={7}>
                   Sin pagos agrupados por metodo.
                 </td>
               </tr>
             ) : (
               methods.map((method) => (
                 <tr key={`${method.paymentMethodId ?? "cash"}-${method.category}`}>
-                  <td className="px-3 py-2 font-medium text-slate-900">
+                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">
                     {method.paymentMethodNombre}
                   </td>
-                  <td className="px-3 py-2 text-slate-600">
+                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
                     {labelByCategory[method.category] ?? method.category}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -168,7 +168,7 @@ export const CashSessionBreakdownPanel = ({
                         method.otherOut
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900 dark:text-white">
                     {formatCurrency(method.net)}
                   </td>
                 </tr>

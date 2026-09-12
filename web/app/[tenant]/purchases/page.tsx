@@ -868,14 +868,14 @@ const PurchasesPage = () => {
   }, [activeAction, actionHeaderPurchase]);
 
   const actionUnavailablePanel = (
-    <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800">
       <div className="space-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-amber-700">Accion no disponible</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-900">
+          <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
             Accion no disponible
           </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
             Esta accion no esta disponible para el estado actual de la compra.
           </p>
         </div>
@@ -998,21 +998,21 @@ const PurchasesPage = () => {
             aria-modal="true"
             aria-labelledby="purchase-ticket-title"
             aria-describedby="purchase-ticket-description"
-            className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:bg-slate-800 dark:border-slate-700"
           >
             <div className="mb-4 flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <h2 id="purchase-ticket-title" className="text-xl font-semibold text-slate-900">
+                <h2 id="purchase-ticket-title" className="text-xl font-semibold text-slate-900 dark:text-white">
                   Ticket de compra {activePurchase.id.slice(0, 8)}
                 </h2>
-                <p id="purchase-ticket-description" className="mt-2 text-sm text-slate-600">
+                <p id="purchase-ticket-description" className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                   Vista previa del ticket generado por el backend.
                 </p>
               </div>
               <button
                 type="button"
                 aria-label="Cerrar ticket"
-                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-white dark:hover:bg-slate-700"
                 onClick={handleBackToList}
               >
                 <X className="h-5 w-5" />
@@ -1154,12 +1154,12 @@ const PurchasesPage = () => {
 
   return (
     <div className="w-full max-w-full min-w-0 space-y-4 overflow-x-hidden sm:space-y-6">
-      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Compras</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Purchases</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Compras</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Consulta compras registradas por proveedor, tipo y estado."}
@@ -1252,7 +1252,7 @@ const PurchasesPage = () => {
       ) : null}
 
       {!isActionMode ? (
-        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div
             className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
@@ -1404,10 +1404,10 @@ const PurchasesPage = () => {
       />
 
       {!isActionMode ? (
-        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="w-full max-w-full overflow-x-auto">
             <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-slate-600">
+              <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                 <tr>
                   <th className="px-4 py-3 font-medium">Proveedor</th>
                   <th className="px-4 py-3 font-medium">Sucursal</th>
@@ -1425,43 +1425,43 @@ const PurchasesPage = () => {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       Cargando compras...
                     </td>
                   </tr>
                 ) : !hasSearched ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       Usa el boton Buscar para consultar compras.
                     </td>
                   </tr>
                 ) : paginatedPurchases.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       No hay compras para mostrar.
                     </td>
                   </tr>
                 ) : (
                   paginatedPurchases.map((purchase) => (
                     <tr key={purchase.id}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         {purchase.supplierName || purchase.supplierId}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{purchase.branchName ?? "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">{purchase.terminalName ?? "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.branchName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.terminalName ?? "-"}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatCurrency(Number(purchase.total))}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatCurrency(Number(purchase.totalPaid))}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatCurrency(Number(purchase.balanceDue))}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{purchase.type}</td>
-                      <td className="px-4 py-3 text-slate-700">{purchase.status}</td>
-                      <td className="px-4 py-3 text-slate-700">{purchase.paymentStatus}</td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.type}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.status}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.paymentStatus}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatDate(purchase.createdAt)}
                       </td>
                       <td className="px-4 py-3">
@@ -1549,7 +1549,7 @@ const PurchasesPage = () => {
             </table>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
             <span>
               Pagina {Math.min(page + 1, totalPages)} de {totalPages}
             </span>

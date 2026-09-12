@@ -559,8 +559,8 @@ const PromotionsAdminPage = () => {
       header: "Promocion",
       render: (promotion) => (
         <div className="max-w-xs space-y-1">
-          <p className="font-semibold text-slate-900">{promotion.name}</p>
-          <p className="text-xs text-slate-500">
+          <p className="font-semibold text-slate-900 dark:text-white">{promotion.name}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             {promotion.description || "Sin descripcion"}
           </p>
         </div>
@@ -571,8 +571,8 @@ const PromotionsAdminPage = () => {
       header: "Descuento",
       render: (promotion) => (
         <div className="space-y-1">
-          <p className="font-medium text-slate-900">{formatDiscount(promotion)}</p>
-          <p className="text-xs text-slate-500">
+          <p className="font-medium text-slate-900 dark:text-white">{formatDiscount(promotion)}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             {discountTypeLabels[promotion.discountType]}
           </p>
         </div>
@@ -596,7 +596,7 @@ const PromotionsAdminPage = () => {
           <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             {promotion.priority}
           </span>
-          <p className="text-xs text-slate-500">Menor gana</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Menor gana</p>
         </div>
       ),
     },
@@ -605,8 +605,8 @@ const PromotionsAdminPage = () => {
       header: "Alcance",
       render: (promotion) => (
         <div className="max-w-sm space-y-1 text-xs">
-          <p className="text-slate-700">{resolveProductList(promotion.productIds)}</p>
-          <p className="text-slate-500">{resolveBranchList(promotion.branchIds)}</p>
+          <p className="text-slate-700 dark:text-slate-200">{resolveProductList(promotion.productIds)}</p>
+          <p className="text-slate-500 dark:text-slate-400">{resolveBranchList(promotion.branchIds)}</p>
         </div>
       ),
     },
@@ -619,7 +619,7 @@ const PromotionsAdminPage = () => {
             promotion.isActive
               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-slate-200 bg-slate-100 text-slate-700"
-          }`}
+          } dark:text-slate-200`}
         >
           {promotion.isActive ? "Activa" : "Inactiva"}
         </span>
@@ -739,17 +739,17 @@ const PromotionsAdminPage = () => {
         </FocusActionLayout>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Promociones</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Promociones</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Administra descuentos de productos. Menor priority gana."}
             </p>
-            <p className="mt-1 text-xs text-slate-500">Tenant ruta: {routeTenant}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Tenant ruta: {routeTenant}</p>
           </div>
           {!isActionMode ? (
             <div className="flex flex-wrap gap-3">
@@ -790,7 +790,7 @@ const PromotionsAdminPage = () => {
       ) : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 lg:grid-cols-[1fr_220px_auto_auto]">
           <Input
             label="Buscar"

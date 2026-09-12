@@ -26,24 +26,24 @@ export const BrandingThemePreview = ({
 }: BrandingThemePreviewProps) => {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Vista previa
       </p>
       <div
-        className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+        className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700"
         style={{ fontFamily: theme.font }}
       >
         <div
           className="grid min-h-[300px] grid-cols-1 md:grid-cols-[190px_minmax(0,1fr)]"
           style={{ backgroundColor: theme.appBackground }}
         >
-          <aside className="border-b border-slate-200 bg-white p-3 md:border-b-0 md:border-r">
+          <aside className="border-b border-slate-200 bg-white p-3 md:border-b-0 md:border-r dark:bg-slate-800 dark:border-slate-700">
             <div className="mb-4 flex min-w-0 items-center gap-2">
               {logo ? (
                 <img
                   src={logo}
                   alt="Logo preview"
-                  className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1"
+                  className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1 dark:bg-slate-800 dark:border-slate-700"
                 />
               ) : (
                 <div
@@ -58,10 +58,10 @@ export const BrandingThemePreview = ({
                 </div>
               )}
               <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-slate-900">
+                <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">
                   {companyName}
                 </p>
-                <p className="text-[11px] text-slate-500">Manus POS</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Manus POS</p>
               </div>
             </div>
 
@@ -126,10 +126,10 @@ export const BrandingThemePreview = ({
           <section className="min-w-0 p-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   Configuracion
                 </p>
-                <h4 className="text-sm font-semibold text-slate-900">
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
                   Branding
                 </h4>
               </div>
@@ -146,7 +146,7 @@ export const BrandingThemePreview = ({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
                 <div className="mb-3 flex items-center justify-between">
                   <div
                     className="grid h-8 w-8 place-items-center rounded-lg"
@@ -157,17 +157,17 @@ export const BrandingThemePreview = ({
                   >
                     <BarChart3 className="h-4 w-4" aria-hidden="true" />
                   </div>
-                  <span className="text-[11px] font-semibold text-slate-500">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                     Hoy
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">Ventas</p>
-                <p className="mt-1 text-lg font-semibold text-slate-900">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Ventas</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
                   $1.240.000
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
                 <div className="mb-3 flex items-center justify-between">
                   <div
                     className="grid h-8 w-8 place-items-center rounded-lg"
@@ -188,8 +188,8 @@ export const BrandingThemePreview = ({
                     Principal
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">Sucursal</p>
-                <p className="mt-1 text-lg font-semibold text-slate-900">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Sucursal</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
                   Centro
                 </p>
               </div>

@@ -82,8 +82,8 @@ const OrdersReportsPage = () => {
         header: "Fecha",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatDateTime(row.date)}</p>
-            <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.date)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.branchName ?? "Sucursal"}</p>
           </div>
         ),
       },
@@ -92,15 +92,15 @@ const OrdersReportsPage = () => {
         header: "Cliente",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{row.customerName || "Cliente sin nombre"}</p>
-            <p className="text-xs text-slate-500">Pedido #{row.orderId.slice(0, 8)}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{row.customerName || "Cliente sin nombre"}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Pedido #{row.orderId.slice(0, 8)}</p>
           </div>
         ),
       },
       {
         key: "total",
         header: "Total",
-        render: (row) => <span className="font-medium text-slate-900">{formatCurrency(row.total)}</span>,
+        render: (row) => <span className="font-medium text-slate-900 dark:text-white">{formatCurrency(row.total)}</span>,
       },
       {
         key: "paid",
@@ -118,8 +118,8 @@ const OrdersReportsPage = () => {
         render: (row) => (
           <div className="space-y-2">
             <ReportStatusBadge value={row.status} />
-            <p className="text-sm text-slate-700">{row.paymentStatus}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-slate-700 dark:text-slate-200">{row.paymentStatus}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               {row.generatedSaleId ? `Venta ${row.generatedSaleId.slice(0, 8)}` : "Sin venta generada"}
             </p>
           </div>
@@ -173,10 +173,10 @@ const OrdersReportsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Reporteria pedidos</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Pedidos y venta generada</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria pedidos</p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Pedidos y venta generada</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
           Revisa pedidos por estado, pagos y venta asociada cuando ya fue generada desde operacion.
         </p>
       </section>
