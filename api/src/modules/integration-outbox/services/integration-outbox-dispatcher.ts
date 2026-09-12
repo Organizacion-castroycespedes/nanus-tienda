@@ -70,6 +70,15 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
     return this.processClaimedEvents(claimed);
   }
 
+  async runOnceForEvent(eventId: string): Promise<IntegrationOutboxDispatcherSummary> {
+    if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
+      return { published: 0, retryable: 0, failed: 0, skipped: 0, errors: 0 };
+    }
+
+    const claimed = await this.outboxService.claimDueEvent(eventId, this.config.leaseMs);
+    return this.processClaimedEvents(claimed ? [claimed] : []);
+  }
+
   private canRun() {
     return Boolean(
       this.config.enabled &&

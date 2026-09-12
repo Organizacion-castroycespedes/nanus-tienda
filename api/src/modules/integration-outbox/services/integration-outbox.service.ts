@@ -77,6 +77,14 @@ export class IntegrationOutboxService {
     );
   }
 
+  async claimDueEvent(eventId: string, leaseMs: number, client?: PoolClient) {
+    return this.repository.claimDueEvent(
+      eventId,
+      { now: new Date(), limit: 1, leaseMs },
+      client,
+    );
+  }
+
   async markPublished(eventId: string, publishedAt: Date, client?: PoolClient) {
     return this.repository.markPublished(eventId, publishedAt, client);
   }

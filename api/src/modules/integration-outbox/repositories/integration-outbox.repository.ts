@@ -353,6 +353,37 @@ export class IntegrationOutboxRepository {
     return result.rows ?? [];
   }
 
+  async claimDueEvent(
+    eventId: string,
+    input: ClaimDueIntegrationOutboxEventsInput,
+    client?: PoolClient,
+  ): Promise<IntegrationOutboxEventRecord | null> {
+    const leaseUntil = new Date(input.now.getTime() + input.leaseMs);
+    const result = await this.query<IntegrationOutboxEventRecord>(
+      `UPDATE integration_outbox_events AS event
+       SET
+         status = 'PROCESSING',
+         attempt_count = event.attempt_count + 1,
+         lease_until = $2,
+         last_attempt_at = $3,
+         updated_at = $3
+       WHERE event.event_id = $1
+         AND event.status = 'PENDING'
+         AND event.next_attempt_at <= $3
+         AND (event.lease_until IS NULL OR event.lease_until <= $3)
+       RETURNING
+         event.id, event.event_id, event.event_type, event.schema_version,
+         event.tenant_id, event.correlation_id, event.source_type, event.source_id,
+         event.payload, event.payload_hash, event.status, event.attempt_count,
+         event.next_attempt_at, event.lease_until, event.last_attempt_at,
+         event.published_at, event.last_error, event.created_at, event.updated_at`,
+      [eventId, leaseUntil.toISOString(), input.now.toISOString()],
+      client,
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   async markPublished(
     eventId: string,
     publishedAt: Date,
