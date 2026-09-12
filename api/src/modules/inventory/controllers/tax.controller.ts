@@ -31,6 +31,16 @@ type CreateTaxBody = {
   rate: number;
   isIncluded: boolean;
   isActive?: boolean;
+  taxTypeId?: string | null;
+  calculationMethodId?: string | null;
+  taxBaseTypeId?: string | null;
+  percentageRate?: number | null;
+  fixedAmount?: number | null;
+  baseQuantity?: number | null;
+  baseUnitCode?: string | null;
+  taxProductCategoryId?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
 };
 
 type UpdateTaxBody = Partial<CreateTaxBody>;
@@ -54,6 +64,16 @@ export class TaxController {
     return tenantId;
   }
 
+  @Get("catalogs")
+  @RequirePermission({
+    menuKey: MENU_KEYS.INVENTORY_TAXES,
+    level: "READ",
+    operationalRoles: operationalCatalogReadRoles,
+  })
+  listCatalogs() {
+    return this.taxService.listCatalogs();
+  }
+
   @Get()
   @RequirePermission({
     menuKey: MENU_KEYS.INVENTORY_TAXES,
@@ -74,6 +94,25 @@ export class TaxController {
       rate: Number(body.rate),
       isIncluded: Boolean(body.isIncluded),
       isActive: body.isActive,
+      taxTypeId: body.taxTypeId,
+      calculationMethodId: body.calculationMethodId,
+      taxBaseTypeId: body.taxBaseTypeId,
+      percentageRate:
+        body.percentageRate !== undefined && body.percentageRate !== null
+          ? Number(body.percentageRate)
+          : body.percentageRate,
+      fixedAmount:
+        body.fixedAmount !== undefined && body.fixedAmount !== null
+          ? Number(body.fixedAmount)
+          : body.fixedAmount,
+      baseQuantity:
+        body.baseQuantity !== undefined && body.baseQuantity !== null
+          ? Number(body.baseQuantity)
+          : body.baseQuantity,
+      baseUnitCode: body.baseUnitCode,
+      taxProductCategoryId: body.taxProductCategoryId,
+      effectiveFrom: body.effectiveFrom,
+      effectiveTo: body.effectiveTo,
     });
   }
 
@@ -90,6 +129,25 @@ export class TaxController {
       rate: body.rate !== undefined ? Number(body.rate) : undefined,
       isIncluded: body.isIncluded,
       isActive: body.isActive,
+      taxTypeId: body.taxTypeId,
+      calculationMethodId: body.calculationMethodId,
+      taxBaseTypeId: body.taxBaseTypeId,
+      percentageRate:
+        body.percentageRate !== undefined && body.percentageRate !== null
+          ? Number(body.percentageRate)
+          : body.percentageRate,
+      fixedAmount:
+        body.fixedAmount !== undefined && body.fixedAmount !== null
+          ? Number(body.fixedAmount)
+          : body.fixedAmount,
+      baseQuantity:
+        body.baseQuantity !== undefined && body.baseQuantity !== null
+          ? Number(body.baseQuantity)
+          : body.baseQuantity,
+      baseUnitCode: body.baseUnitCode,
+      taxProductCategoryId: body.taxProductCategoryId,
+      effectiveFrom: body.effectiveFrom,
+      effectiveTo: body.effectiveTo,
     });
   }
 

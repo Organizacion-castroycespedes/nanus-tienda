@@ -408,6 +408,7 @@ test("ticket print simulates without logging full content", async () => {
       ],
       subtotal: 10000,
       taxes: 1900,
+      taxLines: [{ label: "IVA 19%", amount: 1900 }],
       discounts: 0,
       total: 11900,
       payments: [{ method: "EFECTIVO", amount: 11900 }],
@@ -424,6 +425,7 @@ test("ticket print simulates without logging full content", async () => {
   assert.equal(result.bytesSent, undefined);
   assert.match(result.preview, /Castro & Cespedes/);
   assert.match(result.preview, /TOTAL/);
+  assert.match(result.preview, /IVA 19%/);
   assert.match(result.preview, /\$ 11,900/);
   assert.equal(
     result.preview.split("\n").every((line) => line.length <= 48),

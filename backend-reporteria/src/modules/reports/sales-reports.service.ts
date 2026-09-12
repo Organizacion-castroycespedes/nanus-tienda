@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { DatabaseService } from "../database/database.service";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
 import { buildPosSalesReportLayout } from "../pdf/templates/reports/pos-sales-report.template";
@@ -17,6 +18,7 @@ import type {
   PosSaleCancelTicketDataset,
   PosSaleTicketPrintDataset,
   PosSaleTicketDataset,
+  PosSaleTicketTaxBreakdown,
   PosSalesListDataset,
   PosSalesListRow,
   ReportActorContext,
@@ -37,6 +39,8 @@ export class SalesReportsService {
   constructor(
     @Inject(SalesReportAdapter)
     private readonly salesReportAdapter: SalesReportAdapter,
+    @Inject(DatabaseService)
+    private readonly databaseService: DatabaseService,
     @Inject(PdfmakeEngine)
     private readonly pdfEngine: PdfmakeEngine
   ) {}
@@ -147,7 +151,55 @@ export class SalesReportsService {
     };
   }
 
-  private normalizeSaleTicketDataset(payload: PosSaleTicketDataset | null) {
+  private normalizeSaleTaxBreakdown(rows: Array<{
+    label: string | null;
+    dianCode: string | null;
+    taxTypeCode: string | null;
+    taxBase: string | number | null;
+    taxAmount: string | number | null;
+  }>): PosSaleTicketTaxBreakdown[] {
+    return rows.map((row) => ({
+      label: row.label?.trim() || "Impuesto",
+      dianCode: row.dianCode ?? "",
+      taxTypeCode: row.taxTypeCode ?? "",
+      taxBase: Number(row.taxBase ?? 0),
+      taxAmount: Number(row.taxAmount ?? 0),
+    }));
+  }
+
+  private async getSaleTicketTaxBreakdown(
+    actor: ReportActorContext,
+    saleId: string
+  ): Promise<PosSaleTicketTaxBreakdown[]> {
+    const result = await this.databaseService.query<{
+      label: string | null;
+      dianCode: string | null;
+      taxTypeCode: string | null;
+      taxBase: string | number | null;
+      taxAmount: string | number | null;
+    }>(
+      `SELECT
+          label,
+          "dianCode",
+          "taxTypeCode",
+          "taxBase",
+          "taxAmount"
+       FROM public.fnc_report_pos_sale_tax_breakdown(
+         $2::uuid,
+         $1::uuid,
+         $3::text,
+         $4::uuid
+       )`,
+      [saleId, actor.tenantId, actor.role, actor.branchId]
+    );
+
+    return this.normalizeSaleTaxBreakdown(result.rows ?? []);
+  }
+
+  private normalizeSaleTicketDataset(
+    payload: PosSaleTicketDataset | null,
+    taxBreakdown: PosSaleTicketTaxBreakdown[]
+  ) {
     if (!payload) {
       throw new NotFoundException("sale not found");
     }
@@ -171,6 +223,7 @@ export class SalesReportsService {
       totals: {
         subtotal: Number(payload.totals?.subtotal ?? 0),
         taxes: Number(payload.totals?.taxes ?? 0),
+        taxBreakdown,
         total: Number(payload.totals?.total ?? 0),
         paid: Number(payload.totals?.paid ?? 0),
         change: Number(payload.totals?.change ?? 0),
@@ -227,7 +280,10 @@ export class SalesReportsService {
     if (!payload && (await this.salesReportAdapter.saleExists(saleId))) {
       throw new ForbiddenException("sale ticket is not authorized");
     }
-    const dataset = this.normalizeSaleTicketDataset(payload);
+    const taxBreakdown = payload
+      ? await this.getSaleTicketTaxBreakdown(actor, saleId)
+      : [];
+    const dataset = this.normalizeSaleTicketDataset(payload, taxBreakdown);
 
     if (["CANCELLED", "REFUNDED"].includes(dataset.header.status)) {
       throw new BadRequestException(
@@ -311,6 +367,7 @@ export class SalesReportsService {
         subtotal: ticket.totals.subtotal,
         discounts: 0,
         taxes: ticket.totals.taxes,
+        taxBreakdown: ticket.totals.taxBreakdown,
         total: ticket.totals.total,
       },
     });

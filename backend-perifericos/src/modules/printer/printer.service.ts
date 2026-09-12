@@ -11,6 +11,7 @@ import type {
   ThermalTicketContent,
   ThermalTicketItem,
   ThermalTicketPayment,
+  ThermalTicketTaxLine,
 } from "../../shared/escpos-mock/escpos-mock.types";
 import { PeripheralAdapterResolver } from "../../shared/adapters/peripheral-adapter.resolver";
 import type {
@@ -435,6 +436,7 @@ export class PrinterService {
     const lines = parseLines(record.lines);
     const items = parseItems(record.items);
     const payments = parsePayments(record.payments);
+    const taxLines = parseTaxLines(record.taxLines);
 
     return {
       header: optionalTicketText(record, "header"),
@@ -451,6 +453,7 @@ export class PrinterService {
       items,
       subtotal: optionalTicketNumber(record, "subtotal"),
       taxes: optionalTicketNumber(record, "taxes"),
+      taxLines,
       discounts: optionalTicketNumber(record, "discounts"),
       total: optionalTicketNumber(record, "total"),
       paid: optionalTicketNumber(record, "paid"),
@@ -585,6 +588,33 @@ const parsePayments = (value: unknown): ThermalTicketPayment[] | undefined => {
 
     return {
       method,
+      amount: optionalTicketNumber(record, "amount"),
+    };
+  });
+};
+
+const parseTaxLines = (value: unknown): ThermalTicketTaxLine[] | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new BadRequestException("content.taxLines must be an array");
+  }
+  if (value.length > 20) {
+    throw new BadRequestException("content.taxLines cannot exceed 20 items");
+  }
+
+  return value.map((taxLine, index) => {
+    const record = asRecord(taxLine, `content.taxLines[${index}]`);
+    const label = optionalTicketText(record, "label", 80);
+    if (!label) {
+      throw new BadRequestException(
+        `content.taxLines[${index}].label is required`
+      );
+    }
+
+    return {
+      label,
       amount: optionalTicketNumber(record, "amount"),
     };
   });

@@ -50,6 +50,28 @@ export type ProductResponse = {
   unitId: string;
   unit?: ProductUnitSummary | string | null;
   taxId: string | null;
+  taxes?: Array<{
+    id?: string;
+    taxId: string;
+    calculationOrder: number;
+    isActive?: boolean;
+    taxName?: string | null;
+    taxRate?: number | null;
+    isIncluded?: boolean | null;
+    calculationMethodCode?: string | null;
+    taxTypeCode?: string | null;
+    taxTypeDianCode?: string | null;
+  }>;
+  taxProfile?: {
+    taxProductCategoryId: string;
+    taxProductCategoryCode?: string | null;
+    isAlcoholicBeverage?: boolean;
+    alcoholDegree?: number | null;
+    netVolumeMl?: number | null;
+    daneCertifiedRetailPrice?: number | null;
+    danePriceEffectiveFrom?: string | null;
+    danePriceEffectiveTo?: string | null;
+  } | null;
   name: string;
   description: string | null;
   sku: string;

@@ -53,6 +53,7 @@ export const buildSaleTicketPayload = (
     ]),
     documentNumber: sale.documentNumber ?? sale.saleNumber,
     saleNumber: sale.saleNumber,
+    taxLines: sale.taxLines,
     footer: sale.footer ?? "Gracias por su compra",
   },
 });
