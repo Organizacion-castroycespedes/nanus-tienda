@@ -49,7 +49,7 @@ const Benefits = () => (
         <h2 className="mt-3 text-balance text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
           Menos caos operativo. Más control para decidir.
         </h2>
-        <p className="mt-4 text-pretty text-lg leading-8 text-slate-600">
+        <p className="mt-4 text-pretty text-lg leading-8 text-slate-600 dark:text-slate-300">
           Manus POS no solo registra ventas. Ordena la operación completa para
           que el negocio avance con información confiable.
         </p>
@@ -59,7 +59,7 @@ const Benefits = () => (
         {benefits.map(({ title, description, imageSrc, imageAlt }) => (
           <article
             key={title}
-            className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+            className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl dark:bg-slate-800 dark:border-slate-700"
           >
             <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
               <Image
@@ -74,7 +74,7 @@ const Benefits = () => (
 
             <div className="p-5">
               <h3 className="text-base font-bold text-slate-950">{title}</h3>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
+              <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
                 {description}
               </p>
             </div>

@@ -281,12 +281,12 @@ const SuppliersPage = () => {
         onConfirm={() => setActionFeedback(null)}
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Suppliers</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Proveedores</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Suppliers</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Proveedores</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               {isActionMode
                 ? "Completa la accion activa y vuelve al listado cuando termines."
                 : "Administra proveedores, contactos y ubicacion comercial."}
@@ -327,7 +327,7 @@ const SuppliersPage = () => {
       ) : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
             label="Buscar"
@@ -379,10 +379,10 @@ const SuppliersPage = () => {
       {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
       {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Documento</th>
@@ -396,19 +396,19 @@ const SuppliersPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando proveedores...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar proveedores.
                   </td>
                 </tr>
               ) : paginatedSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay proveedores para mostrar.
                   </td>
                 </tr>
@@ -417,13 +417,13 @@ const SuppliersPage = () => {
                   const fiscalBadge = resolveFiscalBadge(supplier);
                   return (
                     <tr key={supplier.id}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         <div className="font-medium">{supplier.name}</div>
                         {supplier.legalName && supplier.legalName !== supplier.name ? (
-                          <div className="text-xs text-slate-500">{supplier.legalName}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{supplier.legalName}</div>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {getSupplierDocument(supplier)}
                       </td>
                       <td className="px-4 py-3">
@@ -433,13 +433,13 @@ const SuppliersPage = () => {
                           {fiscalBadge.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {supplier.phone || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {supplier.invoiceEmail || supplier.fiscalEmail || supplier.email || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {[supplier.ciudad, supplier.departamento].filter(Boolean).join(", ") ||
                           [supplier.municipalityCode, supplier.departmentCode]
                             .filter(Boolean)
@@ -478,7 +478,7 @@ const SuppliersPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

@@ -1,0 +1,10 @@
+import { apiClient } from "../../../lib/http";
+export type TerminalDevice = { id:string; tenant_id:string; installation_id:string; registration_status:string; platform:string|null; runtime_version:string|null; agent_api_version:number|null; last_seen_at:string|null };
+export type TerminalDeviceBinding = { id:string; tenant_id:string; terminal_id:string; device_id:string; status:string; bound_at:string; unbound_at:string|null; revoked_at:string|null };
+export const listTerminalDevices = (tenantId?: string) => apiClient<TerminalDevice[]>(`/terminal-devices${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`);
+export const registerTerminalDevice = (payload: { installationId:string; tenantId?:string; platform?:string; runtimeVersion?:string; agentApiVersion?:number }) => apiClient<TerminalDevice>("/terminal-devices/register", { method:"POST", body:JSON.stringify(payload) });
+export const listTerminalDeviceBindings = (filters: { terminalId?:string; deviceId?:string } = {}) => { const q = new URLSearchParams(); if (filters.terminalId) q.set("terminalId", filters.terminalId); if (filters.deviceId) q.set("deviceId", filters.deviceId); return apiClient<TerminalDeviceBinding[]>(`/terminal-device-bindings${q.toString() ? `?${q}` : ""}`); };
+export const buildTerminalDeviceBindingPayload = (terminalId:string, deviceId:string) => ({ terminalId, deviceId });
+export const bindTerminalDevice = (terminalId:string, deviceId:string) => apiClient<TerminalDeviceBinding>("/terminal-device-bindings", { method:"POST", body:JSON.stringify(buildTerminalDeviceBindingPayload(terminalId, deviceId)) });
+export const unbindTerminalDevice = (terminalId:string, deviceId:string) => apiClient<TerminalDeviceBinding>("/terminal-device-bindings/unbind", { method:"POST", body:JSON.stringify({ terminalId, deviceId }) });
+export const revokeTerminalDevice = (terminalId:string, deviceId:string) => apiClient<TerminalDeviceBinding>("/terminal-device-bindings/revoke", { method:"POST", body:JSON.stringify({ terminalId, deviceId }) });

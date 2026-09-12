@@ -61,20 +61,20 @@ export const CashSessionAuditForm = ({
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-700">
             Efectivo esperado
           </p>
-          <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums">
+          <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
             {formatCurrency(expectedCash)}
           </p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Efectivo contado
           </p>
-          <div className="mt-2 flex min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
-            <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600">
+          <div className="mt-2 flex min-w-0 overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 dark:bg-slate-800">
+            <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-600 dark:text-slate-300">
               $
             </span>
             <input
-              className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none"
+              className="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none dark:text-white"
               inputMode="decimal"
               value={countedInput}
               onChange={handleCountedChange}
@@ -91,10 +91,10 @@ export const CashSessionAuditForm = ({
                 : "border-rose-200 bg-rose-50"
           }`}
         >
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-600">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
             Diferencia preliminar
           </p>
-          <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums">
+          <p className="mt-2 break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
             {formatCurrency(difference)}
           </p>
         </div>

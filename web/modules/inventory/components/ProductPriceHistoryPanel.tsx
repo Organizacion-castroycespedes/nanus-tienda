@@ -86,16 +86,16 @@ export const ProductPriceHistoryPanel = ({
   }, [product.id, reloadKey]);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Historial de precios
           </p>
-          <h2 className="text-xl font-semibold text-slate-900">{product.name}</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{product.name}</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Precio actual:{" "}
-            <span className="font-semibold text-slate-900">
+            <span className="font-semibold text-slate-900 dark:text-white">
               {formatCurrency(Number(product.price))}
             </span>
           </p>
@@ -106,7 +106,7 @@ export const ProductPriceHistoryPanel = ({
       </div>
 
       {loading ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
           Cargando historial...
         </div>
       ) : null}
@@ -118,7 +118,7 @@ export const ProductPriceHistoryPanel = ({
       ) : null}
 
       {!loading && !errorMessage && history.length === 0 ? (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600 dark:text-slate-300">
           Aun no hay cambios de precio registrados para este producto.
         </div>
       ) : null}
@@ -126,7 +126,7 @@ export const ProductPriceHistoryPanel = ({
       {!loading && !errorMessage && history.length > 0 ? (
         <div className="mt-5 overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Fecha</th>
                 <th className="px-4 py-3 font-medium">Precio anterior</th>
@@ -139,24 +139,24 @@ export const ProductPriceHistoryPanel = ({
             <tbody className="divide-y divide-slate-100">
               {history.map((entry) => (
                 <tr key={entry.id}>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                     <div className="space-y-1">
                       <p>{formatDateTime(entry.createdAt)}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Vigente desde {formatDateTime(entry.validFrom)}
                       </p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                     {formatCurrency(Number(entry.previousPrice))}
                   </td>
-                  <td className="px-4 py-3 font-semibold text-slate-900">
+                  <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                     {formatCurrency(Number(entry.newPrice))}
                   </td>
-                  <td className="max-w-xs px-4 py-3 text-slate-700">
+                  <td className="max-w-xs px-4 py-3 text-slate-700 dark:text-slate-200">
                     <span className="line-clamp-3">{entry.reason}</span>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                     {entry.changedBy ?? "-"}
                   </td>
                   <td className="px-4 py-3">

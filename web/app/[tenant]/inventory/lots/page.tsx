@@ -563,7 +563,7 @@ const InventoryLotsPage = () => {
     return (
       <div className="flex flex-wrap gap-1.5">
         {available <= 0 ? (
-          <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+          <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
             Sin stock
           </span>
         ) : (
@@ -594,14 +594,14 @@ const InventoryLotsPage = () => {
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-            <h1 className="text-2xl font-semibold text-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">
               Inventario por lote
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Consulta lotes, saldos, vencimientos y discrepancias sin modificar stock.
             </p>
           </div>
@@ -659,7 +659,7 @@ const InventoryLotsPage = () => {
         />
       </section>
 
-      <section className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           <div className="min-w-0 sm:col-span-2 lg:col-span-3 2xl:col-span-2">
             <Input
@@ -769,7 +769,7 @@ const InventoryLotsPage = () => {
               }
             />
           </div>
-          <label className="flex min-w-0 w-full items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <label className="flex min-w-0 w-full items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
               checked={draftFilters.onlyAvailable}
@@ -831,10 +831,10 @@ const InventoryLotsPage = () => {
         </section>
       ) : null}
 
-      <section className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="max-w-full overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Producto</th>
                 <th className="px-4 py-3 font-medium">Lote</th>
@@ -854,19 +854,19 @@ const InventoryLotsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando inventario por lote...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar lotes y saldos.
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay lotes para mostrar.
                   </td>
                 </tr>
@@ -884,19 +884,19 @@ const InventoryLotsPage = () => {
 
                   return (
                     <tr key={row.key}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         <div className="min-w-[180px]">
                           <p className="font-medium">{productName}</p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             {compactId(row.lot.productId)}
                           </p>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900">
+                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                         {row.lot.lotCode}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{branchName}</td>
-                      <td className="px-4 py-3 text-slate-700">{locationName}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{branchName}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{locationName}</td>
                       <td className="px-4 py-3">
                         <div className="space-y-1">
                           <span>{formatDate(row.lot.expirationDate)}</span>
@@ -914,19 +914,19 @@ const InventoryLotsPage = () => {
                           {statusLabels[row.lot.status]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-700">
+                      <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-200">
                         {formatNumber(row.balance?.quantityOnHand ?? 0)}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-700">
+                      <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-200">
                         {formatNumber(row.balance?.quantityReserved ?? 0)}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-white">
                         {formatNumber(row.balance?.quantityAvailable ?? 0)}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-700">
+                      <td className="px-4 py-3 text-right text-slate-700 dark:text-slate-200">
                         {formatCurrency(row.lot.unitCost)}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatDate(row.balance?.lastMovementAt)}
                       </td>
                       <td className="px-4 py-3">{renderAlerts(row)}</td>
@@ -944,7 +944,7 @@ const InventoryLotsPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>

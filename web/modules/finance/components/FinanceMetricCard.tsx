@@ -21,17 +21,17 @@ export const FinanceMetricCard = ({
   accent = "slate",
   helper,
 }: FinanceMetricCardProps) => (
-  <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+  <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:bg-slate-800 dark:border-slate-700">
     <span
       className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] whitespace-normal break-words ${accentStyles[accent]}`}
     >
       {label}
     </span>
-    <div className="mt-4 min-w-0 whitespace-normal break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl">
+    <div className="mt-4 min-w-0 whitespace-normal break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl dark:text-white">
       {value}
     </div>
     {helper ? (
-      <p className="mt-2 min-w-0 whitespace-normal break-words text-sm leading-snug text-slate-500">
+      <p className="mt-2 min-w-0 whitespace-normal break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
         {helper}
       </p>
     ) : null}

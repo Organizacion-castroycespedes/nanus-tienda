@@ -17,7 +17,7 @@ export const Recommendations = ({
   return (
     <section
       aria-labelledby="recommendations-title"
-      className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+      className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
     >
       <div className="flex items-center gap-2">
         <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-50 text-amber-600">
@@ -26,11 +26,11 @@ export const Recommendations = ({
         <div>
           <h2
             id="recommendations-title"
-            className="text-lg font-semibold text-slate-900"
+            className="text-lg font-semibold text-slate-900 dark:text-white"
           >
             Siguiente acción sugerida
           </h2>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Recomendaciones para mantener tu operación al día.
           </p>
         </div>
@@ -47,22 +47,22 @@ export const Recommendations = ({
                   item.highlight
                     ? "border-amber-200 bg-amber-50 hover:border-amber-300"
                     : "border-slate-200 bg-white hover:border-blue-200"
-                }`}
+                } dark:bg-slate-800 dark:border-slate-700`}
               >
                 <span
                   className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
                     item.highlight
                       ? "bg-amber-100 text-amber-700"
                       : "bg-slate-100 text-slate-600"
-                  }`}
+                  } dark:text-slate-300`}
                 >
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
-                <span className="flex-1 text-sm font-medium text-slate-800">
+                <span className="flex-1 text-sm font-medium text-slate-800 dark:text-slate-100">
                   {item.title}
                 </span>
                 <ChevronRight
-                  className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-600"
+                  className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-600 dark:text-slate-300"
                   aria-hidden="true"
                 />
               </Link>

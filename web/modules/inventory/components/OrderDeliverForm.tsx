@@ -223,12 +223,12 @@ export const OrderDeliverForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
-          <h2 className="text-xl font-semibold text-slate-900">Entregar pedido</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Orders</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Entregar pedido</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Registra cantidades entregadas por item sin cerrar automaticamente el pedido.
           </p>
         </div>
@@ -238,7 +238,7 @@ export const OrderDeliverForm = ({
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:text-slate-300">
           Cargando detalle del pedido...
         </div>
       ) : loadError ? (
@@ -250,44 +250,44 @@ export const OrderDeliverForm = ({
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <div className="grid gap-3 md:grid-cols-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Cliente</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {order.customerName || order.customerId}
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Sucursal</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {order.branchName || order.branchId || "-"}
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{order.status}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{order.status}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Tipo</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{order.type}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Tipo</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{order.type}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Terminal</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Terminal</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {order.terminalName || "-"}
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {formatCurrency(Number(order.total))}
                 </p>
               </div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white">
+          <section className="rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-slate-600">
+                <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
                     <th className="px-4 py-3 font-medium">Cantidad pedida</th>
@@ -299,12 +299,12 @@ export const OrderDeliverForm = ({
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(({ item, index, pending }) => (
                     <tr key={item.id}>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         {item.productName || item.productId}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{item.orderedQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700">{item.deliveredQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700">{pending}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.deliveredQuantity}</td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{pending}</td>
                       <td className="px-4 py-3">
                         <Input
                           label=""

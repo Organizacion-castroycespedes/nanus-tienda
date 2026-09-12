@@ -110,8 +110,8 @@ const CashReportsPage = () => {
         header: "Fecha apertura",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatDateTime(row.openedAt)}</p>
-            <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.openedAt)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.branchName ?? "Sucursal"}</p>
           </div>
         ),
       },
@@ -120,8 +120,8 @@ const CashReportsPage = () => {
         header: "Fecha cierre",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatDateTime(row.closedAt)}</p>
-            <p className="text-xs text-slate-500">{row.cashRegister ?? "Caja"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.closedAt)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.cashRegister ?? "Caja"}</p>
           </div>
         ),
       },
@@ -150,7 +150,7 @@ const CashReportsPage = () => {
         header: "difference",
         render: (row) => (
           <div className="space-y-2">
-            <span className="font-medium text-slate-900">{formatCurrency(row.difference)}</span>
+            <span className="font-medium text-slate-900 dark:text-white">{formatCurrency(row.difference)}</span>
             <ReportStatusBadge value={row.status} />
           </div>
         ),
@@ -200,8 +200,8 @@ const CashReportsPage = () => {
         header: "Fecha",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{formatDateTime(row.countedAt)}</p>
-            <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.countedAt)}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.branchName ?? "Sucursal"}</p>
           </div>
         ),
       },
@@ -210,8 +210,8 @@ const CashReportsPage = () => {
         header: "Usuario",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{row.countedBy ?? "Usuario"}</p>
-            <p className="text-xs text-slate-500">{row.cashRegister ?? "Caja"}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{row.countedBy ?? "Usuario"}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{row.cashRegister ?? "Caja"}</p>
           </div>
         ),
       },
@@ -230,7 +230,7 @@ const CashReportsPage = () => {
         header: "Diferencia",
         render: (row) => (
           <div className="space-y-2">
-            <span className="font-medium text-slate-900">{formatCurrency(row.difference)}</span>
+            <span className="font-medium text-slate-900 dark:text-white">{formatCurrency(row.difference)}</span>
             <ReportStatusBadge value={row.sessionStatus} />
           </div>
         ),
@@ -286,10 +286,10 @@ const CashReportsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Reporteria caja</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Cierres y arqueos</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria caja</p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Cierres y arqueos</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
           Consulta cierres y arqueos por fecha, sucursal y tenant; abre tickets PDF y mantén trazabilidad operativa del turno.
         </p>
       </section>

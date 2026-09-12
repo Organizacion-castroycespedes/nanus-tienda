@@ -79,7 +79,10 @@ export const buildCashClosingTicketTemplate = (
     .filter((item) => item.direction === "IN" && item.total > 0)
     .map(
       (item) =>
-        [item.paymentMethodNombre.toUpperCase(), formatCurrency(item.total)] as [string, string]
+        [
+          item.paymentMethodNombre?.toUpperCase() ?? "SIN METODO",
+          formatCurrency(item.total),
+        ] as [string, string]
     );
 
   const deliveryBreakdownRows = dataset.deliverySummary.byPaymentMethod.map(
@@ -127,7 +130,7 @@ export const buildCashClosingTicketTemplate = (
   const methodRows = (dataset.paymentMethodDetails ?? []).map(
     (item) =>
       [
-        `${item.paymentMethodNombre.toUpperCase()} (${paymentCategoryLabel[item.category] ?? item.category})`,
+        `${item.paymentMethodNombre?.toUpperCase() ?? "SIN METODO"} (${paymentCategoryLabel[item.category] ?? item.category})`,
         formatCurrency(item.net),
       ] as [string, string]
   );
@@ -155,17 +158,19 @@ export const buildCashClosingTicketTemplate = (
     });
   }
 
-  sections.push({
-    stack: [
-      buildThermalSectionTitle("Movimientos"),
-      buildMiniTable(
-        dataset.movementBreakdown.map((item) => [
-          `${item.movementType} ${item.direction}`,
-          `${item.count} / ${formatCurrency(item.total)}`,
-        ])
-      ),
-    ],
-  });
+  if (dataset.movementBreakdown.length > 0) {
+    sections.push({
+      stack: [
+        buildThermalSectionTitle("Movimientos"),
+        buildMiniTable(
+          dataset.movementBreakdown.map((item) => [
+            `${item.movementType} ${item.direction}`,
+            `${item.count} / ${formatCurrency(item.total)}`,
+          ])
+        ),
+      ],
+    });
+  }
 
   sections.push({
     stack: [

@@ -92,21 +92,21 @@ const ReporteriaPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
               Reporteria
             </p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+            <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">
               Centro de control operativo
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
               Un espacio rapido para consultar ventas POS, cierres y arqueos sin salir del flujo diario de operacion.
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">Resumen del dia</p>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+            <p className="font-semibold text-slate-900 dark:text-white">Resumen del dia</p>
             <p>{initialRange.from}</p>
           </div>
         </div>
@@ -154,16 +154,16 @@ const ReporteriaPage = () => {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="flex items-center gap-3">
             <span className="rounded-2xl bg-slate-900 p-3 text-white">
               <BarChart3 className="h-5 w-5" />
             </span>
             <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Accesos directos
               </p>
-              <h2 className="text-xl font-semibold text-slate-900">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
                 Reportes clave del turno
               </h2>
             </div>
@@ -175,15 +175,15 @@ const ReporteriaPage = () => {
                 <Link
                   key={card.href}
                   href={`/${tenantSlug}/${card.href}`}
-                  className="rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md"
+                  className="rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md dark:bg-slate-800 dark:border-slate-700"
                 >
-                  <span className="inline-flex rounded-2xl bg-white p-3 text-slate-900 shadow-sm">
+                  <span className="inline-flex rounded-2xl bg-white p-3 text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white">
                     <Icon className="h-5 w-5" />
                   </span>
-                  <p className="mt-4 text-base font-semibold text-slate-900">
+                  <p className="mt-4 text-base font-semibold text-slate-900 dark:text-white">
                     {card.title}
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {card.description}
                   </p>
                 </Link>
@@ -192,16 +192,16 @@ const ReporteriaPage = () => {
           </div>
         </article>
 
-        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+        <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Actividad reciente
           </p>
-          <h2 className="mt-2 text-xl font-semibold text-slate-900">
+          <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white">
             Ultimos movimientos visibles
           </h2>
           <div className="mt-5 space-y-3">
             {loading ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-sm text-slate-500 dark:text-slate-400">
                 Cargando resumen operativo...
               </div>
             ) : error ? (
@@ -214,14 +214,14 @@ const ReporteriaPage = () => {
                   <div key={row.saleId} className="rounded-2xl border border-slate-200 px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-slate-900">
+                        <p className="font-semibold text-slate-900 dark:text-white">
                           Venta POS · {row.customerName || "Consumidor final"}
                         </p>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
                           {formatDateTime(row.date)} · {row.branchName ?? "Sucursal"}
                         </p>
                       </div>
-                      <p className="text-sm font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
                         {formatCurrency(row.total)}
                       </p>
                     </div>
@@ -231,14 +231,14 @@ const ReporteriaPage = () => {
                   <div key={row.cashSessionId} className="rounded-2xl border border-slate-200 px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-slate-900">
+                        <p className="font-semibold text-slate-900 dark:text-white">
                           Cierre de caja · {row.branchName ?? "Sucursal"}
                         </p>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
                           {formatDateTime(row.closedAt ?? row.openedAt)} · {row.cashRegister ?? "Caja"}
                         </p>
                       </div>
-                      <p className="text-sm font-semibold text-slate-900">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
                         {formatCurrency(row.difference)}
                       </p>
                     </div>
@@ -246,7 +246,7 @@ const ReporteriaPage = () => {
                 ))}
               </>
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-sm text-slate-500 dark:text-slate-400">
                 No hay actividad para el dia seleccionado.
               </div>
             )}

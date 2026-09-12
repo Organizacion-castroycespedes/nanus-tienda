@@ -38,20 +38,20 @@ export const Modal = ({
         />
       ) : null}
       <div
-        className={`relative w-full ${sizeStyles[size]} rounded-2xl bg-white p-6 shadow-xl ${className ?? ""}`}
+        className={`relative w-full ${sizeStyles[size]} rounded-2xl bg-white p-6 shadow-xl ${className ?? ""} dark:bg-slate-800`}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
             {description ? (
-              <p className="mt-1 text-sm text-slate-500">{description}</p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
             ) : null}
           </div>
           {onClose ? (
             <button
               type="button"
               aria-label="Cerrar"
-              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
               onClick={onClose}
             >
               <X className="h-4 w-4" />

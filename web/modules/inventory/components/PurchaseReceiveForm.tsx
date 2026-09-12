@@ -308,12 +308,12 @@ export const PurchaseReceiveForm = ({
   };
 
   return (
-    <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Purchases</p>
-          <h2 className="text-xl font-semibold text-slate-900">Recibir compra</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Purchases</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Recibir compra</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Registra las cantidades realmente recibidas por producto.
           </p>
         </div>
@@ -328,7 +328,7 @@ export const PurchaseReceiveForm = ({
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:text-slate-300">
           Cargando detalle de la compra...
         </div>
       ) : loadError ? (
@@ -340,38 +340,38 @@ export const PurchaseReceiveForm = ({
           <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Proveedor</p>
-                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Proveedor</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
                   {purchase.supplierName || purchase.supplierId}
                 </p>
               </div>
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
-                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Sucursal</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
                   {purchase.branchName || purchase.branchId || "-"}
                 </p>
               </div>
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
                   {purchase.status}
                 </p>
               </div>
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Tipo</p>
-                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Tipo</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
                   {purchase.type}
                 </p>
               </div>
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Terminal</p>
-                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Terminal</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
                   {purchase.terminalName || "-"}
                 </p>
               </div>
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-                <p className="mt-1 break-words text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</p>
+                <p className="mt-1 break-words text-sm font-medium text-slate-900 dark:text-white">
                   {formatCurrency(Number(purchase.total))}
                 </p>
               </div>
@@ -385,11 +385,11 @@ export const PurchaseReceiveForm = ({
           ) : null}
 
           {rows.length > 0 ? (
-          <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
             <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain">
               <div className="min-w-[1040px]">
               <table className="w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-slate-600">
+                <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="w-[320px] px-4 py-3 font-medium">Producto</th>
                     <th className="w-[120px] px-4 py-3 font-medium">Pedido</th>
@@ -413,11 +413,11 @@ export const PurchaseReceiveForm = ({
                     return (
                       <Fragment key={item.id}>
                         <tr>
-                          <td className="px-4 py-3 text-slate-900">
+                          <td className="px-4 py-3 text-slate-900 dark:text-white">
                             <div className="space-y-2">
                               <div>
                                 <p className="font-medium">{item.productName || product?.name || item.productId}</p>
-                                <p className="text-xs text-slate-500">
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
                                   {product?.sku || item.productSku || item.productId}
                                 </p>
                               </div>
@@ -440,9 +440,9 @@ export const PurchaseReceiveForm = ({
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-slate-700">{item.orderedQuantity}</td>
-                          <td className="px-4 py-3 text-slate-700">{item.receivedQuantity}</td>
-                          <td className="px-4 py-3 text-slate-700">{pending}</td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.receivedQuantity}</td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{pending}</td>
                           <td className="px-4 py-3">
                             <Input
                               label=""

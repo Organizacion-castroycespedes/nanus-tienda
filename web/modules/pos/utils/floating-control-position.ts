@@ -21,6 +21,7 @@ export const FLOATING_CONTROL_DRAG_THRESHOLD = 6;
 
 export const FLOATING_POS_STORAGE_KEY = "manus.pos.floating-pos-position";
 export const FLOATING_CART_STORAGE_KEY = "manus.pos.floating-cart-position";
+export const FLOATING_CHARGE_STORAGE_KEY = "manus.pos.floating-charge-position";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);

@@ -68,8 +68,8 @@ const CustomersOrdersStatusPage = () => {
         header: "Cliente",
         render: (row) => (
           <div>
-            <p className="font-medium text-slate-900">{row.customerName}</p>
-            <p className="text-xs text-slate-500">Cliente #{row.customerId.slice(0, 8)}</p>
+            <p className="font-medium text-slate-900 dark:text-white">{row.customerName}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Cliente #{row.customerId.slice(0, 8)}</p>
           </div>
         ),
       },
@@ -117,10 +117,10 @@ const CustomersOrdersStatusPage = () => {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Reporteria clientes</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Clientes con pedidos por estado</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria clientes</p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Clientes con pedidos por estado</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
           Agrupa pedidos por cliente para identificar pendientes, parciales, completados y saldo total por cobrar.
         </p>
       </section>
@@ -252,7 +252,7 @@ const CustomersOrdersStatusPage = () => {
         />
       </section>
 
-      <section className="rounded-[32px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className="rounded-[32px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:bg-slate-800 dark:border-slate-700">
         <DataTable
           columns={columns}
           rows={dataset?.rows ?? []}

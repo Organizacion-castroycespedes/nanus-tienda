@@ -5,13 +5,13 @@ import "../styles/globals.css";
 export const metadata = {
   title: "Manus POS — Controla ventas, inventario, caja y pedidos",
   description:
-    "Manus POS es el software para tiendas, minimarkets y pequeños negocios. Punto de venta, inventario, caja, pedidos, compras, clientes y reportes en un solo lugar.",
+    "",
 };
 
 const RootLayout = ({ children }: { children: ReactNode }) => {
   return (
-    <html lang="es">
-      <body className="bg-slate-50 text-slate-900">
+    <html lang="es" suppressHydrationWarning>
+      <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -63,7 +63,7 @@ export const PromotionFormPanel = ({
   onSubmit,
   onCancel,
 }: PromotionFormPanelProps) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <form className="space-y-5" onSubmit={onSubmit}>
       <div className="grid gap-4 lg:grid-cols-2">
         <Input
@@ -158,7 +158,7 @@ export const PromotionFormPanel = ({
         </div>
       </div>
 
-      <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+      <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
         <input
           type="checkbox"
           className="h-4 w-4 rounded border-slate-300 text-blue-600"
@@ -177,8 +177,8 @@ export const PromotionFormPanel = ({
         <div className="rounded-xl border border-slate-200 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-slate-900">productIds</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="font-semibold text-slate-900 dark:text-white">productIds</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Seleccionados: {form.productIds.length}
               </p>
             </div>
@@ -191,14 +191,14 @@ export const PromotionFormPanel = ({
           </div>
           <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
             {referencesLoading ? (
-              <p className="text-sm text-slate-500">Cargando productos...</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Cargando productos...</p>
             ) : filteredProducts.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay productos para seleccionar.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">No hay productos para seleccionar.</p>
             ) : (
               filteredProducts.map((product) => (
                 <label
                   key={product.id}
-                  className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                  className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 dark:text-slate-200"
                 >
                   <input
                     type="checkbox"
@@ -207,10 +207,10 @@ export const PromotionFormPanel = ({
                     onChange={() => onToggleProduct(product.id)}
                   />
                   <span>
-                    <span className="block font-medium text-slate-900">
+                    <span className="block font-medium text-slate-900 dark:text-white">
                       {product.name}
                     </span>
-                    <span className="text-xs text-slate-500">{product.sku}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{product.sku}</span>
                   </span>
                 </label>
               ))
@@ -221,8 +221,8 @@ export const PromotionFormPanel = ({
         <div className="rounded-xl border border-slate-200 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-slate-900">branchIds</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="font-semibold text-slate-900 dark:text-white">branchIds</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 {form.branchIds.length === 0
                   ? "Aplica a todas las sucursales permitidas."
                   : `Seleccionadas: ${form.branchIds.length}`}
@@ -242,16 +242,16 @@ export const PromotionFormPanel = ({
           ) : null}
           <div className="mt-4 max-h-64 space-y-2 overflow-y-auto pr-1">
             {referencesLoading ? (
-              <p className="text-sm text-slate-500">Cargando sucursales...</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Cargando sucursales...</p>
             ) : filteredBranches.length === 0 ? (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 Sin selector de sucursales disponible.
               </p>
             ) : (
               filteredBranches.map((branch) => (
                 <label
                   key={branch.id}
-                  className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                  className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 dark:text-slate-200"
                 >
                   <input
                     type="checkbox"
@@ -260,10 +260,10 @@ export const PromotionFormPanel = ({
                     onChange={() => onToggleBranch(branch.id)}
                   />
                   <span>
-                    <span className="block font-medium text-slate-900">
+                    <span className="block font-medium text-slate-900 dark:text-white">
                       {branch.nombre}
                     </span>
-                    <span className="text-xs text-slate-500">{branch.codigo}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{branch.codigo}</span>
                   </span>
                 </label>
               ))

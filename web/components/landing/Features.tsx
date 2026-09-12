@@ -87,7 +87,7 @@ const Features = () => (
             Todo lo que necesita una tienda para vender y operar mejor
           </h2>
         </div>
-        <p className="text-pretty text-lg leading-8 text-slate-600">
+        <p className="text-pretty text-lg leading-8 text-slate-600 dark:text-slate-300">
           Manus POS conecta mostrador, inventario, caja, pedidos y reportes para
           que el negocio deje de operar a ciegas. Cada módulo ayuda a reducir
           errores y ahorrar tiempo en el día a día.
@@ -99,7 +99,7 @@ const Features = () => (
           ({ title, description, highlight, imageSrc, imageAlt, accent }) => (
             <article
               key={title}
-              className="group flex h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl"
+              className="group flex h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-xl dark:bg-slate-800 dark:border-slate-700"
             >
               <div className="flex min-h-full w-full flex-col">
                 <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
@@ -115,7 +115,7 @@ const Features = () => (
 
                 <div className="flex flex-1 flex-col p-5">
                   <h3 className="text-lg font-bold text-slate-950">{title}</h3>
-                  <p className="mt-3 flex-1 text-sm leading-6 text-slate-600">
+                  <p className="mt-3 flex-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
                     {description}
                   </p>
                   <p

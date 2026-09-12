@@ -16,6 +16,7 @@ import {
 } from "../../../../modules/terminals/hooks/use-terminals";
 import type { TerminalResponse } from "../../../../modules/terminals/services/terminals.service";
 import { buildTerminalPeripheralsPath } from "../../../../modules/terminals/utils/terminal-links";
+import { TerminalDeviceBindingPanel } from "../../../../modules/terminals/components/TerminalDeviceBindingPanel";
 
 type TerminalFilters = {
   query: string;
@@ -67,6 +68,7 @@ const TerminalsPage = () => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedTerminal, setSelectedTerminal] = useState<TerminalResponse | null>(null);
+  const [bindingTerminal, setBindingTerminal] = useState<TerminalResponse | null>(null);
   const [form, setForm] = useState<TerminalFormState>(emptyForm);
 
   const {
@@ -279,12 +281,16 @@ const TerminalsPage = () => {
     router.push(buildTerminalPeripheralsPath(tenantSlug, terminal.id));
   };
 
-  if (!isSuperRole) {
+  const openBindingPanel = (terminal: TerminalResponse) => {
+    setBindingTerminal(terminal);
+  };
+
+  if (authUser?.role !== "SUPER_ADMIN") {
     return (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Acceso restringido</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Solo SUPER_ADMIN y SUPER_USER pueden administrar terminales.
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Acceso restringido</h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          Solo SUPER_ADMIN puede administrar terminales.
         </p>
       </section>
     );
@@ -292,12 +298,12 @@ const TerminalsPage = () => {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Configuracion</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Terminales</h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Configuracion</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Terminales</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Administra terminales por sucursal y controla su estado operativo.
             </p>
           </div>
@@ -314,7 +320,7 @@ const TerminalsPage = () => {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto_auto]">
           <Input
             label="Buscar"
@@ -384,10 +390,10 @@ const TerminalsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Codigo</th>
@@ -400,28 +406,28 @@ const TerminalsPage = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando terminales...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar terminales.
                   </td>
                 </tr>
               ) : paginatedTerminals.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay terminales para mostrar.
                   </td>
                 </tr>
               ) : (
                 paginatedTerminals.map((terminal) => (
                   <tr key={terminal.id}>
-                    <td className="px-4 py-3 text-slate-900">{terminal.name}</td>
-                    <td className="px-4 py-3 text-slate-700">{terminal.code}</td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">{terminal.name}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{terminal.code}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       <div className="flex flex-col gap-1">
                         <span>{terminal.branchName ?? "-"}</span>
                         {terminal.tenantName ? (
@@ -435,14 +441,21 @@ const TerminalsPage = () => {
                           terminal.isActive
                             ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
                             : "border border-slate-200 bg-slate-100 text-slate-600"
-                        }`}
+                        } dark:text-slate-300`}
                       >
                         {terminal.isActive ? "Activa" : "Inactiva"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{formatDate(terminal.createdAt)}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatDate(terminal.createdAt)}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openBindingPanel(terminal)}
+                        >
+                          Administrar dispositivo
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -470,7 +483,7 @@ const TerminalsPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
           <span>
             Pagina {Math.min(page + 1, totalPages)} de {totalPages}
           </span>
@@ -492,6 +505,13 @@ const TerminalsPage = () => {
           </div>
         </div>
       </section>
+
+      {bindingTerminal ? (
+        <TerminalDeviceBindingPanel
+          terminal={bindingTerminal}
+          onClose={() => setBindingTerminal(null)}
+        />
+      ) : null}
 
       {modalMode ? (
         <Modal title={modalMode === "create" ? "Crear terminal" : "Editar terminal"}>

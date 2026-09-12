@@ -22,23 +22,23 @@ const Card = ({ card }: { card: SummaryCardData }) => {
   const Icon = card.icon;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           {card.label}
         </p>
-        <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600">
+        <span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-600 dark:text-slate-300">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
       </div>
 
       {card.status === "data" ? (
         <>
-          <p className="mt-3 text-2xl font-semibold text-slate-900">
+          <p className="mt-3 text-2xl font-semibold text-slate-900 dark:text-white">
             {card.value}
           </p>
           {card.hint ? (
-            <p className="mt-1 text-xs text-slate-500">{card.hint}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{card.hint}</p>
           ) : null}
         </>
       ) : null}
@@ -46,7 +46,7 @@ const Card = ({ card }: { card: SummaryCardData }) => {
       {card.status === "empty" ? (
         <>
           <p className="mt-3 text-lg font-semibold text-slate-400">Sin datos</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {card.hint ?? "Aún no hay información para mostrar."}
           </p>
         </>
@@ -70,10 +70,10 @@ const Card = ({ card }: { card: SummaryCardData }) => {
 export const SummaryCards = ({ cards }: { cards: SummaryCardData[] }) => {
   return (
     <section aria-labelledby="summary-title">
-      <h2 id="summary-title" className="text-lg font-semibold text-slate-900">
+      <h2 id="summary-title" className="text-lg font-semibold text-slate-900 dark:text-white">
         Resumen operativo
       </h2>
-      <p className="mt-1 text-sm text-slate-500">
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Una mirada rápida al estado de hoy.
       </p>
 

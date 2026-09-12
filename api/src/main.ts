@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { json, NextFunction, Request, Response, urlencoded } from "express";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import process from "node:process";
@@ -76,10 +76,23 @@ const bootstrap = async () => {
   loadApiEnv();
   assertAuthEnv();
 
-  const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGIN);
+  const bodyLimit = process.env.API_BODY_LIMIT?.trim() || "10mb";
+
+  const configuredCorsOrigin =
+    process.env.CORS_ORIGIN?.trim() || process.env.CORS_ORIGINS?.trim();
+  const allowedOrigins = parseAllowedOrigins(configuredCorsOrigin);
+  if (!process.env.CORS_ORIGIN?.trim() && process.env.CORS_ORIGINS?.trim()) {
+    console.warn("[CORS] CORS_ORIGINS is deprecated; use CORS_ORIGIN");
+  }
+  console.log("[CORS] allowed origins:", allowedOrigins.join(", ") || "(none)");
   const { AppModule } = await import("./modules/app.module");
 
-  const app = await NestFactory.create(AppModule);
+  // Register parsers explicitly so the default Express 100kb limit does not
+  // reject valid product images or larger JSON requests before reaching Nest.
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  app.use(json({ limit: bodyLimit }));
+  app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   app.setGlobalPrefix("api");
 
@@ -113,6 +126,9 @@ const bootstrap = async () => {
 
     // 🔥 Manejo explícito de preflight
     if (req.method === "OPTIONS") {
+      if (origin && !isOriginAllowed(origin, allowedOrigins)) {
+        console.warn(`[CORS] blocked preflight origin: ${origin}`);
+      }
       return res.sendStatus(204);
     }
 

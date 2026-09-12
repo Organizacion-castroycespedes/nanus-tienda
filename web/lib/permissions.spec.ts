@@ -197,20 +197,20 @@ test("roles module is visible only for SUPER_ADMIN", () => {
   assert.equal(hasPermission(MENU_KEYS.CONFIG_ROLES, "read"), true);
 });
 
-test("menu permissions expose terminals only when DB grants super roles", () => {
+test("menu permissions expose terminals only to SUPER_ADMIN", () => {
   const terminalPermission = permissionFor(MENU_KEYS.CONFIG_TERMINALS);
 
   setRole("ADMIN", [terminalPermission]);
   assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), false);
 
   setRole("SUPER_USER", [terminalPermission]);
-  assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), true);
+  assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), false);
 
   setRole("SUPER_ADMIN", [terminalPermission]);
   assert.equal(hasMenuAccess(MENU_KEYS.CONFIG_TERMINALS, "READ"), true);
 });
 
-test("route permissions allow terminal module only for super roles with DB grant", () => {
+test("route permissions allow terminal module only for SUPER_ADMIN", () => {
   const terminalPermission = permissionFor(MENU_KEYS.CONFIG_TERMINALS);
 
   setRole("ADMIN", [terminalPermission]);
@@ -220,7 +220,7 @@ test("route permissions allow terminal module only for super roles with DB grant
   assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), false);
 
   setRole("SUPER_USER");
-  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), true);
+  assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), false);
 
   setRole("SUPER_ADMIN");
   assert.equal(hasPermission(MENU_KEYS.CONFIG_TERMINALS, "read"), true);
