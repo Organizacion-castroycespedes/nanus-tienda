@@ -45,4 +45,11 @@ No se detectaron workflows de GitHub Actions ni pipelines CI/CD en el repositori
 
 ## Docker
 
-No se detectaron Dockerfile ni compose files.
+Desarrollo local versionado:
+
+- `docker-compose.yml` levanta solo backends (`api`, `reporteria`, `facturacion`)
+- PostgreSQL, `web`, `backend-perifericos` y Electron corren en el host
+- Runbook: [Docker local](../docker-local.md)
+- Plantilla de env: `.env.docker.example` → `.env` en la raíz del repo
+
+No hay compose de producción ni Postgres en contenedor en este flujo.
