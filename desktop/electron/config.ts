@@ -4,6 +4,7 @@ export const QA_MANUS_WEB_ORIGIN = "https://www.apptiendamanus.space";
 
 export type ElectronConfigEnv = {
   MANUS_WEB_URL?: string;
+  NEXT_PUBLIC_MANUS_WEB_URL?: string;
   MANUS_START_PATH?: string;
   MANUS_TENANT_ID?: string;
   MANUS_BRANCH_ID?: string;
@@ -96,8 +97,11 @@ const readTrimmed = (value: string | undefined) => {
   return trimmed ? trimmed : null;
 };
 
-const resolveWebBaseUrl = (value: string | undefined) => {
-  const configuredUrl = readTrimmed(value) ?? DEFAULT_MANUS_WEB_URL;
+const resolveWebBaseUrl = (env: Pick<ElectronConfigEnv, "MANUS_WEB_URL" | "NEXT_PUBLIC_MANUS_WEB_URL">) => {
+  const configuredUrl =
+    readTrimmed(env.MANUS_WEB_URL) ??
+    readTrimmed(env.NEXT_PUBLIC_MANUS_WEB_URL) ??
+    DEFAULT_MANUS_WEB_URL;
 
   try {
     return new URL(configuredUrl);
@@ -127,7 +131,7 @@ const buildTenantStartPath = (tenantId: string | null) => {
 export const resolveElectronConfig = (
   env: ElectronConfigEnv = process.env
 ): ElectronOperationalContext => {
-  const webBaseUrl = resolveWebBaseUrl(env.MANUS_WEB_URL);
+  const webBaseUrl = resolveWebBaseUrl(env);
   const startPath = resolveStartPath(env.MANUS_START_PATH);
   const tenantId = readTrimmed(env.MANUS_TENANT_ID);
   const branchId = readTrimmed(env.MANUS_BRANCH_ID);

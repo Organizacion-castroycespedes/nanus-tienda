@@ -1006,7 +1006,7 @@ const PurchasesPage = () => {
                   Ticket de compra {activePurchase.id.slice(0, 8)}
                 </h2>
                 <p id="purchase-ticket-description" className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  Vista previa del ticket generado por el backend.
+                  Vista previa del ticket
                 </p>
               </div>
               <button
