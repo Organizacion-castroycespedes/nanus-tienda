@@ -229,7 +229,7 @@ export const PurchaseDetailPanel = ({
 
           <section className="rounded-lg border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
             <div className="overflow-x-auto">
-              <table className="min-w-[760px] divide-y divide-slate-200 text-sm">
+              <table className="w-full min-w-[760px] divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>

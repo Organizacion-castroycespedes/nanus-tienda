@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Eye, PackageCheck, Plus, RefreshCw, Search, X, XCircle } from "lucide-react";
+import { Banknote, Download, Eye, FileCheck, PackageCheck, Plus, Receipt, RefreshCw, Search, X, XCircle } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
@@ -1406,7 +1406,7 @@ const PurchasesPage = () => {
       {!isActionMode ? (
         <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="w-full max-w-full overflow-x-auto">
-            <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
+            <table className="w-full min-w-[1120px] divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                 <tr>
                   <th className="px-4 py-3 font-medium">Proveedor</th>
@@ -1465,14 +1465,15 @@ const PurchasesPage = () => {
                         {formatDate(purchase.createdAt)}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
+                            title="Detalle"
                             onClick={() => openPurchasePanel("detail", purchase.id)}
+                            className="px-2"
                           >
                             <Eye className="h-4 w-4" />
-                            Detalle
                           </Button>
                           {canReceive &&
                           purchase.status !== "CANCELLED" &&
@@ -1480,11 +1481,13 @@ const PurchasesPage = () => {
                           purchase.status !== "CERRADA_PARCIAL" ? (
                             <Button
                               variant="ghost"
+                              size="sm"
+                              title="Recibir"
                               onClick={() => openPurchasePanel("receive", purchase.id)}
                               disabled={!hasOpenCashSession}
+                              className="px-2"
                             >
                               <PackageCheck className="h-4 w-4" />
-                              Recibir
                             </Button>
                           ) : null}
                           {canReceive &&
@@ -1493,51 +1496,59 @@ const PurchasesPage = () => {
                           purchase.branchId ? (
                             <Button
                               variant="ghost"
+                              size="sm"
+                              title="Pagar"
                               onClick={() => openPurchasePanel("pay", purchase.id)}
                               disabled={!hasOpenCashSession}
+                              className="px-2"
                             >
-                              Pagar
+                              <Banknote className="h-4 w-4" />
                             </Button>
                           ) : null}
                           {canLiquidatePurchase(purchase) ? (
                             <Button
                               variant="ghost"
                               size="sm"
+                              title="Liquidar"
                               onClick={() => openPurchasePanel("settle-partial", purchase.id)}
                               disabled={!hasOpenCashSession}
+                              className="px-2"
                             >
-                              Liquidar
+                              <FileCheck className="h-4 w-4" />
                             </Button>
                           ) : null}
                           {canCancelPurchase(purchase) ? (
                             <Button
                               variant="ghost"
                               size="sm"
+                              title="Cancelar compra"
                               onClick={() => openPurchasePanel("cancel", purchase.id)}
                               disabled={!hasOpenCashSession}
+                              className="px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
                             >
                               <XCircle className="h-4 w-4" />
-                              Cancelar compra
                             </Button>
                           ) : null}
                           {canAccessTicket(purchase.status) ? (
                             <Button
                               variant="ghost"
                               size="sm"
+                              title="Ver Ticket"
                               onClick={() => openPurchasePanel("ticket", purchase.id)}
+                              className="px-2"
                             >
-                              <Eye className="h-4 w-4" />
-                              Ver Ticket
+                              <Receipt className="h-4 w-4" />
                             </Button>
                           ) : null}
                           {canAccessTicket(purchase.status) ? (
                             <Button
                               variant="ghost"
                               size="sm"
+                              title="Descargar"
                               onClick={() => void handleDownloadTicket(purchase)}
+                              className="px-2"
                             >
                               <Download className="h-4 w-4" />
-                              Descargar
                             </Button>
                           ) : null}
                         </div>
