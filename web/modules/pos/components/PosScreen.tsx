@@ -1148,9 +1148,9 @@ export const PosScreen = () => {
                 {
                   taxId: item.taxId,
                   taxName: tax?.name ?? "Impuesto",
-                  dianCode: tax?.dianCode ?? null,
-                  taxTypeCode: null,
-                  calculationMethodCode: null,
+                  dianCode: tax?.taxTypeDianCode ?? null,
+                  taxTypeCode: tax?.taxTypeCode ?? null,
+                  calculationMethodCode: tax?.calculationMethodCode ?? null,
                   taxRate: tax?.rate ?? item.taxRate ?? 0,
                   taxBase: item.taxBase ?? round(item.priceWithoutTax * item.quantity),
                   taxAmount: previewTaxAmount ?? fallbackTaxAmount,
