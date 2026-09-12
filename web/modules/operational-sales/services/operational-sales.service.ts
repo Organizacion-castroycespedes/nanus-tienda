@@ -13,6 +13,14 @@ export type OperationalSalesRequest = {
   filters: OperationalSalesFilters;
 };
 
+export const isEligibleForElectronicBillingRequest = (
+  sale: Pick<OperationalSaleDetail, "status" | "paymentStatus" | "electronicBilling" | "customer">
+) =>
+  !sale.electronicBilling &&
+  sale.status === "CONFIRMED" &&
+  ["PAID", "OVERPAID"].includes(sale.paymentStatus) &&
+  Boolean(sale.customer.id);
+
 export const fetchOperationalSales = (request: OperationalSalesRequest) => {
   const params = new URLSearchParams({
     page: String(request.page),
@@ -36,6 +44,20 @@ export const fetchOperationalSaleDetail = (saleId: string) =>
 export const refreshOperationalSaleBillingStatus = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/refresh`,
+    { method: "POST" },
+  );
+
+export type ElectronicBillingRequestResult = {
+  saleId: string;
+  result: string;
+  eligibility: string;
+  requestCreated: boolean;
+  electronicDocumentId: string | null;
+};
+
+export const requestOperationalSaleElectronicBilling = (saleId: string) =>
+  apiClient<ElectronicBillingRequestResult>(
+    `/sales/${encodeURIComponent(saleId)}/electronic-billing`,
     { method: "POST" },
   );
 

@@ -8,7 +8,9 @@ import { getElectronicInvoice, getElectronicInvoicePrintData, getPosSaleTicketPr
 import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { hasPermission } from "../../../lib/permissions";
 import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
+import { isEligibleForElectronicBillingRequest } from "../services/operational-sales.service";
 import type { OperationalSaleDetail } from "../types";
 
 const labels: Record<string, string> = {
@@ -93,6 +95,7 @@ const ActionCard = ({
   onReload,
   onRefreshStatus,
   onRetry,
+  onRequestBilling,
   onPrintInvoice,
   refreshLoading,
   printLoading,
@@ -102,6 +105,7 @@ const ActionCard = ({
   onReload: () => void;
   onRefreshStatus: () => Promise<void>;
   onRetry: () => Promise<void>;
+  onRequestBilling: () => Promise<void>;
   onPrintInvoice: () => Promise<void>;
   refreshLoading: boolean;
   printLoading: boolean;
@@ -111,6 +115,9 @@ const ActionCard = ({
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
   const canRetry = billing?.retryability?.canRetry === true;
+  const canRequestBilling =
+    hasPermission("POS", "write") &&
+    isEligibleForElectronicBillingRequest(sale);
   const getPdf = useCallback(
     () => getElectronicInvoice(sale.id),
     [sale.id]
@@ -126,6 +133,21 @@ const ActionCard = ({
           {billing && billing.status !== "CANCELLED" ? (
             <Button variant="outline" onClick={() => void onRefreshStatus()} disabled={refreshLoading}>
               {refreshLoading ? "Consultando FE..." : "Actualizar estado FE"}
+            </Button>
+          ) : null}
+          {canRequestBilling ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (window.confirm(
+                  `¿Facturar electrónicamente esta venta usando el cliente ${sale.customer.name ?? sale.customer.id}? Se validarán sus datos fiscales antes de crear la solicitud.`
+                )) {
+                  void onRequestBilling();
+                }
+              }}
+              disabled={refreshLoading}
+            >
+              {refreshLoading ? "Solicitando FE..." : "Facturar electrónicamente"}
             </Button>
           ) : null}
           {accepted ? (
@@ -180,6 +202,7 @@ export const OperationalSaleDetailPage = () => {
     reload,
     refreshBillingStatus,
     retryBilling,
+    requestBilling,
     actionLoading,
     actionMessage,
   } = useOperationalSaleDetail(params.saleId);
@@ -255,6 +278,7 @@ export const OperationalSaleDetailPage = () => {
         onReload={reload}
         onRefreshStatus={refreshBillingStatus}
         onRetry={retryBilling}
+        onRequestBilling={requestBilling}
         onPrintInvoice={printInvoice}
         refreshLoading={actionLoading}
         printLoading={printLoading}
