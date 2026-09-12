@@ -95,7 +95,10 @@ const isRestrictedForRole = (role: string, moduleName: string) => {
   if (
     role !== "SUPER_ADMIN" &&
     (moduleName === normalizeValue(MENU_KEYS.CONFIG_ROLES) ||
-      moduleName === normalizeValue("ROLES_TENANT_ROLES"))
+      moduleName === normalizeValue("ROLES_TENANT_ROLES") ||
+      moduleName === normalizeValue(MENU_KEYS.CONFIG_TERMINALS) ||
+      moduleName === normalizeValue(MENU_KEYS.POS_PERIPHERALS) ||
+      moduleName === normalizeValue("peripherals"))
   ) {
     return true;
   }
@@ -114,7 +117,6 @@ const isRestrictedForRole = (role: string, moduleName: string) => {
 const isScopedSuperUserPermission = (role: string, moduleName: string) =>
   role === "SUPER_USER" &&
   (moduleName === normalizeValue("CONFIG_GENERAL") ||
-    moduleName === normalizeValue(MENU_KEYS.CONFIG_TERMINALS) ||
     moduleName === normalizeValue("CONFIG_USUARIOS"));
 
 const resolvePermissionInput = (
@@ -250,6 +252,19 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
 
   const candidates = getMenuKeyCandidates(menuKey);
   const normalizedCandidates = candidates.map((candidate) => normalizeValue(candidate));
+
+  if (
+    role !== "SUPER_ADMIN" &&
+    normalizedCandidates.some((candidate) =>
+      [
+        normalizeValue(MENU_KEYS.CONFIG_TERMINALS),
+        normalizeValue(MENU_KEYS.POS_PERIPHERALS),
+        normalizeValue("peripherals"),
+      ].includes(candidate)
+    )
+  ) {
+    return false;
+  }
 
   if (
     role !== "SUPER_ADMIN" &&
