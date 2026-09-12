@@ -10,11 +10,11 @@ import {
 const resolve = (env: ElectronConfigEnv = {}) => resolveElectronConfig(env);
 
 describe("resolveElectronConfig", () => {
-  it("opens the hosted login page by default", () => {
+  it("opens the local development page by default", () => {
     const config = resolve();
 
-    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/login");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.webBaseUrl.href, "http://localhost:3000/");
+    assert.equal(config.initialUrl.href, "http://localhost:3000/");
     assert.equal(config.startPath, null);
     assert.equal(config.tenantId, null);
     assert.equal(config.branchId, null);
@@ -36,7 +36,7 @@ describe("resolveElectronConfig", () => {
     });
 
     assert.equal(config.startPath, "/login");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "http://localhost:3000/login");
   });
 
   it("rejects MANUS_START_PATH when it does not start with slash", () => {
@@ -55,7 +55,7 @@ describe("resolveElectronConfig", () => {
     });
 
     assert.equal(config.tenantId, "tenant-demo");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/tenant-demo");
+    assert.equal(config.initialUrl.href, "http://localhost:3000/tenant-demo");
   });
 
   it("gives MANUS_START_PATH priority over tenant id", () => {
@@ -65,7 +65,7 @@ describe("resolveElectronConfig", () => {
     });
 
     assert.equal(config.tenantId, "tenant-demo");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "http://localhost:3000/login");
   });
 
   it("reads branch and terminal without changing the startup URL", () => {
@@ -76,7 +76,7 @@ describe("resolveElectronConfig", () => {
 
     assert.equal(config.branchId, "branch-1");
     assert.equal(config.terminalId, "terminal-1");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "http://localhost:3000/");
   });
 });
 
@@ -93,6 +93,32 @@ describe("validateVersionedShellConfig", () => {
       ...valid,
       frontendUrl: "https://www.apptiendamanus.space/",
     });
+  });
+
+  it("uses NEXT_PUBLIC_MANUS_WEB_URL when MANUS_WEB_URL is missing", () => {
+    const config = resolve({
+      NEXT_PUBLIC_MANUS_WEB_URL: "https://staging.example.com/login",
+    });
+
+    assert.equal(config.webBaseUrl.href, "https://staging.example.com/login");
+    assert.equal(config.initialUrl.href, "https://staging.example.com/login");
+  });
+
+  it("prioritizes MANUS_WEB_URL over NEXT_PUBLIC_MANUS_WEB_URL", () => {
+    const config = resolve({
+      MANUS_WEB_URL: "https://desktop.example.com",
+      NEXT_PUBLIC_MANUS_WEB_URL: "https://next.example.com",
+    });
+
+    assert.equal(config.webBaseUrl.href, "https://desktop.example.com/");
+  });
+
+  it("uses the default when NEXT_PUBLIC_MANUS_WEB_URL is invalid", () => {
+    const config = resolve({
+      NEXT_PUBLIC_MANUS_WEB_URL: "not-a-url",
+    });
+
+    assert.equal(config.webBaseUrl.href, "http://localhost:3000/");
   });
 
   it("preserves the packaged login startup path", () => {
