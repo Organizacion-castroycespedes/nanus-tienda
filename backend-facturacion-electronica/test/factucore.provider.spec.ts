@@ -402,7 +402,8 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
   const taxed = mapper.buildInvoiceRequest(makeInvoiceCommand());
   const taxedTax = taxed.lines[0].taxes?.[0] as Record<string, unknown>;
 
-  assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxType", "taxableBase"].sort());
+  assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxSchemeId", "taxType", "taxableBase"].sort());
+  assert.equal(taxedTax.taxSchemeId, "01");
   assert.equal((taxedTax.metadata as Record<string, unknown>).taxCode, "01");
 
   const excluded = makeInvoiceCommand();

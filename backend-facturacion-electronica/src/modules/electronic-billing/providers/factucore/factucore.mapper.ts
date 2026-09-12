@@ -185,6 +185,25 @@ export const mapFactuCoreTaxType = (tax: ElectronicTaxInput): FactuCoreTaxType =
   );
 };
 
+const FACTUCORE_TAX_SCHEME_IDS: Partial<Record<FactuCoreTaxType, string>> = {
+  IVA: "01",
+  INC: "04",
+  ICA: "03",
+};
+
+const mapFactuCoreTaxSchemeId = (tax: ElectronicTaxInput) => {
+  const taxType = mapFactuCoreTaxType(tax);
+  const canonicalId = FACTUCORE_TAX_SCHEME_IDS[taxType];
+  if (canonicalId) {
+    return canonicalId;
+  }
+
+  const suppliedId = normalizeNullableString(tax.schemeId);
+  return suppliedId === "01" || suppliedId === "04" || suppliedId === "03"
+    ? suppliedId
+    : null;
+};
+
 const resolveTaxProfile = (customer: ElectronicCustomer) => {
   const identificationTypeCode = normalizeString(customer.taxProfile?.identificationTypeCode) || normalizeString(customer.identification.typeCode);
   const taxSchemeId = normalizeNullableString(customer.taxProfile?.taxScheme);
@@ -242,18 +261,23 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
   };
 };
 
-const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => ({
-  taxType: mapFactuCoreTaxType(tax),
+const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
+  const taxType = mapFactuCoreTaxType(tax);
+  const taxSchemeId = mapFactuCoreTaxSchemeId(tax);
+  return {
+  taxType,
+  taxSchemeId,
   rate: tax.rate,
   taxableBase: tax.taxableBase,
   taxAmount: tax.amount,
   metadata: {
     ...(tax.metadata ?? {}),
     ...(tax.code ? { taxCode: tax.code } : {}),
-    ...(tax.schemeId ? { taxSchemeId: tax.schemeId } : {}),
+    ...(taxSchemeId ? { taxSchemeId } : {}),
     ...(tax.schemeName ? { taxSchemeName: tax.schemeName } : {}),
   },
-});
+  };
+};
 
 const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
   sku: normalizeNullableString(line.sku),
@@ -263,8 +287,8 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
   description: line.description,
   unitCode: mapUnitCode(line.unitCode),
   taxTreatment: normalizeNullableString(line.taxTreatment),
-  taxSchemeId: normalizeNullableString(line.metadata?.taxSchemeId),
-  taxSchemeName: normalizeNullableString(line.metadata?.taxSchemeName),
+  taxSchemeId: line.taxes?.length === 1 ? mapFactuCoreTaxSchemeId(line.taxes[0]) : null,
+  taxSchemeName: line.taxes?.length === 1 ? mapFactuCoreTaxType(line.taxes[0]) : null,
   quantity: line.quantity,
   unitPrice: line.unitPrice,
   discountAmount: line.discountAmount ?? null,
