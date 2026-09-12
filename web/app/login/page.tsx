@@ -7,7 +7,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "../../components/design-system/Button";
 import { Modal } from "../../components/design-system/Modal";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
-import { forceLogin, login } from "../../domains/auth/api";
+import { login, replaceActiveSession } from "../../domains/auth/api";
 import { decodeTokenPayload } from "../../domains/auth/jwt";
 import { isQaLoginEnabled } from "../../domains/auth/login-qa";
 import {
@@ -149,7 +149,7 @@ const LoginPageContent = () => {
     }
   };
 
-  const handleForceLogin = useCallback(async () => {
+  const handleReplaceSession = useCallback(async () => {
     if (!pendingCredentials) {
       setShowSessionConflict(false);
       return;
@@ -157,7 +157,7 @@ const LoginPageContent = () => {
     setIsSubmitting(true);
     dispatch(setAuthStatus("authenticating"));
     try {
-      const tokens = await forceLogin(pendingCredentials);
+      const tokens = await replaceActiveSession(pendingCredentials);
       const tokenPayload = decodeTokenPayload(tokens.accessToken);
       const tenantSlug = tokenPayload?.tenant_id ?? "default";
       await startSessionFromLogin(tokens, {
@@ -273,8 +273,8 @@ const LoginPageContent = () => {
                 continuas aqui, la sesion anterior se cerrara automaticamente.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <Button onClick={handleForceLogin} disabled={isSubmitting}>
-                  {isSubmitting ? "Procesando..." : "Cerrar la otra sesion"}
+                <Button onClick={handleReplaceSession} disabled={isSubmitting}>
+                  {isSubmitting ? "Procesando..." : "Cerrar sesion anterior"}
                 </Button>
                 <Button variant="outline" onClick={handleCancelForceLogin}>
                   Cancelar
