@@ -213,3 +213,31 @@ test("claimDueEvents uses FOR UPDATE SKIP LOCKED and claim lease fields", async 
   assert.equal(queries[0]?.text.includes("FOR UPDATE SKIP LOCKED"), true);
   assert.equal(queries[0]?.text.includes("lease_until"), true);
 });
+
+test("findBySource locks the sale billing events and supersedes only untouched pending events", async () => {
+  const eventId = randomUUID();
+  const { repository, queries } = buildRepository([
+    { rows: [] },
+    { rows: [{ event_id: eventId }] },
+  ]);
+
+  const events = await repository.findBySource(
+    randomUUID(),
+    "SALE",
+    randomUUID(),
+    "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+  );
+
+  const superseded = await repository.supersedePendingEvent(
+    eventId,
+    randomUUID(),
+    new Date("2026-09-12T17:00:00.000Z"),
+  );
+
+  assert.deepEqual(events, []);
+  assert.equal(superseded, true);
+  assert.equal(queries[0]?.text.includes("FOR UPDATE"), true);
+  assert.equal(queries[1]?.text.includes("status = 'PENDING'"), true);
+  assert.equal(queries[1]?.text.includes("attempt_count = 0"), true);
+  assert.equal(queries[1]?.text.includes("RETURNING event_id"), true);
+});

@@ -42,6 +42,30 @@ export class IntegrationOutboxService {
     return this.repository.findByEventId(eventId, client);
   }
 
+  async findBySource(
+    tenantId: string,
+    sourceType: string,
+    sourceId: string,
+    eventType: string,
+    client?: PoolClient,
+  ) {
+    return this.repository.findBySource(tenantId, sourceType, sourceId, eventType, client);
+  }
+
+  async supersedePendingEvent(
+    eventId: string,
+    replacementEventId: string,
+    supersededAt: Date,
+    client?: PoolClient,
+  ) {
+    return this.repository.supersedePendingEvent(
+      eventId,
+      replacementEventId,
+      supersededAt,
+      client,
+    );
+  }
+
   async claimDueEvents(limit: number, leaseMs: number, client?: PoolClient) {
     return this.repository.claimDueEvents(
       {

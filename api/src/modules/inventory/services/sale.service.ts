@@ -688,13 +688,17 @@ export class SaleService {
     }
 
     const normalizedDocument = this.normalizeInvoiceDocumentNumber(customer.documentNumber);
-    const fiscalCustomer =
-      normalizedDocument && this.electronicInvoicingCustomersRepository
-        ? await this.electronicInvoicingCustomersRepository.findByNormalizedDocument(
-            tenantId,
-            normalizedDocument
-          )
-        : null;
+    const fiscalCustomer = this.electronicInvoicingCustomersRepository
+      ? (typeof this.electronicInvoicingCustomersRepository.findById === "function"
+          ? await this.electronicInvoicingCustomersRepository.findById(customerId, tenantId)
+          : null) ??
+        (normalizedDocument
+          ? await this.electronicInvoicingCustomersRepository.findByNormalizedDocument(
+              tenantId,
+              normalizedDocument,
+            )
+          : null)
+      : null;
     const finalConsumerCustomer =
       !fiscalCustomer && customer.isFinalConsumer && this.electronicInvoicingCustomersRepository
         ? await this.electronicInvoicingCustomersRepository.findActiveFinalConsumer(tenantId)
@@ -911,6 +915,7 @@ export class SaleService {
     billingSource: {
       customerId: string;
       orderId?: string | null;
+      eventId?: string;
     }
   ) {
     const tenantId = saleContext.tenantId;
@@ -967,7 +972,8 @@ export class SaleService {
         : new Date(saleRow.created_at).toISOString();
 
     const event: BuildSaleCompletedForElectronicBillingEventInput = {
-      eventId: buildSaleCompletedForElectronicBillingEventId(tenantId, saleRow.id),
+      eventId:
+        billingSource.eventId ?? buildSaleCompletedForElectronicBillingEventId(tenantId, saleRow.id),
       tenantId,
       correlationId: saleContext.sessionId ?? saleRow.id,
       occurredAt,
@@ -1037,27 +1043,65 @@ export class SaleService {
       throw new NotFoundException("sale not found");
     }
 
-    const eventId = buildSaleCompletedForElectronicBillingEventId(
+    const deterministicEventId = buildSaleCompletedForElectronicBillingEventId(
       saleContext.tenantId!,
       saleId,
     );
-    const [documentsResult, outboxEvent] = await Promise.all([
+    const [documentsResult, outboxEvents] = await Promise.all([
       client.query<{ status: string }>(
         `SELECT status FROM electronic_documents
          WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
          ORDER BY created_at DESC, id DESC`,
         [saleContext.tenantId, saleId],
       ),
-      this.integrationOutboxService?.findByEventId(eventId, client),
+      this.integrationOutboxService?.findBySource(
+        saleContext.tenantId!,
+        "SALE",
+        saleId,
+        "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+        client,
+      ),
     ]);
+    const existingEvents = outboxEvents ?? [];
+    const deterministicEvent = existingEvents.find(
+      (event) => event.event_id === deterministicEventId,
+    );
+    const replacementEvent = existingEvents.find(
+      (event) => event.event_id !== deterministicEventId && event.status === "PENDING",
+    );
+
+    if (documentsResult.rows.length > 0) {
+      return {
+        saleId,
+        result: "DOCUMENT_EXISTS",
+        eligibility: "INELIGIBLE",
+        requestCreated: false,
+        electronicDocumentId: null,
+      };
+    }
+
+    if (replacementEvent) {
+      return {
+        saleId,
+        result: "REQUESTED",
+        eligibility: "REQUESTED",
+        requestCreated: false,
+        electronicDocumentId: null,
+        outboxEventId: replacementEvent.event_id,
+      };
+    }
+
+    const stalePendingEvent =
+      deterministicEvent?.status === "PENDING" && deterministicEvent.attempt_count === 0
+        ? deterministicEvent
+        : null;
+
     const eligibility = evaluateElectronicBillingEligibility({
       saleStatus: saleRow.status,
       paymentStatus: saleRow.payment_status,
       customerId: saleRow.customer_id,
-      documentStatuses: documentsResult.rows
-        .map((row) => row.status)
-        .filter((status): status is string => Boolean(status)),
-      requestExists: Boolean(outboxEvent),
+      documentStatuses: [],
+      requestExists: Boolean(deterministicEvent) && !stalePendingEvent,
     });
     if (eligibility !== "ELIGIBLE") {
       return {
@@ -1104,6 +1148,33 @@ export class SaleService {
       payments,
       client,
     );
+    const replacementEventId = stalePendingEvent ? crypto.randomUUID() : undefined;
+    if (stalePendingEvent) {
+      const currentCustomer = await this.buildElectronicBillingCustomerSnapshot(
+        saleContext.tenantId!,
+        saleRow.customer_id,
+        client,
+      );
+      if (
+        !currentCustomer.taxSchemeId ||
+        !currentCustomer.fiscalResponsibilityCodes ||
+        currentCustomer.fiscalResponsibilityCodes.length === 0
+      ) {
+        throw new BadRequestException(
+          "current customer fiscal tax data is incomplete for outbox recovery",
+        );
+      }
+
+      const superseded = await this.integrationOutboxService.supersedePendingEvent(
+        stalePendingEvent.event_id,
+        replacementEventId!,
+        new Date(),
+        client,
+      );
+      if (!superseded) {
+        throw new BadRequestException("stale outbox event changed before recovery");
+      }
+    }
     await this.enqueueSaleCompletedForElectronicBilling(
       saleContext,
       saleRow,
@@ -1111,7 +1182,11 @@ export class SaleService {
       legacyPaymentMethods,
       payments,
       client,
-      { customerId: saleRow.customer_id, orderId: saleRow.order_id },
+      {
+        customerId: saleRow.customer_id,
+        orderId: saleRow.order_id,
+        eventId: replacementEventId,
+      },
     );
     return {
       saleId,
@@ -1119,6 +1194,7 @@ export class SaleService {
       eligibility: "ELIGIBLE" as const,
       requestCreated: true,
       electronicDocumentId: null,
+      outboxEventId: replacementEventId ?? deterministicEventId,
     };
   }
 
