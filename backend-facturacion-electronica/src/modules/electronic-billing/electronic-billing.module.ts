@@ -44,7 +44,7 @@ import { ElectronicBillingBackgroundService } from "./workers";
     },
     SaleCompletedForElectronicBillingConsumerService,
     ElectronicBillingService,
-    ElectronicBillingProcessingService,
+  ElectronicBillingProcessingService,
     ElectronicBillingBackgroundService,
     ElectronicBillingProviderRepository,
     ElectronicBillingInboxRepository,

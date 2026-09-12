@@ -17,7 +17,7 @@ import { IntegrationOutboxModule } from "./integration-outbox/integration-outbox
 import { PricingModule } from "./pricing/pricing.module";
 import { PosTerminalsModule } from "./pos-terminals/pos-terminals.module";
 import { DeliveriesModule } from "./deliveries/deliveries.module";
-import { TerminalDevicesModule } from "./terminal-devices/terminal-devices.module";
+import { OperationalSalesModule } from "./operational-sales/operational-sales.module";
 
 @Module({
   imports: [
@@ -39,7 +39,7 @@ import { TerminalDevicesModule } from "./terminal-devices/terminal-devices.modul
     PricingModule,
     PosTerminalsModule,
     DeliveriesModule,
-    TerminalDevicesModule,
+    OperationalSalesModule,
   ],
 })
 export class AppModule {}

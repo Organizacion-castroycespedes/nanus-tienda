@@ -18,9 +18,9 @@ export const login = (payload: LoginDto) =>
     authBaseUrl
   );
 
-export const forceLogin = (payload: LoginDto) =>
+export const replaceActiveSession = (payload: LoginDto) =>
   requestJson<AuthTokens>(
-    "/auth/login/force",
+    "/auth/login/replace-session",
     {
       method: "POST",
       body: JSON.stringify(payload),

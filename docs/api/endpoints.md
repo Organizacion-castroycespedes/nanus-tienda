@@ -5,7 +5,7 @@
 | Metodo | Ruta | Auth |
 |---|---|---|
 | POST | `/api/auth/login` | No |
-| POST | `/api/auth/login/force` | No |
+| POST | `/api/auth/login/replace-session` | No |
 | POST | `/api/auth/forgot-password` | No |
 | POST | `/api/auth/reset-password` | No |
 | POST | `/api/auth/logout` | No |

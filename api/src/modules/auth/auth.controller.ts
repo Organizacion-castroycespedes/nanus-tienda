@@ -48,9 +48,9 @@ export class AuthController {
     return this.authService.login(payload, this.buildRefreshMetadata(request));
   }
 
-  @Post("login/force")
-  loginForce(@Body() payload: LoginDto, @Req() request: Request) {
-    return this.authService.forceLogin(payload, this.buildRefreshMetadata(request));
+  @Post("login/replace-session")
+  loginReplaceSession(@Body() payload: LoginDto, @Req() request: Request) {
+    return this.authService.replaceActiveSession(payload, this.buildRefreshMetadata(request));
   }
 
   @Post("forgot-password")

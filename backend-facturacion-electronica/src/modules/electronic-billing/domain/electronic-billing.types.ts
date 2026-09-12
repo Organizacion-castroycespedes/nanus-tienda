@@ -209,6 +209,9 @@ export type ElectronicBillingProviderDocumentResult = {
   cude?: string | null;
   acceptedAt?: Date | string | null;
   rejectedAt?: Date | string | null;
+  providerStatusCode?: string | null;
+  providerStatusMessage?: string | null;
+  trackingId?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -241,6 +244,9 @@ export type ElectronicBillingProviderStatusResult = {
   cude?: string | null;
   acceptedAt?: Date | string | null;
   rejectedAt?: Date | string | null;
+  providerStatusCode?: string | null;
+  providerStatusMessage?: string | null;
+  trackingId?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
   metadata?: Record<string, unknown>;

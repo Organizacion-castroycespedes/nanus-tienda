@@ -76,4 +76,7 @@ echo "[seed] Running finance menu access seed..."
 echo "[seed] Running role-menu permissions seed..."
 "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/007_seed_role_menu_permissions.sql"
 
+echo "[seed] Running Gestión Operativa menu seed..."
+"${PSQL_APP[@]}" -f "${SCRIPT_DIR}/014_operational_management_menu.sql"
+
 echo "[seed] Completed successfully."

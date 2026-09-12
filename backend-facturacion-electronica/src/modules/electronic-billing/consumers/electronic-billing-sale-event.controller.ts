@@ -4,12 +4,74 @@ import {
   Inject,
   Headers,
   ForbiddenException,
+  Param,
   Post,
   UnauthorizedException,
 } from "@nestjs/common";
 import { SaleCompletedForElectronicBillingConsumerService } from "./electronic-billing-sale-event.consumer";
 import type { ElectronicBillingConsumptionResult } from "./electronic-billing-consumer.types";
 import type { SaleCompletedForElectronicBillingEventEnvelope } from "../contracts/electronic-billing-integration-events";
+import {
+  ElectronicBillingProcessingService,
+  type ElectronicBillingRetryability,
+  type ProcessingResult,
+  type SafeStatusReconciliationResult,
+} from "../services";
+
+type StatusRefreshBody = { tenantId?: unknown };
+type RetryBody = { tenantId?: unknown };
+
+const stringValue = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+
+const documentNumber = (document: SafeStatusReconciliationResult["document"]) =>
+  stringValue(document.full_number)
+  ?? (`${document.prefix ?? ""}${document.number ?? ""}`.trim() || null);
+
+const providerResponse = (document: SafeStatusReconciliationResult["document"]) => {
+  const value = document.metadata?.providerResponse;
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+};
+
+const mapStatusRefreshResult = (result: SafeStatusReconciliationResult) => {
+  const response = providerResponse(result.document);
+  return {
+    outcome: result.outcome,
+    electronicDocumentId: result.document.id,
+    status: result.document.status,
+    providerStatus: result.document.provider_status,
+    providerDocumentId: result.document.provider_document_id,
+    documentNumber: documentNumber(result.document),
+    cufe: result.document.cufe,
+    acceptedAt: result.document.accepted_at,
+    providerStatusCode: stringValue(response.code),
+    providerStatusMessage: stringValue(response.message),
+    trackingId: stringValue(response.trackingId),
+    refreshedAt: new Date().toISOString(),
+  };
+};
+
+const mapRetryability = (decision: ElectronicBillingRetryability) => ({
+  canRetry: decision.canRetry,
+  retryClass: decision.retryClass,
+  decision: decision.decision,
+  reasonCode: decision.reason,
+  requiredAction: decision.requiredAction,
+  requiresReconciliation: decision.requiresReconciliation,
+  providerDocumentExists: decision.providerDocumentExists,
+  processingStage: decision.processingStage,
+  safeUserMessage: decision.safeUserMessage,
+});
+
+const mapRetryResult = (result: ProcessingResult, decision: ElectronicBillingRetryability) => ({
+  allowed: true,
+  canRetry: decision.canRetry,
+  disposition: "RETRY_STARTED",
+  reasonCode: decision.reason,
+  requiredAction: decision.requiredAction,
+  status: result.document.status,
+  processingStage: result.document.processing_stage,
+  safeUserMessage: "El procesamiento FE fue reintentado.",
+});
 
 const normalizeBearer = (value: string | undefined) => {
   if (!value) {
@@ -24,6 +86,8 @@ export class ElectronicBillingSaleEventController {
   constructor(
     @Inject(SaleCompletedForElectronicBillingConsumerService)
     private readonly consumer: SaleCompletedForElectronicBillingConsumerService,
+    @Inject(ElectronicBillingProcessingService)
+    private readonly processingService: ElectronicBillingProcessingService,
   ) {}
 
   @Post("events/sale-completed")
@@ -42,6 +106,66 @@ export class ElectronicBillingSaleEventController {
     });
     this.assertInternalToken(authorization);
     return this.consumer.consume(body);
+  }
+
+  @Post("documents/:documentId/status-refresh")
+  async refreshDocumentStatus(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: StatusRefreshBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Status refresh identity is required");
+    }
+
+    const result = await this.processingService.reconcileExistingProviderStatus(tenantId, documentId);
+    return mapStatusRefreshResult(result);
+  }
+
+  @Post("documents/:documentId/retryability")
+  async evaluateDocumentRetryability(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: RetryBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Retry identity is required");
+    }
+    return mapRetryability(await this.processingService.evaluateRetryability(tenantId, documentId));
+  }
+
+  @Post("documents/:documentId/retry")
+  async retryDocument(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: RetryBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Retry identity is required");
+    }
+    const decision = await this.processingService.evaluateRetryability(tenantId, documentId);
+    if (!decision.canRetry) {
+      return {
+        allowed: false,
+        canRetry: false,
+        disposition: decision.decision,
+        reasonCode: decision.reason,
+        requiredAction: decision.requiredAction,
+        status: null,
+        processingStage: null,
+        safeUserMessage: decision.safeUserMessage,
+      };
+    }
+    return mapRetryResult(
+      await this.processingService.retryRecoverableDocument(tenantId, documentId),
+      decision,
+    );
   }
 
   private assertInternalToken(authorization: string | undefined) {
