@@ -28,7 +28,8 @@
       "dist/agent-client.js",
       "dist/electron-api.js",
       "dist/window-policy.js",
-      "package.json"
+      "package.json",
+      "resources/manus-icon.png"
     ],
     "extraResources": [
       {

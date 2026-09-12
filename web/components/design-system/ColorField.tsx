@@ -38,7 +38,7 @@ export const ColorField = ({
   };
 
   return (
-    <div className={`flex flex-col gap-2 text-sm text-slate-700 ${className ?? ""}`}>
+    <div className={`flex flex-col gap-2 text-sm text-slate-700 ${className ?? ""} dark:text-slate-200`}>
       <label className="font-medium" htmlFor={inputId}>
         {label}
         {required ? <span className="text-red-600"> *</span> : null}
@@ -48,7 +48,7 @@ export const ColorField = ({
           error
             ? "border-rose-300 focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-100"
             : "border-slate-200 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-600"
-        }`}
+        } dark:bg-slate-800 dark:border-slate-700`}
       >
         <label
           className="relative h-7 w-7 shrink-0 cursor-pointer overflow-hidden rounded-md border border-slate-200 shadow-inner"
@@ -66,7 +66,7 @@ export const ColorField = ({
         <input
           id={inputId}
           aria-invalid={Boolean(error)}
-          className="min-w-0 flex-1 bg-transparent font-mono text-sm uppercase text-slate-900 outline-none placeholder:text-slate-400"
+          className="min-w-0 flex-1 bg-transparent font-mono text-sm uppercase text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
           inputMode="text"
           maxLength={7}
           placeholder={fallbackColor}
@@ -80,7 +80,7 @@ export const ColorField = ({
           {error}
         </span>
       ) : (
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-500 dark:text-slate-400">
           {hint ?? (normalized ? normalized : `Fallback ${fallbackColor}`)}
         </span>
       )}

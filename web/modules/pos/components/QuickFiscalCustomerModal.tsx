@@ -402,7 +402,7 @@ export const QuickFiscalCustomerModal = ({
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <section className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
               <Search className="h-4 w-4" />
               Buscar cliente
@@ -428,7 +428,7 @@ export const QuickFiscalCustomerModal = ({
                       className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition ${
                         isSelected
                           ? "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-500/50 dark:bg-blue-500/10 dark:text-blue-100"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                       }`}
                       onClick={() => handlePickCustomer(customer)}
                     >
@@ -459,7 +459,7 @@ export const QuickFiscalCustomerModal = ({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
               <UserPlus className="h-4 w-4" />
               Datos rapidos
@@ -508,7 +508,7 @@ export const QuickFiscalCustomerModal = ({
         </section>
 
         <section className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                 <ShieldCheck className="h-4 w-4" />
@@ -527,7 +527,7 @@ export const QuickFiscalCustomerModal = ({
             </div>
 
             {preview ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-slate-800 dark:text-slate-100">
                     {preview.lookupStatus}
@@ -560,7 +560,7 @@ export const QuickFiscalCustomerModal = ({
                       className={`flex min-h-16 items-start gap-3 rounded-lg border px-3 py-2 text-sm transition ${
                         checked
                           ? "border-blue-300 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10"
-                          : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
+                          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
                       }`}
                     >
                       <input

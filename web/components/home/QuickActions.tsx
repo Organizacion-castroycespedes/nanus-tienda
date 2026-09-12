@@ -13,11 +13,11 @@ export const QuickActions = ({ tenant }: { tenant: string }) => {
     <section aria-labelledby="quick-actions-title">
       <h2
         id="quick-actions-title"
-        className="text-lg font-semibold text-slate-900"
+        className="text-lg font-semibold text-slate-900 dark:text-white"
       >
         Acciones rápidas
       </h2>
-      <p className="mt-1 text-sm text-slate-500">
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Lo más usado en el día a día de tu tienda.
       </p>
 
@@ -28,7 +28,7 @@ export const QuickActions = ({ tenant }: { tenant: string }) => {
             <Link
               key={action.key}
               href={action.href(tenant)}
-              className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:translate-y-0"
+              className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:translate-y-0 dark:bg-slate-800 dark:border-slate-700"
             >
               <span
                 className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl transition ${accentStyles[action.accent]}`}
@@ -36,10 +36,10 @@ export const QuickActions = ({ tenant }: { tenant: string }) => {
                 <Icon className="h-5 w-5" aria-hidden="true" />
               </span>
               <span className="min-w-0">
-                <span className="block text-sm font-semibold text-slate-900">
+                <span className="block text-sm font-semibold text-slate-900 dark:text-white">
                   {action.title}
                 </span>
-                <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                <span className="mt-0.5 block text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   {action.description}
                 </span>
               </span>

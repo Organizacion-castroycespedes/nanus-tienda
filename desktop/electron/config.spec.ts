@@ -10,7 +10,7 @@ import {
 const resolve = (env: ElectronConfigEnv = {}) => resolveElectronConfig(env);
 
 describe("resolveElectronConfig", () => {
-  it("uses the local web URL by default", () => {
+  it("opens the local development page by default", () => {
     const config = resolve();
 
     assert.equal(config.webBaseUrl.href, "http://localhost:3000/");
@@ -89,7 +89,45 @@ describe("validateVersionedShellConfig", () => {
   };
 
   it("accepts the approved QA configuration", () => {
-    assert.deepEqual(validateVersionedShellConfig(valid), valid);
+    assert.deepEqual(validateVersionedShellConfig(valid), {
+      ...valid,
+      frontendUrl: "https://www.apptiendamanus.space/",
+    });
+  });
+
+  it("uses NEXT_PUBLIC_MANUS_WEB_URL when MANUS_WEB_URL is missing", () => {
+    const config = resolve({
+      NEXT_PUBLIC_MANUS_WEB_URL: "https://staging.example.com/login",
+    });
+
+    assert.equal(config.webBaseUrl.href, "https://staging.example.com/login");
+    assert.equal(config.initialUrl.href, "https://staging.example.com/login");
+  });
+
+  it("prioritizes MANUS_WEB_URL over NEXT_PUBLIC_MANUS_WEB_URL", () => {
+    const config = resolve({
+      MANUS_WEB_URL: "https://desktop.example.com",
+      NEXT_PUBLIC_MANUS_WEB_URL: "https://next.example.com",
+    });
+
+    assert.equal(config.webBaseUrl.href, "https://desktop.example.com/");
+  });
+
+  it("uses the default when NEXT_PUBLIC_MANUS_WEB_URL is invalid", () => {
+    const config = resolve({
+      NEXT_PUBLIC_MANUS_WEB_URL: "not-a-url",
+    });
+
+    assert.equal(config.webBaseUrl.href, "http://localhost:3000/");
+  });
+
+  it("preserves the packaged login startup path", () => {
+    const config = validateVersionedShellConfig({
+      ...valid,
+      frontendUrl: "https://www.apptiendamanus.space/login",
+    });
+
+    assert.equal(config.frontendUrl, "https://www.apptiendamanus.space/login");
   });
 
   it("rejects invalid environment, frontend, and agent origins", () => {

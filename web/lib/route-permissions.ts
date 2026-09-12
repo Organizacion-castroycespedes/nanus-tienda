@@ -118,8 +118,12 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: "reporteria", action: "read" },
   },
   {
-    pattern: /^\/[^/]+\/operations(?:\/.*)?$/i,
+    pattern: /^\/[^/]+\/operations\/sales(?:\/.*)?$/i,
     requirement: { module: MENU_KEYS.OPERATIONS_SALES, action: "read" },
+  },
+  {
+    pattern: /^\/[^/]+\/operations\/?$/i,
+    requirement: { module: MENU_KEYS.OPERATIONS, action: "read" },
   },
 ];
 

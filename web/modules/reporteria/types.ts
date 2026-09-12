@@ -105,6 +105,19 @@ export type PosSaleTicketPrintDataset = {
   };
 };
 
+export type ElectronicInvoicePrintDataset = {
+  saleId: string;
+  electronicDocumentId: string;
+  status: "PENDING" | "PROCESSING" | "ACCEPTED" | "REJECTED" | "TECHNICAL_ERROR" | "CANCELLED";
+  documentNumber: string | null;
+  cufe: string | null;
+  acceptedAt: string | null;
+  providerStatusCode: string | null;
+  providerStatusMessage: string | null;
+  trackingId: string | null;
+  representationAvailable: boolean;
+};
+
 export type CashClosingListRow = {
   cashSessionId: string;
   openedAt: string;

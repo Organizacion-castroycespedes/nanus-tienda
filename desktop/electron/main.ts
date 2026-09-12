@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises";
 import { createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, testAgentPrint, updateAgentDevice } from "./agent-client.js";
 import { buildRuntimeInfo, IPC_CHANNELS, type AgentHealth, type ShellInfo } from "./electron-api.js";
 import {
-  DEFAULT_MANUS_WEB_URL,
   resolveElectronConfig,
   validateVersionedShellConfig,
   type VersionedShellConfig,
@@ -42,7 +41,7 @@ const parseCloseBehavior = (value: string | undefined): CloseBehavior => {
   return value === "hide" ? "hide" : "quit";
 };
 
-let electronConfig = resolveElectronConfig({ MANUS_WEB_URL: DEFAULT_MANUS_WEB_URL });
+let electronConfig = resolveElectronConfig();
 let packagedShellConfig: VersionedShellConfig | null = null;
 let manusWebOrigin = electronConfig.webBaseUrl.origin;
 let closeBehavior = parseCloseBehavior(process.env.MANUS_ELECTRON_CLOSE_BEHAVIOR);
@@ -165,6 +164,7 @@ const createMainWindow = async () => {
 
   const window = new BrowserWindow({
     title: windowTitle,
+    icon: path.join(__dirname, "../resources/manus-icon.png"),
     width: initialWidth,
     height: initialHeight,
     frame: false,

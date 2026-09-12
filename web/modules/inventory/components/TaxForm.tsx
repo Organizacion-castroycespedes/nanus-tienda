@@ -101,11 +101,11 @@ export const TaxForm = ({ mode, tax, onCancel, onSuccess }: TaxFormProps) => {
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Inventory</p>
-          <h2 className="text-xl font-semibold text-slate-900">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Inventory</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
             {mode === "create" ? "Crear impuesto" : "Editar impuesto"}
           </h2>
         </div>
@@ -149,7 +149,7 @@ export const TaxForm = ({ mode, tax, onCancel, onSuccess }: TaxFormProps) => {
           </div>
         </div>
 
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
             checked={values.isIncluded}
@@ -161,7 +161,7 @@ export const TaxForm = ({ mode, tax, onCancel, onSuccess }: TaxFormProps) => {
           El precio ya incluye impuestos
         </label>
 
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
             checked={values.isActive}

@@ -40,7 +40,7 @@ Mantener contextIsolation=true, nodeIntegration=false y sandbox=true. Sin IPC ge
 
 ### P9.1 Runtime contracts
 
-Status: IMPLEMENTED / PENDING MERGE. Unico change activo creado por esta iniciativa: `versionar-contratos-runtime-manus-terminal`.
+Status: MERGED / CLOSED. Unico change activo creado por esta iniciativa: `versionar-contratos-runtime-manus-terminal`.
 
 `manusTerminal.getRuntimeInfo()` devuelve:
 
@@ -89,9 +89,9 @@ Orden: P9.1 -> P9.2 -> P9.3 -> P9.4 -> P9.5 -> P9.6. Referencias de change son n
 
 ### P9.2 Physical Device - Logical Terminal binding
 
-Status: PLANNED. Referencia: `vincular-dispositivo-fisico-terminal-pos`.
+Status: IMPLEMENTED / PENDING MERGE. Change: `vincular-device-terminal-manus`.
 
-Alcance esperado: installationId, deviceId, terminalId; pairing/activation; device credential; revocation; replacement; audit history. Separar instalacion, maquina fisica y terminal logica. Reusar contratos P9.1 para negociar soporte. Revisar identidad local existente antes de definir registros cloud; P9.1 no agrega registry ni credenciales.
+Alcance esperado: installationId, deviceId, terminalId; pairing/activation; device credential; revocation; replacement; audit history. P9.2 foundation adds cloud-owned terminal_devices and historical terminal_device_bindings, reusing terminals as the logical POS entity. Registration is tenant-authenticated and idempotent by globally unique installationId; active bindings are unique per Terminal and Device. Unbind or revoke is explicit before replacement. Pairing credentials and proof of possession remain a later security step; installationId is never a secret. Separar instalacion, maquina fisica y terminal logica. Reusar contratos P9.1 para negociar soporte. Revisar identidad local existente antes de definir registros cloud; P9.1 no agrega registry ni credenciales.
 
 ### P9.3 Startup and readiness
 
@@ -120,5 +120,24 @@ Alcance esperado: common contracts, systemd, startup/session, USB/HID/serial per
 ## DEFERRED/FUTURE WORK
 
 Selective local business cache: DEFERRED. Requiere definir datos, caducidad, invalidacion, permisos y autoridad cloud. No se deriva automaticamente de recovery UI ni de salud local.
+
+### MIGRATION VERSION COLLISION HARDENING
+
+Status: DEFERRED / FUTURE INFRASTRUCTURE EPIC.
+
+El runner futuro debera incorporar preflight automatico contra
+`origin/develop` y `public.migrations_history`, deteccion de colisiones
+numericas `V###` entre ramas paralelas, un hard guard numerico en
+`migrate_prd.sh`, un checker de repositorio/CI y, eventualmente, un advisory
+lock PostgreSQL que cubra comprobacion, ejecucion y registro de la migracion.
+La primera aplicacion exitosa en QA sera la que congele la version y el nombre
+del archivo.
+
+Esta necesidad se observo durante P9.2: QA ya contenia
+`V072__electronic_billing_base_persistence.sql`,
+`V073__electronic_billing_inbox_events.sql` y
+`V074__integration_outbox_events.sql`, aunque no estaban presentes en la rama
+local. Por eso P9.2 fue renumerada correctamente a
+`V075__terminal_device_binding.sql`. Este trabajo queda separado de P9.2.
 
 Offline POS sales: FUTURE EPIC. Proyecto arquitectonico separado. Debe resolver transaction durability, idempotency, synchronization, stock consistency, payments, fiscal/electronic invoicing, numbering/consecutives y conflict resolution. No incluido en P9.1-P9.6 y no habilitado por cache selectivo.

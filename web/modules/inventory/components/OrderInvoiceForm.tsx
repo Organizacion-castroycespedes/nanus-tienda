@@ -455,12 +455,12 @@ export const OrderInvoiceForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Orders</p>
-          <h2 className="text-xl font-semibold text-slate-900">Facturar orden</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Orders</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Facturar orden</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Crea una venta usando solo los productos entregados y no facturados.
           </p>
         </div>
@@ -470,7 +470,7 @@ export const OrderInvoiceForm = ({
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:text-slate-300">
           Cargando detalle del pedido...
         </div>
       ) : loadError ? (
@@ -482,34 +482,34 @@ export const OrderInvoiceForm = ({
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <div className="grid gap-3 md:grid-cols-4">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Cliente</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Cliente</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {order.customerName || order.customerId}
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Sucursal</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Sucursal</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {order.branchName || order.branchId || "-"}
                 </p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{order.status}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Estado</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{order.status}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Terminal</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Terminal</p>
+                <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                   {order.terminalName || "-"}
                 </p>
               </div>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white">
+          <section className="rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-slate-600">
+                <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
                     <th className="px-4 py-3 font-medium">Entregado</th>
@@ -521,20 +521,20 @@ export const OrderInvoiceForm = ({
                 <tbody className="divide-y divide-slate-100">
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                      <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                         No hay productos entregados pendientes por facturar.
                       </td>
                     </tr>
                   ) : (
                     rows.map(({ item, invoiceableQuantity, subtotal }) => (
                       <tr key={item.id}>
-                        <td className="px-4 py-3 text-slate-900">
+                        <td className="px-4 py-3 text-slate-900 dark:text-white">
                           {item.productName || item.productId}
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{item.deliveredQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700">{item.billedQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700">{invoiceableQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700">{formatCurrency(subtotal)}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.deliveredQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.billedQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{invoiceableQuantity}</td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatCurrency(subtotal)}</td>
                       </tr>
                     ))
                   )}
@@ -561,7 +561,7 @@ export const OrderInvoiceForm = ({
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
               <Wallet className="h-4 w-4" />
               Caja y abonos heredados
             </div>
@@ -598,7 +598,7 @@ export const OrderInvoiceForm = ({
                 </Button>
               </div>
             ) : null}
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
               {cashSession
                 ? `${cashSession.cashRegisterNombre ?? "Caja"} abierta con fondo ${formatCurrency(
                     cashSession.openingAmount
@@ -612,7 +612,7 @@ export const OrderInvoiceForm = ({
               ) : null}
             </div>
             {inheritedPayments.length === 0 ? (
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Esta orden no tiene abonos pendientes para heredar a la factura.
               </p>
             ) : (
@@ -620,26 +620,26 @@ export const OrderInvoiceForm = ({
                 {inheritedPayments.map((payment) => (
                   <div
                     key={payment.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                    className="rounded-2xl border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700"
                   >
                     <div className="grid gap-3 md:grid-cols-4">
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Metodo</p>
-                        <p className="mt-1 text-sm font-medium text-slate-900">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Metodo</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                           {payment.paymentMethodNombre ?? payment.paymentMethodId}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Abono orden</p>
-                        <p className="mt-1 text-sm font-medium text-slate-900">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Abono orden</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                           {formatCurrency(payment.amount)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-500">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                           Disponible para factura
                         </p>
-                        <p className="mt-1 text-sm font-medium text-slate-900">
+                        <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                           {formatCurrency(payment.availableAmount)}
                         </p>
                       </div>
@@ -661,8 +661,8 @@ export const OrderInvoiceForm = ({
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-slate-900">Pagos nuevos</h3>
-                <p className="text-sm text-slate-600">
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white">Pagos nuevos</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   Puedes registrar varios medios de pago adicionales al momento de facturar.
                 </p>
               </div>
@@ -673,7 +673,7 @@ export const OrderInvoiceForm = ({
             </div>
 
             {payments.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
                 No has agregado pagos nuevos para esta factura.
               </div>
             ) : (
@@ -683,16 +683,16 @@ export const OrderInvoiceForm = ({
                 return (
                   <div
                     key={payment.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4"
+                    className="rounded-2xl border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700"
                   >
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-slate-900">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
                         Pago #{index + 1}
                       </div>
                       <button
                         type="button"
                         onClick={() => removePaymentRow(payment.id)}
-                        className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         <X className="h-4 w-4" />
                       </button>

@@ -277,32 +277,27 @@ const CashSessionsPage = () => {
     try {
       const blob = await getCashClosingTicket(cashSessionId);
       const objectUrl = window.URL.createObjectURL(blob);
-      const printWindow = window.open(objectUrl, "_blank");
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = objectUrl;
+      document.body.appendChild(iframe);
 
-      if (!printWindow) {
-        window.URL.revokeObjectURL(objectUrl);
-        setToastMessage(
-          options.automatic
-            ? "El navegador bloqueo la impresion automatica. Usa Imprimir o Ver ticket para hacerlo manualmente."
-            : "El navegador bloqueo la impresion. Usa Ver ticket para imprimir manualmente."
-        );
-        setToastVariant("warning");
-        return;
-      }
-
-      const print = () => {
+      iframe.onload = () => {
         try {
-          printWindow.focus();
-          printWindow.print();
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
         } catch {
           setToastMessage("No se pudo imprimir automaticamente. Usa Ver ticket.");
           setToastVariant("warning");
         }
       };
 
-      printWindow.addEventListener("load", print, { once: true });
-      window.setTimeout(print, 1000);
-      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60000);
+      window.setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
     } catch (error) {
       showTicketActionError(error, "No se pudo imprimir el ticket de cierre.");
     }
@@ -452,13 +447,13 @@ const CashSessionsPage = () => {
       </section>
 
       <section className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.12fr)_minmax(380px,0.88fr)]">
-        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
                 Estado actual
               </p>
-              <h2 className="mt-2 text-xl font-semibold leading-tight text-slate-900">
+              <h2 className="mt-2 text-xl font-semibold leading-tight text-slate-900 dark:text-white">
                 Tu caja en este momento
               </h2>
             </div>
@@ -467,29 +462,29 @@ const CashSessionsPage = () => {
             ) : null}
           </div>
           {loadingCurrent ? (
-            <p className="mt-6 text-sm text-slate-500">Consultando sesion actual...</p>
+            <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">Consultando sesion actual...</p>
           ) : !currentSession ? (
-            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-5 text-sm text-slate-500 dark:text-slate-400">
               No tienes una sesion abierta en este momento.
             </div>
           ) : (
             <div className="mt-6 space-y-4">
               <div className="grid min-w-0 gap-4 sm:grid-cols-2">
                 <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Caja</p>
-                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900">
+                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Caja</p>
+                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900 dark:text-white">
                     {currentSession.cashRegisterNombre}
                   </p>
-                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500">
+                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
                     {currentSession.cashRegisterCodigo}
                   </p>
                 </div>
                 <div className="min-w-0 rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Abierta</p>
-                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900">
+                  <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Abierta</p>
+                  <p className="mt-2 min-w-0 break-words font-semibold leading-tight text-slate-900 dark:text-white">
                     {formatDateTime(currentSession.openedAt)}
                   </p>
-                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500">
+                  <p className="min-w-0 break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
                     {currentSession.openedByUserEmail ?? "Usuario actual"}
                   </p>
                 </div>
@@ -579,13 +574,13 @@ const CashSessionsPage = () => {
               ) : null}
 
               {sessionSummary ? (
-                <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+                <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:bg-slate-800 dark:border-slate-700">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                      <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
                         Gestion del turno
                       </p>
-                      <h3 className="mt-2 text-lg font-semibold leading-tight text-slate-900">
+                      <h3 className="mt-2 text-lg font-semibold leading-tight text-slate-900 dark:text-white">
                         Caja abierta actual
                       </h3>
                     </div>
@@ -670,12 +665,12 @@ const CashSessionsPage = () => {
                           key={movement.id}
                           className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2 text-sm"
                         >
-                          <span className="font-medium text-slate-700">
+                          <span className="font-medium text-slate-700 dark:text-slate-200">
                             {movement.description ??
                               movement.referenceType ??
                               movement.movementType}
                           </span>
-                          <span className="font-semibold text-slate-900">
+                          <span className="font-semibold text-slate-900 dark:text-white">
                             {movement.direction === "OUT" ? "-" : ""}
                             {formatCurrency(movement.amount)}
                           </span>
@@ -683,7 +678,7 @@ const CashSessionsPage = () => {
                       ))}
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                    <div className="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
                       Sin movimientos registrados en la caja abierta.
                     </div>
                   )}
@@ -693,7 +688,7 @@ const CashSessionsPage = () => {
           )}
         </article>
 
-        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
             <Select
               label="Caja"
@@ -721,11 +716,11 @@ const CashSessionsPage = () => {
 
           <div className="mt-5 space-y-3">
             {loadingHistory ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
                 Cargando historial...
               </div>
             ) : filteredHistory.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
                 No hay sesiones para mostrar.
               </div>
             ) : (
@@ -736,10 +731,10 @@ const CashSessionsPage = () => {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="min-w-0 break-words font-semibold leading-tight text-slate-900">
+                      <p className="min-w-0 break-words font-semibold leading-tight text-slate-900 dark:text-white">
                         {session.cashRegisterNombre ?? "Caja"}
                       </p>
-                      <p className="mt-1 min-w-0 break-words text-sm leading-snug text-slate-500">
+                      <p className="mt-1 min-w-0 break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
                         Apertura {formatDateTime(session.openedAt)}
                       </p>
                     </div>
@@ -748,19 +743,19 @@ const CashSessionsPage = () => {
                   <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-3">
                     <div className="min-w-0">
                       <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Apertura</p>
-                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
                         {formatCurrency(session.openingAmount)}
                       </p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Cierre</p>
-                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
                         {formatCurrency(session.closingAmount ?? 0)}
                       </p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Diferencia</p>
-                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums">
+                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
                         {formatCurrency(session.differenceAmount ?? 0)}
                       </p>
                     </div>
@@ -794,7 +789,7 @@ const CashSessionsPage = () => {
                         </Button>
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
                         El ticket de cierre estara disponible cuando la caja quede cerrada.
                       </p>
                     )}
@@ -868,10 +863,10 @@ const CashSessionsPage = () => {
                     key={row.label}
                     className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
                   >
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                       {row.label}
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                    <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
                       {row.value}
                     </p>
                   </div>

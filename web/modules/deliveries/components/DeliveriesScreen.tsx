@@ -233,8 +233,8 @@ const DeliveryActionModal = ({
       }
     >
       <div className="space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-          <p className="font-semibold text-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:text-slate-200">
+          <p className="font-semibold text-slate-900 dark:text-white">
             {delivery.delivery_number || delivery.id}
           </p>
           <p className="mt-1">
@@ -328,14 +328,14 @@ const DeliveryDriverAssignmentModal = ({
       }
     >
       <div className="space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-          <p className="font-semibold text-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:text-slate-200">
+          <p className="font-semibold text-slate-900 dark:text-white">
             {delivery.delivery_number || delivery.id}
           </p>
           <p className="mt-1">
             {delivery.customer_name || "Sin contacto"} - {delivery.delivery_address}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Estado actual: {deliveryStatusLabels[delivery.status] ?? delivery.status}
           </p>
         </div>
@@ -365,7 +365,7 @@ const DeliveryDriverAssignmentModal = ({
           </div>
         ) : null}
 
-        <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
           Esta accion solo cambia el repartidor asignado. El estado del domicilio
           queda igual.
         </div>
@@ -381,16 +381,16 @@ const DeliveryDriverAssignmentModal = ({
 };
 
 const DeliverySourceCell = ({ delivery }: { delivery: DeliveryRecord }) => (
-  <div className="space-y-1 text-xs text-slate-600">
+  <div className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
     <p>
       Pedido:{" "}
-      <span className="font-medium text-slate-800">
+      <span className="font-medium text-slate-800 dark:text-slate-100">
         {delivery.order_id ?? "-"}
       </span>
     </p>
     <p>
       Venta:{" "}
-      <span className="font-medium text-slate-800">
+      <span className="font-medium text-slate-800 dark:text-slate-100">
         {delivery.sale_id ?? "-"}
       </span>
     </p>
@@ -418,19 +418,19 @@ const MobileDeliveryCard = ({
   canAssignDriver: boolean;
   currentCashSessionId?: string | null;
 }) => (
-  <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+  <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:bg-slate-800 dark:border-slate-700">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-900">
+        <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
           {delivery.customer_name || "Sin contacto"}
         </p>
-        <p className="mt-1 break-words text-sm text-slate-600">
+        <p className="mt-1 break-words text-sm text-slate-600 dark:text-slate-300">
           {delivery.delivery_address}
         </p>
       </div>
       <DeliveryStatusBadge status={delivery.status} />
     </div>
-    <div className="mt-3 grid gap-2 text-sm text-slate-600">
+    <div className="mt-3 grid gap-2 text-sm text-slate-600 dark:text-slate-300">
       <p>Telefono: {delivery.customer_phone || "-"}</p>
       <p>Repartidor: {getDriverLabel(delivery)}</p>
       <p>
@@ -873,7 +873,7 @@ export const DeliveriesScreen = ({
 
   if (!permissionsLoaded) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+      <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
         Cargando permisos...
       </section>
     );
@@ -951,14 +951,14 @@ export const DeliveriesScreen = ({
         }
       />
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Operacion
             </p>
-            <h1 className="text-2xl font-semibold text-slate-900">Domicilios</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-600">
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Domicilios</h1>
+            <p className="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">
               Consulta y actualiza el estado operativo de domicilios. Caja, POS
               y facturacion electronica quedan fuera de esta pantalla.
             </p>
@@ -1025,7 +1025,7 @@ export const DeliveriesScreen = ({
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_170px_1fr_1fr_190px_155px_155px_170px_110px]">
             <Input
               label="Buscar"
@@ -1166,18 +1166,18 @@ export const DeliveriesScreen = ({
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                 Listado de domicilios
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {pagination.total} registros backend. {visibleDeliveries.length} visibles
                 en esta pagina.
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 dark:text-slate-300">
               <Truck className="h-4 w-4" />
               {appliedFilters.cashScope === "current" && currentCashSession
                 ? "Caja actual"
@@ -1187,7 +1187,7 @@ export const DeliveriesScreen = ({
 
           <div className="mt-5 hidden overflow-x-auto lg:block">
             <table className="min-w-[1180px] divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-slate-600">
+              <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                 <tr>
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 font-medium">Caja</th>
@@ -1204,19 +1204,19 @@ export const DeliveriesScreen = ({
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                       Cargando domicilios...
                     </td>
                   </tr>
                 ) : !hasLoaded ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                       Usa Buscar para consultar domicilios.
                     </td>
                   </tr>
                 ) : visibleDeliveries.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500 dark:text-slate-400">
                       No hay domicilios para mostrar.
                     </td>
                   </tr>
@@ -1232,24 +1232,24 @@ export const DeliveriesScreen = ({
                           currentCashSessionId={currentCashSessionId}
                         />
                       </td>
-                      <td className="px-4 py-3 text-slate-900">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         <div className="max-w-[180px]">
                           <p className="truncate font-medium">
                             {delivery.customer_name || "Sin contacto"}
                           </p>
-                          <p className="truncate text-xs text-slate-500">
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                             {delivery.delivery_number}
                           </p>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {delivery.customer_phone || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         <div className="max-w-[220px]">
                           <p className="line-clamp-2">{delivery.delivery_address}</p>
                           {delivery.delivery_reference ? (
-                            <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                            <p className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
                               {delivery.delivery_reference}
                             </p>
                           ) : null}
@@ -1258,10 +1258,10 @@ export const DeliveriesScreen = ({
                       <td className="px-4 py-3">
                         <DeliverySourceCell delivery={delivery} />
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {getDriverLabel(delivery)}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
+                      <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
                         <p>Creado: {formatDateTime(delivery.created_at)}</p>
                         <p>Actualizado: {formatDateTime(delivery.updated_at)}</p>
                         <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
@@ -1269,11 +1269,11 @@ export const DeliveriesScreen = ({
                         <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
                         <p>Cancelado: {formatDateTime(delivery.cancelled_at)}</p>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        <p className="font-medium text-slate-900">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                        <p className="font-medium text-slate-900 dark:text-white">
                           {formatCurrency(delivery.delivery_fee)}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           {getDeliveryFeeSource(delivery)}
                         </p>
                       </td>
@@ -1321,15 +1321,15 @@ export const DeliveriesScreen = ({
 
           <div className="mt-5 grid gap-3 lg:hidden">
             {loading ? (
-              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 dark:text-slate-400">
                 Cargando domicilios...
               </div>
             ) : !hasLoaded ? (
-              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 dark:text-slate-400">
                 Usa Buscar para consultar domicilios.
               </div>
             ) : visibleDeliveries.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-sm text-slate-500 dark:text-slate-400">
                 No hay domicilios para mostrar.
               </div>
             ) : (
@@ -1350,7 +1350,7 @@ export const DeliveriesScreen = ({
             )}
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-5 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between dark:text-slate-300">
             <span>
               Pagina {Math.min(currentPage, totalPages)} de {totalPages}
             </span>

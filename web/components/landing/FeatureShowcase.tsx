@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { CheckCircle2 } from "lucide-react";
 
 const PosPreview = () => (
-  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:bg-slate-800 dark:border-slate-700">
     <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
@@ -19,7 +19,7 @@ const PosPreview = () => (
         {["Café", "Arroz", "Aceite", "Leche", "Pan", "Snacks"].map((item) => (
           <div
             key={item}
-            className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-700"
+            className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-700 dark:text-slate-200"
           >
             {item}
           </div>
@@ -37,7 +37,7 @@ const PosPreview = () => (
 );
 
 const InventoryPreview = () => (
-  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:bg-slate-800 dark:border-slate-700">
     <div className="border-b border-slate-100 px-5 py-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
         Inventario
@@ -54,7 +54,7 @@ const InventoryPreview = () => (
           key={item.name}
           className="grid grid-cols-[1fr_70px_94px] items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
         >
-          <p className="text-sm font-semibold text-slate-800">{item.name}</p>
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{item.name}</p>
           <p className="text-right text-sm font-bold text-slate-950">
             {item.stock}
           </p>
@@ -76,7 +76,7 @@ const InventoryPreview = () => (
 );
 
 const CashPreview = () => (
-  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-800 dark:border-slate-700">
     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
       Caja
     </p>
@@ -99,7 +99,7 @@ const CashPreview = () => (
 );
 
 const OrdersPreview = () => (
-  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+  <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:bg-slate-800 dark:border-slate-700">
     <div className="border-b border-slate-100 px-5 py-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">
         Pedidos / clientes
@@ -116,7 +116,7 @@ const OrdersPreview = () => (
           key={item.name}
           className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-3"
         >
-          <p className="text-sm font-semibold text-slate-800">{item.name}</p>
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{item.name}</p>
           <span
             className={`rounded-full px-3 py-1 text-xs font-bold ${
               item.color === "emerald"
@@ -124,7 +124,7 @@ const OrdersPreview = () => (
                 : item.color === "blue"
                   ? "bg-blue-50 text-blue-700"
                   : "bg-slate-200 text-slate-700"
-            }`}
+            } dark:text-slate-200`}
           >
             {item.state}
           </span>
@@ -135,7 +135,7 @@ const OrdersPreview = () => (
 );
 
 const ReportsPreview = () => (
-  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-xl dark:bg-slate-800 dark:border-slate-700">
     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-700">
       Reportes
     </p>
@@ -154,7 +154,7 @@ const ReportsPreview = () => (
       {["POS", "Compras", "Caja"].map((item) => (
         <span
           key={item}
-          className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600"
+          className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300"
         >
           {item}
         </span>
@@ -241,7 +241,7 @@ const FeatureShowcase = () => (
                 <h3 className="mt-3 text-balance text-2xl font-bold text-slate-950 md:text-3xl">
                   {block.title}
                 </h3>
-                <p className="mt-4 text-pretty text-lg leading-8 text-slate-600">
+                <p className="mt-4 text-pretty text-lg leading-8 text-slate-600 dark:text-slate-300">
                   {block.description}
                 </p>
                 <ul className="mt-6 grid gap-3">
@@ -251,7 +251,7 @@ const FeatureShowcase = () => (
                         className="h-5 w-5 shrink-0 text-emerald-600"
                         aria-hidden="true"
                       />
-                      <span className="text-sm font-semibold text-slate-700">
+                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                         {point}
                       </span>
                     </li>
