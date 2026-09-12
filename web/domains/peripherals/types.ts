@@ -91,6 +91,11 @@ export type PeripheralTicketPayment = {
   amount?: number;
 };
 
+export type PeripheralTicketTaxLine = {
+  label: string;
+  amount?: number;
+};
+
 export type PeripheralTicketContent = {
   header?: string;
   businessName?: string;
@@ -103,6 +108,7 @@ export type PeripheralTicketContent = {
   items?: PeripheralTicketItem[];
   subtotal?: number;
   taxes?: number;
+  taxLines?: PeripheralTicketTaxLine[];
   discounts?: number;
   total?: number;
   paid?: number;
@@ -151,6 +157,7 @@ export type SaleTicketInput = BaseTicketInput & {
   saleId?: string;
   saleNumber?: string;
   customerName?: string;
+  taxLines?: PeripheralTicketTaxLine[];
 };
 
 export type PurchaseTicketInput = BaseTicketInput & {

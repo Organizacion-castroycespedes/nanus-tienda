@@ -31,6 +31,7 @@ const ids = {
   productTwo: "10000000-0000-0000-0000-000000000019",
   order: "10000000-0000-0000-0000-000000000020",
   delivery: "10000000-0000-0000-0000-000000000021",
+  orderItem: "10000000-0000-0000-0000-000000000022",
 };
 
 type Scenario = {
@@ -107,6 +108,7 @@ const makePreview = (
   taxRate: 0.19,
   taxBase: 302.52,
   taxAmount: 57.48,
+  taxes: [],
   lineSubtotal: 302.52,
   lineTotal: 360,
   explanation: "test pricing",
@@ -163,7 +165,77 @@ class FakeCreateSaleClient {
       return { rows: [] as T[] };
     }
 
+    if (sql.includes("FROM sale_item_taxes")) {
+      return {
+        rows: this.includeTaxSnapshot
+          ? ([
+              {
+                id: "10000000-0000-0000-0000-000000000023",
+                tenant_id: ids.tenant,
+                sale_item_id: saleItemRow.id,
+                tax_id: ids.tax,
+                tax_name: "IVA",
+                tax_rate: 0,
+                tax_base: 3000,
+                tax_amount: 0,
+                is_included: true,
+                dian_code: "01",
+                tax_type_code: "VAT",
+                calculation_method_code: "PERCENTAGE",
+                created_at: new Date("2026-06-02T00:00:00.000Z"),
+              },
+            ] as T[])
+          : ([] as T[]),
+      };
+    }
+
+    if (sql.includes("SELECT id, ordered_quantity") && sql.includes("FROM order_items")) {
+      return {
+        rows: [
+          {
+            id: ids.orderItem,
+            ordered_quantity: 1,
+          },
+        ] as T[],
+      };
+    }
+
+    if (sql.includes("FROM order_item_taxes")) {
+      return {
+        rows: this.includeTaxSnapshot
+          ? ([
+              {
+                order_item_id: ids.orderItem,
+                tax_id: ids.tax,
+                tax_name: "IVA",
+                tax_rate: 0,
+                tax_base: 3000,
+                tax_amount: 0,
+                is_included: true,
+                dian_code: "01",
+                tax_type_code: "VAT",
+                calculation_method_code: "PERCENTAGE",
+                calculation_order: 1,
+              },
+            ] as T[])
+          : ([] as T[]),
+      };
+    }
+
     if (sql.includes("FROM sale_items")) {
+      if (sql.includes("order_item_id IS NOT NULL")) {
+        return {
+          rows: [
+            {
+              id: saleItemRow.id,
+              order_item_id: ids.orderItem,
+              quantity: 1,
+              tax_base: 3000,
+              tax_amount: 0,
+            },
+          ] as T[],
+        };
+      }
       return {
         rows: [
           {
@@ -171,7 +243,7 @@ class FakeCreateSaleClient {
             product_id: ids.product,
             quantity: 1,
             price: 3000,
-            order_item_id: null,
+            order_item_id: ids.orderItem,
             subtotal: 3000,
             price_without_tax: 3000,
             tax_total: 0,
@@ -180,16 +252,23 @@ class FakeCreateSaleClient {
             discount_amount: 0,
             discount_percent: 0,
             discount_total: 0,
-            tax_id: this.includeTaxSnapshot ? ids.tax : null,
-            tax_rate: this.includeTaxSnapshot ? 0 : null,
             tax_base: 3000,
             tax_amount: 0,
             line_total: 3000,
             pricing_source: "ORDER_DELIVERY",
+            pricing_snapshot: null,
             created_at: new Date("2026-06-02T00:00:00.000Z"),
           },
         ] as T[],
       };
+    }
+
+    if (sql.startsWith("DELETE FROM sale_item_taxes")) {
+      return { rows: [] as T[] };
+    }
+
+    if (sql.startsWith("INSERT INTO sale_item_taxes")) {
+      return { rows: [] as T[] };
     }
 
     if (sql.startsWith("UPDATE public.deliveries")) {
@@ -587,7 +666,21 @@ const posContext = {
 
 test("SaleService.createSale calculates POS pricing and sends enriched payload", async () => {
   const { service, repository, pricingService } = buildCreateSaleService([
-    makePreview(),
+    makePreview({
+      taxes: [
+        {
+          taxId: ids.tax,
+          taxName: "IVA",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 302.52,
+          taxAmount: 57.48,
+          isIncluded: true,
+        },
+      ],
+    }),
   ]);
 
   await service.createSale(createSalePayload(), posContext);
@@ -620,7 +713,21 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
   assert.equal(pricedItem.taxAmount, 57.48);
   assert.equal(pricedItem.lineTotal, 360);
   assert.equal(pricedItem.pricingSource, "POS_PRICING_SERVICE");
+  assert.deepEqual(pricedItem.taxes, [
+    {
+      taxId: ids.tax,
+      taxName: "IVA",
+      dianCode: "01",
+      taxTypeCode: "VAT",
+      calculationMethodCode: "PERCENTAGE",
+      taxRate: 0.19,
+      taxBase: 302.52,
+      taxAmount: 57.48,
+      isIncluded: true,
+    },
+  ]);
   assert.equal(pricedItem.pricingSnapshot?.channel, "POS");
+  assert.deepEqual(pricedItem.pricingSnapshot?.taxes, pricedItem.taxes);
   assert.deepEqual(
     (pricedItem.pricingSnapshot?.result as LinePricePreview).finalUnitPrice,
     180

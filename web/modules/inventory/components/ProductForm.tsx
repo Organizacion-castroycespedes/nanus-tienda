@@ -14,7 +14,9 @@ import type {
   ProductSaleType,
 } from "../../../domains/products/dtos";
 import {
+  getTaxCatalogs,
   getTaxes,
+  type TaxCatalogItem,
   type TaxResponse,
 } from "../services/tax.service";
 import {
@@ -24,6 +26,7 @@ import {
 import {
   createProduct,
   deleteProductImage,
+  getProduct,
   updateProduct,
   uploadProductImage,
   type CreateProductPayload,
@@ -53,6 +56,13 @@ type TaxInfo = {
   rate: number;
   isIncluded: boolean;
   label: string;
+  calculationMethodCode: string | null;
+  taxTypeCode: string | null;
+};
+
+type AssignedTaxRow = {
+  taxId: string;
+  calculationOrder: string;
 };
 
 type ProductFormValues = {
@@ -62,6 +72,13 @@ type ProductFormValues = {
   cost: string;
   unitId: string;
   taxId: string;
+  assignedTaxes: AssignedTaxRow[];
+  taxProductCategoryId: string;
+  alcoholDegree: string;
+  netVolumeMl: string;
+  daneCertifiedRetailPrice: string;
+  danePriceEffectiveFrom: string;
+  danePriceEffectiveTo: string;
   isActive: boolean;
   isPerishable: boolean;
   requiresLot: boolean;
@@ -77,6 +94,8 @@ type ProductFormValues = {
 };
 
 type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>> & {
+  assignedTaxes?: string;
+  taxProfile?: string;
   submit?: string;
 };
 
@@ -88,28 +107,63 @@ type ProductFormProps = {
   onImageChange?: (product: ProductResponse) => void;
 };
 
-const createInitialValues = (product?: ProductResponse | null): ProductFormValues => ({
-  name: product?.name ?? "",
-  sku: product?.sku ?? "",
-  price: product ? String(product.price) : "",
-  cost: product ? String(product.cost) : "",
-  unitId: product?.unitId ?? "",
-  taxId: product?.taxId ?? "",
-  isActive: product?.isActive ?? true,
-  isPerishable: product?.isPerishable ?? false,
-  requiresLot: product?.requiresLot ?? false,
-  requiresExpiration: product?.requiresExpiration ?? false,
-  operationalStatus: product?.operationalStatus ?? "ACTIVE",
-  rotationClass: product?.rotationClass ?? "",
-  saleType: product?.saleType ?? "UNIT",
-  measurementUnit: product?.measurementUnit ?? "UND",
-  minStock:
-    product?.minStock === null || product?.minStock === undefined ? "" : String(product.minStock),
-  maxStock:
-    product?.maxStock === null || product?.maxStock === undefined ? "" : String(product.maxStock),
-  categoryId: product?.categoryId ?? "",
-  subcategoryId: product?.subcategoryId ?? "",
-});
+const createInitialValues = (product?: ProductResponse | null): ProductFormValues => {
+  const assignedTaxes =
+    product?.taxes && product.taxes.length > 0
+      ? product.taxes.map((tax) => ({
+          taxId: tax.taxId,
+          calculationOrder: String(tax.calculationOrder),
+        }))
+      : product?.taxId
+        ? [{ taxId: product.taxId, calculationOrder: "100" }]
+        : [];
+
+  return {
+    name: product?.name ?? "",
+    sku: product?.sku ?? "",
+    price: product ? String(product.price) : "",
+    cost: product ? String(product.cost) : "",
+    unitId: product?.unitId ?? "",
+    taxId: product?.taxId ?? "",
+    assignedTaxes,
+    taxProductCategoryId: product?.taxProfile?.taxProductCategoryId ?? "",
+    alcoholDegree:
+      product?.taxProfile?.alcoholDegree === null ||
+      product?.taxProfile?.alcoholDegree === undefined
+        ? ""
+        : String(product.taxProfile.alcoholDegree),
+    netVolumeMl:
+      product?.taxProfile?.netVolumeMl === null ||
+      product?.taxProfile?.netVolumeMl === undefined
+        ? ""
+        : String(product.taxProfile.netVolumeMl),
+    daneCertifiedRetailPrice:
+      product?.taxProfile?.daneCertifiedRetailPrice === null ||
+      product?.taxProfile?.daneCertifiedRetailPrice === undefined
+        ? ""
+        : String(product.taxProfile.daneCertifiedRetailPrice),
+    danePriceEffectiveFrom: product?.taxProfile?.danePriceEffectiveFrom ?? "",
+    danePriceEffectiveTo: product?.taxProfile?.danePriceEffectiveTo ?? "",
+    isActive: product?.isActive ?? true,
+    isPerishable: product?.isPerishable ?? false,
+    requiresLot: product?.requiresLot ?? false,
+    requiresExpiration: product?.requiresExpiration ?? false,
+    operationalStatus: product?.operationalStatus ?? "ACTIVE",
+    rotationClass: product?.rotationClass ?? "",
+    saleType: product?.saleType ?? "UNIT",
+    measurementUnit: product?.measurementUnit ?? "UND",
+    minStock:
+      product?.minStock === null || product?.minStock === undefined
+        ? ""
+        : String(product.minStock),
+    maxStock:
+      product?.maxStock === null || product?.maxStock === undefined
+        ? ""
+        : String(product.maxStock),
+    categoryId: product?.categoryId ?? "",
+    subcategoryId: product?.subcategoryId ?? "",
+  };
+};
 
 const isValidNumber = (value: string) => value.trim() !== "" && !Number.isNaN(Number(value));
 const isOptionalNumber = (value: string) => value.trim() === "" || !Number.isNaN(Number(value));
@@ -160,6 +214,9 @@ export const ProductForm = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [unitOptions, setUnitOptions] = useState<ProductOption[]>([]);
   const [taxOptions, setTaxOptions] = useState<TaxInfo[]>([]);
+  const [taxProductCategories, setTaxProductCategories] = useState<
+    TaxCatalogItem[]
+  >([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [categories, setCategories] = useState<ProductCategoryResponse[]>([]);
@@ -179,6 +236,30 @@ export const ProductForm = ({
   }, [mode, product]);
 
   useEffect(() => {
+    if (mode !== "edit" || !product?.id) {
+      return;
+    }
+
+    let mounted = true;
+    void (async () => {
+      try {
+        const detailed = await getProduct(product.id);
+        if (!mounted) {
+          return;
+        }
+        setValues(createInitialValues(detailed));
+        setImageProduct(detailed);
+      } catch {
+        // Keep list snapshot if detail hydrate fails.
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [mode, product?.id]);
+
+  useEffect(() => {
     let mounted = true;
 
     const loadCatalogs = async () => {
@@ -186,7 +267,11 @@ export const ProductForm = ({
       setCatalogError(null);
 
       try {
-        const [units, taxes] = await Promise.all([getUnits(), getTaxes()]);
+        const [units, taxes, taxCatalogs] = await Promise.all([
+          getUnits(),
+          getTaxes(),
+          getTaxCatalogs(),
+        ]);
 
         if (!mounted) {
           return;
@@ -202,11 +287,14 @@ export const ProductForm = ({
           taxes.map((tax: TaxResponse) => ({
             id: tax.id,
             name: tax.name,
-            rate: Number(tax.rate),
+            rate: tax.rate,
             isIncluded: tax.isIncluded,
-            label: `${tax.name} (${Number(tax.rate) * 100}%)`,
+            calculationMethodCode: tax.calculationMethodCode ?? null,
+            taxTypeCode: tax.taxTypeCode ?? null,
+            label: `${tax.name} (${(tax.rate * 100).toFixed(2)}%)`,
           }))
         );
+        setTaxProductCategories(taxCatalogs.productCategories);
       } catch {
         if (!mounted) {
           return;
@@ -411,7 +499,44 @@ export const ProductForm = ({
     }));
   };
 
-  const selectedTax = taxOptions.find((tax) => tax.id === values.taxId) ?? null;
+  const assignedTaxDetails = useMemo(
+    () =>
+      values.assignedTaxes
+        .map((assignment) => ({
+          ...assignment,
+          tax: taxOptions.find((tax) => tax.id === assignment.taxId) ?? null,
+        }))
+        .filter((item) => item.taxId),
+    [taxOptions, values.assignedTaxes]
+  );
+
+  const bridgeTax = useMemo(() => {
+    const ordered = [...assignedTaxDetails].sort(
+      (left, right) =>
+        Number(left.calculationOrder || 0) - Number(right.calculationOrder || 0)
+    );
+    return (
+      ordered.find(
+        (item) =>
+          !item.tax?.calculationMethodCode ||
+          item.tax.calculationMethodCode === "PERCENTAGE"
+      )?.tax ?? null
+    );
+  }, [assignedTaxDetails]);
+
+  const hasNonPercentageTax = assignedTaxDetails.some(
+    (item) =>
+      item.tax?.calculationMethodCode != null &&
+      item.tax.calculationMethodCode !== "PERCENTAGE"
+  );
+  const hasAdvTax = assignedTaxDetails.some(
+    (item) => item.tax?.taxTypeCode === "AD_VALOREM"
+  );
+  const selectedTaxCategory =
+    taxProductCategories.find(
+      (item) => item.id === values.taxProductCategoryId
+    ) ?? null;
+
   const sortedCategories = useMemo(
     () =>
       [...categories].sort(
@@ -523,6 +648,52 @@ export const ProductForm = ({
       nextErrors.subcategoryId = classificationError;
     }
 
+    const taxIds = values.assignedTaxes.map((item) => item.taxId).filter(Boolean);
+    if (new Set(taxIds).size !== taxIds.length) {
+      nextErrors.assignedTaxes = "No se permiten impuestos duplicados.";
+    }
+    for (const assignment of values.assignedTaxes) {
+      if (!assignment.taxId) {
+        nextErrors.assignedTaxes = "Selecciona un impuesto en cada fila.";
+        break;
+      }
+      if (
+        assignment.calculationOrder.trim() === "" ||
+        Number.isNaN(Number(assignment.calculationOrder)) ||
+        Number(assignment.calculationOrder) <= 0
+      ) {
+        nextErrors.assignedTaxes = "El orden de calculo debe ser mayor a 0.";
+        break;
+      }
+    }
+
+    if (hasNonPercentageTax || selectedTaxCategory?.isAlcoholicBeverage) {
+      if (!values.taxProductCategoryId) {
+        nextErrors.taxProductCategoryId = "La categoria fiscal es requerida.";
+      }
+      if (
+        values.alcoholDegree.trim() === "" ||
+        Number.isNaN(Number(values.alcoholDegree))
+      ) {
+        nextErrors.alcoholDegree = "El grado alcoholico es requerido.";
+      }
+      if (
+        values.netVolumeMl.trim() === "" ||
+        Number.isNaN(Number(values.netVolumeMl)) ||
+        Number(values.netVolumeMl) <= 0
+      ) {
+        nextErrors.netVolumeMl = "El volumen neto (ml) debe ser mayor a 0.";
+      }
+    }
+    if (
+      hasAdvTax &&
+      (values.daneCertifiedRetailPrice.trim() === "" ||
+        Number.isNaN(Number(values.daneCertifiedRetailPrice)))
+    ) {
+      nextErrors.daneCertifiedRetailPrice =
+        "El precio DANE es requerido cuando hay ADV.";
+    }
+
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -534,13 +705,45 @@ export const ProductForm = ({
       return;
     }
 
+    const orderedTaxes = [...values.assignedTaxes]
+      .filter((item) => item.taxId)
+      .sort(
+        (left, right) =>
+          Number(left.calculationOrder) - Number(right.calculationOrder)
+      );
+    const bridgeTaxId =
+      orderedTaxes.find((assignment) => {
+        const tax = taxOptions.find((item) => item.id === assignment.taxId);
+        return (
+          !tax?.calculationMethodCode ||
+          tax.calculationMethodCode === "PERCENTAGE"
+        );
+      })?.taxId ?? null;
+
     const payload: CreateProductPayload = {
       name: values.name.trim(),
       sku: values.sku.trim(),
       price: Number(values.price),
       cost: Number(values.cost),
       unitId: values.unitId,
-      taxId: values.taxId || null,
+      taxId: bridgeTaxId,
+      taxes: orderedTaxes.map((item) => ({
+        taxId: item.taxId,
+        calculationOrder: Number(item.calculationOrder),
+      })),
+      taxProfile:
+        values.taxProductCategoryId || hasNonPercentageTax
+          ? {
+              taxProductCategoryId: values.taxProductCategoryId,
+              alcoholDegree: optionalNumber(values.alcoholDegree),
+              netVolumeMl: optionalNumber(values.netVolumeMl),
+              daneCertifiedRetailPrice: optionalNumber(
+                values.daneCertifiedRetailPrice
+              ),
+              danePriceEffectiveFrom: values.danePriceEffectiveFrom || null,
+              danePriceEffectiveTo: values.danePriceEffectiveTo || null,
+            }
+          : null,
       isActive: values.isActive,
       isPerishable: values.isPerishable,
       requiresLot: values.requiresLot,
@@ -687,36 +890,207 @@ export const ProductForm = ({
             {errors.unitId ? <p className="text-xs text-rose-600">{errors.unitId}</p> : null}
           </div>
 
-          <div className="space-y-1">
-            <Select
-              label="Impuesto"
-              value={values.taxId}
-              onChange={(event) => setFieldValue("taxId", event.target.value)}
-              disabled={catalogLoading}
-              hint={
-                taxOptions.length === 0
-                  ? "Aun no hay impuestos disponibles. Este campo es opcional."
-                  : undefined
-              }
-            >
-              <option value="">Sin impuesto</option>
-              {taxOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-            {selectedTax ? (
+          <div className="space-y-3 md:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                Impuestos del producto
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={catalogLoading}
+                onClick={() =>
+                  setValues((prev) => ({
+                    ...prev,
+                    assignedTaxes: [
+                      ...prev.assignedTaxes,
+                      {
+                        taxId: "",
+                        calculationOrder: String(
+                          (prev.assignedTaxes.length + 1) * 100
+                        ),
+                      },
+                    ],
+                  }))
+                }
+              >
+                Agregar impuesto
+              </Button>
+            </div>
+
+            {values.assignedTaxes.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Sin impuestos. El POS tratara el producto como exento/sin tributo.
+              </p>
+            ) : null}
+
+            {values.assignedTaxes.map((assignment, index) => (
+              <div
+                key={`${assignment.taxId}-${index}`}
+                className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_120px_auto]"
+              >
+                <Select
+                  label={`Impuesto #${index + 1}`}
+                  value={assignment.taxId}
+                  disabled={catalogLoading}
+                  onChange={(event) =>
+                    setValues((prev) => {
+                      const next = [...prev.assignedTaxes];
+                      next[index] = {
+                        ...next[index],
+                        taxId: event.target.value,
+                      };
+                      return { ...prev, assignedTaxes: next };
+                    })
+                  }
+                >
+                  <option value="">Selecciona impuesto</option>
+                  {taxOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+                <Input
+                  label="Orden"
+                  type="number"
+                  min="1"
+                  value={assignment.calculationOrder}
+                  onChange={(event) =>
+                    setValues((prev) => {
+                      const next = [...prev.assignedTaxes];
+                      next[index] = {
+                        ...next[index],
+                        calculationOrder: event.target.value,
+                      };
+                      return { ...prev, assignedTaxes: next };
+                    })
+                  }
+                />
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() =>
+                      setValues((prev) => ({
+                        ...prev,
+                        assignedTaxes: prev.assignedTaxes.filter(
+                          (_item, itemIndex) => itemIndex !== index
+                        ),
+                      }))
+                    }
+                  >
+                    Quitar
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            {errors.assignedTaxes ? (
+              <p className="text-xs text-rose-600">{errors.assignedTaxes}</p>
+            ) : null}
+
+            {bridgeTax ? (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                <p className="font-semibold">{selectedTax.name}</p>
-                <p>Porcentaje: {selectedTax.rate * 100}%</p>
+                <p className="font-semibold">POS usara: {bridgeTax.name}</p>
+                <p>Porcentaje puente: {(bridgeTax.rate * 100).toFixed(2)}%</p>
                 <p>
-                  {selectedTax.isIncluded
+                  {bridgeTax.isIncluded
                     ? "El precio ya incluye impuestos"
                     : "El impuesto no esta incluido en el precio"}
                 </p>
+                {hasNonPercentageTax ? (
+                  <p className="mt-2">
+                    ICL/ADV se guardan en catalogo; el cobro en caja llega en la
+                    fase del motor.
+                  </p>
+                ) : null}
               </div>
             ) : null}
+
+            {(hasNonPercentageTax ||
+              selectedTaxCategory?.isAlcoholicBeverage ||
+              values.taxProductCategoryId) && (
+              <div className="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-2">
+                <Select
+                  label="Categoria fiscal"
+                  value={values.taxProductCategoryId}
+                  onChange={(event) =>
+                    setFieldValue("taxProductCategoryId", event.target.value)
+                  }
+                >
+                  <option value="">Selecciona categoria</option>
+                  {taxProductCategories.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </Select>
+                <Input
+                  label="Grado alcoholico"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.001"
+                  value={values.alcoholDegree}
+                  onChange={(event) =>
+                    setFieldValue("alcoholDegree", event.target.value)
+                  }
+                />
+                <Input
+                  label="Volumen neto (ml)"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={values.netVolumeMl}
+                  onChange={(event) =>
+                    setFieldValue("netVolumeMl", event.target.value)
+                  }
+                />
+                <Input
+                  label="Precio DANE certificado"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={values.daneCertifiedRetailPrice}
+                  onChange={(event) =>
+                    setFieldValue("daneCertifiedRetailPrice", event.target.value)
+                  }
+                />
+                <Input
+                  label="DANE vigente desde"
+                  type="date"
+                  value={values.danePriceEffectiveFrom}
+                  onChange={(event) =>
+                    setFieldValue("danePriceEffectiveFrom", event.target.value)
+                  }
+                />
+                <Input
+                  label="DANE vigente hasta"
+                  type="date"
+                  value={values.danePriceEffectiveTo}
+                  onChange={(event) =>
+                    setFieldValue("danePriceEffectiveTo", event.target.value)
+                  }
+                />
+                {errors.taxProductCategoryId ? (
+                  <p className="text-xs text-rose-600 md:col-span-2">
+                    {errors.taxProductCategoryId}
+                  </p>
+                ) : null}
+                {errors.alcoholDegree ? (
+                  <p className="text-xs text-rose-600">{errors.alcoholDegree}</p>
+                ) : null}
+                {errors.netVolumeMl ? (
+                  <p className="text-xs text-rose-600">{errors.netVolumeMl}</p>
+                ) : null}
+                {errors.daneCertifiedRetailPrice ? (
+                  <p className="text-xs text-rose-600 md:col-span-2">
+                    {errors.daneCertifiedRetailPrice}
+                  </p>
+                ) : null}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1">

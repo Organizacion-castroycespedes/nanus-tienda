@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import { PricingService } from "./pricing.service";
 import type {
   PricingProductSnapshot,
+  PricingProductTaxProfileSnapshot,
+  PricingProductTaxSnapshot,
   PricingPromotionSnapshot,
 } from "./pricing.types";
 
@@ -11,18 +13,75 @@ const tenantId = randomUUID();
 const branchId = randomUUID();
 const productId = randomUUID();
 
-const baseProduct = (
-  overrides: Partial<PricingProductSnapshot> = {}
-): PricingProductSnapshot => ({
-  id: productId,
-  tenantId,
-  price: 119,
-  taxId: null,
-  taxRate: 0,
-  taxIsIncluded: false,
-  isActive: true,
+const productTax = (
+  overrides: Partial<PricingProductTaxSnapshot> = {}
+): PricingProductTaxSnapshot => ({
+  taxId: randomUUID(),
+  taxName: "IVA",
+  dianCode: null,
+  taxTypeCode: null,
+  calculationMethodCode: "PERCENTAGE",
+  taxBaseTypeCode: null,
+  calculationOrder: 1,
+  isIncluded: false,
+  rate: 0.19,
+  percentageRate: 0.19,
+  fixedAmount: null,
+  baseQuantity: null,
+  baseUnitCode: null,
   ...overrides,
 });
+
+const taxProfile = (
+  overrides: Partial<PricingProductTaxProfileSnapshot> = {}
+): PricingProductTaxProfileSnapshot => ({
+  taxProductCategoryId: randomUUID(),
+  alcoholDegree: null,
+  netVolumeMl: null,
+  daneCertifiedRetailPrice: null,
+  ...overrides,
+});
+
+const baseProduct = (
+  overrides: Partial<PricingProductSnapshot> = {}
+): PricingProductSnapshot => {
+  const merged: PricingProductSnapshot = {
+    id: productId,
+    tenantId,
+    price: 119,
+    taxId: null,
+    taxRate: 0,
+    taxIsIncluded: false,
+    taxes: [],
+    taxProfile: null,
+    isActive: true,
+    ...overrides,
+  };
+
+  if (overrides.taxes !== undefined) {
+    return merged;
+  }
+
+  if (!merged.taxId && merged.taxRate <= 0) {
+    return merged;
+  }
+
+  const syntheticTaxId = merged.taxId ?? randomUUID();
+
+  return {
+    ...merged,
+    taxId: syntheticTaxId,
+    taxes: [
+      productTax({
+        taxId: syntheticTaxId,
+        taxName: "Bridge Tax",
+        isIncluded: merged.taxIsIncluded,
+        rate: merged.taxRate,
+        percentageRate: merged.taxRate,
+      }),
+    ],
+  };
+};
 
 const promotion = (
   overrides: Partial<PricingPromotionSnapshot> = {}
@@ -42,7 +101,10 @@ const buildService = (
 ) => {
   const calls: string[] = [];
   const repository = {
-    findProductSnapshot: async (inputTenantId: string, inputProductId: string) => {
+    findProductSnapshot: async (
+      inputTenantId: string,
+      inputProductId: string
+    ) => {
       calls.push(`find:${inputTenantId}:${inputProductId}`);
       return product;
     },
@@ -92,6 +154,7 @@ describe("PricingService", () => {
       taxRate: 0,
       taxBase: 200,
       taxAmount: 0,
+      taxes: [],
       lineSubtotal: 200,
       lineTotal: 200,
       explanation:
@@ -118,6 +181,19 @@ describe("PricingService", () => {
     assert.equal(result.taxRate, 0.19);
     assert.equal(result.taxBase, 200);
     assert.equal(result.taxAmount, 38);
+    assert.deepEqual(result.taxes, [
+      {
+        taxId,
+        taxName: "Bridge Tax",
+        dianCode: null,
+        taxTypeCode: null,
+        calculationMethodCode: "PERCENTAGE",
+        taxRate: 0.19,
+        taxBase: 200,
+        taxAmount: 38,
+        isIncluded: true,
+      },
+    ]);
     assert.equal(result.lineSubtotal, 200);
     assert.equal(result.lineTotal, 238);
   });
@@ -137,6 +213,9 @@ describe("PricingService", () => {
     assert.equal(result.finalUnitPrice, 100);
     assert.equal(result.taxBase, 200);
     assert.equal(result.taxAmount, 38);
+    assert.equal(result.taxes.length, 1);
+    assert.equal(result.taxes[0]?.taxId, taxId);
+    assert.equal(result.taxes[0]?.taxAmount, 38);
     assert.equal(result.lineSubtotal, 200);
     assert.equal(result.lineTotal, 238);
   });
@@ -156,6 +235,7 @@ describe("PricingService", () => {
     assert.equal(result.lineTotal, 149.99);
     assert.equal(result.taxBase, 126.05);
     assert.equal(result.taxAmount, 23.94);
+    assert.equal(result.taxes[0]?.taxAmount, 23.94);
   });
 
   it("does not query promotions for the base calculation", async () => {
@@ -378,6 +458,7 @@ describe("PricingService", () => {
     assert.equal(result.taxRate, 0.19);
     assert.equal(result.taxBase, 200);
     assert.equal(result.taxAmount, 38);
+    assert.equal(result.taxes[0]?.taxAmount, 38);
     assert.equal(result.lineSubtotal, 200);
     assert.equal(result.lineTotal, 238);
   });
@@ -404,6 +485,7 @@ describe("PricingService", () => {
     assert.equal(result.lineTotal, 119);
     assert.equal(result.taxBase, 100);
     assert.equal(result.taxAmount, 19);
+    assert.equal(result.taxes[0]?.taxAmount, 19);
   });
 
   it("supports decimal quantity and rounds to 2 decimals", async () => {
@@ -421,6 +503,105 @@ describe("PricingService", () => {
     assert.equal(result.lineTotal, 149.99);
     assert.equal(result.taxBase, 126.05);
     assert.equal(result.taxAmount, 23.94);
+    assert.equal(result.taxes[0]?.taxAmount, 23.94);
+  });
+
+  it("calculates a liquor stack with ICL ADV and included IVA", async () => {
+    const iclTaxId = randomUUID();
+    const advTaxId = randomUUID();
+    const ivaTaxId = randomUUID();
+    const { service } = buildService(
+      baseProduct({
+        price: 590000,
+        taxId: ivaTaxId,
+        taxRate: 0.05,
+        taxIsIncluded: true,
+        taxes: [
+          productTax({
+            taxId: iclTaxId,
+            taxName: "ICL",
+            calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
+            calculationOrder: 1,
+            isIncluded: true,
+            rate: 0,
+            percentageRate: null,
+            fixedAmount: 360,
+            baseQuantity: 750,
+          }),
+          productTax({
+            taxId: advTaxId,
+            taxName: "ADV",
+            taxTypeCode: "AD_VALOREM",
+            calculationMethodCode: "AD_VALOREM",
+            calculationOrder: 2,
+            isIncluded: true,
+            rate: 0.25,
+            percentageRate: 0.25,
+          }),
+          productTax({
+            taxId: ivaTaxId,
+            taxName: "IVA 5%",
+            calculationMethodCode: "PERCENTAGE",
+            calculationOrder: 3,
+            isIncluded: true,
+            rate: 0.05,
+            percentageRate: 0.05,
+          }),
+        ],
+        taxProfile: taxProfile({
+          alcoholDegree: 40,
+          netVolumeMl: 750,
+          daneCertifiedRetailPrice: 400000,
+        }),
+      })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 1,
+    });
+
+    assert.equal(result.taxId, ivaTaxId);
+    assert.equal(result.taxRate, 0.05);
+    assert.equal(result.taxBase, 452952.38);
+    assert.equal(result.taxAmount, 137047.62);
+    assert.equal(result.lineSubtotal, 452952.38);
+    assert.equal(result.lineTotal, 590000);
+    assert.deepEqual(result.taxes, [
+      {
+        taxId: iclTaxId,
+        taxName: "ICL",
+        dianCode: null,
+        taxTypeCode: null,
+        calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
+        taxRate: 0,
+        taxBase: 40,
+        taxAmount: 14400,
+        isIncluded: true,
+      },
+      {
+        taxId: advTaxId,
+        taxName: "ADV",
+        dianCode: null,
+        taxTypeCode: "AD_VALOREM",
+        calculationMethodCode: "AD_VALOREM",
+        taxRate: 0.25,
+        taxBase: 400000,
+        taxAmount: 100000,
+        isIncluded: true,
+      },
+      {
+        taxId: ivaTaxId,
+        taxName: "IVA 5%",
+        dianCode: null,
+        taxTypeCode: null,
+        calculationMethodCode: "PERCENTAGE",
+        taxRate: 0.05,
+        taxBase: 452952.38,
+        taxAmount: 22647.62,
+        isIncluded: true,
+      },
+    ]);
   });
 
   it("rejects quantity 0", async () => {

@@ -8,7 +8,9 @@ import { PricingRepository } from "./pricing.repository";
 import type {
   CalculateLinePriceInput,
   LinePricePreview,
+  PricingProductSnapshot,
   PricingPromotionSnapshot,
+  PricingProductTaxSnapshot,
 } from "./pricing.types";
 
 const CHANNELS = new Set(["POS", "ORDER"]);
@@ -22,6 +24,10 @@ export class PricingService {
 
   private roundCurrency(value: number) {
     return Math.round((value + 1e-9) * 100) / 100;
+  }
+
+  private normalizeRate(value: number) {
+    return Math.round((value + 1e-12) * 1_000_000) / 1_000_000;
   }
 
   private assertInput(input: CalculateLinePriceInput) {
@@ -49,24 +55,77 @@ export class PricingService {
     return date ? new Date(date) : new Date();
   }
 
-  private calculateLinePreview(input: {
-    product: {
-      id: string;
-      price: number;
-      taxId: string | null;
+  private isPercentageTax(tax: PricingProductTaxSnapshot) {
+    if (this.isAdValoremTax(tax)) {
+      return false;
+    }
+    return (
+      tax.calculationMethodCode === null ||
+      tax.calculationMethodCode === "PERCENTAGE"
+    );
+  }
+
+  private isAlcoholDegreeVolumeTax(tax: PricingProductTaxSnapshot) {
+    return tax.calculationMethodCode === "PER_ALCOHOL_DEGREE_VOLUME";
+  }
+
+  private isAdValoremTax(tax: PricingProductTaxSnapshot) {
+    return (
+      tax.taxTypeCode === "AD_VALOREM" ||
+      tax.taxBaseTypeCode === "DANE_CERTIFIED_RETAIL_PRICE" ||
+      tax.calculationMethodCode === "AD_VALOREM"
+    );
+  }
+
+  private isFixedAmountTax(tax: PricingProductTaxSnapshot) {
+    return tax.calculationMethodCode === "FIXED_AMOUNT";
+  }
+
+  private getAssignedTaxes(product: PricingProductSnapshot) {
+    return [...(product.taxes ?? [])].sort(
+      (left, right) => left.calculationOrder - right.calculationOrder
+    );
+  }
+
+  private getBridgePercentageTax(product: PricingProductSnapshot) {
+    return this.getAssignedTaxes(product).find((tax) => this.isPercentageTax(tax)) ?? null;
+  }
+
+  private getPercentageRate(tax: PricingProductTaxSnapshot | null) {
+    if (!tax) {
+      return 0;
+    }
+    return Number(tax.percentageRate ?? tax.rate ?? 0);
+  }
+
+  private buildPreviewTax(
+    tax: PricingProductTaxSnapshot,
+    values: {
       taxRate: number;
-      taxIsIncluded: boolean;
+      taxBase: number;
+      taxAmount: number;
+    }
+  ): LinePricePreview["taxes"][number] {
+    return {
+      taxId: tax.taxId,
+      taxName: tax.taxName,
+      dianCode: tax.dianCode,
+      taxTypeCode: tax.taxTypeCode,
+      calculationMethodCode: tax.calculationMethodCode,
+      taxRate: this.normalizeRate(values.taxRate),
+      taxBase: this.roundCurrency(values.taxBase),
+      taxAmount: this.roundCurrency(values.taxAmount),
+      isIncluded: tax.isIncluded,
     };
+  }
+
+  private calculatePercentageOnlyBreakdown(input: {
+    product: PricingProductSnapshot;
     quantity: number;
     finalUnitPrice: number;
-    discountAmount: number;
-    discountPercent: number;
-    appliedPromotionId: string | null;
-    appliedPromotionName: string | null;
-    explanation: string;
-  }): LinePricePreview {
-    const taxRate = this.roundCurrency(input.product.taxRate);
-    const baseUnitPrice = this.roundCurrency(input.product.price);
+  }) {
+    const percentageTax = this.getBridgePercentageTax(input.product);
+    const taxRate = this.getPercentageRate(percentageTax);
     const finalUnitPrice = this.roundCurrency(input.finalUnitPrice);
 
     let taxBase = 0;
@@ -74,7 +133,7 @@ export class PricingService {
     let lineSubtotal = 0;
     let lineTotal = 0;
 
-    if (taxRate > 0 && !input.product.taxIsIncluded) {
+    if (taxRate > 0 && !(percentageTax?.isIncluded ?? input.product.taxIsIncluded)) {
       lineSubtotal = this.roundCurrency(input.quantity * finalUnitPrice);
       taxBase = lineSubtotal;
       taxAmount = this.roundCurrency(taxBase * taxRate);
@@ -91,6 +150,285 @@ export class PricingService {
       lineSubtotal = taxBase;
     }
 
+    const taxes =
+      percentageTax && (taxRate > 0 || percentageTax.taxId === input.product.taxId)
+        ? [
+            this.buildPreviewTax(percentageTax, {
+              taxRate,
+              taxBase,
+              taxAmount,
+            }),
+          ]
+        : [];
+
+    return {
+      taxId: percentageTax?.taxId ?? input.product.taxId,
+      taxRate: this.normalizeRate(taxRate),
+      taxBase,
+      taxAmount,
+      taxes,
+      lineSubtotal,
+      lineTotal,
+    };
+  }
+
+  private calculateAlcoholBreakdown(input: {
+    product: PricingProductSnapshot;
+    quantity: number;
+    finalUnitPrice: number;
+  }) {
+    const taxes = this.getAssignedTaxes(input.product);
+    const percentageTax = taxes.find((tax) => this.isPercentageTax(tax)) ?? null;
+    const percentageRate = this.getPercentageRate(percentageTax);
+    const lineFinal = this.roundCurrency(input.finalUnitPrice * input.quantity);
+    const profile = input.product.taxProfile;
+
+    const taxLines = new Map<string, LinePricePreview["taxes"][number]>();
+    let consumoAmount = 0;
+    let fixedChargeAmount = 0;
+
+    for (const tax of taxes) {
+      if (this.isAlcoholDegreeVolumeTax(tax)) {
+        if (
+          profile?.alcoholDegree == null ||
+          profile.netVolumeMl == null ||
+          tax.fixedAmount == null ||
+          tax.baseQuantity == null ||
+          tax.baseQuantity <= 0
+        ) {
+          throw new BadRequestException(
+            "assigned PER_ALCOHOL_DEGREE_VOLUME tax requires alcoholDegree, netVolumeMl and baseQuantity"
+          );
+        }
+
+        const taxableUnits = input.quantity *
+          profile.alcoholDegree *
+          (profile.netVolumeMl / tax.baseQuantity);
+        const taxAmount = this.roundCurrency(tax.fixedAmount * taxableUnits);
+        consumoAmount = this.roundCurrency(consumoAmount + taxAmount);
+        taxLines.set(
+          tax.taxId,
+          this.buildPreviewTax(tax, {
+            taxRate: 0,
+            taxBase: taxableUnits,
+            taxAmount,
+          })
+        );
+        continue;
+      }
+
+      if (this.isAdValoremTax(tax)) {
+        if (profile?.daneCertifiedRetailPrice == null) {
+          throw new BadRequestException(
+            "assigned AD_VALOREM tax requires daneCertifiedRetailPrice"
+          );
+        }
+
+        const taxRate = this.getPercentageRate(tax);
+        const taxBase = this.roundCurrency(
+          profile.daneCertifiedRetailPrice * input.quantity
+        );
+        const taxAmount = this.roundCurrency(taxBase * taxRate);
+        consumoAmount = this.roundCurrency(consumoAmount + taxAmount);
+        taxLines.set(
+          tax.taxId,
+          this.buildPreviewTax(tax, {
+            taxRate,
+            taxBase,
+            taxAmount,
+          })
+        );
+        continue;
+      }
+
+      if (this.isFixedAmountTax(tax)) {
+        const taxAmount = this.roundCurrency((tax.fixedAmount ?? 0) * input.quantity);
+        fixedChargeAmount = this.roundCurrency(fixedChargeAmount + taxAmount);
+        taxLines.set(
+          tax.taxId,
+          this.buildPreviewTax(tax, {
+            taxRate: 0,
+            taxBase: input.quantity,
+            taxAmount,
+          })
+        );
+      }
+    }
+
+    if (percentageTax) {
+      if (percentageTax.isIncluded) {
+        if (consumoAmount > lineFinal) {
+          throw new BadRequestException(
+            "included alcohol taxes exceed visible line amount"
+          );
+        }
+
+        const taxBase = this.roundCurrency(
+          (lineFinal - consumoAmount) / (1 + percentageRate)
+        );
+        const taxAmount = this.roundCurrency(
+          lineFinal - consumoAmount - taxBase
+        );
+        taxLines.set(
+          percentageTax.taxId,
+          this.buildPreviewTax(percentageTax, {
+            taxRate: percentageRate,
+            taxBase,
+            taxAmount,
+          })
+        );
+
+        return {
+          taxId: percentageTax.taxId,
+          taxRate: this.normalizeRate(percentageRate),
+          taxBase,
+          taxAmount: this.roundCurrency(
+            consumoAmount + taxAmount + fixedChargeAmount
+          ),
+          taxes: taxes
+            .map((tax) => taxLines.get(tax.taxId))
+            .filter((item): item is LinePricePreview["taxes"][number] =>
+              Boolean(item)
+            ),
+          lineSubtotal: taxBase,
+          lineTotal: this.roundCurrency(lineFinal + fixedChargeAmount),
+        };
+      }
+
+      const taxBase = this.roundCurrency(lineFinal - consumoAmount);
+      const taxAmount = this.roundCurrency(taxBase * percentageRate);
+      taxLines.set(
+        percentageTax.taxId,
+        this.buildPreviewTax(percentageTax, {
+          taxRate: percentageRate,
+          taxBase,
+          taxAmount,
+        })
+      );
+
+      return {
+        taxId: percentageTax.taxId,
+        taxRate: this.normalizeRate(percentageRate),
+        taxBase,
+        taxAmount: this.roundCurrency(consumoAmount + taxAmount + fixedChargeAmount),
+        taxes: taxes
+          .map((tax) => taxLines.get(tax.taxId))
+          .filter((item): item is LinePricePreview["taxes"][number] =>
+            Boolean(item)
+          ),
+        lineSubtotal: taxBase,
+        lineTotal: this.roundCurrency(
+          lineFinal + consumoAmount + taxAmount + fixedChargeAmount
+        ),
+      };
+    }
+
+    return {
+      taxId: null,
+      taxRate: 0,
+      taxBase: 0,
+      taxAmount: this.roundCurrency(consumoAmount + fixedChargeAmount),
+      taxes: taxes
+        .map((tax) => taxLines.get(tax.taxId))
+        .filter((item): item is LinePricePreview["taxes"][number] => Boolean(item)),
+      lineSubtotal: this.roundCurrency(lineFinal - consumoAmount),
+      lineTotal: this.roundCurrency(lineFinal + fixedChargeAmount),
+    };
+  }
+
+  private calculatePercentageAndFixedBreakdown(input: {
+    product: PricingProductSnapshot;
+    quantity: number;
+    finalUnitPrice: number;
+  }) {
+    const taxes = this.getAssignedTaxes(input.product);
+    const percentageBase = this.calculatePercentageOnlyBreakdown(input);
+    const taxLines = new Map<string, LinePricePreview["taxes"][number]>();
+
+    for (const line of percentageBase.taxes) {
+      taxLines.set(line.taxId, line);
+    }
+
+    let fixedChargeAmount = 0;
+    for (const tax of taxes) {
+      if (!this.isFixedAmountTax(tax)) {
+        continue;
+      }
+
+      const taxAmount = this.roundCurrency((tax.fixedAmount ?? 0) * input.quantity);
+      fixedChargeAmount = this.roundCurrency(fixedChargeAmount + taxAmount);
+      taxLines.set(
+        tax.taxId,
+        this.buildPreviewTax(tax, {
+          taxRate: 0,
+          taxBase: input.quantity,
+          taxAmount,
+        })
+      );
+    }
+
+    const lineFinal = this.roundCurrency(input.finalUnitPrice * input.quantity);
+
+    return {
+      taxId: percentageBase.taxId,
+      taxRate: percentageBase.taxRate,
+      taxBase: percentageBase.taxBase,
+      taxAmount: this.roundCurrency(percentageBase.taxAmount + fixedChargeAmount),
+      taxes: taxes
+        .map((tax) => taxLines.get(tax.taxId))
+        .filter((item): item is LinePricePreview["taxes"][number] => Boolean(item)),
+      lineSubtotal:
+        percentageBase.taxId === null && fixedChargeAmount > 0
+          ? lineFinal
+          : percentageBase.lineSubtotal,
+      lineTotal: this.roundCurrency(percentageBase.lineTotal + fixedChargeAmount),
+    };
+  }
+
+  private calculateLinePreview(input: {
+    product: PricingProductSnapshot;
+    quantity: number;
+    finalUnitPrice: number;
+    discountAmount: number;
+    discountPercent: number;
+    appliedPromotionId: string | null;
+    appliedPromotionName: string | null;
+    explanation: string;
+  }): LinePricePreview {
+    const baseUnitPrice = this.roundCurrency(input.product.price);
+    const finalUnitPrice = this.roundCurrency(input.finalUnitPrice);
+    const taxes = this.getAssignedTaxes(input.product);
+    const hasAlcoholTaxes = taxes.some(
+      (tax) => this.isAlcoholDegreeVolumeTax(tax) || this.isAdValoremTax(tax)
+    );
+    const hasFixedAmountTaxes = taxes.some((tax) => this.isFixedAmountTax(tax));
+    const onlyPercentageTaxes =
+      taxes.length === 0 || taxes.every((tax) => this.isPercentageTax(tax));
+
+    const breakdown = onlyPercentageTaxes
+      ? this.calculatePercentageOnlyBreakdown({
+          product: input.product,
+          quantity: input.quantity,
+          finalUnitPrice,
+        })
+      : hasAlcoholTaxes
+        ? this.calculateAlcoholBreakdown({
+            product: input.product,
+            quantity: input.quantity,
+            finalUnitPrice,
+          })
+        : hasFixedAmountTaxes
+          ? this.calculatePercentageAndFixedBreakdown({
+              product: input.product,
+              quantity: input.quantity,
+              finalUnitPrice,
+            })
+          : this.calculatePercentageOnlyBreakdown({
+              product: input.product,
+              quantity: input.quantity,
+              finalUnitPrice,
+            });
+
     return {
       productId: input.product.id,
       quantity: input.quantity,
@@ -100,22 +438,25 @@ export class PricingService {
       discountPercent: this.roundCurrency(input.discountPercent),
       appliedPromotionId: input.appliedPromotionId,
       appliedPromotionName: input.appliedPromotionName,
-      taxId: input.product.taxId,
-      taxRate,
-      taxBase,
-      taxAmount,
-      lineSubtotal,
-      lineTotal,
+      taxId: breakdown.taxId,
+      taxRate: breakdown.taxRate,
+      taxBase: breakdown.taxBase,
+      taxAmount: breakdown.taxAmount,
+      taxes: breakdown.taxes,
+      lineSubtotal: breakdown.lineSubtotal,
+      lineTotal: breakdown.lineTotal,
       explanation: input.explanation,
     };
   }
 
   private async prepareBaseLine(input: CalculateLinePriceInput) {
     this.assertInput(input);
+    const pricingDate = this.resolveDate(input.date);
 
     const product = await this.pricingRepository.findProductSnapshot(
       input.tenantId,
-      input.productId
+      input.productId,
+      pricingDate
     );
     if (!product) {
       throw new NotFoundException("product not found");
@@ -125,7 +466,6 @@ export class PricingService {
     }
 
     const quantity = this.roundCurrency(input.quantity);
-    const pricingDate = this.resolveDate(input.date);
     const basePreview = this.calculateLinePreview({
       product,
       quantity,

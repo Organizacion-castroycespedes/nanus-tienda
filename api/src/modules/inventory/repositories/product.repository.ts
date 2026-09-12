@@ -408,7 +408,7 @@ export class ProductRepository {
     if (data.unitId !== undefined && data.unitId !== null) {
       addUpdate("unit_id", data.unitId);
     }
-    if (data.taxId !== undefined && data.taxId !== null) {
+    if (data.taxId !== undefined) {
       addUpdate("tax_id", data.taxId);
     }
     if (data.name !== undefined && data.name !== null) {
@@ -634,5 +634,259 @@ export class ProductRepository {
     );
 
     return result.rows[0] ? this.mapRowToEntity(result.rows[0]) : null;
+  }
+
+  async replaceProductTaxes(
+    input: {
+      tenantId: string;
+      productId: string;
+      taxes: Array<{ taxId: string; calculationOrder: number }>;
+    },
+    client?: PoolClient
+  ): Promise<void> {
+    await this.query(
+      `
+      DELETE FROM product_taxes
+      WHERE tenant_id = $1
+        AND product_id = $2
+      `,
+      [input.tenantId, input.productId],
+      client
+    );
+
+    for (const tax of input.taxes) {
+      await this.query(
+        `
+        INSERT INTO product_taxes (
+          tenant_id,
+          product_id,
+          tax_id,
+          calculation_order,
+          is_active
+        ) VALUES ($1, $2, $3, $4, TRUE)
+        `,
+        [
+          input.tenantId,
+          input.productId,
+          tax.taxId,
+          tax.calculationOrder,
+        ],
+        client
+      );
+    }
+  }
+
+  async findProductTaxes(
+    tenantId: string,
+    productId: string,
+    client?: PoolClient
+  ): Promise<
+    Array<{
+      id: string;
+      taxId: string;
+      calculationOrder: number;
+      isActive: boolean;
+      taxName: string | null;
+      taxRate: number | null;
+      isIncluded: boolean | null;
+      calculationMethodCode: string | null;
+      taxTypeCode: string | null;
+      taxTypeDianCode: string | null;
+    }>
+  > {
+    const result = await this.query<
+      QueryResultRow & {
+        id: string;
+        tax_id: string;
+        calculation_order: number;
+        is_active: boolean;
+        tax_name: string | null;
+        tax_rate: string | number | null;
+        is_included: boolean | null;
+        calculation_method_code: string | null;
+        tax_type_code: string | null;
+        tax_type_dian_code: string | null;
+      }
+    >(
+      `
+      SELECT
+        pt.id,
+        pt.tax_id,
+        pt.calculation_order,
+        pt.is_active,
+        t.name AS tax_name,
+        t.rate AS tax_rate,
+        t.is_included,
+        cm.code AS calculation_method_code,
+        tt.code AS tax_type_code,
+        tt.dian_code AS tax_type_dian_code
+      FROM product_taxes pt
+      LEFT JOIN taxes t
+        ON t.id = pt.tax_id
+       AND t.tenant_id = pt.tenant_id
+      LEFT JOIN tax_calculation_methods cm
+        ON cm.id = t.calculation_method_id
+      LEFT JOIN tax_types tt
+        ON tt.id = t.tax_type_id
+      WHERE pt.tenant_id = $1
+        AND pt.product_id = $2
+      ORDER BY pt.calculation_order ASC, pt.created_at ASC
+      `,
+      [tenantId, productId],
+      client
+    );
+
+    return (result.rows ?? []).map((row) => ({
+      id: row.id,
+      taxId: row.tax_id,
+      calculationOrder: Number(row.calculation_order),
+      isActive: row.is_active,
+      taxName: row.tax_name,
+      taxRate: row.tax_rate === null ? null : Number(row.tax_rate),
+      isIncluded: row.is_included,
+      calculationMethodCode: row.calculation_method_code,
+      taxTypeCode: row.tax_type_code,
+      taxTypeDianCode: row.tax_type_dian_code,
+    }));
+  }
+
+  async upsertProductTaxProfile(
+    input: {
+      tenantId: string;
+      productId: string;
+      taxProductCategoryId: string;
+      alcoholDegree?: number | null;
+      netVolumeMl?: number | null;
+      daneCertifiedRetailPrice?: number | null;
+      danePriceEffectiveFrom?: string | null;
+      danePriceEffectiveTo?: string | null;
+    },
+    client?: PoolClient
+  ): Promise<void> {
+    await this.query(
+      `
+      INSERT INTO product_tax_profiles (
+        tenant_id,
+        product_id,
+        tax_product_category_id,
+        alcohol_degree,
+        net_volume_ml,
+        dane_certified_retail_price,
+        dane_price_effective_from,
+        dane_price_effective_to
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8::date)
+      ON CONFLICT (tenant_id, product_id) DO UPDATE
+      SET
+        tax_product_category_id = EXCLUDED.tax_product_category_id,
+        alcohol_degree = EXCLUDED.alcohol_degree,
+        net_volume_ml = EXCLUDED.net_volume_ml,
+        dane_certified_retail_price = EXCLUDED.dane_certified_retail_price,
+        dane_price_effective_from = EXCLUDED.dane_price_effective_from,
+        dane_price_effective_to = EXCLUDED.dane_price_effective_to,
+        updated_at = now()
+      `,
+      [
+        input.tenantId,
+        input.productId,
+        input.taxProductCategoryId,
+        input.alcoholDegree ?? null,
+        input.netVolumeMl ?? null,
+        input.daneCertifiedRetailPrice ?? null,
+        input.danePriceEffectiveFrom ?? null,
+        input.danePriceEffectiveTo ?? null,
+      ],
+      client
+    );
+  }
+
+  async deleteProductTaxProfile(
+    tenantId: string,
+    productId: string,
+    client?: PoolClient
+  ): Promise<void> {
+    await this.query(
+      `
+      DELETE FROM product_tax_profiles
+      WHERE tenant_id = $1
+        AND product_id = $2
+      `,
+      [tenantId, productId],
+      client
+    );
+  }
+
+  async findProductTaxProfile(
+    tenantId: string,
+    productId: string,
+    client?: PoolClient
+  ): Promise<{
+    taxProductCategoryId: string;
+    taxProductCategoryCode: string | null;
+    isAlcoholicBeverage: boolean;
+    alcoholDegree: number | null;
+    netVolumeMl: number | null;
+    daneCertifiedRetailPrice: number | null;
+    danePriceEffectiveFrom: string | null;
+    danePriceEffectiveTo: string | null;
+  } | null> {
+    const result = await this.query<
+      QueryResultRow & {
+        tax_product_category_id: string;
+        tax_product_category_code: string | null;
+        is_alcoholic_beverage: boolean;
+        alcohol_degree: string | number | null;
+        net_volume_ml: string | number | null;
+        dane_certified_retail_price: string | number | null;
+        dane_price_effective_from: Date | string | null;
+        dane_price_effective_to: Date | string | null;
+      }
+    >(
+      `
+      SELECT
+        ptp.tax_product_category_id,
+        tpc.code AS tax_product_category_code,
+        tpc.is_alcoholic_beverage,
+        ptp.alcohol_degree,
+        ptp.net_volume_ml,
+        ptp.dane_certified_retail_price,
+        ptp.dane_price_effective_from,
+        ptp.dane_price_effective_to
+      FROM product_tax_profiles ptp
+      JOIN tax_product_categories tpc
+        ON tpc.id = ptp.tax_product_category_id
+      WHERE ptp.tenant_id = $1
+        AND ptp.product_id = $2
+      LIMIT 1
+      `,
+      [tenantId, productId],
+      client
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      taxProductCategoryId: row.tax_product_category_id,
+      taxProductCategoryCode: row.tax_product_category_code,
+      isAlcoholicBeverage: row.is_alcoholic_beverage,
+      alcoholDegree:
+        row.alcohol_degree === null ? null : Number(row.alcohol_degree),
+      netVolumeMl:
+        row.net_volume_ml === null ? null : Number(row.net_volume_ml),
+      daneCertifiedRetailPrice:
+        row.dane_certified_retail_price === null
+          ? null
+          : Number(row.dane_certified_retail_price),
+      danePriceEffectiveFrom:
+        row.dane_price_effective_from === null
+          ? null
+          : String(row.dane_price_effective_from).slice(0, 10),
+      danePriceEffectiveTo:
+        row.dane_price_effective_to === null
+          ? null
+          : String(row.dane_price_effective_to).slice(0, 10),
+    };
   }
 }

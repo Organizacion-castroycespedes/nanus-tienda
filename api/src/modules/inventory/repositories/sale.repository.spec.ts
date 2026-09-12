@@ -229,6 +229,19 @@ test("SaleRepository serializes enriched pricing payload as snake_case", async (
           taxBase: 15966.38,
           taxAmount: 3033.62,
           lineTotal: 19000,
+          taxes: [
+            {
+              taxId: "00000000-0000-0000-0000-000000000012",
+              taxName: "IVA",
+              dianCode: "01",
+              taxTypeCode: "VAT",
+              calculationMethodCode: "PERCENTAGE",
+              taxRate: 0.19,
+              taxBase: 15966.38,
+              taxAmount: 3033.62,
+              isIncluded: true,
+            },
+          ],
           pricingSnapshot: {
             source: "PricingService",
             channel: "POS",
@@ -266,6 +279,19 @@ test("SaleRepository serializes enriched pricing payload as snake_case", async (
       tax_base: 15966.38,
       tax_amount: 3033.62,
       line_total: 19000,
+      taxes: [
+        {
+          tax_id: "00000000-0000-0000-0000-000000000012",
+          tax_name: "IVA",
+          tax_rate: 0.19,
+          tax_base: 15966.38,
+          tax_amount: 3033.62,
+          is_included: true,
+          dian_code: "01",
+          tax_type_code: "VAT",
+          calculation_method_code: "PERCENTAGE",
+        },
+      ],
       pricing_snapshot: {
         source: "PricingService",
         channel: "POS",

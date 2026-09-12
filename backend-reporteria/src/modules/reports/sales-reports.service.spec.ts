@@ -26,6 +26,14 @@ type TicketCall = {
   saleId: string;
 };
 
+type TaxBreakdownRow = {
+  label: string | null;
+  dianCode: string | null;
+  taxTypeCode: string | null;
+  taxBase: string | number | null;
+  taxAmount: string | number | null;
+};
+
 class FakeSalesReportAdapter {
   readonly ticketCalls: TicketCall[] = [];
 
@@ -88,25 +96,49 @@ const user = (roles: string[], overrides: Partial<ReportUser> = {}): ReportUser 
   ...overrides,
 });
 
-const buildService = (adapter: FakeSalesReportAdapter) =>
+const buildService = (
+  adapter: FakeSalesReportAdapter,
+  taxBreakdown: TaxBreakdownRow[] = []
+) =>
   new SalesReportsService(
     adapter as unknown as SalesReportAdapter,
+    {
+      query: async () => ({ rows: taxBreakdown }),
+    } as never,
     {
       generatePdf: async () => Buffer.from("pdf"),
     } as never
   );
 
 test("SalesReportsService.getSaleTicket: USER autorizado pasa", async () => {
+  const taxBreakdown: TaxBreakdownRow[] = [
+    {
+      label: "IVA 19%",
+      dianCode: "01",
+      taxTypeCode: "VAT",
+      taxBase: "84.45",
+      taxAmount: "16.05",
+    },
+  ];
   const adapter = new FakeSalesReportAdapter(
     new Map([[SALE_ID, ticketDataset()]]),
     new Set([SALE_ID])
   );
-  const service = buildService(adapter);
+  const service = buildService(adapter, taxBreakdown);
 
   const result = await service.getSaleTicket(SALE_ID, user(["USER"]));
 
   assert.equal(result.header.saleId, SALE_ID);
   assert.equal(result.totals.total, 100.5);
+  assert.deepEqual(result.totals.taxBreakdown, [
+    {
+      label: "IVA 19%",
+      dianCode: "01",
+      taxTypeCode: "VAT",
+      taxBase: 84.45,
+      taxAmount: 16.05,
+    },
+  ]);
   assert.equal(adapter.ticketCalls[0].actor.role, "USER");
   assert.equal(adapter.ticketCalls[0].actor.tenantId, TENANT_ID);
   assert.equal(adapter.ticketCalls[0].actor.branchId, BRANCH_ID);
@@ -190,15 +222,76 @@ test("SalesReportsService.getSaleTicket: SUPER_ADMIN conserva acceso", async () 
 });
 
 test("SalesReportsService.getSaleTicketPrintData: conserva dataset canonico", async () => {
+  const taxBreakdown: TaxBreakdownRow[] = [
+    {
+      label: "INC",
+      dianCode: "",
+      taxTypeCode: "",
+      taxBase: "100.50",
+      taxAmount: "8.00",
+    },
+  ];
   const adapter = new FakeSalesReportAdapter(
     new Map([[SALE_ID, ticketDataset()]]),
     new Set([SALE_ID])
   );
-  const service = buildService(adapter);
+  const service = buildService(adapter, taxBreakdown);
 
   const result = await service.getSaleTicketPrintData(SALE_ID, user(["USER"]));
 
   assert.equal(result.tenantId, TENANT_ID);
   assert.equal(result.ticket.header.saleId, SALE_ID);
   assert.equal(result.ticket.totals.total, 100.5);
+  assert.equal(result.ticket.totals.taxBreakdown?.[0]?.label, "INC");
+});
+
+test("SalesReportsService.getSaleTicket: multi-tax IVA/ICL/ADV breakdown", async () => {
+  const taxBreakdown: TaxBreakdownRow[] = [
+    {
+      label: "IVA 19%",
+      dianCode: "01",
+      taxTypeCode: "VAT",
+      taxBase: "10000",
+      taxAmount: "1900",
+    },
+    {
+      label: "ICL",
+      dianCode: "04",
+      taxTypeCode: "ICL",
+      taxBase: "10000",
+      taxAmount: "350",
+    },
+    {
+      label: "ADV",
+      dianCode: "05",
+      taxTypeCode: "ADV",
+      taxBase: "10000",
+      taxAmount: "250",
+    },
+  ];
+  const dataset = {
+    ...ticketDataset(),
+    totals: {
+      ...ticketDataset().totals,
+      taxes: 2500,
+    },
+  } as unknown as PosSaleTicketDataset;
+  const adapter = new FakeSalesReportAdapter(
+    new Map([[SALE_ID, dataset]]),
+    new Set([SALE_ID])
+  );
+  const service = buildService(adapter, taxBreakdown);
+
+  const result = await service.getSaleTicket(SALE_ID, user(["USER"]));
+
+  assert.equal(result.totals.taxes, 2500);
+  assert.equal(result.totals.taxBreakdown?.length, 3);
+  assert.deepEqual(
+    result.totals.taxBreakdown?.map((tax) => tax.label),
+    ["IVA 19%", "ICL", "ADV"]
+  );
+  assert.equal(
+    result.totals.taxBreakdown?.reduce((sum, tax) => sum + tax.taxAmount, 0),
+    2500
+  );
 });

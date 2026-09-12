@@ -55,6 +55,20 @@ type InsertedItem = {
   pricingCalculatedAt: unknown;
 };
 
+type InsertedOrderItemTax = {
+  orderItemId: unknown;
+  taxId: unknown;
+  taxName: unknown;
+  taxRate: unknown;
+  taxBase: unknown;
+  taxAmount: unknown;
+  dianCode: unknown;
+  taxTypeCode: unknown;
+  calculationMethodCode: unknown;
+  calculationOrder: unknown;
+  isIncluded: unknown;
+};
+
 const actor = {
   roles: ["SUPER_ADMIN"],
   tenantId: ids.tenant,
@@ -76,6 +90,7 @@ const makePreview = (
   taxRate: 0,
   taxBase: 200,
   taxAmount: 0,
+  taxes: [],
   lineSubtotal: 200,
   lineTotal: 200,
   explanation: "test pricing",
@@ -101,8 +116,10 @@ class FakePricingService {
 class FakeOrderClient {
   readonly queries: RecordedQuery[] = [];
   readonly insertedItems: InsertedItem[] = [];
+  readonly insertedItemTaxes: InsertedOrderItemTax[] = [];
   insertedOrder: InsertedOrder | null = null;
   updatedOrder: InsertedOrder | null = null;
+  deletedItemTaxes = false;
   deletedItems = false;
   committed = false;
   rolledBack = false;
@@ -239,6 +256,11 @@ class FakeOrderClient {
       };
     }
 
+    if (sql.startsWith("DELETE FROM order_item_taxes")) {
+      this.deletedItemTaxes = true;
+      return { rows: [] as T[] };
+    }
+
     if (sql.startsWith("DELETE FROM order_items")) {
       this.deletedItems = true;
       return { rows: [] as T[] };
@@ -267,6 +289,23 @@ class FakeOrderClient {
             ? (JSON.parse(params[19]) as Record<string, unknown>)
             : null,
         pricingCalculatedAt: params[20],
+      });
+      return { rows: [] as T[] };
+    }
+
+    if (sql.startsWith("INSERT INTO order_item_taxes")) {
+      this.insertedItemTaxes.push({
+        orderItemId: params[1],
+        taxId: params[2],
+        taxName: params[3],
+        taxRate: params[4],
+        taxBase: params[5],
+        taxAmount: params[6],
+        dianCode: params[7],
+        taxTypeCode: params[8],
+        calculationMethodCode: params[9],
+        calculationOrder: params[10],
+        isIncluded: params[11],
       });
       return { rows: [] as T[] };
     }
@@ -345,6 +384,19 @@ test("OrderService.createOrder ignores frontend price and total and uses Pricing
       discountPercent: 20,
       taxBase: 201.68,
       taxAmount: 38.32,
+      taxes: [
+        {
+          taxId: ids.tax,
+          taxName: "IVA",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 201.68,
+          taxAmount: 38.32,
+          isIncluded: true,
+        },
+      ],
       lineSubtotal: 201.68,
       lineTotal: 240,
     }),
@@ -357,6 +409,10 @@ test("OrderService.createOrder ignores frontend price and total and uses Pricing
   assert.equal(client.insertedOrder?.balanceDue, 240);
   assert.equal(client.insertedItems[0]?.price, 120);
   assert.equal(client.insertedItems[0]?.subtotal, 240);
+  assert.equal(client.insertedItemTaxes.length, 1);
+  assert.equal(client.insertedItemTaxes[0]?.taxId, ids.tax);
+  assert.equal(client.insertedItemTaxes[0]?.taxName, "IVA");
+  assert.equal(client.insertedItemTaxes[0]?.dianCode, "01");
   assert.equal(pricingService.calls.length, 1);
   assert.deepEqual(
     {
@@ -502,6 +558,19 @@ test("OrderService.updateOrder recalculates draft items, replaces them, and upda
       finalUnitPrice: 180,
       discountAmount: 20,
       discountPercent: 10,
+      taxes: [
+        {
+          taxId: ids.tax,
+          taxName: "IVA",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 302.52,
+          taxAmount: 57.48,
+          isIncluded: true,
+        },
+      ],
       lineSubtotal: 360,
       lineTotal: 360,
     }),
@@ -526,8 +595,10 @@ test("OrderService.updateOrder recalculates draft items, replaces them, and upda
 
   assert.equal(result.total, 360);
   assert.equal(client.updatedOrder?.total, 360);
+  assert.equal(client.deletedItemTaxes, true);
   assert.equal(client.deletedItems, true);
   assert.equal(client.insertedItems.length, 1);
+  assert.equal(client.insertedItemTaxes.length, 1);
   assert.equal(client.insertedItems[0].price, 180);
   assert.equal(client.insertedItems[0].subtotal, 360);
   assert.equal(pricingService.calls.length, 1);

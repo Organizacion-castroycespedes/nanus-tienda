@@ -100,8 +100,12 @@ type SaleItemTaxRow = {
   tax_id: string;
   tax_name: string;
   tax_rate: string | number;
+  tax_base?: string | number | null;
   tax_amount: string | number;
   is_included: boolean;
+  dian_code?: string | null;
+  tax_type_code?: string | null;
+  calculation_method_code?: string | null;
   created_at: Date;
 };
 
@@ -193,6 +197,17 @@ type PricedSaleItem = {
   pricingSnapshot?: Record<string, unknown>;
   pricingCalculatedAt?: Date;
   pricingSource?: string | null;
+  taxes?: Array<{
+    taxId: string;
+    taxName: string;
+    dianCode?: string | null;
+    taxTypeCode?: string | null;
+    calculationMethodCode?: string | null;
+    taxRate: number;
+    taxBase: number;
+    taxAmount: number;
+    isIncluded: boolean;
+  }>;
 };
 
 type InheritableOrderPayment = {
@@ -448,7 +463,7 @@ export class SaleService {
     tenantId: string,
     client: PoolClient
   ) {
-    const result = await client.query<{
+    const itemsResult = await client.query<{
       id: string;
       product_id: string;
       quantity: string | number;
@@ -462,31 +477,14 @@ export class SaleService {
       discount_amount: string | number | null;
       discount_percent: string | number | null;
       discount_total: string | number | null;
-      tax_id: string | null;
-      tax_rate: string | number | null;
       tax_base: string | number | null;
       tax_amount: string | number | null;
       line_total: string | number | null;
       pricing_source: string | null;
+      pricing_snapshot: Record<string, unknown> | null;
       created_at: Date;
     }>(
       `
-        WITH sale_item_tax_snapshot AS (
-          SELECT DISTINCT ON (taxes.sale_item_id)
-            taxes.sale_item_id,
-            taxes.tenant_id,
-            taxes.tax_id,
-            taxes.tax_rate,
-            taxes.tax_amount
-          FROM sale_item_taxes AS taxes
-          WHERE taxes.sale_item_id IN (
-            SELECT id
-            FROM sale_items
-            WHERE sale_id = $1
-              AND tenant_id = $2
-          )
-          ORDER BY taxes.sale_item_id, taxes.created_at ASC, taxes.id ASC
-        )
         SELECT
           si.id,
           si.product_id,
@@ -501,17 +499,13 @@ export class SaleService {
           si.discount_amount,
           si.discount_percent,
           si.discount_total,
-          sit.tax_id,
-          sit.tax_rate,
           si.tax_base,
-          COALESCE(si.tax_amount, sit.tax_amount) AS tax_amount,
+          si.tax_amount,
           si.line_total,
           si.pricing_source,
+          si.pricing_snapshot,
           si.created_at
         FROM sale_items AS si
-        LEFT JOIN sale_item_tax_snapshot AS sit
-          ON sit.sale_item_id = si.id
-         AND sit.tenant_id = si.tenant_id
         WHERE si.sale_id = $1
           AND si.tenant_id = $2
         ORDER BY si.created_at ASC, si.id ASC
@@ -519,7 +513,59 @@ export class SaleService {
       [saleId, tenantId]
     );
 
-    return result.rows.map((row) => ({
+    const taxesResult = await client.query<SaleItemTaxRow>(
+      `
+        SELECT
+          id,
+          tenant_id,
+          sale_item_id,
+          tax_id,
+          tax_name,
+          tax_rate,
+          tax_base,
+          tax_amount,
+          is_included,
+          dian_code,
+          tax_type_code,
+          calculation_method_code,
+          created_at
+        FROM sale_item_taxes
+        WHERE tenant_id = $2
+          AND sale_item_id IN (
+            SELECT id
+            FROM sale_items
+            WHERE sale_id = $1
+              AND tenant_id = $2
+          )
+        ORDER BY sale_item_id ASC, created_at ASC, id ASC
+      `,
+      [saleId, tenantId]
+    );
+
+    const taxesBySaleItemId = taxesResult.rows.reduce<
+      Map<string, NonNullable<PricedSaleItem["taxes"]>>
+    >((acc, row) => {
+      const current = acc.get(row.sale_item_id) ?? [];
+      current.push({
+        taxId: row.tax_id,
+        taxName: row.tax_name,
+        dianCode: row.dian_code ?? null,
+        taxTypeCode: row.tax_type_code ?? null,
+        calculationMethodCode: row.calculation_method_code ?? null,
+        taxRate: this.toNumber(row.tax_rate),
+        taxBase: this.toNumber(row.tax_base ?? 0),
+        taxAmount: this.toNumber(row.tax_amount),
+        isIncluded: row.is_included,
+      });
+      acc.set(row.sale_item_id, current);
+      return acc;
+    }, new Map());
+
+    return itemsResult.rows.map((row) => {
+      const taxes = taxesBySaleItemId.get(row.id) ?? [];
+      const firstTax = taxes[0];
+
+      return {
       saleItemId: row.id,
       productId: row.product_id,
       quantity: this.toNumber(row.quantity),
@@ -538,14 +584,17 @@ export class SaleService {
         row.discount_percent == null ? undefined : this.toNumber(row.discount_percent),
       discountTotal:
         row.discount_total == null ? undefined : this.toNumber(row.discount_total),
-      taxId: row.tax_id,
-      taxRate: row.tax_rate == null ? null : this.toNumber(row.tax_rate),
+      taxId: firstTax?.taxId ?? null,
+      taxRate: firstTax?.taxRate ?? null,
       taxBase: row.tax_base == null ? undefined : this.toNumber(row.tax_base),
       taxAmount: row.tax_amount == null ? undefined : this.toNumber(row.tax_amount),
       lineTotal: row.line_total == null ? undefined : this.toNumber(row.line_total),
       pricingSource: row.pricing_source,
+      pricingSnapshot: row.pricing_snapshot ?? undefined,
       pricingCalculatedAt: row.created_at,
-    })) as PricedSaleItem[];
+      taxes,
+    };
+    }) as PricedSaleItem[];
   }
 
   private buildPosPricingSnapshot(input: {
@@ -563,6 +612,7 @@ export class SaleService {
       calculatedAt: input.pricingCalculatedAt.toISOString(),
       productId: input.preview.productId,
       quantity: input.preview.quantity,
+      taxes: input.preview.taxes,
       result: input.preview,
     };
   }
@@ -615,6 +665,7 @@ export class SaleService {
         taxBase: preview.taxBase,
         taxAmount: preview.taxAmount,
         lineTotal: preview.lineTotal,
+        taxes: preview.taxes,
         pricingSnapshot: this.buildPosPricingSnapshot({
           tenantId: input.tenantId,
           branchId: input.branchId,
@@ -628,6 +679,216 @@ export class SaleService {
     }
 
     return items;
+  }
+
+  private async syncOrderSaleItemTaxesFromSnapshot(
+    saleId: string,
+    tenantId: string,
+    client: PoolClient
+  ) {
+    const saleItemsResult = await client.query<{
+      id: string;
+      order_item_id: string | null;
+      quantity: string | number;
+      tax_base: string | number | null;
+      tax_amount: string | number | null;
+    }>(
+      `
+        SELECT id, order_item_id, quantity, tax_base, tax_amount
+        FROM sale_items
+        WHERE sale_id = $1
+          AND tenant_id = $2
+          AND order_item_id IS NOT NULL
+        ORDER BY created_at ASC, id ASC
+      `,
+      [saleId, tenantId]
+    );
+
+    if (saleItemsResult.rows.length === 0) {
+      return;
+    }
+
+    const orderItemIds = saleItemsResult.rows
+      .map((row) => row.order_item_id)
+      .filter((value): value is string => Boolean(value));
+    if (orderItemIds.length === 0) {
+      return;
+    }
+
+    const [orderItemsResult, orderTaxesResult] = await Promise.all([
+      client.query<{
+        id: string;
+        ordered_quantity: string | number;
+      }>(
+        `
+          SELECT id, ordered_quantity
+          FROM order_items
+          WHERE id = ANY($1::uuid[])
+        `,
+        [orderItemIds]
+      ),
+      client.query<{
+        order_item_id: string;
+        tax_id: string;
+        tax_name: string;
+        tax_rate: string | number;
+        tax_base: string | number;
+        tax_amount: string | number;
+        is_included: boolean;
+        dian_code: string | null;
+        tax_type_code: string | null;
+        calculation_method_code: string | null;
+        calculation_order: number;
+      }>(
+        `
+          SELECT
+            order_item_id,
+            tax_id,
+            tax_name,
+            tax_rate,
+            tax_base,
+            tax_amount,
+            is_included,
+            dian_code,
+            tax_type_code,
+            calculation_method_code,
+            calculation_order
+          FROM order_item_taxes
+          WHERE tenant_id = $1
+            AND order_item_id = ANY($2::uuid[])
+          ORDER BY order_item_id ASC, calculation_order ASC, created_at ASC, id ASC
+        `,
+        [tenantId, orderItemIds]
+      ),
+    ]);
+
+    const orderedQuantityByOrderItemId = new Map(
+      orderItemsResult.rows.map((row) => [row.id, this.toNumber(row.ordered_quantity)] as const)
+    );
+    const taxesByOrderItemId = orderTaxesResult.rows.reduce<
+      Map<
+        string,
+        Array<{
+          taxId: string;
+          taxName: string;
+          taxRate: number;
+          taxBase: number;
+          taxAmount: number;
+          isIncluded: boolean;
+          dianCode: string | null;
+          taxTypeCode: string | null;
+          calculationMethodCode: string | null;
+        }>
+      >
+    >((acc, row) => {
+      const current = acc.get(row.order_item_id) ?? [];
+      current.push({
+        taxId: row.tax_id,
+        taxName: row.tax_name,
+        taxRate: this.toNumber(row.tax_rate),
+        taxBase: this.toNumber(row.tax_base),
+        taxAmount: this.toNumber(row.tax_amount),
+        isIncluded: row.is_included,
+        dianCode: row.dian_code ?? null,
+        taxTypeCode: row.tax_type_code ?? null,
+        calculationMethodCode: row.calculation_method_code ?? null,
+      });
+      acc.set(row.order_item_id, current);
+      return acc;
+    }, new Map());
+
+    const saleItemsWithSnapshotTaxes = saleItemsResult.rows.filter(
+      (saleItem) =>
+        Boolean(saleItem.order_item_id) &&
+        (taxesByOrderItemId.get(saleItem.order_item_id as string)?.length ?? 0) > 0
+    );
+
+    if (saleItemsWithSnapshotTaxes.length > 0) {
+      const saleItemIdsWithSnapshotTaxes = saleItemsWithSnapshotTaxes.map((saleItem) => saleItem.id);
+      await client.query(
+        `
+          DELETE FROM sale_item_taxes
+          WHERE tenant_id = $1
+            AND sale_item_id = ANY($2::uuid[])
+        `,
+        [tenantId, saleItemIdsWithSnapshotTaxes]
+      );
+    }
+
+    for (const saleItem of saleItemsWithSnapshotTaxes) {
+      const orderItemId = saleItem.order_item_id as string;
+      const orderItemTaxes = taxesByOrderItemId.get(orderItemId) ?? [];
+      const orderedQuantity = orderedQuantityByOrderItemId.get(orderItemId) ?? 0;
+      const saleQuantity = this.toNumber(saleItem.quantity);
+      if (!Number.isFinite(orderedQuantity) || orderedQuantity <= 0) {
+        continue;
+      }
+
+      const ratio = saleQuantity / orderedQuantity;
+      let remainingBase = this.roundCurrency(this.toNumber(saleItem.tax_base ?? 0));
+      let remainingAmount = this.roundCurrency(this.toNumber(saleItem.tax_amount ?? 0));
+
+      for (let index = 0; index < orderItemTaxes.length; index += 1) {
+        const orderTax = orderItemTaxes[index];
+        const isLastTax = index === orderItemTaxes.length - 1;
+        const proratedBase = isLastTax
+          ? remainingBase
+          : this.roundCurrency(orderTax.taxBase * ratio);
+        const proratedAmount = isLastTax
+          ? remainingAmount
+          : this.roundCurrency(orderTax.taxAmount * ratio);
+
+        remainingBase = this.roundCurrency(remainingBase - proratedBase);
+        remainingAmount = this.roundCurrency(remainingAmount - proratedAmount);
+
+        await client.query(
+          `
+            INSERT INTO sale_item_taxes (
+              id,
+              tenant_id,
+              sale_item_id,
+              tax_id,
+              tax_name,
+              tax_rate,
+              tax_amount,
+              is_included,
+              created_at,
+              tax_base,
+              dian_code,
+              tax_type_code,
+              calculation_method_code
+            ) VALUES (
+              gen_random_uuid(),
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              NOW(),
+              $8,
+              $9,
+              $10,
+              $11
+            )
+          `,
+          [
+            tenantId,
+            saleItem.id,
+            orderTax.taxId,
+            orderTax.taxName,
+            orderTax.taxRate,
+            Math.max(proratedAmount, 0),
+            orderTax.isIncluded,
+            Math.max(proratedBase, 0),
+            orderTax.dianCode,
+            orderTax.taxTypeCode,
+            orderTax.calculationMethodCode,
+          ]
+        );
+      }
+    }
   }
 
   private calculateBackendSaleTotal(items: CreateSaleInput["items"]) {
@@ -780,17 +1041,64 @@ export class SaleService {
           throw new BadRequestException(`product not found for sale line ${item.productId}`);
         }
 
-        const tax =
-          item.taxId !== undefined && item.taxId !== null && taxRepository
-            ? await taxRepository.findById(item.taxId, tenantId)
-            : null;
         const subtotalAmount = this.roundCurrency(
           item.taxBase ?? item.priceWithoutTax * item.quantity
         );
         const discountAmount = this.roundCurrency(
           item.discountTotal ?? item.discountAmount ?? 0
         );
-        const taxAmount = this.roundCurrency(item.taxAmount ?? item.taxTotal);
+        const snapshotTaxes =
+          Array.isArray(item.taxes) && item.taxes.length > 0
+            ? item.taxes
+            : item.taxId !== undefined && item.taxId !== null
+              ? [
+                  {
+                    taxId: item.taxId,
+                    taxName: "TAX",
+                    dianCode: null,
+                    taxTypeCode: null,
+                    calculationMethodCode: null,
+                    taxRate: item.taxRate ?? 0,
+                    taxBase: item.taxBase ?? subtotalAmount,
+                    taxAmount: item.taxAmount ?? item.taxTotal,
+                    isIncluded: true,
+                  },
+                ]
+              : [];
+        const taxes = await Promise.all(
+          snapshotTaxes.map(async (snapshotTax) => {
+            const tax =
+              snapshotTax.taxId !== undefined && snapshotTax.taxId !== null && taxRepository
+                ? await taxRepository.findById(snapshotTax.taxId, tenantId)
+                : null;
+            const dianCode = snapshotTax.dianCode ?? tax?.taxTypeDianCode ?? null;
+
+            return {
+              type: snapshotTax.taxTypeCode ?? snapshotTax.taxName ?? tax?.name ?? "TAX",
+              code: dianCode,
+              schemeId: dianCode,
+              schemeName: snapshotTax.taxName ?? tax?.name ?? null,
+              rate: this.toDecimalWireValue(snapshotTax.taxRate ?? tax?.rate ?? 0),
+              taxableBase: this.toDecimalWireValue(snapshotTax.taxBase ?? subtotalAmount),
+              amount: this.toDecimalWireValue(snapshotTax.taxAmount ?? 0),
+              metadata: {
+                productId: product.id,
+                taxId: snapshotTax.taxId ?? null,
+                dianCode,
+                taxTypeCode: snapshotTax.taxTypeCode ?? tax?.taxTypeCode ?? null,
+                calculationMethodCode:
+                  snapshotTax.calculationMethodCode ?? tax?.calculationMethodCode ?? null,
+                isIncluded: snapshotTax.isIncluded,
+              },
+            };
+          })
+        );
+        const taxAmount = this.roundCurrency(
+          taxes.reduce(
+            (sum, tax) => sum + Number(tax.amount ?? 0),
+            0
+          ) || item.taxAmount || item.taxTotal
+        );
         const totalAmount = this.roundCurrency(
           item.lineTotal ?? item.subtotal ?? subtotalAmount + taxAmount - discountAmount
         );
@@ -807,27 +1115,10 @@ export class SaleService {
           subtotalAmount: this.toDecimalWireValue(subtotalAmount),
           taxAmount: this.toDecimalWireValue(taxAmount),
           totalAmount: this.toDecimalWireValue(totalAmount),
-          taxTreatment: taxAmount > 0 ? "TAXED" : "EXCLUDED",
+          taxTreatment: taxAmount > 0 || taxes.length > 0 ? "TAXED" : "EXCLUDED",
           standardItemId: product.id,
           standardItemSchemeId: "MANUS",
-          taxes:
-            taxAmount > 0 || item.taxId !== null || item.taxRate !== null
-              ? [
-                  {
-                    type: tax?.name ?? item.taxId ?? "TAX",
-                    code: item.taxId ?? null,
-                    schemeId: item.taxId ?? null,
-                    schemeName: tax?.name ?? null,
-                    rate: this.toDecimalWireValue(item.taxRate ?? tax?.rate ?? 0),
-                    taxableBase: this.toDecimalWireValue(subtotalAmount),
-                    amount: this.toDecimalWireValue(taxAmount),
-                    metadata: {
-                      productId: product.id,
-                      taxId: item.taxId ?? null,
-                    },
-                  },
-                ]
-              : [],
+          taxes,
           metadata: {
             productId: product.id,
             sku: product.sku,
@@ -2076,6 +2367,11 @@ export class SaleService {
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
       }
+      await this.syncOrderSaleItemTaxesFromSnapshot(
+        saleRow.id,
+        saleContext.tenantId,
+        client
+      );
       await this.linkOrderDeliveryToSale(
         saleContext.tenantId,
         saleRow.order_id ?? data.orderId,

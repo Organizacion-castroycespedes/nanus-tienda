@@ -60,6 +60,7 @@ import {
   buildDefaultPayments,
   buildPaymentId,
   type PaymentDraft,
+  type PosCartAppliedTax,
   type PosCartItem,
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
@@ -163,13 +164,7 @@ type WeighableProductCandidate = ProductResponse & {
   type?: string | null;
   tipo?: string | null;
 };
-type PosItemTax = {
-  id: string;
-  name: string;
-  rate: number;
-  amount: number;
-  isIncluded: boolean;
-};
+type PosItemTax = PosCartAppliedTax;
 const stockFilterLabels: Record<StockFilterKey, string> = {
   available: "Con stock",
   low: "Stock bajo",
@@ -443,6 +438,7 @@ const markPricingPending = (
   taxAmount: undefined,
   lineSubtotal: undefined,
   lineTotal: undefined,
+  taxes: [],
 });
 
 const applyPricingPreview = (
@@ -470,6 +466,7 @@ const applyPricingPreview = (
   taxAmount: preview.taxAmount,
   lineSubtotal: preview.lineSubtotal,
   lineTotal: preview.lineTotal,
+  taxes: preview.taxes,
 });
 
 const applyPricingError = (
@@ -492,6 +489,7 @@ const applyPricingError = (
   taxAmount: undefined,
   lineSubtotal: undefined,
   lineTotal: undefined,
+  taxes: [],
 });
 
 export const PosScreen = () => {
@@ -1138,19 +1136,32 @@ export const PosScreen = () => {
       );
       const previewTaxAmount =
         typeof item.taxAmount === "number" ? round(item.taxAmount) : undefined;
-      const itemTaxes: PosItemTax[] = item.taxId
-        ? [
-            {
-              id: item.taxId,
-              name: tax?.name ?? "Impuesto",
-              rate: tax?.rate ?? item.taxRate ?? 0,
-              amount: previewTaxAmount ?? fallbackTaxAmount,
-              isIncluded: tax?.isIncluded ?? true,
-            },
-          ]
-        : [];
+      const itemTaxes: PosItemTax[] =
+        Array.isArray(item.taxes) && item.taxes.length > 0
+          ? item.taxes.map((itemTax) => ({
+              ...itemTax,
+              taxBase: round(itemTax.taxBase),
+              taxAmount: round(itemTax.taxAmount),
+            }))
+          : item.taxId
+            ? [
+                {
+                  taxId: item.taxId,
+                  taxName: tax?.name ?? "Impuesto",
+                  dianCode: tax?.dianCode ?? null,
+                  taxTypeCode: null,
+                  calculationMethodCode: null,
+                  taxRate: tax?.rate ?? item.taxRate ?? 0,
+                  taxBase: item.taxBase ?? round(item.priceWithoutTax * item.quantity),
+                  taxAmount: previewTaxAmount ?? fallbackTaxAmount,
+                  isIncluded: tax?.isIncluded ?? true,
+                },
+              ]
+            : [];
 
-      const taxTotal = round(itemTaxes.reduce((sum, current) => sum + current.amount, 0));
+      const taxTotal = round(
+        itemTaxes.reduce((sum, current) => sum + current.taxAmount, 0)
+      );
       const discountTotal = round((item.discountAmount ?? 0) * item.quantity);
 
       return {
@@ -1174,12 +1185,21 @@ export const PosScreen = () => {
     const discountTotal = round(
       cartWithDerivedValues.reduce((sum, item) => sum + item.discountTotal, 0)
     );
+    const taxBreakdown = Object.entries(
+      cartWithDerivedValues.reduce<Record<string, number>>((acc, item) => {
+        item.taxes.forEach((tax) => {
+          acc[tax.taxName] = round((acc[tax.taxName] ?? 0) + tax.taxAmount);
+        });
+        return acc;
+      }, {})
+    );
 
     return {
       subtotal,
       taxesTotal,
       discountTotal,
       total: subtotal,
+      taxBreakdown,
     };
   }, [cartWithDerivedValues]);
 
@@ -2238,6 +2258,17 @@ export const PosScreen = () => {
           productId: item.productId,
           quantity: item.quantity,
           price: item.finalUnitPrice ?? item.price,
+          taxes: item.taxes.map((tax) => ({
+            taxId: tax.taxId,
+            taxName: tax.taxName,
+            dianCode: tax.dianCode,
+            taxTypeCode: tax.taxTypeCode,
+            calculationMethodCode: tax.calculationMethodCode,
+            taxRate: tax.taxRate,
+            taxBase: tax.taxBase,
+            taxAmount: tax.taxAmount,
+            isIncluded: tax.isIncluded,
+          })),
         })),
         payments: effectivePayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
@@ -2567,14 +2598,14 @@ export const PosScreen = () => {
                               ) : (
                                 item.taxes.map((tax) => (
                                   <div
-                                    key={tax.id}
+                                    key={tax.taxId}
                                     className="flex items-center justify-between gap-3"
                                   >
                                     <span className="truncate text-slate-700 dark:text-slate-200">
-                                      {tax.name}
+                                      {tax.taxName}
                                     </span>
                                     <span className="shrink-0 text-slate-600 dark:text-slate-300">
-                                      {formatCurrency(tax.amount)}
+                                      {formatCurrency(tax.taxAmount)}
                                     </span>
                                   </div>
                                 ))
@@ -2599,6 +2630,15 @@ export const PosScreen = () => {
                   <span>Impuestos</span>
                   <span>{formatCurrency(summary.taxesTotal)}</span>
                 </div>
+                {summary.taxBreakdown.map(([taxName, amount]) => (
+                  <div
+                    key={taxName}
+                    className="flex items-center justify-between pl-3 text-xs text-slate-500 dark:text-slate-400"
+                  >
+                    <span>{taxName}</span>
+                    <span>{formatCurrency(amount)}</span>
+                  </div>
+                ))}
                 <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
                   <span>Descuentos</span>
                   <span>{formatCurrency(summary.discountTotal)}</span>

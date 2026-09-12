@@ -9,6 +9,18 @@ export type PaymentDraft = {
 
 export type PosCartPricingStatus = "PENDING" | "READY" | "ERROR";
 
+export type PosCartAppliedTax = {
+  taxId: string;
+  taxName: string;
+  dianCode: string | null;
+  taxTypeCode: string | null;
+  calculationMethodCode: string | null;
+  taxRate: number;
+  taxBase: number;
+  taxAmount: number;
+  isIncluded: boolean;
+};
+
 export type PosCartItem = {
   productId: string;
   name: string;
@@ -33,6 +45,7 @@ export type PosCartItem = {
   taxAmount?: number;
   lineSubtotal?: number;
   lineTotal?: number;
+  taxes?: PosCartAppliedTax[];
 };
 
 export type PosCartContext = {

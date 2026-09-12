@@ -101,6 +101,7 @@ describe("PricingController", () => {
           taxRate: 0,
           taxBase: 90,
           taxAmount: 0,
+          taxes: [],
           lineSubtotal: 90,
           lineTotal: 90,
           explanation: "active promotion applied",

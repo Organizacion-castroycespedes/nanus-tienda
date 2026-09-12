@@ -16,6 +16,13 @@ export type TaxProps = {
   rate: number;
   isIncluded: boolean;
   isActive?: boolean;
+  taxTypeId?: string | null;
+  calculationMethodId?: string | null;
+  taxBaseTypeId?: string | null;
+  taxTypeCode?: string | null;
+  taxTypeDianCode?: string | null;
+  calculationMethodCode?: string | null;
+  taxBaseTypeCode?: string | null;
 };
 
 export class TaxEntity {
@@ -25,6 +32,13 @@ export class TaxEntity {
   readonly rate: number;
   readonly isIncluded: boolean;
   readonly isActive: boolean;
+  readonly taxTypeId: string | null;
+  readonly calculationMethodId: string | null;
+  readonly taxBaseTypeId: string | null;
+  readonly taxTypeCode: string | null;
+  readonly taxTypeDianCode: string | null;
+  readonly calculationMethodCode: string | null;
+  readonly taxBaseTypeCode: string | null;
 
   constructor(props: TaxProps) {
     if (!isUuid(props.id)) {
@@ -45,6 +59,13 @@ export class TaxEntity {
     this.rate = props.rate;
     this.isIncluded = props.isIncluded;
     this.isActive = props.isActive ?? true;
+    this.taxTypeId = props.taxTypeId ?? null;
+    this.calculationMethodId = props.calculationMethodId ?? null;
+    this.taxBaseTypeId = props.taxBaseTypeId ?? null;
+    this.taxTypeCode = props.taxTypeCode ?? null;
+    this.taxTypeDianCode = props.taxTypeDianCode ?? null;
+    this.calculationMethodCode = props.calculationMethodCode ?? null;
+    this.taxBaseTypeCode = props.taxBaseTypeCode ?? null;
   }
 
   static create(props: TaxProps) {
