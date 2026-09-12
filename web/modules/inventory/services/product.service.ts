@@ -30,6 +30,15 @@ export type CreateProductPayload = {
   cost: number;
   unitId: string;
   taxId?: string | null;
+  taxes?: Array<{ taxId: string; calculationOrder?: number }>;
+  taxProfile?: {
+    taxProductCategoryId: string;
+    alcoholDegree?: number | null;
+    netVolumeMl?: number | null;
+    daneCertifiedRetailPrice?: number | null;
+    danePriceEffectiveFrom?: string | null;
+    danePriceEffectiveTo?: string | null;
+  } | null;
   description?: string | null;
   priceWithTax?: number;
   priceWithoutTax?: number;
@@ -111,6 +120,9 @@ export const createProduct = (
     headers,
     body: JSON.stringify(payload),
   });
+
+export const getProduct = (productId: string, headers?: HeadersInit) =>
+  apiClient<ProductResponse>(`/products/${productId}`, { headers });
 
 export const updateProduct = (
   productId: string,

@@ -55,6 +55,20 @@ type InsertedItem = {
   pricingCalculatedAt: unknown;
 };
 
+type InsertedOrderItemTax = {
+  orderItemId: unknown;
+  taxId: unknown;
+  taxName: unknown;
+  taxRate: unknown;
+  taxBase: unknown;
+  taxAmount: unknown;
+  dianCode: unknown;
+  taxTypeCode: unknown;
+  calculationMethodCode: unknown;
+  calculationOrder: unknown;
+  isIncluded: unknown;
+};
+
 const actor = {
   roles: ["SUPER_ADMIN"],
   tenantId: ids.tenant,
@@ -76,6 +90,7 @@ const makePreview = (
   taxRate: 0,
   taxBase: 200,
   taxAmount: 0,
+  taxes: [],
   lineSubtotal: 200,
   lineTotal: 200,
   explanation: "test pricing",
@@ -101,8 +116,10 @@ class FakePricingService {
 class FakeOrderClient {
   readonly queries: RecordedQuery[] = [];
   readonly insertedItems: InsertedItem[] = [];
+  readonly insertedItemTaxes: InsertedOrderItemTax[] = [];
   insertedOrder: InsertedOrder | null = null;
   updatedOrder: InsertedOrder | null = null;
+  deletedItemTaxes = false;
   deletedItems = false;
   committed = false;
   rolledBack = false;
@@ -239,6 +256,31 @@ class FakeOrderClient {
       };
     }
 
+    if (sql.includes("prc_replace_order_item_taxes")) {
+      this.deletedItemTaxes = true;
+      const taxesJson = params[2];
+      if (typeof taxesJson === "string") {
+        const taxes = JSON.parse(taxesJson) as Array<Record<string, unknown>>;
+        for (const tax of taxes) {
+          this.insertedItemTaxes.push({
+            orderItemId: String(tax.order_item_id),
+            taxId: String(tax.tax_id),
+            taxName: String(tax.tax_name),
+            taxRate: Number(tax.tax_rate),
+            taxBase: Number(tax.tax_base),
+            taxAmount: Number(tax.tax_amount),
+            dianCode: (tax.dian_code as string | null) ?? null,
+            taxTypeCode: (tax.tax_type_code as string | null) ?? null,
+            calculationMethodCode:
+              (tax.calculation_method_code as string | null) ?? null,
+            calculationOrder: Number(tax.calculation_order ?? 0),
+            isIncluded: Boolean(tax.is_included),
+          });
+        }
+      }
+      return { rows: [{ ok: true }] as T[] };
+    }
+
     if (sql.startsWith("DELETE FROM order_items")) {
       this.deletedItems = true;
       return { rows: [] as T[] };
@@ -345,6 +387,19 @@ test("OrderService.createOrder ignores frontend price and total and uses Pricing
       discountPercent: 20,
       taxBase: 201.68,
       taxAmount: 38.32,
+      taxes: [
+        {
+          taxId: ids.tax,
+          taxName: "IVA",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 201.68,
+          taxAmount: 38.32,
+          isIncluded: true,
+        },
+      ],
       lineSubtotal: 201.68,
       lineTotal: 240,
     }),
@@ -357,6 +412,10 @@ test("OrderService.createOrder ignores frontend price and total and uses Pricing
   assert.equal(client.insertedOrder?.balanceDue, 240);
   assert.equal(client.insertedItems[0]?.price, 120);
   assert.equal(client.insertedItems[0]?.subtotal, 240);
+  assert.equal(client.insertedItemTaxes.length, 1);
+  assert.equal(client.insertedItemTaxes[0]?.taxId, ids.tax);
+  assert.equal(client.insertedItemTaxes[0]?.taxName, "IVA");
+  assert.equal(client.insertedItemTaxes[0]?.dianCode, "01");
   assert.equal(pricingService.calls.length, 1);
   assert.deepEqual(
     {
@@ -414,6 +473,81 @@ test("OrderService.createOrder persists snapshot without promotion", async () =>
   assert.equal(item.pricingSnapshot?.["channel"], "ORDER");
   assert.equal(item.pricingSnapshot?.["productId"], ids.product);
   assert.ok(item.pricingCalculatedAt instanceof Date);
+});
+
+test("OrderService.createOrder persists multi-tax whisky into order_item_taxes", async () => {
+  const iclTaxId = "10000000-0000-0000-0000-000000000031";
+  const advTaxId = "10000000-0000-0000-0000-000000000032";
+  const ivaTaxId = "10000000-0000-0000-0000-000000000033";
+  const { service, client } = buildService([
+    makePreview({
+      baseUnitPrice: 590000,
+      finalUnitPrice: 590000,
+      discountAmount: 0,
+      discountPercent: 0,
+      appliedPromotionId: null,
+      appliedPromotionName: null,
+      taxId: ivaTaxId,
+      taxRate: 0.05,
+      taxBase: 452952.38,
+      taxAmount: 137047.62,
+      taxes: [
+        {
+          taxId: iclTaxId,
+          taxName: "ICL",
+          dianCode: "02",
+          taxTypeCode: "ICL",
+          calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
+          taxRate: 0,
+          taxBase: 40,
+          taxAmount: 14400,
+          isIncluded: true,
+        },
+        {
+          taxId: advTaxId,
+          taxName: "ADV",
+          dianCode: "04",
+          taxTypeCode: "AD_VALOREM",
+          calculationMethodCode: "AD_VALOREM",
+          taxRate: 0.25,
+          taxBase: 400000,
+          taxAmount: 100000,
+          isIncluded: true,
+        },
+        {
+          taxId: ivaTaxId,
+          taxName: "IVA 5%",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.05,
+          taxBase: 452952.38,
+          taxAmount: 22647.62,
+          isIncluded: true,
+        },
+      ],
+      lineSubtotal: 452952.38,
+      lineTotal: 590000,
+    }),
+  ]);
+
+  await service.createOrder(createPayload());
+
+  assert.equal(client.insertedItems[0]?.taxAmount, 137047.62);
+  assert.equal(client.insertedItemTaxes.length, 3);
+  assert.deepEqual(
+    client.insertedItemTaxes.map((tax) => ({
+      taxId: tax.taxId,
+      taxName: tax.taxName,
+      dianCode: tax.dianCode,
+      taxAmount: tax.taxAmount,
+    })),
+    [
+      { taxId: iclTaxId, taxName: "ICL", dianCode: "02", taxAmount: 14400 },
+      { taxId: advTaxId, taxName: "ADV", dianCode: "04", taxAmount: 100000 },
+      { taxId: ivaTaxId, taxName: "IVA 5%", dianCode: "01", taxAmount: 22647.62 },
+    ]
+  );
 });
 
 test("OrderService.createOrder persists snapshot with promotion", async () => {
@@ -502,6 +636,19 @@ test("OrderService.updateOrder recalculates draft items, replaces them, and upda
       finalUnitPrice: 180,
       discountAmount: 20,
       discountPercent: 10,
+      taxes: [
+        {
+          taxId: ids.tax,
+          taxName: "IVA",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 302.52,
+          taxAmount: 57.48,
+          isIncluded: true,
+        },
+      ],
       lineSubtotal: 360,
       lineTotal: 360,
     }),
@@ -526,8 +673,10 @@ test("OrderService.updateOrder recalculates draft items, replaces them, and upda
 
   assert.equal(result.total, 360);
   assert.equal(client.updatedOrder?.total, 360);
+  assert.equal(client.deletedItemTaxes, true);
   assert.equal(client.deletedItems, true);
   assert.equal(client.insertedItems.length, 1);
+  assert.equal(client.insertedItemTaxes.length, 1);
   assert.equal(client.insertedItems[0].price, 180);
   assert.equal(client.insertedItems[0].subtotal, 360);
   assert.equal(pricingService.calls.length, 1);

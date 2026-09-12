@@ -78,6 +78,14 @@ export type PosSaleTicketPaymentBreakdown = {
   amount: number;
 };
 
+export type PosSaleTicketTaxBreakdown = {
+  label: string;
+  dianCode: string;
+  taxTypeCode: string;
+  taxBase: number;
+  taxAmount: number;
+};
+
 export type PosSaleTicketDataset = {
   header: {
     saleId: string;
@@ -100,6 +108,7 @@ export type PosSaleTicketDataset = {
   totals: {
     subtotal: number;
     taxes: number;
+    taxBreakdown?: PosSaleTicketTaxBreakdown[];
     total: number;
     paid: number;
     change: number;

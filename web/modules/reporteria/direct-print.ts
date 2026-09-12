@@ -29,6 +29,10 @@ export const buildReporteriaSaleTicketInput = (
     })),
     subtotal: ticket.totals.subtotal,
     taxes: ticket.totals.taxes,
+    taxLines: ticket.totals.taxBreakdown?.map((tax) => ({
+      label: tax.label,
+      amount: tax.taxAmount,
+    })),
     total: ticket.totals.total,
     paid: ticket.totals.paid,
     change: ticket.totals.change,

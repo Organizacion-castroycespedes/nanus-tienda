@@ -86,3 +86,27 @@ test("renderer includes long CUFE as breakable content", () => {
   assert.match(serialized, /Factura electrónica/);
   assert.equal(serialized.includes("\u200b"), true);
 });
+
+test("renderer uses tax breakdown lines when provided", () => {
+  const document = buildElectronicInvoiceRepresentationTemplate(
+    buildElectronicInvoiceRepresentation({
+      ...input,
+      sale: {
+        ...input.sale,
+        taxBreakdown: [
+          {
+            label: "IVA 19%",
+            dianCode: "01",
+            taxTypeCode: "VAT",
+            taxBase: 100,
+            taxAmount: 19,
+          },
+        ],
+      },
+    })
+  );
+  const serialized = JSON.stringify(document);
+
+  assert.match(serialized, /IVA 19%/);
+  assert.doesNotMatch(serialized, /"Impuestos"/);
+});

@@ -14,7 +14,23 @@ const dataset: PosSaleTicketPrintDataset = {
     },
     items: [{ productName: "Producto", quantity: 2, unitPrice: 20000, subtotal: 40000 }],
     paymentBreakdown: [{ method: "Efectivo", amount: 40000 }],
-    totals: { subtotal: 40000, taxes: 0, total: 40000, paid: 40000, change: 0, balance: 0 },
+    totals: {
+      subtotal: 40000,
+      taxes: 7600,
+      taxBreakdown: [
+        {
+          label: "IVA 19%",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          taxBase: 40000,
+          taxAmount: 7600,
+        },
+      ],
+      total: 40000,
+      paid: 40000,
+      change: 0,
+      balance: 0,
+    },
   },
 };
 
@@ -26,4 +42,5 @@ test("direct report ticket copies canonical values without recalculation", () =>
   assert.equal(result.total, 40000);
   assert.equal(result.paid, 40000);
   assert.equal(result.items?.[0]?.total, 40000);
+  assert.deepEqual(result.taxLines, [{ label: "IVA 19%", amount: 7600 }]);
 });

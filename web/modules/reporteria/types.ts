@@ -97,6 +97,13 @@ export type PosSaleTicketPrintDataset = {
     totals: {
       subtotal: number;
       taxes: number;
+      taxBreakdown?: Array<{
+        label: string;
+        dianCode: string;
+        taxTypeCode: string;
+        taxBase: number;
+        taxAmount: number;
+      }>;
       total: number;
       paid: number;
       change: number;

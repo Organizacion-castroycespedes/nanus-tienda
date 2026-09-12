@@ -119,7 +119,14 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
     ],
     totals: [
       { label: "Subtotal", value: formatCurrency(dataset.totals.subtotal) },
-      { label: "Impuestos", value: formatCurrency(dataset.totals.taxes) },
+      ...(
+        dataset.totals.taxBreakdown && dataset.totals.taxBreakdown.length > 0
+          ? dataset.totals.taxBreakdown.map((tax) => ({
+              label: tax.label,
+              value: formatCurrency(tax.taxAmount),
+            }))
+          : [{ label: "Impuestos", value: formatCurrency(dataset.totals.taxes) }]
+      ),
       { label: "Total", value: formatCurrency(dataset.totals.total) },
       { label: "Pagado", value: formatCurrency(dataset.totals.paid) },
       { label: "Cambio", value: formatCurrency(dataset.totals.change) },

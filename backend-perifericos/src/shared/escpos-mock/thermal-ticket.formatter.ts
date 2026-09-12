@@ -150,7 +150,13 @@ export const buildTicketPrintDocument = (
   }
 
   writer.amount("Subtotal", content.subtotal);
-  writer.amount("Impuestos", content.taxes);
+  if (content.taxLines?.length) {
+    for (const taxLine of content.taxLines) {
+      writer.amount(taxLine.label, taxLine.amount);
+    }
+  } else {
+    writer.amount("Impuestos", content.taxes);
+  }
   writer.amount("Descuentos", content.discounts);
   if (content.total !== undefined) {
     writer.separator();

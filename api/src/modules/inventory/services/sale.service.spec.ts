@@ -31,6 +31,7 @@ const ids = {
   productTwo: "10000000-0000-0000-0000-000000000019",
   order: "10000000-0000-0000-0000-000000000020",
   delivery: "10000000-0000-0000-0000-000000000021",
+  orderItem: "10000000-0000-0000-0000-000000000022",
 };
 
 type Scenario = {
@@ -107,6 +108,7 @@ const makePreview = (
   taxRate: 0.19,
   taxBase: 302.52,
   taxAmount: 57.48,
+  taxes: [],
   lineSubtotal: 302.52,
   lineTotal: 360,
   explanation: "test pricing",
@@ -129,10 +131,31 @@ class FakePricingService {
   }
 }
 
+const defaultSaleItemTaxRows = [
+  {
+    id: "10000000-0000-0000-0000-000000000023",
+    tenant_id: ids.tenant,
+    sale_item_id: saleItemRow.id,
+    tax_id: ids.tax,
+    tax_name: "IVA",
+    tax_rate: 0.19,
+    tax_base: 3000,
+    tax_amount: 570,
+    is_included: true,
+    dian_code: "01",
+    tax_type_code: "VAT",
+    calculation_method_code: "PERCENTAGE",
+    created_at: new Date("2026-06-02T00:00:00.000Z"),
+  },
+];
+
 class FakeCreateSaleClient {
   readonly queries: RecordedQuery[] = [];
 
-  constructor(private readonly includeTaxSnapshot = false) {}
+  constructor(
+    private readonly includeTaxSnapshot = false,
+    private readonly saleItemTaxRows: Array<Record<string, unknown>> = defaultSaleItemTaxRows
+  ) {}
   released = false;
 
   async query<T>(text: string, params: unknown[] = []) {
@@ -163,7 +186,68 @@ class FakeCreateSaleClient {
       return { rows: [] as T[] };
     }
 
+    if (
+      sql.includes("fnc_list_sale_item_taxes") ||
+      sql.includes("FROM sale_item_taxes")
+    ) {
+      return {
+        rows: this.includeTaxSnapshot
+          ? (this.saleItemTaxRows as T[])
+          : ([] as T[]),
+      };
+    }
+
+    if (sql.includes("prc_sync_sale_item_taxes_from_order")) {
+      return { rows: [{ ok: true }] as T[] };
+    }
+
+    if (sql.includes("SELECT id, ordered_quantity") && sql.includes("FROM order_items")) {
+      return {
+        rows: [
+          {
+            id: ids.orderItem,
+            ordered_quantity: 1,
+          },
+        ] as T[],
+      };
+    }
+
+    if (sql.includes("FROM order_item_taxes")) {
+      return {
+        rows: this.includeTaxSnapshot
+          ? ([
+              {
+                order_item_id: ids.orderItem,
+                tax_id: ids.tax,
+                tax_name: "IVA",
+                tax_rate: 0,
+                tax_base: 3000,
+                tax_amount: 0,
+                is_included: true,
+                dian_code: "01",
+                tax_type_code: "VAT",
+                calculation_method_code: "PERCENTAGE",
+                calculation_order: 1,
+              },
+            ] as T[])
+          : ([] as T[]),
+      };
+    }
+
     if (sql.includes("FROM sale_items")) {
+      if (sql.includes("order_item_id IS NOT NULL")) {
+        return {
+          rows: [
+            {
+              id: saleItemRow.id,
+              order_item_id: ids.orderItem,
+              quantity: 1,
+              tax_base: 3000,
+              tax_amount: 0,
+            },
+          ] as T[],
+        };
+      }
       return {
         rows: [
           {
@@ -171,7 +255,7 @@ class FakeCreateSaleClient {
             product_id: ids.product,
             quantity: 1,
             price: 3000,
-            order_item_id: null,
+            order_item_id: ids.orderItem,
             subtotal: 3000,
             price_without_tax: 3000,
             tax_total: 0,
@@ -180,12 +264,11 @@ class FakeCreateSaleClient {
             discount_amount: 0,
             discount_percent: 0,
             discount_total: 0,
-            tax_id: this.includeTaxSnapshot ? ids.tax : null,
-            tax_rate: this.includeTaxSnapshot ? 0 : null,
             tax_base: 3000,
             tax_amount: 0,
             line_total: 3000,
             pricing_source: "ORDER_DELIVERY",
+            pricing_snapshot: null,
             created_at: new Date("2026-06-02T00:00:00.000Z"),
           },
         ] as T[],
@@ -480,8 +563,9 @@ const buildCreateSaleService = (
   previews: LinePricePreview[],
   billing?: SaleBillingHarness,
   includeTaxSnapshot = false,
+  saleItemTaxRows: Array<Record<string, unknown>> = defaultSaleItemTaxRows,
 ) => {
-  const client = new FakeCreateSaleClient(includeTaxSnapshot);
+  const client = new FakeCreateSaleClient(includeTaxSnapshot, saleItemTaxRows);
   const repository = new FakeCreateSaleRepository();
   const pricingService = new FakePricingService([...previews]);
   const createdPayments: unknown[] = [];
@@ -587,7 +671,21 @@ const posContext = {
 
 test("SaleService.createSale calculates POS pricing and sends enriched payload", async () => {
   const { service, repository, pricingService } = buildCreateSaleService([
-    makePreview(),
+    makePreview({
+      taxes: [
+        {
+          taxId: ids.tax,
+          taxName: "IVA",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 302.52,
+          taxAmount: 57.48,
+          isIncluded: true,
+        },
+      ],
+    }),
   ]);
 
   await service.createSale(createSalePayload(), posContext);
@@ -620,7 +718,21 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
   assert.equal(pricedItem.taxAmount, 57.48);
   assert.equal(pricedItem.lineTotal, 360);
   assert.equal(pricedItem.pricingSource, "POS_PRICING_SERVICE");
+  assert.deepEqual(pricedItem.taxes, [
+    {
+      taxId: ids.tax,
+      taxName: "IVA",
+      dianCode: "01",
+      taxTypeCode: "VAT",
+      calculationMethodCode: "PERCENTAGE",
+      taxRate: 0.19,
+      taxBase: 302.52,
+      taxAmount: 57.48,
+      isIncluded: true,
+    },
+  ]);
   assert.equal(pricedItem.pricingSnapshot?.channel, "POS");
+  assert.deepEqual(pricedItem.pricingSnapshot?.taxes, pricedItem.taxes);
   assert.deepEqual(
     (pricedItem.pricingSnapshot?.result as LinePricePreview).finalUnitPrice,
     180
@@ -699,7 +811,7 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
       sourceLineId: string;
       description: string;
       sku?: string | null;
-      taxes: Array<{ rate: string; amount: string }>;
+      taxes: Array<{ type?: string; rate: string; amount: string; code?: string | null }>;
     }>;
     taxes: Array<{ sourceLineId?: string | null }>;
     payments: Array<{ methodCode: string; amount?: string | null }>;
@@ -723,13 +835,196 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
   assert.equal(event.lines[0].description, "Producto factura");
   assert.equal(event.lines[0].sku, "SKU-1");
   assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
-  assert.equal(event.lines[0].taxes[0].rate, "0.00");
-  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.lines[0].taxes.length, 1);
+  assert.equal(event.lines[0].taxes[0].type, "VAT");
+  assert.equal(event.lines[0].taxes[0].rate, "0.19");
+  assert.equal(event.lines[0].taxes[0].amount, "570.00");
+  assert.equal(event.lines[0].taxes[0].code, "01");
+  assert.notEqual(event.lines[0].taxes[0].code, ids.tax);
   assert.equal(event.taxes.length, 1);
   assert.equal(event.payments[0].methodCode, "CASH");
   assert.equal(event.payments[0].amount, "360.00");
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");
+});
+
+test("SaleService.createSale maps multi-tax whisky snapshot for electronic billing", async () => {
+  const iclTaxId = "10000000-0000-0000-0000-000000000031";
+  const advTaxId = "10000000-0000-0000-0000-000000000032";
+  const ivaTaxId = "10000000-0000-0000-0000-000000000033";
+  const whiskyTaxes = [
+    {
+      id: "10000000-0000-0000-0000-000000000041",
+      tenant_id: ids.tenant,
+      sale_item_id: saleItemRow.id,
+      tax_id: iclTaxId,
+      tax_name: "ICL",
+      tax_rate: 0,
+      tax_base: 40,
+      tax_amount: 14400,
+      is_included: true,
+      dian_code: "02",
+      tax_type_code: "ICL",
+      calculation_method_code: "PER_ALCOHOL_DEGREE_VOLUME",
+      created_at: new Date("2026-06-02T00:00:00.000Z"),
+    },
+    {
+      id: "10000000-0000-0000-0000-000000000042",
+      tenant_id: ids.tenant,
+      sale_item_id: saleItemRow.id,
+      tax_id: advTaxId,
+      tax_name: "ADV",
+      tax_rate: 0.25,
+      tax_base: 400000,
+      tax_amount: 100000,
+      is_included: true,
+      dian_code: "04",
+      tax_type_code: "AD_VALOREM",
+      calculation_method_code: "AD_VALOREM",
+      created_at: new Date("2026-06-02T00:00:01.000Z"),
+    },
+    {
+      id: "10000000-0000-0000-0000-000000000043",
+      tenant_id: ids.tenant,
+      sale_item_id: saleItemRow.id,
+      tax_id: ivaTaxId,
+      tax_name: "IVA 5%",
+      tax_rate: 0.05,
+      tax_base: 452952.38,
+      tax_amount: 22647.62,
+      is_included: true,
+      dian_code: "01",
+      tax_type_code: "VAT",
+      calculation_method_code: "PERCENTAGE",
+      created_at: new Date("2026-06-02T00:00:02.000Z"),
+    },
+  ];
+
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente whisky",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "WHISKY-1",
+        name: "Whisky",
+        description: "Whisky",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => null,
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents, repository } = buildCreateSaleService(
+    [
+      makePreview({
+        taxId: ivaTaxId,
+        taxRate: 0.05,
+        taxBase: 452952.38,
+        taxAmount: 137047.62,
+        lineSubtotal: 452952.38,
+        lineTotal: 590000,
+        finalUnitPrice: 590000,
+        baseUnitPrice: 590000,
+        discountAmount: 0,
+        discountPercent: 0,
+        taxes: whiskyTaxes.map((tax) => ({
+          taxId: String(tax.tax_id),
+          taxName: String(tax.tax_name),
+          dianCode: String(tax.dian_code),
+          taxTypeCode: String(tax.tax_type_code),
+          calculationMethodCode: String(tax.calculation_method_code),
+          taxRate: Number(tax.tax_rate),
+          taxBase: Number(tax.tax_base),
+          taxAmount: Number(tax.tax_amount),
+          isIncluded: true,
+        })),
+      }),
+    ],
+    billing,
+    true,
+    whiskyTaxes
+  );
+
+  await service.createSale(
+    createSalePayload({
+      payments: [
+        {
+          paymentMethodId: ids.paymentMethod,
+          amount: 590000,
+          cashSessionId: ids.posSession,
+        },
+      ],
+    }),
+    posContext
+  );
+
+  assert.equal(repository.createSaleCalls[0].data.items[0].taxes?.length, 3);
+  assert.equal(outboxEvents.length, 1);
+  const event = outboxEvents[0] as {
+    lines: Array<{
+      taxes: Array<{ type: string; code: string | null; amount: string; rate: string }>;
+    }>;
+    taxes: Array<{ sourceLineId?: string | null }>;
+  };
+
+  assert.equal(event.lines[0].taxes.length, 3);
+  assert.deepEqual(
+    event.lines[0].taxes.map((tax) => ({
+      type: tax.type,
+      code: tax.code,
+      rate: tax.rate,
+      amount: tax.amount,
+    })),
+    [
+      { type: "ICL", code: "02", rate: "0.00", amount: "14400.00" },
+      { type: "AD_VALOREM", code: "04", rate: "0.25", amount: "100000.00" },
+      { type: "VAT", code: "01", rate: "0.05", amount: "22647.62" },
+    ]
+  );
+  assert.equal(event.taxes.length, 3);
+  for (const tax of event.lines[0].taxes) {
+    assert.notEqual(tax.code, iclTaxId);
+    assert.notEqual(tax.code, advTaxId);
+    assert.notEqual(tax.code, ivaTaxId);
+  }
 });
 
 test("SaleService.createSale skips sale billing outbox event when outbox service is unavailable", async () => {
@@ -863,7 +1158,7 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
     eventId: string;
     sale: { saleId: string };
     customer: { identificationNumber?: string | null };
-    lines: Array<{ taxes: Array<{ rate: string; amount: string }> }>;
+    lines: Array<{ taxes: Array<{ rate: string; amount: string; code?: string | null }> }>;
     taxes: Array<{ sourceLineId?: string | null }>;
     totals: { totalAmount: string };
     currencyCode: string;
@@ -874,8 +1169,9 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
   );
   assert.equal(event.sale.saleId, ids.sale);
   assert.equal(event.customer.identificationNumber, "900123456");
-  assert.equal(event.lines[0].taxes[0].rate, "0.00");
-  assert.equal(event.lines[0].taxes[0].amount, "0.00");
+  assert.equal(event.lines[0].taxes[0].rate, "0.19");
+  assert.equal(event.lines[0].taxes[0].amount, "570.00");
+  assert.equal(event.lines[0].taxes[0].code, "01");
   assert.equal(event.taxes.length, 1);
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");

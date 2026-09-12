@@ -107,7 +107,14 @@ export const buildElectronicInvoiceRepresentationTemplate = (
     totals: [
       { label: "Subtotal", value: formatCurrency(representation.sale.subtotal) },
       { label: "Descuentos", value: formatCurrency(representation.sale.discounts) },
-      { label: "Impuestos", value: formatCurrency(representation.sale.taxes) },
+      ...(
+        representation.sale.taxBreakdown && representation.sale.taxBreakdown.length > 0
+          ? representation.sale.taxBreakdown.map((tax) => ({
+              label: tax.label,
+              value: formatCurrency(tax.taxAmount),
+            }))
+          : [{ label: "Impuestos", value: formatCurrency(representation.sale.taxes) }]
+      ),
       { label: "Total", value: formatCurrency(representation.sale.total) },
     ],
     footerText: "Representación fiscal de factura electrónica. No reemplaza el documento XML.",

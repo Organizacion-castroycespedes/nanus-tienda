@@ -27,12 +27,29 @@ import { ProductBarcodeRepository } from "../repositories/product-barcode.reposi
 import { ProductCategoryRepository } from "../repositories/product-category.repository";
 import { ProductRepository } from "../repositories/product.repository";
 import { ProductSubcategoryRepository } from "../repositories/product-subcategory.repository";
+import { TaxRepository } from "../repositories/tax.repository";
 import { StockMovementService } from "./stock-movement.service";
+
+type ProductTaxAssignmentInput = {
+  taxId: string;
+  calculationOrder?: number;
+};
+
+type ProductTaxProfileInput = {
+  taxProductCategoryId: string;
+  alcoholDegree?: number | null;
+  netVolumeMl?: number | null;
+  daneCertifiedRetailPrice?: number | null;
+  danePriceEffectiveFrom?: string | null;
+  danePriceEffectiveTo?: string | null;
+};
 
 type CreateProductInput = {
   tenantId: string;
   unitId: string;
   taxId?: string | null;
+  taxes?: ProductTaxAssignmentInput[];
+  taxProfile?: ProductTaxProfileInput | null;
   name: string;
   description?: string | null;
   sku: string;
@@ -91,7 +108,10 @@ type UpdateProductInput = Partial<
     | "imageSizeBytes"
     | "imageUpdatedAt"
   >
->;
+> & {
+  taxes?: ProductTaxAssignmentInput[];
+  taxProfile?: ProductTaxProfileInput | null;
+};
 
 type ProductUpdatePayload = UpdateProductInput & Record<string, unknown>;
 
@@ -131,6 +151,8 @@ export class ProductService {
     private readonly productCategoryRepository: ProductCategoryRepository,
     @Inject(ProductSubcategoryRepository)
     private readonly productSubcategoryRepository: ProductSubcategoryRepository,
+    @Inject(TaxRepository)
+    private readonly taxRepository: TaxRepository,
     @Inject(DatabaseService)
     private readonly db: DatabaseService
   ) {}
@@ -149,6 +171,182 @@ export class ProductService {
     if (value === undefined || !Number.isFinite(value) || value < 0) {
       throw new BadRequestException(`${field} must be a non-negative number`);
     }
+  }
+
+  private async resolveTaxAssignments(
+    tenantId: string,
+    taxes: ProductTaxAssignmentInput[] | undefined,
+    taxId: string | null | undefined
+  ) {
+    const rawAssignments =
+      taxes && taxes.length > 0
+        ? taxes
+        : taxId
+          ? [{ taxId, calculationOrder: 100 }]
+          : [];
+
+    const normalized = rawAssignments.map((assignment, index) => {
+      if (!assignment.taxId?.trim()) {
+        throw new BadRequestException("taxes[].taxId is required");
+      }
+      const calculationOrder =
+        assignment.calculationOrder === undefined
+          ? (index + 1) * 100
+          : Number(assignment.calculationOrder);
+      if (!Number.isFinite(calculationOrder) || calculationOrder <= 0) {
+        throw new BadRequestException(
+          "taxes[].calculationOrder must be a positive number"
+        );
+      }
+      return {
+        taxId: assignment.taxId.trim(),
+        calculationOrder,
+      };
+    });
+
+    const uniqueIds = [...new Set(normalized.map((item) => item.taxId))];
+    if (uniqueIds.length !== normalized.length) {
+      throw new BadRequestException("duplicate taxId in taxes is not allowed");
+    }
+
+    if (uniqueIds.length === 0) {
+      return {
+        assignments: [] as Array<{ taxId: string; calculationOrder: number }>,
+        bridgeTaxId: null as string | null,
+        hasNonPercentage: false,
+        hasAdv: false,
+      };
+    }
+
+    const found = await this.taxRepository.findByIds(tenantId, uniqueIds);
+    if (found.length !== uniqueIds.length) {
+      throw new BadRequestException("one or more taxes were not found");
+    }
+
+    const byId = new Map(found.map((tax) => [tax.id, tax]));
+    const ordered = [...normalized].sort(
+      (left, right) => left.calculationOrder - right.calculationOrder
+    );
+
+    const percentageBridge = ordered.find((assignment) => {
+      const tax = byId.get(assignment.taxId);
+      return (
+        tax?.calculationMethodCode === "PERCENTAGE" ||
+        tax?.calculationMethodCode == null
+      );
+    });
+
+    const hasNonPercentage = ordered.some((assignment) => {
+      const tax = byId.get(assignment.taxId);
+      return (
+        tax?.calculationMethodCode != null &&
+        tax.calculationMethodCode !== "PERCENTAGE"
+      );
+    });
+
+    const hasAdv = ordered.some((assignment) => {
+      const tax = byId.get(assignment.taxId);
+      return tax?.taxTypeCode === "AD_VALOREM" || tax?.taxTypeDianCode === "36";
+    });
+
+    return {
+      assignments: ordered,
+      bridgeTaxId: percentageBridge?.taxId ?? null,
+      hasNonPercentage,
+      hasAdv,
+    };
+  }
+
+  private async validateAndPersistTaxProfile(
+    tenantId: string,
+    productId: string,
+    taxProfile: ProductTaxProfileInput | null | undefined,
+    flags: { hasNonPercentage: boolean; hasAdv: boolean },
+    client: Awaited<ReturnType<DatabaseService["getClient"]>>
+  ) {
+    if (taxProfile === undefined) {
+      return;
+    }
+
+    if (taxProfile === null) {
+      await this.productRepository.deleteProductTaxProfile(
+        tenantId,
+        productId,
+        client
+      );
+      return;
+    }
+
+    if (!taxProfile.taxProductCategoryId?.trim()) {
+      throw new BadRequestException("taxProfile.taxProductCategoryId is required");
+    }
+
+    const categories = await this.taxRepository.listProductCategories();
+    const category = categories.find(
+      (item) => item.id === taxProfile.taxProductCategoryId
+    );
+    if (!category) {
+      throw new BadRequestException("tax product category not found");
+    }
+
+    if (category.isAlcoholicBeverage || flags.hasNonPercentage) {
+      if (
+        taxProfile.alcoholDegree === undefined ||
+        taxProfile.alcoholDegree === null ||
+        !Number.isFinite(taxProfile.alcoholDegree)
+      ) {
+        throw new BadRequestException(
+          "taxProfile.alcoholDegree is required for alcoholic/consumption taxes"
+        );
+      }
+      if (
+        taxProfile.netVolumeMl === undefined ||
+        taxProfile.netVolumeMl === null ||
+        !Number.isFinite(taxProfile.netVolumeMl) ||
+        taxProfile.netVolumeMl <= 0
+      ) {
+        throw new BadRequestException(
+          "taxProfile.netVolumeMl must be greater than 0"
+        );
+      }
+    }
+
+    if (
+      flags.hasAdv &&
+      (taxProfile.daneCertifiedRetailPrice === undefined ||
+        taxProfile.daneCertifiedRetailPrice === null)
+    ) {
+      throw new BadRequestException(
+        "taxProfile.daneCertifiedRetailPrice is required when ADV is assigned"
+      );
+    }
+
+    await this.productRepository.upsertProductTaxProfile(
+      {
+        tenantId,
+        productId,
+        taxProductCategoryId: taxProfile.taxProductCategoryId,
+        alcoholDegree: taxProfile.alcoholDegree ?? null,
+        netVolumeMl: taxProfile.netVolumeMl ?? null,
+        daneCertifiedRetailPrice: taxProfile.daneCertifiedRetailPrice ?? null,
+        danePriceEffectiveFrom: taxProfile.danePriceEffectiveFrom ?? null,
+        danePriceEffectiveTo: taxProfile.danePriceEffectiveTo ?? null,
+      },
+      client
+    );
+  }
+
+  private async enrichProductWithTaxes(product: ProductEntity) {
+    const [taxes, taxProfile] = await Promise.all([
+      this.productRepository.findProductTaxes(product.tenantId, product.id),
+      this.productRepository.findProductTaxProfile(product.tenantId, product.id),
+    ]);
+
+    return {
+      ...product,
+      taxes,
+      taxProfile,
+    };
   }
 
   private validatePriceChangeReason(reason: string | undefined) {
@@ -509,6 +707,17 @@ export class ProductService {
       product.subcategoryId ?? null
     );
 
+    const taxResolution = await this.resolveTaxAssignments(
+      product.tenantId,
+      product.taxes,
+      product.taxId
+    );
+    if (taxResolution.hasNonPercentage && product.taxProfile == null) {
+      throw new BadRequestException(
+        "taxProfile is required when non-percentage taxes are assigned"
+      );
+    }
+
     const normalizedSku = this.normalizeSku(product.sku);
     const existing = await this.productRepository.findBySku(
       normalizedSku,
@@ -526,6 +735,7 @@ export class ProductService {
     const entity = ProductEntity.create({
       ...product,
       id: crypto.randomUUID(),
+      taxId: taxResolution.bridgeTaxId,
       sku: normalizedSku,
       name: product.name.trim(),
       priceWithTax,
@@ -537,41 +747,81 @@ export class ProductService {
       updatedAt: now,
     });
 
-    return this.productRepository.create({
-      id: entity.id,
-      tenantId: entity.tenantId,
-      unitId: entity.unitId,
-      taxId: entity.taxId,
-      unit: entity.unit,
-      tax: entity.tax,
-      name: entity.name,
-      description: entity.description,
-      sku: entity.sku,
-      price: entity.price,
-      cost: entity.cost,
-      priceWithTax: entity.priceWithTax,
-      priceWithoutTax: entity.priceWithoutTax,
-      isActive: entity.isActive,
-      isPerishable: entity.isPerishable,
-      requiresLot: entity.requiresLot,
-      requiresExpiration: entity.requiresExpiration,
-      operationalStatus: entity.operationalStatus,
-      rotationClass: entity.rotationClass,
-      saleType: entity.saleType,
-      measurementUnit: entity.measurementUnit,
-      minStock: entity.minStock,
-      maxStock: entity.maxStock,
-      categoryId: entity.categoryId,
-      subcategoryId: entity.subcategoryId,
-      imageUrl: entity.imageUrl,
-      imageStorageKey: entity.imageStorageKey,
-      imageAltText: entity.imageAltText,
-      imageMimeType: entity.imageMimeType,
-      imageSizeBytes: entity.imageSizeBytes,
-      imageUpdatedAt: entity.imageUpdatedAt,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
-    });
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const created = await this.productRepository.create(
+        {
+          id: entity.id,
+          tenantId: entity.tenantId,
+          unitId: entity.unitId,
+          taxId: entity.taxId,
+          unit: entity.unit,
+          tax: entity.tax,
+          name: entity.name,
+          description: entity.description,
+          sku: entity.sku,
+          price: entity.price,
+          cost: entity.cost,
+          priceWithTax: entity.priceWithTax,
+          priceWithoutTax: entity.priceWithoutTax,
+          isActive: entity.isActive,
+          isPerishable: entity.isPerishable,
+          requiresLot: entity.requiresLot,
+          requiresExpiration: entity.requiresExpiration,
+          operationalStatus: entity.operationalStatus,
+          rotationClass: entity.rotationClass,
+          saleType: entity.saleType,
+          measurementUnit: entity.measurementUnit,
+          minStock: entity.minStock,
+          maxStock: entity.maxStock,
+          categoryId: entity.categoryId,
+          subcategoryId: entity.subcategoryId,
+          imageUrl: entity.imageUrl,
+          imageStorageKey: entity.imageStorageKey,
+          imageAltText: entity.imageAltText,
+          imageMimeType: entity.imageMimeType,
+          imageSizeBytes: entity.imageSizeBytes,
+          imageUpdatedAt: entity.imageUpdatedAt,
+          createdAt: entity.createdAt,
+          updatedAt: entity.updatedAt,
+        },
+        client
+      );
+
+      if (!created) {
+        throw new BadRequestException("product could not be created");
+      }
+
+      await this.productRepository.replaceProductTaxes(
+        {
+          tenantId: created.tenantId,
+          productId: created.id,
+          taxes: taxResolution.assignments,
+        },
+        client
+      );
+
+      await this.validateAndPersistTaxProfile(
+        created.tenantId,
+        created.id,
+        product.taxProfile ?? null,
+        {
+          hasNonPercentage: taxResolution.hasNonPercentage,
+          hasAdv: taxResolution.hasAdv,
+        },
+        client
+      );
+
+      await client.query("COMMIT");
+      return this.enrichProductWithTaxes(created);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async listProducts(tenantId: string, branchId: string) {
@@ -606,7 +856,7 @@ export class ProductService {
     if (!product) {
       throw new NotFoundException("product not found");
     }
-    return product;
+    return this.enrichProductWithTaxes(product);
   }
 
   async getProductWithStock(id: string, tenantId: string, branchId: string) {
@@ -691,15 +941,96 @@ export class ProductService {
       };
     }
 
-    const updated = await this.productRepository.update(id, tenantId, {
-      ...data,
-      ...this.buildUpdateImageMetadata(data),
-    });
-    if (!updated) {
-      throw new NotFoundException("product not found");
+    const shouldSyncTaxes =
+      this.hasOwn(data, "taxes") || this.hasOwn(data, "taxId");
+    const taxResolution = shouldSyncTaxes
+      ? await this.resolveTaxAssignments(
+          tenantId,
+          data.taxes,
+          this.hasOwn(data, "taxId") ? (data.taxId as string | null) : current.taxId
+        )
+      : null;
+
+    if (
+      taxResolution?.hasNonPercentage &&
+      data.taxProfile === undefined &&
+      !(await this.productRepository.findProductTaxProfile(tenantId, id))
+    ) {
+      throw new BadRequestException(
+        "taxProfile is required when non-percentage taxes are assigned"
+      );
     }
 
-    return updated;
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const updated = await this.productRepository.update(
+        id,
+        tenantId,
+        {
+          ...data,
+          ...(taxResolution ? { taxId: taxResolution.bridgeTaxId } : {}),
+          ...this.buildUpdateImageMetadata(data),
+        },
+        client
+      );
+      if (!updated) {
+        throw new NotFoundException("product not found");
+      }
+
+      if (taxResolution) {
+        await this.productRepository.replaceProductTaxes(
+          {
+            tenantId,
+            productId: id,
+            taxes: taxResolution.assignments,
+          },
+          client
+        );
+      }
+
+      if (this.hasOwn(data, "taxProfile") || taxResolution?.hasNonPercentage) {
+        const currentProfile = await this.productRepository.findProductTaxProfile(
+          tenantId,
+          id,
+          client
+        );
+        const profilePayload =
+          data.taxProfile !== undefined
+            ? data.taxProfile
+            : currentProfile
+              ? {
+                  taxProductCategoryId: currentProfile.taxProductCategoryId,
+                  alcoholDegree: currentProfile.alcoholDegree,
+                  netVolumeMl: currentProfile.netVolumeMl,
+                  daneCertifiedRetailPrice:
+                    currentProfile.daneCertifiedRetailPrice,
+                  danePriceEffectiveFrom: currentProfile.danePriceEffectiveFrom,
+                  danePriceEffectiveTo: currentProfile.danePriceEffectiveTo,
+                }
+              : null;
+
+        await this.validateAndPersistTaxProfile(
+          tenantId,
+          id,
+          profilePayload,
+          {
+            hasNonPercentage: taxResolution?.hasNonPercentage ?? false,
+            hasAdv: taxResolution?.hasAdv ?? false,
+          },
+          client
+        );
+      }
+
+      await client.query("COMMIT");
+      return this.enrichProductWithTaxes(updated);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async changePrice(

@@ -46,6 +46,15 @@ type AuthRequest = Request & {
 type CreateProductBody = {
   unitId: string;
   taxId?: string | null;
+  taxes?: Array<{ taxId: string; calculationOrder?: number }>;
+  taxProfile?: {
+    taxProductCategoryId: string;
+    alcoholDegree?: number | null;
+    netVolumeMl?: number | null;
+    daneCertifiedRetailPrice?: number | null;
+    danePriceEffectiveFrom?: string | null;
+    danePriceEffectiveTo?: string | null;
+  } | null;
   name: string;
   description?: string | null;
   sku: string;

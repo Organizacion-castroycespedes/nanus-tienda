@@ -71,6 +71,29 @@ test("THERMAL_58MM document wraps long text within 32 chars", () => {
   assert.match(document.preview, /EFECTIVO/);
 });
 
+test("ticket document prints tax breakdown lines when present", () => {
+  const document = buildTicketPrintDocument({
+    ticketType: "SALE",
+    terminalId: "local-terminal",
+    deviceId: "printer-1",
+    widthChars: THERMAL_80MM_SAFE_WIDTH_CHARS,
+    timestamp: "2026-08-21T00:00:00.000Z",
+    content: {
+      subtotal: 40000,
+      taxes: 7600,
+      taxLines: [
+        { label: "IVA 19%", amount: 7600 },
+        { label: "INC", amount: 0 },
+      ],
+      total: 47600,
+    },
+  });
+
+  assert.match(document.preview, /IVA 19%/);
+  assert.match(document.preview, /INC/);
+  assert.doesNotMatch(document.preview, /Impuestos/);
+});
+
 test("RAW ESC/POS contains CUT only when physical cut is enabled", () => {
   const document = buildTicketPrintDocument({
     ticketType: "SALE",

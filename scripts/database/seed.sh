@@ -79,4 +79,24 @@ echo "[seed] Running role-menu permissions seed..."
 echo "[seed] Running Gestión Operativa menu seed..."
 "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/014_operational_management_menu.sql"
 
+if [[ -f "${SCRIPT_DIR}/products/2026_04_25_seed_inventory_taxes.sql" ]]; then
+  echo "[seed] Running base inventory taxes seed..."
+  "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_04_25_seed_inventory_taxes.sql"
+fi
+
+if [[ -f "${SCRIPT_DIR}/products/2026_09_12_seed_inventory_taxes_and_tax_model.sql" ]]; then
+  echo "[seed] Running tax model catalog/rates seed (VPS-safe idempotent)..."
+  "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_09_12_seed_inventory_taxes_and_tax_model.sql"
+fi
+
+if [[ -f "${SCRIPT_DIR}/products/2026_09_12_migrate_existing_alcohol_products.sql" ]]; then
+  echo "[seed] Running existing alcohol products tax-profile migration..."
+  "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_09_12_migrate_existing_alcohol_products.sql"
+fi
+
+if [[ -f "${SCRIPT_DIR}/products/2026_09_12_migrate_alcohol_from_excel.sql" ]]; then
+  echo "[seed] Running Excel alcohol catalog tax-profile migration..."
+  "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_09_12_migrate_alcohol_from_excel.sql"
+fi
+
 echo "[seed] Completed successfully."

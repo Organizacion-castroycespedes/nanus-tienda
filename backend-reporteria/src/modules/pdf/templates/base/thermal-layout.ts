@@ -193,7 +193,7 @@ export const buildThermalDocument = (
       ? [buildThermalDivider(), buildThermalTotals(options.totals)]
       : []),
     buildThermalFooter(
-      options.footerText ?? "Documento generado por backend-reporteria."
+      options.footerText ?? "Documento generado por Manus Tienda."
     ),
   ],
   styles: thermalStyles,

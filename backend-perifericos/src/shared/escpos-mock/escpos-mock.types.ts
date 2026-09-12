@@ -32,6 +32,11 @@ export type ThermalTicketPayment = {
   amount?: number;
 };
 
+export type ThermalTicketTaxLine = {
+  label: string;
+  amount?: number;
+};
+
 export type ThermalTicketContent = {
   header?: string;
   businessName?: string;
@@ -44,6 +49,7 @@ export type ThermalTicketContent = {
   items?: ThermalTicketItem[];
   subtotal?: number;
   taxes?: number;
+  taxLines?: ThermalTicketTaxLine[];
   discounts?: number;
   total?: number;
   paid?: number;

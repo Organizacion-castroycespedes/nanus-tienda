@@ -53,6 +53,17 @@ export type CreateSaleItemInput = {
   pricingSnapshot?: Record<string, unknown> | null;
   pricingCalculatedAt?: Date | string | null;
   pricingSource?: string | null;
+  taxes?: Array<{
+    taxId: string;
+    taxName: string;
+    dianCode?: string | null;
+    taxTypeCode?: string | null;
+    calculationMethodCode?: string | null;
+    taxRate: number;
+    taxBase: number;
+    taxAmount: number;
+    isIncluded: boolean;
+  }>;
 };
 
 export type CreateSalePaymentInput = {
@@ -196,6 +207,19 @@ export class SaleRepository {
     }
     if (item.pricingSource !== undefined) {
       serializedItem.pricing_source = item.pricingSource;
+    }
+    if (item.taxes !== undefined) {
+      serializedItem.taxes = item.taxes.map((tax) => ({
+        tax_id: tax.taxId,
+        tax_name: tax.taxName,
+        tax_rate: tax.taxRate,
+        tax_base: tax.taxBase,
+        tax_amount: tax.taxAmount,
+        is_included: tax.isIncluded,
+        dian_code: tax.dianCode ?? null,
+        tax_type_code: tax.taxTypeCode ?? null,
+        calculation_method_code: tax.calculationMethodCode ?? null,
+      }));
     }
 
     return serializedItem;

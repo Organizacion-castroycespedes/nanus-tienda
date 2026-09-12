@@ -87,5 +87,5 @@ export const buildCashAuditTicketTemplate = (
       { label: "Contado", value: formatCurrency(dataset.audit.countedAmount) },
       { label: "Diferencia", value: formatCurrency(dataset.audit.difference) },
     ],
-    footerText: "Documento de arqueo generado por backend-reporteria.",
+    footerText: "Documento de arqueo de caja.",
   });

@@ -94,6 +94,11 @@ const buildService = (
         tenantId: productTenantId,
         updatedAt: new Date("2026-01-02T00:00:00.000Z"),
       }),
+    replaceProductTaxes: async () => undefined,
+    findProductTaxes: async () => [],
+    findProductTaxProfile: async () => null,
+    upsertProductTaxProfile: async () => undefined,
+    deleteProductTaxProfile: async () => undefined,
   };
 
   const stockMovementService = {
@@ -133,6 +138,11 @@ const buildService = (
       ) ?? null,
   };
 
+  const taxRepository = {
+    findByIds: async () => [],
+    listProductCategories: async () => [],
+  };
+
   const db = {
     getClient: async () => ({
       query: async () => ({ rows: [] }),
@@ -146,6 +156,7 @@ const buildService = (
     productBarcodeRepository as any,
     productCategoryRepository as any,
     productSubcategoryRepository as any,
+    taxRepository as any,
     db as any
   );
 };
@@ -212,6 +223,10 @@ const buildPriceChangeService = (
   const productSubcategoryRepository = {
     findById: async () => null,
   };
+  const taxRepository = {
+    findByIds: async () => [],
+    listProductCategories: async () => [],
+  };
   const client = {
     query: async (sql: string) => {
       calls.push(sql);
@@ -230,6 +245,7 @@ const buildPriceChangeService = (
       productBarcodeRepository as any,
       productCategoryRepository as any,
       productSubcategoryRepository as any,
+      taxRepository as any,
       db as any
     ),
     calls,
