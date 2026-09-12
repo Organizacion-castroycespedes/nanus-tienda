@@ -16,6 +16,7 @@ module.exports = {
       env: {
         NODE_ENV: "qa",
         PORT: "4020",
+        "CORS_ORIGINS": "https://www.apptiendamanus.space,http://localhost:3000"
       },
     },
     {
@@ -53,26 +54,6 @@ module.exports = {
         NODE_ENV: "qa",
         PORT: "4022",
       },
-    },
-    {
-      name: "backend-perifericos-linux",
-      cwd: "/home/ubuntu/manustienda/build-perifericos",
-      script: "./backend-perifericos-linux",
-      interpreter: "none",
-      exec_mode: "fork",
-      instances: 1,
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 5000,
-      out_file: "/home/ubuntu/manustienda/logs/backend-perifericos-linux/out.log",
-      error_file: "/home/ubuntu/manustienda/logs/backend-perifericos-linux/error.log",
-      merge_logs: false,
-      env: {
-        NODE_ENV: "qa",
-        PORT: "4023",
-        PERIPHERALS_PORT: "4023",
-        PERIPHERALS_ENABLE_REAL_ADAPTERS: "false",
-      },
-    },
+    }
   ],
 };
