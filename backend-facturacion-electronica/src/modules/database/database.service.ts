@@ -1,4 +1,4 @@
-import { Injectable, OnApplicationShutdown, OnModuleDestroy } from "@nestjs/common";
+import { Injectable, OnApplicationShutdown, OnModuleDestroy, Optional } from "@nestjs/common";
 import {
   Pool,
   type PoolClient,
@@ -43,9 +43,9 @@ export class DatabaseService
   private readonly poolFactory: (config: DatabaseConfig) => DatabasePool;
   private pool: DatabasePool | null = null;
 
-  constructor(options: DatabaseServiceOptions = {}) {
-    this.config = options.config ?? getDatabaseConfig();
-    this.poolFactory = options.poolFactory ?? createDefaultPool;
+  constructor(@Optional() options: DatabaseServiceOptions = {}) {
+    this.config = options?.config ?? getDatabaseConfig();
+    this.poolFactory = options?.poolFactory ?? createDefaultPool;
   }
 
   private getPool(): DatabasePool {
