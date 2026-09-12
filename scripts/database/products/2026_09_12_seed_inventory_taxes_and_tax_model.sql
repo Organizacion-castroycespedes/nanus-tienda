@@ -76,7 +76,7 @@ BEGIN
          '11000000-0000-0000-0000-000000000032'::uuid,
          '12000000-0000-0000-0000-000000000003'::uuid,
          '13000000-0000-0000-0000-000000000004'::uuid),
-        ('Ad valórem'::character varying, 0.0000::numeric, true,
+        ('Impuesto ad valórem'::character varying, 0.0000::numeric, true,
          '11000000-0000-0000-0000-000000000036'::uuid,
          '12000000-0000-0000-0000-000000000001'::uuid,
          '13000000-0000-0000-0000-000000000003'::uuid)
@@ -102,7 +102,10 @@ BEGIN
       SELECT 1
       FROM public.taxes AS existing
       WHERE existing.tenant_id = tenant.id
-        AND UPPER(BTRIM(existing.name)) = UPPER(BTRIM(seed.name))
+        AND (
+          UPPER(BTRIM(existing.name)) = UPPER(BTRIM(seed.name))
+          OR existing.tax_type_id = seed.tax_type_id
+        )
     )
     RETURNING id, tenant_id, name, rate, calculation_method_id, tax_base_type_id
   )

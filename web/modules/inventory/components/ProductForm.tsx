@@ -1001,8 +1001,8 @@ export const ProductForm = ({
                 </p>
                 {hasNonPercentageTax ? (
                   <p className="mt-2">
-                    ICL/ADV se guardan en catalogo; el cobro en caja llega en la
-                    fase del motor.
+                    ICL/ADV se calculan en caja con el perfil fiscal (grado, ml,
+                    DANE). El porcentaje puente sigue siendo el IVA de POS.
                   </p>
                 ) : null}
               </div>

@@ -89,4 +89,14 @@ if [[ -f "${SCRIPT_DIR}/products/2026_09_12_seed_inventory_taxes_and_tax_model.s
   "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_09_12_seed_inventory_taxes_and_tax_model.sql"
 fi
 
+if [[ -f "${SCRIPT_DIR}/products/2026_09_12_migrate_existing_alcohol_products.sql" ]]; then
+  echo "[seed] Running existing alcohol products tax-profile migration..."
+  "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_09_12_migrate_existing_alcohol_products.sql"
+fi
+
+if [[ -f "${SCRIPT_DIR}/products/2026_09_12_migrate_alcohol_from_excel.sql" ]]; then
+  echo "[seed] Running Excel alcohol catalog tax-profile migration..."
+  "${PSQL_APP[@]}" -f "${SCRIPT_DIR}/products/2026_09_12_migrate_alcohol_from_excel.sql"
+fi
+
 echo "[seed] Completed successfully."

@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS public.tax_product_categories (
 
 INSERT INTO public.tax_categories (id, code, name)
 VALUES
-    ('10000000-0000-0000-0000-000000000001', 'VAT', 'Value Added Tax'),
-    ('10000000-0000-0000-0000-000000000002', 'CONSUMPTION', 'Consumption Tax')
+    ('10000000-0000-0000-0000-000000000001', 'VAT', 'IVA'),
+    ('10000000-0000-0000-0000-000000000002', 'CONSUMPTION', 'Impuesto al consumo')
 ON CONFLICT (code) DO UPDATE
 SET name = EXCLUDED.name,
     is_active = true;
@@ -79,11 +79,11 @@ SET name = EXCLUDED.name,
 INSERT INTO public.tax_types
     (id, tax_category_id, code, name, dian_code)
 VALUES
-    ('11000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'VAT', 'Value Added Tax', '01'),
-    ('11000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 'NATIONAL_CONSUMPTION', 'National Consumption Tax', '04'),
-    ('11000000-0000-0000-0000-000000000030', '10000000-0000-0000-0000-000000000002', 'BEER_CONSUMPTION', 'Beer and Beer Mixture Consumption Tax', '30'),
-    ('11000000-0000-0000-0000-000000000032', '10000000-0000-0000-0000-000000000002', 'LIQUOR_CONSUMPTION', 'Liquor Consumption Tax', '32'),
-    ('11000000-0000-0000-0000-000000000036', '10000000-0000-0000-0000-000000000002', 'AD_VALOREM', 'Ad Valorem Tax', '36')
+    ('11000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'VAT', 'IVA', '01'),
+    ('11000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000002', 'NATIONAL_CONSUMPTION', 'Impuesto nacional al consumo', '04'),
+    ('11000000-0000-0000-0000-000000000030', '10000000-0000-0000-0000-000000000002', 'BEER_CONSUMPTION', 'Impuesto al consumo de cervezas y refajos', '30'),
+    ('11000000-0000-0000-0000-000000000032', '10000000-0000-0000-0000-000000000002', 'LIQUOR_CONSUMPTION', 'Impuesto al consumo de licores', '32'),
+    ('11000000-0000-0000-0000-000000000036', '10000000-0000-0000-0000-000000000002', 'AD_VALOREM', 'Impuesto ad valórem', '36')
 ON CONFLICT (code) DO UPDATE
 SET tax_category_id = EXCLUDED.tax_category_id,
     name = EXCLUDED.name,
@@ -92,21 +92,21 @@ SET tax_category_id = EXCLUDED.tax_category_id,
 
 INSERT INTO public.tax_calculation_methods (id, code, name)
 VALUES
-    ('12000000-0000-0000-0000-000000000001', 'PERCENTAGE', 'Percentage'),
-    ('12000000-0000-0000-0000-000000000002', 'FIXED_AMOUNT', 'Fixed Amount'),
-    ('12000000-0000-0000-0000-000000000003', 'PER_ALCOHOL_DEGREE_VOLUME', 'Per Alcohol Degree and Volume')
+    ('12000000-0000-0000-0000-000000000001', 'PERCENTAGE', 'Porcentaje'),
+    ('12000000-0000-0000-0000-000000000002', 'FIXED_AMOUNT', 'Valor fijo'),
+    ('12000000-0000-0000-0000-000000000003', 'PER_ALCOHOL_DEGREE_VOLUME', 'Por grado alcoholímetro y volumen')
 ON CONFLICT (code) DO UPDATE
 SET name = EXCLUDED.name,
     is_active = true;
 
 INSERT INTO public.tax_base_types (id, code, name)
 VALUES
-    ('13000000-0000-0000-0000-000000000001', 'SALE_PRICE', 'Sale Price'),
-    ('13000000-0000-0000-0000-000000000002', 'SALE_PRICE_EXCLUDING_CONSUMPTION', 'Sale Price Excluding Consumption Tax'),
-    ('13000000-0000-0000-0000-000000000003', 'DANE_CERTIFIED_RETAIL_PRICE', 'DANE Certified Retail Price'),
-    ('13000000-0000-0000-0000-000000000004', 'ALCOHOL_DEGREE_VOLUME', 'Alcohol Degree and Volume'),
-    ('13000000-0000-0000-0000-000000000005', 'RETAILER_PRICE_EXCLUDING_CONSUMPTION', 'Retailer Price Excluding Consumption Tax'),
-    ('13000000-0000-0000-0000-000000000006', 'CUSTOMS_VALUE_WITH_MARGIN', 'Customs Value With Duties and Margin')
+    ('13000000-0000-0000-0000-000000000001', 'SALE_PRICE', 'Precio de venta'),
+    ('13000000-0000-0000-0000-000000000002', 'SALE_PRICE_EXCLUDING_CONSUMPTION', 'Precio de venta sin consumo'),
+    ('13000000-0000-0000-0000-000000000003', 'DANE_CERTIFIED_RETAIL_PRICE', 'Precio certificado DANE'),
+    ('13000000-0000-0000-0000-000000000004', 'ALCOHOL_DEGREE_VOLUME', 'Grado alcoholímetro y volumen'),
+    ('13000000-0000-0000-0000-000000000005', 'RETAILER_PRICE_EXCLUDING_CONSUMPTION', 'Precio minorista sin consumo'),
+    ('13000000-0000-0000-0000-000000000006', 'CUSTOMS_VALUE_WITH_MARGIN', 'Valor en aduana con margen')
 ON CONFLICT (code) DO UPDATE
 SET name = EXCLUDED.name,
     is_active = true;
@@ -114,14 +114,14 @@ SET name = EXCLUDED.name,
 INSERT INTO public.tax_product_categories
     (id, code, name, is_alcoholic_beverage)
 VALUES
-    ('16000000-0000-0000-0000-000000000001', 'GENERAL', 'General Product', false),
-    ('16000000-0000-0000-0000-000000000010', 'DISTILLED_LIQUOR', 'Distilled Liquor', true),
-    ('16000000-0000-0000-0000-000000000011', 'LIQUOR_APERITIF', 'Liquor Aperitif', true),
-    ('16000000-0000-0000-0000-000000000012', 'WINE', 'Wine', true),
-    ('16000000-0000-0000-0000-000000000013', 'WINE_APERITIF', 'Wine Aperitif', true),
-    ('16000000-0000-0000-0000-000000000014', 'BEER', 'Beer', true),
-    ('16000000-0000-0000-0000-000000000015', 'SIPHON', 'Siphon', true),
-    ('16000000-0000-0000-0000-000000000016', 'BEER_MIXTURE', 'Beer Mixture', true)
+    ('16000000-0000-0000-0000-000000000001', 'GENERAL', 'Producto general', false),
+    ('16000000-0000-0000-0000-000000000010', 'DISTILLED_LIQUOR', 'Licor destilado', true),
+    ('16000000-0000-0000-0000-000000000011', 'LIQUOR_APERITIF', 'Aperitivo de licor', true),
+    ('16000000-0000-0000-0000-000000000012', 'WINE', 'Vino', true),
+    ('16000000-0000-0000-0000-000000000013', 'WINE_APERITIF', 'Aperitivo de vino', true),
+    ('16000000-0000-0000-0000-000000000014', 'BEER', 'Cerveza', true),
+    ('16000000-0000-0000-0000-000000000015', 'SIPHON', 'Sifón', true),
+    ('16000000-0000-0000-0000-000000000016', 'BEER_MIXTURE', 'Refajo / mezcla de cerveza', true)
 ON CONFLICT (code) DO UPDATE
 SET name = EXCLUDED.name,
     is_alcoholic_beverage = EXCLUDED.is_alcoholic_beverage,
@@ -344,7 +344,7 @@ WITH seed_defs AS (
                 'ICL'::text
             ),
             (
-                'Ad valórem'::character varying,
+                'Impuesto ad valórem'::character varying,
                 0.0000::numeric,
                 true,
                 '11000000-0000-0000-0000-000000000036'::uuid,

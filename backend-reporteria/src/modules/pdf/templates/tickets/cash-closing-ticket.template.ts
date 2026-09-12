@@ -209,6 +209,6 @@ export const buildCashClosingTicketTemplate = (
       ["Efectivo contado", formatCurrency(dataset.totals.closingAmount)],
       ["Diferencia", formatCurrency(dataset.totals.difference)],
     ].map(([label, value]) => ({ label, value })),
-    footerText: "Documento de cierre generado por backend-reporteria.",
+    footerText: "Documento de cierre de caja.",
   });
 };

@@ -369,7 +369,7 @@ const PosReportsPage = () => {
         <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria POS</p>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Ventas y tickets POS</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Filtra ventas por rango y alcance operativo, revisa saldos y abre el ticket PDF generado por el backend.
+          Filtra ventas por rango y alcance operativo, revisa saldos y abre el ticket PDF.
         </p>
       </section>
 
