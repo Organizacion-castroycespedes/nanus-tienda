@@ -24,6 +24,7 @@ import type {
   FactuCoreRuntimeContext,
   FactuCoreStatusResponse,
   FactuCoreTax,
+  FactuCoreTaxType,
 } from "./factucore.types";
 
 const DOCUMENT_STATUS_MAP: Record<string, ElectronicDocumentStatus> = {
@@ -126,6 +127,61 @@ const resolveCustomerLegalName = (customer: ElectronicCustomer) => {
   return names.join(" ").trim();
 };
 
+const normalizeTaxLabel = (value: unknown) => normalizeString(value)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toUpperCase()
+  .replace(/[^A-Z0-9]+/g, "_")
+  .replace(/^_|_$/g, "");
+
+const TAX_TYPE_ALIASES: Record<string, FactuCoreTaxType> = {
+  IVA: "IVA",
+  IVA_0: "IVA",
+  IVA_5: "IVA",
+  IVA_19: "IVA",
+  INC: "INC",
+  IMPUESTO_NACIONAL_AL_CONSUMO: "INC",
+  IMPUESTO_AL_CONSUMO: "INC",
+  ICA: "ICA",
+  IMPUESTO_DE_INDUSTRIA_Y_COMERCIO: "ICA",
+  INDUSTRIA_Y_COMERCIO: "ICA",
+  RETE_FUENTE: "RETE_FUENTE",
+  RETENCION_EN_LA_FUENTE: "RETE_FUENTE",
+  RETENCION_FUENTE: "RETE_FUENTE",
+  RETE_IVA: "RETE_IVA",
+  RETENCION_DE_IVA: "RETE_IVA",
+  RETENCION_IVA: "RETE_IVA",
+  RETE_ICA: "RETE_ICA",
+  RETENCION_DE_ICA: "RETE_ICA",
+  RETENCION_ICA: "RETE_ICA",
+  OTHER: "OTHER",
+  OTRO: "OTHER",
+  EXENTO: "OTHER",
+  EXCLUIDO: "OTHER",
+  NO_APLICA: "OTHER",
+};
+
+export const mapFactuCoreTaxType = (tax: ElectronicTaxInput): FactuCoreTaxType => {
+  const candidates = [
+    tax.type,
+    tax.schemeName,
+    tax.metadata?.taxType,
+    tax.metadata?.taxSchemeName,
+  ];
+
+  for (const candidate of candidates) {
+    const mapped = TAX_TYPE_ALIASES[normalizeTaxLabel(candidate)];
+    if (mapped) {
+      return mapped;
+    }
+  }
+
+  throw new FactuCoreConfigurationError(
+    "tax_normalization",
+    "Tax type is not mapped to the FactuCore fiscal contract",
+  );
+};
+
 const resolveTaxProfile = (customer: ElectronicCustomer) => {
   const identificationTypeCode = normalizeString(customer.taxProfile?.identificationTypeCode) || normalizeString(customer.identification.typeCode);
   const taxSchemeId = normalizeNullableString(customer.taxProfile?.taxScheme);
@@ -182,7 +238,7 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
 };
 
 const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => ({
-  taxType: tax.type,
+  taxType: mapFactuCoreTaxType(tax),
   rate: tax.rate,
   taxableBase: tax.taxableBase,
   taxAmount: tax.amount,

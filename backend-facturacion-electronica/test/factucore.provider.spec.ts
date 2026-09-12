@@ -6,7 +6,11 @@ import type {
   IssueElectronicCreditNoteCommand,
   IssueElectronicInvoiceCommand,
 } from "../src/modules/electronic-billing/contracts/electronic-billing-commands";
-import { FactuCoreMapper } from "../src/modules/electronic-billing/providers/factucore";
+import {
+  FACTUCORE_TAX_TYPES,
+  FactuCoreMapper,
+  mapFactuCoreTaxType,
+} from "../src/modules/electronic-billing/providers/factucore";
 import {
   FactuCoreProvider,
   FactuCoreProviderBootstrap,
@@ -411,6 +415,57 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
 
   assert.equal(excludedRequest.lines[0].taxes, undefined);
   assert.equal(excludedRequest.lines[0].taxTreatment, "EXCLUDED");
+});
+
+test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
+  const labels = [
+    ["IVA 19%", "IVA"],
+    ["IVA 5%", "IVA"],
+    ["IVA 0%", "IVA"],
+    ["INC", "INC"],
+    ["ICA", "ICA"],
+    ["Retención en la fuente", "RETE_FUENTE"],
+    ["RETE IVA", "RETE_IVA"],
+    ["RETE-ICA", "RETE_ICA"],
+    ["Exento", "OTHER"],
+  ] as const;
+
+  for (const [type, expected] of labels) {
+    assert.equal(mapFactuCoreTaxType({
+      type,
+      rate: 19,
+      taxableBase: 100,
+      amount: 19,
+    }), expected);
+  }
+  assert.deepEqual(FACTUCORE_TAX_TYPES, ["IVA", "INC", "ICA", "RETE_FUENTE", "RETE_IVA", "RETE_ICA", "OTHER"]);
+});
+
+test("mapper rejects unknown tax labels and preserves tax amounts", () => {
+  assert.throws(
+    () => mapFactuCoreTaxType({ type: "TAX DESCONOCIDO", rate: 7, taxableBase: 125.55, amount: 8.79 }),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreConfigurationError");
+      assert.match((error as Error).message, /tax type/i);
+      return true;
+    },
+  );
+
+  const command = makeInvoiceCommand();
+  command.lines = [{
+    ...command.lines[0],
+    taxes: [
+      { type: "IVA 19%", rate: 19, taxableBase: 125.55, amount: 23.85 },
+      { type: "IVA 5%", rate: 5, taxableBase: 80, amount: 4 },
+    ],
+  }];
+  const taxes = new FactuCoreMapper().buildInvoiceRequest(command).lines[0].taxes ?? [];
+  assert.deepEqual(taxes.map((tax) => tax.taxType), ["IVA", "IVA"]);
+  assert.deepEqual(taxes.map((tax) => [tax.rate, tax.taxableBase, tax.taxAmount]), [
+    [19, 125.55, 23.85],
+    [5, 80, 4],
+  ]);
+  assert.equal(taxes.every((tax) => (FACTUCORE_TAX_TYPES as readonly string[]).includes(tax.taxType)), true);
 });
 
 test("mapper normalizes Manus CASH payment to FactuCore fiscal means", () => {
