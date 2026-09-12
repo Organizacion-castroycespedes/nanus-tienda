@@ -101,7 +101,7 @@ const LoginPageContent = () => {
     event.preventDefault();
     setHasSubmitted(true);
     if (!email.trim() || !password.trim()) {
-      setStatusWarning("Ingresa tu email y contrasena.");
+      setStatusWarning("Ingresa tu email y Contraseña.");
       return;
     }
     if (!qaLoginEnabled && !isHuman) {
@@ -275,13 +275,13 @@ const LoginPageContent = () => {
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <label htmlFor="password" className="text-sm font-medium text-slate-700">
-                  Contrasena
+                  Contraseña
                 </label>
                 <Link
                   href="/forgot-password"
                   className="text-xs text-blue-600 transition hover:text-blue-700 hover:underline"
                 >
-                  Olvidaste tu contrasena?
+                  Olvidaste tu Contraseña?
                 </Link>
               </div>
               <div className="relative">
@@ -298,7 +298,7 @@ const LoginPageContent = () => {
                 />
                 <button
                   type="button"
-                  aria-label={showPassword ? "Ocultar contrasena" : "Mostrar contrasena"}
+                  aria-label={showPassword ? "Ocultar Contraseña" : "Mostrar Contraseña"}
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
                 >

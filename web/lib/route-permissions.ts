@@ -5,6 +5,15 @@ export type RoutePermissionRequirement = {
   action: string;
 };
 
+export const canAccessInfrastructureAdminRoute = (
+  pathname: string,
+  role: string | undefined
+): boolean => {
+  const isInfrastructureRoute =
+    /^\/[^/]+\/(?:config\/terminals|admin\/peripherals)\/?$/i.test(pathname);
+  return !isInfrastructureRoute || role === "SUPER_ADMIN";
+};
+
 const ROUTE_PERMISSION_RULES: Array<{
   pattern: RegExp;
   requirement: RoutePermissionRequirement;
