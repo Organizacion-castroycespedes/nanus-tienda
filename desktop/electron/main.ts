@@ -165,6 +165,7 @@ const createMainWindow = async () => {
 
   const window = new BrowserWindow({
     title: windowTitle,
+    icon: path.join(__dirname, "../resources/manus-icon.png"),
     width: initialWidth,
     height: initialHeight,
     frame: false,
