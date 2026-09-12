@@ -45,6 +45,13 @@
 
 ## 7. Estado durable FE
 
+## 8. Dashboard operativo MVP
+
+- [x] Separar `/operations` como dashboard y `/operations/sales` como listado.
+- [x] Exponer métricas reales agregadas con `OperationalSaleScope` y filtros de periodo/sucursal.
+- [x] Renderizar KPIs, tendencia, distribución de estados y CTAs al listado filtrado.
+- [x] Cubrir estados loading, error y periodo sin datos sin valores de demostración.
+
 - [x] Agregar estado persistente de procesamiento con default fail-closed.
 - [x] Persistir intentos de creación y transmisión antes de llamadas externas.
 - [x] Definir matriz de transiciones y backfill conservador.

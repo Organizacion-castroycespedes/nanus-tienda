@@ -142,3 +142,8 @@ test("deliveries route uses canonical DELIVERIES permission", () => {
     }
   );
 });
+
+test("operations parent and sales child use distinct permissions", () => {
+  assert.deepEqual(getRoutePermissionRequirement("/tenant/operations"), { module: MENU_KEYS.OPERATIONS, action: "read" });
+  assert.deepEqual(getRoutePermissionRequirement("/tenant/operations/sales"), { module: MENU_KEYS.OPERATIONS_SALES, action: "read" });
+});
