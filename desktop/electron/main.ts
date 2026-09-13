@@ -266,17 +266,40 @@ const createMainWindow = async () => {
     item.cancel();
   });
 
+  const writeAndLoadHtml = async (filename: string, htmlContent: string) => {
+    const filePath = path.join(app.getPath("userData"), filename);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(filePath, htmlContent, "utf-8");
+    await window.loadFile(filePath);
+  };
+
   const getLoadingHtml = async () => {
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#ffffff;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.pulse{animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;font-size:16px;font-weight:500;color:#4b5563;margin-top:24px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style></head><body><div class="pulse">Manus POS Iniciando...</div></body></html>`;
-    return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    let logoDataUri = "";
+    try {
+      const logoPath = path.join(__dirname, "../resources/manus-icon.png");
+      logoDataUri = `data:image/png;base64,${(await readFile(logoPath)).toString("base64")}`;
+    } catch {
+      // Ignore
+    }
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.pulse{animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;font-size:16px;font-weight:500;color:#4b5563;margin-top:24px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style></head><body>${logoDataUri ? `<img src="${logoDataUri}" alt="Manus POS" style="width:96px;height:96px;border-radius:24px;object-fit:cover;" />` : ''}<div class="pulse">Manus POS Iniciando...</div></body></html>`;
+    await writeAndLoadHtml("manus-loading.html", html);
   };
 
   const loadOfflinePage = async () => {
     const targetUrl = electronConfig.initialUrl.href;
-    const offlineHtml = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS - Sin Conexión</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#ffffff;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.container{max-width:550px;text-align:center;padding:40px}.title{font-size:28px;font-weight:600;margin-bottom:12px;color:#000}.subtitle{font-size:16px;color:#4b5563;line-height:1.5}.pulse{animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;color:#6b7280;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:24px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style></head><body><div class="container"><div class="title">Conexión interrumpida</div><div class="subtitle">No podemos comunicarnos con el servicio en este momento.<br>Reintentaremos automáticamente cuando la conexión esté disponible.</div><div class="pulse"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 4.24-11.23L2.5 8"/></svg> Restableciendo conexión...</div></div><script>const check=()=>{fetch('${targetUrl}',{mode:'no-cors',cache:'no-store'}).then(()=>location.href='${targetUrl}').catch(()=>{})};setInterval(()=>{if(navigator.onLine)check()},3000);window.addEventListener('online',check);</script></body></html>`;
+    let logoDataUri = "";
+    try {
+      const logoPath = path.join(__dirname, "../resources/manus-icon.png");
+      logoDataUri = `data:image/png;base64,${(await readFile(logoPath)).toString("base64")}`;
+    } catch {
+      // Ignore
+    }
+    
+    // Original styles and container
+    const offlineHtml = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS - Sin Conexión</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.container{max-width:550px;text-align:center;padding:40px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 4px 6px -1px rgba(0,0,0,.1);border-radius:12px;margin:30px 0}.title{font-size:28px;font-weight:600;margin-bottom:12px;color:#000}.subtitle{font-size:16px;color:#4b5563;line-height:1.5}.pulse{animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;color:#6b7280;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:24px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style></head><body><div class="container">${logoDataUri ? `<img src="${logoDataUri}" alt="Manus POS" style="width:96px;height:96px;border-radius:24px;object-fit:cover;margin-bottom:24px" />` : ''}<div class="title">Conexión interrumpida</div><div class="subtitle">No podemos comunicarnos con el servicio en este momento.<br>Reintentaremos automáticamente cuando la conexión esté disponible.</div><div class="pulse"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 4.24-11.23L2.5 8"/></svg> Restableciendo conexión...</div></div><script>const check=()=>{fetch('${targetUrl}',{mode:'no-cors',cache:'no-store'}).then(()=>location.href='${targetUrl}').catch(()=>{})};setInterval(()=>{if(navigator.onLine)check()},3000);window.addEventListener('online',check);</script></body></html>`;
     
     try {
-      await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(offlineHtml)}`);
+      await writeAndLoadHtml("manus-offline.html", offlineHtml);
     } catch (e) {
       console.warn("Failed to load offline page", e);
     }
@@ -289,7 +312,7 @@ const createMainWindow = async () => {
   });
 
   try {
-    await window.loadURL(await getLoadingHtml());
+    await getLoadingHtml();
     await window.loadURL(electronConfig.initialUrl.href);
   } catch {
     await loadOfflinePage();
