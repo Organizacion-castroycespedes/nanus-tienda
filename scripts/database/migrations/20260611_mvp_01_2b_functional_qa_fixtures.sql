@@ -32,7 +32,7 @@ DECLARE
   v_balance_id uuid;
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM public.tenants WHERE id = c_tenant_id AND slug = 'default'
+    SELECT 1 FROM public.tenants WHERE id = c_tenant_id
   ) THEN
     RAISE EXCEPTION 'MVP-01.2B QA fixtures require default tenant %', c_tenant_id;
   END IF;

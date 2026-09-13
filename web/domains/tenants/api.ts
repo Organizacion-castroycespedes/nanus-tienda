@@ -10,7 +10,7 @@ import type { BrandingConfig } from "../../store/brandingSlice";
 export const listTenants = () =>
   apiClient<TenantSummaryResponse[]>("/tenants");
 
-export const createTenant = (payload: { slug: string; nombre?: string }) =>
+export const createTenant = (payload: { slug?: string; nombre: string }) =>
   apiClient<TenantSummaryResponse>("/tenants", {
     method: "POST",
     body: JSON.stringify(payload),

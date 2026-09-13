@@ -2,7 +2,6 @@ WITH default_tenant AS (
   SELECT id
   FROM tenants
   WHERE id = '00000000-0000-0000-0000-000000000001'
-    AND slug = 'default'
   LIMIT 1
 )
 INSERT INTO units (id, tenant_id, name, abbreviation)

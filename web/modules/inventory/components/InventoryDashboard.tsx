@@ -395,7 +395,7 @@ export const InventoryDashboard = () => {
     return Math.max(...values, 1);
   }, [dashboard?.charts.topProducts]);
 
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
 
   const inventoryAlertStats = useMemo(() => {
     const availableByLot = new Map<string, number>();

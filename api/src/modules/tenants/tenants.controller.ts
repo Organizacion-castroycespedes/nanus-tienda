@@ -70,7 +70,7 @@ export class TenantsController {
 
   @Post()
   @Roles("SUPER_ADMIN")
-  create(@Body() payload: Required<Pick<TenantSummaryInput, "slug">> & TenantSummaryInput) {
+  create(@Body() payload: TenantSummaryInput) {
     return this.tenantsService.createTenant(payload);
   }
 

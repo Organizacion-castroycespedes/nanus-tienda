@@ -24,7 +24,7 @@ import { useAppSelector } from "../../../store/hooks";
 const FinanceHomePage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const { canViewFinance } = getFinancePermissions(role);
   const { paymentMethods, loadPaymentMethods } = usePaymentMethods();
   const { cashRegisters, loadCashRegisters } = useCashRegisters();

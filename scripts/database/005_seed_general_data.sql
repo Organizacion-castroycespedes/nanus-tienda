@@ -1125,7 +1125,7 @@ bbfb040c-b17d-499d-b9fd-555c1e09bc8f	ae39c337-bf23-4a7c-a292-e683121868ce	99773	
 \.
 
 COPY tmp_tenants (id, slug, nombre, config, activo, created_at) FROM stdin;
-00000000-0000-0000-0000-000000000001	default	Tenant Principal	{}	t	2026-02-21 07:10:14.326167-06
+00000000-0000-0000-0000-000000000001	manustienda-platform-s-a-s	Tenant Principal	{}	t	2026-02-21 07:10:14.326167-06
 \.
 
 COPY tmp_tenants_detalles (id, tenant_id, razon_social, nit, dv, tipo_persona, tipo_sociedad, fecha_constitucion, estado, responsabilidades_dian, regimen, actividad_economica, obligado_facturacion_electronica, resolucion_dian, fecha_inicio_facturacion, direccion_principal, ciudad, departamento, pais, telefono, email_corporativo, sitio_web, representante_nombre, representante_tipo_documento, representante_numero_documento, representante_email, representante_telefono, cuenta_contable_defecto, banco_principal, numero_cuenta, tipo_cuenta, created_at, updated_at, pais_id, departamento_id, municipio_id) FROM stdin;
@@ -1192,8 +1192,9 @@ SET
 INSERT INTO public.tenants (id, slug, nombre, config, activo, created_at)
 SELECT t.id, t.slug, t.nombre, t.config, t.activo, t.created_at
 FROM tmp_tenants t
-ON CONFLICT (slug) DO UPDATE
+ON CONFLICT (id) DO UPDATE
 SET
+  slug = EXCLUDED.slug,
   nombre = EXCLUDED.nombre,
   config = EXCLUDED.config,
   activo = EXCLUDED.activo;
