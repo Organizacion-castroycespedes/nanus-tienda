@@ -55,6 +55,7 @@ import type {
   SalePaymentSnapshot,
   SaleTaxSnapshot,
   SaleCustomerSnapshot,
+  SaleSnapshot,
 } from "../../integration-outbox/contracts/integration-outbox-events";
 import {
   evaluateElectronicBillingEligibility,
@@ -901,6 +902,75 @@ export class SaleService {
     }));
   }
 
+  private isElectronicBillingCustomerFiscalDataComplete(
+    customer: SaleCustomerSnapshot,
+  ) {
+    return Boolean(
+      customer.identificationNumber?.trim() &&
+        customer.legalName?.trim() &&
+        customer.countryCode?.trim() &&
+        customer.departmentCode?.trim() &&
+        customer.municipalityCode?.trim() &&
+        customer.taxLevelCode?.trim() &&
+        customer.taxSchemeId?.trim() &&
+        customer.fiscalResponsibilityCodes?.length,
+    );
+  }
+
+  private isElectronicBillingSnapshotStale(
+    event: {
+      payload: {
+        sale?: SaleSnapshot;
+        customer?: SaleCustomerSnapshot;
+        totals?: {
+          subtotalAmount?: string;
+          taxAmount?: string;
+          totalAmount?: string;
+        };
+      };
+    },
+    saleRow: { status: string; total: string | number },
+    currentCustomer: SaleCustomerSnapshot,
+    currentLines: Array<{
+      subtotalAmount: string;
+      taxAmount: string;
+      totalAmount: string;
+    }>,
+  ) {
+    const payload = event.payload;
+    const currentTotals = currentLines.reduce(
+      (totals, line) => ({
+        subtotalAmount: totals.subtotalAmount + this.toNumber(line.subtotalAmount),
+        taxAmount: totals.taxAmount + this.toNumber(line.taxAmount),
+        totalAmount: totals.totalAmount + this.toNumber(line.totalAmount),
+      }),
+      { subtotalAmount: 0, taxAmount: 0, totalAmount: 0 },
+    );
+    const snapshotTotals = payload.totals;
+    return Boolean(
+      payload.sale?.saleStatus !== saleRow.status ||
+        Math.abs(
+          this.toNumber(snapshotTotals?.subtotalAmount ?? 0) - currentTotals.subtotalAmount,
+        ) > 0.0001 ||
+        Math.abs(this.toNumber(snapshotTotals?.taxAmount ?? 0) - currentTotals.taxAmount) >
+          0.0001 ||
+        Math.abs(this.toNumber(snapshotTotals?.totalAmount ?? 0) - currentTotals.totalAmount) >
+          0.0001 ||
+        Math.abs(currentTotals.totalAmount - this.toNumber(saleRow.total)) > 0.0001 ||
+        payload.customer?.taxLevelCode !== currentCustomer.taxLevelCode ||
+        payload.customer?.taxSchemeId !== currentCustomer.taxSchemeId ||
+        JSON.stringify(payload.customer?.fiscalResponsibilityCodes ?? null) !==
+          JSON.stringify(currentCustomer.fiscalResponsibilityCodes ?? null) ||
+        payload.customer?.countryCode !== currentCustomer.countryCode ||
+        payload.customer?.departmentCode !== currentCustomer.departmentCode ||
+        payload.customer?.municipalityCode !== currentCustomer.municipalityCode ||
+        payload.customer?.identificationNumber !== currentCustomer.identificationNumber ||
+        payload.customer?.legalName !== currentCustomer.legalName ||
+        payload.customer?.email !== currentCustomer.email ||
+        payload.customer?.addressLine1 !== currentCustomer.addressLine1,
+    );
+  }
+
   private async enqueueSaleCompletedForElectronicBilling(
     saleContext: SaleContext,
     saleRow: {
@@ -954,6 +1024,12 @@ export class SaleService {
       tenantId,
       effectivePricedItems
     );
+    if (
+      hasPositiveTaxLines(lines) &&
+      !this.isElectronicBillingCustomerFiscalDataComplete(customer)
+    ) {
+      return null;
+    }
     const issuerResult = await client.query<{ vat_responsibility: string | null }>(
       "SELECT vat_responsibility FROM tenants_detalles WHERE tenant_id = $1",
       [tenantId],
@@ -1147,21 +1223,35 @@ export class SaleService {
       };
     }
 
-    if (replacementEvent) {
-      return {
-        saleId,
-        result: "REQUESTED",
-        eligibility: "REQUESTED",
-        requestCreated: false,
-        electronicDocumentId: null,
-        outboxEventId: replacementEvent.event_id,
-      };
-    }
-
-    const stalePendingEvent =
-      deterministicEvent?.status === "PENDING" && deterministicEvent.attempt_count === 0
+    const currentCustomer = await this.buildElectronicBillingCustomerSnapshot(
+      saleContext.tenantId!,
+      saleRow.customer_id,
+      client,
+    );
+    const currentCustomerFiscalDataComplete =
+      this.isElectronicBillingCustomerFiscalDataComplete(currentCustomer);
+    const currentPricedItems = await this.loadPricedSaleItemsForBilling(
+      saleId,
+      saleContext.tenantId!,
+      client,
+    );
+    const currentLines = await this.buildElectronicBillingLines(
+      saleContext.tenantId!,
+      currentPricedItems,
+    );
+    const staleDeterministicEvent =
+      deterministicEvent?.status === "PENDING" &&
+      deterministicEvent.attempt_count === 0 &&
+      this.isElectronicBillingSnapshotStale(
+        deterministicEvent,
+        saleRow,
+        currentCustomer,
+        currentLines,
+      )
         ? deterministicEvent
         : null;
+
+    const stalePendingEvent = staleDeterministicEvent;
     const eventToReplace = failedRecoveryEvent ?? stalePendingEvent;
 
     const eligibility = evaluateElectronicBillingEligibility({
@@ -1170,14 +1260,29 @@ export class SaleService {
       customerId: saleRow.customer_id,
       documentStatuses: [],
       requestExists: Boolean(deterministicEvent) && !stalePendingEvent && !failedRecoveryEvent,
+      hasTaxLines: hasPositiveTaxLines(currentLines),
+      customerFiscalDataComplete: currentCustomerFiscalDataComplete,
     });
     if (eligibility !== "ELIGIBLE") {
       return {
         saleId,
         result: eligibility,
         eligibility,
+        ...(eligibility === "INCOMPLETE_CUSTOMER_FISCAL_DATA"
+          ? { message: "Seleccione o complete un cliente fiscalmente elegible para una factura IVA." }
+          : {}),
         requestCreated: false,
         electronicDocumentId: null,
+      };
+    }
+    if (replacementEvent) {
+      return {
+        saleId,
+        result: "REQUESTED",
+        eligibility: "REQUESTED",
+        requestCreated: false,
+        electronicDocumentId: null,
+        outboxEventId: replacementEvent.event_id,
       };
     }
     if (!this.integrationOutboxService) {
@@ -1218,11 +1323,6 @@ export class SaleService {
     );
     const replacementEventId = eventToReplace ? crypto.randomUUID() : undefined;
     if (eventToReplace) {
-      const currentCustomer = await this.buildElectronicBillingCustomerSnapshot(
-        saleContext.tenantId!,
-        saleRow.customer_id,
-        client,
-      );
       if (
         !currentCustomer.taxSchemeId ||
         !currentCustomer.fiscalResponsibilityCodes ||
@@ -1681,12 +1781,14 @@ export class SaleService {
     );
     const totalPaid = this.toNumber(financialState.rows[0]?.total_paid ?? 0);
 
+    const status = this.determineConfirmedStatus(total, totalPaid);
     await this.repository.updateSaleStatus(
       saleId,
       tenantId,
-      this.determineConfirmedStatus(total, totalPaid),
+      status,
       client
     );
+    return status;
   }
 
   private async finalizeCancelledSale(
@@ -2202,7 +2304,7 @@ export class SaleService {
         );
       }
 
-      await this.finalizeSale(
+      const finalizedStatus = await this.finalizeSale(
         saleRow.id,
         saleContext.tenantId,
         this.toNumber(saleRow.total),
@@ -2218,7 +2320,7 @@ export class SaleService {
       if (getElectronicBillingMode() === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
-          saleRow,
+          { ...saleRow, status: finalizedStatus },
           pricedItems as PricedSaleItem[],
           legacyPaymentMethods,
           payments,

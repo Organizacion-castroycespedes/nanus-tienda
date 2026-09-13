@@ -168,6 +168,55 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
     summary: IntegrationOutboxDispatcherSummary,
   ) {
     try {
+      const payload = event.payload as {
+        sale?: { saleStatus?: string | null };
+        customer?: {
+          identificationNumber?: string | null;
+          legalName?: string | null;
+          countryCode?: string | null;
+          departmentCode?: string | null;
+          municipalityCode?: string | null;
+          taxLevelCode?: string | null;
+          taxSchemeId?: string | null;
+          fiscalResponsibilityCodes?: string[] | null;
+        };
+        lines?: Array<{ taxAmount?: string | number | null; taxes?: unknown[] }>;
+      };
+      const hasTaxLines = Boolean(
+        payload.lines?.some(
+          (line) => Number(line.taxAmount ?? 0) > 0 || Boolean(line.taxes?.length),
+        ),
+      );
+      const customer = payload.customer;
+      const customerFiscalDataComplete = Boolean(
+        customer?.identificationNumber?.trim() &&
+          customer.legalName?.trim() &&
+          customer.countryCode?.trim() &&
+          customer.departmentCode?.trim() &&
+          customer.municipalityCode?.trim() &&
+          customer.taxLevelCode?.trim() &&
+          customer.taxSchemeId?.trim() &&
+          customer.fiscalResponsibilityCodes?.length,
+      );
+      if (
+        event.event_type === "SALE_COMPLETED_FOR_ELECTRONIC_BILLING" &&
+        ((payload.sale?.saleStatus !== undefined &&
+          payload.sale?.saleStatus !== "CONFIRMED") ||
+          (hasTaxLines && !customerFiscalDataComplete))
+      ) {
+        await this.outboxService.markTerminalFailure(event.event_id, {
+          lastError: JSON.stringify({
+            code: "OUTBOX_EVENT_INELIGIBLE_SNAPSHOT",
+            reason:
+              payload.sale?.saleStatus !== undefined &&
+              payload.sale?.saleStatus !== "CONFIRMED"
+                ? "sale snapshot is not CONFIRMED"
+                : "customer fiscal data is incomplete for tax-bearing sale",
+          }),
+        });
+        summary.failed += 1;
+        return;
+      }
       const envelope: SaleCompletedForElectronicBillingEventEnvelope = {
         eventId: event.event_id,
         eventType: event.event_type as SaleCompletedForElectronicBillingEventEnvelope["eventType"],

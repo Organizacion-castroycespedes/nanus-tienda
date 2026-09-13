@@ -51,6 +51,7 @@ export type ElectronicBillingRequestResult = {
   saleId: string;
   result: string;
   eligibility: string;
+  message?: string;
   requestCreated: boolean;
   electronicDocumentId: string | null;
 };
