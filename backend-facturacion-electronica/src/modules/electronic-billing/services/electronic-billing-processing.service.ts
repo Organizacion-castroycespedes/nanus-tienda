@@ -297,7 +297,15 @@ export class ElectronicBillingProcessingService {
       tenantId,
       providerConfigId: document.provider_config_id,
     });
-    const currentProvider = await this.getProviderStatus(resolved, aggregate);
+    const currentProvider = resolved.provider.getDocument
+      ? await resolved.provider.getDocument({
+        context: resolved.context,
+        documentId: document.id,
+        providerDocumentId: document.provider_document_id,
+        externalReference: document.external_reference,
+        metadata: document.metadata,
+      })
+      : await this.getProviderStatus(resolved, aggregate);
     const currentStatus = currentProvider.providerStatus?.toUpperCase() ?? "";
     if (currentStatus !== "VALIDATED_INTERNAL") {
       return this.persistProviderResult(

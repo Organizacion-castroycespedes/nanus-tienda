@@ -200,6 +200,16 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     return buildStatusResult(this.mapper, command.documentId, statusResponse);
   }
 
+  async getDocument(command: GetElectronicDocumentStatusCommand) {
+    const runtime = await this.resolveRuntimeContext("get_document", command.context);
+    assertElectronicBillingProviderCapability(this, "asyncStatus");
+    if (!command.providerDocumentId) {
+      throw new FactuCoreConfigurationError("get_document", "FactuCore provider document id is required");
+    }
+    const document = await this.client.getDocument(runtime, command.providerDocumentId);
+    return buildStatusResult(this.mapper, command.documentId, document);
+  }
+
   async getDocumentOperations(command: GetElectronicDocumentStatusCommand): Promise<ElectronicBillingProviderOperationsResult> {
     const runtime = await this.resolveRuntimeContext("get_document_operations", command.context);
     const providerDocumentId = await this.resolveProviderDocumentIdForLookup(runtime, command);

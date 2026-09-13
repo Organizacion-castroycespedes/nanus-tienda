@@ -33,6 +33,8 @@ export interface ElectronicBillingProvider {
     command: GetElectronicDocumentStatusCommand
   ): Promise<ElectronicBillingProviderStatusResult>;
 
+  getDocument?(command: GetElectronicDocumentStatusCommand): Promise<ElectronicBillingProviderStatusResult>;
+
   getDocumentOperations?(
     command: GetElectronicDocumentStatusCommand
   ): Promise<ElectronicBillingProviderOperationsResult>;

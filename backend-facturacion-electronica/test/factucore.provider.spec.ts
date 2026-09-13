@@ -203,6 +203,11 @@ class RecordingFactuCoreClient {
     });
   }
 
+  async getDocument(context: FactuCoreRuntimeContext, documentId: string) {
+    this.calls.push({ op: "getDocument", context, documentId });
+    return buildStatusDoc({ id: documentId, providerDocumentId: documentId });
+  }
+
   async getStatusByExternalReference(context: FactuCoreRuntimeContext, externalReference: string) {
     this.calls.push({ op: "getStatusByExternalReference", context, externalReference });
     return buildStatusDoc({
@@ -340,6 +345,23 @@ test("resumeInvoice continues a validated provider document without create", asy
   assert.deepEqual(client.calls.map((call) => call.op), ["generateXml", "sign", "transmit"]);
   assert.equal(result.providerDocumentId, "factu-existing-1");
   assert.deepEqual(stages, ["XML_GENERATE_INTENT", "XML_GENERATED", "SIGN_INTENT", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
+});
+
+test("getDocument reads the linked provider document by id", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+
+  const result = await provider.getDocument({
+    context: makeContext(),
+    documentId: "manus-doc-1",
+    providerDocumentId: "factu-existing-1",
+    externalReference: "SALE-existing",
+    metadata: {},
+  });
+
+  assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.deepEqual(client.calls.map((call) => call.op), ["getDocument"]);
 });
 
 test("FactuCore provider requires an explicit external tenant mapping", async () => {
