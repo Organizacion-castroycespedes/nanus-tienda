@@ -260,11 +260,21 @@ const createMainWindow = async () => {
     item.cancel();
   });
 
+  const loadOfflinePage = async () => {
+    const targetUrl = electronConfig.initialUrl.href;
+    const offlineHtml = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS - Sin Conexión</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.container{max-width:550px;text-align:center;padding:40px}.cf-error{text-align:left;background:#fff;border:1px solid #e5e7eb;padding:20px;box-shadow:0 4px 6px -1px rgba(0,0,0,.1);margin:30px 0;border-radius:6px;font-size:14px;color:#374151}.title{font-size:28px;font-weight:600;margin-bottom:12px;color:#000}.subtitle{font-size:16px;color:#4b5563;line-height:1.5}.pulse{animation:pulse 2.5s infinite;color:#6b7280;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px}@keyframes pulse{0%{opacity:.4}50%{opacity:1}100%{opacity:.4}}.wifi-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:999px;font-size:13px;font-weight:600;transition:all .3s ease}.wifi-off{background:#fee2e2;color:#991b1b}.wifi-on{background:#dcfce3;color:#166534}.icon{width:18px;height:18px}</style></head><body><div class="container"><div class="title">Conexión interrumpida</div><div class="subtitle">Manus POS no puede acceder al servidor en este momento. La pantalla se recargará automáticamente cuando se restablezca el servicio.</div><div class="cf-error"><span style="color:#d97706;font-weight:600">Estado de red</span> &mdash; <span>Host inalcanzable</span><br><br><strong>Sugerencia:</strong> Revisa tu conexión a internet, el cable de red o el estado del Wi-Fi.</div><div id="wifi" class="wifi-badge wifi-off"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a6 6 0 0 1 7 0M12 20h.01M5 12.5a11 11 0 0 1 14 0M1.5 9a16 16 0 0 1 21 0"/></svg> <span>Sin conexión a red</span></div><div class="pulse" style="margin-top:20px"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 4.24-11.23L2.5 8"/></svg> Reconectando de forma segura...</div></div><script>const w=document.getElementById('wifi'),t=w.querySelector('span'),i=w.querySelector('svg'),on='<path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>',off='<line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a6 6 0 0 1 7 0M12 20h.01M5 12.5a11 11 0 0 1 14 0M1.5 9a16 16 0 0 1 21 0"/>',update=()=>{if(navigator.onLine){w.className='wifi-badge wifi-on';t.innerText='Conexión detectada. Enlazando...';i.innerHTML=on;check()}else{w.className='wifi-badge wifi-off';t.innerText='Sin conexión a red';i.innerHTML=off}};window.addEventListener('online',update);window.addEventListener('offline',update);const check=()=>{fetch('${targetUrl}',{mode:'no-cors',cache:'no-store'}).then(()=>location.href='${targetUrl}').catch(()=>{})};setInterval(()=>{if(navigator.onLine)check()},3000);update();</script></body></html>`;
+    await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(offlineHtml)}`);
+  };
+
+  window.webContents.on("did-fail-load", (event, errorCode) => {
+    if (errorCode === -3) return; // Ignorar cancelaciones
+    void loadOfflinePage();
+  });
+
   try {
     await window.loadURL(electronConfig.initialUrl.href);
   } catch {
-    const errorPage = `<!doctype html><meta charset="utf-8"><title>Manus POS</title><body style="font-family:sans-serif;padding:3rem"><h1>No pudimos cargar Manus POS.</h1><p>Revisa tu conexión e intenta nuevamente.</p><button onclick="location.reload()">Reintentar</button></body>`;
-    await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorPage)}`);
+    await loadOfflinePage();
   }
 };
 
