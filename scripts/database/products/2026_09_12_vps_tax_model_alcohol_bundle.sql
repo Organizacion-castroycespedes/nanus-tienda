@@ -518,7 +518,7 @@ $migration$;
 -- <<< END SECTION: migrations/V077__tax_model_extension.sql
 
 -- >>> BEGIN SECTION: migrations/V078__sale_item_taxes_multi_tax_snapshot.sql
-﻿-- V078 multi-tax snapshot enrichment
+-- V078 multi-tax snapshot enrichment
 -- Adds fiscal detail columns, order_item_taxes, and multi-tax inserts in inventory_create_sale_v2.
 -- PostgreSQL 16+
 
@@ -2534,7 +2534,7 @@ BEGIN
   SELECT id INTO v_iva19 FROM taxes WHERE tenant_id = v_tenant AND UPPER(BTRIM(name)) = 'IVA 19%' LIMIT 1;
   SELECT id INTO v_iva5 FROM taxes WHERE tenant_id = v_tenant AND UPPER(BTRIM(name)) = 'IVA 5%' LIMIT 1;
   SELECT id INTO v_icl FROM taxes WHERE tenant_id = v_tenant AND UPPER(BTRIM(name)) = UPPER('Impuesto al consumo de licores') LIMIT 1;
-  SELECT id INTO v_adv
+  SELECT t.id INTO v_adv
   FROM taxes t
   JOIN tax_types tt ON tt.id = t.tax_type_id
   WHERE t.tenant_id = v_tenant AND tt.code = 'AD_VALOREM'

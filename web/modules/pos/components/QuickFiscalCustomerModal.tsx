@@ -3,9 +3,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
-  FileCheck2,
   Search,
-  ShieldCheck,
   UserCheck,
   UserPlus,
 } from "lucide-react";
@@ -16,12 +14,9 @@ import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import {
-  applyElectronicInvoicingCustomerLookup,
   createElectronicInvoicingCustomer,
-  lookupElectronicInvoicingCustomer,
+  updateElectronicInvoicingCustomer,
   type ElectronicInvoicingCustomer,
-  type ThirdPartyLookupField,
-  type ThirdPartyLookupPreview,
 } from "../../electronic-invoicing/services/customer.service";
 
 type QuickFiscalCustomerModalProps = {
@@ -50,26 +45,6 @@ const EMPTY_FORM: FiscalForm = {
   address: "",
 };
 
-const FIELD_OPTIONS: Array<{
-  field: ThirdPartyLookupField;
-  label: string;
-}> = [
-  { field: "name", label: "Nombre" },
-  { field: "documentTypeCode", label: "Tipo doc" },
-  { field: "documentNumber", label: "Numero" },
-  { field: "verificationDigit", label: "DV" },
-  { field: "legalName", label: "Razon social" },
-  { field: "tradeName", label: "Nombre comercial" },
-  { field: "fiscalEmail", label: "Email fiscal" },
-  { field: "phone", label: "Telefono" },
-  { field: "address", label: "Direccion" },
-  { field: "countryCode", label: "Pais" },
-  { field: "departmentCode", label: "Departamento" },
-  { field: "municipalityCode", label: "Municipio" },
-  { field: "personType", label: "Persona" },
-  { field: "taxRegime", label: "Regimen" },
-  { field: "taxResponsibilities", label: "Responsabilidades" },
-];
 
 const normalizeText = (value: string | null | undefined) =>
   (value ?? "")
@@ -83,86 +58,14 @@ const trimToNull = (value: string) => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const getPreviewValue = (
-  preview: ThirdPartyLookupPreview,
-  field: ThirdPartyLookupField
-) => {
-  if (!preview.data) {
-    return null;
-  }
-  if (field === "documentNumber") {
-    return preview.data.documentNumberNormalized;
-  }
-  return preview.data[field] ?? null;
-};
-
-const formatPreviewValue = (value: unknown) => {
-  if (Array.isArray(value)) {
-    return value.length > 0 ? value.join(", ") : "-";
-  }
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-  return String(value);
-};
-
-const getCustomerVisibleValue = (
-  customer: CustomerResponse | null,
-  field: ThirdPartyLookupField
-) => {
-  if (!customer) {
-    return null;
-  }
-  if (field === "name") {
-    return customer.name;
-  }
-  if (field === "documentNumber") {
-    return customer.documentNumber;
-  }
-  if (field === "fiscalEmail") {
-    return customer.email;
-  }
-  if (field === "phone") {
-    return customer.phone;
-  }
-  if (field === "address") {
-    return customer.address;
-  }
-  return null;
-};
-
 const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm => ({
-  documentTypeCode: "31",
+  documentTypeCode: customer?.documentTypeCode ?? customer?.dianIdentificationType ?? "31",
   documentNumber: customer?.documentNumber ?? "",
   name: customer?.name ?? "",
-  fiscalEmail: customer?.email ?? "",
+  fiscalEmail: customer?.fiscalEmail ?? customer?.email ?? "",
   phone: customer?.phone ?? "",
   address: customer?.address ?? "",
 });
-
-const buildDefaultFields = (
-  preview: ThirdPartyLookupPreview,
-  customer: CustomerResponse | null
-) => {
-  if (!preview.data || preview.lookupStatus !== "FOUND") {
-    return [];
-  }
-
-  return FIELD_OPTIONS.filter(({ field }) => {
-    const previewValue = getPreviewValue(preview, field);
-    if (
-      previewValue === null ||
-      previewValue === undefined ||
-      (Array.isArray(previewValue) && previewValue.length === 0)
-    ) {
-      return false;
-    }
-    if (!customer) {
-      return true;
-    }
-    return !getCustomerVisibleValue(customer, field);
-  }).map(({ field }) => field);
-};
 
 export const QuickFiscalCustomerModal = ({
   customers,
@@ -176,12 +79,8 @@ export const QuickFiscalCustomerModal = ({
     selectedCustomerId
   );
   const [form, setForm] = useState<FiscalForm>(EMPTY_FORM);
-  const [preview, setPreview] = useState<ThirdPartyLookupPreview | null>(null);
-  const [selectedFields, setSelectedFields] = useState<ThirdPartyLookupField[]>([]);
-  const [lookupLoading, setLookupLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastApplyFields, setLastApplyFields] = useState<ThirdPartyLookupField[]>([]);
 
   const targetCustomer = useMemo(
     () => customers.find((customer) => customer.id === targetCustomerId) ?? null,
@@ -213,26 +112,17 @@ export const QuickFiscalCustomerModal = ({
       customers.find((customer) => customer.id === selectedCustomerId) ?? null;
     setTargetCustomerId(initialCustomer?.id ?? null);
     setForm(buildFormFromCustomer(initialCustomer));
-    setPreview(null);
-    setSelectedFields([]);
     setError(null);
-    setLastApplyFields([]);
   }, [customers, selectedCustomerId]);
 
   const updateForm = (field: keyof FiscalForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
-    setPreview(null);
-    setSelectedFields([]);
-    setLastApplyFields([]);
     setError(null);
   };
 
   const handlePickCustomer = (customer: CustomerResponse) => {
     setTargetCustomerId(customer.id);
     setForm(buildFormFromCustomer(customer));
-    setPreview(null);
-    setSelectedFields([]);
-    setLastApplyFields([]);
     setError(null);
   };
 
@@ -245,53 +135,8 @@ export const QuickFiscalCustomerModal = ({
     onClose();
   };
 
-  const handleLookup = async () => {
-    const documentNumber = trimToNull(form.documentNumber);
-    const documentTypeCode = trimToNull(form.documentTypeCode);
-    if (!documentTypeCode || !documentNumber) {
-      setError("Tipo y numero de documento son requeridos.");
-      return;
-    }
-
-    setLookupLoading(true);
-    setError(null);
-    setLastApplyFields([]);
-    try {
-      const nextPreview = await lookupElectronicInvoicingCustomer({
-        documentTypeCode,
-        documentNumber,
-      });
-      setPreview(nextPreview);
-      setSelectedFields(buildDefaultFields(nextPreview, targetCustomer));
-      if (nextPreview.lookupStatus !== "FOUND") {
-        setError("Mock fiscal sin datos. Registro manual disponible.");
-      }
-    } catch (lookupError) {
-      setError(
-        lookupError instanceof Error
-          ? lookupError.message
-          : "No se pudo consultar el mock fiscal."
-      );
-    } finally {
-      setLookupLoading(false);
-    }
-  };
-
-  const toggleField = (field: ThirdPartyLookupField) => {
-    setSelectedFields((current) =>
-      current.includes(field)
-        ? current.filter((item) => item !== field)
-        : [...current, field]
-    );
-  };
-
   const buildCreatePayload = () => {
-    const lookupData = preview?.lookupStatus === "FOUND" ? preview.data : null;
-    const name =
-      trimToNull(form.name) ??
-      lookupData?.legalName ??
-      lookupData?.name ??
-      "Cliente POS";
+    const name = trimToNull(form.name) ?? "Cliente POS";
     const fiscalEmail = trimToNull(form.fiscalEmail);
 
     return {
@@ -304,14 +149,13 @@ export const QuickFiscalCustomerModal = ({
       invoiceEmail: fiscalEmail,
       phone: trimToNull(form.phone),
       address: trimToNull(form.address),
-      fiscalDataSource:
-        preview?.provider === "MOCK_LOCAL" ? ("MOCK_LOCAL" as const) : ("MANUAL" as const),
+      fiscalDataSource: "MANUAL" as const,
       fiscalStatus: "PENDING" as const,
       isActive: true,
     };
   };
 
-  const handleCreateCustomer = async () => {
+  const handleSaveCustomer = async () => {
     const payload = buildCreatePayload();
     if (!payload.name.trim()) {
       setError("Nombre requerido.");
@@ -321,21 +165,42 @@ export const QuickFiscalCustomerModal = ({
     setSaveLoading(true);
     setError(null);
     try {
-      let savedCustomer = await createElectronicInvoicingCustomer(payload);
+      let savedCustomer;
+      if (targetCustomerId && targetCustomer) {
+        // Solo enviar datos que cambiaron respecto al original para evitar conflictos de identity en backend
+        const updatePayload: Record<string, any> = {};
+        
+        if (payload.name !== targetCustomer.name) {
+          updatePayload.name = payload.name;
+        }
+        if (payload.documentNumber !== (targetCustomer.documentNumber ?? null)) {
+          updatePayload.documentNumber = payload.documentNumber;
+          updatePayload.identificationNumber = payload.identificationNumber;
+        }
+        if (payload.documentTypeCode !== (targetCustomer.documentTypeCode ?? null)) {
+          updatePayload.documentTypeCode = payload.documentTypeCode;
+          updatePayload.dianIdentificationType = payload.dianIdentificationType;
+        }
+        const originalEmail = targetCustomer.fiscalEmail ?? targetCustomer.email ?? null;
+        if (payload.fiscalEmail !== originalEmail) {
+          updatePayload.fiscalEmail = payload.fiscalEmail;
+          updatePayload.invoiceEmail = payload.invoiceEmail;
+        }
+        if (payload.phone !== (targetCustomer.phone ?? null)) {
+          updatePayload.phone = payload.phone;
+        }
+        if (payload.address !== (targetCustomer.address ?? null)) {
+          updatePayload.address = payload.address;
+        }
 
-      if (preview?.lookupStatus === "FOUND" && selectedFields.length > 0) {
-        const applied = await applyElectronicInvoicingCustomerLookup(
-          savedCustomer.id,
-          {
-            documentTypeCode: payload.documentTypeCode,
-            documentNumber: payload.documentNumber,
-            fieldsToApply: selectedFields,
-          }
-        );
-        savedCustomer = applied.customer;
-        setLastApplyFields(applied.appliedFields);
+        if (Object.keys(updatePayload).length === 0) {
+          savedCustomer = targetCustomer as unknown as ElectronicInvoicingCustomer;
+        } else {
+          savedCustomer = await updateElectronicInvoicingCustomer(targetCustomerId, updatePayload);
+        }
+      } else {
+        savedCustomer = await createElectronicInvoicingCustomer(payload);
       }
-
       await onCustomerSaved(savedCustomer);
       onClose();
     } catch (saveError) {
@@ -349,49 +214,13 @@ export const QuickFiscalCustomerModal = ({
     }
   };
 
-  const handleApplyExisting = async () => {
-    if (!targetCustomer) {
-      setError("Selecciona un cliente existente.");
-      return;
-    }
-    if (!preview || preview.lookupStatus !== "FOUND") {
-      setError("Consulta mock requerida.");
-      return;
-    }
-
-    setSaveLoading(true);
-    setError(null);
-    try {
-      const applied = await applyElectronicInvoicingCustomerLookup(
-        targetCustomer.id,
-        {
-          documentTypeCode: form.documentTypeCode,
-          documentNumber: form.documentNumber,
-          fieldsToApply: selectedFields,
-        }
-      );
-      setLastApplyFields(applied.appliedFields);
-      await onCustomerSaved(applied.customer);
-      onClose();
-    } catch (applyError) {
-      setError(
-        applyError instanceof Error
-          ? applyError.message
-          : "No se pudo aplicar el lookup mock."
-      );
-    } finally {
-      setSaveLoading(false);
-    }
-  };
-
   const closeModal = () => {
-    if (lookupLoading || saveLoading) {
+    if (saveLoading) {
       return;
     }
     onClose();
   };
 
-  const previewFound = preview?.lookupStatus === "FOUND" && preview.data;
 
   return (
     <Modal
@@ -412,6 +241,7 @@ export const QuickFiscalCustomerModal = ({
               placeholder="Nombre, documento o email"
               value={customerQuery}
               onChange={(event) => setCustomerQuery(event.target.value)}
+              autoFocus
             />
             <div className="mt-3 space-y-2">
               {filteredCustomers.length === 0 ? (
@@ -451,170 +281,109 @@ export const QuickFiscalCustomerModal = ({
                 variant="outline"
                 size="sm"
                 onClick={handleUseExisting}
-                disabled={!targetCustomer || saveLoading || lookupLoading}
+                disabled={!targetCustomer || saveLoading}
               >
                 <UserCheck className="h-4 w-4" />
                 Usar cliente
               </Button>
             </div>
           </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-              <UserPlus className="h-4 w-4" />
-              Datos rapidos
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Select
-                label="Tipo doc"
-                value={form.documentTypeCode}
-                onChange={(event) => updateForm("documentTypeCode", event.target.value)}
-              >
-                <option value="31">NIT</option>
-                <option value="13">Cedula</option>
-                <option value="22">Cedula extranjeria</option>
-                <option value="47">PPT</option>
-              </Select>
-              <Input
-                label="Numero"
-                inputMode="text"
-                value={form.documentNumber}
-                onChange={(event) => updateForm("documentNumber", event.target.value)}
-              />
-              <Input
-                label="Nombre"
-                value={form.name}
-                onChange={(event) => updateForm("name", event.target.value)}
-              />
-              <Input
-                label="Email fiscal"
-                type="email"
-                value={form.fiscalEmail}
-                onChange={(event) => updateForm("fiscalEmail", event.target.value)}
-              />
-              <Input
-                label="Telefono"
-                inputMode="tel"
-                value={form.phone}
-                onChange={(event) => updateForm("phone", event.target.value)}
-              />
-              <Input
-                label="Direccion"
-                value={form.address}
-                onChange={(event) => updateForm("address", event.target.value)}
-              />
-            </div>
-          </div>
         </section>
 
         <section className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                <ShieldCheck className="h-4 w-4" />
-                Mock DIAN
+            <div className="mb-4 flex items-center justify-between gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+              <div className="flex items-center gap-2">
+                <UserPlus className="h-4 w-4" />
+                {targetCustomerId ? "Editar Cliente Fiscal" : "Nuevo Cliente Fiscal"}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                isLoading={lookupLoading}
-                onClick={() => void handleLookup()}
-                disabled={saveLoading}
-              >
-                <FileCheck2 className="h-4 w-4" />
-                Consultar
-              </Button>
+              {targetCustomerId && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs" 
+                  onClick={() => {
+                    setTargetCustomerId(null);
+                    setForm(EMPTY_FORM);
+                  }}
+                >
+                  Nuevo
+                </Button>
+              )}
             </div>
-
-            {preview ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-800 dark:text-slate-100">
-                    {preview.lookupStatus}
-                  </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {preview.provider}
-                  </span>
+            
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3 items-end">
+                <div className="flex-1">
+                  <Select
+                    label="Tipo doc"
+                    value={form.documentTypeCode}
+                    onChange={(event) => updateForm("documentTypeCode", event.target.value)}
+                  >
+                    <option value="31">NIT</option>
+                    <option value="13">Cedula</option>
+                    <option value="22">Cedula extranjeria</option>
+                    <option value="47">PPT</option>
+                  </Select>
                 </div>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {preview.statusCode}
-                </p>
+                <div className="flex-[2]">
+                  <Input
+                    label="Numero"
+                    inputMode="text"
+                    value={form.documentNumber}
+                    onChange={(event) => updateForm("documentNumber", event.target.value)}
+                  />
+                </div>
               </div>
-            ) : null}
 
-            {previewFound ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {FIELD_OPTIONS.map(({ field, label }) => {
-                  const value = getPreviewValue(preview, field);
-                  const hasValue =
-                    value !== null &&
-                    value !== undefined &&
-                    (!Array.isArray(value) || value.length > 0);
-                  if (!hasValue) {
-                    return null;
-                  }
-                  const checked = selectedFields.includes(field);
-                  return (
-                    <label
-                      key={field}
-                      className={`flex min-h-16 items-start gap-3 rounded-lg border px-3 py-2 text-sm transition ${
-                        checked
-                          ? "border-blue-300 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-500/10"
-                          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
-                        checked={checked}
-                        onChange={() => toggleField(field)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-semibold text-slate-800 dark:text-slate-100">
-                          {label}
-                        </span>
-                        <span className="block break-words text-xs text-slate-500 dark:text-slate-400">
-                          {formatPreviewValue(value)}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : null}
+              {error ? (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
+                  <span>{error}</span>
+                </div>
+              ) : null}
 
-            {lastApplyFields.length > 0 ? (
-              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-                Campos aplicados: {lastApplyFields.length}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Nombre / Razon Social"
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                  />
+                </div>
+                <Input
+                  label="Email fiscal"
+                  type="email"
+                  value={form.fiscalEmail}
+                  onChange={(event) => updateForm("fiscalEmail", event.target.value)}
+                />
+                <Input
+                  label="Telefono"
+                  inputMode="tel"
+                  value={form.phone}
+                  onChange={(event) => updateForm("phone", event.target.value)}
+                />
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Direccion"
+                    value={form.address}
+                    onChange={(event) => updateForm("address", event.target.value)}
+                  />
+                </div>
               </div>
-            ) : null}
-
-            {error ? (
-              <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
-                <span>{error}</span>
-              </div>
-            ) : null}
+            </div>
           </div>
 
           <div className="flex flex-wrap justify-end gap-3">
-            <Button variant="ghost" onClick={closeModal} disabled={lookupLoading || saveLoading}>
-              Cerrar
-            </Button>
-            <Button
-              variant="outline"
-              isLoading={saveLoading}
-              onClick={() => void handleApplyExisting()}
-              disabled={!targetCustomer || !previewFound || lookupLoading || saveLoading}
-            >
-              Aplicar a existente
+            <Button variant="ghost" onClick={closeModal} disabled={saveLoading}>
+              Cancelar
             </Button>
             <Button
               isLoading={saveLoading}
-              onClick={() => void handleCreateCustomer()}
-              disabled={lookupLoading || saveLoading}
+              onClick={() => void handleSaveCustomer()}
+              disabled={saveLoading || !form.name || !form.documentNumber}
             >
-              Crear y usar
+              {targetCustomerId ? "Actualizar y usar" : "Guardar y usar"}
             </Button>
           </div>
         </section>
