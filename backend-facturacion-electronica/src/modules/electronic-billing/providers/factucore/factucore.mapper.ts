@@ -266,7 +266,6 @@ const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   const taxSchemeId = mapFactuCoreTaxSchemeId(tax);
   return {
   taxType,
-  taxSchemeId,
   rate: tax.rate,
   taxableBase: tax.taxableBase,
   taxAmount: tax.amount,

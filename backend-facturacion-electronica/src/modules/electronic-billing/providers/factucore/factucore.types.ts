@@ -73,8 +73,6 @@ export type FactuCoreTax = {
   taxableBase: number | string;
   taxAmount: number | string;
   taxCode?: string | null;
-  taxSchemeId?: string | null;
-  taxSchemeName?: string | null;
   metadata?: Record<string, unknown>;
 };
 

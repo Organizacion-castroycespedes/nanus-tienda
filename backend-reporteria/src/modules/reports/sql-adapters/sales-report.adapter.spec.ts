@@ -76,6 +76,31 @@ test("V061 report_pos_sales: elimina overload legacy y conserva firma del adapte
   assert.match(sql, /report_pos_sales overload count expected 1/);
 });
 
+test("SalesReportAdapter.getSalesList: compara source_id text con sale UUID sin error de tipos", async () => {
+  let sql = "";
+  const adapter = new SalesReportAdapter({
+    executeFunction: async () => ({ rows: [{ saleId: "sale-1" }] }),
+  } as never, {
+    query: async (query: string) => {
+      sql = query;
+      return { rows: [] };
+    },
+  } as never);
+
+  await adapter.getSalesList(
+    {
+      userId: "40000000-0000-0000-0000-000000000001",
+      role: "SUPER_ADMIN",
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      branchId: null,
+    },
+    { tenantId: undefined, branchId: undefined },
+  );
+
+  assert.match(sql, /event\.source_id\s*=\s*s\.id::TEXT/i);
+  assert.match(sql, /\$4::TEXT\s+IS\s+NULL/i);
+});
+
 test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branch", async () => {
   const adapter = new SalesReportAdapter({
     executeFunction: async () => null,
