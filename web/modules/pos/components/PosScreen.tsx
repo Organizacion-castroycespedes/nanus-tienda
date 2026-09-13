@@ -1395,6 +1395,26 @@ export const PosScreen = () => {
           return;
         }
 
+        const isNetworkError =
+          (typeof navigator !== "undefined" && !navigator.onLine) ||
+          (error instanceof TypeError && error.message.toLowerCase().includes("fetch")) ||
+          error?.toString().toLowerCase().includes("failed to fetch");
+
+        if (isNetworkError) {
+          setCartItemsAndRef(
+            currentCart.map((item) =>
+              item.productId === productId && item.pricingRequestKey === pricingRequestKey
+                ? {
+                    ...item,
+                    pricingStatus: "PENDING",
+                    pricingError: "Precio pendiente de actualización",
+                  }
+                : item
+            )
+          );
+          return;
+        }
+
         const message = `No se pudo calcular precio/promocion para ${target.name}. ${getErrorMessage(
           error
         )}`;
@@ -1502,6 +1522,27 @@ export const PosScreen = () => {
     selectedCustomerId,
     setCartItemsAndRef,
   ]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      const currentCart = cartRef.current;
+      const pendingItems = currentCart.filter(
+        (item) => item.pricingStatus === "PENDING" || item.pricingError === "Precio pendiente de actualización"
+      );
+      if (pendingItems.length > 0) {
+        pendingItems.forEach((item) => {
+          void refreshCartItemPricing(item.productId, item.quantity, item.pricingRequestKey);
+        });
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("manus:backend-restored", handleOnline as EventListener);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("manus:backend-restored", handleOnline as EventListener);
+    };
+  }, [refreshCartItemPricing]);
 
   const setProductQuantityInCart = useCallback(
     (product: ProductResponse, quantity: number) => {
@@ -2553,7 +2594,7 @@ export const PosScreen = () => {
                             {item.pricingStatus === "PENDING" ? (
                               <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-semibold text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
                                 <Loader2 className="h-3 w-3 animate-spin" />
-                                Calculando precio
+                                {item.pricingError === "Precio pendiente de actualización" ? "Precio pendiente de actualización" : "Calculando precio"}
                               </span>
                             ) : null}
 
