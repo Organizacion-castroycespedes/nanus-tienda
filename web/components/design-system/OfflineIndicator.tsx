@@ -128,7 +128,7 @@ export function OfflineIndicator() {
     lastStateRef.current = state;
   }, [state]);
 
-  const showOverlay = hasChecked && !dismissed && (state === "OFFLINE" || state === "RECONNECTING" || state === "RESTORED");
+  const showOverlay = hasChecked && !dismissed && (state === "OFFLINE" || state === "RECONNECTING" || state === "RESTORED" || state === "SERVICE_UNAVAILABLE");
 
   return (
     <>
