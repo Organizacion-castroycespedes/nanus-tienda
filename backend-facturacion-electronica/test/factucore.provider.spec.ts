@@ -305,14 +305,26 @@ test("issueInvoice runs create then generate then sign then transmit", async () 
   const client = new RecordingFactuCoreClient();
   const { resolver } = buildResolver();
   const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
 
-  const result = await provider.issueInvoice(makeInvoiceCommand());
+  const result = await provider.issueInvoice(command);
 
   assert.deepEqual(client.calls.map((call) => call.op), ["createInvoice", "generateXml", "sign", "transmit"]);
   assert.equal(result.providerStatus, "SENT");
   assert.equal(result.normalizedStatus, "PROCESSING");
   assert.equal(result.providerDocumentId, "factu-invoice-1");
   assert.equal(client.calls[0].context.factuCoreTenantId, "factucore-tenant-a");
+  assert.deepEqual(stages, [
+    "PROVIDER_LINKED",
+    "XML_GENERATE_INTENT",
+    "XML_GENERATED",
+    "SIGN_INTENT",
+    "SIGNED",
+    "TRANSMISSION_INTENT",
+    "TRANSMITTED",
+  ]);
 });
 
 test("FactuCore provider requires an explicit external tenant mapping", async () => {

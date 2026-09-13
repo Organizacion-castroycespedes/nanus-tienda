@@ -165,6 +165,8 @@ export type ElectronicDocumentIssueBaseCommand = {
   lines: ElectronicDocumentLineInput[];
   totals: ElectronicDocumentTotals;
   metadata?: Record<string, unknown>;
+  /** Internal durability hook used by staged providers. */
+  onStage?: (stage: string, providerDocumentId?: string | null) => Promise<void>;
 };
 
 export type ElectronicCreditNoteReason = {

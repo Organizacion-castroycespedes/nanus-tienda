@@ -1202,13 +1202,25 @@ export class SaleService {
       );
       const inbox = inboxResult.rows[0];
       const failureText = `${failedRecoveryEvent.last_error ?? ""} ${inbox?.last_error_message ?? ""}`;
-      if (
-        !inbox ||
-        inbox.status !== "FAILED" ||
-        inbox.electronic_document_id ||
-        inbox.last_error_code !== "ELECTRONIC_DOCUMENT_VALIDATION_ERROR" ||
-        !failureText.includes("Sale total does not match snapshot totals")
-      ) {
+      let failureMetadata: { code?: string; reason?: string; replacementEventId?: string } = {};
+      try {
+        failureMetadata = JSON.parse(failedRecoveryEvent.last_error ?? "{}");
+      } catch {
+        failureMetadata = {};
+      }
+      const failedBeforeInboxWithStaleSnapshot =
+        !inbox &&
+        ((failureMetadata.code === "OUTBOX_EVENT_INELIGIBLE_SNAPSHOT" &&
+          failureMetadata.reason === "sale snapshot is not CONFIRMED") ||
+          (failureMetadata.code === "OUTBOX_EVENT_RECOVERED_PRE_PROVIDER" &&
+            failureMetadata.replacementEventId === replacementEvent?.event_id));
+      const failedAfterInboxWithLocalValidation =
+        Boolean(inbox) &&
+        inbox?.status === "FAILED" &&
+        !inbox?.electronic_document_id &&
+        inbox?.last_error_code === "ELECTRONIC_DOCUMENT_VALIDATION_ERROR" &&
+        failureText.includes("Sale total does not match snapshot totals");
+      if (!failedBeforeInboxWithStaleSnapshot && !failedAfterInboxWithLocalValidation) {
         throw new BadRequestException("failed event provenance is not pre-provider local-only");
       }
     }

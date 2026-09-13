@@ -104,9 +104,16 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
         throw new FactuCoreConfigurationError("issue_invoice", "FactuCore create invoice response did not include a document id");
       }
 
+      await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
+      await command.onStage?.("XML_GENERATE_INTENT", createdDocumentId);
       const generated = await this.client.generateXml(runtime, createdDocumentId);
+      await command.onStage?.("XML_GENERATED", createdDocumentId);
+      await command.onStage?.("SIGN_INTENT", createdDocumentId);
       const signed = await this.client.sign(runtime, createdDocumentId);
+      await command.onStage?.("SIGNED", createdDocumentId);
+      await command.onStage?.("TRANSMISSION_INTENT", createdDocumentId);
       const transmitted = await this.client.transmit(runtime, createdDocumentId);
+      await command.onStage?.("TRANSMITTED", createdDocumentId);
       const merged = mergeDocumentResponses(created, generated, signed, transmitted);
 
       return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
@@ -130,9 +137,16 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
         throw new FactuCoreConfigurationError("issue_credit_note", "FactuCore create credit note response did not include a document id");
       }
 
+      await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
+      await command.onStage?.("XML_GENERATE_INTENT", createdDocumentId);
       const generated = await this.client.generateXml(runtime, createdDocumentId);
+      await command.onStage?.("XML_GENERATED", createdDocumentId);
+      await command.onStage?.("SIGN_INTENT", createdDocumentId);
       const signed = await this.client.sign(runtime, createdDocumentId);
+      await command.onStage?.("SIGNED", createdDocumentId);
+      await command.onStage?.("TRANSMISSION_INTENT", createdDocumentId);
       const transmitted = await this.client.transmit(runtime, createdDocumentId);
+      await command.onStage?.("TRANSMITTED", createdDocumentId);
       const merged = mergeDocumentResponses(created, generated, signed, transmitted);
 
       return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");

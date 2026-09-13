@@ -69,6 +69,11 @@ export type SafeStatusReconciliationResult = ProcessingResult & {
   outcome: SafeStatusReconciliationOutcome;
 };
 
+export type AcceptedProviderDataRecoveryResult = ProcessingResult & {
+  recovered: boolean;
+  readOperations: string[];
+};
+
 export type StaleRecoveryDisposition =
   | "NOT_STALE"
   | "TERMINAL"
@@ -328,6 +333,106 @@ export class ElectronicBillingProcessingService {
     return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
       this.reconcileExistingProviderStatusUnlocked(tenantId, electronicDocumentId),
     );
+  }
+
+  /**
+   * Read-only provider recovery for an already accepted document. It never
+   * calls create, generate, sign, transmit, or retry. Existing fiscal values
+   * are immutable unless the provider returns the same value.
+   */
+  async recoverAcceptedProviderData(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<AcceptedProviderDataRecoveryResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, async () => {
+      const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+      if (!aggregate.document) {
+        throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+      }
+      if (aggregate.document.status !== "ACCEPTED") {
+        throw new ElectronicDocumentNotProcessableError("Only accepted electronic documents can recover provider data");
+      }
+
+      const resolved = await this.providerResolver.resolve({
+        tenantId,
+        providerConfigId: aggregate.document.provider_config_id,
+      });
+      const readOperations = ["GET_STATUS"];
+      const providerResult = await resolved.provider.getDocumentStatus({
+        context: resolved.context,
+        documentId: aggregate.document.id,
+        providerDocumentId: aggregate.document.provider_document_id,
+        externalReference: aggregate.document.external_reference,
+        metadata: aggregate.document.metadata,
+      });
+      if (providerResult.normalizedStatus !== "ACCEPTED") {
+        throw new ElectronicDocumentNotProcessableError("Provider did not confirm accepted status during recovery");
+      }
+
+      const nextCufe = providerResult.cufe ?? null;
+      if (aggregate.document.cufe && nextCufe && aggregate.document.cufe !== nextCufe) {
+        throw new ElectronicDocumentProviderResultConflictError();
+      }
+
+      let recoveredMetadata = aggregate.document.metadata;
+      if (resolved.provider.downloadAttachment) {
+        try {
+          const xml = await resolved.provider.downloadAttachment({
+            context: resolved.context,
+            documentId: aggregate.document.id,
+            providerDocumentId: providerResult.providerDocumentId ?? aggregate.document.provider_document_id,
+            externalReference: aggregate.document.external_reference,
+            attachmentType: "XML",
+            metadata: aggregate.document.metadata,
+          });
+          readOperations.push("GET_XML");
+          const xmlText = xml.content ? Buffer.from(xml.content).toString("utf8") : "";
+          const qrMatch = /<(?:[\w-]+:)?QRCode[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?QRCode>/i.exec(xmlText);
+          const qrPayload = qrMatch?.[1]?.trim() || null;
+          recoveredMetadata = {
+            ...aggregate.document.metadata,
+            providerResponse: {
+              ...(aggregate.document.metadata.providerResponse && typeof aggregate.document.metadata.providerResponse === "object"
+                ? aggregate.document.metadata.providerResponse
+                : {}),
+              recoverySource: "FACTUCORE_RECOVERY",
+              ...(qrPayload ? { qrField: "sts:QRCode", qrPayload } : {}),
+              xmlReference: {
+                fileName: xml.fileName,
+                providerAttachmentId: xml.providerAttachmentId,
+                storageProvider: xml.storageProvider,
+              },
+            },
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "XML recovery failed";
+          if (!/not found|attachment/i.test(message)) {
+            throw error;
+          }
+        }
+      }
+
+      await this.documentRepository.updateProviderIdentity(tenantId, aggregate.document.id, {
+        ...(providerResult.providerDocumentId ? { providerDocumentId: providerResult.providerDocumentId } : {}),
+        ...(providerResult.fullNumber ? { fullNumber: providerResult.fullNumber } : {}),
+        ...(providerResult.prefix ? { prefix: providerResult.prefix } : {}),
+        ...(providerResult.number !== null && providerResult.number !== undefined ? { number: providerResult.number } : {}),
+        ...(nextCufe ? { cufe: nextCufe } : {}),
+        ...(providerResult.acceptedAt ? { acceptedAt: providerResult.acceptedAt } : {}),
+        providerStatus: providerResult.providerStatus,
+        providerStatusDetail: providerResult.providerStatusDetail ?? null,
+        metadata: recoveredMetadata,
+      });
+      const refreshed = await this.loadAggregate(tenantId, electronicDocumentId);
+      return {
+        ...refreshed,
+        providerResult,
+        idempotent: true,
+        retryable: false,
+        recovered: true,
+        readOperations,
+      };
+    });
   }
 
   async recoverStaleDocument(
@@ -798,8 +903,13 @@ export class ElectronicBillingProcessingService {
       "PRE_PROVIDER_CREATE",
       "PROVIDER_CREATE_INTENT",
       "PROVIDER_LINKED",
+      "XML_GENERATE_INTENT",
+      "XML_GENERATED",
+      "SIGN_INTENT",
+      "SIGNED",
       "PRE_TRANSMIT",
       "TRANSMISSION_INTENT",
+      "TRANSMITTED",
       "RECONCILIATION_REQUIRED",
       "COMPLETED",
       "UNKNOWN",
@@ -810,6 +920,7 @@ export class ElectronicBillingProcessingService {
     tenantId: string,
     document: ElectronicDocumentRecord,
     stage: ElectronicBillingProcessingStage,
+    providerDocumentId?: string | null,
   ) {
     const client = await this.db.getClient();
     try {
@@ -818,6 +929,7 @@ export class ElectronicBillingProcessingService {
         tenantId,
         document.id,
         {
+          ...(providerDocumentId ? { providerDocumentId } : {}),
           processingStage: stage,
           processingStageUpdatedAt: new Date(),
           metadata: {
@@ -923,11 +1035,23 @@ export class ElectronicBillingProcessingService {
   ): Promise<ElectronicBillingProviderDocumentResult> {
     if (aggregate.document.document_type === "INVOICE") {
       const command = this.buildInvoiceCommand(aggregate, resolved);
+      command.onStage = (stage, providerDocumentId) => this.persistProcessingStage(
+        aggregate.document.tenant_id,
+        aggregate.document,
+        stage as ElectronicBillingProcessingStage,
+        providerDocumentId,
+      );
       return resolved.provider.issueInvoice(command);
     }
 
     if (aggregate.document.document_type === "CREDIT_NOTE") {
       const command = await this.buildCreditNoteCommand(aggregate, resolved);
+      command.onStage = (stage, providerDocumentId) => this.persistProcessingStage(
+        aggregate.document.tenant_id,
+        aggregate.document,
+        stage as ElectronicBillingProcessingStage,
+        providerDocumentId,
+      );
       return resolved.provider.issueCreditNote(command);
     }
 
