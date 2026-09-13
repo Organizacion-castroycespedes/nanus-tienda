@@ -59,7 +59,7 @@ const accessCards = [
 
 const ReporteriaPage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const initialRange = useMemo(() => getTodayRange(), []);
   const {
     canViewReports,

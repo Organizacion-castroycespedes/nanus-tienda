@@ -35,7 +35,7 @@ const emptyForm: CreateCashMovementPayload = {
 const CashMovementsPage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const [branchFilter, setBranchFilter] = useState("");
   const [registerFilter, setRegisterFilter] = useState("");
   const [directionFilter, setDirectionFilter] = useState("all");

@@ -133,7 +133,8 @@ const OrdersPage = () => {
   const canUseAllCashScope =
     role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
   const isGlobalRole = role === "SUPER_ADMIN";
-  const tenantSlug = authUser?.tenantId ?? currentTenant ?? "default";
+  const tenantSlug =
+    authUser?.tenantSlug ?? authUser?.tenantId ?? currentTenant ?? "default";
 
   useAutoClearState(toastMessage, setToastMessage);
 

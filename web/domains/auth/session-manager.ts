@@ -8,11 +8,17 @@ import {
   setBootstrapped,
   setRole,
   setTenantId,
+  setTenantSlug,
   setUser,
 } from "../../store/authSlice";
 import { ApiError, requestJson } from "../../lib/request";
 import { decodeTokenPayload, getTokenExpiry } from "./jwt";
-import { clearRefreshToken, getStoredRefreshToken, persistRefreshToken } from "./session";
+import {
+  clearRefreshToken,
+  getStoredRefreshToken,
+  hasPersistedRefreshToken,
+  persistRefreshToken,
+} from "./session";
 import type { AuthProfile, AuthTokens, AuthUser } from "./types";
 import type { MenuResponse, PermissionsResponse } from "../menu/types";
 import { clearMenuCache, persistMenuCache, readMenuCache } from "./menu-cache";
@@ -41,14 +47,16 @@ const applyTenantToMenu = (
 
 const buildUserFromToken = (accessToken: string, fallbackEmail = ""): AuthUser => {
   const tokenPayload = decodeTokenPayload(accessToken);
-  const tenantSlug = tokenPayload?.tenant_id ?? "default";
+  const tenantId = tokenPayload?.tenant_id ?? "default";
+  const tenantSlug = tokenPayload?.tenant_slug ?? tenantId;
   const role = tokenPayload?.roles?.[0] ?? "";
   return {
     id: tokenPayload?.sub ?? "",
     name: "",
     email: fallbackEmail,
     role,
-    tenantId: tenantSlug,
+    tenantId,
+    tenantSlug,
   };
 };
 
@@ -62,6 +70,7 @@ const applyProfileToState = (profile: AuthProfile, roleFallback: string) => {
     email: profile.email,
     role: profile.role?.nombre ?? roleFallback,
     tenantId: profile.tenant.id,
+    tenantSlug: profile.tenant.slug,
     tenantName: profile.tenant.nombre,
     branchId: profile.branch?.id ?? null,
     branchName: profile.branch?.nombre ?? null,
@@ -69,6 +78,7 @@ const applyProfileToState = (profile: AuthProfile, roleFallback: string) => {
   };
   store.dispatch(setUser(nextUser));
   store.dispatch(setTenantId(profile.tenant.id));
+  store.dispatch(setTenantSlug(profile.tenant.slug));
 };
 
 export const scheduleTokenRefresh = (accessToken: string | null) => {
@@ -102,10 +112,10 @@ export const clearTokenRefreshSchedule = () => {
   }
 };
 
-const rehydrateMenuAndPermissions = async (accessToken: string, tenantId: string) => {
+const rehydrateMenuAndPermissions = async (accessToken: string, tenantId: string, tenantSlug: string) => {
   const cachedMenu = await readMenuCache(accessToken, tenantId);
   if (cachedMenu) {
-    const resolvedMenu = applyTenantToMenu(cachedMenu, tenantId);
+    const resolvedMenu = applyTenantToMenu(cachedMenu, tenantSlug);
     store.dispatch(
       setMenuCache({
         tenantId,
@@ -125,7 +135,7 @@ const rehydrateMenuAndPermissions = async (accessToken: string, tenantId: string
         headers: getAuthHeader(accessToken),
       }),
     ]);
-    const resolvedMenu = applyTenantToMenu(menu.items, tenantId);
+    const resolvedMenu = applyTenantToMenu(menu.items, tenantSlug);
     store.dispatch(
       setMenuCache({
         tenantId,
@@ -148,8 +158,10 @@ export const rehydrateSession = async (accessToken: string, fallbackEmail?: stri
   const tokenPayload = decodeTokenPayload(accessToken);
   const role = tokenPayload?.roles?.[0] ?? "";
   const tenantId = tokenPayload?.tenant_id ?? "default";
+  const tenantSlug = tokenPayload?.tenant_slug ?? tenantId;
   store.dispatch(setActiveTenant(tenantId));
   store.dispatch(setTenantId(tenantId));
+  store.dispatch(setTenantSlug(tenantSlug));
   store.dispatch(setRole(role || null));
 
   const baseUser = buildUserFromToken(accessToken, fallbackEmail);
@@ -164,7 +176,7 @@ export const rehydrateSession = async (accessToken: string, fallbackEmail?: stri
     // keep base user if profile fetch fails
   }
 
-  await rehydrateMenuAndPermissions(accessToken, tenantId);
+  await rehydrateMenuAndPermissions(accessToken, tenantId, tenantSlug);
 };
 
 export const refreshSession = async (): Promise<string | null> => {
@@ -191,7 +203,10 @@ export const refreshSession = async (): Promise<string | null> => {
       throw new Error("Missing access token");
     }
     if (tokens.refreshToken) {
-      persistRefreshToken(tokens.refreshToken);
+      // Only write to disk if the previous refresh was already persisted (Recordarme).
+      persistRefreshToken(tokens.refreshToken, {
+        persist: hasPersistedRefreshToken(),
+      });
     }
     const tokenExpiry = getTokenExpiry(tokens.accessToken);
     store.dispatch(setAccessToken({ accessToken: tokens.accessToken, tokenExpiry }));
@@ -200,14 +215,19 @@ export const refreshSession = async (): Promise<string | null> => {
     return tokens.accessToken;
   })()
     .catch((error) => {
+      // Logout only when refresh is rejected as unauthorized.
+      // Network / 5xx must not wipe a still-valid refresh token.
       if (error instanceof ApiError && error.status === 401) {
         clearSession({ reason: "session-ended" });
       } else {
+        // Network / 5xx: keep session if already hydrated; otherwise mark error
+        // without wiping a still-valid refresh token.
         const currentAuth = store.getState().auth;
         if (currentAuth.accessToken || currentAuth.user) {
           store.dispatch(setAuthStatus("authenticated"));
         } else {
-          store.dispatch(setAuthStatus("anonymous"));
+          store.dispatch(setAuthStatus("error"));
+          clearTokenRefreshSchedule();
         }
       }
       return null;

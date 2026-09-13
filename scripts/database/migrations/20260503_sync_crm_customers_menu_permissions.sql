@@ -3,7 +3,7 @@ BEGIN;
 WITH default_tenant AS (
   SELECT id
   FROM public.tenants
-  WHERE slug = 'default'
+  WHERE id = '00000000-0000-0000-0000-000000000001'
   LIMIT 1
 )
 INSERT INTO public.menu_items (

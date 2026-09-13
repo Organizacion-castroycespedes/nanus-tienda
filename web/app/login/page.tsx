@@ -13,6 +13,7 @@ import { isQaLoginEnabled } from "../../domains/auth/login-qa";
 import {
   startSessionFromLogin,
 } from "../../domains/auth/session-manager";
+import { resolveTenantSlug } from "../../domains/auth/tenant-path";
 import { hasRefreshTokenStorage } from "../../domains/auth/session";
 import { ApiError } from "../../lib/request";
 import { useAutoClearState } from "../../lib/useAutoClearState";
@@ -41,6 +42,7 @@ const LoginPageContent = () => {
   const dispatch = useAppDispatch();
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const tenantId = useAppSelector((state) => state.auth.tenantId);
+  const tenantSlug = useAppSelector((state) => state.auth.tenantSlug);
   const emailInputRef = useRef<HTMLInputElement>(null);
   useAutoClearState(status, setStatus, 12000);
 
@@ -82,10 +84,10 @@ const LoginPageContent = () => {
     if (authStatus !== "authenticated") {
       return;
     }
-    const targetTenant = tenantId ?? "default";
+    const targetTenant = resolveTenantSlug({ tenantSlug, tenantId });
     setStatusWarning("Ya existe una sesion activa en este navegador.");
     router.replace(`/${targetTenant}/dashboard`);
-  }, [authStatus, router, tenantId, setStatusWarning]);
+  }, [authStatus, router, tenantId, tenantSlug, setStatusWarning]);
 
   const handleSocialLogin = (provider: "google" | "facebook") => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
@@ -116,13 +118,17 @@ const LoginPageContent = () => {
     try {
       const tokens = await login({ email, password });
       const tokenPayload = decodeTokenPayload(tokens.accessToken);
-      const tenantSlug = tokenPayload?.tenant_id ?? "default";
+      const nextTenantId = tokenPayload?.tenant_id ?? "default";
+      const nextTenantSlug = resolveTenantSlug({
+        tenantSlug: tokenPayload?.tenant_slug,
+        tenantId: nextTenantId,
+      });
       await startSessionFromLogin(tokens, {
         fallbackEmail: email,
         persistRefresh: rememberMe && hasRefreshTokenStorage(),
       });
       setStatusSuccess("Inicio de sesion exitoso. Redirigiendo...");
-      router.push(`/${tenantSlug}/dashboard`);
+      router.push(`/${nextTenantSlug}/dashboard`);
     } catch (requestError) {
       if (
         requestError instanceof ApiError &&
@@ -153,7 +159,11 @@ const LoginPageContent = () => {
     try {
       const tokens = await replaceActiveSession(pendingCredentials);
       const tokenPayload = decodeTokenPayload(tokens.accessToken);
-      const tenantSlug = tokenPayload?.tenant_id ?? "default";
+      const nextTenantId = tokenPayload?.tenant_id ?? "default";
+      const nextTenantSlug = resolveTenantSlug({
+        tenantSlug: tokenPayload?.tenant_slug,
+        tenantId: nextTenantId,
+      });
       await startSessionFromLogin(tokens, {
         fallbackEmail: pendingCredentials.email,
         persistRefresh: rememberMe && hasRefreshTokenStorage(),
@@ -161,7 +171,7 @@ const LoginPageContent = () => {
       setShowSessionConflict(false);
       setPendingCredentials(null);
       setStatusSuccess("Sesion anterior cerrada. Redirigiendo...");
-      router.push(`/${tenantSlug}/dashboard`);
+      router.push(`/${nextTenantSlug}/dashboard`);
     } catch {
       dispatch(setAuthStatus("error"));
       setStatusError("No fue posible iniciar sesion. Intenta nuevamente.");
