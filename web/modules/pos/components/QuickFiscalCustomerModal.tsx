@@ -15,7 +15,7 @@ import { Select } from "../../../components/design-system/Select";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import {
   createElectronicInvoicingCustomer,
-  lookupElectronicInvoicingCustomer,
+  updateElectronicInvoicingCustomer,
   type ElectronicInvoicingCustomer,
 } from "../../electronic-invoicing/services/customer.service";
 
@@ -59,10 +59,10 @@ const trimToNull = (value: string) => {
 };
 
 const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm => ({
-  documentTypeCode: "31",
+  documentTypeCode: customer?.documentTypeCode ?? customer?.dianIdentificationType ?? "31",
   documentNumber: customer?.documentNumber ?? "",
   name: customer?.name ?? "",
-  fiscalEmail: customer?.email ?? "",
+  fiscalEmail: customer?.fiscalEmail ?? customer?.email ?? "",
   phone: customer?.phone ?? "",
   address: customer?.address ?? "",
 });
@@ -79,10 +79,8 @@ export const QuickFiscalCustomerModal = ({
     selectedCustomerId
   );
   const [form, setForm] = useState<FiscalForm>(EMPTY_FORM);
-  const [lookupLoading, setLookupLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isMockLocal, setIsMockLocal] = useState(false);
 
   const targetCustomer = useMemo(
     () => customers.find((customer) => customer.id === targetCustomerId) ?? null,
@@ -115,12 +113,10 @@ export const QuickFiscalCustomerModal = ({
     setTargetCustomerId(initialCustomer?.id ?? null);
     setForm(buildFormFromCustomer(initialCustomer));
     setError(null);
-    setIsMockLocal(false);
   }, [customers, selectedCustomerId]);
 
   const updateForm = (field: keyof FiscalForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
-    setTargetCustomerId(null);
     setError(null);
   };
 
@@ -128,7 +124,6 @@ export const QuickFiscalCustomerModal = ({
     setTargetCustomerId(customer.id);
     setForm(buildFormFromCustomer(customer));
     setError(null);
-    setIsMockLocal(false);
   };
 
   const handleUseExisting = () => {
@@ -138,45 +133,6 @@ export const QuickFiscalCustomerModal = ({
     }
     onCustomerSelected(targetCustomer);
     onClose();
-  };
-
-  const handleLookup = async () => {
-    const documentNumber = trimToNull(form.documentNumber);
-    const documentTypeCode = trimToNull(form.documentTypeCode);
-    if (!documentTypeCode || !documentNumber) {
-      setError("Tipo y número de documento son requeridos.");
-      return;
-    }
-
-    setLookupLoading(true);
-    setError(null);
-    try {
-      const nextPreview = await lookupElectronicInvoicingCustomer({
-        documentTypeCode,
-        documentNumber,
-      });
-      setIsMockLocal(nextPreview.provider === "MOCK_LOCAL");
-
-      if (nextPreview.lookupStatus === "FOUND" && nextPreview.data) {
-        setForm((prev) => ({
-          ...prev,
-          name: nextPreview.data!.legalName || nextPreview.data!.name || prev.name,
-          fiscalEmail: nextPreview.data!.fiscalEmail || nextPreview.data!.invoiceEmail || prev.fiscalEmail,
-          phone: nextPreview.data!.phone || prev.phone,
-          address: nextPreview.data!.address || prev.address,
-        }));
-      } else {
-        setError("Consulta DIAN sin datos. Puedes ingresar los datos manualmente.");
-      }
-    } catch (lookupError) {
-      setError(
-        lookupError instanceof Error
-          ? lookupError.message
-          : "No se pudo realizar la consulta a la DIAN."
-      );
-    } finally {
-      setLookupLoading(false);
-    }
   };
 
   const buildCreatePayload = () => {
@@ -193,14 +149,13 @@ export const QuickFiscalCustomerModal = ({
       invoiceEmail: fiscalEmail,
       phone: trimToNull(form.phone),
       address: trimToNull(form.address),
-      fiscalDataSource:
-        isMockLocal ? ("MOCK_LOCAL" as const) : ("MANUAL" as const),
+      fiscalDataSource: "MANUAL" as const,
       fiscalStatus: "PENDING" as const,
       isActive: true,
     };
   };
 
-  const handleCreateCustomer = async () => {
+  const handleSaveCustomer = async () => {
     const payload = buildCreatePayload();
     if (!payload.name.trim()) {
       setError("Nombre requerido.");
@@ -210,7 +165,42 @@ export const QuickFiscalCustomerModal = ({
     setSaveLoading(true);
     setError(null);
     try {
-      const savedCustomer = await createElectronicInvoicingCustomer(payload);
+      let savedCustomer;
+      if (targetCustomerId && targetCustomer) {
+        // Solo enviar datos que cambiaron respecto al original para evitar conflictos de identity en backend
+        const updatePayload: Record<string, any> = {};
+        
+        if (payload.name !== targetCustomer.name) {
+          updatePayload.name = payload.name;
+        }
+        if (payload.documentNumber !== (targetCustomer.documentNumber ?? null)) {
+          updatePayload.documentNumber = payload.documentNumber;
+          updatePayload.identificationNumber = payload.identificationNumber;
+        }
+        if (payload.documentTypeCode !== (targetCustomer.documentTypeCode ?? null)) {
+          updatePayload.documentTypeCode = payload.documentTypeCode;
+          updatePayload.dianIdentificationType = payload.dianIdentificationType;
+        }
+        const originalEmail = targetCustomer.fiscalEmail ?? targetCustomer.email ?? null;
+        if (payload.fiscalEmail !== originalEmail) {
+          updatePayload.fiscalEmail = payload.fiscalEmail;
+          updatePayload.invoiceEmail = payload.invoiceEmail;
+        }
+        if (payload.phone !== (targetCustomer.phone ?? null)) {
+          updatePayload.phone = payload.phone;
+        }
+        if (payload.address !== (targetCustomer.address ?? null)) {
+          updatePayload.address = payload.address;
+        }
+
+        if (Object.keys(updatePayload).length === 0) {
+          savedCustomer = targetCustomer;
+        } else {
+          savedCustomer = await updateElectronicInvoicingCustomer(targetCustomerId, updatePayload);
+        }
+      } else {
+        savedCustomer = await createElectronicInvoicingCustomer(payload);
+      }
       await onCustomerSaved(savedCustomer);
       onClose();
     } catch (saveError) {
@@ -225,7 +215,7 @@ export const QuickFiscalCustomerModal = ({
   };
 
   const closeModal = () => {
-    if (lookupLoading || saveLoading) {
+    if (saveLoading) {
       return;
     }
     onClose();
@@ -291,7 +281,7 @@ export const QuickFiscalCustomerModal = ({
                 variant="outline"
                 size="sm"
                 onClick={handleUseExisting}
-                disabled={!targetCustomer || saveLoading || lookupLoading}
+                disabled={!targetCustomer || saveLoading}
               >
                 <UserCheck className="h-4 w-4" />
                 Usar cliente
@@ -302,9 +292,24 @@ export const QuickFiscalCustomerModal = ({
 
         <section className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
-            <div className="mb-4 flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
-              <UserPlus className="h-4 w-4" />
-              Nuevo Cliente Fiscal
+            <div className="mb-4 flex items-center justify-between gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+              <div className="flex items-center gap-2">
+                <UserPlus className="h-4 w-4" />
+                {targetCustomerId ? "Editar Cliente Fiscal" : "Nuevo Cliente Fiscal"}
+              </div>
+              {targetCustomerId && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs" 
+                  onClick={() => {
+                    setTargetCustomerId(null);
+                    setForm(EMPTY_FORM);
+                  }}
+                >
+                  Nuevo
+                </Button>
+              )}
             </div>
             
             <div className="space-y-4">
@@ -329,16 +334,6 @@ export const QuickFiscalCustomerModal = ({
                     onChange={(event) => updateForm("documentNumber", event.target.value)}
                   />
                 </div>
-                <Button
-                  variant="outline"
-                  isLoading={lookupLoading}
-                  onClick={() => void handleLookup()}
-                  disabled={saveLoading || !form.documentNumber}
-                  className="mb-[2px] h-[42px]"
-                >
-                  <Search className="mr-2 h-4 w-4" />
-                  Consultar DIAN
-                </Button>
               </div>
 
               {error ? (
@@ -380,15 +375,15 @@ export const QuickFiscalCustomerModal = ({
           </div>
 
           <div className="flex flex-wrap justify-end gap-3">
-            <Button variant="ghost" onClick={closeModal} disabled={lookupLoading || saveLoading}>
+            <Button variant="ghost" onClick={closeModal} disabled={saveLoading}>
               Cancelar
             </Button>
             <Button
               isLoading={saveLoading}
-              onClick={() => void handleCreateCustomer()}
-              disabled={lookupLoading || saveLoading || !form.name || !form.documentNumber}
+              onClick={() => void handleSaveCustomer()}
+              disabled={saveLoading || !form.name || !form.documentNumber}
             >
-              Guardar y usar
+              {targetCustomerId ? "Actualizar y usar" : "Guardar y usar"}
             </Button>
           </div>
         </section>
