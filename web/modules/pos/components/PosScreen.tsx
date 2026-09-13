@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CheckCircle2,
   ChevronDown,
   CreditCard,
   Grid3X3,
@@ -532,6 +533,8 @@ export const PosScreen = () => {
   const setProductViewMode = (mode: ProductViewMode) => updateFilters({ productViewMode: mode });
   const [productToolsOpen, setProductToolsOpen] = useState(false);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -907,6 +910,24 @@ export const PosScreen = () => {
       ) ?? null,
     [customers]
   );
+
+  useEffect(() => {
+    if (!customerDropdownOpen) {
+      setCustomerSearchQuery(selectedCustomer?.name || "");
+    }
+  }, [selectedCustomer, customerDropdownOpen]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchQuery.trim()) {
+      return customers;
+    }
+    const lower = normalizeText(customerSearchQuery);
+    return customers.filter((c) => {
+      const matchName = normalizeText(c.name).includes(lower);
+      const matchDoc = c.documentNumber ? c.documentNumber.includes(lower) : false;
+      return matchName || matchDoc;
+    });
+  }, [customers, customerSearchQuery]);
 
   const handleSelectPosCustomer = useCallback(
     (customer: CustomerResponse) => {
@@ -2718,7 +2739,7 @@ export const PosScreen = () => {
         {productToolsOpen ? (
           <Modal
             title="Panel operativo POS"
-            description="Ajustar filtros y cambiar cliente sin reservar espacio permanente."
+            description="Ajustar filtros de producto sin reservar espacio permanente."
             size="xl"
             onClose={() => setProductToolsOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
@@ -2814,55 +2835,7 @@ export const PosScreen = () => {
                 ) : null}
               </section>
 
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <UserRound className="h-4 w-4" />
-                  Cliente de la venta
-                </div>
-                <Select
-                  label="Cliente"
-                  value={selectedCustomerId ?? ""}
-                  onChange={(event) => setSelectedCustomerId(event.target.value || null)}
-                >
-                  {customers.length === 0 ? (
-                    <option value="">No hay clientes disponibles</option>
-                  ) : null}
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </Select>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setQuickFiscalCustomerOpen(true)}
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    Cliente fiscal
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleUseFinalConsumer}
-                    disabled={!finalConsumerCustomer}
-                  >
-                    <UserRound className="h-4 w-4" />
-                    Consumidor Final
-                  </Button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                    {selectedCustomer?.name ?? "Consumidor final"}
-                  </span>
-                  {hasProductCatalogFilters ? (
-                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                      {activeProductFilterLabels.length} filtro(s) activos
-                    </span>
-                  ) : null}
-                </div>
-              </section>
+
             </div>
           </Modal>
         ) : null}
@@ -3439,15 +3412,6 @@ export const PosScreen = () => {
         </button>
       ) : null}
 
-      {quickFiscalCustomerOpen ? (
-        <QuickFiscalCustomerModal
-          customers={customers}
-          selectedCustomerId={selectedCustomerId}
-          onClose={() => setQuickFiscalCustomerOpen(false)}
-          onCustomerSelected={handleSelectPosCustomer}
-          onCustomerSaved={handleFiscalCustomerSaved}
-        />
-      ) : null}
 
       {/* Payment Modal */}
       {paymentModalOpen ? (
@@ -3459,16 +3423,111 @@ export const PosScreen = () => {
         >
           <div className="flex max-h-[calc(90vh-120px)] flex-col">
             <div className="mb-5 flex-shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Cliente
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
-                    {selectedCustomer?.name ?? "Consumidor final"}
-                  </p>
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    <UserRound className="h-4 w-4" />
+                    Cliente de la venta
+                  </div>
+                  <div className="relative z-50">
+                    <div className="relative flex items-center">
+                      <input
+                        placeholder="Buscar por nombre o doc..."
+                        value={customerSearchQuery}
+                        onChange={(e) => {
+                          setCustomerSearchQuery(e.target.value);
+                          setCustomerDropdownOpen(true);
+                        }}
+                        onFocus={() => {
+                          setCustomerSearchQuery("");
+                          setCustomerDropdownOpen(true);
+                        }}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            setCustomerDropdownOpen(false);
+                          }, 200);
+                        }}
+                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <Search className="h-4 w-4" />
+                      </div>
+                      {customerSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomerSearchQuery("");
+                            setCustomerDropdownOpen(true);
+                          }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {customerDropdownOpen && (
+                      <div className="absolute left-0 top-full mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+                        {filteredCustomers.length === 0 ? (
+                          <div className="px-3 py-4 text-center text-sm text-slate-500">
+                            No hay clientes encontrados
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            {filteredCustomers.map((customer) => {
+                              const isSelected = selectedCustomerId === customer.id;
+                              return (
+                                <button
+                                  key={customer.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCustomerId(customer.id);
+                                    setCustomerDropdownOpen(false);
+                                  }}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                                    isSelected
+                                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300 font-medium"
+                                      : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700/50"
+                                  }`}
+                                >
+                                  <span className="truncate">
+                                    {customer.name}
+                                    {customer.documentNumber && (
+                                      <span className="ml-1 text-xs opacity-70">
+                                        ({customer.documentNumber})
+                                      </span>
+                                    )}
+                                  </span>
+                                  {isSelected && <CheckCircle2 className="h-4 w-4 flex-shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuickFiscalCustomerOpen(true)}
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Cliente fiscal
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleUseFinalConsumer}
+                      disabled={!finalConsumerCustomer}
+                    >
+                      <UserRound className="h-4 w-4" />
+                      Consumidor Final
+                    </Button>
+                  </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right border-t border-slate-200 pt-3 dark:border-slate-700 md:border-t-0 md:pt-0">
                   <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Total
                   </p>
@@ -3641,6 +3700,16 @@ export const PosScreen = () => {
             </div>
           </div>
         </Modal>
+      ) : null}
+
+      {quickFiscalCustomerOpen ? (
+        <QuickFiscalCustomerModal
+          customers={customers}
+          selectedCustomerId={selectedCustomerId}
+          onClose={() => setQuickFiscalCustomerOpen(false)}
+          onCustomerSelected={handleSelectPosCustomer}
+          onCustomerSaved={handleFiscalCustomerSaved}
+        />
       ) : null}
     </div>
   );

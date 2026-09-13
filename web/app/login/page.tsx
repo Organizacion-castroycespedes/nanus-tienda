@@ -59,14 +59,12 @@ const LoginPageContent = () => {
   }, []);
 
 
-  const setStatusMessage = (message: string, variant: ToastVariant) => {
+  const setStatusMessage = useCallback((message: string, variant: ToastVariant) => {
     setStatus({ message, variant });
-  };
-  const setStatusSuccess = (message: string) =>
-    setStatusMessage(message, "success");
-  const setStatusError = (message: string) => setStatusMessage(message, "error");
-  const setStatusWarning = (message: string) =>
-    setStatusMessage(message, "warning");
+  }, []);
+  const setStatusSuccess = useCallback((message: string) => setStatusMessage(message, "success"), [setStatusMessage]);
+  const setStatusError = useCallback((message: string) => setStatusMessage(message, "error"), [setStatusMessage]);
+  const setStatusWarning = useCallback((message: string) => setStatusMessage(message, "warning"), [setStatusMessage]);
 
   useEffect(() => {
     if (status) {
@@ -77,7 +75,7 @@ const LoginPageContent = () => {
         "Tu sesion expiro o fue cerrada en otro dispositivo. Inicia sesion nuevamente."
       );
     }
-  }, [searchParams, status]);
+  }, [searchParams, status, setStatusWarning]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
@@ -86,7 +84,7 @@ const LoginPageContent = () => {
     const targetTenant = tenantId ?? "default";
     setStatusWarning("Ya existe una sesion activa en este navegador.");
     router.replace(`/${targetTenant}/dashboard`);
-  }, [authStatus, router, tenantId]);
+  }, [authStatus, router, tenantId, setStatusWarning]);
 
   const handleSocialLogin = (provider: "google" | "facebook") => {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
@@ -169,13 +167,13 @@ const LoginPageContent = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [dispatch, pendingCredentials, rememberMe, router]);
+  }, [dispatch, pendingCredentials, rememberMe, router, setStatusError, setStatusSuccess]);
 
   const handleCancelForceLogin = useCallback(() => {
     setShowSessionConflict(false);
     setPendingCredentials(null);
     setStatusWarning("Inicio de sesion cancelado.");
-  }, []);
+  }, [setStatusWarning]);
 
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
