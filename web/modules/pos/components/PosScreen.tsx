@@ -1531,7 +1531,7 @@ export const PosScreen = () => {
       );
       if (pendingItems.length > 0) {
         pendingItems.forEach((item) => {
-          void refreshCartItemPricing(item.productId, item.quantity, item.pricingRequestKey);
+          void refreshCartItemPricing(item.productId, item.quantity, item.pricingRequestKey || "");
         });
       }
     };
