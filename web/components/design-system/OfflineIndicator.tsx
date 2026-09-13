@@ -4,22 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, CloudOff, Loader2, RefreshCw, X } from "lucide-react";
 import { requestRaw } from "../../lib/request";
 
-type ConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED";
+type ConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
 
 const RETRY_INTERVAL_MS = 5_000;
 const HEALTH_TIMEOUT_MS = 4_000;
 const LAST_CONNECTION_KEY = "manus:last-connection-at";
 
 const stateLabel: Record<ConnectivityState, string> = {
-  ONLINE: "Conectado",
-  OFFLINE: "Sin conexión",
-  RECONNECTING: "Reconectando",
+  ONLINE: "En línea",
+  OFFLINE: "Sin conexión a Internet",
+  SERVICE_UNAVAILABLE: "Servicio temporalmente no disponible",
+  RECONNECTING: "Restableciendo conexión...",
   RESTORED: "Conexión restablecida",
 };
 
 const stateTone: Record<ConnectivityState, string> = {
   ONLINE: "bg-emerald-500",
   OFFLINE: "bg-rose-500",
+  SERVICE_UNAVAILABLE: "bg-rose-500",
   RECONNECTING: "bg-amber-400",
   RESTORED: "bg-emerald-500",
 };
@@ -58,7 +60,7 @@ export function OfflineIndicator() {
     try {
       const response = await requestRaw("/system/version", { signal: controller.signal });
       if (!response.ok) throw new Error("BACKEND_UNAVAILABLE");
-      const wasUnavailable = hasCheckedRef.current && (lastStateRef.current === "OFFLINE" || lastStateRef.current === "RECONNECTING");
+      const wasUnavailable = hasCheckedRef.current && (lastStateRef.current === "OFFLINE" || lastStateRef.current === "RECONNECTING" || lastStateRef.current === "SERVICE_UNAVAILABLE");
       const timestamp = Date.now();
       setBackendOnline(true);
       setLastConnection(timestamp);
@@ -69,11 +71,20 @@ export function OfflineIndicator() {
       setHasChecked(true);
       hasCheckedRef.current = true;
       nextAttemptAtRef.current = 0;
-      if (wasUnavailable) window.setTimeout(() => setState("ONLINE"), 2500);
+      if (wasUnavailable) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("manus:backend-restored"));
+        }
+        window.setTimeout(() => setState("ONLINE"), 2500);
+      }
       return true;
     } catch {
       setBackendOnline(false);
-      setState("OFFLINE");
+      if (typeof navigator !== "undefined" && navigator.onLine) {
+        setState("SERVICE_UNAVAILABLE");
+      } else {
+        setState("OFFLINE");
+      }
       setHasChecked(true);
       hasCheckedRef.current = true;
       setDismissed(false);
@@ -124,8 +135,12 @@ export function OfflineIndicator() {
       <div className="fixed bottom-4 left-1/2 z-[9999] flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200">
         <span className={`h-2.5 w-2.5 rounded-full ${stateTone[state]}`} aria-hidden="true" />
         <span>{stateLabel[state]}</span>
-        <span className="text-slate-400">·</span>
-        <span className={backendOnline ? "text-emerald-600" : "text-slate-500 dark:text-slate-400"}>Backend {backendOnline ? "disponible" : "no disponible"}</span>
+        {(state === "ONLINE" || state === "RESTORED") && (
+          <>
+            <span className="text-slate-400">·</span>
+            <span className="text-emerald-600">Servicio disponible</span>
+          </>
+        )}
       </div>
 
       {showOverlay ? (
@@ -134,16 +149,20 @@ export function OfflineIndicator() {
             <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-2xl ${state === "RESTORED" ? "bg-emerald-100 text-emerald-600" : state === "RECONNECTING" ? "bg-amber-100 text-amber-600" : "bg-rose-100 text-rose-600"}`}>
               {state === "RESTORED" ? <CheckCircle2 className="h-8 w-8" /> : state === "RECONNECTING" ? <Loader2 className="h-8 w-8 animate-spin" /> : <CloudOff className="h-8 w-8" />}
             </div>
-            <h2 className="mt-6 text-2xl font-bold text-slate-900 dark:text-white">{state === "RESTORED" ? "Conexión restablecida" : state === "RECONNECTING" ? "Reconectando Manus POS" : "Sin conexión"}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{state === "RESTORED" ? "Sincronizando información..." : "Tu sesión, ruta y datos locales permanecen intactos."}</p>
+            <h2 className="mt-6 text-2xl font-bold text-slate-900 dark:text-white">
+              {state === "RESTORED" ? "Conexión restablecida" : state === "RECONNECTING" ? "Reconectando Manus POS" : state === "SERVICE_UNAVAILABLE" ? "Servicio temporalmente no disponible" : "Sin conexión a Internet"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              {state === "RESTORED" ? "Sincronizando información..." : state === "SERVICE_UNAVAILABLE" ? "Estamos intentando restablecer la conexión." : "Revisa tu conexión. Reintentaremos automáticamente."}
+            </p>
             <div className="mt-6 space-y-2 rounded-2xl bg-slate-50 p-4 text-left text-sm dark:bg-slate-800">
               <div className="flex justify-between"><span>Internet</span><strong>{typeof navigator !== "undefined" && navigator.onLine ? "Disponible" : "No disponible"}</strong></div>
-              <div className="flex justify-between"><span>Backend</span><strong>{backendOnline ? "Disponible" : "No disponible"}</strong></div>
+              <div className="flex justify-between"><span>Servicio</span><strong>{backendOnline ? "Disponible" : "No disponible"}</strong></div>
               <div className="flex justify-between"><span>Última conexión</span><strong>{formatLastConnection(lastConnection)}</strong></div>
             </div>
             {state !== "RESTORED" ? <button type="button" onClick={() => void checkConnectivity(true)} className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 font-semibold text-white transition hover:bg-blue-700"><RefreshCw className="h-4 w-4" />Reintentar ahora</button> : null}
             {nextAttemptIn > 0 && state !== "RESTORED" ? <p className="mt-3 text-xs text-slate-500">Próximo intento en {nextAttemptIn}s</p> : null}
-            {state === "OFFLINE" ? <button type="button" onClick={() => setDismissed(true)} className="mt-3 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"><X className="h-3 w-3" />Continuar viendo la pantalla</button> : null}
+            {state === "OFFLINE" || state === "SERVICE_UNAVAILABLE" ? <button type="button" onClick={() => setDismissed(true)} className="mt-3 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"><X className="h-3 w-3" />Continuar viendo la pantalla</button> : null}
           </section>
         </div>
       ) : null}
