@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Providers from "./providers";
+import { OfflineIndicator } from "../components/design-system/OfflineIndicator";
 import "../styles/globals.css";
 
 export const metadata = {
@@ -13,6 +14,7 @@ const RootLayout = ({ children }: { children: ReactNode }) => {
     <html lang="es" suppressHydrationWarning>
       <body className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
         <Providers>{children}</Providers>
+        <OfflineIndicator />
       </body>
     </html>
   );
