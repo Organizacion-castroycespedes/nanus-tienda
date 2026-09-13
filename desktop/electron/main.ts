@@ -285,7 +285,10 @@ const createMainWindow = async () => {
     await writeAndLoadHtml("manus-loading.html", html);
   };
 
+  let isShowingOfflinePage = false;
   const loadOfflinePage = async () => {
+    if (isShowingOfflinePage) return;
+    isShowingOfflinePage = true;
     const targetUrl = electronConfig.initialUrl.href;
     let logoDataUri = "";
     try {
@@ -302,6 +305,8 @@ const createMainWindow = async () => {
       await writeAndLoadHtml("manus-offline.html", offlineHtml);
     } catch (e) {
       console.warn("Failed to load offline page", e);
+    } finally {
+      isShowingOfflinePage = false;
     }
   };
 
@@ -314,8 +319,8 @@ const createMainWindow = async () => {
   try {
     await getLoadingHtml();
     await window.loadURL(electronConfig.initialUrl.href);
-  } catch {
-    await loadOfflinePage();
+  } catch (error) {
+    console.warn("Initial URL load failed, delegating to did-fail-load");
   }
 };
 
