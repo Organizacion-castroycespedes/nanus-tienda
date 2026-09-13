@@ -203,7 +203,12 @@ export const refreshSession = async (): Promise<string | null> => {
       if (error instanceof ApiError && error.status === 401) {
         clearSession({ reason: "session-ended" });
       } else {
-        clearSession();
+        const currentAuth = store.getState().auth;
+        if (currentAuth.accessToken || currentAuth.user) {
+          store.dispatch(setAuthStatus("authenticated"));
+        } else {
+          store.dispatch(setAuthStatus("anonymous"));
+        }
       }
       return null;
     })
