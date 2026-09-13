@@ -47,6 +47,7 @@ let manusWebOrigin = electronConfig.webBaseUrl.origin;
 let closeBehavior = parseCloseBehavior(process.env.MANUS_ELECTRON_CLOSE_BEHAVIOR);
 let rendererRecoveryTimes: number[] = [];
 let maintenanceExitAllowed = false;
+let rendererLoadedOnlinePage = false;
 
 const getPrimaryDisplayBounds = () => calculateTerminalBounds(screen.getPrimaryDisplay().bounds);
 
@@ -226,6 +227,11 @@ const createMainWindow = async () => {
     rendererRecoveryTimes.push(now);
     void window.webContents.reload();
   });
+  window.webContents.on("did-finish-load", () => {
+    if (window.webContents.getURL().startsWith(electronConfig.webBaseUrl.origin)) {
+      rendererLoadedOnlinePage = true;
+    }
+  });
   window.webContents.on("unresponsive", () => {
     console.warn("[Manus Electron] renderer unresponsive");
   });
@@ -268,6 +274,7 @@ const createMainWindow = async () => {
 
   window.webContents.on("did-fail-load", (event, errorCode) => {
     if (errorCode === -3) return; // Ignorar cancelaciones
+    if (rendererLoadedOnlinePage) return;
     void loadOfflinePage();
   });
 

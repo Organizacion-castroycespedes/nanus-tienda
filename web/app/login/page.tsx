@@ -20,6 +20,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthStatus } from "../../store/authSlice";
 
 const LoginPageContent = () => {
+  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -179,10 +180,10 @@ const LoginPageContent = () => {
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Left panel — branding (hidden on mobile) */}
       <div
-        className="relative hidden flex-col justify-between p-10 lg:flex lg:w-5/12 xl:w-1/2"
+        className="relative hidden flex-col justify-between p-10 lg:flex lg:w-[55%]"
         style={{
           backgroundImage: `
-              linear-gradient(0deg, rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.3)),
+              linear-gradient(0deg, rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.62)),
               url('/login-bg.jpg'),
               linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.06) 50%, rgba(30, 27, 75, 0.08) 100%),
               repeating-linear-gradient(
@@ -207,7 +208,7 @@ const LoginPageContent = () => {
       </div>
       {/* Right panel — form */}
       <main className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-lg">
 
 
           {showSessionConflict ? (
@@ -228,10 +229,13 @@ const LoginPageContent = () => {
           ) : null}
 
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Bienvenido de vuelta</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Ingresa tus credenciales para acceder a tu cuenta.
-            </p>
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">Manus POS</p>
+                <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">Bienvenido</h1>
+              </div>
+              <span className="text-xs text-slate-400">v{appVersion.replace(/^v/, "")}</span>
+            </div>
           </div>
 
           {status ? (
@@ -262,7 +266,7 @@ const LoginPageContent = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="usuario@empresa.com"
                 required
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
+                  className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
               />
             </div>
 
@@ -291,7 +295,7 @@ const LoginPageContent = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-4 pr-10 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
+                  className="min-h-12 w-full rounded-xl border border-slate-200 bg-white pl-4 pr-12 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
                 />
                 <button
                   type="button"
@@ -329,7 +333,7 @@ const LoginPageContent = () => {
               type="submit"
               tabIndex={7}
               disabled={isSubmitting}
-              className="w-full justify-center rounded-xl py-2.5"
+              className="min-h-[52px] w-full justify-center rounded-xl text-base"
             >
               {isSubmitting ? (
                 <>
