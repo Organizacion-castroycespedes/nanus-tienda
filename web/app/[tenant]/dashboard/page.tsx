@@ -71,6 +71,7 @@ const DashboardPage = () => {
           email: profile.email,
           role: profile.role?.nombre ?? authUser?.role ?? "",
           tenantId: profile.tenant.id,
+          tenantSlug: profile.tenant.slug,
           tenantName: profile.tenant.nombre,
           branchId: profile.branch?.id ?? null,
           branchName: profile.branch?.nombre ?? null,

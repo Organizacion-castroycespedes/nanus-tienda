@@ -165,7 +165,7 @@ const CashSessionsPage = () => {
   const router = useRouter();
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const [statusFilter, setStatusFilter] = useState("all");
   const [registerFilter, setRegisterFilter] = useState("");
   const [closeModal, setCloseModal] = useState(false);

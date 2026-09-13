@@ -54,6 +54,7 @@ import {
   updateTenantDetails,
   updateTenant,
 } from "../../../domains/tenants/api";
+import { previewTenantSlug } from "../../../domains/tenants/slug";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setBranding, type BrandingConfig } from "../../../store/brandingSlice";
 import { resetCompanyDetails, setCompanyDetails } from "../../../store/companySlice";
@@ -1828,15 +1829,15 @@ const ConfiguracionPage = () => {
     setStatus(null);
     try {
       if (tenantModalMode === "create") {
-        const slug = tenantForm.slug.trim().toLowerCase();
         const nombre = tenantForm.nombre.trim();
-        if (!slug) {
-          setStatusWarning("Debes definir un slug para el tenant.");
+        const slugInput = tenantForm.slug.trim();
+        if (!nombre) {
+          setStatusWarning("Debes definir un nombre para el tenant.");
           return;
         }
         const created = await createTenant({
-          slug,
-          nombre: nombre || slug,
+          nombre,
+          ...(slugInput ? { slug: slugInput } : {}),
         });
         if (!created) {
           setStatusError("No fue posible crear el tenant.");
@@ -1846,7 +1847,9 @@ const ConfiguracionPage = () => {
         setTenantModalOpen(false);
         setTenantFormsVisible(true);
         await loadTenants(created.id);
-        setStatusSuccess("Tenant creado correctamente.");
+        setStatusSuccess(
+          `Tenant creado correctamente (${created.slug}).`
+        );
         return;
       }
       if (!tenantEditingId) {
@@ -2002,7 +2005,7 @@ const ConfiguracionPage = () => {
   };
 
   const handleConfirmSubmitTenant = async () => {
-    if (tenantModalMode === "create" && !tenantForm.slug.trim()) {
+    if (tenantModalMode === "create" && !tenantForm.nombre.trim()) {
       await handleSubmitTenant();
       return;
     }
@@ -2289,21 +2292,38 @@ const ConfiguracionPage = () => {
         <Modal title={tenantModalMode === "create" ? "Crear tenant" : "Editar tenant"}>
           <div className="space-y-4">
             <Input
-              label="Slug"
-              value={tenantForm.slug}
-              disabled={tenantModalMode === "edit"}
-              onChange={(event) =>
-                setTenantForm((prev) => ({ ...prev, slug: event.target.value }))
-              }
-            />
-            <Input
               label="Nombre"
+              required
               value={tenantForm.nombre}
               disabled={tenantModalMode === "edit"}
               onChange={(event) =>
                 setTenantForm((prev) => ({ ...prev, nombre: event.target.value }))
               }
             />
+            <Input
+              label="Slug (opcional)"
+              value={tenantForm.slug}
+              disabled={tenantModalMode === "edit"}
+              placeholder={
+                previewTenantSlug(tenantForm.nombre) || "se genera desde el nombre"
+              }
+              onChange={(event) =>
+                setTenantForm((prev) => ({ ...prev, slug: event.target.value }))
+              }
+            />
+            {tenantModalMode === "create" ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Vista previa:{" "}
+                <span className="font-mono">
+                  /
+                  {tenantForm.slug.trim()
+                    ? previewTenantSlug(tenantForm.slug) || "…"
+                    : previewTenantSlug(tenantForm.nombre) || "…"}
+                  /dashboard
+                </span>
+                . El backend garantiza unicidad.
+              </p>
+            ) : null}
             <div className="flex flex-wrap justify-end gap-3">
               <Button variant="ghost" onClick={closeTenantModal}>
                 Cerrar

@@ -49,6 +49,7 @@ type RefreshTokenRecord = {
   id: string;
   user_id: string;
   tenant_id: string;
+  tenant_slug: string;
   expires_at: string;
   revoked_at: string | null;
   user_estado: string;
@@ -225,7 +226,7 @@ export class AuthService {
           refreshToken,
           metadata
         );
-        const accessToken = this.generateNewAccessToken(user.id, user.tenant_id, [
+        const accessToken = this.generateNewAccessToken(user.id, user.tenant_id, user.tenant_slug, [
           user.role,
         ], sessionId);
 
@@ -290,7 +291,7 @@ export class AuthService {
         refreshToken,
         metadata
       );
-      const accessToken = this.generateNewAccessToken(user.id, user.tenant_id, [
+      const accessToken = this.generateNewAccessToken(user.id, user.tenant_id, user.tenant_slug, [
         user.role,
       ], sessionId);
       await client.query("COMMIT");
@@ -327,6 +328,7 @@ export class AuthService {
       const accessToken = this.generateNewAccessToken(
         record.user_id,
         record.tenant_id,
+        record.tenant_slug,
         roles,
         session.id
       );
@@ -566,7 +568,8 @@ export class AuthService {
         art.expires_at,
         art.revoked_at,
         users.estado AS user_estado,
-        tenants.activo AS tenant_activo
+        tenants.activo AS tenant_activo,
+        tenants.slug AS tenant_slug
       FROM auth_refresh_tokens art
       INNER JOIN users
         ON users.id = art.user_id
@@ -600,6 +603,7 @@ export class AuthService {
   private generateNewAccessToken(
     userId: string,
     tenantId: string,
+    tenantSlug: string,
     roles: string[],
     sessionId?: string
   ) {
@@ -607,6 +611,7 @@ export class AuthService {
       {
         sub: userId,
         tenant_id: tenantId,
+        tenant_slug: tenantSlug,
         roles: roles.filter(Boolean),
         session_id: sessionId,
       },
@@ -722,6 +727,7 @@ export class AuthService {
         users.password_hash,
         users.estado,
         tenants.activo AS tenant_activo,
+        tenants.slug AS tenant_slug,
         roles.nombre AS role
       FROM users
       INNER JOIN tenants ON tenants.id = users.tenant_id

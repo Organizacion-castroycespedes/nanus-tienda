@@ -16,6 +16,7 @@ export type AuthState = {
   permissions: PermissionSummary[];
   permissionsLoaded: boolean;
   tenantId: string | null;
+  tenantSlug: string | null;
   authStatus: AuthStatus;
   tokenExpiry: number | null;
   bootstrapped: boolean;
@@ -28,6 +29,7 @@ const initialState: AuthState = {
   permissions: [],
   permissionsLoaded: false,
   tenantId: null,
+  tenantSlug: null,
   authStatus: "anonymous",
   tokenExpiry: null,
   bootstrapped: false,
@@ -51,6 +53,7 @@ const authSlice = createSlice({
       state.user = action.payload;
       state.role = action.payload?.role ?? null;
       state.tenantId = action.payload?.tenantId ?? state.tenantId;
+      state.tenantSlug = action.payload?.tenantSlug ?? state.tenantSlug;
     },
     setRole(state, action: PayloadAction<string | null>) {
       state.role = action.payload;
@@ -62,6 +65,9 @@ const authSlice = createSlice({
     setTenantId(state, action: PayloadAction<string | null>) {
       state.tenantId = action.payload;
     },
+    setTenantSlug(state, action: PayloadAction<string | null>) {
+      state.tenantSlug = action.payload;
+    },
     setBootstrapped(state, action: PayloadAction<boolean>) {
       state.bootstrapped = action.payload;
     },
@@ -72,6 +78,7 @@ const authSlice = createSlice({
       state.permissions = [];
       state.permissionsLoaded = false;
       state.tenantId = null;
+      state.tenantSlug = null;
       state.authStatus = "anonymous";
       state.tokenExpiry = null;
       state.bootstrapped = true;
@@ -86,6 +93,7 @@ export const {
   setRole,
   setAuthPermissions,
   setTenantId,
+  setTenantSlug,
   setBootstrapped,
   clearAuth,
 } = authSlice.actions;

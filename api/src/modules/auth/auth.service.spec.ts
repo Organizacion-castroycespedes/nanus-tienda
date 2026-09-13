@@ -9,6 +9,7 @@ const password = "qa-password";
 const user = {
   id: "user-1",
   tenant_id: "tenant-1",
+  tenant_slug: "tenant-uno",
   password_hash: bcrypt.hashSync(password, 4),
   estado: "ACTIVE",
   tenant_activo: true,
@@ -119,6 +120,7 @@ test("replaced refresh token is rejected while the newest refresh token remains 
             id: "refresh-1",
             user_id: user.id,
             tenant_id: user.tenant_id,
+            tenant_slug: user.tenant_slug,
             expires_at: new Date(Date.now() + 60_000).toISOString(),
             revoked_at: params[0] === oldHash ? new Date().toISOString() : null,
             user_estado: "ACTIVE",

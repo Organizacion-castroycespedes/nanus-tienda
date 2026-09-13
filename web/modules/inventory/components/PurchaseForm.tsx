@@ -15,6 +15,7 @@ import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
 import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
+import { buildTenantPath, resolveTenantSlug } from "../../../domains/auth/tenant-path";
 import { useAppSelector } from "../../../store/hooks";
 import type { PurchasePeripheralContext } from "../../../domains/peripherals/purchase-integration";
 
@@ -240,7 +241,13 @@ export const PurchaseForm = ({
       ? "Cargando..."
       : resolvedTerminalName || (resolvedTerminalId ? "Terminal activa" : "Sin terminal activa");
 
-  const contextTarget = `/${currentTenant ?? authUser?.tenantId ?? "default"}/pos/select-context`;
+  const contextTarget = buildTenantPath(
+    resolveTenantSlug({
+      tenantSlug: authUser?.tenantSlug,
+      tenantId: currentTenant ?? authUser?.tenantId,
+    }),
+    "pos/select-context"
+  );
 
   const itemSubtotals = useMemo(
     () =>

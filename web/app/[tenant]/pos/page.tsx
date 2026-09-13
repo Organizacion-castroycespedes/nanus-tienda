@@ -59,7 +59,7 @@ const PosPage = () => {
   const { hasSession } = useRequirePosSession({ redirect: false });
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
-  const tenantSlug = useAppSelector((state) => state.auth.user?.tenantId ?? "default");
+  const tenantSlug = useAppSelector((state) => state.auth.user?.tenantSlug ?? state.auth.user?.tenantId ?? "default");
   const posBranchId = useAppSelector((state) => state.pos.branchId);
   const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);

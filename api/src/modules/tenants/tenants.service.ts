@@ -1,5 +1,9 @@
-import { Injectable, Inject } from "@nestjs/common";
+import { BadRequestException, Injectable, Inject } from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
+import {
+  resolveTenantSlugFromInput,
+  slugifyTenantName,
+} from "./tenant-slug";
 
 type TenantBrandingConfig = {
   colors?: {
@@ -61,6 +65,19 @@ export class TenantsService {
    @Inject(DatabaseService) private readonly db: DatabaseService
   ) {}
 
+  private async slugExists(candidate: string, excludeTenantId?: string) {
+    const result = excludeTenantId
+      ? await this.db.query(
+          "SELECT 1 FROM tenants WHERE slug = $1 AND id <> $2 LIMIT 1",
+          [candidate, excludeTenantId]
+        )
+      : await this.db.query(
+          "SELECT 1 FROM tenants WHERE slug = $1 LIMIT 1",
+          [candidate]
+        );
+    return Boolean(result.rows?.[0]);
+  }
+
   async listTenants(tenantId?: string) {
     if (tenantId) {
       const result = await this.db.query(
@@ -75,18 +92,64 @@ export class TenantsService {
     return result.rows ?? [];
   }
 
-  async createTenant(payload: Required<Pick<TenantSummaryInput, "slug">> & TenantSummaryInput) {
+  async createTenant(payload: TenantSummaryInput) {
+    const nombre = payload.nombre?.trim() || null;
+    if (!nombre && !payload.slug?.trim()) {
+      throw new BadRequestException("nombre o slug es requerido");
+    }
+
+    let slug: string;
+    try {
+      slug = await resolveTenantSlugFromInput({
+        explicitSlug: payload.slug,
+        nombre,
+        exists: (candidate) => this.slugExists(candidate),
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : "slug is required"
+      );
+    }
+
     const result = await this.db.query(
       "INSERT INTO tenants (slug, nombre, activo, config) VALUES ($1, $2, $3, '{}'::jsonb) RETURNING id, slug, nombre, activo, config",
-      [payload.slug, payload.nombre ?? null, payload.activo ?? true]
+      [slug, nombre ?? slug, payload.activo ?? true]
     );
     return result.rows[0] ?? null;
   }
 
   async updateTenant(tenantId: string, payload: TenantSummaryInput) {
+    // Nombre changes do NOT auto-update slug. Slug only when explicitly provided.
+    let nextSlug: string | null = null;
+    if (payload.slug !== undefined && payload.slug !== null) {
+      const trimmed = payload.slug.trim();
+      if (!trimmed) {
+        throw new BadRequestException("slug no puede estar vacio");
+      }
+      const normalized = slugifyTenantName(trimmed);
+      if (!normalized) {
+        throw new BadRequestException("slug invalido");
+      }
+      try {
+        nextSlug = await resolveTenantSlugFromInput({
+          explicitSlug: normalized,
+          exists: (candidate) => this.slugExists(candidate, tenantId),
+        });
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : "slug invalido"
+        );
+      }
+    }
+
     const result = await this.db.query(
       "UPDATE tenants SET slug = COALESCE($2, slug), nombre = COALESCE($3, nombre), activo = COALESCE($4, activo) WHERE id = $1 RETURNING id, slug, nombre, activo, config",
-      [tenantId, payload.slug ?? null, payload.nombre ?? null, payload.activo ?? null]
+      [
+        tenantId,
+        nextSlug,
+        payload.nombre ?? null,
+        payload.activo ?? null,
+      ]
     );
     return result.rows[0] ?? null;
   }

@@ -8,6 +8,7 @@ import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { getCurrentPosSession } from "../../../domains/pos/api";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
+import { buildTenantPath, resolveTenantSlug } from "../../../domains/auth/tenant-path";
 import { useAppSelector } from "../../../store/hooks";
 import {
   getCurrentCashSession,
@@ -73,6 +74,8 @@ export const OrderInvoiceForm = ({
   const router = useRouter();
   const confirm = useConfirm();
   const tenantId = useAppSelector((state) => state.auth.tenantId ?? state.auth.user?.tenantId);
+  const authUser = useAppSelector((state) => state.auth.user);
+  const tenantSlugState = useAppSelector((state) => state.auth.tenantSlug);
   const {
     branchId: posBranchId,
     terminalId: posTerminalId,
@@ -222,7 +225,13 @@ export const OrderInvoiceForm = ({
   const hasPosSession = Boolean(posSessionId && posBranchId && posTerminalId);
   const posSessionMatchesBranch =
     !order?.branchId || !posBranchId || posBranchId === order.branchId;
-  const contextTarget = `/${tenantId ?? "default"}/pos/select-context`;
+  const contextTarget = buildTenantPath(
+    resolveTenantSlug({
+      tenantSlug: tenantSlugState ?? authUser?.tenantSlug,
+      tenantId: tenantId ?? authUser?.tenantId,
+    }),
+    "pos/select-context"
+  );
 
   const createInvoicePaymentDraft = useCallback(
     (paymentMethodId: string, amount: string): PaymentDraft => ({

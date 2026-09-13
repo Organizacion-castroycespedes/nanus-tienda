@@ -119,7 +119,7 @@ const CurrentShiftPage = () => {
   const router = useRouter();
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const { canViewFinance } = getFinancePermissions(role);
   const [activeTab, setActiveTab] = useState<ShiftTab>("sales");
   const [search, setSearch] = useState("");

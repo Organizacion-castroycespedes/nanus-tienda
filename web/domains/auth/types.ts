@@ -9,6 +9,7 @@ export type AuthUser = {
   email: string;
   role: string;
   tenantId: string;
+  tenantSlug: string;
   tenantName?: string | null;
   branchId?: string | null;
   branchName?: string | null;
