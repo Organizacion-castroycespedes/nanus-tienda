@@ -41,6 +41,18 @@ for (const status of ["PENDING", "PROCESSING", "REJECTED", "CANCELLED"] as const
   });
 }
 
-test("missing authoritative representation data fails closed", () => {
+test("missing document number fails closed", () => {
   assert.throws(() => buildElectronicInvoiceTicketPayload({ ...invoice, documentNumber: null }, sale));
+});
+
+test("accepted invoice remains printable when QR is not persisted", () => {
+  const payload = buildElectronicInvoiceTicketPayload({ ...invoice, qrPayload: null }, sale);
+  assert.equal(payload.ticketType, "ELECTRONIC_INVOICE");
+  assert.doesNotMatch(payload.content.lines?.join("\n") ?? "", /QR autorizado/);
+});
+
+test("authoritative QR payload is preserved exactly", () => {
+  const qr = "https://catalogo.dian.gov.co/qr/SETP990000009";
+  const payload = buildElectronicInvoiceTicketPayload({ ...invoice, qrPayload: qr }, sale);
+  assert.match(payload.content.lines?.join("\n") ?? "", new RegExp(`QR autorizado: ${qr}`));
 });

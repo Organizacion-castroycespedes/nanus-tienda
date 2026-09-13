@@ -158,7 +158,11 @@ export class SalesReportAdapter {
                 'fiscalResponsibilityCodes', COALESCE(document.metadata #> '{electronicBilling,customer,taxProfile,fiscalResponsibilityCodes}', '[]'::jsonb)
               ) ELSE NULL END AS "customerFiscalSnapshot",
               COALESCE((SELECT jsonb_agg(jsonb_build_object('type', tax.tax_type, 'code', tax.tax_code, 'rate', tax.rate, 'taxableBase', tax.taxable_base, 'amount', tax.tax_amount) ORDER BY tax.created_at, tax.id) FROM electronic_document_taxes tax WHERE tax.electronic_document_id = document.id), '[]'::jsonb) AS "taxLines",
-              NULL::text AS "qrPayload",
+              COALESCE(
+                document.metadata #>> '{electronicBilling,qrPayload}',
+                document.metadata #>> '{electronicBillingProcessing,qrPayload}',
+                document.metadata #>> '{providerResponse,qrPayload}'
+              ) AS "qrPayload",
               (document.status = 'ACCEPTED' AND COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) IS NOT NULL) AS "representationAvailable"
          FROM sales AS s
          INNER JOIN electronic_documents AS document

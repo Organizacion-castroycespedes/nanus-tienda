@@ -17,9 +17,6 @@ export const buildElectronicInvoiceTicketPayload = (
   if (invoice.status !== "ACCEPTED" || !invoice.representationAvailable || !invoice.documentNumber) {
     throw new Error("La factura electrónica aceptada no tiene representación fiscal disponible.");
   }
-  if (!invoice.qrPayload) {
-    throw new Error("La factura electrónica no tiene un QR fiscal autorizado para impresión.");
-  }
   const ticket = sale.ticket;
   const customer = invoice.customerFiscalSnapshot;
   const lines = [
@@ -30,6 +27,7 @@ export const buildElectronicInvoiceTicketPayload = (
     ...(customer?.address ? [`Dirección fiscal: ${customer.address}`] : []),
     ...(invoice.acceptedAt ? [`Validación: ${invoice.acceptedAt}`] : []),
     ...(invoice.cufe ? [`CUFE: ${invoice.cufe}`] : []),
+    ...(invoice.qrPayload ? [`QR autorizado: ${invoice.qrPayload}`] : []),
     ...(invoice.taxLines ?? []).map((tax) => `${tax.type} ${tax.rate}%: ${money(tax.amount)} (base ${money(tax.taxableBase)})`),
     ...ticket.items.map(
       (item) => `${item.productName} | ${item.quantity} x ${money(item.unitPrice)} | ${money(item.subtotal)}`
