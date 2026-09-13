@@ -39,6 +39,11 @@ import {
   type SupplierPersonType,
   type SupplierResponse,
 } from "../services/supplier.service";
+import {
+  FISCAL_PERSON_TYPE_OPTIONS,
+  FISCAL_RESPONSIBILITY_OPTIONS,
+  FISCAL_TAX_REGIME_OPTIONS,
+} from "../../electronic-invoicing/fiscal-profile-options";
 
 type SupplierFormValues = {
   name: string;
@@ -609,7 +614,7 @@ export const SupplierForm = ({
       personType: values.personType || null,
       taxRegime: trimToNull(values.taxRegime),
       taxResponsibilities: splitTaxResponsibilities(values.taxResponsibilities),
-      fiscalDataSource: values.fiscalDataSource,
+      fiscalDataSource: "MANUAL",
       fiscalStatus: values.fiscalStatus,
       isDianValidated: values.isDianValidated,
       isActive: values.isActive,
@@ -908,23 +913,21 @@ export const SupplierForm = ({
             }
           >
             <option value="">Sin definir</option>
-            <option value="NATURAL">NATURAL</option>
-            <option value="JURIDICA">JURIDICA</option>
-            <option value="UNKNOWN">UNKNOWN</option>
+            {FISCAL_PERSON_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {values.personType === "UNKNOWN" ? <option value="UNKNOWN">Requiere revisión</option> : null}
           </Select>
 
-          <Input
-            label="taxRegime"
+          <Select
+            label="Régimen tributario"
             value={values.taxRegime}
             onChange={(event) => updateValue("taxRegime", event.target.value)}
-          />
+          >
+            <option value="">Selecciona un régimen</option>
+            {FISCAL_TAX_REGIME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {values.taxRegime && !FISCAL_TAX_REGIME_OPTIONS.some((option) => option.value === values.taxRegime) ? <option value={values.taxRegime}>Valor existente: {values.taxRegime}</option> : null}
+          </Select>
 
-          <Input
-            label="taxResponsibilities"
-            hint="Separadas por coma"
-            value={values.taxResponsibilities}
-            onChange={(event) => updateValue("taxResponsibilities", event.target.value)}
-          />
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Responsabilidades fiscales<select multiple className="mt-1 min-h-24 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" value={splitTaxResponsibilities(values.taxResponsibilities)} onChange={(event) => updateValue("taxResponsibilities", Array.from(event.target.selectedOptions, (option) => option.value).join(", "))}>{FISCAL_RESPONSIBILITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">

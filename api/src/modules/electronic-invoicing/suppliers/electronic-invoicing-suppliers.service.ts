@@ -32,6 +32,10 @@ import type {
   ElectronicInvoicingSupplier,
 } from "./electronic-invoicing-supplier.types";
 import { ElectronicInvoicingSuppliersRepository } from "./electronic-invoicing-suppliers.repository";
+import {
+  isSupportedFiscalResponsibility,
+  isSupportedTaxRegime,
+} from "../fiscal-profile-options";
 
 type PgErrorLike = {
   code?: string;
@@ -247,6 +251,9 @@ export class ElectronicInvoicingSuppliersService {
       const normalized = this.normalizeText(item);
       if (!normalized) {
         throw new BadRequestException("taxResponsibilities must not contain empty values");
+      }
+      if (!isSupportedFiscalResponsibility(normalized)) {
+        throw new BadRequestException(`unsupported tax responsibility: ${normalized}`);
       }
       return normalized;
     });
@@ -541,6 +548,9 @@ export class ElectronicInvoicingSuppliersService {
     const fiscalProvider = this.normalizeSupplierProvider(dto.fiscalProvider);
     const personType = this.normalizePersonType(dto.personType) ?? null;
     const taxRegime = this.normalizeText(dto.taxRegime);
+    if (taxRegime && !isSupportedTaxRegime(taxRegime)) {
+      throw new BadRequestException(`unsupported tax regime: ${taxRegime}`);
+    }
     const taxResponsibilities = this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
     this.validateRequiredFiscalProfile({ personType, taxRegime, taxResponsibilities });
 
@@ -716,6 +726,9 @@ export class ElectronicInvoicingSuppliersService {
     }
     if (hasOwn(dto, "taxRegime")) {
       update.taxRegime = this.normalizeText(dto.taxRegime);
+      if (update.taxRegime && !isSupportedTaxRegime(update.taxRegime)) {
+        throw new BadRequestException(`unsupported tax regime: ${update.taxRegime}`);
+      }
     }
     if (hasOwn(dto, "taxResponsibilities")) {
       update.taxResponsibilities =
