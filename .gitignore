@@ -64,3 +64,4 @@ backend-perifericos/windows-installer/assets/pos/*.exe
 
 # Local database credentials
 scripts/config/db.env
+.tmp/

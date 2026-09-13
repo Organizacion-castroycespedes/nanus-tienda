@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { Loader2, Lock, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppSelector } from "../../../store/hooks";
 import { getCurrentCashSession } from "../../../modules/finance/services/finance.service";
 import type { CashSession } from "../../../modules/finance/types";
 import { PosScreen } from "../../../modules/pos/components/PosScreen";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
+import { useTerminalReadiness } from "../../../domains/terminal-readiness/useTerminalReadiness";
+import type { ReadinessReason } from "../../../domains/terminal-readiness/contracts";
 
 const PosBlockedState = ({
   tenantSlug,
@@ -55,16 +57,38 @@ const PosBlockedState = ({
   </section>
 );
 
+const readinessMessage: Partial<Record<ReadinessReason, string>> = {
+  DEVICE_UNKNOWN: "Este dispositivo no está registrado para este tenant.",
+  DEVICE_UNBOUND: "Este dispositivo no tiene una terminal asignada.",
+  DEVICE_REVOKED: "Este dispositivo fue revocado.",
+  TERMINAL_UNKNOWN: "La terminal vinculada ya no está disponible.",
+  TERMINAL_DISABLED: "La terminal vinculada está deshabilitada.",
+  TERMINAL_CONTEXT_MISMATCH: "Esta instalación está vinculada a otra terminal.",
+  CLOUD_UNAVAILABLE: "No fue posible validar la terminal con Manus Cloud.",
+  BRIDGE_CONTRACT_UNSUPPORTED: "El runtime local no es compatible con esta versión de Manus.",
+  AGENT_API_UNSUPPORTED: "El runtime local no es compatible con esta versión de Manus.",
+  AGENT_UNAVAILABLE: "El servicio local de periféricos no está disponible.",
+  INSTALLATION_ID_UNAVAILABLE: "No se pudo obtener la identidad local del dispositivo.",
+};
+
 const PosPage = () => {
   const { hasSession } = useRequirePosSession({ redirect: false });
   const authStatus = useAppSelector((state) => state.auth.authStatus);
   const bootstrapped = useAppSelector((state) => state.auth.bootstrapped);
   const tenantSlug = useAppSelector((state) => state.auth.user?.tenantId ?? "default");
   const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const posTerminalId = useAppSelector((state) => state.pos.terminalId);
   const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
   const [loadingCashSession, setLoadingCashSession] = useState(true);
   const [cashSessionError, setCashSessionError] = useState<string | null>(null);
+  const readinessInput = useMemo(
+    () => hasSession && authStatus === "authenticated" && bootstrapped
+      ? { authenticated: true, posTerminalId }
+      : null,
+    [authStatus, bootstrapped, hasSession, posTerminalId]
+  );
+  const readiness = useTerminalReadiness(readinessInput);
 
   useEffect(() => {
     if (!bootstrapped || authStatus !== "authenticated" || !hasSession) {
@@ -123,6 +147,14 @@ const PosPage = () => {
     );
   }
 
+  if (!readiness.value) {
+    return <PosBlockedState tenantSlug={tenantSlug} title="Verificando terminal Manus..." description="Estamos validando el runtime y la terminal vinculada antes de entrar al POS." loading />;
+  }
+
+  if (!readiness.value.canEnterPos) {
+    return <section className="mx-auto max-w-3xl rounded-[28px] border border-amber-200 bg-white p-8 shadow-sm"><div className="flex flex-col gap-5 sm:flex-row sm:items-start"><div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-amber-100 bg-amber-50 text-amber-700"><Lock className="h-5 w-5" /></div><div className="min-w-0 flex-1"><p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Terminal Manus</p><h1 className="mt-2 text-2xl font-semibold text-slate-950">No se puede entrar al POS</h1><p className="mt-3 text-sm leading-6 text-slate-600">{readinessMessage[readiness.value.reason] ?? "La configuración del terminal requiere atención."}</p><div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void readiness.retry()} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">Reintentar</button><Link href={`/${tenantSlug}/dashboard`} className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">Volver al dashboard</Link></div></div></div></section>;
+  }
+
   if (loadingCashSession) {
     return (
       <PosBlockedState
@@ -164,7 +196,16 @@ const PosPage = () => {
     );
   }
 
-  return <PosScreen />;
+  return (
+    <>
+      {readiness.value.state === "DEGRADED" ? (
+        <div className="mx-auto mb-4 max-w-7xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          El servicio local de periféricos no está disponible. Puedes continuar con las operaciones cloud autorizadas.
+        </div>
+      ) : null}
+      <PosScreen />
+    </>
+  );
 };
 
 export default PosPage;

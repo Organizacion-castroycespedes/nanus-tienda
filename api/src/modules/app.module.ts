@@ -18,6 +18,7 @@ import { PricingModule } from "./pricing/pricing.module";
 import { PosTerminalsModule } from "./pos-terminals/pos-terminals.module";
 import { DeliveriesModule } from "./deliveries/deliveries.module";
 import { TerminalDevicesModule } from "./terminal-devices/terminal-devices.module";
+import { TerminalRuntimeModule } from "./terminal-runtime/terminal-runtime.module";
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { TerminalDevicesModule } from "./terminal-devices/terminal-devices.modul
     PosTerminalsModule,
     DeliveriesModule,
     TerminalDevicesModule,
+    TerminalRuntimeModule,
   ],
 })
 export class AppModule {}
