@@ -1,13 +1,23 @@
 BEGIN;
 
-INSERT INTO public.tenants (slug, nombre, config, activo)
-VALUES ('default', 'Tenant Principal', '{}'::jsonb, true)
-ON CONFLICT (slug) DO NOTHING;
+INSERT INTO public.tenants (id, slug, nombre, config, activo)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'manustienda-platform-s-a-s',
+  'Tenant Principal',
+  '{}'::jsonb,
+  true
+)
+ON CONFLICT (id) DO UPDATE
+SET
+  slug = EXCLUDED.slug,
+  nombre = EXCLUDED.nombre,
+  activo = EXCLUDED.activo;
 
 WITH tenant_target AS (
   SELECT id
   FROM public.tenants
-  WHERE slug = 'default'
+  WHERE id = '00000000-0000-0000-0000-000000000001'
   LIMIT 1
 ),
 persona_upsert AS (
@@ -84,7 +94,7 @@ ON CONFLICT (user_id, role_id, tenant_id) DO NOTHING;
 WITH tenant_target AS (
   SELECT id
   FROM public.tenants
-  WHERE slug = 'default'
+  WHERE id = '00000000-0000-0000-0000-000000000001'
   LIMIT 1
 ),
 persona_final AS (
@@ -117,7 +127,7 @@ SELECT
 FROM public.personas p
 JOIN public.tenants t
   ON t.id = p.tenant_id
-  AND t.slug = 'default'
+  AND t.id = '00000000-0000-0000-0000-000000000001'
 JOIN public.tenant_branches b
   ON b.tenant_id = p.tenant_id
   AND b.es_principal = TRUE
@@ -145,7 +155,7 @@ SELECT
 FROM public.tenant_branches b
 JOIN public.tenants t
   ON t.id = b.tenant_id
-  AND t.slug = 'default'
+  AND t.id = '00000000-0000-0000-0000-000000000001'
 WHERE b.es_principal = TRUE
   AND NOT EXISTS (
     SELECT 1

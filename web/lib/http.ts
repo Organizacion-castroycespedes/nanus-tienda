@@ -1,5 +1,6 @@
 import { store } from "../store";
 import { refreshSession } from "../domains/auth/session-manager";
+import { buildTenantPath, resolveTenantSlug } from "../domains/auth/tenant-path";
 import { requestRaw } from "./request";
 import {
   POS_STORAGE_KEY,
@@ -69,8 +70,12 @@ const handleInvalidPosSession = () => {
     return;
   }
 
-  const tenantId = store.getState().auth.tenantId ?? "default";
-  const target = `/${tenantId}/pos/select-context`;
+  const auth = store.getState().auth;
+  const targetTenant = resolveTenantSlug({
+    tenantSlug: auth.tenantSlug ?? auth.user?.tenantSlug,
+    tenantId: auth.tenantId ?? auth.user?.tenantId,
+  });
+  const target = buildTenantPath(targetTenant, "pos/select-context");
   if (window.location.pathname !== target) {
     window.location.assign(target);
   }

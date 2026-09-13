@@ -205,7 +205,9 @@ export const DeliveryRelationCard = ({
   const canCreate = canCreateDelivery(deliveryPermission, role);
   const canManageDrivers = canManageDeliveryDrivers(deliveryPermission, role);
   const relationLabel = sourceLabel ?? `${sourceTitle[sourceType]} ${sourceId.slice(0, 8)}`;
-  const moduleHref = buildDeliveryModuleHref(tenantId, { sourceType, sourceId });
+  const tenantSlug =
+    authUser?.tenantSlug?.trim() || authUser?.tenantId?.trim() || tenantId;
+  const moduleHref = buildDeliveryModuleHref(tenantSlug, { sourceType, sourceId });
   const initialBranchId =
     sourceBranchId ?? posBranchId ?? authUser?.branchId ?? "";
 
@@ -787,7 +789,7 @@ export const DeliveryRelationCard = ({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.push(`/${tenantId}/deliveries/drivers`)}
+                onClick={() => router.push(`/${tenantSlug}/deliveries/drivers`)}
                 disabled={saving}
               >
                 Gestionar repartidores

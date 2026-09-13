@@ -1,6 +1,7 @@
 export type TokenPayload = {
   sub?: string;
   tenant_id?: string;
+  tenant_slug?: string;
   roles?: string[];
   session_id?: string;
   exp?: number;

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   AlertCircle,
@@ -49,6 +49,7 @@ import {
 import { fetchMenu, fetchProfile, logout, updatePassword, updateProfile } from "../../domains/auth/api";
 import { fetchPermissions } from "../../domains/menu/api";
 import { persistMenuCache, readMenuCache } from "../../domains/auth/menu-cache";
+import { resolveTenantSlug } from "../../domains/auth/tenant-path";
 import { MENU_KEYS } from "../../domains/menu/constants";
 import { getRoutePermissionRequirement } from "../../lib/route-permissions";
 import { getAllowedMenuItems, hasPermission } from "../../lib/permissions";
@@ -168,7 +169,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const confirm = useConfirm();
   const sidebarCompanyName = company?.razonSocial || authUser?.tenantName || "Empresa";
   const brandingLogo = branding.logoUrl ?? branding.logo;
-  const tenantSlug = authUser?.tenantId ?? "default";
+  const params = useParams();
+  const urlTenant = Array.isArray(params?.tenant) ? params.tenant[0] : params?.tenant;
+  const tenantSlug = resolveTenantSlug(authUser);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [posClock, setPosClock] = useState(() => new Date());
@@ -334,6 +337,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       email: profile.email,
       role: profile.role?.nombre ?? authUser?.role ?? "",
       tenantId: profile.tenant.id,
+      tenantSlug: profile.tenant.slug,
       tenantName: profile.tenant.nombre,
       branchId: profile.branch?.id ?? null,
       branchName: profile.branch?.nombre ?? null,
@@ -770,13 +774,24 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       return;
     }
     if (authStatus !== "authenticated") {
-      if (authStatus !== "refreshing") {
-        router.replace("/login");
+      // Stay put while restoring session or after a transient refresh error
+      // (still may have a valid refresh token in storage).
+      if (authStatus === "refreshing" || authStatus === "error") {
+        return;
       }
+      router.replace("/login");
+      return;
+    }
+    if (
+      urlTenant &&
+      urlTenant !== tenantSlug &&
+      authUser?.role !== "SUPER_ADMIN"
+    ) {
+      router.replace(`/${tenantSlug}/dashboard`);
       return;
     }
     setReady(true);
-  }, [authStatus, bootstrapped, router]);
+  }, [authStatus, bootstrapped, router, urlTenant, tenantSlug, authUser?.role]);
 
   useEffect(() => {
     if (authStatus !== "authenticated" || !authToken) {
@@ -879,14 +894,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     if (!pathname || authStatus !== "authenticated" || !permissionsLoaded) {
       return;
     }
-    if (
-      authUser?.tenantId &&
-      tenantSlug !== authUser.tenantId &&
-      authUser.role !== "SUPER_ADMIN"
-    ) {
-      router.replace(`/${authUser.tenantId}/unauthorized`);
-      return;
-    }
+
 
     const requirement = getRoutePermissionRequirement(pathname);
     if (!requirement) {
@@ -1001,8 +1009,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const routeRequirement = pathname ? getRoutePermissionRequirement(pathname) : null;
   const tenantMismatch =
     authStatus === "authenticated" &&
-    Boolean(authUser?.tenantId) &&
-    tenantSlug !== authUser?.tenantId &&
+    Boolean(tenantSlug) &&
+    urlTenant !== tenantSlug &&
     authUser?.role !== "SUPER_ADMIN";
   if (tenantMismatch) {
     return null;

@@ -80,13 +80,13 @@ export const serializeDeliveryFilters = (filters: DeliveryFilters) =>
   ].join("|");
 
 export const buildDeliveryModuleHref = (
-  tenantId: string,
+  tenantSegment: string,
   relation: {
     sourceType: DeliveryRelationSourceType;
     sourceId: string;
   }
 ) => {
-  const tenantSegment = encodeURIComponent(tenantId.trim() || "default");
+  const segment = encodeURIComponent(tenantSegment.trim() || "default");
   const query = new URLSearchParams();
   const sourceId = relation.sourceId.trim();
 
@@ -96,5 +96,5 @@ export const buildDeliveryModuleHref = (
     query.set("sale_id", sourceId);
   }
 
-  return `/${tenantSegment}/deliveries?${query.toString()}`;
+  return `/${segment}/deliveries?${query.toString()}`;
 };
