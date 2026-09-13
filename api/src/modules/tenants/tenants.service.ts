@@ -123,7 +123,7 @@ export class TenantsService {
         td.estado,
         td.responsabilidades_dian,
         td.regimen,
-        td.vat_responsibility,
+        td.vat_responsibility AS "vatResponsibility",
         td.actividad_economica,
         td.obligado_facturacion_electronica,
         td.resolucion_dian,
