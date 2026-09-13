@@ -200,6 +200,9 @@ export const buildElectronicBillingInvoiceCommandFromSaleEvent = (
     totals,
     metadata: {
       ...(event.payload.metadata ?? {}),
+      ...(event.payload.issuerVatResponsibility
+        ? { issuerVatResponsibility: event.payload.issuerVatResponsibility }
+        : {}),
       integrationEvent: {
         eventId: event.eventId,
         eventType: event.eventType,

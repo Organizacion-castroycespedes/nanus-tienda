@@ -10,6 +10,7 @@ export type CompanyDetails = {
   estado: string;
   responsabilidadesDian?: string;
   regimen?: string;
+  vatResponsibility?: "RESPONSIBLE" | "NOT_RESPONSIBLE" | "UNKNOWN";
   actividadEconomica?: string;
   obligadoFacturacionElectronica?: boolean;
   resolucionDian?: string;

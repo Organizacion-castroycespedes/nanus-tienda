@@ -196,6 +196,10 @@ class FakeCreateSaleClient {
       return { rows: [{ id: ids.delivery }] as T[] };
     }
 
+    if (sql.includes("vat_responsibility")) {
+      return { rows: [{ vat_responsibility: "RESPONSIBLE" }] as T[] };
+    }
+
     throw new Error(`Unexpected SQL in create sale test: ${sql}`);
   }
 

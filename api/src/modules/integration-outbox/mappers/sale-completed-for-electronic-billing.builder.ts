@@ -28,6 +28,9 @@ export const buildSaleCompletedForElectronicBillingEvent = (
     payments: input.payments,
     totals: input.totals,
     currencyCode: input.currencyCode,
+    ...(input.issuerVatResponsibility
+      ? { issuerVatResponsibility: input.issuerVatResponsibility }
+      : {}),
     metadata: input.metadata,
   },
 });

@@ -60,9 +60,17 @@ import {
   evaluateElectronicBillingEligibility,
 } from "../../integration-outbox/contracts/electronic-billing-eligibility";
 import {
+  assertIssuerCanBillVat,
+  hasPositiveTaxLines,
+} from "../../integration-outbox/contracts/issuer-vat-billing-guard";
+import {
   getElectronicBillingMode,
 } from "../../integration-outbox/contracts/electronic-billing-mode";
 import { StockMovementService } from "./stock-movement.service";
+import {
+  normalizeVatResponsibility,
+  type VatResponsibility,
+} from "../../tenants/vat-responsibility";
 
 type SaleListRow = SaleRow & {
   branch_id: string;
@@ -946,6 +954,18 @@ export class SaleService {
       tenantId,
       effectivePricedItems
     );
+    const issuerResult = await client.query<{ vat_responsibility: string | null }>(
+      "SELECT vat_responsibility FROM tenants_detalles WHERE tenant_id = $1",
+      [tenantId],
+    );
+    const issuerVatResponsibility: VatResponsibility = normalizeVatResponsibility(
+      issuerResult.rows[0]?.vat_responsibility ?? "UNKNOWN",
+    );
+    try {
+      assertIssuerCanBillVat(issuerVatResponsibility, hasPositiveTaxLines(lines));
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
     const totals = effectivePricedItems.reduce(
       (acc, item) => {
         acc.subtotalAmount += item.taxBase ?? item.priceWithoutTax * item.quantity;
@@ -1003,6 +1023,7 @@ export class SaleService {
         ),
       },
       currencyCode: "COP",
+      issuerVatResponsibility,
       metadata: {
         saleId: saleRow.id,
         customerId: saleRow.customer_id,
