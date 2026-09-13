@@ -234,6 +234,17 @@ const isValidationProviderCode = (code: string) => {
   return normalized.includes("AUTH") || normalized.includes("CONFLICT") || normalized.includes("VALIDATION");
 };
 
+export const extractAuthoritativeQrPayload = (xmlText: string): string | null => {
+  const values = [...xmlText.matchAll(/<(?:(?:[\w.-]+):)?QRCode\b[^>]*>([\s\S]*?)<\/(?:(?:[\w.-]+):)?QRCode>/gi)]
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value));
+  const uniqueValues = [...new Set(values)];
+  if (uniqueValues.length > 1) {
+    throw new Error("Conflicting authoritative QR values in provider XML");
+  }
+  return uniqueValues[0] ?? null;
+};
+
 @Injectable()
 export class ElectronicBillingProcessingService {
   private readonly processingRefreshAfterMs = readPositiveIntegerEnv(
@@ -464,13 +475,14 @@ export class ElectronicBillingProcessingService {
             documentId: aggregate.document.id,
             providerDocumentId: providerResult.providerDocumentId ?? aggregate.document.provider_document_id,
             externalReference: aggregate.document.external_reference,
-            attachmentType: "XML",
+            // DIAN's authoritative QR is emitted in the signed XML. The
+            // unsigned XML may not contain sts:QRCode at all.
+            attachmentType: "SIGNED_XML",
             metadata: aggregate.document.metadata,
           });
           readOperations.push("GET_XML");
           const xmlText = xml.content ? Buffer.from(xml.content).toString("utf8") : "";
-          const qrMatch = /<(?:[\w-]+:)?QRCode[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?QRCode>/i.exec(xmlText);
-          const qrPayload = qrMatch?.[1]?.trim() || null;
+          const qrPayload = extractAuthoritativeQrPayload(xmlText);
           recoveredMetadata = {
             ...aggregate.document.metadata,
             providerResponse: {

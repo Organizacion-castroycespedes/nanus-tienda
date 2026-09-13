@@ -39,13 +39,16 @@ const COMMAND_DESCRIPTIONS: Record<EscPosMockCommandName, string> = {
   FEED: "Feed paper",
   CUT: "Paper cut",
   CASH_DRAWER_PULSE: "Cash drawer pulse",
+  QR_CODE: "Native ESC/POS QR code",
 };
 
 export const createEscPosMockCommand = (
-  name: EscPosMockCommandName
+  name: EscPosMockCommandName,
+  options: Pick<EscPosMockCommand, "payload" | "size" | "errorCorrection"> = {},
 ): EscPosMockCommand => ({
   name,
   description: COMMAND_DESCRIPTIONS[name],
+  ...options,
 });
 
 export const createCashDrawerPulseCommands = (): EscPosMockCommand[] => [
@@ -169,7 +172,18 @@ export const buildTicketPrintDocument = (
   }
 
   writer.separator();
+  if (content.qrPayload) {
+    writer.center("QR");
+  }
   writer.center(content.footer || "Gracias por su compra");
+
+  const qrCommand = content.qrPayload
+    ? createEscPosMockCommand(EscPosMockCommandName.QrCode, {
+        payload: content.qrPayload,
+        size: 6,
+        errorCorrection: "M",
+      })
+    : null;
 
   return {
     preview: writer.toString(),
@@ -180,6 +194,7 @@ export const buildTicketPrintDocument = (
       createEscPosMockCommand(EscPosMockCommandName.BoldOff),
       createEscPosMockCommand(EscPosMockCommandName.AlignLeft),
       createEscPosMockCommand(EscPosMockCommandName.AlignRight),
+      ...(qrCommand ? [qrCommand] : []),
       createEscPosMockCommand(EscPosMockCommandName.Feed),
       createEscPosMockCommand(EscPosMockCommandName.Cut),
     ],

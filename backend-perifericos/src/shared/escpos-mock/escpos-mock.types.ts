@@ -10,6 +10,7 @@ export const EscPosMockCommandName = {
   Feed: "FEED",
   Cut: "CUT",
   CashDrawerPulse: "CASH_DRAWER_PULSE",
+  QrCode: "QR_CODE",
 } as const;
 
 export type EscPosMockCommandName =
@@ -18,6 +19,9 @@ export type EscPosMockCommandName =
 export type EscPosMockCommand = {
   name: EscPosMockCommandName;
   description: string;
+  payload?: string;
+  size?: number;
+  errorCorrection?: "L" | "M" | "Q" | "H";
 };
 
 export type ThermalTicketItem = {
@@ -33,6 +37,7 @@ export type ThermalTicketPayment = {
 };
 
 export type ThermalTicketContent = {
+  qrPayload?: string;
   header?: string;
   businessName?: string;
   nit?: string;

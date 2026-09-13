@@ -48,6 +48,7 @@ export const buildElectronicInvoiceTicketPayload = (
       businessName: ticket.header.tenantName ?? undefined,
       address: ticket.header.branch ? `Sucursal: ${ticket.header.branch}` : undefined,
       date: ticket.header.date,
+      qrPayload: invoice.qrPayload ?? undefined,
       lines,
       footer: "Representación fiscal. Reimpresión sin retransmisión.",
     },

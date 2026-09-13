@@ -92,6 +92,7 @@ export type PeripheralTicketPayment = {
 };
 
 export type PeripheralTicketContent = {
+  qrPayload?: string;
   header?: string;
   businessName?: string;
   nit?: string;
