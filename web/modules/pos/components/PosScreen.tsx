@@ -3431,7 +3431,7 @@ export const PosScreen = () => {
                   </div>
                   <div className="relative z-50">
                     <div className="relative flex items-center">
-                      <Input
+                      <input
                         placeholder="Buscar por nombre o doc..."
                         value={customerSearchQuery}
                         onChange={(e) => {
@@ -3447,7 +3447,7 @@ export const PosScreen = () => {
                             setCustomerDropdownOpen(false);
                           }, 200);
                         }}
-                        className="w-full pl-9 pr-8"
+                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                       />
                       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                         <Search className="h-4 w-4" />

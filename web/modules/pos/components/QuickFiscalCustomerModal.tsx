@@ -194,7 +194,7 @@ export const QuickFiscalCustomerModal = ({
         }
 
         if (Object.keys(updatePayload).length === 0) {
-          savedCustomer = targetCustomer;
+          savedCustomer = targetCustomer as unknown as ElectronicInvoicingCustomer;
         } else {
           savedCustomer = await updateElectronicInvoicingCustomer(targetCustomerId, updatePayload);
         }
