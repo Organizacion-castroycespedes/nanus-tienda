@@ -20,6 +20,11 @@ export interface ElectronicBillingProvider {
     command: IssueElectronicInvoiceCommand
   ): Promise<ElectronicBillingProviderDocumentResult>;
 
+  resumeInvoice?(
+    command: IssueElectronicInvoiceCommand,
+    providerDocumentId: string,
+  ): Promise<ElectronicBillingProviderDocumentResult>;
+
   issueCreditNote(
     command: IssueElectronicCreditNoteCommand
   ): Promise<ElectronicBillingProviderDocumentResult>;

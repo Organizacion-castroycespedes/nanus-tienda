@@ -274,6 +274,80 @@ export class ElectronicBillingProcessingService {
     return this.runProcessing("PROCESSING_STARTED", tenantId, electronicDocumentId, "process");
   }
 
+  async resumeLinkedProviderDocument(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.resumeLinkedProviderDocumentUnlocked(tenantId, electronicDocumentId),
+    );
+  }
+
+  private async resumeLinkedProviderDocumentUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    const document = aggregate.document;
+    if (!document || !document.provider_document_id) {
+      throw new ElectronicDocumentNotProcessableError("A linked provider document is required for staged recovery");
+    }
+    if (isProcessingTerminalStatus(document.status)) {
+      return { ...aggregate, providerResult: null, idempotent: true, retryable: false };
+    }
+
+    const resolved = await this.providerResolver.resolve({
+      tenantId,
+      providerConfigId: document.provider_config_id,
+    });
+    const currentProvider = await this.getProviderStatus(resolved, aggregate);
+    const currentStatus = currentProvider.providerStatus?.toUpperCase() ?? "";
+    if (currentStatus !== "VALIDATED_INTERNAL") {
+      return this.persistProviderResult(
+        tenantId,
+        aggregate,
+        currentProvider,
+        resolved,
+        "STATUS_CHANGED",
+        true,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+    }
+    if (!resolved.provider.resumeInvoice) {
+      throw new ElectronicDocumentNotProcessableError("Provider does not support staged invoice recovery");
+    }
+
+    const claimed = await this.claimDocument(
+      tenantId,
+      electronicDocumentId,
+      "RETRY_REQUESTED",
+      document.status,
+      aggregate.events,
+    );
+    if (!claimed) {
+      throw new ElectronicDocumentStatusTransitionError();
+    }
+
+    try {
+      const command = this.buildInvoiceCommand(aggregate, resolved);
+      command.onStage = (stage, providerDocumentId) => this.persistProcessingStage(
+        tenantId,
+        document,
+        stage as ElectronicBillingProcessingStage,
+        providerDocumentId,
+      );
+      const providerResult = await resolved.provider.resumeInvoice(command, document.provider_document_id);
+      return this.persistProviderResult(
+        tenantId,
+        aggregate,
+        providerResult,
+        resolved,
+        "STATUS_CHANGED",
+        true,
+        claimed.attempt,
+      );
+    } catch (error) {
+      return this.persistProviderError(tenantId, aggregate, error, resolved, true, claimed.attempt);
+    }
+  }
+
   async retryDocument(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
     const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
     if (!aggregate.document) {

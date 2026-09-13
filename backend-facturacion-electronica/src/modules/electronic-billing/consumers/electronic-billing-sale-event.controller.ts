@@ -124,6 +124,32 @@ export class ElectronicBillingSaleEventController {
     return mapStatusRefreshResult(result);
   }
 
+  @Post("documents/:documentId/staged-resume")
+  async resumeLinkedProviderDocument(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: StatusRefreshBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Staged recovery identity is required");
+    }
+    const result = await this.processingService.resumeLinkedProviderDocument(tenantId, documentId);
+    const response = providerResponse(result.document);
+    return {
+      electronicDocumentId: result.document.id,
+      status: result.document.status,
+      processingStage: result.document.processing_stage,
+      providerStatus: result.document.provider_status,
+      providerDocumentId: result.document.provider_document_id,
+      documentNumber: documentNumber(result.document),
+      cufe: result.document.cufe,
+      providerStatusCode: stringValue(response.code),
+      providerStatusMessage: stringValue(response.message),
+    };
+  }
+
   @Post("documents/:documentId/provider-data-recovery")
   async recoverAcceptedProviderData(
     @Headers("authorization") authorization: string | undefined,

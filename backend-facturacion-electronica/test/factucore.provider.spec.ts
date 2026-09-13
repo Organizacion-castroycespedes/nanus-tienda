@@ -327,6 +327,21 @@ test("issueInvoice runs create then generate then sign then transmit", async () 
   ]);
 });
 
+test("resumeInvoice continues a validated provider document without create", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+
+  const result = await provider.resumeInvoice(command, "factu-existing-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["generateXml", "sign", "transmit"]);
+  assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.deepEqual(stages, ["XML_GENERATE_INTENT", "XML_GENERATED", "SIGN_INTENT", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
+});
+
 test("FactuCore provider requires an explicit external tenant mapping", async () => {
   const client = new RecordingFactuCoreClient();
   const { resolver } = buildResolver();
