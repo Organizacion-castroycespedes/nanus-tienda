@@ -162,3 +162,15 @@ SET slug = a.next_slug
 FROM allocated a
 WHERE t.id = a.id
   AND t.slug IS DISTINCT FROM a.next_slug;
+
+-- 4) Register in migrations_history (idempotent; safe if runner also records V081)
+INSERT INTO public.migrations_history (version, checksum, success, details, execution_time_ms)
+VALUES
+  (
+    'V081__backfill_tenant_slugs_from_company_name.sql',
+    'manual-2026-09-12-tenant-slug',
+    true,
+    'applied by 2026_09_12_tenant_slug_from_company_name.sql',
+    NULL
+  )
+ON CONFLICT (version) DO NOTHING;

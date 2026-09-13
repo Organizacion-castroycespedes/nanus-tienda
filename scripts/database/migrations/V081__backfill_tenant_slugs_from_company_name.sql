@@ -159,3 +159,15 @@ SET slug = a.next_slug
 FROM allocated a
 WHERE t.id = a.id
   AND t.slug IS DISTINCT FROM a.next_slug;
+
+-- 4) Register in migrations_history (idempotent; safe alongside migrate_prd.sh)
+INSERT INTO public.migrations_history (version, checksum, success, details, execution_time_ms)
+VALUES
+  (
+    'V081__backfill_tenant_slugs_from_company_name.sql',
+    'v081-tenant-slug-backfill',
+    true,
+    'applied by V081__backfill_tenant_slugs_from_company_name.sql',
+    NULL
+  )
+ON CONFLICT (version) DO NOTHING;
