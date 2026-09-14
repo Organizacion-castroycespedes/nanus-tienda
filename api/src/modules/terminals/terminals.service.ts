@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../common/db/database.service";
+import { AccessControlService } from "../../common/services/access-control.service";
 import { AuditService } from "../../common/services/audit.service";
 import {
   TerminalsRepository,
@@ -32,7 +33,8 @@ export class TerminalsService {
     @Inject(TerminalsRepository)
     private readonly repository: TerminalsRepository,
     @Inject(DatabaseService) private readonly db: DatabaseService,
-    @Inject(AuditService) private readonly auditService: AuditService
+    @Inject(AuditService) private readonly auditService: AuditService,
+    @Inject(AccessControlService) private readonly accessControl: AccessControlService,
   ) {}
 
   private canManageTerminals(actor: ActorContext) {
@@ -68,6 +70,14 @@ export class TerminalsService {
     }
 
     throw new ForbiddenException("No autorizado");
+  }
+
+  private async resolveTenantIdForRequest(actor: ActorContext, tenantId?: string) {
+    const normalized = this.normalizeOptional(tenantId);
+    if (!normalized || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) {
+      return this.resolveTenantId(actor, normalized ?? undefined);
+    }
+    return this.accessControl.resolveTenantIdFromSlug(actor, normalized);
   }
 
   private normalizeRequired(value: string | undefined, message: string) {
@@ -133,7 +143,7 @@ export class TerminalsService {
   }
 
   async createTerminal(payload: CreateTerminalDto, actor: ActorContext) {
-    const tenantId = this.resolveTenantId(actor, payload.tenantId);
+    const tenantId = await this.resolveTenantIdForRequest(actor, payload.tenantId);
     const branchId = this.normalizeRequired(payload.branchId, "Sucursal requerida");
     const name = this.normalizeRequired(payload.name, "Nombre requerido");
     const code = this.normalizeRequired(payload.code, "Codigo requerido");
@@ -179,7 +189,7 @@ export class TerminalsService {
   }
 
   async listTerminals(filters: ListTerminalFilters, actor: ActorContext) {
-    const tenantId = this.resolveTenantId(actor, filters.tenantId);
+    const tenantId = await this.resolveTenantIdForRequest(actor, filters.tenantId);
     const normalizedBranchId = filters.branchId?.trim();
 
     if (normalizedBranchId) {
