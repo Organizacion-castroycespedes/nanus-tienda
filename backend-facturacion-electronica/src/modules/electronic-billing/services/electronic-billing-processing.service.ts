@@ -774,6 +774,69 @@ export class ElectronicBillingProcessingService {
     );
   }
 
+  async recoverAfterConfirmedProviderAbsence(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
+      this.recoverAfterConfirmedProviderAbsenceUnlocked(tenantId, electronicDocumentId),
+    );
+  }
+
+  private async recoverAfterConfirmedProviderAbsenceUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    const document = aggregate.document;
+    const hasRetryableProviderErrorHistory = aggregate.events.some((event) =>
+      isRetryableProviderCode(event.error_code ?? ""),
+    );
+    if (!document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+    if (
+      document.status !== "TECHNICAL_ERROR" ||
+      document.provider_document_id ||
+      !document.external_reference ||
+      (!isRetryableProviderCode(document.last_error_code ?? "") && !hasRetryableProviderErrorHistory)
+    ) {
+      throw new ElectronicDocumentNotProcessableError(
+        "Only a pre-provider technical error with external reference can use confirmed-absence recovery",
+      );
+    }
+
+    const resolved = await this.providerResolver.resolve({
+      tenantId,
+      providerConfigId: document.provider_config_id,
+    });
+    try {
+      const providerResult = await this.getProviderStatus(resolved, aggregate);
+      return await this.persistProviderResult(
+        tenantId,
+        aggregate,
+        providerResult,
+        resolved,
+        "STATUS_CHANGED",
+        false,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+    } catch (error) {
+      if (!this.isProviderNotFoundError(error)) {
+        throw error;
+      }
+    }
+
+    return this.runProcessingUnlocked(
+      "RETRY_REQUESTED",
+      tenantId,
+      electronicDocumentId,
+      "retry",
+      false,
+      true,
+    );
+  }
+
   private async retryRecoverableDocumentUnlocked(
     tenantId: string,
     electronicDocumentId: string,
@@ -828,7 +891,12 @@ export class ElectronicBillingProcessingService {
       }
     }
 
-    return this.runProcessingUnlocked("RETRY_REQUESTED", tenantId, electronicDocumentId, "retry");
+    return this.runProcessingUnlocked(
+      "RETRY_REQUESTED",
+      tenantId,
+      electronicDocumentId,
+      "retry",
+    );
   }
 
   private async runProcessing(
@@ -855,6 +923,7 @@ export class ElectronicBillingProcessingService {
     electronicDocumentId: string,
     mode: "process" | "retry",
     allowApprovedPreProviderRecovery = false,
+    allowProviderCreateAfterReconciliation = false,
   ): Promise<ProcessingResult> {
     const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
     if (!aggregate.document) {
@@ -937,7 +1006,8 @@ export class ElectronicBillingProcessingService {
         : await this.retryWithProviderOrIssue(
           resolved,
           aggregate,
-          allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document),
+          allowProviderCreateAfterReconciliation ||
+            (allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document)),
         );
 
       return await this.persistProviderResult(

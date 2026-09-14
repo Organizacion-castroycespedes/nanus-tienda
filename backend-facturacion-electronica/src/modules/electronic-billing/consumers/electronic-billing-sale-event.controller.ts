@@ -220,6 +220,32 @@ export class ElectronicBillingSaleEventController {
     );
   }
 
+  @Post("documents/:documentId/recover-after-provider-absence")
+  async recoverAfterConfirmedProviderAbsence(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: RetryBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Confirmed-absence recovery identity is required");
+    }
+    const result = await this.processingService.recoverAfterConfirmedProviderAbsence(
+      tenantId,
+      documentId,
+    );
+    return {
+      electronicDocumentId: result.document.id,
+      status: result.document.status,
+      processingStage: result.document.processing_stage,
+      providerStatus: result.document.provider_status,
+      providerDocumentId: result.document.provider_document_id,
+      fullNumber: documentNumber(result.document),
+      cufe: result.document.cufe,
+    };
+  }
+
   private assertInternalToken(authorization: string | undefined) {
     const configuredToken = process.env.API_INTERNAL_TOKEN?.trim();
     if (!configuredToken) {

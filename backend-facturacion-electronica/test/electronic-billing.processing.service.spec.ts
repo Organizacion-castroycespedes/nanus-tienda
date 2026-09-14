@@ -896,3 +896,20 @@ test("persistent provider mock keeps an unresolved create timeout fail-closed", 
   assert.equal(harness.provider.received.issueInvoice.length, 0);
   assert.equal(harness.provider.received.retryDocument.length, 0);
 });
+
+test("confirmed provider absence enables exactly one explicit pre-provider recovery create", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_NETWORK",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+  }));
+  harness.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(harness.provider.received.issueInvoice.length, 1);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+  assert.notEqual(result.document.status, "TECHNICAL_ERROR");
+});
