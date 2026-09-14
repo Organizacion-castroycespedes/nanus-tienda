@@ -153,3 +153,15 @@ cerrar primero; este módulo complementa su operación posterior.
 - UI duplique FE: usar read model y contratos del módulo FE.
 - Cambio global accidental: validar cada tenant/context switch.
 - N+1 en lista: read model batch y sin proveedor por fila.
+# Dashboard operativo
+
+`GET /api/operations/dashboard` reutiliza los guards existentes y
+`OperationalSaleScopeService`. La consulta limita tenant, sucursales y turno
+antes de agregar `sales`; no acepta un tenant o sucursal para ampliar alcance.
+Toma el documento electrónico actual por venta (el más reciente) para evitar
+duplicar reintentos. La tasa de aceptación usa documentos electrónicos
+actuales como denominador y vale `0` si no hay documentos.
+
+La ruta `/operations` muestra KPIs reales, tendencia diaria y estados FE. La
+ruta `/operations/sales` conserva la tabla operativa. Los CTAs llevan a esa
+tabla con filtros de estado.

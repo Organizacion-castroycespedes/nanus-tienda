@@ -15,6 +15,10 @@ const getAuthPermissions = () => store.getState().auth.permissions;
 
 const isPrivilegedRole = (role: string) => role === "SUPER_ADMIN";
 
+const isOperationalSalesMenuKey = (key: string) =>
+  key.trim().toUpperCase() === MENU_KEYS.OPERATIONS ||
+  key.trim().toUpperCase() === MENU_KEYS.OPERATIONS_SALES;
+
 const operationalAdminMenuKeys = new Set(
   [
     MENU_KEYS.INVENTORY,
@@ -230,7 +234,11 @@ export const getAllowedMenuItems = (items: MenuItem[]): MenuItem[] =>
   items.reduce<MenuItem[]>((allowed, item) => {
     const children = item.children ? getAllowedMenuItems(item.children) : [];
     const itemAllowed =
-      (!item.inherited && hasMenuAccess(item.key, "READ")) || children.length > 0;
+      (!item.inherited &&
+        (hasMenuAccess(item.key, "READ") ||
+          (isOperationalSalesMenuKey(item.key) &&
+            (item.accessLevel === "READ" || item.accessLevel === "WRITE")))) ||
+      children.length > 0;
     if (!itemAllowed) {
       return allowed;
     }

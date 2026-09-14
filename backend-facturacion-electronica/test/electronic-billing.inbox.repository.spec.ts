@@ -55,3 +55,13 @@ test("inbox repository marks processed events", async () => {
   assert.match(calls[0], /SET status = 'PROCESSED'/i);
   assert.match(calls[0], /electronic_document_id = \$2/i);
 });
+
+test("source lookup ignores FAILED history and selects active/current records", async () => {
+  const { calls, db } = buildDb();
+  const repository = new ElectronicBillingInboxRepository(db as never);
+
+  await repository.findBySource("tenant-1", "SALE", "sale-1");
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /status IN \('RECEIVED', 'PROCESSED'\)/i);
+});

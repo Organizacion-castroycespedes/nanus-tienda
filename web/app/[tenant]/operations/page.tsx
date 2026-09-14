@@ -1,1 +1,1 @@
-export { OperationalSalesPage as default } from "../../../modules/operational-sales/components/OperationalSalesPage";
+export { OperationalDashboardPage as default } from "../../../modules/operational-sales/components/OperationalDashboardPage";

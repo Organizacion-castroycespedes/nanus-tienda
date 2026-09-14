@@ -238,6 +238,98 @@ export class IntegrationOutboxRepository {
     return result.rows[0] ?? null;
   }
 
+  async findBySource(
+    tenantId: string,
+    sourceType: string,
+    sourceId: string,
+    eventType: string,
+    client?: PoolClient,
+  ): Promise<IntegrationOutboxEventRecord[]> {
+    const result = await this.query<IntegrationOutboxEventRecord>(
+      `SELECT
+        id, event_id, event_type, schema_version, tenant_id, correlation_id,
+        source_type, source_id, payload, payload_hash, status, attempt_count,
+        next_attempt_at, lease_until, last_attempt_at, published_at,
+        last_error, created_at, updated_at
+       FROM integration_outbox_events
+       WHERE tenant_id = $1
+         AND source_type = $2
+         AND source_id = $3
+         AND event_type = $4
+       ORDER BY created_at DESC, id DESC
+       FOR UPDATE`,
+      [tenantId, sourceType, sourceId, eventType],
+      client,
+    );
+
+    return result.rows ?? [];
+  }
+
+  async supersedePendingEvent(
+    eventId: string,
+    replacementEventId: string,
+    supersededAt: Date,
+    client?: PoolClient,
+  ): Promise<boolean> {
+    const result = await this.query<QueryResultRow>(
+      `UPDATE integration_outbox_events
+       SET
+         status = 'FAILED',
+         lease_until = NULL,
+         next_attempt_at = $3,
+         last_error = $2,
+         updated_at = $3
+       WHERE event_id = $1
+         AND event_type = 'SALE_COMPLETED_FOR_ELECTRONIC_BILLING'
+         AND status = 'PENDING'
+         AND attempt_count = 0
+         AND lease_until IS NULL
+       RETURNING event_id`,
+      [
+        eventId,
+        JSON.stringify({
+          code: "OUTBOX_EVENT_SUPERSEDED",
+          replacementEventId,
+        }),
+        supersededAt.toISOString(),
+      ],
+      client,
+    );
+
+    return result.rows.length === 1;
+  }
+
+  async recordFailedPreProviderRecovery(
+    eventId: string,
+    replacementEventId: string,
+    originalError: string | null,
+    recoveredAt: Date,
+    client?: PoolClient,
+  ): Promise<boolean> {
+    const result = await this.query<QueryResultRow>(
+      `UPDATE integration_outbox_events
+       SET last_error = $2, updated_at = $3
+       WHERE event_id = $1
+         AND event_type = 'SALE_COMPLETED_FOR_ELECTRONIC_BILLING'
+         AND status = 'FAILED'
+         AND attempt_count = 1
+         AND lease_until IS NULL
+       RETURNING event_id`,
+      [
+        eventId,
+        JSON.stringify({
+          code: "OUTBOX_EVENT_RECOVERED_PRE_PROVIDER",
+          replacementEventId,
+          originalError,
+        }),
+        recoveredAt.toISOString(),
+      ],
+      client,
+    );
+
+    return result.rows.length === 1;
+  }
+
   async claimDueEvents(
     input: ClaimDueIntegrationOutboxEventsInput,
     client?: PoolClient,
@@ -290,6 +382,37 @@ export class IntegrationOutboxRepository {
     );
 
     return result.rows ?? [];
+  }
+
+  async claimDueEvent(
+    eventId: string,
+    input: ClaimDueIntegrationOutboxEventsInput,
+    client?: PoolClient,
+  ): Promise<IntegrationOutboxEventRecord | null> {
+    const leaseUntil = new Date(input.now.getTime() + input.leaseMs);
+    const result = await this.query<IntegrationOutboxEventRecord>(
+      `UPDATE integration_outbox_events AS event
+       SET
+         status = 'PROCESSING',
+         attempt_count = event.attempt_count + 1,
+         lease_until = $2,
+         last_attempt_at = $3,
+         updated_at = $3
+       WHERE event.event_id = $1
+         AND event.status = 'PENDING'
+         AND event.next_attempt_at <= $3
+         AND (event.lease_until IS NULL OR event.lease_until <= $3)
+       RETURNING
+         event.id, event.event_id, event.event_type, event.schema_version,
+         event.tenant_id, event.correlation_id, event.source_type, event.source_id,
+         event.payload, event.payload_hash, event.status, event.attempt_count,
+         event.next_attempt_at, event.lease_until, event.last_attempt_at,
+         event.published_at, event.last_error, event.created_at, event.updated_at`,
+      [eventId, leaseUntil.toISOString(), input.now.toISOString()],
+      client,
+    );
+
+    return result.rows[0] ?? null;
   }
 
   async markPublished(

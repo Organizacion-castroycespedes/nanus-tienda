@@ -101,6 +101,14 @@ export class PosTerminalsService {
     return actor.tenantId;
   }
 
+  private async resolveTenantIdForRequest(actor: ActorContext, requestedTenantId?: string) {
+    const normalized = this.normalizeOptionalText(requestedTenantId);
+    if (!normalized || this.isUuid(normalized)) {
+      return this.resolveTenantId(actor, normalized ?? undefined);
+    }
+    return this.accessControl.resolveTenantIdFromSlug(actor, normalized);
+  }
+
   private async getAllowedBranchIds(actor: ActorContext, tenantId: string) {
     if (actor.roles.includes("SUPER_ADMIN") || actor.roles.includes("SUPER_USER")) {
       return null;
@@ -417,7 +425,7 @@ export class PosTerminalsService {
     filters: { tenantId?: string; branchId?: string },
     actor: ActorContext
   ) {
-    const tenantId = this.resolveTenantId(actor, filters.tenantId);
+    const tenantId = await this.resolveTenantIdForRequest(actor, filters.tenantId);
     const branchId = this.normalizeOptionalText(filters.branchId) ?? undefined;
     const allowedBranchIds = await this.getAllowedBranchIds(actor, tenantId);
     if (branchId) {
@@ -445,7 +453,7 @@ export class PosTerminalsService {
   }
 
   async createTerminal(payload: CreatePosTerminalDto, actor: ActorContext) {
-    const tenantId = this.resolveTenantId(actor, payload.tenantId);
+    const tenantId = await this.resolveTenantIdForRequest(actor, payload.tenantId);
     const branchId = this.normalizeRequiredText(payload.branchId, "branchId is required");
     const operationalTerminalId = this.normalizeOptionalText(
       payload.operationalTerminalId
@@ -590,7 +598,7 @@ export class PosTerminalsService {
     filters: ResolveCurrentPosTerminalFilters,
     actor: ActorContext
   ) {
-    const tenantId = this.resolveTenantId(actor, filters.tenantId);
+    const tenantId = await this.resolveTenantIdForRequest(actor, filters.tenantId);
     const requestedBranchId = this.normalizeOptionalText(filters.branchId);
     const allowedBranchIds = await this.getAllowedBranchIds(actor, tenantId);
     const requestedTerminalId = this.normalizeOptionalText(filters.terminalId);

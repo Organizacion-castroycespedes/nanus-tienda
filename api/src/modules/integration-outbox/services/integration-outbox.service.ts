@@ -42,6 +42,46 @@ export class IntegrationOutboxService {
     return this.repository.findByEventId(eventId, client);
   }
 
+  async findBySource(
+    tenantId: string,
+    sourceType: string,
+    sourceId: string,
+    eventType: string,
+    client?: PoolClient,
+  ) {
+    return this.repository.findBySource(tenantId, sourceType, sourceId, eventType, client);
+  }
+
+  async supersedePendingEvent(
+    eventId: string,
+    replacementEventId: string,
+    supersededAt: Date,
+    client?: PoolClient,
+  ) {
+    return this.repository.supersedePendingEvent(
+      eventId,
+      replacementEventId,
+      supersededAt,
+      client,
+    );
+  }
+
+  async recordFailedPreProviderRecovery(
+    eventId: string,
+    replacementEventId: string,
+    originalError: string | null,
+    recoveredAt: Date,
+    client?: PoolClient,
+  ) {
+    return this.repository.recordFailedPreProviderRecovery(
+      eventId,
+      replacementEventId,
+      originalError,
+      recoveredAt,
+      client,
+    );
+  }
+
   async claimDueEvents(limit: number, leaseMs: number, client?: PoolClient) {
     return this.repository.claimDueEvents(
       {
@@ -49,6 +89,14 @@ export class IntegrationOutboxService {
         limit,
         leaseMs,
       },
+      client,
+    );
+  }
+
+  async claimDueEvent(eventId: string, leaseMs: number, client?: PoolClient) {
+    return this.repository.claimDueEvent(
+      eventId,
+      { now: new Date(), limit: 1, leaseMs },
       client,
     );
   }

@@ -141,6 +141,23 @@ export class SaleController {
     return this.saleService.requestElectronicBillingForSale(id, this.buildActor(request));
   }
 
+  @Post(":id/electronic-billing/recover-failed-pre-provider")
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  recoverFailedPreProviderElectronicBilling(
+    @Param("id") id: string,
+    @Body() body: { eventId?: string },
+    @Req() request: AuthRequest,
+  ) {
+    if (!body.eventId) {
+      throw new BadRequestException("eventId is required");
+    }
+    return this.saleService.recoverFailedPreProviderElectronicBillingIntent(
+      id,
+      body.eventId,
+      this.buildActor(request),
+    );
+  }
+
   @Post()
   @RequireOpenCashSession()
   @RequirePosSession()
