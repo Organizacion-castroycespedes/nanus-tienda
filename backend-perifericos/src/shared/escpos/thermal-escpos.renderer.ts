@@ -58,6 +58,26 @@ const commandBytes: Record<EscPosMockCommandName, Buffer> = {
   FEED: Buffer.from([0x1b, 0x64, 0x06]),
   CUT: Buffer.from([0x1d, 0x56, 0x00]),
   CASH_DRAWER_PULSE: buildCashDrawerPulseBytes(DEFAULT_CASH_DRAWER_PULSE_PROFILE),
+  QR_CODE: Buffer.alloc(0),
+};
+
+const qrCommand = (command: EscPosMockCommand): Buffer => {
+  if (!command.payload) return Buffer.alloc(0);
+  const size = Math.min(16, Math.max(1, Math.round(command.size ?? 6)));
+  const ec = { L: 48, M: 49, Q: 50, H: 51 }[command.errorCorrection ?? "M"];
+  const fn = (data: number[]) => {
+    const length = data.length + 3;
+    return Buffer.from([0x1d, 0x28, 0x6b, length & 0xff, (length >> 8) & 0xff, ...data]);
+  };
+  const store = Buffer.from(command.payload, "utf8");
+  const storeLength = store.length + 5;
+  return Buffer.concat([
+    fn([0x31, 0x41, 0x32, 0x00]),
+    fn([0x31, 0x43, size]),
+    fn([0x31, 0x45, ec]),
+    Buffer.from([0x1d, 0x28, 0x6b, storeLength & 0xff, (storeLength >> 8) & 0xff, 0x31, 0x50, 0x30, ...store]),
+    fn([0x31, 0x51, 0x30]),
+  ]);
 };
 
 export const THERMAL_80MM_SAFE_WIDTH_CHARS = 48;
@@ -87,7 +107,7 @@ export const renderThermalEscPos = (
       command.name === EscPosMockCommandName.Cut
         ? suffix
         : prefix;
-    target.push(commandBytes[command.name]);
+    target.push(command.name === EscPosMockCommandName.QrCode ? qrCommand(command) : commandBytes[command.name]);
   }
 
   return Buffer.concat([

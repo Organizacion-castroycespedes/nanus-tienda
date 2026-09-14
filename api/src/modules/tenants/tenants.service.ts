@@ -4,6 +4,7 @@ import {
   resolveTenantSlugFromInput,
   slugifyTenantName,
 } from "./tenant-slug";
+import { normalizeVatResponsibility, type VatResponsibility } from "./vat-responsibility";
 
 type TenantBrandingConfig = {
   colors?: {
@@ -31,6 +32,7 @@ export type TenantDetailsInput = {
   estado: string;
   responsabilidadesDian?: string;
   regimen?: string;
+  vatResponsibility?: VatResponsibility;
   actividadEconomica?: string;
   obligadoFacturacionElectronica?: boolean;
   resolucionDian?: string;
@@ -184,6 +186,7 @@ export class TenantsService {
         td.estado,
         td.responsabilidades_dian,
         td.regimen,
+        td.vat_responsibility AS "vatResponsibility",
         td.actividad_economica,
         td.obligado_facturacion_electronica,
         td.resolucion_dian,
@@ -220,6 +223,14 @@ export class TenantsService {
   }
 
   async upsertDetails(tenantId: string, payload: TenantDetailsInput) {
+    let vatResponsibility: VatResponsibility;
+    try {
+      vatResponsibility = normalizeVatResponsibility(
+        payload.vatResponsibility ?? "UNKNOWN",
+      );
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
     const result = await this.db.query(
       `
       INSERT INTO tenants_detalles (
@@ -256,6 +267,7 @@ export class TenantsService {
         banco_principal,
         numero_cuenta,
         tipo_cuenta,
+        vat_responsibility,
         updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
@@ -263,7 +275,7 @@ export class TenantsService {
         (SELECT nombre FROM municipios WHERE id = $18),
         (SELECT nombre FROM departamentos WHERE id = $17),
         (SELECT nombre FROM paises WHERE id = $16),
-        $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, NOW()
+        $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW()
       )
       ON CONFLICT (tenant_id) DO UPDATE SET
         razon_social = EXCLUDED.razon_social,
@@ -275,6 +287,7 @@ export class TenantsService {
         estado = EXCLUDED.estado,
         responsabilidades_dian = EXCLUDED.responsabilidades_dian,
         regimen = EXCLUDED.regimen,
+        vat_responsibility = EXCLUDED.vat_responsibility,
         actividad_economica = EXCLUDED.actividad_economica,
         obligado_facturacion_electronica = EXCLUDED.obligado_facturacion_electronica,
         resolucion_dian = EXCLUDED.resolucion_dian,
@@ -341,6 +354,7 @@ export class TenantsService {
         payload.bancoPrincipal ?? null,
         payload.numeroCuenta ?? null,
         payload.tipoCuenta ?? null,
+        vatResponsibility,
       ]
     );
     return result.rows[0] ?? null;

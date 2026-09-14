@@ -1,4 +1,4 @@
-import { Injectable, Inject } from "@nestjs/common";
+import { ForbiddenException, Injectable, Inject, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../db/database.service";
 import { getMenuKeyCandidates } from "../constants/menu-keys";
 
@@ -188,6 +188,25 @@ export class AccessControlService {
       return requested || actor.tenantId || null;
     }
     return actor.tenantId ?? null;
+  }
+
+  async resolveTenantIdFromSlug(
+    actor: AccessActor,
+    requestedTenant: string,
+  ): Promise<string> {
+    const slug = requestedTenant.trim();
+    const result = await this.db.query<{ id: string; slug: string }>(
+      `SELECT id, slug FROM tenants WHERE slug = $1 AND activo = TRUE LIMIT 1`,
+      [slug],
+    );
+    const tenant = result.rows[0];
+    if (!tenant) {
+      throw new NotFoundException("Tenant no encontrado");
+    }
+    if (!this.isSuperAdmin(actor) && actor.tenantId !== tenant.id) {
+      throw new ForbiddenException("Tenant scope mismatch");
+    }
+    return tenant.id;
   }
 
   async getAccessibleBranchIds(

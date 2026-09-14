@@ -55,14 +55,24 @@ export type FactuCoreCustomer = {
   merchantRegistration?: string | null;
 };
 
+export const FACTUCORE_TAX_TYPES = [
+  "IVA",
+  "INC",
+  "ICA",
+  "RETE_FUENTE",
+  "RETE_IVA",
+  "RETE_ICA",
+  "OTHER",
+] as const;
+
+export type FactuCoreTaxType = (typeof FACTUCORE_TAX_TYPES)[number];
+
 export type FactuCoreTax = {
-  taxType: string;
+  taxType: FactuCoreTaxType;
   rate: number | string;
   taxableBase: number | string;
   taxAmount: number | string;
   taxCode?: string | null;
-  taxSchemeId?: string | null;
-  taxSchemeName?: string | null;
   metadata?: Record<string, unknown>;
 };
 

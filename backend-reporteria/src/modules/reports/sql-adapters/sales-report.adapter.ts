@@ -144,6 +144,25 @@ export class SalesReportAdapter {
               document.metadata #>> '{providerResponse,code}' AS "providerStatusCode",
               document.metadata #>> '{providerResponse,message}' AS "providerStatusMessage",
               document.metadata #>> '{providerResponse,trackingId}' AS "trackingId",
+              CASE WHEN document.metadata #> '{electronicBilling,customer}' IS NOT NULL THEN jsonb_build_object(
+                'name', COALESCE(document.metadata #>> '{electronicBilling,customer,legalName}', NULLIF(CONCAT_WS(' ', document.metadata #>> '{electronicBilling,customer,firstName}', document.metadata #>> '{electronicBilling,customer,lastName}'), '')),
+                'identificationType', document.metadata #>> '{electronicBilling,customer,identification,typeCode}',
+                'identificationNumber', document.metadata #>> '{electronicBilling,customer,identification,number}',
+                'address', document.metadata #>> '{electronicBilling,customer,address}',
+                'country', document.metadata #>> '{electronicBilling,customer,metadata,countryName}',
+                'department', document.metadata #>> '{electronicBilling,customer,metadata,departmentName}',
+                'municipality', COALESCE(document.metadata #>> '{electronicBilling,customer,metadata,cityName}', document.metadata #>> '{electronicBilling,customer,municipalityCode}'),
+                'phone', document.metadata #>> '{electronicBilling,customer,phone}',
+                'email', document.metadata #>> '{electronicBilling,customer,email}',
+                'taxRegime', document.metadata #>> '{electronicBilling,customer,taxProfile,taxScheme}',
+                'fiscalResponsibilityCodes', COALESCE(document.metadata #> '{electronicBilling,customer,taxProfile,fiscalResponsibilityCodes}', '[]'::jsonb)
+              ) ELSE NULL END AS "customerFiscalSnapshot",
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('type', tax.tax_type, 'code', tax.tax_code, 'rate', tax.rate, 'taxableBase', tax.taxable_base, 'amount', tax.tax_amount) ORDER BY tax.created_at, tax.id) FROM electronic_document_taxes tax WHERE tax.electronic_document_id = document.id), '[]'::jsonb) AS "taxLines",
+              COALESCE(
+                document.metadata #>> '{electronicBilling,qrPayload}',
+                document.metadata #>> '{electronicBillingProcessing,qrPayload}',
+                document.metadata #>> '{providerResponse,qrPayload}'
+              ) AS "qrPayload",
               (document.status = 'ACCEPTED' AND COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) IS NOT NULL) AS "representationAvailable"
          FROM sales AS s
          INNER JOIN electronic_documents AS document
@@ -159,7 +178,29 @@ export class SalesReportAdapter {
     if (result.rows.length > 1) {
       throw new Error("sale has ambiguous electronic documents");
     }
-    return result.rows[0] ?? null;
+    const document = result.rows[0];
+    if (!document) return null;
+    return {
+      ...document,
+      customerFiscalSnapshot: document.customerFiscalSnapshot
+        ? {
+            ...document.customerFiscalSnapshot,
+            fiscalResponsibilityCodes: Array.isArray(document.customerFiscalSnapshot.fiscalResponsibilityCodes)
+              ? document.customerFiscalSnapshot.fiscalResponsibilityCodes.filter((code): code is string => typeof code === "string")
+              : [],
+          }
+        : null,
+      taxLines: Array.isArray(document.taxLines)
+        ? document.taxLines.map((tax) => ({
+            type: String(tax.type ?? "TAX"),
+            code: tax.code == null ? null : String(tax.code),
+            rate: Number(tax.rate ?? 0),
+            taxableBase: Number(tax.taxableBase ?? 0),
+            amount: Number(tax.amount ?? 0),
+          }))
+        : [],
+      qrPayload: document.qrPayload ?? null,
+    };
   }
 
   async getSaleCancelTicket(

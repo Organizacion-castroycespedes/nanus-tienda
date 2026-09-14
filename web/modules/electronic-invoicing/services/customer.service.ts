@@ -16,6 +16,9 @@ export type ElectronicInvoicingCustomer = {
   invoiceEmail: string | null;
   phone: string | null;
   address: string | null;
+  countryId?: string | null;
+  departamentoId?: string | null;
+  municipioId?: string | null;
   countryCode: string | null;
   departmentCode: string | null;
   municipalityCode: string | null;
@@ -126,6 +129,9 @@ export type CreateElectronicInvoicingCustomerPayload = {
   invoiceEmail?: string | null;
   phone?: string | null;
   address?: string | null;
+  countryId?: string | null;
+  departamentoId?: string | null;
+  municipioId?: string | null;
   countryCode?: string | null;
   departmentCode?: string | null;
   municipalityCode?: string | null;

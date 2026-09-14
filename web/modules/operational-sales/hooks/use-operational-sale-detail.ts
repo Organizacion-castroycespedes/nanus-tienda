@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../../lib/request";
 import {
   fetchOperationalSaleDetail,
+  requestOperationalSaleElectronicBilling,
   refreshOperationalSaleBillingStatus,
   retryOperationalSaleBilling,
 } from "../services/operational-sales.service";
@@ -82,6 +83,29 @@ export const useOperationalSaleDetail = (saleId: string) => {
     }
   }, [actionLoading, saleId]);
 
+  const requestBilling = useCallback(async () => {
+    if (actionLoading) return;
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const response = await requestOperationalSaleElectronicBilling(saleId);
+      if (response.requestCreated) {
+        setActionMessage("Solicitud de facturación electrónica creada. Actualiza el estado FE para consultar el avance.");
+      } else {
+        setActionMessage(`No se creó una nueva solicitud: ${response.eligibility}.`);
+      }
+      const refreshed = await fetchOperationalSaleDetail(saleId);
+      setData(refreshed);
+    } catch (requestError: unknown) {
+      const message = requestError instanceof ApiError
+        ? requestError.message.replace(/\s+/g, " ").trim().slice(0, 300)
+        : "No fue posible solicitar la factura electrónica.";
+      setActionMessage(message || "No fue posible solicitar la factura electrónica.");
+    } finally {
+      setActionLoading(false);
+    }
+  }, [actionLoading, saleId]);
+
   return {
     data,
     loading,
@@ -89,6 +113,7 @@ export const useOperationalSaleDetail = (saleId: string) => {
     reload: load,
     refreshBillingStatus,
     retryBilling,
+    requestBilling,
     actionLoading,
     actionMessage,
   };

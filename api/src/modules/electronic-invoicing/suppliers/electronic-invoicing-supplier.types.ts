@@ -37,6 +37,9 @@ export type ElectronicInvoicingSupplier = {
   invoiceEmail: string | null;
   phone: string | null;
   address: string | null;
+  countryId?: string | null;
+  departamentoId?: string | null;
+  municipioId?: string | null;
   countryCode: string | null;
   departmentCode: string | null;
   municipalityCode: string | null;
@@ -81,6 +84,9 @@ export type CreateElectronicInvoicingSupplierInput = {
   invoiceEmail?: string | null;
   phone?: string | null;
   address?: string | null;
+  countryId?: string | null;
+  departamentoId?: string | null;
+  municipioId?: string | null;
   countryCode?: string | null;
   departmentCode?: string | null;
   municipalityCode?: string | null;
@@ -113,6 +119,9 @@ export type UpdateElectronicInvoicingSupplierInput = Partial<
     | "invoiceEmail"
     | "phone"
     | "address"
+    | "countryId"
+    | "departamentoId"
+    | "municipioId"
     | "countryCode"
     | "departmentCode"
     | "municipalityCode"

@@ -41,3 +41,25 @@ test("electronic billing eligibility is canonical and fail closed", () => {
     "NO_CUSTOMER",
   );
 });
+
+test("IVA billing rejects an incomplete final-consumer fiscal profile", () => {
+  assert.equal(
+    evaluateElectronicBillingEligibility({
+      ...base,
+      hasTaxLines: true,
+      customerFiscalDataComplete: false,
+    }),
+    "INCOMPLETE_CUSTOMER_FISCAL_DATA",
+  );
+});
+
+test("no-tax billing keeps the existing final-consumer exception", () => {
+  assert.equal(
+    evaluateElectronicBillingEligibility({
+      ...base,
+      hasTaxLines: false,
+      customerFiscalDataComplete: false,
+    }),
+    "ELIGIBLE",
+  );
+});

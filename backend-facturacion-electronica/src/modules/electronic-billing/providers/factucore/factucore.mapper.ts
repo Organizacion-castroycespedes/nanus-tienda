@@ -24,6 +24,7 @@ import type {
   FactuCoreRuntimeContext,
   FactuCoreStatusResponse,
   FactuCoreTax,
+  FactuCoreTaxType,
 } from "./factucore.types";
 
 const DOCUMENT_STATUS_MAP: Record<string, ElectronicDocumentStatus> = {
@@ -126,6 +127,83 @@ const resolveCustomerLegalName = (customer: ElectronicCustomer) => {
   return names.join(" ").trim();
 };
 
+const normalizeTaxLabel = (value: unknown) => normalizeString(value)
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toUpperCase()
+  .replace(/[^A-Z0-9]+/g, "_")
+  .replace(/^_|_$/g, "");
+
+const TAX_TYPE_ALIASES: Record<string, FactuCoreTaxType> = {
+  IVA: "IVA",
+  VAT: "IVA",
+  IVA_0: "IVA",
+  IVA_5: "IVA",
+  IVA_19: "IVA",
+  INC: "INC",
+  IMPUESTO_NACIONAL_AL_CONSUMO: "INC",
+  IMPUESTO_AL_CONSUMO: "INC",
+  LIQUOR_CONSUMPTION: "INC",
+  ICA: "ICA",
+  IMPUESTO_DE_INDUSTRIA_Y_COMERCIO: "ICA",
+  INDUSTRIA_Y_COMERCIO: "ICA",
+  AD_VALOREM: "OTHER",
+  RETE_FUENTE: "RETE_FUENTE",
+  RETENCION_EN_LA_FUENTE: "RETE_FUENTE",
+  RETENCION_FUENTE: "RETE_FUENTE",
+  RETE_IVA: "RETE_IVA",
+  RETENCION_DE_IVA: "RETE_IVA",
+  RETENCION_IVA: "RETE_IVA",
+  RETE_ICA: "RETE_ICA",
+  RETENCION_DE_ICA: "RETE_ICA",
+  RETENCION_ICA: "RETE_ICA",
+  OTHER: "OTHER",
+  OTRO: "OTHER",
+  EXENTO: "OTHER",
+  EXCLUIDO: "OTHER",
+  NO_APLICA: "OTHER",
+};
+
+export const mapFactuCoreTaxType = (tax: ElectronicTaxInput): FactuCoreTaxType => {
+  const candidates = [
+    tax.type,
+    tax.schemeName,
+    tax.metadata?.taxType,
+    tax.metadata?.taxSchemeName,
+  ];
+
+  for (const candidate of candidates) {
+    const mapped = TAX_TYPE_ALIASES[normalizeTaxLabel(candidate)];
+    if (mapped) {
+      return mapped;
+    }
+  }
+
+  throw new FactuCoreConfigurationError(
+    "tax_normalization",
+    "Tax type is not mapped to the FactuCore fiscal contract",
+  );
+};
+
+const FACTUCORE_TAX_SCHEME_IDS: Partial<Record<FactuCoreTaxType, string>> = {
+  IVA: "01",
+  INC: "04",
+  ICA: "03",
+};
+
+const mapFactuCoreTaxSchemeId = (tax: ElectronicTaxInput) => {
+  const taxType = mapFactuCoreTaxType(tax);
+  const canonicalId = FACTUCORE_TAX_SCHEME_IDS[taxType];
+  if (canonicalId) {
+    return canonicalId;
+  }
+
+  const suppliedId = normalizeNullableString(tax.schemeId);
+  return suppliedId === "01" || suppliedId === "04" || suppliedId === "03"
+    ? suppliedId
+    : null;
+};
+
 const resolveTaxProfile = (customer: ElectronicCustomer) => {
   const identificationTypeCode = normalizeString(customer.taxProfile?.identificationTypeCode) || normalizeString(customer.identification.typeCode);
   const taxSchemeId = normalizeNullableString(customer.taxProfile?.taxScheme);
@@ -169,9 +247,11 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
     addressLine1: normalizeNullableString(customer.address),
     countryCode: "CO",
     departmentCode: normalizeNullableString(
-      customer.metadata?.departmentCode,
+      customer.metadata?.departmentCode ?? customer.departmentCode,
     ),
-    municipalityCode: normalizeNullableString(customer.municipalityCode),
+    municipalityCode: normalizeNullableString(
+      customer.municipalityCode ?? customer.metadata?.municipalityCode,
+    ),
     cityName: normalizeNullableString(customer.metadata?.cityName),
     departmentName: normalizeNullableString(customer.metadata?.departmentName),
     countryName: normalizeNullableString(customer.metadata?.countryName),
@@ -181,18 +261,22 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
   };
 };
 
-const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => ({
-  taxType: tax.type,
+const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
+  const taxType = mapFactuCoreTaxType(tax);
+  const taxSchemeId = mapFactuCoreTaxSchemeId(tax);
+  return {
+  taxType,
   rate: tax.rate,
   taxableBase: tax.taxableBase,
   taxAmount: tax.amount,
   metadata: {
     ...(tax.metadata ?? {}),
     ...(tax.code ? { taxCode: tax.code } : {}),
-    ...(tax.schemeId ? { taxSchemeId: tax.schemeId } : {}),
+    ...(taxSchemeId ? { taxSchemeId } : {}),
     ...(tax.schemeName ? { taxSchemeName: tax.schemeName } : {}),
   },
-});
+  };
+};
 
 const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
   sku: normalizeNullableString(line.sku),
@@ -202,8 +286,8 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
   description: line.description,
   unitCode: mapUnitCode(line.unitCode),
   taxTreatment: normalizeNullableString(line.taxTreatment),
-  taxSchemeId: normalizeNullableString(line.metadata?.taxSchemeId),
-  taxSchemeName: normalizeNullableString(line.metadata?.taxSchemeName),
+  taxSchemeId: line.taxes?.length === 1 ? mapFactuCoreTaxSchemeId(line.taxes[0]) : null,
+  taxSchemeName: line.taxes?.length === 1 ? mapFactuCoreTaxType(line.taxes[0]) : null,
   quantity: line.quantity,
   unitPrice: line.unitPrice,
   discountAmount: line.discountAmount ?? null,

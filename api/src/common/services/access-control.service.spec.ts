@@ -87,3 +87,32 @@ test("AccessControlService: USER cannot access unassigned branch", async () => {
 
   assert.equal(allowed, false);
 });
+
+test("AccessControlService resolves a tenant slug to its canonical UUID", async () => {
+  const tenantId = "00000000-0000-4000-8000-000000000001";
+  const { service, calls } = createService([
+    { match: "FROM tenants", rows: [{ id: tenantId, slug: "manustienda-platform-s-a-s" }] },
+  ]);
+
+  const resolved = await service.resolveTenantIdFromSlug(
+    { tenantId, roles: ["ADMIN"] },
+    "manustienda-platform-s-a-s",
+  );
+
+  assert.equal(resolved, tenantId);
+  assert.deepEqual(calls[0].params, ["manustienda-platform-s-a-s"]);
+});
+
+test("AccessControlService rejects cross-tenant slug resolution", async () => {
+  const { service } = createService([
+    { match: "FROM tenants", rows: [{ id: "tenant-b", slug: "other-tenant" }] },
+  ]);
+
+  await assert.rejects(
+    () => service.resolveTenantIdFromSlug(
+      { tenantId: "tenant-a", roles: ["ADMIN"] },
+      "other-tenant",
+    ),
+    /Tenant scope mismatch/,
+  );
+});

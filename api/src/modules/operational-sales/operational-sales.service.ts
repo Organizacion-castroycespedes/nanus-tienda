@@ -4,6 +4,8 @@ import { OperationalSaleScopeService, type OperationalSaleActor } from "../../co
 import { BillingIntegrationClient } from "../integration-outbox/services/billing-integration-client";
 import { normalizeOperationalSalesQuery, type OperationalSalesQueryDto } from "./dto/operational-sales-query.dto";
 import { OperationalSalesRepository } from "./operational-sales.repository";
+import { OperationalDashboardRepository } from "./operational-dashboard.repository";
+import { normalizeOperationalDashboardQuery, type OperationalDashboardQueryDto } from "./dto/operational-dashboard-query.dto";
 
 @Injectable()
 export class OperationalSalesService {
@@ -16,6 +18,8 @@ export class OperationalSalesService {
     private readonly billingClient: BillingIntegrationClient,
     @Optional() @Inject(AuditService)
     private readonly auditService?: AuditService,
+    @Optional() @Inject(OperationalDashboardRepository)
+    private readonly dashboardRepository?: OperationalDashboardRepository,
   ) {}
 
   async list(actor: OperationalSaleActor, queryDto: OperationalSalesQueryDto) {
@@ -27,6 +31,15 @@ export class OperationalSalesService {
     }
     const scope = await this.scopeService.resolveQueryScope(actor, query);
     return this.repository.findMany(scope, query);
+  }
+
+  async dashboard(actor: OperationalSaleActor, queryDto: OperationalDashboardQueryDto) {
+    let query;
+    try { query = normalizeOperationalDashboardQuery(queryDto); }
+    catch (error) { throw new BadRequestException(error instanceof Error ? error.message : "Invalid dashboard query"); }
+    const scope = await this.scopeService.resolveQueryScope(actor, { branchId: query.branchId });
+    if (!this.dashboardRepository) throw new Error("dashboard repository unavailable");
+    return this.dashboardRepository.getDashboard(scope, query);
   }
 
   async detail(actor: OperationalSaleActor, saleId: string) {

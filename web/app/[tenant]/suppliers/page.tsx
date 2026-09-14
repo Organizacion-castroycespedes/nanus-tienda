@@ -1,7 +1,9 @@
 "use client";
 
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { Input } from "../../../components/design-system/Input";
@@ -96,6 +98,8 @@ const getSupplierDocument = (supplier: SupplierResponse) =>
   "-";
 
 const SuppliersPage = () => {
+  const searchParams = useSearchParams();
+  const requestedSupplierId = searchParams.get("editSupplierId");
   const confirm = useConfirm();
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -231,6 +235,12 @@ const SuppliersPage = () => {
     setFormMode("edit");
   };
 
+  useEffect(() => {
+    if (!requestedSupplierId || !suppliers.length) return;
+    const supplier = suppliers.find((item) => item.id === requestedSupplierId);
+    if (supplier) openEditForm(supplier);
+  }, [requestedSupplierId, suppliers]);
+
   const isActionMode = formMode !== null;
   const actionTitle = formMode === "edit" ? "Editar proveedor" : "Crear proveedor";
   const actionDescription =
@@ -294,6 +304,7 @@ const SuppliersPage = () => {
           </div>
           {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
+            <Link href="fiscal-review"><Button variant="secondary">Revisión fiscal</Button></Link>
             <Button variant="ghost" onClick={() => void loadSuppliers()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar

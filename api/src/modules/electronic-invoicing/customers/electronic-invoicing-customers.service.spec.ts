@@ -62,12 +62,14 @@ const buildCustomer = (
   invoiceEmail: null,
   phone: null,
   address: null,
-  countryCode: null,
-  departmentCode: null,
-  municipalityCode: null,
-  personType: null,
-  taxRegime: null,
-  taxResponsibilities: [],
+  departamentoId: "department-1",
+  municipioId: "municipality-1",
+  countryCode: "CO",
+  departmentCode: "08",
+  municipalityCode: "08001",
+  personType: "JURIDICA",
+  taxRegime: "ORDINARIO",
+  taxResponsibilities: ["R-99-PN"],
   isFinalConsumer: false,
   isDianValidated: false,
   dianLastLookupAt: null,
@@ -192,10 +194,33 @@ const buildService = (
     },
   };
 
-  return new ElectronicInvoicingCustomersService(
+  const locationsService = {
+    resolveCanonicalLocation: async (input: any) => ({
+      country_id: "country-1",
+      country_code: "CO",
+      department_id: input.departmentId ?? "department-1",
+      department_code: input.departmentId === "department-5" || input.municipalityId === "municipality-5" ? "05" : "08",
+      municipality_id: input.municipalityId ?? "municipality-1",
+      municipality_code: input.municipalityId === "municipality-5" ? "05001" : "08001",
+    }),
+  };
+  const service = new ElectronicInvoicingCustomersService(
     repository as never,
-    overrides.lookupService
+    overrides.lookupService,
+    locationsService as never
   );
+  const createCustomer = service.createCustomer.bind(service);
+  service.createCustomer = ((requestedTenantId: string, input: any) =>
+    createCustomer(requestedTenantId, {
+      countryId: "country-1",
+      departamentoId: "department-1",
+      municipioId: "municipality-1",
+      personType: "JURIDICA",
+      taxRegime: "ORDINARIO",
+      taxResponsibilities: ["R-99-PN"],
+      ...input,
+    })) as typeof service.createCustomer;
+  return service;
 };
 
 describe("ElectronicInvoicingCustomersService", () => {
@@ -243,6 +268,9 @@ describe("ElectronicInvoicingCustomersService", () => {
       name: "ACME SAS",
       documentNumber: "900.123-456",
       dianIdentificationType: "31",
+      countryId: "country-5",
+      departamentoId: "department-5",
+      municipioId: "municipality-5",
       invoiceEmail: "FACTURAS@ACME.CO",
       phone: "3001234567",
       address: "CL 1 2 3",

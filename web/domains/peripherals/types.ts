@@ -97,6 +97,7 @@ export type PeripheralTicketTaxLine = {
 };
 
 export type PeripheralTicketContent = {
+  qrPayload?: string;
   header?: string;
   businessName?: string;
   nit?: string;
@@ -125,7 +126,7 @@ export type PeripheralTicketPayload = {
   branchId?: string;
   terminalId?: string;
   deviceId?: string;
-  ticketType: "SALE" | "PURCHASE" | "ORDER";
+  ticketType: "SALE" | "PURCHASE" | "ORDER" | "ELECTRONIC_INVOICE";
   content: PeripheralTicketContent;
 };
 

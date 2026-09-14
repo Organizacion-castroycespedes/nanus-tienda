@@ -13,6 +13,7 @@ export type {
   FactuCoreIdentification,
   FactuCoreCustomer,
   FactuCoreTax,
+  FactuCoreTaxType,
   FactuCoreDocumentLine,
   FactuCoreDocumentReference,
   FactuCoreDocumentTotals,
@@ -26,7 +27,8 @@ export type {
   FactuCoreRuntimeContext,
   FactuCoreStatusMapping,
 } from "./factucore.types";
-export { FACTUCORE_TENANT_ID_SETTING } from "./factucore.types";
+export { FACTUCORE_TENANT_ID_SETTING, FACTUCORE_TAX_TYPES } from "./factucore.types";
+export { mapFactuCoreTaxType } from "./factucore.mapper";
 export { FactuCoreClient as ElectronicBillingClient } from "./factucore.client";
 export { FactuCoreClient } from "./factucore.client";
 export {

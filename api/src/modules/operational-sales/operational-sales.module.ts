@@ -6,10 +6,12 @@ import { IntegrationOutboxModule } from "../integration-outbox/integration-outbo
 import { OperationalSalesController } from "./operational-sales.controller";
 import { OperationalSalesRepository } from "./operational-sales.repository";
 import { OperationalSalesService } from "./operational-sales.service";
+import { OperationalDashboardRepository } from "./operational-dashboard.repository";
+import { OperationalDashboardController } from "./operational-dashboard.controller";
 
 @Module({
   imports: [DatabaseModule, AccessControlModule, CommonServicesModule, IntegrationOutboxModule],
-  controllers: [OperationalSalesController],
-  providers: [OperationalSalesRepository, OperationalSalesService],
+  controllers: [OperationalSalesController, OperationalDashboardController],
+  providers: [OperationalSalesRepository, OperationalDashboardRepository, OperationalSalesService],
 })
 export class OperationalSalesModule {}
