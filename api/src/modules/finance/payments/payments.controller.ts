@@ -19,6 +19,7 @@ import type { FinanceAuthRequest } from "../common/finance.types";
 import { FinanceAuthzGuard } from "../common/guards/finance-authz.guard";
 import { financeValidationPipe } from "../common/pipes/finance-validation.pipe";
 import { CreatePaymentDto } from "./dto/create-payment.dto";
+import { CreateDocumentPaymentDto } from "./dto/create-document-payment.dto";
 import { ListPaymentsDto } from "./dto/list-payments.dto";
 import { PaymentsService } from "./payments.service";
 
@@ -50,5 +51,11 @@ export class PaymentsController {
   @RequireOpenCashSession()
   create(@Body() payload: CreatePaymentDto, @Req() request: Request) {
     return this.paymentsService.create(payload, this.buildActor(request));
+  }
+
+  @Post("document")
+  @RequireOpenCashSession()
+  createDocument(@Body() payload: CreateDocumentPaymentDto, @Req() request: Request) {
+    return this.paymentsService.createDocument(payload, this.buildActor(request));
   }
 }

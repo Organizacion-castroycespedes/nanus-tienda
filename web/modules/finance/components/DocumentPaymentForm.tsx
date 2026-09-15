@@ -1,24 +1,25 @@
 "use client";
 
 import { Plus, Wallet, X } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
-import { Select } from "../../../components/design-system/Select";
 import {
-  createPayment,
+  createDocumentPayment,
   getCurrentCashSession,
   listPaymentMethods,
 } from "../services/finance.service";
 import type {
   CashSession,
-  CreatePaymentPayload,
   FinancePaymentStatus,
   Payment,
   PaymentDirection,
   PaymentMethod,
   PaymentReferenceType,
 } from "../types";
+import { PaymentMethodSelector } from "../../shared/payments/PaymentMethodSelector";
+import { PaymentDialog } from "../../shared/payments/PaymentDialog";
+import { parseDocumentPaymentAmount } from "../../shared/payments/payment-allocation.helper";
 
 type PaymentDraft = {
   id: string;
@@ -26,6 +27,7 @@ type PaymentDraft = {
   amount: string;
   referenceNumber: string;
   notes: string;
+  automatic?: boolean;
 };
 
 export type DocumentPaymentSuccessContext = {
@@ -49,6 +51,9 @@ type DocumentPaymentFormProps = {
   referenceType: PaymentReferenceType;
   referenceId: string;
   direction: PaymentDirection;
+  partyLabel?: string;
+  partyName?: string | null;
+  documentLabel?: string;
   total: number;
   effectiveTotal?: number | null;
   totalLabel?: string;
@@ -73,22 +78,28 @@ const formatCurrency = (value: number) =>
 
 const round = (value: number) => Number(value.toFixed(2));
 
+const createOperationKey = () => {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
 const buildDraftId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const createEmptyDraft = (paymentMethodId = ""): PaymentDraft => ({
+const createEmptyDraft = (paymentMethodId = "", amount = "", automatic = false): PaymentDraft => ({
   id: buildDraftId(),
   paymentMethodId,
-  amount: "",
+  amount,
   referenceNumber: "",
   notes: "",
+  automatic,
 });
-
-const parseAmount = (value: string) => {
-  const sanitized = value.replace(",", ".").replace(/[^0-9.]/g, "");
-  const parsed = Number(sanitized);
-  return Number.isFinite(parsed) ? round(parsed) : 0;
-};
 
 export const DocumentPaymentForm = ({
   title,
@@ -97,6 +108,9 @@ export const DocumentPaymentForm = ({
   referenceType,
   referenceId,
   direction,
+  partyLabel = referenceType === "PURCHASE" ? "Proveedor de la compra" : "Cliente del pedido",
+  partyName,
+  documentLabel,
   total,
   effectiveTotal,
   totalLabel = "Total",
@@ -118,6 +132,7 @@ export const DocumentPaymentForm = ({
   const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const operationKeyRef = useRef(createOperationKey());
 
   useEffect(() => {
     let active = true;
@@ -163,6 +178,12 @@ export const DocumentPaymentForm = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!loading && balanceDue > 0 && payments.length === 1 && !payments[0].amount) {
+      setPayments((current) => [{ ...current[0], amount: String(balanceDue), automatic: true }]);
+    }
+  }, [balanceDue, loading, payments]);
+
   const methodById = useMemo(
     () =>
       paymentMethods.reduce<Record<string, PaymentMethod>>((acc, method) => {
@@ -176,7 +197,7 @@ export const DocumentPaymentForm = ({
     () =>
       payments.map((payment) => ({
         ...payment,
-        numericAmount: parseAmount(payment.amount),
+        numericAmount: parseDocumentPaymentAmount(payment.amount) ?? 0,
         method: methodById[payment.paymentMethodId] ?? null,
       })),
     [methodById, payments]
@@ -198,15 +219,29 @@ export const DocumentPaymentForm = ({
   const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
     setSubmitError(null);
     setPayments((current) =>
-      current.map((payment) => (payment.id === id ? { ...payment, [field]: value } : payment))
+      current.map((payment) =>
+        payment.id === id
+          ? { ...payment, [field]: value, automatic: field === "amount" ? false : payment.automatic }
+          : payment
+      )
     );
   };
 
   const addPaymentRow = () => {
-    setPayments((current) => [
-      ...current,
-      createEmptyDraft(paymentMethods[0]?.id ?? ""),
-    ]);
+    setPayments((current) => {
+      const entered = current.reduce(
+        (sum, payment) => sum + (parseDocumentPaymentAmount(payment.amount) ?? 0),
+        0
+      );
+      return [
+        ...current,
+        createEmptyDraft(
+          paymentMethods[0]?.id ?? "",
+          String(round(Math.max(balanceDue - entered, 0))),
+          true
+        ),
+      ];
+    });
   };
 
   const removePaymentRow = (id: string) => {
@@ -274,40 +309,27 @@ export const DocumentPaymentForm = ({
     setSubmitError(null);
 
     try {
-      const submittedPayments: DocumentPaymentSuccessContext["payments"] = [];
-      const responses: Payment[] = [];
-
-      for (const payment of parsedPayments) {
-        const payload: CreatePaymentPayload = {
-          branchId,
+      if (!cashSession?.id) throw new Error("No hay caja activa");
+      const responses = await createDocumentPayment({
+        operationKey: operationKeyRef.current,
+        branchId,
+        cashSessionId: cashSession.id,
+        referenceType: referenceType === "PURCHASE_ORDER" ? "PURCHASE" : referenceType as "PURCHASE" | "SALES_ORDER",
+        referenceId,
+        payments: parsedPayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
-          cashSessionId: cashSession?.id ?? undefined,
-          referenceType,
-          referenceId,
-          direction,
-          status: "COMPLETED",
           amount: payment.numericAmount,
           referenceNumber: payment.referenceNumber.trim() || undefined,
           notes: payment.notes.trim() || undefined,
-          allocations: [
-            {
-              referenceType,
-              referenceId,
-              allocatedAmount: payment.numericAmount,
-            },
-          ],
-        };
-
-        const response = await createPayment(payload);
-        responses.push(response);
-        submittedPayments.push({
+        })),
+      });
+      const submittedPayments = parsedPayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
           methodName: payment.method?.nombre,
           methodType: payment.method?.tipo,
-          cashSessionId: payload.cashSessionId ?? null,
+          cashSessionId: cashSession.id,
           amount: payment.numericAmount,
-        });
-      }
+        }));
 
       onSuccess({
         referenceId,
@@ -325,12 +347,17 @@ export const DocumentPaymentForm = ({
   };
 
   return (
+    <PaymentDialog title={title} busy={submitting} onClose={onCancel}>
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div className="sticky top-0 z-20 -mx-1 mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-white/95 px-1 pb-3 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95 sm:mb-6">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Finance</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{partyLabel}</p>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{description}</p>
+          <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
+            {partyName || "Tercero asociado al documento"}
+          </p>
+          {documentLabel ? <p className="text-xs text-slate-500">{documentLabel}</p> : null}
         </div>
         <Button variant="ghost" onClick={onCancel} disabled={submitting} className="w-full sm:w-auto">
           {cancelLabel}
@@ -346,8 +373,12 @@ export const DocumentPaymentForm = ({
           {loadError}
         </div>
       ) : (
-        <form className="grid gap-5" onSubmit={handleSubmit}>
-          <section className="grid gap-4 md:grid-cols-4">
+        <form className="grid gap-5" onSubmit={handleSubmit} onKeyDown={(event) => {
+          if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+            event.preventDefault();
+          }
+        }}>
+          <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
               <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{totalLabel}</p>
               <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{formatCurrency(total)}</p>
@@ -424,20 +455,17 @@ export const DocumentPaymentForm = ({
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    <Select
-                      label="Metodo de pago"
-                      value={payment.paymentMethodId}
-                      onChange={(event) =>
-                        updatePayment(payment.id, "paymentMethodId", event.target.value)
-                      }
-                    >
-                      <option value="">Selecciona un metodo</option>
-                      {paymentMethods.map((paymentMethod) => (
-                        <option key={paymentMethod.id} value={paymentMethod.id}>
-                          {paymentMethod.nombre}
-                        </option>
-                      ))}
-                    </Select>
+                    <div className="md:col-span-2">
+                      <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Método #{index + 1}
+                      </p>
+                      <PaymentMethodSelector
+                        options={paymentMethods.map((method) => ({ value: method.id, label: method.nombre }))}
+                        value={payment.paymentMethodId}
+                        disabled={submitting}
+                        onChange={(value) => updatePayment(payment.id, "paymentMethodId", value)}
+                      />
+                    </div>
 
                     <Input
                       label="Valor a pagar"
@@ -446,7 +474,7 @@ export const DocumentPaymentForm = ({
                       onChange={(event) =>
                         updatePayment(payment.id, "amount", event.target.value)
                       }
-                      placeholder="0"
+                      placeholder={String(balanceDue)}
                     />
 
                     <Input
@@ -473,7 +501,7 @@ export const DocumentPaymentForm = ({
 
             <Button type="button" variant="outline" onClick={addPaymentRow}>
               <Plus className="h-4 w-4" />
-              Agregar linea de pago
+              Agregar método de pago
             </Button>
           </section>
 
@@ -504,7 +532,7 @@ export const DocumentPaymentForm = ({
             </div>
           ) : null}
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row">
+          <div className="sticky bottom-0 z-10 -mx-1 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 py-3 backdrop-blur sm:flex-row dark:border-slate-700 dark:bg-slate-800/95">
             <Button
               type="submit"
               isLoading={submitting}
@@ -520,5 +548,6 @@ export const DocumentPaymentForm = ({
         </form>
       )}
     </section>
+    </PaymentDialog>
   );
 };

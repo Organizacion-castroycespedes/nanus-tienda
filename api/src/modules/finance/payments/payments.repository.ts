@@ -44,6 +44,7 @@ export type PaymentDocumentRecord = {
   status: string;
   total: string;
   balance: string | null;
+  party_id?: string | null;
 };
 
 export type PaymentMethodSummaryRecord = {
@@ -54,6 +55,17 @@ export type PaymentMethodSummaryRecord = {
   payment_method_tipo: string | null;
   count: string;
   total: string;
+};
+
+export type DocumentPaymentOperationRecord = {
+  id: string;
+  tenant_id: string;
+  operation_key: string;
+  request_fingerprint: string;
+  reference_type: PaymentReferenceType;
+  reference_id: string;
+  payment_ids: string[] | null;
+  status: "PENDING" | "COMPLETED";
 };
 
 type CreatePaymentInput = {
@@ -81,6 +93,44 @@ type CreatePaymentAllocationInput = {
 @Injectable()
 export class PaymentsRepository {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+
+  async lockDocument(client: PoolClient, tenantId: string, type: PaymentReferenceType, id: string) {
+    const table = type === "SALES_ORDER" ? "orders"
+      : type === "PURCHASE" || type === "PURCHASE_ORDER" ? "purchases" : null;
+    if (!table) return;
+    // Table is selected exclusively from the fixed domain allowlist above.
+    await client.query(`SELECT id FROM ${table} WHERE id = $1 AND tenant_id = $2 FOR UPDATE`, [id, tenantId]);
+  }
+
+  async lockPaymentCashSession(client: PoolClient, tenantId: string, id: string) {
+    await client.query("SELECT id FROM cash_sessions WHERE id = $1 AND tenant_id = $2 FOR UPDATE", [id, tenantId]);
+  }
+
+  async fitsDocumentBalance(
+    client: PoolClient,
+    tenantId: string,
+    type: "PURCHASE" | "SALES_ORDER",
+    id: string,
+    document: PaymentDocumentRecord,
+    amounts: number[],
+  ) {
+    // PostgreSQL numeric is the ledger's canonical decimal arithmetic.
+    const result = await client.query<{ valid: boolean }>(
+      `SELECT COALESCE(SUM(value), 0) > 0 AND
+        COALESCE(SUM(value), 0) <= GREATEST(0, LEAST(
+          COALESCE($2::numeric, $1::numeric),
+          $1::numeric - (
+            SELECT COALESCE(SUM(a.allocated_amount), 0)
+            FROM payment_allocations a JOIN payments p ON p.id = a.payment_id
+            WHERE p.tenant_id = $3 AND a.reference_id = $4
+              AND (a.reference_type = $5 OR ($5 = 'PURCHASE' AND a.reference_type = 'PURCHASE_ORDER'))
+              AND p.status IN ('PENDING', 'COMPLETED')
+          )
+        )) AS valid FROM unnest($6::numeric[]) AS value`,
+      [document.total, document.balance, tenantId, id, type, amounts.map(String)],
+    );
+    return result.rows[0]?.valid === true;
+  }
 
   private async query<T extends QueryResultRow>(
     text: string,
@@ -133,6 +183,83 @@ export class PaymentsRepository {
     LEFT JOIN users AS creator
       ON creator.id = payment.created_by
      AND creator.tenant_id = payment.tenant_id`;
+  }
+
+  async claimDocumentPaymentOperation(
+    client: PoolClient,
+    data: {
+      tenantId: string;
+      operationKey: string;
+      requestFingerprint: string;
+      referenceType: PaymentReferenceType;
+      referenceId: string;
+    }
+  ) {
+    const inserted = await this.query<{ id: string }>(
+      `INSERT INTO document_payment_operations (
+        tenant_id, operation_key, request_fingerprint, reference_type, reference_id
+      ) VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (tenant_id, operation_key) DO NOTHING
+      RETURNING id`,
+      [
+        data.tenantId,
+        data.operationKey,
+        data.requestFingerprint,
+        data.referenceType,
+        data.referenceId,
+      ],
+      client
+    );
+    const record = await this.getDocumentPaymentOperation(
+      client,
+      data.tenantId,
+      data.operationKey
+    );
+    return { created: inserted.rows.length > 0, record };
+  }
+
+  async getDocumentPaymentOperation(
+    client: PoolClient,
+    tenantId: string,
+    operationKey: string
+  ) {
+    const result = await this.query<DocumentPaymentOperationRecord>(
+      `SELECT id, tenant_id, operation_key, request_fingerprint,
+        reference_type, reference_id, payment_ids, status
+       FROM document_payment_operations
+       WHERE tenant_id = $1 AND operation_key = $2
+       FOR UPDATE`,
+      [tenantId, operationKey],
+      client
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async completeDocumentPaymentOperation(
+    client: PoolClient,
+    tenantId: string,
+    operationKey: string,
+    paymentIds: string[]
+  ) {
+    await this.query<QueryResultRow>(
+      `UPDATE document_payment_operations
+       SET status = 'COMPLETED', payment_ids = $3::uuid[], completed_at = NOW()
+       WHERE tenant_id = $1 AND operation_key = $2`,
+      [tenantId, operationKey, paymentIds],
+      client
+    );
+  }
+
+  async listByIds(paymentIds: string[], tenantId: string, client?: PoolClient) {
+    if (paymentIds.length === 0) return [] as PaymentRecord[];
+    const result = await this.query<PaymentRecord>(
+      `${this.buildBaseQuery()}
+       WHERE payment.id = ANY($1::uuid[]) AND payment.tenant_id = $2
+       ORDER BY payment.created_at ASC, payment.id ASC`,
+      [paymentIds, tenantId],
+      client
+    );
+    return result.rows ?? [];
   }
 
   async createPayment(client: PoolClient, data: CreatePaymentInput) {
@@ -582,6 +709,7 @@ export class PaymentsRepository {
           p.tenant_id,
           audit_context.branch_id::text AS branch_id,
           p.status,
+          p.supplier_id AS party_id,
           p.total::text AS total,
           COALESCE(p.balance_due, p.balance)::text AS balance
         FROM purchases AS p
@@ -610,6 +738,7 @@ export class PaymentsRepository {
           o.tenant_id,
           audit_context.branch_id::text AS branch_id,
           o.status,
+          o.customer_id AS party_id,
           o.total::text AS total,
           o.balance_due::text AS balance
         FROM orders AS o

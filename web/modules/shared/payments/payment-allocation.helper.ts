@@ -11,6 +11,45 @@ export type PaymentDraftLike = {
   amount: string;
 };
 
+// Document inputs are strict; preserve POS's existing parsing contract above.
+export const parseDocumentPaymentAmount = (value: string): number | null => {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed <= 999999999999.99 ? parsed : null;
+};
+
+const paymentCents = (value: number) => {
+  const [whole, fraction] = value.toFixed(2).split(".");
+  return Number(whole) * 100 + Number(fraction);
+};
+
+export const summarizeDocumentPayments = (pending: number, payments: PaymentDraftLike[]) => {
+  const amounts = payments.map((line) => parseDocumentPaymentAmount(line.amount));
+  const cents = amounts.reduce<number>((sum, amount) => sum + paymentCents(amount ?? 0), 0);
+  const pendingCents = paymentCents(pending);
+  return {
+    total: cents / 100,
+    remaining: Math.max(0, pendingCents - cents) / 100,
+    overpayment: cents > pendingCents,
+    valid: amounts.length > 0 && amounts.every((amount) => amount !== null && amount > 0),
+  };
+};
+
+export const rebalanceDocumentPayments = <T extends PaymentDraftLike & { automatic?: boolean }>(
+  pending: number,
+  payments: T[],
+): T[] => {
+  const manual = payments.filter((line) => !line.automatic);
+  let remaining = summarizeDocumentPayments(pending, manual).remaining;
+  return payments.map((line) => {
+    if (!line.automatic) return line;
+    const result = { ...line, amount: formatPaymentAmount(remaining) };
+    remaining = 0;
+    return result;
+  });
+};
+
 export type CashPaymentMethodLike = {
   codigo?: string | null;
   nombre?: string | null;

@@ -912,6 +912,9 @@ const PurchasesPage = () => {
           referenceType="PURCHASE"
           referenceId={activePurchase.id}
           direction="OUT"
+          partyLabel="Proveedor de la compra"
+          partyName={activePurchase.supplierName ?? activePurchase.supplierId}
+          documentLabel={`Compra ${activePurchase.id.slice(0, 8)}`}
           total={activePurchase.total}
           totalLabel="Total compra"
           effectiveTotal={

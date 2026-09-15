@@ -240,7 +240,7 @@ export const OperationalSaleDetailPage = () => {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Gestión Operativa · Ventas</p>
           <h1 className="mt-2 break-all text-2xl font-bold text-slate-950">Detalle {sale.id}</h1>
         </div>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">OperaciÃ³n segura</span>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Operación segura</span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

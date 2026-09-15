@@ -1627,7 +1627,7 @@ export const PosScreen = () => {
       const product = findUniquePosScannerProduct(code, productsRef.current);
 
       if (!product) {
-        const message = `CÃ³digo no encontrado: ${code}`;
+        const message = `Código no encontrado: ${code}`;
         scannerHidLogger.productNotFound(code);
         setScannerLastResult(message);
         showToast(message, "warning");
@@ -1654,11 +1654,11 @@ export const PosScreen = () => {
   const handleScannerConnectionError = useCallback(
     (error: PeripheralOperationError) => {
       setScannerMockStatus("error");
-      setScannerLastResult("Scanner MOCK desconectado");
+      setScannerLastResult("Scanner desconectado");
 
       if (!scannerErrorToastShownRef.current) {
         scannerErrorToastShownRef.current = true;
-        showToast(error.message || "Scanner MOCK desconectado", "warning");
+        showToast(error.message || "Scanner desconectado", "warning");
       }
     },
     [showToast]
@@ -1699,7 +1699,7 @@ export const PosScreen = () => {
   const handleSimulateScannerRead = useCallback(async () => {
     const code = scannerMockCode.trim();
     if (!code) {
-      showToast("Ingresa un codigo para simular scanner MOCK.", "warning");
+      showToast("Ingresa un codigo para simular scanner.", "warning");
       return;
     }
 
@@ -1721,7 +1721,7 @@ export const PosScreen = () => {
       if (!result.success) {
         const message =
           result.error.code === "AGENT_OFFLINE"
-            ? "Scanner MOCK desconectado. El POS sigue funcionando."
+            ? "Scanner desconectado. El POS sigue funcionando."
             : result.error.message;
         if (result.error.code === "AGENT_OFFLINE") {
           setScannerMockStatus("error");
@@ -1732,7 +1732,7 @@ export const PosScreen = () => {
       }
 
       setScannerLastCode(result.data.code);
-      setScannerLastResult("Scan MOCK enviado al agent");
+      setScannerLastResult("Scan enviado al agent");
     } finally {
       setScannerSimulating(false);
     }
@@ -1780,7 +1780,7 @@ export const PosScreen = () => {
         if (!result.success) {
           const message =
             result.error.code === "AGENT_OFFLINE"
-              ? "No se pudo leer la balanza MOCK"
+              ? "No se pudo leer la balanza"
               : result.error.message;
           setScaleMockStatus("error");
           setScaleLastResult(message);
@@ -1817,7 +1817,7 @@ export const PosScreen = () => {
           return;
         }
 
-        const message = `Peso leÃ­do: ${reading}`;
+        const message = `Peso leído: ${reading}`;
         setScaleMockStatus("ready");
         setScaleLastResult(message);
         void playProductAddedSound();
@@ -2871,7 +2871,7 @@ export const PosScreen = () => {
                 </div>
                 {hasSelectedCategoryWithoutSubcategories ? (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {selectedProductCategory?.name ?? "CategorÃ­a"} sin subcategorÃ­as.
+                    {selectedProductCategory?.name ?? "Categoría"} sin subcategorías.
                   </p>
                 ) : null}
               </section>
@@ -2985,7 +2985,7 @@ export const PosScreen = () => {
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         <Scale className="h-4 w-4" />
-                        Balanza MOCK
+                        Balanza
                       </span>
                       <span
                         className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
@@ -3025,7 +3025,7 @@ export const PosScreen = () => {
                     className="xl:mb-0.5"
                   >
                     <Scale className="h-4 w-4" />
-                    Leer balanza MOCK
+                    Leer balanza
                   </Button>
                 </div>
               </div>
@@ -3357,7 +3357,7 @@ export const PosScreen = () => {
                               </h3>
                               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                 <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">â€¢</span>
+                                <span className="text-slate-300 dark:text-slate-600">•</span>
                                 <span className="text-slate-600 dark:text-slate-300">
                                   {productSaleTypeLabels[productSaleType]} /{" "}
                                   {product.measurementUnit ??
