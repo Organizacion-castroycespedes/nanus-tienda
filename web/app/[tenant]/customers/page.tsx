@@ -3,6 +3,7 @@
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { Input } from "../../../components/design-system/Input";
@@ -320,6 +321,7 @@ const CustomersPage = () => {
           </div>
           {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
+            <Link href="fiscal-review"><Button variant="secondary">Revisión fiscal</Button></Link>
             <Button variant="ghost" onClick={() => void loadCustomers()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar

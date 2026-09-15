@@ -55,14 +55,23 @@ import type {
   SalePaymentSnapshot,
   SaleTaxSnapshot,
   SaleCustomerSnapshot,
+  SaleSnapshot,
 } from "../../integration-outbox/contracts/integration-outbox-events";
 import {
   evaluateElectronicBillingEligibility,
 } from "../../integration-outbox/contracts/electronic-billing-eligibility";
 import {
+  assertIssuerCanBillVat,
+  hasPositiveTaxLines,
+} from "../../integration-outbox/contracts/issuer-vat-billing-guard";
+import {
   getElectronicBillingMode,
 } from "../../integration-outbox/contracts/electronic-billing-mode";
 import { StockMovementService } from "./stock-movement.service";
+import {
+  normalizeVatResponsibility,
+  type VatResponsibility,
+} from "../../tenants/vat-responsibility";
 
 type SaleListRow = SaleRow & {
   branch_id: string;
@@ -742,13 +751,17 @@ export class SaleService {
     }
 
     const normalizedDocument = this.normalizeInvoiceDocumentNumber(customer.documentNumber);
-    const fiscalCustomer =
-      normalizedDocument && this.electronicInvoicingCustomersRepository
-        ? await this.electronicInvoicingCustomersRepository.findByNormalizedDocument(
-            tenantId,
-            normalizedDocument
-          )
-        : null;
+    const fiscalCustomer = this.electronicInvoicingCustomersRepository
+      ? (typeof this.electronicInvoicingCustomersRepository.findById === "function"
+          ? await this.electronicInvoicingCustomersRepository.findById(customerId, tenantId)
+          : null) ??
+        (normalizedDocument
+          ? await this.electronicInvoicingCustomersRepository.findByNormalizedDocument(
+              tenantId,
+              normalizedDocument,
+            )
+          : null)
+      : null;
     const finalConsumerCustomer =
       !fiscalCustomer && customer.isFinalConsumer && this.electronicInvoicingCustomersRepository
         ? await this.electronicInvoicingCustomersRepository.findActiveFinalConsumer(tenantId)
@@ -973,6 +986,75 @@ export class SaleService {
     }));
   }
 
+  private isElectronicBillingCustomerFiscalDataComplete(
+    customer: SaleCustomerSnapshot,
+  ) {
+    return Boolean(
+      customer.identificationNumber?.trim() &&
+        customer.legalName?.trim() &&
+        customer.countryCode?.trim() &&
+        customer.departmentCode?.trim() &&
+        customer.municipalityCode?.trim() &&
+        customer.taxLevelCode?.trim() &&
+        customer.taxSchemeId?.trim() &&
+        customer.fiscalResponsibilityCodes?.length,
+    );
+  }
+
+  private isElectronicBillingSnapshotStale(
+    event: {
+      payload: {
+        sale?: SaleSnapshot;
+        customer?: SaleCustomerSnapshot;
+        totals?: {
+          subtotalAmount?: string;
+          taxAmount?: string;
+          totalAmount?: string;
+        };
+      };
+    },
+    saleRow: { status: string; total: string | number },
+    currentCustomer: SaleCustomerSnapshot,
+    currentLines: Array<{
+      subtotalAmount: string;
+      taxAmount: string;
+      totalAmount: string;
+    }>,
+  ) {
+    const payload = event.payload;
+    const currentTotals = currentLines.reduce(
+      (totals, line) => ({
+        subtotalAmount: totals.subtotalAmount + this.toNumber(line.subtotalAmount),
+        taxAmount: totals.taxAmount + this.toNumber(line.taxAmount),
+        totalAmount: totals.totalAmount + this.toNumber(line.totalAmount),
+      }),
+      { subtotalAmount: 0, taxAmount: 0, totalAmount: 0 },
+    );
+    const snapshotTotals = payload.totals;
+    return Boolean(
+      payload.sale?.saleStatus !== saleRow.status ||
+        Math.abs(
+          this.toNumber(snapshotTotals?.subtotalAmount ?? 0) - currentTotals.subtotalAmount,
+        ) > 0.0001 ||
+        Math.abs(this.toNumber(snapshotTotals?.taxAmount ?? 0) - currentTotals.taxAmount) >
+          0.0001 ||
+        Math.abs(this.toNumber(snapshotTotals?.totalAmount ?? 0) - currentTotals.totalAmount) >
+          0.0001 ||
+        Math.abs(currentTotals.totalAmount - this.toNumber(saleRow.total)) > 0.0001 ||
+        payload.customer?.taxLevelCode !== currentCustomer.taxLevelCode ||
+        payload.customer?.taxSchemeId !== currentCustomer.taxSchemeId ||
+        JSON.stringify(payload.customer?.fiscalResponsibilityCodes ?? null) !==
+          JSON.stringify(currentCustomer.fiscalResponsibilityCodes ?? null) ||
+        payload.customer?.countryCode !== currentCustomer.countryCode ||
+        payload.customer?.departmentCode !== currentCustomer.departmentCode ||
+        payload.customer?.municipalityCode !== currentCustomer.municipalityCode ||
+        payload.customer?.identificationNumber !== currentCustomer.identificationNumber ||
+        payload.customer?.legalName !== currentCustomer.legalName ||
+        payload.customer?.email !== currentCustomer.email ||
+        payload.customer?.addressLine1 !== currentCustomer.addressLine1,
+    );
+  }
+
   private async enqueueSaleCompletedForElectronicBilling(
     saleContext: SaleContext,
     saleRow: {
@@ -995,7 +1077,9 @@ export class SaleService {
     billingSource: {
       customerId: string;
       orderId?: string | null;
-    }
+      eventId?: string;
+    },
+    enqueueEvent = true,
   ) {
     const tenantId = saleContext.tenantId;
     if (!tenantId) {
@@ -1024,6 +1108,24 @@ export class SaleService {
       tenantId,
       effectivePricedItems
     );
+    if (
+      hasPositiveTaxLines(lines) &&
+      !this.isElectronicBillingCustomerFiscalDataComplete(customer)
+    ) {
+      return null;
+    }
+    const issuerResult = await client.query<{ vat_responsibility: string | null }>(
+      "SELECT vat_responsibility FROM tenants_detalles WHERE tenant_id = $1",
+      [tenantId],
+    );
+    const issuerVatResponsibility: VatResponsibility = normalizeVatResponsibility(
+      issuerResult.rows[0]?.vat_responsibility ?? "UNKNOWN",
+    );
+    try {
+      assertIssuerCanBillVat(issuerVatResponsibility, hasPositiveTaxLines(lines));
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
     const totals = effectivePricedItems.reduce(
       (acc, item) => {
         acc.subtotalAmount += item.taxBase ?? item.priceWithoutTax * item.quantity;
@@ -1051,7 +1153,8 @@ export class SaleService {
         : new Date(saleRow.created_at).toISOString();
 
     const event: BuildSaleCompletedForElectronicBillingEventInput = {
-      eventId: buildSaleCompletedForElectronicBillingEventId(tenantId, saleRow.id),
+      eventId:
+        billingSource.eventId ?? buildSaleCompletedForElectronicBillingEventId(tenantId, saleRow.id),
       tenantId,
       correlationId: saleContext.sessionId ?? saleRow.id,
       occurredAt,
@@ -1080,6 +1183,7 @@ export class SaleService {
         ),
       },
       currencyCode: "COP",
+      issuerVatResponsibility,
       metadata: {
         saleId: saleRow.id,
         customerId: saleRow.customer_id,
@@ -1093,7 +1197,11 @@ export class SaleService {
       },
     };
 
-    await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
+    if (enqueueEvent) {
+      await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
+    }
+
+    return event;
   }
 
   getElectronicBillingMode() {
@@ -1104,6 +1212,7 @@ export class SaleService {
     saleId: string,
     saleContext: SaleContext,
     client: PoolClient,
+    recoveryEventId?: string,
   ) {
     const saleResult = await client.query<SaleDetailRow>(
       `SELECT
@@ -1121,35 +1230,155 @@ export class SaleService {
       throw new NotFoundException("sale not found");
     }
 
-    const eventId = buildSaleCompletedForElectronicBillingEventId(
+    const deterministicEventId = buildSaleCompletedForElectronicBillingEventId(
       saleContext.tenantId!,
       saleId,
     );
-    const [documentsResult, outboxEvent] = await Promise.all([
+    const [documentsResult, outboxEvents] = await Promise.all([
       client.query<{ status: string }>(
         `SELECT status FROM electronic_documents
          WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
          ORDER BY created_at DESC, id DESC`,
         [saleContext.tenantId, saleId],
       ),
-      this.integrationOutboxService?.findByEventId(eventId, client),
+      this.integrationOutboxService?.findBySource(
+        saleContext.tenantId!,
+        "SALE",
+        saleId,
+        "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+        client,
+      ),
     ]);
+    const existingEvents = outboxEvents ?? [];
+    const deterministicEvent = existingEvents.find(
+      (event) => event.event_id === deterministicEventId,
+    );
+    const replacementEvent = existingEvents.find(
+      (event) => event.event_id !== deterministicEventId && event.status === "PENDING",
+    );
+
+    const failedRecoveryEvent = recoveryEventId
+      ? existingEvents.find((event) => event.event_id === recoveryEventId)
+      : null;
+
+    if (recoveryEventId) {
+      if (
+        !failedRecoveryEvent ||
+        failedRecoveryEvent.event_type !== "SALE_COMPLETED_FOR_ELECTRONIC_BILLING" ||
+        failedRecoveryEvent.status !== "FAILED" ||
+        failedRecoveryEvent.attempt_count !== 1
+      ) {
+        throw new BadRequestException("failed pre-provider event is not recoverable");
+      }
+
+      const inboxResult = await client.query<{
+        id: string;
+        status: string;
+        electronic_document_id: string | null;
+        last_error_code: string | null;
+        last_error_message: string | null;
+      }>(
+        `SELECT id, status, electronic_document_id, last_error_code, last_error_message
+         FROM electronic_billing_inbox_events
+         WHERE tenant_id = $1 AND event_id = $2 AND source_type = 'SALE' AND source_id = $3
+         FOR UPDATE`,
+        [saleContext.tenantId, recoveryEventId, saleId],
+      );
+      const inbox = inboxResult.rows[0];
+      const failureText = `${failedRecoveryEvent.last_error ?? ""} ${inbox?.last_error_message ?? ""}`;
+      let failureMetadata: { code?: string; reason?: string; replacementEventId?: string } = {};
+      try {
+        failureMetadata = JSON.parse(failedRecoveryEvent.last_error ?? "{}");
+      } catch {
+        failureMetadata = {};
+      }
+      const failedBeforeInboxWithStaleSnapshot =
+        !inbox &&
+        ((failureMetadata.code === "OUTBOX_EVENT_INELIGIBLE_SNAPSHOT" &&
+          failureMetadata.reason === "sale snapshot is not CONFIRMED") ||
+          (failureMetadata.code === "OUTBOX_EVENT_RECOVERED_PRE_PROVIDER" &&
+            failureMetadata.replacementEventId === replacementEvent?.event_id));
+      const failedAfterInboxWithLocalValidation =
+        Boolean(inbox) &&
+        inbox?.status === "FAILED" &&
+        !inbox?.electronic_document_id &&
+        inbox?.last_error_code === "ELECTRONIC_DOCUMENT_VALIDATION_ERROR" &&
+        failureText.includes("Sale total does not match snapshot totals");
+      if (!failedBeforeInboxWithStaleSnapshot && !failedAfterInboxWithLocalValidation) {
+        throw new BadRequestException("failed event provenance is not pre-provider local-only");
+      }
+    }
+
+    if (documentsResult.rows.length > 0) {
+      return {
+        saleId,
+        result: "DOCUMENT_EXISTS",
+        eligibility: "INELIGIBLE",
+        requestCreated: false,
+        electronicDocumentId: null,
+      };
+    }
+
+    const currentCustomer = await this.buildElectronicBillingCustomerSnapshot(
+      saleContext.tenantId!,
+      saleRow.customer_id,
+      client,
+    );
+    const currentCustomerFiscalDataComplete =
+      this.isElectronicBillingCustomerFiscalDataComplete(currentCustomer);
+    const currentPricedItems = await this.loadPricedSaleItemsForBilling(
+      saleId,
+      saleContext.tenantId!,
+      client,
+    );
+    const currentLines = await this.buildElectronicBillingLines(
+      saleContext.tenantId!,
+      currentPricedItems,
+    );
+    const staleDeterministicEvent =
+      deterministicEvent?.status === "PENDING" &&
+      deterministicEvent.attempt_count === 0 &&
+      this.isElectronicBillingSnapshotStale(
+        deterministicEvent,
+        saleRow,
+        currentCustomer,
+        currentLines,
+      )
+        ? deterministicEvent
+        : null;
+
+    const stalePendingEvent = staleDeterministicEvent;
+    const eventToReplace = failedRecoveryEvent ?? stalePendingEvent;
+
     const eligibility = evaluateElectronicBillingEligibility({
       saleStatus: saleRow.status,
       paymentStatus: saleRow.payment_status,
       customerId: saleRow.customer_id,
-      documentStatuses: documentsResult.rows
-        .map((row) => row.status)
-        .filter((status): status is string => Boolean(status)),
-      requestExists: Boolean(outboxEvent),
+      documentStatuses: [],
+      requestExists: Boolean(deterministicEvent) && !stalePendingEvent && !failedRecoveryEvent,
+      hasTaxLines: hasPositiveTaxLines(currentLines),
+      customerFiscalDataComplete: currentCustomerFiscalDataComplete,
     });
     if (eligibility !== "ELIGIBLE") {
       return {
         saleId,
         result: eligibility,
         eligibility,
+        ...(eligibility === "INCOMPLETE_CUSTOMER_FISCAL_DATA"
+          ? { message: "Seleccione o complete un cliente fiscalmente elegible para una factura IVA." }
+          : {}),
         requestCreated: false,
         electronicDocumentId: null,
+      };
+    }
+    if (replacementEvent) {
+      return {
+        saleId,
+        result: "REQUESTED",
+        eligibility: "REQUESTED",
+        requestCreated: false,
+        electronicDocumentId: null,
+        outboxEventId: replacementEvent.event_id,
       };
     }
     if (!this.integrationOutboxService) {
@@ -1188,21 +1417,81 @@ export class SaleService {
       payments,
       client,
     );
-    await this.enqueueSaleCompletedForElectronicBilling(
+    const replacementEventId = eventToReplace ? crypto.randomUUID() : undefined;
+    if (eventToReplace) {
+      if (
+        !currentCustomer.taxSchemeId ||
+        !currentCustomer.fiscalResponsibilityCodes ||
+        currentCustomer.fiscalResponsibilityCodes.length === 0
+      ) {
+        throw new BadRequestException(
+          "current customer fiscal tax data is incomplete for outbox recovery",
+        );
+      }
+
+      if (stalePendingEvent) {
+        const superseded = await this.integrationOutboxService.supersedePendingEvent(
+          stalePendingEvent.event_id,
+          replacementEventId!,
+          new Date(),
+          client,
+        );
+        if (!superseded) {
+          throw new BadRequestException("stale outbox event changed before recovery");
+        }
+      }
+    }
+    const event = await this.enqueueSaleCompletedForElectronicBilling(
       saleContext,
       saleRow,
       null,
       legacyPaymentMethods,
       payments,
       client,
-      { customerId: saleRow.customer_id, orderId: saleRow.order_id },
+      {
+        customerId: saleRow.customer_id,
+        orderId: saleRow.order_id,
+        eventId: replacementEventId,
+      },
+      Boolean(failedRecoveryEvent) ? false : true,
     );
+
+    if (failedRecoveryEvent) {
+      if (!event) {
+        throw new BadRequestException("electronic billing outbox is unavailable");
+      }
+      const lineSubtotal = event.lines.reduce((sum, line) => sum + this.toNumber(line.subtotalAmount), 0);
+      const lineTax = event.lines.reduce((sum, line) => sum + this.toNumber(line.taxAmount), 0);
+      const subtotal = this.toNumber(event.totals.subtotalAmount);
+      const tax = this.toNumber(event.totals.taxAmount);
+      const total = this.toNumber(event.totals.totalAmount);
+      if (
+        Math.abs(lineSubtotal - subtotal) > 0.0001 ||
+        Math.abs(lineTax - tax) > 0.0001 ||
+        Math.abs(subtotal + tax - total) > 0.0001
+      ) {
+        throw new BadRequestException("current sale snapshot totals are inconsistent");
+      }
+
+      const recorded = await this.integrationOutboxService.recordFailedPreProviderRecovery(
+        failedRecoveryEvent.event_id,
+        replacementEventId!,
+        failedRecoveryEvent.last_error,
+        new Date(),
+        client,
+      );
+      if (!recorded) {
+        throw new BadRequestException("failed event changed before recovery");
+      }
+      await this.integrationOutboxService.enqueueSaleCompletedEvent(event, client);
+    }
     return {
       saleId,
       result: "REQUESTED" as const,
       eligibility: "ELIGIBLE" as const,
       requestCreated: true,
       electronicDocumentId: null,
+      outboxEventId: replacementEventId ?? deterministicEventId,
     };
   }
 
@@ -1224,6 +1513,39 @@ export class SaleService {
         entity: "sales",
         entityId: saleId,
         action: "ELECTRONIC_BILLING_REQUESTED_MANUALLY",
+      });
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async recoverFailedPreProviderElectronicBillingIntent(
+    saleId: string,
+    eventId: string,
+    actor: BranchScopedActor,
+  ) {
+    const saleContext = await this.normalizeSaleContext(actor);
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const result = await this.requestElectronicBillingForSaleInTransaction(
+        saleId,
+        saleContext,
+        client,
+        eventId,
+      );
+      await client.query("COMMIT");
+      this.auditService.logEvent({
+        tenantId: saleContext.tenantId,
+        userId: saleContext.userId,
+        module: "sales",
+        entity: "sales",
+        entityId: saleId,
+        action: "ELECTRONIC_BILLING_PRE_PROVIDER_RECOVERY_REQUESTED",
       });
       return result;
     } catch (error) {
@@ -1555,12 +1877,14 @@ export class SaleService {
     );
     const totalPaid = this.toNumber(financialState.rows[0]?.total_paid ?? 0);
 
+    const status = this.determineConfirmedStatus(total, totalPaid);
     await this.repository.updateSaleStatus(
       saleId,
       tenantId,
-      this.determineConfirmedStatus(total, totalPaid),
+      status,
       client
     );
+    return status;
   }
 
   private async finalizeCancelledSale(
@@ -2076,7 +2400,7 @@ export class SaleService {
         );
       }
 
-      await this.finalizeSale(
+      const finalizedStatus = await this.finalizeSale(
         saleRow.id,
         saleContext.tenantId,
         this.toNumber(saleRow.total),
@@ -2092,7 +2416,7 @@ export class SaleService {
       if (getElectronicBillingMode() === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
-          saleRow,
+          { ...saleRow, status: finalizedStatus },
           pricedItems as PricedSaleItem[],
           legacyPaymentMethods,
           payments,

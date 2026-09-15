@@ -14,6 +14,8 @@ import { ThirdPartyLookupGetAcquirerAdapter } from "./third-party-lookup/third-p
 import { ThirdPartyLookupMockAdapter } from "./third-party-lookup/third-party-lookup.mock-adapter";
 import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup.service";
 import { LocationsModule } from "../locations/locations.module";
+import { FiscalProfileReviewController } from "./fiscal-profile-review/fiscal-profile-review.controller";
+import { FiscalProfileReviewService } from "./fiscal-profile-review/fiscal-profile-review.service";
 
 @Module({
   imports: [DatabaseModule, AccessControlModule, LocationsModule],
@@ -21,6 +23,7 @@ import { LocationsModule } from "../locations/locations.module";
     ElectronicInvoicingCustomersController,
     ElectronicInvoicingSuppliersController,
     DianDocumentTypesController,
+    FiscalProfileReviewController,
   ],
   providers: [
     ElectronicInvoicingCustomersRepository,
@@ -32,6 +35,7 @@ import { LocationsModule } from "../locations/locations.module";
     ThirdPartyLookupService,
     DianDocumentTypesRepository,
     DianDocumentTypesService,
+    FiscalProfileReviewService,
   ],
   exports: [
     ElectronicInvoicingCustomersRepository,

@@ -14,6 +14,7 @@ import type {
   CreateCashMovementPayload,
   CreateCashRegisterPayload,
   CreatePaymentPayload,
+  CreateDocumentPaymentPayload,
   CreatePaymentMethodPayload,
   OpenCashSessionPayload,
   Payment,
@@ -192,6 +193,12 @@ export const listPayments = (filters: PaymentFilters = {}) =>
 
 export const createPayment = (payload: CreatePaymentPayload) =>
   apiClient<Payment>("/finance/payments", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    });
+
+export const createDocumentPayment = (payload: CreateDocumentPaymentPayload) =>
+  apiClient<Payment[]>("/finance/payments/document", {
     method: "POST",
     body: JSON.stringify(payload),
   });

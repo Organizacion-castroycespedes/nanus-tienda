@@ -1,0 +1,5 @@
+ALTER TABLE electronic_billing_inbox_events
+  DROP CONSTRAINT IF EXISTS uq_electronic_billing_inbox_events_external_reference;
+
+CREATE INDEX IF NOT EXISTS idx_electronic_billing_inbox_events_tenant_external_reference
+  ON electronic_billing_inbox_events(tenant_id, external_reference);

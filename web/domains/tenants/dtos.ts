@@ -21,6 +21,7 @@ export type TenantDetailsResponse = {
   estado: string;
   responsabilidades_dian?: string;
   regimen?: string;
+  vat_responsibility?: "RESPONSIBLE" | "NOT_RESPONSIBLE" | "UNKNOWN";
   actividad_economica?: string;
   obligado_facturacion_electronica?: boolean;
   resolucion_dian?: string;

@@ -69,6 +69,33 @@ const isElectronicBillingProviderDisabledError = (
 ): error is ElectronicBillingProviderDisabledError =>
   error instanceof ElectronicBillingProviderDisabledError;
 
+export const validateSnapshotTotals = (
+  lines: SaleLineSnapshot[],
+  totals: SaleTotalsSnapshot,
+) => {
+  const lineSubtotal = lines.reduce((sum, line) => sum + parseAmount(line.subtotalAmount), 0);
+  const lineTax = lines.reduce((sum, line) => sum + parseAmount(line.taxAmount), 0);
+  const totalSubtotal = parseAmount(totals.subtotalAmount);
+  const totalTax = parseAmount(totals.taxAmount);
+  const totalAmount = parseAmount(totals.totalAmount);
+
+  // Sale snapshots store subtotalAmount after line/order discounts. Applying
+  // discountAmount again would subtract the discount twice.
+  const expectedTotal = totalSubtotal + totalTax;
+
+  if (Math.abs(lineSubtotal - totalSubtotal) > 0.0001) {
+    throw new ElectronicBillingSaleEventValidationError("Sale subtotal does not match snapshot totals");
+  }
+
+  if (Math.abs(lineTax - totalTax) > 0.0001) {
+    throw new ElectronicBillingSaleEventValidationError("Sale tax does not match snapshot totals");
+  }
+
+  if (Math.abs(expectedTotal - totalAmount) > 0.0001) {
+    throw new ElectronicBillingSaleEventValidationError("Sale total does not match snapshot totals");
+  }
+};
+
 @Injectable()
 export class SaleCompletedForElectronicBillingConsumerService {
   constructor(
@@ -235,7 +262,7 @@ export class SaleCompletedForElectronicBillingConsumerService {
       }
 
       try {
-        this.validateSnapshotTotals(envelope.payload.lines, envelope.payload.totals);
+        validateSnapshotTotals(envelope.payload.lines, envelope.payload.totals);
 
         const aggregate = await this.billingService.createInvoiceDocument(
           command,
@@ -314,31 +341,6 @@ export class SaleCompletedForElectronicBillingConsumerService {
 
     if (normalizeText(envelope.source.id).length === 0) {
       throw new ElectronicBillingSaleEventValidationError("source.id is required");
-    }
-  }
-
-  private validateSnapshotTotals(
-    lines: SaleLineSnapshot[],
-    totals: SaleTotalsSnapshot,
-  ) {
-    const lineSubtotal = lines.reduce((sum, line) => sum + parseAmount(line.subtotalAmount), 0);
-    const lineTax = lines.reduce((sum, line) => sum + parseAmount(line.taxAmount), 0);
-    const totalSubtotal = parseAmount(totals.subtotalAmount);
-    const totalDiscount = parseAmount(totals.discountAmount);
-    const totalTax = parseAmount(totals.taxAmount);
-    const totalAmount = parseAmount(totals.totalAmount);
-    const expectedTotal = totalSubtotal - totalDiscount + totalTax;
-
-    if (Math.abs(lineSubtotal - totalSubtotal) > 0.0001) {
-      throw new ElectronicBillingSaleEventValidationError("Sale subtotal does not match snapshot totals");
-    }
-
-    if (Math.abs(lineTax - totalTax) > 0.0001) {
-      throw new ElectronicBillingSaleEventValidationError("Sale tax does not match snapshot totals");
-    }
-
-    if (Math.abs(expectedTotal - totalAmount) > 0.0001) {
-      throw new ElectronicBillingSaleEventValidationError("Sale total does not match snapshot totals");
     }
   }
 

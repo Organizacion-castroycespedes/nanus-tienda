@@ -49,7 +49,7 @@ const features = [
   {
     title: "Clientes",
     description:
-      "Guarda datos de clientes, consumidor final y datos fiscales mock para operar mejor.",
+      "Guarda datos de clientes, consumidor final y datos fiscales para operar mejor.",
     highlight: "Atención más personal.",
     imageSrc: "/images/features/clientes.png",
     imageAlt: "Gestión de clientes de Manus POS",

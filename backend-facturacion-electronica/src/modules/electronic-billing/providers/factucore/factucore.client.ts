@@ -177,6 +177,15 @@ export class FactuCoreClient {
     });
   }
 
+  async getDocument(context: FactuCoreRuntimeContext, documentId: string) {
+    return this.requestJson<FactuCoreDocumentResponse>({
+      method: "GET",
+      path: `${FACTUCORE_DOCUMENT_ENDPOINT}/${encodeURIComponent(documentId)}`,
+      operation: "get_document",
+      context,
+    });
+  }
+
   async getOperations(context: FactuCoreRuntimeContext, documentId: string) {
     return this.requestJson<FactuCoreDocumentOperationsResponse>({
       method: "GET",

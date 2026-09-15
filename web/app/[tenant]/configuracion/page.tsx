@@ -57,7 +57,11 @@ import {
 import { previewTenantSlug } from "../../../domains/tenants/slug";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import { setBranding, type BrandingConfig } from "../../../store/brandingSlice";
-import { resetCompanyDetails, setCompanyDetails } from "../../../store/companySlice";
+import {
+  resetCompanyDetails,
+  setCompanyDetails,
+  type CompanyDetails,
+} from "../../../store/companySlice";
 import { buildTenantThemeTokens } from "../../../src/lib/theme/buildTenantTheme";
 import {
   isValidHexColor,
@@ -139,6 +143,7 @@ const emptyCompanyDetails = {
   estado: "Activa",
   responsabilidadesDian: "",
   regimen: "",
+  vatResponsibility: "UNKNOWN" as const,
   actividadEconomica: "",
   obligadoFacturacionElectronica: false,
   resolucionDian: "",
@@ -240,7 +245,7 @@ const ConfiguracionPage = () => {
   const [shouldScrollToCompanyForm, setShouldScrollToCompanyForm] =
     useState(false);
   const companyFormRef = useRef<HTMLDivElement | null>(null);
-  const [companyForm, setCompanyForm] = useState(() => ({
+  const [companyForm, setCompanyForm] = useState<CompanyDetails>(() => ({
     ...emptyCompanyDetails,
     ...(companyDetails ?? {}),
   }));
@@ -666,6 +671,7 @@ const ConfiguracionPage = () => {
             estado: response.estado ?? "",
             responsabilidadesDian: response.responsabilidades_dian ?? "",
             regimen: response.regimen ?? "",
+            vatResponsibility: response.vat_responsibility ?? "UNKNOWN",
             actividadEconomica: response.actividad_economica ?? "",
             obligadoFacturacionElectronica:
               response.obligado_facturacion_electronica ?? false,
@@ -1069,6 +1075,18 @@ const ConfiguracionPage = () => {
             handleCompanyChange("resolucionDian", event.target.value)
           }
         />
+        <Select
+          label="Responsabilidad de IVA"
+          value={companyForm.vatResponsibility ?? "UNKNOWN"}
+          required
+          onChange={(event) =>
+            handleCompanyChange("vatResponsibility", event.target.value)
+          }
+        >
+          <option value="RESPONSIBLE">Responsable de IVA</option>
+          <option value="NOT_RESPONSIBLE">No responsable de IVA</option>
+          <option value="UNKNOWN">Por validar</option>
+        </Select>
         <Input
           label="Fecha inicio facturación electrónica"
           type="date"
@@ -1605,6 +1623,7 @@ const ConfiguracionPage = () => {
             estado: response.estado,
             responsabilidadesDian: response.responsabilidades_dian,
             regimen: response.regimen,
+            vatResponsibility: response.vat_responsibility ?? "UNKNOWN",
             actividadEconomica: response.actividad_economica,
             obligadoFacturacionElectronica:
               response.obligado_facturacion_electronica,

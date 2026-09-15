@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ElectronicBillingProviderError,
   ElectronicBillingProcessingService,
+  extractAuthoritativeQrPayload,
   ElectronicDocumentAlreadyProcessingError,
   FakeElectronicBillingProvider,
 } from "../src/modules/electronic-billing";
@@ -288,6 +289,23 @@ const buildHarness = (state = buildState()) => {
     service,
   };
 };
+
+test("extractAuthoritativeQrPayload reads namespaced QR and rejects conflicts", () => {
+  const payload = "NumFac: SETP990000009\nCUFE: authoritative";
+  assert.equal(
+    extractAuthoritativeQrPayload(`<Invoice><sts:QRCode>${payload}</sts:QRCode></Invoice>`),
+    payload,
+  );
+  assert.equal(
+    extractAuthoritativeQrPayload(`<Invoice><a:QRCode>${payload}</a:QRCode><b:QRCode>${payload}</b:QRCode></Invoice>`),
+    payload,
+  );
+  assert.equal(extractAuthoritativeQrPayload("<Invoice />"), null);
+  assert.throws(
+    () => extractAuthoritativeQrPayload("<Invoice><sts:QRCode>A</sts:QRCode><sts:QRCode>B</sts:QRCode></Invoice>"),
+    /Conflicting authoritative QR values/,
+  );
+});
 
 test("processDocument issues invoice and persists provider identity", async () => {
   const harness = buildHarness();

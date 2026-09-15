@@ -194,6 +194,10 @@ const buildService = (
   };
   const allowedBranchIds = options.allowedBranchIds ?? [branchId];
   const accessControl = {
+    resolveTenantIdFromSlug: async (_actor: unknown, slug: string) => {
+      if (slug === "manustienda-platform-s-a-s") return tenantId;
+      throw new Error("Tenant no encontrado");
+    },
     getAccessibleBranchIds: async () => allowedBranchIds,
     canAccessBranch: async (
       _actor: unknown,
@@ -342,6 +346,27 @@ describe("PosTerminalsService", () => {
     assert.equal(result.terminalId, "local-terminal");
     assert.equal(result.printerDeviceId, "network-printer-001");
     assert.equal(result.features.scanner, false);
+  });
+
+  it("resolves tenant slug before principal branch and terminal repository calls", async () => {
+    const { service } = buildService();
+    const result = await service.resolveCurrent(
+      { tenantId: "manustienda-platform-s-a-s", branchId },
+      actor,
+    );
+
+    assert.equal(result.source, "CONFIGURED");
+    assert.equal(result.tenantId, tenantId);
+  });
+
+  it("rejects an invalid tenant slug before repository UUID operations", async () => {
+    const { service, lookupCalls } = buildService();
+
+    await assert.rejects(
+      () => service.resolveCurrent({ tenantId: "missing-tenant" }, actor),
+      /Tenant no encontrado/,
+    );
+    assert.deepEqual(lookupCalls, []);
   });
 
   it("resolves text terminalId as code without UUID lookup", async () => {

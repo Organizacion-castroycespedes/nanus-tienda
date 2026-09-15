@@ -449,6 +449,7 @@ export class PrinterService {
       date: optionalTicketText(record, "date"),
       footer: optionalTicketText(record, "footer"),
       title: optionalTicketText(record, "title"),
+      qrPayload: optionalQrPayload(record.qrPayload),
       lines,
       items,
       subtotal: optionalTicketNumber(record, "subtotal"),
@@ -501,6 +502,19 @@ const optionalTicketText = (
     throw new BadRequestException(`content.${field} is too long`);
   }
 
+  return trimmed;
+};
+
+const optionalQrPayload = (value: unknown): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new BadRequestException("content.qrPayload must be a string");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > 2048) {
+    throw new BadRequestException("content.qrPayload is too long");
+  }
   return trimmed;
 };
 

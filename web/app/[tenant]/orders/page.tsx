@@ -691,12 +691,15 @@ const OrdersPage = () => {
 
       {formMode === "payment" && selectedPaymentOrder ? (
         <DocumentPaymentForm
-          title="Registrar abono al pedido"
-          description="Aplica anticipos o abonos parciales sobre el pedido usando el motor de pagos unificado."
+          title="Cobrar pedido"
+          description="Registra un cobro asociado a este pedido."
           branchId={selectedPaymentOrder.branchId ?? ""}
           referenceType="SALES_ORDER"
           referenceId={selectedPaymentOrder.id}
           direction="IN"
+          partyLabel="Cliente del pedido"
+          partyName={selectedPaymentOrder.customerName ?? selectedPaymentOrder.customerId}
+          documentLabel={`Pedido ${selectedPaymentOrder.id.slice(0, 8)}`}
           total={selectedPaymentOrder.total}
           totalPaid={selectedPaymentOrder.totalPaid}
           balanceDue={selectedPaymentOrder.balanceDue}

@@ -5,6 +5,8 @@ import {
   findCashPaymentMethod,
   isCashPaymentMethod,
   rebalanceCashPayment,
+  parseDocumentPaymentAmount,
+  summarizeDocumentPayments,
 } from "./payment-allocation.helper";
 
 test("cash predicate accepts type, code and name", () => {
@@ -20,6 +22,22 @@ test("cash predicate accepts type, code and name", () => {
   assert.equal(
     isCashPaymentMethod({ id: "card-1", tipo: "CARD", codigo: "PSE", nombre: "Transferencia" }),
     false
+  );
+});
+
+test("document payment defaults and remaining balances use exact cents", () => {
+  assert.equal(parseDocumentPaymentAmount("35000000"), 35000000);
+  assert.equal(parseDocumentPaymentAmount("10.001"), null);
+  assert.deepEqual(
+    summarizeDocumentPayments(35000000, [
+      { id: "one", paymentMethodId: "cash", amount: "10000000" },
+      { id: "two", paymentMethodId: "transfer", amount: "25000000" },
+    ]),
+    { total: 35000000, remaining: 0, overpayment: false, valid: true }
+  );
+  assert.equal(
+    summarizeDocumentPayments(35000000, [{ id: "one", paymentMethodId: "cash", amount: "10000000" }]).remaining,
+    25000000
   );
 });
 

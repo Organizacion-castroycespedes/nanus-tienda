@@ -29,8 +29,13 @@ import type {
   SupplierFiscalStatus,
   SupplierPersonType,
   UpdateElectronicInvoicingSupplierInput,
+  ElectronicInvoicingSupplier,
 } from "./electronic-invoicing-supplier.types";
 import { ElectronicInvoicingSuppliersRepository } from "./electronic-invoicing-suppliers.repository";
+import {
+  isSupportedFiscalResponsibility,
+  isSupportedTaxRegime,
+} from "../fiscal-profile-options";
 
 type PgErrorLike = {
   code?: string;
@@ -114,6 +119,43 @@ export class ElectronicInvoicingSuppliersService {
   private normalizeText(value?: string | null): string | null {
     const normalized = value?.trim() ?? "";
     return normalized.length > 0 ? normalized : null;
+  }
+
+  private async resolveSupplierLocation(
+    dto: CreateElectronicInvoicingSupplierDto | UpdateElectronicInvoicingSupplierDto,
+    current?: ElectronicInvoicingSupplier
+  ) {
+    if (!this.locationsService) {
+      throw new BadRequestException("location catalog is not configured");
+    }
+    if (!current && !hasOwn(dto, "countryId")) {
+      throw new BadRequestException("countryId, departamentoId and municipioId are required");
+    }
+    return this.locationsService.resolveCanonicalLocation({
+      countryId: hasOwn(dto, "countryId") ? dto.countryId : undefined,
+      departmentId: hasOwn(dto, "departamentoId")
+        ? dto.departamentoId
+        : current?.departamentoId,
+      municipalityId: hasOwn(dto, "municipioId")
+        ? dto.municipioId
+        : current?.municipioId,
+    });
+  }
+
+  private validateRequiredFiscalProfile(input: {
+    personType?: SupplierPersonType | null;
+    taxRegime?: string | null;
+    taxResponsibilities?: string[] | null;
+  }) {
+    const missing: string[] = [];
+    if (!input.personType || input.personType === "UNKNOWN") missing.push("personType");
+    if (!input.taxRegime?.trim()) missing.push("taxRegime");
+    if (!input.taxResponsibilities?.length) missing.push("taxResponsibilities");
+    if (missing.length) {
+      throw new BadRequestException(
+        `fiscal profile is incomplete: ${missing.join(", ")}`
+      );
+    }
   }
 
   private normalizeFiscalEmail(value?: string | null): string | null {
@@ -209,6 +251,9 @@ export class ElectronicInvoicingSuppliersService {
       const normalized = this.normalizeText(item);
       if (!normalized) {
         throw new BadRequestException("taxResponsibilities must not contain empty values");
+      }
+      if (!isSupportedFiscalResponsibility(normalized)) {
+        throw new BadRequestException(`unsupported tax responsibility: ${normalized}`);
       }
       return normalized;
     });
@@ -501,6 +546,13 @@ export class ElectronicInvoicingSuppliersService {
     );
     const fiscalStatus = this.normalizeFiscalStatus(dto.fiscalStatus) ?? "PENDING";
     const fiscalProvider = this.normalizeSupplierProvider(dto.fiscalProvider);
+    const personType = this.normalizePersonType(dto.personType) ?? null;
+    const taxRegime = this.normalizeText(dto.taxRegime);
+    if (taxRegime && !isSupportedTaxRegime(taxRegime)) {
+      throw new BadRequestException(`unsupported tax regime: ${taxRegime}`);
+    }
+    const taxResponsibilities = this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
+    this.validateRequiredFiscalProfile({ personType, taxRegime, taxResponsibilities });
 
     await this.ensureNoDuplicateIdentity(
       tenantId,
@@ -527,11 +579,9 @@ export class ElectronicInvoicingSuppliersService {
       countryCode: this.normalizeText(dto.countryCode),
       departmentCode: this.normalizeText(dto.departmentCode),
       municipalityCode: this.normalizeText(dto.municipalityCode),
-      personType: this.normalizePersonType(dto.personType) ?? null,
-      taxRegime: this.normalizeText(dto.taxRegime),
-      taxResponsibilities: this.normalizeTaxResponsibilities(
-        dto.taxResponsibilities
-      ) ?? [],
+      personType,
+      taxRegime,
+      taxResponsibilities,
       fiscalStatus,
       fiscalProvider,
       fiscalDataSource:
@@ -545,13 +595,13 @@ export class ElectronicInvoicingSuppliersService {
       isActive: dto.isActive ?? true,
     };
 
-    if (this.locationsService) {
-      await this.locationsService.validateFiscalHierarchy(
-        input.countryCode,
-        input.departmentCode,
-        input.municipalityCode
-      );
-    }
+    const location = await this.resolveSupplierLocation(dto);
+    input.countryId = location.country_id;
+    input.departamentoId = location.department_id;
+    input.municipioId = location.municipality_id;
+    input.countryCode = location.country_code;
+    input.departmentCode = location.department_code;
+    input.municipalityCode = location.municipality_code;
 
     try {
       return await this.suppliersRepository.create(input);
@@ -664,23 +714,33 @@ export class ElectronicInvoicingSuppliersService {
     if (hasOwn(dto, "municipalityCode")) {
       update.municipalityCode = this.normalizeText(dto.municipalityCode);
     }
-    if (this.locationsService) {
-      await this.locationsService.validateFiscalHierarchy(
-        hasOwn(dto, "countryCode") ? update.countryCode : current.countryCode,
-        hasOwn(dto, "departmentCode") ? update.departmentCode : current.departmentCode,
-        hasOwn(dto, "municipalityCode") ? update.municipalityCode : current.municipalityCode
-      );
-    }
+    const location = await this.resolveSupplierLocation(dto, current);
+    update.countryId = location.country_id;
+    update.departamentoId = location.department_id;
+    update.municipioId = location.municipality_id;
+    update.countryCode = location.country_code;
+    update.departmentCode = location.department_code;
+    update.municipalityCode = location.municipality_code;
     if (hasOwn(dto, "personType")) {
       update.personType = this.normalizePersonType(dto.personType) ?? null;
     }
     if (hasOwn(dto, "taxRegime")) {
       update.taxRegime = this.normalizeText(dto.taxRegime);
+      if (update.taxRegime && !isSupportedTaxRegime(update.taxRegime)) {
+        throw new BadRequestException(`unsupported tax regime: ${update.taxRegime}`);
+      }
     }
     if (hasOwn(dto, "taxResponsibilities")) {
       update.taxResponsibilities =
         this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
     }
+    this.validateRequiredFiscalProfile({
+      personType: hasOwn(dto, "personType") ? update.personType : current.personType,
+      taxRegime: hasOwn(dto, "taxRegime") ? update.taxRegime : current.taxRegime,
+      taxResponsibilities: hasOwn(dto, "taxResponsibilities")
+        ? update.taxResponsibilities
+        : current.taxResponsibilities,
+    });
     if (hasOwn(dto, "fiscalStatus")) {
       update.fiscalStatus =
         this.normalizeFiscalStatus(dto.fiscalStatus) ?? "PENDING";

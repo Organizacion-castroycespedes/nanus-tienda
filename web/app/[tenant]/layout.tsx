@@ -943,6 +943,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               estado: detailsResponse.estado,
               responsabilidadesDian: detailsResponse.responsabilidades_dian,
               regimen: detailsResponse.regimen,
+              vatResponsibility: detailsResponse.vat_responsibility ?? "UNKNOWN",
               actividadEconomica: detailsResponse.actividad_economica,
               obligadoFacturacionElectronica:
                 detailsResponse.obligado_facturacion_electronica,

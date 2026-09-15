@@ -14,4 +14,5 @@ export type ElectronicBillingEligibility =
   | "ALREADY_ACCEPTED"
   | "PROCESSING"
   | "REJECTED"
+  | "INCOMPLETE_CUSTOMER_FISCAL_DATA"
   | "AMBIGUOUS_DOCUMENT";

@@ -6,7 +6,11 @@ import type {
   IssueElectronicCreditNoteCommand,
   IssueElectronicInvoiceCommand,
 } from "../src/modules/electronic-billing/contracts/electronic-billing-commands";
-import { FactuCoreMapper } from "../src/modules/electronic-billing/providers/factucore";
+import {
+  FACTUCORE_TAX_TYPES,
+  FactuCoreMapper,
+  mapFactuCoreTaxType,
+} from "../src/modules/electronic-billing/providers/factucore";
 import {
   FactuCoreProvider,
   FactuCoreProviderBootstrap,
@@ -199,6 +203,11 @@ class RecordingFactuCoreClient {
     });
   }
 
+  async getDocument(context: FactuCoreRuntimeContext, documentId: string) {
+    this.calls.push({ op: "getDocument", context, documentId });
+    return buildStatusDoc({ id: documentId, providerDocumentId: documentId });
+  }
+
   async getStatusByExternalReference(context: FactuCoreRuntimeContext, externalReference: string) {
     this.calls.push({ op: "getStatusByExternalReference", context, externalReference });
     return buildStatusDoc({
@@ -301,14 +310,58 @@ test("issueInvoice runs create then generate then sign then transmit", async () 
   const client = new RecordingFactuCoreClient();
   const { resolver } = buildResolver();
   const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
 
-  const result = await provider.issueInvoice(makeInvoiceCommand());
+  const result = await provider.issueInvoice(command);
 
   assert.deepEqual(client.calls.map((call) => call.op), ["createInvoice", "generateXml", "sign", "transmit"]);
   assert.equal(result.providerStatus, "SENT");
   assert.equal(result.normalizedStatus, "PROCESSING");
   assert.equal(result.providerDocumentId, "factu-invoice-1");
   assert.equal(client.calls[0].context.factuCoreTenantId, "factucore-tenant-a");
+  assert.deepEqual(stages, [
+    "PROVIDER_LINKED",
+    "XML_GENERATE_INTENT",
+    "XML_GENERATED",
+    "SIGN_INTENT",
+    "SIGNED",
+    "TRANSMISSION_INTENT",
+    "TRANSMITTED",
+  ]);
+});
+
+test("resumeInvoice continues a validated provider document without create", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+
+  const result = await provider.resumeInvoice(command, "factu-existing-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["generateXml", "sign", "transmit"]);
+  assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.deepEqual(stages, ["XML_GENERATE_INTENT", "XML_GENERATED", "SIGN_INTENT", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
+});
+
+test("getDocument reads the linked provider document by id", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+
+  const result = await provider.getDocument({
+    context: makeContext(),
+    documentId: "manus-doc-1",
+    providerDocumentId: "factu-existing-1",
+    externalReference: "SALE-existing",
+    metadata: {},
+  });
+
+  assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.deepEqual(client.calls.map((call) => call.op), ["getDocument"]);
 });
 
 test("FactuCore provider requires an explicit external tenant mapping", async () => {
@@ -399,7 +452,9 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
   const taxedTax = taxed.lines[0].taxes?.[0] as Record<string, unknown>;
 
   assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxType", "taxableBase"].sort());
+  assert.equal(taxedTax.taxSchemeId, undefined);
   assert.equal((taxedTax.metadata as Record<string, unknown>).taxCode, "01");
+  assert.equal((taxedTax.metadata as Record<string, unknown>).taxSchemeId, "01");
 
   const excluded = makeInvoiceCommand();
   excluded.lines = [{
@@ -411,6 +466,60 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
 
   assert.equal(excludedRequest.lines[0].taxes, undefined);
   assert.equal(excludedRequest.lines[0].taxTreatment, "EXCLUDED");
+});
+
+test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
+  const labels = [
+    ["IVA 19%", "IVA"],
+    ["VAT", "IVA"],
+    ["IVA 5%", "IVA"],
+    ["IVA 0%", "IVA"],
+    ["INC", "INC"],
+    ["LIQUOR_CONSUMPTION", "INC"],
+    ["ICA", "ICA"],
+    ["Retención en la fuente", "RETE_FUENTE"],
+    ["RETE IVA", "RETE_IVA"],
+    ["RETE-ICA", "RETE_ICA"],
+    ["Exento", "OTHER"],
+    ["AD_VALOREM", "OTHER"],
+  ] as const;
+
+  for (const [type, expected] of labels) {
+    assert.equal(mapFactuCoreTaxType({
+      type,
+      rate: 19,
+      taxableBase: 100,
+      amount: 19,
+    }), expected);
+  }
+  assert.deepEqual(FACTUCORE_TAX_TYPES, ["IVA", "INC", "ICA", "RETE_FUENTE", "RETE_IVA", "RETE_ICA", "OTHER"]);
+});
+
+test("mapper rejects unknown tax labels and preserves tax amounts", () => {
+  assert.throws(
+    () => mapFactuCoreTaxType({ type: "TAX DESCONOCIDO", rate: 7, taxableBase: 125.55, amount: 8.79 }),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreConfigurationError");
+      assert.match((error as Error).message, /tax type/i);
+      return true;
+    },
+  );
+
+  const command = makeInvoiceCommand();
+  command.lines = [{
+    ...command.lines[0],
+    taxes: [
+      { type: "IVA 19%", rate: 19, taxableBase: 125.55, amount: 23.85 },
+      { type: "IVA 5%", rate: 5, taxableBase: 80, amount: 4 },
+    ],
+  }];
+  const taxes = new FactuCoreMapper().buildInvoiceRequest(command).lines[0].taxes ?? [];
+  assert.deepEqual(taxes.map((tax) => tax.taxType), ["IVA", "IVA"]);
+  assert.deepEqual(taxes.map((tax) => [tax.rate, tax.taxableBase, tax.taxAmount]), [
+    [19, 125.55, 23.85],
+    [5, 80, 4],
+  ]);
+  assert.equal(taxes.every((tax) => (FACTUCORE_TAX_TYPES as readonly string[]).includes(tax.taxType)), true);
 });
 
 test("mapper normalizes Manus CASH payment to FactuCore fiscal means", () => {
