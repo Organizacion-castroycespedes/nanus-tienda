@@ -103,6 +103,9 @@ export const buildElectronicBillingCustomer = (
       ...(typeof flattened.departmentCode === "string"
         ? { departmentCode: flattened.departmentCode }
         : {}),
+      ...(typeof flattened.municipalityCode === "string"
+        ? { municipalityCode: flattened.municipalityCode }
+        : {}),
       ...(typeof flattened.departmentName === "string"
         ? { departmentName: flattened.departmentName }
         : {}),
@@ -197,6 +200,9 @@ export const buildElectronicBillingInvoiceCommandFromSaleEvent = (
     totals,
     metadata: {
       ...(event.payload.metadata ?? {}),
+      ...(event.payload.issuerVatResponsibility
+        ? { issuerVatResponsibility: event.payload.issuerVatResponsibility }
+        : {}),
       integrationEvent: {
         eventId: event.eventId,
         eventType: event.eventType,

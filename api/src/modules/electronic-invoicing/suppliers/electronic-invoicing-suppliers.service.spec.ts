@@ -63,12 +63,14 @@ const buildSupplier = (
   invoiceEmail: null,
   phone: null,
   address: null,
-  countryCode: null,
-  departmentCode: null,
-  municipalityCode: null,
-  personType: null,
-  taxRegime: null,
-  taxResponsibilities: [],
+  departamentoId: "department-1",
+  municipioId: "municipality-1",
+  countryCode: "CO",
+  departmentCode: "08",
+  municipalityCode: "08001",
+  personType: "JURIDICA",
+  taxRegime: "ORDINARIO",
+  taxResponsibilities: ["R-99-PN"],
   fiscalStatus: "PENDING",
   fiscalProvider: null,
   fiscalDataSource: "MANUAL",
@@ -186,13 +188,33 @@ const buildService = (
     },
   };
 
-  return {
-    service: new ElectronicInvoicingSuppliersService(
-      repository as never,
-      overrides.lookupService
-    ),
-    state,
+  const locationsService = {
+    resolveCanonicalLocation: async (input: any) => ({
+      country_id: "country-1",
+      country_code: "CO",
+      department_id: input.departmentId ?? "department-1",
+      department_code: input.departmentId === "department-11" || input.municipalityId === "municipality-11" ? "11" : "08",
+      municipality_id: input.municipalityId ?? "municipality-1",
+      municipality_code: input.municipalityId === "municipality-11" ? "11001" : "08001",
+    }),
   };
+  const service = new ElectronicInvoicingSuppliersService(
+      repository as never,
+      overrides.lookupService,
+      locationsService as never
+    );
+  const createSupplier = service.createSupplier.bind(service);
+  service.createSupplier = ((requestedTenantId: string, input: any) =>
+    createSupplier(requestedTenantId, {
+      countryId: "country-1",
+      departamentoId: "department-1",
+      municipioId: "municipality-1",
+      personType: "JURIDICA",
+      taxRegime: "ORDINARIO",
+      taxResponsibilities: ["R-99-PN"],
+      ...input,
+    })) as typeof service.createSupplier;
+  return { service, state };
 };
 
 describe("ElectronicInvoicingSuppliersService", () => {
@@ -240,6 +262,9 @@ describe("ElectronicInvoicingSuppliersService", () => {
       name: "Proveedor SAS",
       documentNumber: "900.123-456",
       dianIdentificationType: "31",
+      countryId: "country-11",
+      departamentoId: "department-11",
+      municipioId: "municipality-11",
       invoiceEmail: "FACTURAS@PROVEEDOR.CO",
       phone: "3007654321",
       address: "CL 4 5 6",

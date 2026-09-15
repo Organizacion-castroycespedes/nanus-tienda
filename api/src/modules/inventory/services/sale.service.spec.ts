@@ -279,6 +279,10 @@ class FakeCreateSaleClient {
       return { rows: [{ id: ids.delivery }] as T[] };
     }
 
+    if (sql.includes("vat_responsibility")) {
+      return { rows: [{ vat_responsibility: "RESPONSIBLE" }] as T[] };
+    }
+
     throw new Error(`Unexpected SQL in create sale test: ${sql}`);
   }
 
@@ -1436,4 +1440,41 @@ test("SaleService.getSales filters by customerId", async () => {
 
   assert.match(queries[0].text, /s\.customer_id = \$2::uuid/);
   assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
+});
+
+test("SaleService classifies a draft electronic-billing snapshot as stale after confirmation", () => {
+  const { service } = buildService();
+  const customer = {
+    identificationNumber: "900123456",
+    legalName: "Cliente prueba",
+    countryCode: "CO",
+    departmentCode: "05",
+    municipalityCode: "05001",
+    taxLevelCode: "JURIDICA",
+    taxSchemeId: "ORDINARIO",
+    fiscalResponsibilityCodes: ["O-13"],
+  };
+  const event = {
+    payload: {
+      sale: { saleStatus: "DRAFT" },
+      customer,
+      totals: { subtotalAmount: "100.00", taxAmount: "19.00", totalAmount: "119.00" },
+    },
+  };
+  const currentLines = [{ subtotalAmount: "100.00", taxAmount: "19.00", totalAmount: "119.00" }];
+  const isStale = (service as unknown as {
+    isElectronicBillingSnapshotStale: (...args: unknown[]) => boolean;
+  }).isElectronicBillingSnapshotStale;
+
+  assert.equal(isStale.call(service, event, { status: "CONFIRMED", total: "119.00" }, customer, currentLines), true);
+  assert.equal(
+    isStale.call(
+      service,
+      { payload: { ...event.payload, sale: { saleStatus: "CONFIRMED" } } },
+      { status: "CONFIRMED", total: "119.00" },
+      customer,
+      currentLines,
+    ),
+    false,
+  );
 });

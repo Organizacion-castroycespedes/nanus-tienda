@@ -100,4 +100,44 @@ export class LocationsService {
       throw new BadRequestException("fiscal location hierarchy is invalid");
     }
   }
+
+  async resolveCanonicalLocation(input: {
+    countryId?: string | null;
+    departmentId?: string | null;
+    municipalityId?: string | null;
+  }) {
+    const countryId = input.countryId?.trim() || null;
+    const departmentId = input.departmentId?.trim() || null;
+    const municipalityId = input.municipalityId?.trim() || null;
+    if (!departmentId || !municipalityId) {
+      throw new BadRequestException(
+        "departamentoId and municipioId are required"
+      );
+    }
+
+    const result = await this.db.query(
+      `SELECT
+        p.id AS country_id,
+        p.codigo_iso2 AS country_code,
+        p.nombre AS country_name,
+        d.id AS department_id,
+        d.codigo_dane AS department_code,
+        d.nombre AS department_name,
+        m.id AS municipality_id,
+        m.codigo_dane AS municipality_code,
+        m.nombre AS municipality_name
+       FROM paises p
+       JOIN departamentos d ON d.pais_id = p.id
+       JOIN municipios m ON m.departamento_id = d.id
+       WHERE ($1::uuid IS NULL OR p.id = $1::uuid)
+         AND d.id = $2 AND m.id = $3
+         AND p.activo = TRUE AND d.activo = TRUE AND m.activo = TRUE
+       LIMIT 1`,
+      [countryId, departmentId, municipalityId]
+    );
+    if (!result.rows[0]) {
+      throw new BadRequestException("fiscal location hierarchy is invalid");
+    }
+    return result.rows[0];
+  }
 }

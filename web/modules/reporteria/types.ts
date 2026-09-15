@@ -112,6 +112,34 @@ export type PosSaleTicketPrintDataset = {
   };
 };
 
+export type ElectronicInvoicePrintDataset = {
+  saleId: string;
+  electronicDocumentId: string;
+  status: "PENDING" | "PROCESSING" | "ACCEPTED" | "REJECTED" | "TECHNICAL_ERROR" | "CANCELLED";
+  documentNumber: string | null;
+  cufe: string | null;
+  acceptedAt: string | null;
+  providerStatusCode: string | null;
+  providerStatusMessage: string | null;
+  trackingId: string | null;
+  representationAvailable: boolean;
+  customerFiscalSnapshot?: {
+    name: string | null;
+    identificationType: string | null;
+    identificationNumber: string | null;
+    address: string | null;
+    country: string | null;
+    department: string | null;
+    municipality: string | null;
+    phone: string | null;
+    email: string | null;
+    taxRegime: string | null;
+    fiscalResponsibilityCodes: string[];
+  } | null;
+  taxLines?: Array<{ type: string; code: string | null; rate: number; taxableBase: number; amount: number }>;
+  qrPayload?: string | null;
+};
+
 export type CashClosingListRow = {
   cashSessionId: string;
   openedAt: string;

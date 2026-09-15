@@ -11,6 +11,7 @@ import type {
   OrderSalesListDataset,
   PosSalesListDataset,
   PosSaleTicketPrintDataset,
+  ElectronicInvoicePrintDataset,
   PurchasesListDataset,
   ReportFilters,
 } from "../types";
@@ -80,6 +81,12 @@ export const getElectronicInvoice = (saleId: string) =>
   apiBlobClientWithBaseUrl(
     reportsBaseUrl,
     `/reports/pos-sales/${saleId}/electronic-invoice`
+  );
+
+export const getElectronicInvoicePrintData = (saleId: string) =>
+  apiClientWithBaseUrl<ElectronicInvoicePrintDataset>(
+    reportsBaseUrl,
+    `/reports/pos-sales/${saleId}/electronic-invoice-data`
   );
 
 export const getCashClosingsReport = (filters: ReportFilters) =>

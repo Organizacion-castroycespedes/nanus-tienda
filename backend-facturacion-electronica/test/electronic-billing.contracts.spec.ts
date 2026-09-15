@@ -328,6 +328,29 @@ test("real create-path customer location fields survive the billing boundary", (
   assert.equal(request.customer.countryName, "Colombia");
 });
 
+test("flattened customer location metadata survives the FactuCore mapping", () => {
+  const customer = buildElectronicBillingCustomer({
+    customerType: "PERSON",
+    identificationTypeCode: "13",
+    identificationNumber: "123456789",
+    legalName: "QA Customer",
+    addressLine1: "CL 1 2 3",
+    metadata: {
+      departmentCode: "05",
+      municipalityCode: "05001",
+      cityName: "Medellin",
+      departmentName: "Antioquia",
+    },
+  });
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(buildInvoiceCommand({
+    customer,
+  }));
+
+  assert.equal(request.customer.departmentCode, "05");
+  assert.equal(request.customer.municipalityCode, "05001");
+});
+
 test("sale billing integration event keeps mixed payment snapshot in metadata", () => {
   const event: SaleCompletedForElectronicBillingEventEnvelope = {
     eventId: "event-2",

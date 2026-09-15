@@ -104,9 +104,16 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
         throw new FactuCoreConfigurationError("issue_invoice", "FactuCore create invoice response did not include a document id");
       }
 
+      await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
+      await command.onStage?.("XML_GENERATE_INTENT", createdDocumentId);
       const generated = await this.client.generateXml(runtime, createdDocumentId);
+      await command.onStage?.("XML_GENERATED", createdDocumentId);
+      await command.onStage?.("SIGN_INTENT", createdDocumentId);
       const signed = await this.client.sign(runtime, createdDocumentId);
+      await command.onStage?.("SIGNED", createdDocumentId);
+      await command.onStage?.("TRANSMISSION_INTENT", createdDocumentId);
       const transmitted = await this.client.transmit(runtime, createdDocumentId);
+      await command.onStage?.("TRANSMITTED", createdDocumentId);
       const merged = mergeDocumentResponses(created, generated, signed, transmitted);
 
       return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
@@ -116,6 +123,31 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       }
       throw error;
     }
+  }
+
+  async resumeInvoice(command: IssueElectronicInvoiceCommand, providerDocumentId: string) {
+    const runtime = await this.resolveRuntimeContext("resume_invoice", command.context);
+    const id = providerDocumentId.trim();
+    if (!id) {
+      throw new FactuCoreConfigurationError("resume_invoice", "FactuCore provider document id is required");
+    }
+
+    await command.onStage?.("XML_GENERATE_INTENT", id);
+    const generated = await this.client.generateXml(runtime, id);
+    await command.onStage?.("XML_GENERATED", id);
+    await command.onStage?.("SIGN_INTENT", id);
+    const signed = await this.client.sign(runtime, id);
+    await command.onStage?.("SIGNED", id);
+    await command.onStage?.("TRANSMISSION_INTENT", id);
+    const transmitted = await this.client.transmit(runtime, id);
+    await command.onStage?.("TRANSMITTED", id);
+
+    return buildDocumentResult(
+      this.mapper,
+      command.documentId,
+      mergeDocumentResponses(generated, signed, transmitted),
+      transmitted.status ?? transmitted.providerStatus ?? "SENT",
+    );
   }
 
   async issueCreditNote(command: IssueElectronicCreditNoteCommand) {
@@ -130,9 +162,16 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
         throw new FactuCoreConfigurationError("issue_credit_note", "FactuCore create credit note response did not include a document id");
       }
 
+      await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
+      await command.onStage?.("XML_GENERATE_INTENT", createdDocumentId);
       const generated = await this.client.generateXml(runtime, createdDocumentId);
+      await command.onStage?.("XML_GENERATED", createdDocumentId);
+      await command.onStage?.("SIGN_INTENT", createdDocumentId);
       const signed = await this.client.sign(runtime, createdDocumentId);
+      await command.onStage?.("SIGNED", createdDocumentId);
+      await command.onStage?.("TRANSMISSION_INTENT", createdDocumentId);
       const transmitted = await this.client.transmit(runtime, createdDocumentId);
+      await command.onStage?.("TRANSMITTED", createdDocumentId);
       const merged = mergeDocumentResponses(created, generated, signed, transmitted);
 
       return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
@@ -159,6 +198,16 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     }
 
     return buildStatusResult(this.mapper, command.documentId, statusResponse);
+  }
+
+  async getDocument(command: GetElectronicDocumentStatusCommand) {
+    const runtime = await this.resolveRuntimeContext("get_document", command.context);
+    assertElectronicBillingProviderCapability(this, "asyncStatus");
+    if (!command.providerDocumentId) {
+      throw new FactuCoreConfigurationError("get_document", "FactuCore provider document id is required");
+    }
+    const document = await this.client.getDocument(runtime, command.providerDocumentId);
+    return buildStatusResult(this.mapper, command.documentId, document);
   }
 
   async getDocumentOperations(command: GetElectronicDocumentStatusCommand): Promise<ElectronicBillingProviderOperationsResult> {

@@ -6,6 +6,8 @@ export type ElectronicBillingEligibilityInput = {
   customerId: string | null;
   documentStatuses: string[];
   requestExists: boolean;
+  hasTaxLines?: boolean;
+  customerFiscalDataComplete?: boolean;
 };
 
 export const evaluateElectronicBillingEligibility = (
@@ -19,6 +21,9 @@ export const evaluateElectronicBillingEligibility = (
   }
   if (!input.customerId) {
     return "NO_CUSTOMER";
+  }
+  if (input.hasTaxLines && input.customerFiscalDataComplete === false) {
+    return "INCOMPLETE_CUSTOMER_FISCAL_DATA";
   }
   if (input.documentStatuses.length > 1) {
     return "AMBIGUOUS_DOCUMENT";

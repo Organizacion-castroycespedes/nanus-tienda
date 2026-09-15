@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildTicketPrintDocument,
 } from "../src/shared/escpos-mock/thermal-ticket.formatter";
+import { EscPosMockCommandName } from "../src/shared/escpos-mock/escpos-mock.types";
 import {
   containsPhysicalCut,
   renderThermalEscPos,
@@ -121,4 +122,22 @@ test("RAW ESC/POS contains CUT only when physical cut is enabled", () => {
   assert.ok(finalFeedOffset < cutOffset);
   assert.equal(cutOffset, rawWithCut.length - 3);
   assert.deepEqual([...rawWithCut.subarray(-3)], [0x1d, 0x56, 0x00]);
+});
+
+test("native QR command carries the authoritative payload bytes for 80mm and 58mm", () => {
+  const qrPayload = "NumFac: SETP990000009\nCUFE: authoritative-value";
+  for (const widthChars of [THERMAL_80MM_SAFE_WIDTH_CHARS, 32]) {
+    const document = buildTicketPrintDocument({
+      ticketType: "ELECTRONIC_INVOICE",
+      terminalId: "local-terminal",
+      deviceId: "printer-1",
+      widthChars,
+      timestamp: "2026-08-21T00:00:00.000Z",
+      content: { qrPayload, total: 32000 },
+    });
+    const command = document.commands.find((item) => item.name === EscPosMockCommandName.QrCode);
+    assert.equal(command?.payload, qrPayload);
+    const raw = renderThermalEscPos(document.commands, document.preview, { includePhysicalCut: false });
+    assert.ok(raw.includes(Buffer.from(qrPayload, "utf8")));
+  }
 });

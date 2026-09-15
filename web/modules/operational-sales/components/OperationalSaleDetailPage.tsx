@@ -4,9 +4,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
-import { getElectronicInvoice } from "../../reporteria/services/reporting.service";
+import { getElectronicInvoice, getElectronicInvoicePrintData, getPosSaleTicketPrintData } from "../../reporteria/services/reporting.service";
+import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
+import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { hasPermission } from "../../../lib/permissions";
 import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
+import { isEligibleForElectronicBillingRequest } from "../services/operational-sales.service";
 import type { OperationalSaleDetail } from "../types";
 
 const labels: Record<string, string> = {
@@ -91,20 +95,29 @@ const ActionCard = ({
   onReload,
   onRefreshStatus,
   onRetry,
+  onRequestBilling,
+  onPrintInvoice,
   refreshLoading,
+  printLoading,
   actionMessage,
 }: {
   sale: OperationalSaleDetail;
   onReload: () => void;
   onRefreshStatus: () => Promise<void>;
   onRetry: () => Promise<void>;
+  onRequestBilling: () => Promise<void>;
+  onPrintInvoice: () => Promise<void>;
   refreshLoading: boolean;
+  printLoading: boolean;
   actionMessage: string | null;
 }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
   const canRetry = billing?.retryability?.canRetry === true;
+  const canRequestBilling =
+    hasPermission("POS", "write") &&
+    isEligibleForElectronicBillingRequest(sale);
   const getPdf = useCallback(
     () => getElectronicInvoice(sale.id),
     [sale.id]
@@ -122,9 +135,29 @@ const ActionCard = ({
               {refreshLoading ? "Consultando FE..." : "Actualizar estado FE"}
             </Button>
           ) : null}
+          {canRequestBilling ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (window.confirm(
+                  `¿Facturar electrónicamente esta venta usando el cliente ${sale.customer.name ?? sale.customer.id}? Se validarán sus datos fiscales antes de crear la solicitud.`
+                )) {
+                  void onRequestBilling();
+                }
+              }}
+              disabled={refreshLoading}
+            >
+              {refreshLoading ? "Solicitando FE..." : "Facturar electrónicamente"}
+            </Button>
+          ) : null}
           {accepted ? (
             <Button variant="outline" onClick={() => setPreviewOpen(true)}>
               Ver / reimprimir factura electrónica
+            </Button>
+          ) : null}
+          {accepted ? (
+            <Button variant="outline" onClick={() => void onPrintInvoice()} disabled={printLoading}>
+              {printLoading ? "Imprimiendo FE..." : "Imprimir factura electrónica"}
             </Button>
           ) : null}
           {canRetry ? (
@@ -160,6 +193,8 @@ const ActionCard = ({
 export const OperationalSaleDetailPage = () => {
   const params = useParams<{ tenant: string; saleId: string }>();
   const tenant = params.tenant;
+  const posContext = usePosContext();
+  const [printLoading, setPrintLoading] = useState(false);
   const {
     data: sale,
     loading,
@@ -167,10 +202,27 @@ export const OperationalSaleDetailPage = () => {
     reload,
     refreshBillingStatus,
     retryBilling,
+    requestBilling,
     actionLoading,
     actionMessage,
   } = useOperationalSaleDetail(params.saleId);
   const backHref = `/${tenant}/operations/sales`;
+  const printInvoice = useCallback(async () => {
+    setPrintLoading(true);
+    try {
+      const [invoice, saleTicket] = await Promise.all([
+        getElectronicInvoicePrintData(params.saleId),
+        getPosSaleTicketPrintData(params.saleId),
+      ]);
+      await printElectronicInvoiceTicket(invoice, saleTicket, {
+        tenantId: posContext.tenantId,
+        branchId: posContext.branchId,
+        terminalId: posContext.terminalId,
+      });
+    } finally {
+      setPrintLoading(false);
+    }
+  }, [params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
 
   if (loading) {
     return <main className="mx-auto max-w-6xl p-6"><p className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Cargando detalle de venta...</p></main>;
@@ -188,7 +240,7 @@ export const OperationalSaleDetailPage = () => {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Gestión Operativa · Ventas</p>
           <h1 className="mt-2 break-all text-2xl font-bold text-slate-950">Detalle {sale.id}</h1>
         </div>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">OperaciÃ³n segura</span>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Operación segura</span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -226,7 +278,10 @@ export const OperationalSaleDetailPage = () => {
         onReload={reload}
         onRefreshStatus={refreshBillingStatus}
         onRetry={retryBilling}
+        onRequestBilling={requestBilling}
+        onPrintInvoice={printInvoice}
         refreshLoading={actionLoading}
+        printLoading={printLoading}
         actionMessage={actionMessage}
       />
 

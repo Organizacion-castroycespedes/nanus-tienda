@@ -146,3 +146,57 @@ test("dispatcher publishes success and idempotent success", async () => {
   assert.equal(retryable.length, 1);
   assert.equal(failed.length, 0);
 });
+
+test("dispatcher fails closed for a stale sale snapshot before Billing", async () => {
+  const event = {
+    id: randomUUID(),
+    event_id: randomUUID(),
+    event_type: "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+    schema_version: 1,
+    tenant_id: randomUUID(),
+    correlation_id: randomUUID(),
+    source_type: "SALE",
+    source_id: randomUUID(),
+    payload: {
+      sale: { saleId: randomUUID(), saleStatus: "DRAFT" },
+      customer: { identificationNumber: "1", legalName: "Cliente" },
+      lines: [{ taxAmount: "19.00", taxes: [{}] }],
+    },
+    attempt_count: 1,
+    next_attempt_at: new Date().toISOString(),
+  } as any;
+  let providerHandoff = false;
+  let failureCode = "";
+  const dispatcher = new IntegrationOutboxDispatcher(
+    {
+      enabled: true,
+      scanIntervalMs: 30000,
+      batchSize: 1,
+      concurrencyLimit: 1,
+      maxRetryAttempts: 5,
+      leaseMs: 300000,
+      initialBackoffMs: 30000,
+      maxBackoffMs: 1800000,
+      timeoutMs: 15000,
+      billingBackendBaseUrl: "http://billing-backend.local",
+      internalToken: "secret-token",
+    },
+    {
+      claimDueEvents: async () => [event],
+      markTerminalFailure: async (_id: string, input: { lastError: string }) => {
+        failureCode = input.lastError;
+      },
+    } as never,
+    {
+      sendSaleCompletedEvent: async () => {
+        providerHandoff = true;
+        return { outcome: "PUBLISHED", retryable: false };
+      },
+    } as never,
+  );
+
+  const result = await dispatcher.runOnce();
+  assert.equal(result.failed, 1);
+  assert.equal(providerHandoff, false);
+  assert.match(failureCode, /OUTBOX_EVENT_INELIGIBLE_SNAPSHOT/);
+});

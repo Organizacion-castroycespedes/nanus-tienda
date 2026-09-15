@@ -27,6 +27,7 @@ export type SaleCompletedForElectronicBillingEventPayload = {
   payments: SalePaymentSnapshot[];
   totals: SaleTotalsSnapshot;
   currencyCode: string;
+  issuerVatResponsibility?: "RESPONSIBLE" | "NOT_RESPONSIBLE" | "UNKNOWN";
   metadata?: Record<string, unknown>;
 };
 
