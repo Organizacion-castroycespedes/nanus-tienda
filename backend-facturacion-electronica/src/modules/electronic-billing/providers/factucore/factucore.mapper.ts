@@ -185,6 +185,32 @@ export const mapFactuCoreTaxType = (tax: ElectronicTaxInput): FactuCoreTaxType =
   );
 };
 
+export type FactuCoreTaxTreatment = "TAXED" | "EXCLUDED" | "NOT_APPLICABLE";
+
+export const mapFactuCoreTaxTreatment = (
+  value: string | null | undefined,
+): FactuCoreTaxTreatment | null => {
+  const normalized = normalizeString(value).toUpperCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "EXEMPT") {
+    return "NOT_APPLICABLE";
+  }
+  if (normalized === "EXCLUDED") {
+    return "EXCLUDED";
+  }
+  if (normalized === "TAXED") {
+    return "TAXED";
+  }
+
+  throw new FactuCoreConfigurationError(
+    "tax_treatment_normalization",
+    `Tax treatment is not mapped to the FactuCore fiscal contract: ${value}`,
+  );
+};
+
 const FACTUCORE_TAX_SCHEME_IDS: Partial<Record<FactuCoreTaxType, string>> = {
   IVA: "01",
   INC: "04",
@@ -278,24 +304,27 @@ const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   };
 };
 
-const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => ({
-  sku: normalizeNullableString(line.sku),
-  originLineId: normalizeNullableString(line.providerOriginalLineId ?? line.originalElectronicDocumentLineId ?? line.sourceLineId),
-  standardItemId: normalizeNullableString(line.standardItemId),
-  standardItemSchemeId: normalizeNullableString(line.standardItemSchemeId),
-  description: line.description,
-  unitCode: mapUnitCode(line.unitCode),
-  taxTreatment: normalizeNullableString(line.taxTreatment),
-  taxSchemeId: line.taxes?.length === 1 ? mapFactuCoreTaxSchemeId(line.taxes[0]) : null,
-  taxSchemeName: line.taxes?.length === 1 ? mapFactuCoreTaxType(line.taxes[0]) : null,
-  quantity: line.quantity,
-  unitPrice: line.unitPrice,
-  discountAmount: line.discountAmount ?? null,
-  taxes: line.taxTreatment === "EXCLUDED" || line.taxTreatment === "NOT_APPLICABLE"
-    ? undefined
-    : line.taxes?.map(mapTax),
-  metadata: line.metadata ?? {},
-});
+const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => {
+  const taxTreatment = mapFactuCoreTaxTreatment(line.taxTreatment);
+  return {
+    sku: normalizeNullableString(line.sku),
+    originLineId: normalizeNullableString(line.providerOriginalLineId ?? line.originalElectronicDocumentLineId ?? line.sourceLineId),
+    standardItemId: normalizeNullableString(line.standardItemId),
+    standardItemSchemeId: normalizeNullableString(line.standardItemSchemeId),
+    description: line.description,
+    unitCode: mapUnitCode(line.unitCode),
+    taxTreatment,
+    taxSchemeId: line.taxes?.length === 1 ? mapFactuCoreTaxSchemeId(line.taxes[0]) : null,
+    taxSchemeName: line.taxes?.length === 1 ? mapFactuCoreTaxType(line.taxes[0]) : null,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    discountAmount: line.discountAmount ?? null,
+    taxes: line.taxTreatment === "EXCLUDED" || line.taxTreatment === "NOT_APPLICABLE"
+      ? undefined
+      : line.taxes?.map(mapTax),
+    metadata: line.metadata ?? {},
+  };
+};
 
 const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,

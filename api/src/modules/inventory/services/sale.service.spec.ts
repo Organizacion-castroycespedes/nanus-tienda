@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BadRequestException } from "@nestjs/common";
 import type { PoolClient } from "pg";
-import { SaleService } from "./sale.service";
+import { SaleService, resolveElectronicBillingTaxTreatment } from "./sale.service";
 import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
 import type { CreateSaleInput } from "../repositories/sale.repository";
 import type {
@@ -33,6 +33,24 @@ const ids = {
   delivery: "10000000-0000-0000-0000-000000000021",
   orderItem: "10000000-0000-0000-0000-000000000022",
 };
+
+test("electronic billing maps authoritative Exento tax to EXEMPT", () => {
+  assert.equal(
+    resolveElectronicBillingTaxTreatment(
+      [{ type: "VAT", code: "01", schemeName: "Exento" }],
+      0,
+    ),
+    "EXEMPT",
+  );
+  assert.equal(resolveElectronicBillingTaxTreatment([], 0), "EXCLUDED");
+  assert.equal(
+    resolveElectronicBillingTaxTreatment(
+      [{ type: "VAT", code: "01", schemeName: "IVA" }],
+      3040,
+    ),
+    "TAXED",
+  );
+});
 
 type Scenario = {
   saleStatus?: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REFUNDED";

@@ -118,6 +118,35 @@ type SaleItemTaxRow = {
   created_at: Date;
 };
 
+export function resolveElectronicBillingTaxTreatment(
+  taxes: Array<{
+    type?: string | null;
+    code?: string | null;
+    schemeName?: string | null;
+    metadata?: Record<string, unknown>;
+  }>,
+  taxAmount: number,
+): "EXEMPT" | "EXCLUDED" | "TAXED" {
+  const isExempt = taxes.some((tax) =>
+    [
+      tax.type,
+      tax.schemeName,
+      tax.metadata?.taxName,
+      tax.metadata?.taxTreatment,
+    ].some((value) =>
+      typeof value === "string" && value.trim().toUpperCase().includes("EXENTO"),
+    ),
+  );
+
+  if (isExempt) {
+    return "EXEMPT";
+  }
+  if (taxAmount > 0 || taxes.length > 0) {
+    return "TAXED";
+  }
+  return "EXCLUDED";
+}
+
 type SalePaymentMethodRow = {
   id: string;
   tenant_id: string;
@@ -921,7 +950,7 @@ export class SaleService {
           subtotalAmount: this.toDecimalWireValue(subtotalAmount),
           taxAmount: this.toDecimalWireValue(taxAmount),
           totalAmount: this.toDecimalWireValue(totalAmount),
-          taxTreatment: taxAmount > 0 || taxes.length > 0 ? "TAXED" : "EXCLUDED",
+          taxTreatment: resolveElectronicBillingTaxTreatment(taxes, taxAmount),
           standardItemId: product.id,
           standardItemSchemeId: "MANUS",
           taxes,
