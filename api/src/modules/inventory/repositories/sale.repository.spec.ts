@@ -200,6 +200,66 @@ test("SaleRepository keeps create sale payload unchanged for v2", async () => {
   assertCreateSaleCall(calls, "inventory_create_sale_v2");
 });
 
+test("SaleRepository reserves sale idempotency per tenant and returns committed sale", async () => {
+  const calls: RecordedCall[] = [];
+  const client = {
+    query: async <T>(text: string, params: unknown[]) => {
+      calls.push({ text, params });
+      if (text.includes("INSERT INTO sale_creation_idempotency")) {
+        return { rows: [{ request_hash: "a".repeat(64), sale_id: ids.sale }] as T[] };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    },
+  } as unknown as PoolClient;
+  const repository = new SaleRepository({} as never);
+
+  const result = await repository.reserveSaleCreationIdempotency(
+    ids.tenant,
+    "attempt-1",
+    "a".repeat(64),
+    client,
+  );
+
+  assert.deepEqual(result, {
+    requestHash: "a".repeat(64),
+    saleId: ids.sale,
+    created: true,
+  });
+  assert.deepEqual(calls[0].params, [ids.tenant, "attempt-1", "a".repeat(64)]);
+  assert.match(calls[0].text, /ON CONFLICT \(tenant_id, idempotency_key\) DO NOTHING/);
+});
+
+test("SaleRepository reads an existing idempotency reservation after a conflict", async () => {
+  const calls: RecordedCall[] = [];
+  const client = {
+    query: async <T>(text: string, params: unknown[]) => {
+      calls.push({ text, params });
+      if (text.includes("INSERT INTO sale_creation_idempotency")) {
+        return { rows: [] as T[] };
+      }
+      return {
+        rows: [{ request_hash: "b".repeat(64), sale_id: ids.sale }] as T[],
+      };
+    },
+  } as unknown as PoolClient;
+  const repository = new SaleRepository({} as never);
+
+  const result = await repository.reserveSaleCreationIdempotency(
+    ids.tenant,
+    "attempt-1",
+    "b".repeat(64),
+    client,
+  );
+
+  assert.deepEqual(result, {
+    requestHash: "b".repeat(64),
+    saleId: ids.sale,
+    created: false,
+  });
+  assert.deepEqual(calls[1].params, [ids.tenant, "attempt-1"]);
+  assert.match(calls[1].text, /FOR UPDATE/);
+});
+
 test("SaleRepository serializes enriched pricing payload as snake_case", async () => {
   const repository = new SaleRepository({} as never);
   const { calls, client } = buildClient();

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Inject,
   NotFoundException,
   Param,
@@ -162,14 +163,27 @@ export class SaleController {
   @RequireOpenCashSession()
   @RequirePosSession()
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
-  create(@Body() body: CreateSaleBody, @Req() request: AuthRequest) {
+  create(
+    @Body() body: CreateSaleBody,
+    @Req() request: AuthRequest,
+    @Headers("idempotency-key") idempotencyKey: string | string[] | undefined,
+  ) {
     return this.saleService.createSale({
       customerId: body.customerId,
       orderId: body.orderId ?? null,
       type: body.type,
       items: body.items ?? [],
       payments: body.payments ?? [],
-    }, this.getSaleContext(request));
+    }, this.getSaleContext(request), idempotencyKey);
+  }
+
+  @Get("idempotency/:key")
+  @RequirePermission({ menuKey: "POS", level: "READ" })
+  getByIdempotencyKey(
+    @Param("key") key: string,
+    @Req() request: AuthRequest,
+  ) {
+    return this.saleService.getSaleByIdempotencyKey(key, this.buildActor(request));
   }
 
   @Get()

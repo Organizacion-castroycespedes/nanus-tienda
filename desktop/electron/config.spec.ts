@@ -10,11 +10,11 @@ import {
 const resolve = (env: ElectronConfigEnv = {}) => resolveElectronConfig(env);
 
 describe("resolveElectronConfig", () => {
-  it("opens the local development page by default", () => {
+  it("opens the hosted login page by default", () => {
     const config = resolve();
 
-    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/");
+    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
     assert.equal(config.startPath, null);
     assert.equal(config.tenantId, null);
     assert.equal(config.branchId, null);
@@ -76,7 +76,7 @@ describe("resolveElectronConfig", () => {
 
     assert.equal(config.branchId, "branch-1");
     assert.equal(config.terminalId, "terminal-1");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/");
+    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
   });
 });
 
@@ -118,7 +118,7 @@ describe("validateVersionedShellConfig", () => {
       NEXT_PUBLIC_MANUS_WEB_URL: "not-a-url",
     });
 
-    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/");
+    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/login");
   });
 
   it("preserves the packaged login startup path", () => {

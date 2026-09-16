@@ -96,7 +96,7 @@ const RolesPage = () => {
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
     setToastVariant(variant);
-  }, [permissions.length]);
+  }, []);
 
   const loadRoles = useCallback(async () => {
     setRolesLoading(true);
@@ -143,7 +143,7 @@ const RolesPage = () => {
         window.clearTimeout(timeoutId);
       }
     };
-  }, []);
+  }, [permissions.length]);
 
   useEffect(() => {
     if (!hasAccess) {
@@ -424,3 +424,4 @@ const RolesPage = () => {
 };
 
 export default RolesPage;
+
