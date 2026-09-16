@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { SaleService } from "./sale.service";
 import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
@@ -302,6 +302,11 @@ class FakeCreateSaleRepository {
   }> = [];
   readonly invoiceOrderCalls: unknown[] = [];
   readonly statusUpdates: unknown[] = [];
+  readonly idempotencyCompletions: unknown[] = [];
+  readonly idempotencyReservations = new Map<
+    string,
+    { requestHash: string; saleId: string | null }
+  >();
 
   async validateActivePosSession() {
     return true;
@@ -365,6 +370,41 @@ class FakeCreateSaleRepository {
 
   async updateSaleStatus(...args: unknown[]) {
     this.statusUpdates.push(args);
+  }
+
+  async reserveSaleCreationIdempotency(
+    tenantId: string,
+    idempotencyKey: string,
+    requestHash: string,
+  ) {
+    const storageKey = `${tenantId}:${idempotencyKey}`;
+    const existing = this.idempotencyReservations.get(storageKey);
+    if (existing) {
+      return { ...existing, created: false };
+    }
+    const reservation = { requestHash, saleId: null };
+    this.idempotencyReservations.set(storageKey, reservation);
+    return { ...reservation, created: true };
+  }
+
+  async completeSaleCreationIdempotency(
+    tenantId: string,
+    idempotencyKey: string,
+    saleId: string,
+  ) {
+    const reservation = this.idempotencyReservations.get(`${tenantId}:${idempotencyKey}`);
+    if (!reservation || reservation.saleId) {
+      throw new Error("sale idempotency reservation could not be completed");
+    }
+    reservation.saleId = saleId;
+    this.idempotencyCompletions.push({ tenantId, idempotencyKey, saleId });
+  }
+
+  async findSaleByIdempotencyKey(tenantId: string, idempotencyKey: string) {
+    const reservation = this.idempotencyReservations.get(`${tenantId}:${idempotencyKey}`);
+    return reservation
+      ? { ...reservation, created: false }
+      : null;
   }
 }
 
@@ -740,6 +780,78 @@ test("SaleService.createSale calculates POS pricing and sends enriched payload",
   assert.deepEqual(
     (pricedItem.pricingSnapshot?.result as LinePricePreview).finalUnitPrice,
     180
+  );
+});
+
+test("SaleService.createSale replays the committed sale for the same tenant and key", async () => {
+  const { service, repository, pricingService } = buildCreateSaleService([
+    makePreview(),
+  ]);
+  const payload = createSalePayload();
+
+  const first = await service.createSale(payload, posContext, "attempt-replay");
+  const second = await service.createSale(payload, posContext, "attempt-replay");
+
+  assert.deepEqual(first, second);
+  assert.equal(repository.createSaleCalls.length, 1);
+  assert.equal(pricingService.calls.length, 1);
+});
+
+test("SaleService.createSale replay keeps the trusted branch scope", async () => {
+  const { service } = buildCreateSaleService([makePreview()]);
+  const reads: unknown[] = [];
+  (service as unknown as {
+    getSaleById: (id: string, actor: unknown) => Promise<unknown>;
+  }).getSaleById = async (id, actor) => {
+    reads.push({ id, actor });
+    return { id, status: "CONFIRMED" };
+  };
+
+  await service.createSale(createSalePayload(), posContext, "attempt-scope");
+  await service.createSale(createSalePayload(), posContext, "attempt-scope");
+
+  assert.deepEqual(reads[1], {
+    id: ids.sale,
+    actor: {
+      roles: posContext.roles,
+      userId: posContext.userId,
+      tenantId: posContext.tenantId,
+      branchId: posContext.branchId,
+      terminalId: posContext.terminalId,
+    },
+  });
+});
+
+test("SaleService.createSale rejects reusing a key for a different request", async () => {
+  const { service, repository } = buildCreateSaleService([makePreview()]);
+
+  await service.createSale(createSalePayload(), posContext, "attempt-conflict");
+
+  await assert.rejects(
+    () =>
+      service.createSale(
+        createSalePayload({ orderId: ids.order }),
+        posContext,
+        "attempt-conflict",
+      ),
+    (error) =>
+      error instanceof ConflictException &&
+      error.message === "Idempotency-Key was already used with a different sale request",
+  );
+  assert.equal(repository.createSaleCalls.length, 1);
+});
+
+test("SaleService.getSaleByIdempotencyKey does not cross tenant scope", async () => {
+  const { service } = buildCreateSaleService([]);
+
+  await assert.rejects(
+    () =>
+      service.getSaleByIdempotencyKey("attempt-from-tenant-a", {
+        tenantId: "tenant-b",
+        userId: ids.user,
+        roles: ["ADMIN"],
+      }),
+    /sale idempotency key not found/,
   );
 });
 

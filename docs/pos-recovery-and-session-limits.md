@@ -4,9 +4,19 @@
 
 Electron sigue siendo un shell del frontend web. No existe una base transaccional local ni se ofrece venta offline.
 
-El contrato actual crea ventas con `POST /sales` y permite consultar una venta conocida con `GET /sales/:id`. El cliente no conoce el `saleId` antes del POST y el contrato no recibe una clave de idempotencia. Por eso no se puede consultar de forma inequívoca el resultado de una solicitud que perdió su respuesta.
+El contrato ahora acepta `Idempotency-Key` en `POST /sales` y expone
+`GET /sales/idempotency/:key`. La clave se reserva por
+`(tenant_id, idempotency_key)` dentro de la misma transacción que crea la
+venta. También se guarda un hash del request y del contexto POS confiable.
 
-La protección implementada es local y conservadora:
+- Una repetición con la misma clave y el mismo request devuelve la venta original.
+- Una repetición con otro request responde `409 Conflict`.
+- La clave no puede cruzar tenants: el tenant viene del JWT/contexto y la tabla
+  usa una FK compuesta `(tenant_id, sale_id)`.
+- Una reserva sin `sale_id` nunca se reintenta automáticamente; responde que
+  requiere reconciliación.
+
+El cliente mantiene además una protección local y conservadora:
 
 - el carrito continúa aislado por tenant, sucursal, terminal, usuario y sesión POS;
 - antes del POST se persiste un identificador local del intento y el estado `SUBMITTING`;
@@ -15,7 +25,30 @@ La protección implementada es local y conservadora:
 - una caída de red o respuesta 5xx conserva el carrito y bloquea el reintento automático;
 - el operador debe revisar las ventas registradas y habilitar manualmente otro intento.
 
-Este mecanismo reduce duplicados accidentales, pero no puede demostrar por sí solo si el servidor confirmó la venta. Para reconciliación automática hace falta un cambio de contrato backend: aceptar una clave de idempotencia generada por el cliente, persistirla junto con la venta y exponer una consulta por esa clave dentro del tenant autenticado.
+La clave enviada por el POS es el `attemptId` persistido en el carrito. Esto
+permite recuperar una respuesta perdida sin inventar una venta offline ni hacer
+reintentos automáticos.
+
+## Tenant negativo en endpoints existentes (POS-P2-002)
+
+Regla aplicada: `tenant_id` confiable sale del JWT validado por `JwtAuthGuard`
+y, para POS, del contexto de sesión POS que el guard resuelve contra ese mismo
+tenant. Body, query string y headers del cliente no pueden reemplazarlo.
+
+| Familia existente | Entrada negativa | Fuente efectiva | Resultado esperado | Evidencia |
+| --- | --- | --- | --- | --- |
+| `POST /sales`, `GET /sales`, `GET /sales/:id`, cancelación y billing | `body.tenantId`, `body.branchId`, `?branchId`, `x-tenant-id` | JWT + contexto POS | Ignorar campos no confiables; aplicar tenant/sucursal autenticados | `sale.controller.spec.ts`, `sale.service.spec.ts` |
+| `GET/POST/PUT /branches` | `?tenantId` o `body.tenantId` de otro tenant | JWT + `BranchesService.resolveTenantId` | `403`; nunca consultar/escribir el tenant pedido | `branches.service.spec.ts` |
+| `GET/POST/PATCH /terminals` | `?tenantId`, `body.tenantId` o sucursal cruzada | JWT + `TerminalsService` | `403`; validar sucursal dentro del tenant efectivo | `terminals.service.spec.ts` |
+| `GET /inventory/products`, órdenes y compras | `?tenantId`, `?branchId` o `body.tenantId` | JWT/contexto + scope de servicio | `403` o filtro por tenant autenticado; no sustitución | servicios `inventory`, `order` y `purchase` |
+| Pricing y promociones | `body.tenantId` o filtros de tenant | JWT (`request.user.tenantId`) | Usar tenant JWT; payload alterno no cambia cálculo ni escritura | `pricing.controller.spec.ts`, `promotions.controller.spec.ts` |
+| `POST/GET /terminal-devices` | `body.tenantId` o `?tenantId` | JWT + rol `SUPER_ADMIN` | Solo operación global explícita de `SUPER_ADMIN`; otro rol recibe `403` | `terminal-devices.service.spec.ts` |
+| `/tenants/:id/*`, permisos y menú admin | `:id`, `?tenantId` o body de otro tenant | JWT + autorización `SUPER_ADMIN` o igualdad de tenant | `SUPER_ADMIN` puede operar globalmente; usuario normal recibe `403` | guards/controllers de tenants, permisos y menú |
+
+La excepción global está limitada a endpoints que ya requieren `SUPER_ADMIN` (por
+ejemplo, administración de tenants, permisos, menú y dispositivos). El valor
+seleccionado por ese rol es un alcance autorizado, no una sustitución de la
+identidad tenant del JWT. No se agrega un header de tenant confiable.
 
 ## Refresh token
 

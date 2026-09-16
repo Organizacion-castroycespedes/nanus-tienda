@@ -6,6 +6,7 @@ import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   resetPosCartSale,
   allowSaleSubmissionRetry,
+  allowUnknownSaleRetry,
   beginSaleSubmission,
   markSaleSubmissionUnknown,
   persistPosCartState,
@@ -37,6 +38,10 @@ export const usePosCartStore = () => {
       },
       allowSaleSubmissionRetry: () => {
         dispatch(allowSaleSubmissionRetry());
+        persistPosCartState(store.getState().posCart);
+      },
+      allowUnknownSaleRetry: () => {
+        dispatch(allowUnknownSaleRetry());
         persistPosCartState(store.getState().posCart);
       },
       resetPosCartSale: () => dispatch(resetPosCartSale()),

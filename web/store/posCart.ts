@@ -243,6 +243,11 @@ const posCartSlice = createSlice({
       state.saleStatus = "DRAFT";
       state.saleAttempt = null;
     },
+    allowUnknownSaleRetry(state) {
+      if (state.saleStatus === "UNKNOWN" && state.saleAttempt) {
+        state.saleStatus = "DRAFT";
+      }
+    },
     resetPosCartSale(state) {
       Object.assign(state, buildEmptySaleState());
     },
@@ -340,6 +345,7 @@ export const {
   beginSaleSubmission,
   markSaleSubmissionUnknown,
   allowSaleSubmissionRetry,
+  allowUnknownSaleRetry,
   resetPosCartSale,
   clearPosCartState,
 } = posCartSlice.actions;

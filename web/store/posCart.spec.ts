@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 
 import posCartReducer, {
   allowSaleSubmissionRetry,
+  allowUnknownSaleRetry,
   beginSaleSubmission,
   buildPosCartStorageKey,
   hydratePosCart,
@@ -123,11 +124,14 @@ describe("POS sale submission recovery", () => {
     const editAttempt = posCartReducer(unknown, setSaleStatus("DRAFT"));
     const cartEditAttempt = posCartReducer(unknown, setCartItems([]));
     const retryable = posCartReducer(unknown, allowSaleSubmissionRetry());
+    const sameKeyRetry = posCartReducer(unknown, allowUnknownSaleRetry());
 
     assert.equal(unknown.saleStatus, "UNKNOWN");
     assert.equal(editAttempt.saleStatus, "UNKNOWN");
     assert.deepEqual(cartEditAttempt.items, unknown.items);
     assert.equal(retryable.saleStatus, "DRAFT");
     assert.equal(retryable.saleAttempt, null);
+    assert.equal(sameKeyRetry.saleStatus, "DRAFT");
+    assert.equal(sameKeyRetry.saleAttempt?.attemptId, "attempt-a");
   });
 });
