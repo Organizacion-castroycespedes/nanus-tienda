@@ -214,7 +214,7 @@ const MenuManagementPage = () => {
       headers["x-user-id"] = authUser.id;
     }
     return headers;
-  }, []);
+  }, [authUser?.id, authUser?.role, authUser?.tenantId]);
 
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
@@ -836,3 +836,4 @@ const MenuManagementPage = () => {
 };
 
 export default MenuManagementPage;
+
