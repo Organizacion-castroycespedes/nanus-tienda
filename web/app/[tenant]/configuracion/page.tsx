@@ -285,15 +285,21 @@ const ConfiguracionPage = () => {
   const isSuperUser = authUser?.role === "SUPER_USER";
   const isCurrentTenant =
     Boolean(selectedTenantId) && selectedTenantId === currentTenantId;
-  const setStatusMessage = (message: string, variant: ToastVariant) => {
+  const setStatusMessage = useCallback((message: string, variant: ToastVariant) => {
     setStatus({ message, variant });
-  };
-  const setStatusSuccess = (message: string) =>
-    setStatusMessage(message, "success");
-  const setStatusError = (message: string) =>
-    setStatusMessage(message, "error");
-  const setStatusWarning = (message: string) =>
-    setStatusMessage(message, "warning");
+  }, []);
+  const setStatusSuccess = useCallback(
+    (message: string) => setStatusMessage(message, "success"),
+    [setStatusMessage]
+  );
+  const setStatusError = useCallback(
+    (message: string) => setStatusMessage(message, "error"),
+    [setStatusMessage]
+  );
+  const setStatusWarning = useCallback(
+    (message: string) => setStatusMessage(message, "warning"),
+    [setStatusMessage]
+  );
 
   const buildBranchHeaders = useCallback(() => {
     const headers: Record<string, string> = {};
@@ -304,7 +310,7 @@ const ConfiguracionPage = () => {
       headers["x-tenant-id"] = authUser.tenantId;
     }
     return headers;
-  }, []);
+  }, [authUser?.role, authUser?.tenantId]);
 
   const loadCountries = useCallback(async () => {
     setCountriesLoading(true);
@@ -469,7 +475,7 @@ const ConfiguracionPage = () => {
         setTenantsLoading(false);
       }
     },
-    [currentTenantId]
+    [currentTenantId, setStatusError]
   );
 
   const loadBranches = useCallback(async () => {
@@ -495,6 +501,7 @@ const ConfiguracionPage = () => {
     currentTenantId,
     isSuperAdmin,
     selectedTenantId,
+    setStatusError,
     toBranch,
   ]);
 
@@ -724,6 +731,7 @@ const ConfiguracionPage = () => {
     isCurrentTenant,
     isSuperAdmin,
     selectedTenantId,
+    setStatusError,
     tenantFormsVisible,
   ]);
 
@@ -2556,3 +2564,4 @@ const ConfiguracionPage = () => {
 };
 
 export default ConfiguracionPage;
+

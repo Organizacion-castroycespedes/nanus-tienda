@@ -68,3 +68,63 @@ test("SaleController: normal sale creation does not call deliveries service", as
   assert.equal(saleCreateCalled, true);
   assert.equal(deliveriesCalled, false);
 });
+
+test("SaleController: tenant boundary comes from auth context for every sale operation", async () => {
+  const calls: Array<{ operation: string; tenantId?: string; payload?: unknown }> = [];
+  const saleService = {
+    createSale: async (payload: unknown, actor: { tenantId?: string }) => {
+      calls.push({ operation: "create", tenantId: actor.tenantId, payload });
+      return { id: "sale-1" };
+    },
+    getSales: async (actor: { tenantId?: string }, payload: unknown) => {
+      calls.push({ operation: "list", tenantId: actor.tenantId, payload });
+      return [];
+    },
+    getSaleById: async (id: string, actor: { tenantId?: string }) => {
+      calls.push({ operation: "detail", tenantId: actor.tenantId, payload: id });
+      return { id };
+    },
+    cancelSale: async (id: string, actor: { tenantId?: string }) => {
+      calls.push({ operation: "cancel", tenantId: actor.tenantId, payload: id });
+      return { id };
+    },
+  };
+  const controller = new SaleController(saleService as never, {} as never);
+  const request = {
+    context: {
+      tenantId: "tenant-a",
+      userId: "user-a",
+      branchId: "branch-a",
+      terminalId: "terminal-a",
+      posSessionId: "pos-session-a",
+      roles: ["ADMIN"],
+    },
+  } as never;
+
+  await controller.create(
+    {
+      customerId: "customer-a",
+      type: "CASH",
+      items: [],
+      tenantId: "tenant-b",
+      branchId: "branch-b",
+    } as never,
+    request
+  );
+  await controller.list(undefined, undefined, request);
+  await controller.getById("sale-from-tenant-b", request);
+  await controller.cancel("sale-from-tenant-b", request);
+
+  assert.deepEqual(
+    calls.map(({ operation, tenantId }) => ({ operation, tenantId })),
+    [
+      { operation: "create", tenantId: "tenant-a" },
+      { operation: "list", tenantId: "tenant-a" },
+      { operation: "detail", tenantId: "tenant-a" },
+      { operation: "cancel", tenantId: "tenant-a" },
+    ]
+  );
+  assert.equal("tenantId" in (calls[0].payload as object), false);
+  assert.equal("branchId" in (calls[0].payload as object), false);
+});
+

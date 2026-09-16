@@ -1442,6 +1442,28 @@ test("SaleService.getSales filters by customerId", async () => {
   assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
 });
 
+test("SaleService.getSaleById rejects an actor without tenant context", async () => {
+  const service = new SaleService(
+    { query: async () => ({ rows: [] }) } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    {} as never,
+    new FakePricingService() as never
+  );
+
+  await assert.rejects(
+    () =>
+      service.getSaleById("sale-a", {
+        roles: ["ADMIN"],
+        userId: ids.user,
+      }),
+    /Tenant requerido/
+  );
+});
+
 test("SaleService classifies a draft electronic-billing snapshot as stale after confirmation", () => {
   const { service } = buildService();
   const customer = {
@@ -1478,3 +1500,4 @@ test("SaleService classifies a draft electronic-billing snapshot as stale after 
     false,
   );
 });
+
