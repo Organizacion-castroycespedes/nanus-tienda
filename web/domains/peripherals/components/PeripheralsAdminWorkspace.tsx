@@ -32,6 +32,7 @@ import {
   isPrinterBackedCashDrawer,
   resolveCashDrawerDeviceIdToPersist,
 } from "../cash-drawer-routing";
+import SupportDiagnosticsCard from "./SupportDiagnosticsCard";
 import type {
   PeripheralAgentHealth,
   PeripheralDevice,
@@ -537,6 +538,8 @@ const PeripheralsAdminWorkspace = () => {
           {infoBox("platform", [health?.platform, health?.architecture].filter(Boolean).join(" / ") || "-")}
         </div>
       </section>
+
+      <SupportDiagnosticsCard />
 
       <BlockCard title="Impresora" state={printerState}>
         <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">

@@ -129,6 +129,7 @@
 | POST | `/api/orders/:id/cancel` |
 | GET | `/api/sales` |
 | POST | `/api/sales` |
+| GET | `/api/sales/idempotency/:key` |
 | GET | `/api/sales/:id` |
 | POST | `/api/sales/:id/cancel` |
 | POST | `/api/stock-adjustments` |

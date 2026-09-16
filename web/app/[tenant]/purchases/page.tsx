@@ -210,6 +210,7 @@ const PurchasesPage = () => {
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
+  const showNoticeFromApiError = notice.showFromApiError;
   const confirm = useConfirm();
   const ticketFrameRef = useRef<HTMLIFrameElement | null>(null);
   const router = useRouter();
@@ -392,7 +393,7 @@ const PurchasesPage = () => {
   }, [activePurchaseId, purchaseDetail, purchases]);
 
   useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(filterQuerySignature);
     const nextFilters = getFiltersFromQuery(params);
     setDraftFilters(nextFilters);
     setAppliedFilters(nextFilters);
@@ -501,7 +502,7 @@ const PurchasesPage = () => {
         if (active) {
           const message = getApiErrorMessage(error, "No se pudo abrir el PDF.");
           setPreviewError(message);
-          notice.showFromApiError(error, message);
+          showNoticeFromApiError(error, message);
         }
       })
       .finally(() => {
@@ -513,7 +514,7 @@ const PurchasesPage = () => {
     return () => {
       active = false;
     };
-  }, [activeAction, activePurchaseId, notice.showFromApiError]);
+  }, [activeAction, activePurchaseId, showNoticeFromApiError]);
 
   const previewObjectUrl = useMemo(() => {
     if (!previewBlob) {
@@ -641,8 +642,10 @@ const PurchasesPage = () => {
     }
   };
 
-  const canCancelPurchase = (purchase: PurchaseResponse) =>
-    isPurchaseCancelable(purchase, canCancel);
+  const canCancelPurchase = useCallback(
+    (purchase: PurchaseResponse) => isPurchaseCancelable(purchase, canCancel),
+    [canCancel]
+  );
 
   const canLiquidatePurchase = (purchase: PurchaseResponse) =>
     canSettlePartial && purchase.status === "PARTIAL";
@@ -865,7 +868,7 @@ const PurchasesPage = () => {
     }
 
     return false;
-  }, [activeAction, actionHeaderPurchase]);
+  }, [activeAction, actionHeaderPurchase, canCancelPurchase]);
 
   const actionUnavailablePanel = (
     <section className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800">
@@ -1601,3 +1604,4 @@ const PurchasesPage = () => {
 };
 
 export default PurchasesPage;
+
