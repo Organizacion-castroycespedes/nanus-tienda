@@ -38,6 +38,7 @@ import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
+import { ApiError } from "../../../lib/request";
 import { hasMenuAccess } from "../../../lib/permissions";
 import { fetchSystemVersion } from "../../../domains/system/api";
 import {
@@ -54,6 +55,7 @@ import {
   getPosProducts,
   getPosTaxes,
   previewPosLinePrice,
+  reconcileSale,
   type PosLinePricePreviewResponse,
   type PosSalePayload,
 } from "../services/pos.service";
@@ -502,11 +504,16 @@ export const PosScreen = () => {
     items: cart,
     payments,
     saleStatus,
+    saleAttempt,
     selectedCustomerId,
     setCartItems,
     setPayments,
     setSaleStatus,
     setSelectedCustomerId,
+    beginSaleSubmission,
+    markSaleSubmissionUnknown,
+    allowSaleSubmissionRetry,
+    allowUnknownSaleRetry,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
@@ -2006,6 +2013,34 @@ export const PosScreen = () => {
     setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
   };
 
+  const reconcileUnknownSale = async () => {
+    if (saleStatus !== "UNKNOWN" || !saleAttempt) {
+      return;
+    }
+
+    setProcessingSale(true);
+    setSubmitError(null);
+    try {
+      const sale = await reconcileSale(saleAttempt.attemptId);
+      setSaleStatus("CONFIRMED");
+      setCartItemsAndRef([]);
+      setExpandedTaxItems({});
+      setPaymentModalOpen(false);
+      resetPayments();
+      showToast(`Venta ${sale.id} encontrada y confirmada.`, "success");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setSubmitError("No se encontro una venta con esta clave. Puedes reintentar con la misma clave.");
+      } else if (error instanceof ApiError && error.status === 409) {
+        setSubmitError("La venta sigue pendiente en el servidor. Espera y verifica de nuevo.");
+      } else {
+        setSubmitError("No se pudo verificar la venta. Conservamos el intento para evitar duplicados.");
+      }
+    } finally {
+      setProcessingSale(false);
+    }
+  };
+
   const openChargeModal = useCallback(() => {
     setSubmitError(null);
     const result = createDefaultCashPayment(
@@ -2093,18 +2128,19 @@ export const PosScreen = () => {
     quickFiscalCustomerOpen,
   ]);
 
+  const firstPaymentId = payments[0]?.id;
+
   useEffect(() => {
-    if (paymentModalOpen && payments.length > 0) {
+    if (paymentModalOpen && firstPaymentId) {
       setTimeout(() => {
-        const firstInput = document.getElementById(`payment-amount-${payments[0]?.id}`);
+        const firstInput = document.getElementById(`payment-amount-${firstPaymentId}`);
         if (firstInput) {
           firstInput.focus();
           if (firstInput instanceof HTMLInputElement) firstInput.select();
         }
       }, 100);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentModalOpen]);
+  }, [firstPaymentId, paymentModalOpen]);
 
   const updatePayment = (
     id: string,
@@ -2296,6 +2332,13 @@ export const PosScreen = () => {
   };
 
   const submitSale = async () => {
+    if (saleStatus === "UNKNOWN") {
+      setSubmitError(
+        "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
+      );
+      return;
+    }
+
     const validationError = validateBeforeSubmit();
     if (validationError) {
       setSubmitError(validationError);
@@ -2309,37 +2352,45 @@ export const PosScreen = () => {
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
+    const attempt = saleAttempt ?? {
+      attemptId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      startedAt: new Date().toISOString(),
+    };
+    beginSaleSubmission(attempt);
     setProcessingSale(true);
     setSubmitError(null);
 
     try {
-      const sale = await createSale({
-        customerId: selectedCustomerId!,
-        type: saleType,
-        items: cartWithDerivedValues.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          price: item.finalUnitPrice ?? item.price,
-          taxes: item.taxes.map((tax) => ({
-            taxId: tax.taxId,
-            taxName: tax.taxName,
-            dianCode: tax.dianCode,
-            taxTypeCode: tax.taxTypeCode,
-            calculationMethodCode: tax.calculationMethodCode,
-            taxRate: tax.taxRate,
-            taxBase: tax.taxBase,
-            taxAmount: tax.taxAmount,
-            isIncluded: tax.isIncluded,
+      const sale = await createSale(
+        {
+          customerId: selectedCustomerId!,
+          type: saleType,
+          items: cartWithDerivedValues.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.finalUnitPrice ?? item.price,
+            taxes: item.taxes.map((tax) => ({
+              taxId: tax.taxId,
+              taxName: tax.taxName,
+              dianCode: tax.dianCode,
+              taxTypeCode: tax.taxTypeCode,
+              calculationMethodCode: tax.calculationMethodCode,
+              taxRate: tax.taxRate,
+              taxBase: tax.taxBase,
+              taxAmount: tax.taxAmount,
+              isIncluded: tax.isIncluded,
+            })),
           })),
-        })),
-        payments: effectivePayments.map((payment) => ({
-          paymentMethodId: payment.paymentMethodId,
-          amount: payment.amount,
-          cashSessionId: payment.cashSessionId ?? undefined,
-          referenceNumber: payment.referenceNumber,
-          notes: payment.notes,
-        })),
-      });
+          payments: effectivePayments.map((payment) => ({
+            paymentMethodId: payment.paymentMethodId,
+            amount: payment.amount,
+            cashSessionId: payment.cashSessionId ?? undefined,
+            referenceNumber: payment.referenceNumber,
+            notes: payment.notes,
+          })),
+        },
+        { "Idempotency-Key": attempt.attemptId },
+      );
 
       setSaleStatus("CONFIRMED");
       // Successful checkout clears the persisted sale for this POS context.
@@ -2394,9 +2445,20 @@ export const PosScreen = () => {
       } catch {
         // ignore background refresh issues
       }
-    } catch {
-      setSubmitError("No se pudo confirmar la venta. Revisa stock, pagos y permisos.");
-      showToast("No se pudo confirmar la venta.", "error");
+    } catch (error) {
+      const isDefinitiveRejection =
+        error instanceof ApiError && error.status >= 400 && error.status < 500;
+      if (isDefinitiveRejection) {
+        allowSaleSubmissionRetry();
+        setSubmitError("La venta fue rechazada. Revisa stock, pagos y permisos.");
+        showToast("La venta fue rechazada.", "error");
+      } else {
+        markSaleSubmissionUnknown();
+        setSubmitError(
+          "No se recibio una respuesta comprobable. La venta podria haberse registrado; revisa la lista de ventas antes de reintentar."
+        );
+        showToast("Venta pendiente de verificacion.", "warning");
+      }
     } finally {
       setProcessingSale(false);
     }
@@ -3724,6 +3786,36 @@ export const PosScreen = () => {
                         {submitError}
                       </div>
                     ) : null}
+
+                    {saleStatus === "UNKNOWN" ? (
+                      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                        <p className="font-semibold">Venta pendiente de verificacion</p>
+                        <p className="mt-1">
+                          Este equipo no puede confirmar si el API alcanzo a registrar la venta. Revisa la lista de ventas antes de permitir otro intento.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void reconcileUnknownSale()}
+                            isLoading={processingSale}
+                          >
+                            Verificar venta
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              allowUnknownSaleRetry();
+                              setSubmitError(null);
+                            }}
+                            disabled={processingSale}
+                          >
+                            Reintentar con la misma clave
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3734,7 +3826,11 @@ export const PosScreen = () => {
                 <Button variant="ghost" onClick={closeChargeModal} disabled={processingSale}>
                   Cancelar
                 </Button>
-                <Button isLoading={processingSale} onClick={() => void submitSale()}>
+                <Button
+                  isLoading={processingSale}
+                  disabled={saleStatus === "UNKNOWN"}
+                  onClick={() => void submitSale()}
+                >
                   Confirmar venta
                 </Button>
               </div>
@@ -3755,3 +3851,4 @@ export const PosScreen = () => {
     </div>
   );
 };
+
