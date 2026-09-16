@@ -38,6 +38,7 @@ import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
+import { ApiError } from "../../../lib/request";
 import { hasMenuAccess } from "../../../lib/permissions";
 import { fetchSystemVersion } from "../../../domains/system/api";
 import {
@@ -507,6 +508,9 @@ export const PosScreen = () => {
     setPayments,
     setSaleStatus,
     setSelectedCustomerId,
+    beginSaleSubmission,
+    markSaleSubmissionUnknown,
+    allowSaleSubmissionRetry,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
@@ -2093,18 +2097,19 @@ export const PosScreen = () => {
     quickFiscalCustomerOpen,
   ]);
 
+  const firstPaymentId = payments[0]?.id;
+
   useEffect(() => {
-    if (paymentModalOpen && payments.length > 0) {
+    if (paymentModalOpen && firstPaymentId) {
       setTimeout(() => {
-        const firstInput = document.getElementById(`payment-amount-${payments[0]?.id}`);
+        const firstInput = document.getElementById(`payment-amount-${firstPaymentId}`);
         if (firstInput) {
           firstInput.focus();
           if (firstInput instanceof HTMLInputElement) firstInput.select();
         }
       }, 100);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentModalOpen]);
+  }, [firstPaymentId, paymentModalOpen]);
 
   const updatePayment = (
     id: string,
@@ -2296,6 +2301,13 @@ export const PosScreen = () => {
   };
 
   const submitSale = async () => {
+    if (saleStatus === "UNKNOWN") {
+      setSubmitError(
+        "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
+      );
+      return;
+    }
+
     const validationError = validateBeforeSubmit();
     if (validationError) {
       setSubmitError(validationError);
@@ -2309,6 +2321,11 @@ export const PosScreen = () => {
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
+    const attempt = {
+      attemptId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+      startedAt: new Date().toISOString(),
+    };
+    beginSaleSubmission(attempt);
     setProcessingSale(true);
     setSubmitError(null);
 
@@ -2394,9 +2411,20 @@ export const PosScreen = () => {
       } catch {
         // ignore background refresh issues
       }
-    } catch {
-      setSubmitError("No se pudo confirmar la venta. Revisa stock, pagos y permisos.");
-      showToast("No se pudo confirmar la venta.", "error");
+    } catch (error) {
+      const isDefinitiveRejection =
+        error instanceof ApiError && error.status >= 400 && error.status < 500;
+      if (isDefinitiveRejection) {
+        allowSaleSubmissionRetry();
+        setSubmitError("La venta fue rechazada. Revisa stock, pagos y permisos.");
+        showToast("La venta fue rechazada.", "error");
+      } else {
+        markSaleSubmissionUnknown();
+        setSubmitError(
+          "No se recibio una respuesta comprobable. La venta podria haberse registrado; revisa la lista de ventas antes de reintentar."
+        );
+        showToast("Venta pendiente de verificacion.", "warning");
+      }
     } finally {
       setProcessingSale(false);
     }
@@ -3724,6 +3752,26 @@ export const PosScreen = () => {
                         {submitError}
                       </div>
                     ) : null}
+
+                    {saleStatus === "UNKNOWN" ? (
+                      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                        <p className="font-semibold">Venta pendiente de verificacion</p>
+                        <p className="mt-1">
+                          Este equipo no puede confirmar si el API alcanzo a registrar la venta. Revisa la lista de ventas antes de permitir otro intento.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => {
+                            allowSaleSubmissionRetry();
+                            setSubmitError(null);
+                          }}
+                        >
+                          Ya verifique; permitir reintento
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3734,7 +3782,11 @@ export const PosScreen = () => {
                 <Button variant="ghost" onClick={closeChargeModal} disabled={processingSale}>
                   Cancelar
                 </Button>
-                <Button isLoading={processingSale} onClick={() => void submitSale()}>
+                <Button
+                  isLoading={processingSale}
+                  disabled={saleStatus === "UNKNOWN"}
+                  onClick={() => void submitSale()}
+                >
                   Confirmar venta
                 </Button>
               </div>
@@ -3755,3 +3807,4 @@ export const PosScreen = () => {
     </div>
   );
 };
+
