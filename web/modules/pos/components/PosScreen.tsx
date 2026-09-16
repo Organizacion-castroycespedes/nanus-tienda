@@ -55,6 +55,7 @@ import {
   getPosProducts,
   getPosTaxes,
   previewPosLinePrice,
+  reconcileSale,
   type PosLinePricePreviewResponse,
   type PosSalePayload,
 } from "../services/pos.service";
@@ -503,6 +504,7 @@ export const PosScreen = () => {
     items: cart,
     payments,
     saleStatus,
+    saleAttempt,
     selectedCustomerId,
     setCartItems,
     setPayments,
@@ -511,6 +513,7 @@ export const PosScreen = () => {
     beginSaleSubmission,
     markSaleSubmissionUnknown,
     allowSaleSubmissionRetry,
+    allowUnknownSaleRetry,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
@@ -2010,6 +2013,34 @@ export const PosScreen = () => {
     setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
   };
 
+  const reconcileUnknownSale = async () => {
+    if (saleStatus !== "UNKNOWN" || !saleAttempt) {
+      return;
+    }
+
+    setProcessingSale(true);
+    setSubmitError(null);
+    try {
+      const sale = await reconcileSale(saleAttempt.attemptId);
+      setSaleStatus("CONFIRMED");
+      setCartItemsAndRef([]);
+      setExpandedTaxItems({});
+      setPaymentModalOpen(false);
+      resetPayments();
+      showToast(`Venta ${sale.id} encontrada y confirmada.`, "success");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setSubmitError("No se encontro una venta con esta clave. Puedes reintentar con la misma clave.");
+      } else if (error instanceof ApiError && error.status === 409) {
+        setSubmitError("La venta sigue pendiente en el servidor. Espera y verifica de nuevo.");
+      } else {
+        setSubmitError("No se pudo verificar la venta. Conservamos el intento para evitar duplicados.");
+      }
+    } finally {
+      setProcessingSale(false);
+    }
+  };
+
   const openChargeModal = useCallback(() => {
     setSubmitError(null);
     const result = createDefaultCashPayment(
@@ -2321,7 +2352,7 @@ export const PosScreen = () => {
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
-    const attempt = {
+    const attempt = saleAttempt ?? {
       attemptId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       startedAt: new Date().toISOString(),
     };
@@ -2330,33 +2361,36 @@ export const PosScreen = () => {
     setSubmitError(null);
 
     try {
-      const sale = await createSale({
-        customerId: selectedCustomerId!,
-        type: saleType,
-        items: cartWithDerivedValues.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          price: item.finalUnitPrice ?? item.price,
-          taxes: item.taxes.map((tax) => ({
-            taxId: tax.taxId,
-            taxName: tax.taxName,
-            dianCode: tax.dianCode,
-            taxTypeCode: tax.taxTypeCode,
-            calculationMethodCode: tax.calculationMethodCode,
-            taxRate: tax.taxRate,
-            taxBase: tax.taxBase,
-            taxAmount: tax.taxAmount,
-            isIncluded: tax.isIncluded,
+      const sale = await createSale(
+        {
+          customerId: selectedCustomerId!,
+          type: saleType,
+          items: cartWithDerivedValues.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.finalUnitPrice ?? item.price,
+            taxes: item.taxes.map((tax) => ({
+              taxId: tax.taxId,
+              taxName: tax.taxName,
+              dianCode: tax.dianCode,
+              taxTypeCode: tax.taxTypeCode,
+              calculationMethodCode: tax.calculationMethodCode,
+              taxRate: tax.taxRate,
+              taxBase: tax.taxBase,
+              taxAmount: tax.taxAmount,
+              isIncluded: tax.isIncluded,
+            })),
           })),
-        })),
-        payments: effectivePayments.map((payment) => ({
-          paymentMethodId: payment.paymentMethodId,
-          amount: payment.amount,
-          cashSessionId: payment.cashSessionId ?? undefined,
-          referenceNumber: payment.referenceNumber,
-          notes: payment.notes,
-        })),
-      });
+          payments: effectivePayments.map((payment) => ({
+            paymentMethodId: payment.paymentMethodId,
+            amount: payment.amount,
+            cashSessionId: payment.cashSessionId ?? undefined,
+            referenceNumber: payment.referenceNumber,
+            notes: payment.notes,
+          })),
+        },
+        { "Idempotency-Key": attempt.attemptId },
+      );
 
       setSaleStatus("CONFIRMED");
       // Successful checkout clears the persisted sale for this POS context.
@@ -3759,17 +3793,27 @@ export const PosScreen = () => {
                         <p className="mt-1">
                           Este equipo no puede confirmar si el API alcanzo a registrar la venta. Revisa la lista de ventas antes de permitir otro intento.
                         </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3"
-                          onClick={() => {
-                            allowSaleSubmissionRetry();
-                            setSubmitError(null);
-                          }}
-                        >
-                          Ya verifique; permitir reintento
-                        </Button>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void reconcileUnknownSale()}
+                            isLoading={processingSale}
+                          >
+                            Verificar venta
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              allowUnknownSaleRetry();
+                              setSubmitError(null);
+                            }}
+                            disabled={processingSale}
+                          >
+                            Reintentar con la misma clave
+                          </Button>
+                        </div>
                       </div>
                     ) : null}
                   </div>
