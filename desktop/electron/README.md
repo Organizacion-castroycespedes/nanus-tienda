@@ -9,7 +9,7 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 ## Alcance
 
 - Carga `MANUS_WEB_URL`.
-- Usa `http://localhost:3000` por defecto en desarrollo.
+- Usa `https://www.apptiendamanus.space/login` como fallback cuando no se configura una URL.
 - Puede resolver ruta inicial con `MANUS_START_PATH`.
 - Puede leer contexto local reservado de tenant, sucursal y terminal.
 - Mantiene Electron online-only.
@@ -60,18 +60,18 @@ cd ..\desktop\electron
 npm run dev
 ```
 
-Por defecto Electron carga:
+Para desarrollo local, configurar de forma explicita:
 
 ```text
-http://localhost:3000
+MANUS_WEB_URL=http://localhost:3000
 ```
 
 ## Variables de entorno
 
 | Variable | Default | Uso |
 | --- | --- | --- |
-| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `http://localhost:3000` | URL base de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
-| `NEXT_PUBLIC_MANUS_WEB_URL` | `http://localhost:3000` | URL pública alternativa, útil cuando se comparte la configuración de Next.js. Se usa si no existe `MANUS_WEB_URL`. |
+| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `https://www.apptiendamanus.space/login` | URL de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
+| `NEXT_PUBLIC_MANUS_WEB_URL` | ninguno | URL pública alternativa, útil cuando se comparte la configuración de Next.js. Se usa si no existe `MANUS_WEB_URL`. |
 | `MANUS_START_PATH` | ninguno | Ruta inicial. Debe empezar con un solo `/`. Tiene prioridad sobre `MANUS_TENANT_ID`. |
 | `MANUS_TENANT_ID` | ninguno | Tenant inicial opcional. Si no hay `MANUS_START_PATH`, construye `/<tenantId>`. |
 | `MANUS_BRANCH_ID` | ninguno | Sucursal local reservada. No altera la URL en esta fase. |
@@ -187,3 +187,23 @@ Los artefactos de `release/`, `dist/` y `out/` no se versionan.
 - No integra perifericos.
 - No firma binarios.
 - No implementa auto-update.
+
+## Diagnostico de soporte
+
+La pantalla de conexion interrumpida solo indica que la carga inicial de la web fallo y reintenta la misma URL cada tres segundos. No demuestra que el API o el agente local esten disponibles y no habilita operacion offline.
+
+El agente ya expone una consulta de salud por el canal IPC `manusTerminal.getAgentHealth`. Antes de agregar datos tecnicos a la pantalla de fallback se debe definir una vista de soporte separada que:
+
+- consulte el API con un endpoint de salud estable, sin credenciales ni datos del negocio;
+- consulte la salud del agente mediante el canal existente;
+- muestre estados independientes para web, API y agente;
+- no cambie el reintento actual ni prometa continuidad de ventas sin API;
+- no exponga URLs internas, tokens, trazas ni configuracion sensible.
+
+Esta mejora queda pendiente porque incorporarla ahora cambiaria la experiencia productiva y requiere confirmar el contrato del endpoint de salud del API.
+
+## Mantenimiento de dependencias
+
+La instalacion reproducible actual informa paquetes deprecados transitivos (`inflight`, `rimraf@2`, `glob@7` y `boolean`) y un aviso de configuracion `http-proxy` de npm. No se modificaron dependencias ni lockfiles en esta correccion.
+
+El mantenimiento debe hacerse en un PR separado: identificar que dependencia directa introduce cada paquete, actualizar una familia a la vez, regenerar el lockfile con la version de Node/npm definida por el proyecto y repetir `npm run build`, `npm test` y el empaquetado de Windows. Los avisos de Browserslist pertenecen al frontend web y deben tratarse en su paquete, no desde Electron.
