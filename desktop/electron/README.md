@@ -12,9 +12,9 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 - Usa `https://www.apptiendamanus.space/login` como fallback cuando no se configura una URL.
 - Puede resolver ruta inicial con `MANUS_START_PATH`.
 - Puede leer contexto local reservado de tenant, sucursal y terminal.
-- Mantiene Electron online-only.
-- Prioriza Windows para la primera validacion.
-- Puede generar un empaquetado Windows local de validacion.
+- Mantiene Electron online/static: el shell carga la URL web configurada y conserva su recuperacion del renderer.
+- Empaqueta el mismo shell para Windows, Linux y macOS.
+- Mantiene el agente de perifericos como proceso separado. No se incluye en los paquetes Electron.
 - Aplica baseline basico de seguridad Electron.
 
 ## Fuera de alcance
@@ -29,7 +29,7 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 - SQL.
 - Permisos.
 - Perifericos.
-- Instaladores productivos.
+- Instaladores productivos firmados.
 - Firma.
 - Auto-update.
 - Impresion nativa.
@@ -134,11 +134,22 @@ npm test
 npm run typecheck
 npm run pack:win
 npm run dist:win
+npm run dist:linux
+npm run dist:mac
 ```
 
-## Empaquetado Windows local
+## Empaquetado por sistema operativo
 
-Esta fase usa `electron-builder` solo para validacion local Windows. No hay firma, certificados, auto-update ni publicacion automatica de releases.
+Los comandos generan artefactos sin firma para validacion. No publican releases ni hacen deploy.
+
+| Sistema | Comando | Artefactos | Runner requerido |
+| --- | --- | --- | --- |
+| Windows | `npm run pack:win` | directorio `win-unpacked` | Windows recomendado |
+| Windows | `npm run dist:win` | ejecutable portable `.exe` | Windows |
+| Linux | `npm run dist:linux` | `.AppImage` y `.deb` | Linux |
+| macOS | `npm run dist:mac` | `.dmg` y `.zip` | macOS |
+
+MSI es un formato de instalacion exclusivo de Windows. Este proyecto no configura MSI. Linux usa AppImage/DEB y macOS usa DMG/ZIP.
 
 Generar build desempaquetado:
 
@@ -166,7 +177,25 @@ $env:MANUS_START_PATH="/login"
 .\release\win-unpacked\Manus POS.exe
 ```
 
-Los artefactos de `release/`, `dist/` y `out/` no se versionan.
+Los artefactos de `release/`, `dist/` y `out/` no se versionan. El workflow `build-desktop.yml` conserva temporalmente los paquetes unsigned como artefactos de CI y no los despliega.
+
+## URL web y agente local
+
+El shell no contiene una copia del frontend. En desarrollo toma `MANUS_WEB_URL`, `NEXT_PUBLIC_MANUS_WEB_URL` y `MANUS_START_PATH`. En un paquete usa `resources/manus-shell.config.json`, salvo overrides permitidos por el runtime existente. La ruta `/login`, el allowlist HTTPS y el fallback/recovery no cambian por sistema operativo.
+
+El acceso al agente usa `http://127.0.0.1:4050`. El agente y sus instaladores viven en `backend-perifericos/` y tienen limites propios por OS. Los comandos `dist:*` de Electron no compilan ni incorporan ese backend.
+
+## Android
+
+No hay proyecto Android, Capacitor, React Native ni wrapper movil en el repositorio. Electron y `electron-builder` no generan APK/AAB. Por eso Android queda bloqueado y no se publica un paquete falso.
+
+El siguiente paso, si se aprueba Android como producto, es elegir un wrapper movil, definir navegacion segura hacia la web, ciclo de sesion, permisos y estrategia para perifericos; despues se agrega un proyecto Android y su toolchain/keystore por separado.
+
+## Firma y distribucion
+
+- Windows: el `.exe` de CI no esta firmado. La firma requiere certificado de code signing y configuracion segura en CI.
+- macOS: DMG/ZIP de CI quedan sin firma ni notarizacion. Una entrega publica requiere identidad Developer ID, credenciales Apple y notarizacion en runner macOS.
+- Linux: AppImage/DEB no incorporan firma de repositorio. La distribucion por repositorio APT requiere un flujo de firma separado.
 
 ## Seguridad base
 
