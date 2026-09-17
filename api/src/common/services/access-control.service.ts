@@ -209,6 +209,21 @@ export class AccessControlService {
     return tenant.id;
   }
 
+  async resolveTenantIdFromRoute(
+    actor: AccessActor,
+    requestedTenant: string,
+  ): Promise<string> {
+    const value = requestedTenant.trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      if (!this.isSuperAdmin(actor) && actor.tenantId !== value) {
+        throw new ForbiddenException("Tenant scope mismatch");
+      }
+      return value;
+    }
+
+    return this.resolveTenantIdFromSlug(actor, value);
+  }
+
   async getAccessibleBranchIds(
     actor: AccessActor,
     tenantId: string

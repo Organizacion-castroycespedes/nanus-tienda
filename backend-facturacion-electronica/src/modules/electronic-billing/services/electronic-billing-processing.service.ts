@@ -94,6 +94,8 @@ export type ElectronicBillingRetryDecision =
 
 export type ElectronicBillingRetryability = {
   canRetry: boolean;
+  canRecoverProviderCreateIntent: boolean;
+  canRecoverExistingProvider?: boolean;
   retryClass: "NONE" | "RECONCILE_ONLY" | "TERMINAL" | "IN_PROGRESS" | "PRE_PROVIDER";
   decision: ElectronicBillingRetryDecision;
   reason: "PROVIDER_STATE_MUST_BE_RECONCILED" | "TERMINAL_DOCUMENT" | "DOCUMENT_IN_PROCESSING" | "NO_SAFE_RETRY_CONTRACT" | "PRE_PROVIDER_RECOVERABLE";
@@ -107,6 +109,7 @@ export type ElectronicBillingRetryability = {
 
 type BillingSnapshot = {
   customer?: IssueElectronicInvoiceCommand["customer"] | null;
+  payments?: IssueElectronicInvoiceCommand["payments"] | null;
   payment?: IssueElectronicInvoiceCommand["payment"] | null;
 };
 
@@ -114,6 +117,8 @@ type LineSnapshot = {
   sourceLineId?: string | null;
   originalElectronicDocumentLineId?: string | null;
   providerOriginalLineId?: string | null;
+  standardItemId?: string | null;
+  standardItemSchemeId?: string | null;
 };
 
 type LineResultMetadata = {
@@ -156,6 +161,7 @@ const readBillingSnapshot = (metadata: Record<string, unknown>): BillingSnapshot
 
   return {
     customer: (snapshot.customer as BillingSnapshot["customer"]) ?? null,
+    payments: (snapshot.payments as BillingSnapshot["payments"]) ?? null,
     payment: (snapshot.payment as BillingSnapshot["payment"]) ?? null,
   };
 };
@@ -173,6 +179,8 @@ const readLineSnapshot = (metadata: Record<string, unknown>): LineSnapshot => {
         ? snapshot.originalElectronicDocumentLineId
         : null,
     providerOriginalLineId: typeof snapshot.providerOriginalLineId === "string" ? snapshot.providerOriginalLineId : null,
+    standardItemId: typeof snapshot.standardItemId === "string" ? snapshot.standardItemId : null,
+    standardItemSchemeId: typeof snapshot.standardItemSchemeId === "string" ? snapshot.standardItemSchemeId : null,
   };
 };
 
@@ -229,9 +237,12 @@ const isRetryableProviderCode = (code: string) => {
   );
 };
 
+const isProviderAuthenticationCode = (code: string) =>
+  code.toUpperCase().includes("AUTHENTICATION");
+
 const isValidationProviderCode = (code: string) => {
   const normalized = code.toUpperCase();
-  return normalized.includes("AUTH") || normalized.includes("CONFLICT") || normalized.includes("VALIDATION");
+  return normalized.includes("CONFLICT") || normalized.includes("VALIDATION");
 };
 
 export const extractAuthoritativeQrPayload = (xmlText: string): string | null => {
@@ -243,6 +254,59 @@ export const extractAuthoritativeQrPayload = (xmlText: string): string | null =>
     throw new Error("Conflicting authoritative QR values in provider XML");
   }
   return uniqueValues[0] ?? null;
+};
+
+export type FiscalIssuerSnapshot = {
+  name: string;
+  identificationType: string | null;
+  identificationNumber: string | null;
+  verificationDigit: string | null;
+  address: string | null;
+  country: string | null;
+  department: string | null;
+  municipality: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
+const decodeXmlText = (value: string) => value
+  .replace(/&amp;/g, "&")
+  .replace(/&lt;/g, "<")
+  .replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"')
+  .replace(/&#39;/g, "'")
+  .trim();
+
+const xmlTagValue = (xml: string, localName: string) => {
+  const match = xml.match(new RegExp(`<(?:(?:[\\w.-]+):)?${localName}\\b[^>]*>([\\s\\S]*?)<\\/(?:(?:[\\w.-]+):)?${localName}>`, "i"));
+  return match?.[1] ? decodeXmlText(match[1]) : null;
+};
+
+export const extractFiscalIssuerSnapshot = (xmlText: string): FiscalIssuerSnapshot | null => {
+  const supplier = xmlText.match(/<(?:(?:[\w.-]+):)?AccountingSupplierParty\b[^>]*>[\s\S]*?<\/(?:(?:[\w.-]+):)?AccountingSupplierParty>/i)?.[0];
+  if (!supplier) return null;
+  const partyTaxScheme = supplier.match(/<(?:(?:[\w.-]+):)?PartyTaxScheme\b[^>]*>[\s\S]*?<\/(?:(?:[\w.-]+):)?PartyTaxScheme>/i)?.[0] ?? supplier;
+  const party = supplier.match(/<(?:(?:[\w.-]+):)?Party\b[^>]*>[\s\S]*?<\/(?:(?:[\w.-]+):)?Party>/i)?.[0] ?? supplier;
+  const companyIdMatch = partyTaxScheme.match(/<(?:(?:[\w.-]+):)?CompanyID\b([^>]*)>([\s\S]*?)<\/(?:(?:[\w.-]+):)?CompanyID>/i);
+  const attrs = companyIdMatch?.[1] ?? "";
+  const identificationNumber = companyIdMatch?.[2] ? decodeXmlText(companyIdMatch[2]) : null;
+  const schemeId = attrs.match(/schemeID\s*=\s*["']([^"']+)["']/i)?.[1] ?? null;
+  const address = party.match(/<(?:(?:[\w.-]+):)?Address\b[^>]*>[\s\S]*?<\/(?:(?:[\w.-]+):)?Address>/i)?.[0] ?? party;
+  const contact = party.match(/<(?:(?:[\w.-]+):)?Contact\b[^>]*>[\s\S]*?<\/(?:(?:[\w.-]+):)?Contact>/i)?.[0] ?? party;
+  const name = xmlTagValue(partyTaxScheme, "RegistrationName") ?? xmlTagValue(party, "Name");
+  if (!name || !identificationNumber) return null;
+  return {
+    name,
+    identificationType: "NIT",
+    identificationNumber,
+    verificationDigit: schemeId && /^\d+$/.test(schemeId) ? schemeId : null,
+    address: xmlTagValue(address, "Line"),
+    country: xmlTagValue(address, "IdentificationCode"),
+    department: xmlTagValue(address, "CountrySubentity"),
+    municipality: xmlTagValue(address, "CityName"),
+    phone: xmlTagValue(contact, "Telephone"),
+    email: xmlTagValue(contact, "ElectronicMail"),
+  };
 };
 
 @Injectable()
@@ -294,6 +358,7 @@ export class ElectronicBillingProcessingService {
   private async resumeLinkedProviderDocumentUnlocked(
     tenantId: string,
     electronicDocumentId: string,
+    alreadyClaimed = false,
   ): Promise<ProcessingResult> {
     const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
     const document = aggregate.document;
@@ -318,7 +383,7 @@ export class ElectronicBillingProcessingService {
       })
       : await this.getProviderStatus(resolved, aggregate);
     const currentStatus = currentProvider.providerStatus?.toUpperCase() ?? "";
-    if (currentStatus !== "VALIDATED_INTERNAL") {
+    if (currentStatus !== "VALIDATED_INTERNAL" && currentStatus !== "SIGNED") {
       return this.persistProviderResult(
         tenantId,
         aggregate,
@@ -333,13 +398,15 @@ export class ElectronicBillingProcessingService {
       throw new ElectronicDocumentNotProcessableError("Provider does not support staged invoice recovery");
     }
 
-    const claimed = await this.claimDocument(
-      tenantId,
-      electronicDocumentId,
-      "RETRY_REQUESTED",
-      document.status,
-      aggregate.events,
-    );
+    const claimed = alreadyClaimed
+      ? { attempt: this.nextAttemptFromEvents(aggregate.events) }
+      : await this.claimDocument(
+        tenantId,
+        electronicDocumentId,
+        "RETRY_REQUESTED",
+        document.status,
+        aggregate.events,
+      );
     if (!claimed) {
       throw new ElectronicDocumentStatusTransitionError();
     }
@@ -683,10 +750,14 @@ export class ElectronicBillingProcessingService {
     if (!aggregate.document) {
       throw new ElectronicDocumentNotProcessableError("Electronic document not found");
     }
+    const canRecoverProviderCreateIntent = this.canRecoverProviderCreateIntent(aggregate);
+    const canRecoverExistingProvider = this.canRecoverExistingProvider(aggregate);
 
     if (this.isApprovedPreProviderRecovery(aggregate.document)) {
       return {
         canRetry: true,
+        canRecoverProviderCreateIntent,
+        canRecoverExistingProvider,
         retryClass: "PRE_PROVIDER",
         decision: "SAFE_PRE_PROVIDER_RECOVERY",
         reason: "PRE_PROVIDER_RECOVERABLE",
@@ -702,6 +773,8 @@ export class ElectronicBillingProcessingService {
     if (aggregate.document.status === "PROCESSING") {
       return {
         canRetry: false,
+        canRecoverProviderCreateIntent,
+        canRecoverExistingProvider,
         retryClass: "IN_PROGRESS",
         decision: "ALREADY_PROCESSING",
         reason: "DOCUMENT_IN_PROCESSING",
@@ -717,6 +790,8 @@ export class ElectronicBillingProcessingService {
     if (TERMINAL_STATUSES.has(aggregate.document.status)) {
       return {
         canRetry: false,
+        canRecoverProviderCreateIntent,
+        canRecoverExistingProvider,
         retryClass: "TERMINAL",
         decision: "FORBIDDEN_TERMINAL",
         reason: "TERMINAL_DOCUMENT",
@@ -734,9 +809,13 @@ export class ElectronicBillingProcessingService {
         && !aggregate.document.provider_document_id
         && Boolean(aggregate.document.external_reference)
         && isRetryableProviderCode(aggregate.document.last_error_code ?? "");
-      const requiresProviderReconciliation = aggregate.document.status === "PENDING" || preProviderTechnicalRecovery;
+      const requiresProviderReconciliation = aggregate.document.status === "PENDING"
+        || preProviderTechnicalRecovery
+        || canRecoverProviderCreateIntent;
       return {
         canRetry: false,
+        canRecoverProviderCreateIntent,
+        canRecoverExistingProvider,
         retryClass: requiresProviderReconciliation ? "RECONCILE_ONLY" : "NONE",
         decision: requiresProviderReconciliation ? "RECONCILE_FIRST" : "NOT_RETRYABLE",
         reason: "PROVIDER_STATE_MUST_BE_RECONCILED",
@@ -753,6 +832,8 @@ export class ElectronicBillingProcessingService {
 
     return {
       canRetry: false,
+      canRecoverProviderCreateIntent,
+      canRecoverExistingProvider,
       retryClass: "NONE",
       decision: "NOT_RETRYABLE",
       reason: "NO_SAFE_RETRY_CONTRACT",
@@ -772,6 +853,183 @@ export class ElectronicBillingProcessingService {
     return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
       this.retryRecoverableDocumentUnlocked(tenantId, electronicDocumentId),
     );
+  }
+
+  async recoverAfterConfirmedProviderAbsence(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    return this.withDocumentProcessingLock(
+      tenantId,
+      electronicDocumentId,
+      () => this.recoverAfterConfirmedProviderAbsenceUnlocked(tenantId, electronicDocumentId),
+      { failIfBusy: true },
+    );
+  }
+
+  async recoverProcessing(tenantId: string, electronicDocumentId: string) {
+    return this.withDocumentProcessingLock(
+      tenantId,
+      electronicDocumentId,
+      async () => {
+        const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+        if (!aggregate.document) {
+          throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+        }
+        if (aggregate.document.provider_document_id) {
+          const result = await this.resumeLinkedProviderDocumentUnlocked(
+            tenantId,
+            electronicDocumentId,
+            true,
+          );
+          return {
+            ...result,
+            recovery: "EXISTING_PROVIDER_RESUMED" as const,
+            resultCode: "EXISTING_PROVIDER_RECONCILED" as const,
+          };
+        }
+        const result = await this.recoverAfterConfirmedProviderAbsenceUnlocked(
+          tenantId,
+          electronicDocumentId,
+        );
+        return {
+          ...result,
+          recovery: "CONFIRMED_PROVIDER_ABSENCE" as const,
+          resultCode: result.providerResult
+            ? "REMOTE_FOUND_RECONCILED" as const
+            : "REMOTE_NOT_FOUND_RECOVERED" as const,
+        };
+      },
+      { failIfBusy: true },
+    );
+  }
+
+  private async recoverAfterConfirmedProviderAbsenceUnlocked(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<ProcessingResult> {
+    const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+    const document = aggregate.document;
+    if (!document) {
+      throw new ElectronicDocumentNotProcessableError("Electronic document not found");
+    }
+    if (!this.canRecoverProviderCreateIntent(aggregate)) {
+      throw new ElectronicDocumentNotProcessableError(
+        "Only a pre-provider technical error with external reference can use confirmed-absence recovery",
+      );
+    }
+
+    const resolved = await this.providerResolver.resolve({
+      tenantId,
+      providerConfigId: document.provider_config_id,
+    });
+    try {
+      const providerResult = await this.getProviderStatus(resolved, aggregate);
+      const persisted = await this.persistProviderResult(
+        tenantId,
+        aggregate,
+        providerResult,
+        resolved,
+        "STATUS_CHANGED",
+        false,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+
+      // A timeout can leave FactuCore with a durable VALIDATED_INTERNAL
+      // document while Manus still has no provider id. Link it first, then
+      // continue through the staged path. That path never calls create.
+      if (
+        providerResult.providerStatus?.toUpperCase() === "VALIDATED_INTERNAL"
+        && persisted.document.provider_document_id
+        && resolved.provider.resumeInvoice
+      ) {
+        return this.resumeLinkedProviderDocumentUnlocked(tenantId, electronicDocumentId, true);
+      }
+
+      return persisted;
+    } catch (error) {
+      if (!this.isProviderNotFoundError(error)) {
+        throw error;
+      }
+    }
+
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const recoveredId = await this.documentRepository.recoverPreProviderCreateFailure(
+        tenantId,
+        electronicDocumentId,
+        document.external_reference,
+        client,
+      );
+      if (!recoveredId) {
+        throw new ElectronicDocumentStatusTransitionError(
+          "Electronic document is no longer eligible for pre-provider recovery",
+        );
+      }
+
+      await this.eventRepository.append(
+        {
+          id: randomUUID(),
+          electronicDocumentId,
+          eventType: "PROVIDER_CREATE_INTENT_RECOVERED",
+          status: "PENDING",
+          providerStatus: null,
+          operation: "RECOVER_PRE_PROVIDER_CREATE",
+          attempt: this.nextAttemptFromEvents(aggregate.events),
+          errorCode: "PROVIDER_NOT_FOUND",
+          errorMessage: null,
+          metadata: {
+            source: "electronic-billing-processing",
+            recoveryReason: "CONFIRMED_PROVIDER_ABSENCE",
+            reconciliation: "NOT_FOUND",
+            previousStatus: "TECHNICAL_ERROR",
+            previousStage: "PROVIDER_CREATE_INTENT",
+          },
+          createdAt: new Date(),
+        },
+        client,
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const refreshed = await this.loadAggregate(tenantId, electronicDocumentId);
+    return {
+      ...refreshed,
+      providerResult: null,
+      idempotent: false,
+      retryable: true,
+    };
+  }
+
+  private canRecoverProviderCreateIntent(aggregate: LoadedAggregate) {
+    const document = aggregate.document;
+    const hasRetryableProviderErrorHistory = aggregate.events.some((event) =>
+      isRetryableProviderCode(event.error_code ?? ""),
+    );
+    return document.status === "TECHNICAL_ERROR"
+      && document.processing_stage === "PROVIDER_CREATE_INTENT"
+      && !document.provider_document_id
+      && Boolean(document.external_reference)
+      && (
+        isRetryableProviderCode(document.last_error_code ?? "")
+        || isProviderAuthenticationCode(document.last_error_code ?? "")
+        || hasRetryableProviderErrorHistory
+      );
+  }
+
+  private canRecoverExistingProvider(aggregate: LoadedAggregate) {
+    const document = aggregate.document;
+    return document.status === "TECHNICAL_ERROR"
+      && document.processing_stage === "RECONCILIATION_REQUIRED"
+      && Boolean(document.provider_document_id)
+      && (isRetryableProviderCode(document.last_error_code ?? "")
+        || isProviderAuthenticationCode(document.last_error_code ?? ""));
   }
 
   private async retryRecoverableDocumentUnlocked(
@@ -828,7 +1086,12 @@ export class ElectronicBillingProcessingService {
       }
     }
 
-    return this.runProcessingUnlocked("RETRY_REQUESTED", tenantId, electronicDocumentId, "retry");
+    return this.runProcessingUnlocked(
+      "RETRY_REQUESTED",
+      tenantId,
+      electronicDocumentId,
+      "retry",
+    );
   }
 
   private async runProcessing(
@@ -855,6 +1118,7 @@ export class ElectronicBillingProcessingService {
     electronicDocumentId: string,
     mode: "process" | "retry",
     allowApprovedPreProviderRecovery = false,
+    allowProviderCreateAfterReconciliation = false,
   ): Promise<ProcessingResult> {
     const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
     if (!aggregate.document) {
@@ -937,7 +1201,8 @@ export class ElectronicBillingProcessingService {
         : await this.retryWithProviderOrIssue(
           resolved,
           aggregate,
-          allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document),
+          allowProviderCreateAfterReconciliation ||
+            (allowApprovedPreProviderRecovery && this.isApprovedPreProviderRecovery(aggregate.document)),
         );
 
       return await this.persistProviderResult(
@@ -1046,16 +1311,31 @@ export class ElectronicBillingProcessingService {
     tenantId: string,
     electronicDocumentId: string,
     operation: () => Promise<T>,
+    options: { failIfBusy?: boolean } = {},
   ): Promise<T> {
     const client = await this.db.getClient();
     const lockKey = `${tenantId}:${electronicDocumentId}`;
+    let lockAcquired = !options.failIfBusy;
     try {
-      await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [lockKey]);
+      const lockResult = await client.query(
+        options.failIfBusy
+          ? "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked"
+          : "SELECT pg_advisory_lock(hashtextextended($1, 0))",
+        [lockKey],
+      );
+      if (options.failIfBusy && lockResult.rows[0]?.locked !== true) {
+        throw new ElectronicDocumentAlreadyProcessingError();
+      }
+      lockAcquired = true;
       return await operation();
     } finally {
-      try {
-        await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [lockKey]);
-      } finally {
+      if (lockAcquired) {
+        try {
+          await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [lockKey]);
+        } finally {
+          client.release();
+        }
+      } else {
         client.release();
       }
     }
@@ -1238,6 +1518,7 @@ export class ElectronicBillingProcessingService {
       issueDate: aggregate.document.issue_date,
       issueTime: aggregate.document.issue_time,
       customer: snapshot.customer,
+      payments: snapshot.payments ?? (snapshot.payment ? [snapshot.payment] : []),
       payment: snapshot.payment ?? null,
       lines: this.buildLineInputs(aggregate),
       totals: {
@@ -1312,6 +1593,7 @@ export class ElectronicBillingProcessingService {
       issueDate: aggregate.document.issue_date,
       issueTime: aggregate.document.issue_time,
       customer: snapshot.customer,
+      payments: snapshot.payments ?? (snapshot.payment ? [snapshot.payment] : []),
       payment: snapshot.payment ?? null,
       originalDocument: {
         internalDocumentId: originalDocument.id,
@@ -1349,6 +1631,8 @@ export class ElectronicBillingProcessingService {
     }
 
     return aggregate.lines.map((line) => ({
+      standardItemId: readLineSnapshot(line.metadata).standardItemId ?? null,
+      standardItemSchemeId: readLineSnapshot(line.metadata).standardItemSchemeId ?? null,
       sourceLineId: line.source_line_id,
       originalElectronicDocumentLineId: readLineSnapshot(line.metadata).originalElectronicDocumentLineId ?? null,
       providerOriginalLineId: readLineSnapshot(line.metadata).providerOriginalLineId ?? null,
@@ -1400,6 +1684,56 @@ export class ElectronicBillingProcessingService {
     isRetry: boolean,
     attempt: number,
   ): Promise<ProcessingResult> {
+    const currentBillingMetadata = aggregate.document.metadata?.electronicBilling;
+    const existingFiscalIssuerSnapshot = currentBillingMetadata &&
+      typeof currentBillingMetadata === "object" &&
+      !Array.isArray(currentBillingMetadata) &&
+      "fiscalIssuerSnapshot" in currentBillingMetadata
+      ? (currentBillingMetadata as Record<string, unknown>).fiscalIssuerSnapshot
+      : null;
+    const shouldCaptureFiscalIssuer =
+      (providerResult.normalizedStatus ?? aggregate.document.status) === "ACCEPTED" &&
+      !existingFiscalIssuerSnapshot &&
+      Boolean(resolved.provider.downloadAttachment);
+    const existingQrPayload = currentBillingMetadata &&
+      typeof currentBillingMetadata === "object" &&
+      !Array.isArray(currentBillingMetadata) &&
+      typeof (currentBillingMetadata as Record<string, unknown>).qrPayload === "string"
+      ? (currentBillingMetadata as Record<string, unknown>).qrPayload as string
+      : null;
+    const shouldCaptureSignedXml =
+      (providerResult.normalizedStatus ?? aggregate.document.status) === "ACCEPTED" &&
+      Boolean(resolved.provider.downloadAttachment) &&
+      (!existingFiscalIssuerSnapshot || !existingQrPayload);
+    let fiscalIssuerSnapshot: FiscalIssuerSnapshot | null = null;
+    let authoritativeQrPayload: string | null = null;
+    if (shouldCaptureSignedXml) {
+      let signedXmlText: string | null = null;
+      try {
+        const attachment = await resolved.provider.downloadAttachment!({
+          context: resolved.context,
+          documentId: aggregate.document.id,
+          providerDocumentId: providerResult.providerDocumentId ?? aggregate.document.provider_document_id,
+          externalReference: aggregate.document.external_reference,
+          attachmentType: "SIGNED_XML",
+          metadata: aggregate.document.metadata,
+        });
+        signedXmlText = attachment.content ? Buffer.from(attachment.content).toString("utf8") : "";
+      } catch {
+        // Accepted status stays authoritative. Missing attachment means no snapshot;
+        // representation must use the explicit legacy-safe policy instead of guessing.
+        signedXmlText = null;
+      }
+      if (signedXmlText !== null) {
+        if (shouldCaptureFiscalIssuer) {
+          fiscalIssuerSnapshot = extractFiscalIssuerSnapshot(signedXmlText);
+        }
+        authoritativeQrPayload = extractAuthoritativeQrPayload(signedXmlText);
+      }
+    }
+    if (existingQrPayload && authoritativeQrPayload && existingQrPayload !== authoritativeQrPayload) {
+      throw new ElectronicDocumentProviderResultConflictError();
+    }
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
@@ -1414,6 +1748,17 @@ export class ElectronicBillingProcessingService {
         providerResult.providerDocumentId &&
         currentDocument.provider_document_id !== providerResult.providerDocumentId
       ) {
+        throw new ElectronicDocumentProviderResultConflictError();
+      }
+
+      const currentElectronicBillingMetadata = currentDocument.metadata?.electronicBilling;
+      const currentQrPayload = currentElectronicBillingMetadata &&
+        typeof currentElectronicBillingMetadata === "object" &&
+        !Array.isArray(currentElectronicBillingMetadata) &&
+        typeof (currentElectronicBillingMetadata as Record<string, unknown>).qrPayload === "string"
+        ? (currentElectronicBillingMetadata as Record<string, unknown>).qrPayload as string
+        : null;
+      if (currentQrPayload && authoritativeQrPayload && currentQrPayload !== authoritativeQrPayload) {
         throw new ElectronicDocumentProviderResultConflictError();
       }
 
@@ -1449,6 +1794,19 @@ export class ElectronicBillingProcessingService {
           providerStatusDetail: providerResult.providerStatusDetail ?? null,
           metadata: {
             ...currentDocument.metadata,
+            ...(fiscalIssuerSnapshot || currentQrPayload || authoritativeQrPayload
+              ? {
+                  electronicBilling: {
+                    ...(currentElectronicBillingMetadata &&
+                    typeof currentElectronicBillingMetadata === "object" &&
+                    !Array.isArray(currentElectronicBillingMetadata)
+                      ? currentElectronicBillingMetadata
+                      : {}),
+                    ...(fiscalIssuerSnapshot ? { fiscalIssuerSnapshot } : {}),
+                    ...(!currentQrPayload && authoritativeQrPayload ? { qrPayload: authoritativeQrPayload } : {}),
+                  },
+                }
+              : {}),
             [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState(nextProcessingStage),
             providerResponse: {
               ...providerResponseMetadata,
@@ -1558,6 +1916,7 @@ export class ElectronicBillingProcessingService {
       const status = classification.rejected ? "REJECTED" : "TECHNICAL_ERROR";
       const message = error instanceof Error ? error.message : "Unknown provider error";
       const code = this.readErrorCode(error);
+      const httpStatus = this.readHttpStatus(error);
       const nextStatusCheckAt = this.resolveNextStatusCheckAt(status, attempt);
       const providerDocumentId = this.readProviderDocumentId(error);
       const previousState = currentDocument.metadata?.[ELECTRONIC_BILLING_PROCESSING_STATE_KEY];
@@ -1619,7 +1978,7 @@ export class ElectronicBillingProcessingService {
           providerStatus: currentDocument.provider_status,
           operation: isRetry ? "RETRY" : "ISSUE",
           attempt,
-          httpStatus: null,
+          httpStatus,
           errorCode: code,
           errorMessage: message,
           metadata: {
@@ -1757,6 +2116,9 @@ export class ElectronicBillingProcessingService {
     }
 
     const code = this.readErrorCode(error).toUpperCase();
+    if (isProviderAuthenticationCode(code)) {
+      return { rejected: false, retryable: false };
+    }
     if (isValidationProviderCode(code)) {
       return { rejected: true, retryable: false };
     }
@@ -1785,6 +2147,15 @@ export class ElectronicBillingProcessingService {
       ? (error as Error & { providerDocumentId?: unknown }).providerDocumentId
       : null;
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  }
+
+  private readHttpStatus(error: unknown) {
+    const value = error instanceof Error
+      ? (error as Error & { httpStatus?: unknown }).httpStatus
+      : null;
+    return typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599
+      ? value
+      : null;
   }
 
   private readErrorCode(error: unknown) {

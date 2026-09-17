@@ -498,6 +498,7 @@ const applyPricingError = (
 export const PosScreen = () => {
   const { hasSession } = useRequirePosSession();
   const authUser = useAppSelector((state) => state.auth.user);
+  const branding = useAppSelector((state) => state.branding.config);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
   const posTerminalId = useAppSelector((state) => state.pos.terminalId);
   const {
@@ -2409,6 +2410,7 @@ export const PosScreen = () => {
         branchId: activeBranchId ?? undefined,
         terminalId: posTerminalId ?? "local-terminal",
         businessName: authUser?.tenantName ?? "Manus POS",
+        logo: branding.logo ?? branding.logoUrl,
         branchName: authUser?.branchName ?? undefined,
         cashier: authUser?.name ?? authUser?.email ?? undefined,
         customerName: selectedCustomer?.name ?? "Consumidor final",

@@ -7,6 +7,8 @@ import { OperationalSalesRepository } from "./operational-sales.repository";
 import { OperationalDashboardRepository } from "./operational-dashboard.repository";
 import { normalizeOperationalDashboardQuery, type OperationalDashboardQueryDto } from "./dto/operational-dashboard-query.dto";
 
+const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
+
 @Injectable()
 export class OperationalSalesService {
   constructor(
@@ -140,6 +142,52 @@ export class OperationalSalesService {
     };
   }
 
+  async recoverProviderCreateIntent(actor: OperationalSaleActor, saleId: string) {
+    const scope = await this.scopeService.resolveScope(actor);
+    const sale = await this.repository.findById(scope, saleId);
+    if (!sale) {
+      throw new NotFoundException("sale not found");
+    }
+    const electronicDocumentId = sale.electronicBilling?.electronicDocumentId;
+    if (!electronicDocumentId || !actor.tenantId) {
+      throw new BadRequestException("sale has no electronic document");
+    }
+
+    try {
+      const recoveryResult = await this.billingClient.recoverProviderCreateIntent(
+        actor.tenantId,
+        electronicDocumentId,
+      );
+      this.auditService?.logEvent({
+        tenantId: actor.tenantId,
+        userId: actor.id ?? null,
+        module: "operations",
+        entity: "electronic_documents",
+        entityId: electronicDocumentId,
+        action: OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION,
+        before: { saleId, electronicDocumentId },
+        after: {
+          recovery: recoveryResult.recovery,
+          status: recoveryResult.status,
+          processingStage: recoveryResult.processingStage,
+        },
+      });
+      const refreshed = await this.repository.findById(scope, saleId);
+      if (!refreshed) {
+        throw new NotFoundException("sale not found");
+      }
+      return {
+        ...(await this.withRetryability(actor.tenantId, refreshed)),
+        recoveryResult,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadGatewayException("electronic billing recovery is unavailable");
+    }
+  }
+
   private async withRetryability(tenantId: string | undefined, sale: any) {
     const electronicDocumentId = sale.electronicBilling?.electronicDocumentId;
     if (!tenantId || !electronicDocumentId) {
@@ -161,6 +209,7 @@ export class OperationalSalesService {
           ...sale.electronicBilling,
           retryability: {
             canRetry: false,
+            canRecoverProviderCreateIntent: false,
             retryClass: "NONE",
             decision: "NOT_RETRYABLE",
             reasonCode: "PROVIDER_UNAVAILABLE",

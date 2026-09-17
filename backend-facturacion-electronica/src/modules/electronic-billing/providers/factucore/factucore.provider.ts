@@ -98,7 +98,19 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
 
     let createdDocumentId: string | null = null;
     try {
-      const created = await this.client.createInvoice(runtime, this.mapper.buildInvoiceRequest(command));
+      const request = this.mapper.buildInvoiceRequest(command);
+      if (process.env.FACTUCORE_SAFE_LINE_DIAGNOSTICS === "true") {
+        console.debug("factucore.create_invoice.line_fields", {
+          saleId: typeof command.metadata?.saleId === "string" ? command.metadata.saleId : null,
+          lines: request.lines.map((line) => ({
+            productId: typeof line.metadata?.productId === "string" ? line.metadata.productId : null,
+            sku: line.sku ?? null,
+            standardItemSchemeId: line.standardItemSchemeId ?? null,
+            standardItemId: line.standardItemId ?? null,
+          })),
+        });
+      }
+      const created = await this.client.createInvoice(runtime, request);
       createdDocumentId = this.resolveProviderDocumentId(created);
       if (!createdDocumentId) {
         throw new FactuCoreConfigurationError("issue_invoice", "FactuCore create invoice response did not include a document id");

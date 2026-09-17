@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync } from "node:fs";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { DevicesController } from "../src/modules/devices/devices.controller";
 import { DevicesService } from "../src/modules/devices/devices.service";
@@ -26,7 +27,6 @@ import {
   buildUsbPrinterDescriptor,
   type UsbPrinterDiscovery,
 } from "../src/shared/usb/usb-printer-discovery";
-import { renderThermalEscPos } from "../src/shared/escpos/thermal-escpos.renderer";
 import { WindowsRawSpoolerTransport } from "../src/platform/windows/windows-raw-spooler.transport";
 import {
   type DeviceRegistryState,
@@ -241,7 +241,7 @@ test("USB system adapter prints through CUPS queue with a fake command runner", 
   );
 });
 
-test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () => {
+test("USB RAW Windows sends a bounded command with a temporary binary payload file", () => {
   const commands: Array<{ command: string; args: string[] }> = [];
   const rawTransport = new WindowsRawSpoolerTransport((command, args) => {
     commands.push({ command, args });
@@ -265,26 +265,61 @@ test("USB RAW Windows sends shared ESC/POS bytes to the discovered queue", () =>
   });
 
   assert.equal(commands[0]?.command, "powershell.exe");
-  assert.equal(commands[0]?.args[2], "-EncodedCommand");
-  const script = Buffer.from(commands[0]?.args[3] ?? "", "base64").toString("utf16le");
-  assert.match(script, /OpenPrinter/);
-  assert.match(script, /StartDocPrinter/);
-  assert.match(script, /WritePrinter/);
-  assert.match(script, /pDatatype = 'RAW'/);
-  const encodedPayload = script.match(/FromBase64String\('([^']+)'\)/g)?.[1]
-    ?.match(/'([^']+)'/)?.[1];
-  assert.ok(encodedPayload);
-  assert.deepEqual(
-    Buffer.from(encodedPayload, "base64"),
-    renderThermalEscPos(result.commands, result.preview, {
-      encoding: "latin1",
-      includePhysicalCut: true,
-    })
-  );
-  assert.equal(Buffer.from(encodedPayload, "base64").includes(Buffer.from([0x1d, 0x56, 0x00])), true);
+  assert.deepEqual(commands[0]?.args.slice(0, 5), [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+  ]);
+  assert.equal(commands[0]?.args.length, 9);
+  assert.doesNotMatch(commands[0]?.args.join(" ") ?? "", /FromBase64String|EncodedCommand/);
+  assert.equal(commands[0]?.args[6], "Xprinter XP-80T USB");
   assert.equal(result.adapterName, "UsbRawPrinterAdapter");
   assert.equal(result.capabilities.supportsPhysicalCut, false);
   assert.ok((result.bytesSent ?? 0) > 0);
+});
+
+test("USB RAW preserves large raster job bytes without command-line payload", () => {
+  const commands: Array<{ command: string; args: string[] }> = [];
+  const rawTransport = new WindowsRawSpoolerTransport((command, args) => commands.push({ command, args }));
+  const payload = Buffer.alloc(2_500_000, 0x5a);
+
+  const result = rawTransport.send({
+    nativeIdentifier: "XP-80",
+    payload,
+    jobName: "large-logo-qr-job",
+  });
+
+  assert.equal(result.bytesSent, payload.length);
+  assert.equal(commands[0]?.args.includes(payload.toString("base64")), false);
+  assert.equal(commands[0]?.args.some((arg) => arg.endsWith("payload.bin")), true);
+  assert.equal(commands[0]?.args.some((arg) => arg.endsWith("spool-raw.ps1")), true);
+  assert.equal(existsSync(commands[0]?.args[5] ?? ""), false);
+  assert.equal(existsSync(commands[0]?.args[7] ?? ""), false);
+});
+
+test("USB RAW cleans temporary files when PowerShell fails", () => {
+  let args: string[] = [];
+  const rawTransport = new WindowsRawSpoolerTransport((_command, commandArgs) => {
+    args = commandArgs;
+    throw new Error("spooler rejected RAW job");
+  });
+
+  assert.throws(
+    () => rawTransport.send({ nativeIdentifier: "XP-80", payload: Buffer.from([0x1b, 0x40]), jobName: "cleanup" }),
+    /spooler rejected RAW job/
+  );
+  assert.equal(existsSync(args[5] ?? ""), false);
+  assert.equal(existsSync(args[7] ?? ""), false);
+});
+
+test("USB RAW rejects pathological jobs with a controlled size error", () => {
+  const rawTransport = new WindowsRawSpoolerTransport(() => { throw new Error("must not invoke PowerShell"); });
+  assert.throws(
+    () => rawTransport.send({ nativeIdentifier: "XP-80", payload: Buffer.alloc(8 * 1024 * 1024 + 1), jobName: "too-large" }),
+    /RAW print job exceeds 8388608 bytes/
+  );
 });
 
 test("PnP-only USB printer never calls OpenPrinter without a Windows queue", () => {
@@ -318,10 +353,9 @@ test("exact PnP plus queue uses the resolved Windows queue name", () => {
     agentName: "manus-pos-peripheral-agent", mode: "REAL", terminalId: "local-terminal",
     device, profile: DEVICE_PROFILES.THERMAL_80MM, jobId: "queue-resolved", timestamp: "2026-08-21T00:00:00.000Z",
   });
-  const script = Buffer.from(commands[0]?.args[3] ?? "", "base64").toString("utf16le");
-  const queueEncoded = script.match(/FromBase64String\('([^']+)'\)/)?.[1];
-  assert.equal(Buffer.from(queueEncoded ?? "", "base64").toString("utf8"), "XP-80");
-  assert.doesNotMatch(script, /Xprinter XP-80T USB/);
+  assert.equal(commands[0]?.args[6], "XP-80");
+  assert.match(commands[0]?.args[5] ?? "", /spool-raw\.ps1$/);
+  assert.doesNotMatch(commands[0]?.args.join(" ") ?? "", /Xprinter XP-80T USB/);
 });
 
 test("Win32 error 1801 is normalized without encoded PowerShell details", () => {

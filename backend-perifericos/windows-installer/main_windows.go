@@ -1032,12 +1032,7 @@ func (a *agentService) startAgentProcess() (*exec.Cmd, *os.File, *os.File, error
 		return nil, nil, nil, err
 	}
 
-	env := append(os.Environ(),
-		"PERIPHERALS_CONFIG_PATH="+configPath,
-		"PERIPHERALS_VERSION="+a.manifest.Version,
-		"PERIPHERALS_BIND=127.0.0.1",
-		"PERIPHERALS_PORT=4050",
-	)
+	env := buildAgentEnvironment(os.Environ(), configPath, a.manifest.Version)
 
 	cmd := exec.Command(nodeExe, entryPoint)
 	cmd.Dir = a.layout.CurrentRoot
@@ -1051,6 +1046,47 @@ func (a *agentService) startAgentProcess() (*exec.Cmd, *os.File, *os.File, error
 	}
 
 	return cmd, stdoutFile, stderrFile, nil
+}
+
+// The installed ProgramData config is the service's authoritative runtime
+// contract. Remove inherited Peripheral Agent keys before starting Node so a
+// stale developer/session value such as PERIPHERALS_MODE=MOCK cannot override
+// agent.config.local.json. The Node loader then injects the persisted values.
+func buildAgentEnvironment(base []string, configPath, version string) []string {
+	managedKeys := map[string]struct{}{
+		"PERIPHERALS_PORT":                           {},
+		"PERIPHERALS_BIND":                           {},
+		"PERIPHERALS_MODE":                           {},
+		"PERIPHERALS_AGENT_NAME":                     {},
+		"PERIPHERALS_ALLOWED_ORIGINS":                {},
+		"PERIPHERALS_ENABLE_REAL_ADAPTERS":           {},
+		"PERIPHERALS_USB_PRINT_TRANSPORT":            {},
+		"PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED": {},
+		"PERIPHERALS_LOG_LEVEL":                      {},
+		"PERIPHERALS_LOG_LIMIT":                      {},
+		"PERIPHERALS_PRINTER_WIDTH_CHARS":            {},
+		"PERIPHERALS_CONFIG_PATH":                    {},
+		"PERIPHERALS_VERSION":                        {},
+	}
+
+	env := make([]string, 0, len(base)+4)
+	for _, entry := range base {
+		key := entry
+		if index := strings.IndexByte(entry, '='); index >= 0 {
+			key = entry[:index]
+		}
+		if _, managed := managedKeys[key]; managed {
+			continue
+		}
+		env = append(env, entry)
+	}
+
+	return append(env,
+		"PERIPHERALS_CONFIG_PATH="+configPath,
+		"PERIPHERALS_VERSION="+version,
+		"PERIPHERALS_BIND=127.0.0.1",
+		"PERIPHERALS_PORT=4050",
+	)
 }
 
 func (a *agentService) writeServiceLog(format string, args ...any) error {

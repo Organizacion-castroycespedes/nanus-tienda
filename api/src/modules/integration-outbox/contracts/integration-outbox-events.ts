@@ -104,6 +104,14 @@ export type SaleTaxSnapshot = SaleLineTaxSnapshot & {
 
 export type SalePaymentSnapshot = {
   methodCode: string;
+  paymentMethodId?: string | null;
+  paymentMethodCode?: string | null;
+  paymentMethodName?: string | null;
+  paymentMethodType?: string | null;
+  requiresReference?: boolean | null;
+  electronicBillingEnabled?: boolean | null;
+  electronicPaymentMeansCode?: string | null;
+  electronicPaymentMeansId?: string | null;
   amount?: IntegrationOutboxDecimalWireValue | null;
   term?: string | null;
   dueDate?: string | null;

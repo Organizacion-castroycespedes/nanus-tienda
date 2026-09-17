@@ -73,6 +73,29 @@ export type PosSalesListDataset = {
 
 export type PosSaleTicketPrintDataset = {
   tenantId: string;
+  company?: {
+    legalName: string | null;
+    nit: string | null;
+    dv: string | null;
+    taxResponsibilities: string | null;
+    regime: string | null;
+    vatResponsibility: string | null;
+    address: string | null;
+    city: string | null;
+    department: string | null;
+    country: string | null;
+    phone: string | null;
+    email: string | null;
+    website: string | null;
+    logo: string | null;
+    branchName: string | null;
+    branchAddress: string | null;
+    branchCity: string | null;
+    branchDepartment: string | null;
+    branchCountry: string | null;
+    branchPhone: string | null;
+    branchEmail: string | null;
+  };
   ticket: {
     header: {
       saleId: string;
@@ -123,6 +146,18 @@ export type ElectronicInvoicePrintDataset = {
   providerStatusMessage: string | null;
   trackingId: string | null;
   representationAvailable: boolean;
+  fiscalIssuerSnapshot?: {
+    name: string;
+    identificationType: string | null;
+    identificationNumber: string | null;
+    verificationDigit?: string | null;
+    address: string | null;
+    country: string | null;
+    department: string | null;
+    municipality: string | null;
+    phone: string | null;
+    email: string | null;
+  } | null;
   customerFiscalSnapshot?: {
     name: string | null;
     identificationType: string | null;

@@ -116,3 +116,32 @@ test("AccessControlService rejects cross-tenant slug resolution", async () => {
     /Tenant scope mismatch/,
   );
 });
+
+test("AccessControlService resolves route UUIDs without weakening scope", async () => {
+  const tenantId = "00000000-0000-4000-8000-000000000001";
+  const { service, calls } = createService([]);
+
+  assert.equal(
+    await service.resolveTenantIdFromRoute({ tenantId, roles: ["ADMIN"] }, tenantId),
+    tenantId,
+  );
+  await assert.rejects(
+    () => service.resolveTenantIdFromRoute(
+      { tenantId, roles: ["ADMIN"] },
+      "00000000-0000-4000-8000-000000000002",
+    ),
+    /Tenant scope mismatch/,
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("AccessControlService preserves the all-zero-shaped UUID used by the QA tenant", async () => {
+  const tenantId = "00000000-0000-0000-0000-000000000001";
+  const { service, calls } = createService([]);
+
+  assert.equal(
+    await service.resolveTenantIdFromRoute({ tenantId, roles: ["ADMIN"] }, tenantId),
+    tenantId,
+  );
+  assert.equal(calls.length, 0);
+});

@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { config as loadEnv } from "dotenv";
+import { json } from "express";
 import { AppModule } from "./app.module";
 import {
   buildPeripheralsCorsOptions,
@@ -17,7 +18,11 @@ loadEnv();
 loadAgentLocalConfig();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // Company logos are persisted as bounded data URIs. The default Express
+  // JSON limit rejects valid tenant logos before the printer controller sees
+  // them, so use a bounded Agent-specific limit.
+  app.use(json({ limit: "6mb" }));
   const config = getPeripheralsConfig();
 
   app.useGlobalFilters(new SanitizedHttpExceptionFilter());

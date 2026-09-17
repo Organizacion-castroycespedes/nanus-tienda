@@ -69,6 +69,8 @@ const makeInvoiceCommand = (tenantId = "tenant-a"): IssueElectronicInvoiceComman
   lines: [
     {
       sourceLineId: "sale-line-1",
+      standardItemId: "ARR-12",
+      standardItemSchemeId: "999",
       description: "Servicio tecnico",
       quantity: 1,
       unitCode: "EA",
@@ -449,6 +451,11 @@ test("FactuCore validation details redact secret fields", async () => {
 test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
   const mapper = new FactuCoreMapper();
   const taxed = mapper.buildInvoiceRequest(makeInvoiceCommand());
+  assert.equal(taxed.lines[0].standardItemId, "ARR-12");
+  assert.equal(taxed.lines[0].standardItemSchemeId, "999");
+  const serialized = JSON.parse(JSON.stringify(taxed));
+  assert.equal(serialized.lines[0].standardItemId, "ARR-12");
+  assert.equal(serialized.lines[0].standardItemSchemeId, "999");
   const taxedTax = taxed.lines[0].taxes?.[0] as Record<string, unknown>;
 
   assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxType", "taxableBase"].sort());
@@ -495,6 +502,47 @@ test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
   assert.deepEqual(FACTUCORE_TAX_TYPES, ["IVA", "INC", "ICA", "RETE_FUENTE", "RETE_IVA", "RETE_ICA", "OTHER"]);
 });
 
+test("mapper does not send Manus tax regime as customer PartyTaxScheme", () => {
+  const command = makeInvoiceCommand();
+  command.customer = {
+    ...command.customer,
+    customerType: "PERSON",
+    taxProfile: {
+      identificationTypeCode: "13",
+      liabilityTypeCode: "R-99-PN",
+      fiscalResponsibilityCodes: ["R-99-PN"],
+      taxScheme: "ORDINARIO",
+    },
+  };
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+
+  assert.equal(request.customer.taxSchemeId, "ZZ");
+  assert.equal(request.customer.taxSchemeName, "No aplica");
+});
+
+test("mapper rejects unknown customer PartyTaxScheme values", () => {
+  const command = makeInvoiceCommand();
+  command.customer = {
+    ...command.customer,
+    taxProfile: {
+      identificationTypeCode: "13",
+      liabilityTypeCode: "R-99-PN",
+      fiscalResponsibilityCodes: ["R-99-PN"],
+      taxScheme: "UNKNOWN_SCHEME",
+    },
+  };
+
+  assert.throws(
+    () => new FactuCoreMapper().buildInvoiceRequest(command),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreConfigurationError");
+      assert.match((error as Error).message, /customer TaxScheme/i);
+      return true;
+    },
+  );
+});
+
 test("mapper rejects unknown tax labels and preserves tax amounts", () => {
   assert.throws(
     () => mapFactuCoreTaxType({ type: "TAX DESCONOCIDO", rate: 7, taxableBase: 125.55, amount: 8.79 }),
@@ -528,10 +576,10 @@ test("mapper normalizes Manus CASH payment to FactuCore fiscal means", () => {
 
   const request = new FactuCoreMapper().buildInvoiceRequest(command);
 
-  assert.equal(request.paymentMeansCode, "10");
-  assert.equal(request.paymentMeansId, "1");
-  assert.notEqual(request.paymentMeansCode, "CASH");
-  assert.notEqual(request.paymentMeansId, "CASH");
+  assert.equal(request.payments?.[0].paymentMeansCode, "10");
+  assert.equal(request.payments?.[0].paymentMeansId, "1");
+  assert.equal((request as Record<string, unknown>).paymentMeansCode, undefined);
+  assert.equal((request as Record<string, unknown>).amount, undefined);
 });
 
 test("mapper rejects unmapped payment methods before provider request construction", () => {
@@ -546,6 +594,139 @@ test("mapper rejects unmapped payment methods before provider request constructi
       return true;
     },
   );
+});
+
+test("mapper maps the Manus Debito catalog code to DIAN debit card", () => {
+  const command = makeInvoiceCommand();
+  command.payment = { ...command.payment, methodCode: "003" };
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+  assert.equal(request.payments?.[0].paymentMeansCode, "49");
+  assert.equal(request.payments?.[0].paymentMeansId, "1");
+});
+
+test("mapper maps the Manus Transferencias catalog code to DIAN bank transfer", () => {
+  const command = makeInvoiceCommand();
+  command.payment = {
+    ...command.payment,
+    methodCode: "002",
+    metadata: { reference: "TRX-123" },
+  };
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+  assert.equal(request.payments?.[0].paymentMeansCode, "47");
+  assert.equal(request.payments?.[0].paymentMeansId, "1");
+});
+
+test("mapper prefers the immutable snapshotted fiscal payment pair", () => {
+  const command = makeInvoiceCommand();
+  command.payment = {
+    ...command.payment,
+    methodCode: "003",
+    metadata: {
+      electronicBillingEnabled: true,
+      electronicPaymentMeansCode: "47",
+      electronicPaymentMeansId: "1",
+      reference: "TRX-IMMUTABLE",
+    },
+  };
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+  assert.equal(request.payments?.[0].paymentMeansCode, "47");
+  assert.equal(request.payments?.[0].paymentMeansId, "1");
+});
+
+test("mapper still rejects unsupported payment catalog codes", () => {
+  const command = makeInvoiceCommand();
+  command.payment = { ...command.payment, methodCode: "999" };
+
+  assert.throws(
+    () => new FactuCoreMapper().buildInvoiceRequest(command),
+    (error: unknown) => {
+      assert.equal((error as Error).name, "FactuCoreConfigurationError");
+      assert.match((error as Error).message, /999/);
+      return true;
+    },
+  );
+});
+
+test("mapper carries mixed payments with exact amounts and fiscal identities", () => {
+  const command = makeInvoiceCommand();
+  command.payment = null;
+  command.payments = [
+    { methodCode: "001", amount: "700.00", paymentMeansCode: "10", paymentMeansId: "1" },
+    { methodCode: "003", amount: "490.00", paymentMeansCode: "49", paymentMeansId: "1" },
+  ];
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+  assert.deepEqual(request.payments?.map((payment) => [payment.amount, payment.paymentMeansCode, payment.paymentMeansId]), [
+    ["700.00", "10", "1"],
+    ["490.00", "49", "1"],
+  ]);
+  assert.equal(request.paymentMeansCode, undefined);
+  assert.equal(request.paymentMeansId, undefined);
+  assert.deepEqual(Object.keys(request.payments?.[0] ?? {}).sort(), [
+    "amount",
+    "paymentMeansCode",
+    "paymentMeansId",
+    "reference",
+    "requiresReference",
+  ]);
+  assert.equal("term" in (request.payments?.[0] ?? {}), false);
+  assert.equal("dueDate" in (request.payments?.[0] ?? {}), false);
+});
+
+test("mapper preserves every supported mixed-payment combination", () => {
+  const cases = [
+    [["10", "47"], ["600.00", "590.00"]],
+    [["10", "49"], ["600.00", "590.00"]],
+    [["47", "49"], ["600.00", "590.00"]],
+    [["10", "47", "49"], ["400.00", "390.00", "400.00"]],
+  ] as const;
+  for (const [codes, amounts] of cases) {
+    const command = makeInvoiceCommand();
+    command.payment = null;
+    command.totals = { ...command.totals, totalAmount: amounts.reduce((sum, amount) => sum + Number(amount), 0).toFixed(2) };
+    command.payments = codes.map((code, index) => ({
+      methodCode: code === "10" ? "001" : code === "47" ? "002" : "003",
+      amount: amounts[index],
+      paymentMeansCode: code,
+      paymentMeansId: "1" as const,
+      ...(code === "47" ? { reference: "TRX-MIX", requiresReference: true } : {}),
+    }));
+    const request = new FactuCoreMapper().buildInvoiceRequest(command);
+    assert.deepEqual(request.payments?.map((payment) => payment.paymentMeansCode), [...codes]);
+  }
+});
+
+test("mapper fails closed for empty, conflicting and invalid payment allocations", () => {
+  const empty = makeInvoiceCommand();
+  empty.payment = null;
+  empty.payments = [];
+  assert.throws(() => new FactuCoreMapper().buildInvoiceRequest(empty), /At least one payment/);
+
+  const mismatch = makeInvoiceCommand();
+  mismatch.payments = [{ methodCode: "003", amount: "1190.00", paymentMeansCode: "49", paymentMeansId: "1" }];
+  mismatch.payment = { ...mismatch.payment!, methodCode: "001" };
+  assert.throws(() => new FactuCoreMapper().buildInvoiceRequest(mismatch), /conflict/);
+
+  const badTotal = makeInvoiceCommand();
+  badTotal.payment = null;
+  badTotal.payments = [
+    { methodCode: "001", amount: "500.00", paymentMeansCode: "10", paymentMeansId: "1" },
+    { methodCode: "003", amount: "500.00", paymentMeansCode: "49", paymentMeansId: "1" },
+  ];
+  assert.throws(() => new FactuCoreMapper().buildInvoiceRequest(badTotal), /does not equal invoice total/);
+
+  const missingReference = makeInvoiceCommand();
+  missingReference.payment = {
+    ...missingReference.payment!,
+    methodCode: "002",
+    amount: "1190.00",
+    paymentMeansCode: "47",
+    paymentMeansId: "1",
+    requiresReference: true,
+  };
+  assert.throws(() => new FactuCoreMapper().buildInvoiceRequest(missingReference), /reference is required/);
 });
 
 test("mapper translates generic and Manus UND units to FactuCore-compatible EA", () => {

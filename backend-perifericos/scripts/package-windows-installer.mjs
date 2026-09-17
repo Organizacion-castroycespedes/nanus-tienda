@@ -45,6 +45,20 @@ const clearReadonlyWindows = (path) => {
 
 const removePath = (path) => rmSync(path, { recursive: true, force: true });
 
+const removeStaleAgentBundles = () => {
+  const bundleParent = dirname(embeddedBundleRoot);
+  if (!existsSync(bundleParent)) return;
+  for (const entry of readdirSync(bundleParent, { withFileTypes: true })) {
+    if (
+      entry.isDirectory() &&
+      entry.name.startsWith("ManusPeripheralAgent-win-x64-") &&
+      entry.name !== bundleName
+    ) {
+      removePath(join(bundleParent, entry.name));
+    }
+  }
+};
+
 const buildRuntimeHtml = ({ showMockNav }) => {
   let html = readFileSync(join(installerUiRoot, "index.html"), "utf8");
   const css = readFileSync(join(installerUiRoot, "styles.css"), "utf8");
@@ -96,6 +110,9 @@ const sha256File = (path) => createHash("sha256").update(readFileSync(path)).dig
 try {
   assertBundleReady();
   assertPosReady();
+  // Go embeds assets/**. Keep one Agent bundle to avoid embedding stale
+  // historical runtimes and making the installer build appear hung.
+  removeStaleAgentBundles();
   clearReadonlyWindows(embeddedBundleRoot);
   clearReadonlyWindows(installerManifestPath);
   clearReadonlyWindows(outputPath);
@@ -153,6 +170,7 @@ try {
     "go",
     [
       "build",
+      "-buildvcs=false",
       "-trimpath",
       "-ldflags",
       "-s -w",

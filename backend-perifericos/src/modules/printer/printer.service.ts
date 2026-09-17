@@ -442,8 +442,16 @@ export class PrinterService {
       header: optionalTicketText(record, "header"),
       businessName: optionalTicketText(record, "businessName"),
       nit: optionalTicketText(record, "nit") ?? optionalTicketText(record, "taxId"),
+      phone: optionalTicketText(record, "phone"),
+      email: optionalTicketText(record, "email"),
       address: optionalTicketText(record, "address"),
+      logo: optionalLogo(record.logo),
       cashier: optionalTicketText(record, "cashier"),
+      customerName: optionalTicketText(record, "customerName"),
+      customerIdentification: optionalTicketText(record, "customerIdentification"),
+      customerAddress: optionalTicketText(record, "customerAddress"),
+      fiscalStatus: optionalTicketText(record, "fiscalStatus"),
+      cufe: optionalTicketText(record, "cufe", 256),
       documentNumber: optionalTicketText(record, "documentNumber"),
       saleNumber: optionalTicketText(record, "saleNumber"),
       date: optionalTicketText(record, "date"),
@@ -516,6 +524,15 @@ const optionalQrPayload = (value: unknown): string | undefined => {
     throw new BadRequestException("content.qrPayload is too long");
   }
   return trimmed;
+};
+
+const optionalLogo = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 3_000_000) return undefined;
+  return /^data:image\/png;base64,[A-Za-z0-9+/=]+$/i.test(trimmed)
+    ? trimmed
+    : undefined;
 };
 
 const optionalTicketNumber = (

@@ -1,10 +1,32 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildSaleTicketInputFromPos,
   hasCashPeripheralPayment,
   isCashPeripheralPayment,
   runSalePeripheralOperations,
 } from "./pos-sale-integration";
+
+test("automatic POS ticket uses the canonical semantic fields", () => {
+  const ticket = buildSaleTicketInputFromPos({
+    saleId: "sale-1",
+    tenantId: "tenant-1",
+    branchId: "branch-1",
+    businessName: "Empresa QA",
+    logo: "data:image/png;base64,logo",
+    items: [{ name: "Producto", quantity: 1, unitPrice: 32000, total: 32000 }],
+    subtotal: 32000,
+    taxes: 0,
+    discounts: 0,
+    total: 32000,
+    payments: [{ paymentMethodId: "cash", methodName: "Efectivo", amount: 32000 }],
+  });
+
+  assert.equal(ticket.businessName, "Empresa QA");
+  assert.equal(ticket.logo, "data:image/png;base64,logo");
+  assert.deepEqual(ticket.payments, [{ method: "Efectivo", amount: 32000 }]);
+  assert.equal(ticket.footer, "Gracias por su compra");
+});
 
 test("sale cash predicate accepts canonical cash, code and name", () => {
   assert.equal(

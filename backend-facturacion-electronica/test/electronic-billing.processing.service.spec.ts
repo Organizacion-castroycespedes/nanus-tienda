@@ -7,7 +7,10 @@ import {
   ElectronicDocumentAlreadyProcessingError,
   FakeElectronicBillingProvider,
 } from "../src/modules/electronic-billing";
-import { FactuCoreValidationError } from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
+import {
+  FactuCoreAuthenticationError,
+  FactuCoreValidationError,
+} from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
 
 const ids = {
   tenant: "00000000-0000-0000-0000-000000000501",
@@ -86,6 +89,8 @@ const buildState = (overrides: Partial<typeof baseDocument> = {}) => ({
       metadata: {
         electronicBilling: {
           sourceLineId: "line-1",
+          standardItemId: "ARR-12",
+          standardItemSchemeId: "999",
         },
       },
       created_at: new Date("2026-08-27T00:00:00.000Z"),
@@ -127,12 +132,12 @@ const buildState = (overrides: Partial<typeof baseDocument> = {}) => ({
   ],
 });
 
-const buildHarness = (state = buildState()) => {
+const buildHarness = (state = buildState(), advisoryLockAvailable = true) => {
   const clientCalls: string[] = [];
   const client = {
     query: async (text: string) => {
       clientCalls.push(text);
-      return { rows: [] };
+      return text.includes("pg_try_advisory_lock") ? { rows: [{ locked: advisoryLockAvailable }] } : { rows: [] };
     },
     release: () => undefined,
   };
@@ -179,6 +184,14 @@ const buildHarness = (state = buildState()) => {
       mapped.last_error_message = updates.lastErrorMessage;
       delete mapped.lastErrorMessage;
     }
+    if ("processingStage" in updates) {
+      mapped.processing_stage = updates.processingStage;
+      delete mapped.processingStage;
+    }
+    if ("processingStageUpdatedAt" in updates) {
+      mapped.processing_stage_updated_at = updates.processingStageUpdatedAt;
+      delete mapped.processingStageUpdatedAt;
+    }
     state.document = { ...state.document, ...mapped };
     return state.document;
   };
@@ -200,6 +213,27 @@ const buildHarness = (state = buildState()) => {
     },
     updateError: async (_tenantId: string, _id: string, updates: any) => {
       return applyDocumentUpdates(updates);
+    },
+    recoverPreProviderCreateFailure: async (_tenantId: string, _id: string, externalReference: string) => {
+      if (
+        state.document.external_reference !== externalReference ||
+        state.document.status !== "TECHNICAL_ERROR" ||
+        state.document.processing_stage !== "PROVIDER_CREATE_INTENT" ||
+        state.document.provider_document_id
+      ) {
+        return null;
+      }
+      state.document = {
+        ...state.document,
+        status: "PENDING",
+        provider_status: null,
+        provider_status_detail: null,
+        last_status_check_at: null,
+        processing_stage: "PRE_PROVIDER_CREATE",
+        last_error_code: null,
+        last_error_message: null,
+      };
+      return state.document.id;
     },
   };
 
@@ -315,6 +349,140 @@ test("processDocument issues invoice and persists provider identity", async () =
   assert.equal(result.document.status, "PROCESSING");
   assert.equal(result.document.provider_document_id, "FAKE-00000000-0000-0000-0000-000000000504");
   assert.equal(harness.provider.received.issueInvoice.length, 1);
+  assert.equal(harness.provider.received.issueInvoice[0].lines[0].standardItemId, "ARR-12");
+  assert.equal(harness.provider.received.issueInvoice[0].lines[0].standardItemSchemeId, "999");
+});
+
+test("processDocument rebuilds the canonical payment array from the durable billing snapshot", async () => {
+  const payments = [
+    { methodCode: "001", amount: "700.00", paymentMeansCode: "10", paymentMeansId: "1" },
+    { methodCode: "003", amount: "490.00", paymentMeansCode: "49", paymentMeansId: "1" },
+  ];
+  const harness = buildHarness(buildState({
+    metadata: {
+      electronicBilling: {
+        customer: {
+          identification: { number: "900123456", typeCode: "31" },
+          legalName: "Client SA",
+        },
+        payments,
+      },
+    },
+  }));
+
+  await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.deepEqual(
+    harness.provider.received.issueInvoice[0].payments?.map((payment) => [
+      payment.amount,
+      payment.paymentMeansCode,
+      payment.paymentMeansId,
+    ]),
+    [
+      ["700.00", "10", "1"],
+      ["490.00", "49", "1"],
+    ],
+  );
+});
+
+test("initial accepted processing persists the authoritative QR from signed XML", async () => {
+  const harness = buildHarness();
+  const qrPayload = "NumFac: FKE-1\\nCUFE: authoritative-qr";
+  harness.provider.issueInvoice = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-ACCEPTED-1",
+    providerStatus: "ACCEPTED",
+    normalizedStatus: "ACCEPTED",
+    providerStatusDetail: "accepted",
+    prefix: "FKE",
+    number: "1",
+    fullNumber: "FKE-1",
+    cufe: "CUFE-ACCEPTED-1",
+    cude: null,
+    acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+    rejectedAt: null,
+    metadata: {},
+  });
+  harness.provider.downloadAttachment = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-ACCEPTED-1",
+    attachmentType: "SIGNED_XML",
+    providerAttachmentId: "ATT-1",
+    content: Buffer.from(`<Invoice><sts:QRCode>${qrPayload}</sts:QRCode></Invoice>`),
+    fileName: "signed.xml",
+    mimeType: "application/xml",
+    storageProvider: "fake",
+    storageKey: null,
+    checksum: null,
+    sizeBytes: Buffer.byteLength(qrPayload),
+    metadata: {},
+  });
+
+  const result = await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(result.document.processing_stage, "COMPLETED");
+  assert.equal(result.document.metadata.electronicBilling.qrPayload, qrPayload);
+  assert.equal(harness.provider.received.downloadAttachment.length, 0);
+});
+
+test("accepted processing does not fabricate QR when signed XML has no QR", async () => {
+  const harness = buildHarness();
+  harness.provider.issueInvoice = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-ACCEPTED-NO-QR",
+    providerStatus: "ACCEPTED",
+    normalizedStatus: "ACCEPTED",
+    providerStatusDetail: "accepted",
+    prefix: "FKE",
+    number: "1",
+    fullNumber: "FKE-1",
+    cufe: "CUFE-ACCEPTED-NO-QR",
+    cude: null,
+    acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+    rejectedAt: null,
+    metadata: {},
+  });
+  harness.provider.downloadAttachment = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-ACCEPTED-NO-QR",
+    attachmentType: "SIGNED_XML",
+    providerAttachmentId: "ATT-NO-QR",
+    content: Buffer.from("<Invoice />"),
+    fileName: "signed.xml",
+    mimeType: "application/xml",
+    storageProvider: "fake",
+    storageKey: null,
+    checksum: null,
+    sizeBytes: 11,
+    metadata: {},
+  });
+
+  const result = await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(result.document.processing_stage, "COMPLETED");
+  assert.equal(result.document.metadata.electronicBilling.qrPayload, undefined);
+});
+
+test("provider authentication failure remains technical and preserves HTTP evidence", async () => {
+  const harness = buildHarness();
+  harness.provider.issueInvoice = async () => {
+    throw new FactuCoreAuthenticationError("create_invoice", 403);
+  };
+
+  const result = await harness.service.processDocument(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "TECHNICAL_ERROR");
+  assert.equal(result.document.processing_stage, "PROVIDER_CREATE_INTENT");
+  assert.equal(result.document.provider_document_id, null);
+  assert.equal(result.document.last_error_code, "FACTUCORE_AUTHENTICATION");
+  assert.equal(result.events.at(-1)?.event_type, "TECHNICAL_ERROR");
+  assert.equal(result.events.at(-1)?.http_status, 403);
+
+  const retryability = await harness.service.evaluateRetryability(ids.tenant, ids.document);
+  assert.equal(retryability.canRetry, false);
+  assert.equal(retryability.canRecoverProviderCreateIntent, true);
 });
 
 test("refreshDocumentStatus moves processing document to accepted", async () => {
@@ -895,4 +1063,242 @@ test("persistent provider mock keeps an unresolved create timeout fail-closed", 
   assert.equal(providerExists, false);
   assert.equal(harness.provider.received.issueInvoice.length, 0);
   assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("confirmed provider absence resets the same document for background pickup without provider create", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_NETWORK",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+  }));
+  harness.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(harness.provider.received.retryDocument.length, 0);
+  assert.equal(result.document.id, ids.document);
+  assert.equal(result.document.status, "PENDING");
+  assert.equal(result.document.processing_stage, "PRE_PROVIDER_CREATE");
+  assert.equal(result.document.external_reference, "SALE-501");
+  assert.equal(result.events.at(-1)?.event_type, "PROVIDER_CREATE_INTENT_RECOVERED");
+  assert.equal(result.events.at(-1)?.metadata.reconciliation, "NOT_FOUND");
+});
+
+test("provider-create-intent recovery rejects a different stage and an active lease", async () => {
+  const wrongStage = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_NETWORK",
+    processing_stage: "TRANSMISSION_INTENT",
+  }));
+  wrongStage.provider.getDocumentStatus = async () => { throw buildNotFoundError(); };
+  await assert.rejects(
+    () => wrongStage.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document),
+    /pre-provider technical error/,
+  );
+
+  const activeLease = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_NETWORK",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+    last_status_check_at: new Date(Date.now() + 86_400_000),
+  }), false);
+  activeLease.provider.getDocumentStatus = async () => { throw buildNotFoundError(); };
+  await assert.rejects(
+    () => activeLease.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document),
+    ElectronicDocumentAlreadyProcessingError,
+  );
+  assert.equal(activeLease.provider.received.getDocumentStatus.length, 0);
+});
+
+test("provider-create-intent recovery ignores a historical manual-review deferral", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_NETWORK",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+    last_status_check_at: new Date(Date.now() + 86_400_000),
+  }));
+  harness.provider.getDocumentStatus = async () => { throw buildNotFoundError(); };
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "PENDING");
+  assert.equal(result.document.processing_stage, "PRE_PROVIDER_CREATE");
+});
+
+test("retryability exposes dedicated provider-create-intent recovery from backend state and history", async () => {
+  const state = buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "ElectronicDocumentNotProcessableError",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+    provider_document_id: null,
+  });
+  state.events.push({
+    ...state.events[0],
+    id: "00000000-0000-0000-0000-000000000599",
+    event_type: "TECHNICAL_ERROR",
+    status: "TECHNICAL_ERROR",
+    error_code: "FACTUCORE_NETWORK",
+  });
+  const harness = buildHarness(state);
+
+  const decision = await harness.service.evaluateRetryability(ids.tenant, ids.document);
+
+  assert.equal(decision.canRetry, false);
+  assert.equal(decision.canRecoverProviderCreateIntent, true);
+  assert.equal(decision.requiredAction, "RECONCILE_PROVIDER");
+});
+
+test("provider-create-intent recovery links an existing provider without creating another", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_NETWORK",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+  }));
+  harness.provider.getDocumentStatus = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-EXISTING",
+    providerStatus: "ACCEPTED",
+    normalizedStatus: "ACCEPTED",
+    providerStatusDetail: "accepted",
+    prefix: "FKE",
+    number: "1",
+    fullNumber: "FKE-1",
+    cufe: "CUFE-EXISTING",
+    cude: null,
+    acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+    rejectedAt: null,
+    metadata: {},
+  });
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(result.document.provider_document_id, "FACTUCORE-EXISTING");
+  assert.equal(result.document.status, "ACCEPTED");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+});
+
+test("provider-create-intent recovery resumes VALIDATED_INTERNAL provider without create", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_TIMEOUT",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+  }));
+  const provider = harness.provider as any;
+  let statusLookupCount = 0;
+  let resumedProviderId: string | null = null;
+  provider.getDocumentStatus = async () => {
+    statusLookupCount += 1;
+    return {
+      documentId: ids.document,
+      providerDocumentId: "FACTUCORE-VALIDATED-INTERNAL",
+      providerStatus: "VALIDATED_INTERNAL",
+      normalizedStatus: "PROCESSING",
+      providerStatusDetail: "validated internally",
+      prefix: "FKE",
+      number: "1",
+      fullNumber: "FKE-1",
+      cufe: null,
+      cude: null,
+      acceptedAt: null,
+      rejectedAt: null,
+      metadata: {},
+    };
+  };
+  provider.getDocument = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-VALIDATED-INTERNAL",
+    providerStatus: "VALIDATED_INTERNAL",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "validated internally",
+    prefix: "FKE",
+    number: "1",
+    fullNumber: "FKE-1",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+  provider.resumeInvoice = async (_command: unknown, providerDocumentId: string) => {
+    resumedProviderId = providerDocumentId;
+    return {
+      documentId: ids.document,
+      providerDocumentId,
+      providerStatus: "ACCEPTED",
+      normalizedStatus: "ACCEPTED",
+      providerStatusDetail: "accepted",
+      prefix: "FKE",
+      number: "1",
+      fullNumber: "FKE-1",
+      cufe: "CUFE-RESUMED",
+      cude: null,
+      acceptedAt: new Date("2026-08-27T01:00:00.000Z"),
+      rejectedAt: null,
+      metadata: {},
+    };
+  };
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(statusLookupCount, 1);
+  assert.equal(resumedProviderId, "FACTUCORE-VALIDATED-INTERNAL");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(result.document.provider_document_id, "FACTUCORE-VALIDATED-INTERNAL");
+  assert.equal(result.document.status, "ACCEPTED");
+});
+
+test("smart recovery resumes an existing SIGNED provider document without absence recovery or create", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    processing_stage: "RECONCILIATION_REQUIRED",
+    provider_document_id: "FACTUCORE-SIGNED",
+    last_error_code: "FACTUCORE_NETWORK",
+  }));
+  const provider = harness.provider as any;
+  let resumedProviderId: string | null = null;
+  provider.getDocument = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-SIGNED",
+    providerStatus: "SIGNED",
+    normalizedStatus: "PROCESSING",
+    providerStatusDetail: "signed",
+    prefix: "FKE",
+    number: "2",
+    fullNumber: "FKE-2",
+    cufe: null,
+    cude: null,
+    acceptedAt: null,
+    rejectedAt: null,
+    metadata: {},
+  });
+  provider.resumeInvoice = async (_command: unknown, providerDocumentId: string) => {
+    resumedProviderId = providerDocumentId;
+    return {
+      documentId: ids.document,
+      providerDocumentId,
+      providerStatus: "ACCEPTED",
+      normalizedStatus: "ACCEPTED",
+      providerStatusDetail: "accepted",
+      prefix: "FKE",
+      number: "2",
+      fullNumber: "FKE-2",
+      cufe: "CUFE-SIGNED-RESUMED",
+      cude: null,
+      acceptedAt: new Date("2026-09-16T00:00:00.000Z"),
+      rejectedAt: null,
+      metadata: {},
+    };
+  };
+
+  const result = await harness.service.recoverProcessing(ids.tenant, ids.document);
+
+  assert.equal(resumedProviderId, "FACTUCORE-SIGNED");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
+  assert.equal(result.recovery, "EXISTING_PROVIDER_RESUMED");
+  assert.equal(result.resultCode, "EXISTING_PROVIDER_RECONCILED");
+  assert.equal(result.document.provider_document_id, "FACTUCORE-SIGNED");
+  assert.equal(result.document.status, "ACCEPTED");
 });

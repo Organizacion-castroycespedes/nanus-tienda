@@ -43,14 +43,19 @@ const buildCommand = (overrides: Partial<any> = {}) => ({
       metadata: {},
     },
   payment:
-    overrides.payment ?? {
+    overrides.payment === undefined
+      ? {
       methodCode: "10",
       term: "IMMEDIATE",
-    },
+        }
+      : overrides.payment,
+  payments: overrides.payments,
   lines:
     overrides.lines ?? [
       {
         sourceLineId: "line-1",
+        standardItemId: "ARR-12",
+        standardItemSchemeId: "999",
         description: "Product 1",
         quantity: 1,
         unitCode: "EA",
@@ -100,6 +105,7 @@ const buildDb = () => {
 
 const buildRepositories = (overrides: Record<string, any> = {}) => {
   const createInputs: any[] = [];
+  const insertedLineInputs: any[] = [];
   const state = {
     document: null as any,
     lines: [] as any[],
@@ -153,7 +159,10 @@ const buildRepositories = (overrides: Record<string, any> = {}) => {
   };
 
   const lineRepository = {
-    insertMany: async () => state.lines,
+    insertMany: async (items: any[]) => {
+      insertedLineInputs.push(...items);
+      return state.lines;
+    },
     findByDocumentId: async () => state.lines,
   };
   const taxRepository = {
@@ -172,6 +181,7 @@ const buildRepositories = (overrides: Record<string, any> = {}) => {
   return {
     state,
     createInputs,
+    insertedLineInputs,
     documentRepository,
     lineRepository,
     taxRepository,
@@ -248,7 +258,21 @@ test("create invoice aggregate persists snapshot and returns fresh aggregate", a
     repos.eventRepository as never,
   );
 
-  const result = await service.createInvoiceDocument(buildCommand());
+  const payments = [
+    { methodCode: "001", amount: "700.00", paymentMeansCode: "10", paymentMeansId: "1" },
+    { methodCode: "003", amount: "490.00", paymentMeansCode: "49", paymentMeansId: "1" },
+  ];
+  const result = await service.createInvoiceDocument(buildCommand({
+    payment: null,
+    payments,
+    totals: {
+      subtotalAmount: 1000,
+      discountAmount: 0,
+      taxAmount: 190,
+      totalAmount: 1190,
+      currencyCode: "COP",
+    },
+  }));
 
   assert.equal(result.idempotent, false);
   assert.equal(result.document.external_reference, "SALE-400");
@@ -256,6 +280,9 @@ test("create invoice aggregate persists snapshot and returns fresh aggregate", a
   assert.equal(result.lines.length, 1);
   assert.equal(result.taxes.length, 1);
   assert.equal(repos.createInputs[0].metadata.electronicBilling.customer.legalName, "Client SA");
+  assert.deepEqual(repos.createInputs[0].metadata.electronicBilling.payments, payments);
+  assert.equal(repos.insertedLineInputs[0].metadata.electronicBilling.standardItemId, "ARR-12");
+  assert.equal(repos.insertedLineInputs[0].metadata.electronicBilling.standardItemSchemeId, "999");
 });
 
 test("create invoice aggregate returns existing document as idempotent", async () => {

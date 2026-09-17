@@ -115,6 +115,33 @@ test("401 maps to authentication error", async () => {
   );
 });
 
+test("403 API client scope failure maps to authentication error", async () => {
+  const client = new FactuCoreClient(async () => buildJsonResponse(403, {
+    message: "El API client no tiene los permisos requeridos: documents:create",
+  }));
+
+  await assert.rejects(
+    () => client.createInvoice(context, {} as never),
+    FactuCoreAuthenticationError,
+  );
+});
+
+test("403 business rule failure maps to validation with sanitized provider detail", async () => {
+  const client = new FactuCoreClient(async () => buildJsonResponse(403, {
+    message: "La resolucion no esta vigente para la fecha de emision",
+  }));
+
+  await assert.rejects(
+    () => client.createInvoice(context, {} as never),
+    (error: unknown) => {
+      assert.ok(error instanceof FactuCoreValidationError);
+      assert.equal(error.httpStatus, 403);
+      assert.match(error.message, /resolucion no esta vigente/);
+      return true;
+    },
+  );
+});
+
 test("422 maps to validation error", async () => {
   const client = new FactuCoreClient(async () => buildJsonResponse(422, { message: "invalid" }));
 

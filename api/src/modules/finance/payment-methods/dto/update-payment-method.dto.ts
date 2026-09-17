@@ -34,4 +34,16 @@ export class UpdatePaymentMethodDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  electronicBillingEnabled?: boolean;
+
+  @IsOptional()
+  @IsIn(["10", "47", "49"])
+  electronicPaymentMeansCode?: string;
+
+  @IsOptional()
+  @IsIn(["1"])
+  electronicPaymentMeansId?: string;
 }

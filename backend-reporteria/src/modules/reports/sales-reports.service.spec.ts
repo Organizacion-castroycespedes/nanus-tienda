@@ -39,7 +39,8 @@ class FakeSalesReportAdapter {
 
   constructor(
     private readonly tickets: Map<string, PosSaleTicketDataset | null>,
-    private readonly existingSales = new Set<string>()
+    private readonly existingSales = new Set<string>(),
+    private readonly payments: Array<{ paymentId: string; method: string; amount: number; status: string; direction: string; referenceType: string }> = []
   ) {}
 
   async getSaleTicket(actor: ReportActorContext, saleId: string) {
@@ -47,8 +48,38 @@ class FakeSalesReportAdapter {
     return this.tickets.get(saleId) ?? null;
   }
 
+  async getSalePayments() {
+    return this.payments;
+  }
+
   async saleExists(saleId: string) {
     return this.existingSales.has(saleId);
+  }
+
+  async getPrintableCompany() {
+    return {
+      legalName: "Empresa autorizada",
+      nit: null,
+      dv: null,
+      taxResponsibilities: null,
+      regime: null,
+      vatResponsibility: null,
+      address: null,
+      city: null,
+      department: null,
+      country: null,
+      phone: null,
+      email: null,
+      website: null,
+      logo: null,
+      branchName: null,
+      branchAddress: null,
+      branchCity: null,
+      branchDepartment: null,
+      branchCountry: null,
+      branchPhone: null,
+      branchEmail: null,
+    };
   }
 }
 
@@ -142,6 +173,34 @@ test("SalesReportsService.getSaleTicket: USER autorizado pasa", async () => {
   assert.equal(adapter.ticketCalls[0].actor.role, "USER");
   assert.equal(adapter.ticketCalls[0].actor.tenantId, TENANT_ID);
   assert.equal(adapter.ticketCalls[0].actor.branchId, BRANCH_ID);
+});
+
+test("SalesReportsService.getSaleTicket: resolves persisted payment allocations when report payload is empty", async () => {
+  const adapter = new FakeSalesReportAdapter(
+    new Map([[SALE_ID, ticketDataset()]]),
+    new Set([SALE_ID]),
+    [{
+      paymentId: "payment-1",
+      method: "Tarjeta",
+      amount: 100.5,
+      status: "COMPLETED",
+      direction: "IN",
+      referenceType: "SALE",
+    }],
+  );
+  const service = buildService(adapter);
+
+  const result = await service.getSaleTicket(SALE_ID, user(["USER"]));
+
+  assert.deepEqual(result.paymentBreakdown, [{ method: "Tarjeta", amount: 100.5 }]);
+  assert.deepEqual(result.payments, [{
+    paymentId: "payment-1",
+    method: "Tarjeta",
+    amount: 100.5,
+    status: "COMPLETED",
+    direction: "IN",
+    referenceType: "SALE",
+  }]);
 });
 
 test("SalesReportsService.getSaleTicket: USER otro tenant recibe FORBIDDEN", async () => {
@@ -240,6 +299,7 @@ test("SalesReportsService.getSaleTicketPrintData: conserva dataset canonico", as
   const result = await service.getSaleTicketPrintData(SALE_ID, user(["USER"]));
 
   assert.equal(result.tenantId, TENANT_ID);
+  assert.equal(result.company.legalName, "Empresa autorizada");
   assert.equal(result.ticket.header.saleId, SALE_ID);
   assert.equal(result.ticket.totals.total, 100.5);
   assert.equal(result.ticket.totals.taxBreakdown?.[0]?.label, "INC");
