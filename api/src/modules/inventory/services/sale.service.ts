@@ -967,8 +967,8 @@ export class SaleService {
           taxAmount: this.toDecimalWireValue(taxAmount),
           totalAmount: this.toDecimalWireValue(totalAmount),
           taxTreatment: resolveElectronicBillingTaxTreatment(taxes, taxAmount),
-          standardItemId: product.id,
-          standardItemSchemeId: "MANUS",
+          standardItemId: product.standardIdentification?.code ?? null,
+          standardItemSchemeId: product.standardIdentification?.scheme ?? null,
           taxes,
           metadata: {
             productId: product.id,

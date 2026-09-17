@@ -28,6 +28,7 @@ import type {
   ProductOperationalStatus,
   ProductRotationClass,
   ProductSaleType,
+  ProductStandardIdentificationScheme,
 } from "../entities/product.entity";
 import type { ProductImageMimeType } from "../entities/product-category.entity";
 import { ProductService } from "../services/product.service";
@@ -58,6 +59,10 @@ type CreateProductBody = {
   name: string;
   description?: string | null;
   sku: string;
+  standardIdentification?: {
+    scheme: ProductStandardIdentificationScheme;
+    code: string;
+  } | null;
   price: number;
   cost: number;
   priceWithTax?: number;

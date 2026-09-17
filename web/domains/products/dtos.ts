@@ -75,6 +75,10 @@ export type ProductResponse = {
   name: string;
   description: string | null;
   sku: string;
+  standardIdentification?: {
+    scheme: "001" | "010" | "020" | "999";
+    code: string;
+  } | null;
   price: number;
   cost: number;
   priceWithTax: number;

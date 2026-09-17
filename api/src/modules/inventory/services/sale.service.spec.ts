@@ -805,6 +805,7 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
         name: "Producto factura",
         description: "Producto factura",
         measurementUnit: "UND",
+        standardIdentification: { scheme: "999", code: "ARR-12" },
       }),
     },
     taxRepository: {
@@ -852,6 +853,8 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
       sourceLineId: string;
       description: string;
       sku?: string | null;
+      standardItemId?: string | null;
+      standardItemSchemeId?: string | null;
       taxes: Array<{ type?: string; rate: string; amount: string; code?: string | null }>;
     }>;
     taxes: Array<{ sourceLineId?: string | null }>;
@@ -875,6 +878,9 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
   assert.equal((event.customer as { departmentName?: string }).departmentName, "Antioquia");
   assert.equal(event.lines[0].description, "Producto factura");
   assert.equal(event.lines[0].sku, "SKU-1");
+  assert.equal(event.lines[0].standardItemSchemeId, "999");
+  assert.equal(event.lines[0].standardItemId, "ARR-12");
+  assert.notEqual(event.lines[0].standardItemId, ids.product);
   assert.equal(event.lines[0].sourceLineId, saleItemRow.id);
   assert.equal(event.lines[0].taxes.length, 1);
   assert.equal(event.lines[0].taxes[0].type, "VAT");

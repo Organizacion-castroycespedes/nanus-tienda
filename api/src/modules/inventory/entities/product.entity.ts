@@ -40,6 +40,21 @@ export const PRODUCT_MEASUREMENT_UNITS = [
   "OZ",
 ] as const;
 
+export const PRODUCT_STANDARD_IDENTIFICATION_SCHEMES = [
+  "001",
+  "010",
+  "020",
+  "999",
+] as const;
+
+export type ProductStandardIdentificationScheme =
+  (typeof PRODUCT_STANDARD_IDENTIFICATION_SCHEMES)[number];
+
+export type ProductStandardIdentification = {
+  scheme: ProductStandardIdentificationScheme;
+  code: string;
+};
+
 export type ProductOperationalStatus =
   (typeof PRODUCT_OPERATIONAL_STATUSES)[number];
 
@@ -61,6 +76,7 @@ export type ProductProps = {
   name: string;
   description?: string | null;
   sku: string;
+  standardIdentification?: ProductStandardIdentification | null;
   price: number;
   cost: number;
   priceWithTax: number;
@@ -97,6 +113,7 @@ export class ProductEntity {
   readonly name: string;
   readonly description: string | null;
   readonly sku: string;
+  readonly standardIdentification: ProductStandardIdentification | null;
   readonly price: number;
   readonly cost: number;
   readonly priceWithTax: number;
@@ -154,6 +171,14 @@ export class ProductEntity {
     }
     if (!props.sku?.trim()) {
       throw new Error("sku is required");
+    }
+    if (props.standardIdentification !== undefined && props.standardIdentification !== null) {
+      if (!PRODUCT_STANDARD_IDENTIFICATION_SCHEMES.includes(props.standardIdentification.scheme)) {
+        throw new Error("standardIdentification scheme is invalid");
+      }
+      if (!props.standardIdentification.code?.trim() || isUuid(props.standardIdentification.code.trim())) {
+        throw new Error("standardIdentification code must be a real non-UUID value");
+      }
     }
 
     assertNonNegativeDecimal(props.price, "price");
@@ -247,6 +272,12 @@ export class ProductEntity {
     this.name = props.name.trim();
     this.description = props.description?.trim() || null;
     this.sku = props.sku.trim().toUpperCase();
+    this.standardIdentification = props.standardIdentification
+      ? {
+          scheme: props.standardIdentification.scheme,
+          code: props.standardIdentification.code.trim(),
+        }
+      : null;
     this.price = props.price;
     this.cost = props.cost;
     this.priceWithTax = props.priceWithTax;
