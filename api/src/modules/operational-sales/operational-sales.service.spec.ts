@@ -12,6 +12,7 @@ const scope = {
 
 const createService = () => {
   const calls: Array<{ method: string; value: unknown }> = [];
+  const auditEvents: Array<Record<string, unknown>> = [];
   const scopeService = {
     resolveQueryScope: async (_actor: unknown, filters: unknown) => {
       calls.push({ method: "resolveQueryScope", value: filters });
@@ -56,6 +57,7 @@ const createService = () => {
       calls.push({ method: "getElectronicDocumentRetryability", value: { tenantId, electronicDocumentId } });
       return {
         canRetry: true,
+        canRecoverProviderCreateIntent: true,
         retryClass: "PRE_PROVIDER",
         decision: "SAFE_PRE_PROVIDER_RECOVERY",
         reasonCode: "PRE_PROVIDER_RECOVERABLE",
@@ -78,10 +80,35 @@ const createService = () => {
         safeUserMessage: "done",
       };
     },
+    recoverProviderCreateIntent: async (tenantId: string, electronicDocumentId: string) => {
+      calls.push({ method: "recoverProviderCreateIntent", value: { tenantId, electronicDocumentId } });
+      return {
+        allowed: true,
+        recovery: "CONFIRMED_PROVIDER_ABSENCE",
+        canRetry: true,
+        disposition: "RECOVERY_REQUEUED",
+        reasonCode: "REMOTE_NOT_FOUND_RECOVERED",
+        requiredAction: "PROCESS_DOCUMENT",
+        status: "PENDING",
+        processingStage: "PRE_PROVIDER_CREATE",
+        safeUserMessage: "recovered",
+      };
+    },
+  };
+  const auditService = {
+    logEvent: (event: Record<string, unknown>) => {
+      auditEvents.push(event);
+    },
   };
   return {
-    service: new OperationalSalesService(scopeService as any, repository as any, billingClient as any),
+    service: new OperationalSalesService(
+      scopeService as any,
+      repository as any,
+      billingClient as any,
+      auditService as any,
+    ),
     calls,
+    auditEvents,
   };
 };
 
@@ -151,4 +178,30 @@ test("operational retry uses the narrow safe client and returns its result", asy
 
   assert.equal(result.retryResult.disposition, "RETRY_STARTED");
   assert.equal(calls.some((call) => call.method === "retryElectronicDocument"), true);
+});
+
+test("operational pre-provider recovery uses the dedicated reconciled action", async () => {
+  const { service, calls, auditEvents } = createService();
+
+  const result = await service.recoverProviderCreateIntent(
+    { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] },
+    "sale-retry",
+  );
+
+  assert.equal(result.recoveryResult.recovery, "CONFIRMED_PROVIDER_ABSENCE");
+  assert.equal(calls.some((call) => call.method === "recoverProviderCreateIntent"), true);
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "OP_FE_PROVIDER_RECOVERY");
+  assert.ok(String(auditEvents[0].action).length <= 50);
+});
+
+test("operational detail exposes backend-owned provider-create recovery capability", async () => {
+  const { service } = createService();
+
+  const result = await service.detail(
+    { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] },
+    "sale-retry",
+  );
+
+  assert.equal(result.electronicBilling.retryability.canRecoverProviderCreateIntent, true);
 });

@@ -20,6 +20,8 @@ type TenantBrandingConfig = {
     md?: string;
     lg?: string;
   };
+  electronicBillingEnabled?: boolean;
+  electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
 };
 
 export type TenantDetailsInput = {
@@ -165,9 +167,15 @@ export class TenantsService {
   }
 
   async updateConfig(tenantId: string, config: TenantBrandingConfig) {
+    const normalizedConfig: TenantBrandingConfig = {
+      ...config,
+      electronicBillingEnabled: config.electronicBillingEnabled !== false,
+      electronicBillingMode:
+        config.electronicBillingMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
+    };
     const result = await this.db.query(
       "UPDATE tenants SET config = $2 WHERE id = $1 RETURNING id, config",
-      [tenantId, config]
+      [tenantId, normalizedConfig]
     );
     return result.rows[0] ?? null;
   }

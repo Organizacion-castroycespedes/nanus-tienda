@@ -53,6 +53,8 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
     documentCount: number;
     retryability?: {
       canRetry: boolean;
+      canRecoverProviderCreateIntent: boolean;
+      canRecoverExistingProvider?: boolean;
       retryClass: string;
       decision: string;
       reasonCode: string;
@@ -69,6 +71,14 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
     disposition: string;
     reasonCode: string;
     requiredAction: string;
+    status: string | null;
+    processingStage: string | null;
+    safeUserMessage: string;
+  };
+  recoveryResult?: {
+    allowed: boolean;
+    recovery: "CONFIRMED_PROVIDER_ABSENCE" | "EXISTING_PROVIDER_RESUMED";
+    resultCode: "REMOTE_FOUND_RECONCILED" | "REMOTE_NOT_FOUND_RECOVERED" | "EXISTING_PROVIDER_RECONCILED";
     status: string | null;
     processingStage: string | null;
     safeUserMessage: string;

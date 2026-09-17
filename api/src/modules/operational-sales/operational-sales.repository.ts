@@ -72,6 +72,7 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
     documentCount: number;
     retryability?: {
       canRetry: boolean;
+      canRecoverProviderCreateIntent: boolean;
       retryClass: string;
       decision: string;
       reasonCode: string;

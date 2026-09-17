@@ -19,6 +19,7 @@ import { MENU_KEYS } from "../../common/constants/menu-keys";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/guards/permissions.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
+import { AccessControlService } from "../../common/services/access-control.service";
 import {
   TenantsService,
   type TenantDetailsInput,
@@ -36,17 +37,18 @@ type AuthRequest = Request & {
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class TenantsController {
   constructor(
-    @Inject(TenantsService) private readonly tenantsService: TenantsService
+    @Inject(TenantsService) private readonly tenantsService: TenantsService,
+    @Inject(AccessControlService) private readonly accessControl: AccessControlService,
   ) {}
 
-  private ensureTenantScope(request: AuthRequest, tenantId: string) {
-    const roles = Array.isArray(request.user?.roles) ? request.user.roles : [];
-    if (roles.includes("SUPER_ADMIN")) {
-      return;
-    }
-    if (!request.user?.tenantId || request.user.tenantId !== tenantId) {
-      throw new ForbiddenException("Tenant invalido");
-    }
+  private async resolveTenantRoute(request: AuthRequest, tenant: string) {
+    return this.accessControl.resolveTenantIdFromRoute(
+      {
+        tenantId: request.user?.tenantId,
+        roles: request.user?.roles,
+      },
+      tenant,
+    );
   }
 
   @Get()
@@ -84,43 +86,43 @@ export class TenantsController {
   }
 
   @Get(":id/config")
-  getConfig(@Param("id") tenantId: string, @Req() request: AuthRequest) {
-    this.ensureTenantScope(request, tenantId);
+  async getConfig(@Param("id") tenant: string, @Req() request: AuthRequest) {
+    const tenantId = await this.resolveTenantRoute(request, tenant);
     return this.tenantsService.getConfig(tenantId);
   }
 
   @Put(":id/config")
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "WRITE" })
-  updateConfig(
-    @Param("id") tenantId: string,
+  async updateConfig(
+    @Param("id") tenant: string,
     @Body() body: { config: unknown },
     @Req() request: AuthRequest
   ) {
-    this.ensureTenantScope(request, tenantId);
+    const tenantId = await this.resolveTenantRoute(request, tenant);
     return this.tenantsService.updateConfig(tenantId, body?.config ?? {});
   }
 
   @Get(":id/details")
-  getDetails(@Param("id") tenantId: string, @Req() request: AuthRequest) {
-    this.ensureTenantScope(request, tenantId);
+  async getDetails(@Param("id") tenant: string, @Req() request: AuthRequest) {
+    const tenantId = await this.resolveTenantRoute(request, tenant);
     return this.tenantsService.getDetails(tenantId);
   }
 
   @Put(":id/details")
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "WRITE" })
-  upsertDetails(
-    @Param("id") tenantId: string,
+  async upsertDetails(
+    @Param("id") tenant: string,
     @Body() body: TenantDetailsInput,
     @Req() request: AuthRequest
   ) {
-    this.ensureTenantScope(request, tenantId);
+    const tenantId = await this.resolveTenantRoute(request, tenant);
     return this.tenantsService.upsertDetails(tenantId, body);
   }
 
   @Delete(":id/details")
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_GENERAL, level: "WRITE" })
-  deleteDetails(@Param("id") tenantId: string, @Req() request: AuthRequest) {
-    this.ensureTenantScope(request, tenantId);
+  async deleteDetails(@Param("id") tenant: string, @Req() request: AuthRequest) {
+    const tenantId = await this.resolveTenantRoute(request, tenant);
     return this.tenantsService.deleteDetails(tenantId);
   }
 }
