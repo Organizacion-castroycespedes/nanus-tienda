@@ -40,6 +40,9 @@ test("direct report ticket copies canonical values without recalculation", () =>
   assert.equal(result.tenantId, "tenant-1");
   assert.equal(result.branchId, "branch-1");
   assert.equal(result.total, 40000);
+  assert.equal(result.documentNumber, undefined);
+  assert.equal(result.saleNumber, undefined);
+  assert.equal(result.customerName, "Cliente");
   assert.equal(result.paid, 40000);
   assert.equal(result.items?.[0]?.total, 40000);
   assert.deepEqual(result.taxLines, [{ label: "IVA 19%", amount: 7600 }]);

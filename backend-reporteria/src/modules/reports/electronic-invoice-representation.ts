@@ -18,6 +18,7 @@ export const buildElectronicInvoiceRepresentation = (
   return {
     documentType: "ELECTRONIC_INVOICE_REPRESENTATION",
     status: ACCEPTED_STATUS,
+    logo: input.logo ?? null,
     issuer: input.issuer,
     customer: input.customer,
     invoice: input.invoice,

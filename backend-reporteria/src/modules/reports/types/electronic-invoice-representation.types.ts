@@ -12,11 +12,16 @@ export type ElectronicInvoiceParty = {
   name: string;
   identificationType: string | null;
   identificationNumber: string | null;
+  verificationDigit?: string | null;
   address: string | null;
   country: string | null;
   department: string | null;
   municipality: string | null;
+  phone?: string | null;
+  email?: string | null;
 };
+
+export type FiscalIssuerSnapshot = ElectronicInvoiceParty;
 
 export type ElectronicInvoiceItem = {
   productName: string;
@@ -31,6 +36,7 @@ export type ElectronicInvoiceItem = {
 export type ElectronicInvoiceRepresentation = {
   documentType: "ELECTRONIC_INVOICE_REPRESENTATION";
   status: "ACCEPTED";
+  logo?: string | null;
   issuer: ElectronicInvoiceParty;
   customer: ElectronicInvoiceParty;
   invoice: {
@@ -42,11 +48,13 @@ export type ElectronicInvoiceRepresentation = {
     providerStatusMessage: string | null;
     trackingId: string | null;
     cufe: string | null;
+    qrPayload?: string | null;
   };
-  sale: {
-    saleId: string;
-    items: ElectronicInvoiceItem[];
-    paymentMethod: string;
+    sale: {
+      saleId: string;
+      items: ElectronicInvoiceItem[];
+      paymentMethod: string;
+      paymentBreakdown?: Array<{ method: string; amount: number }>;
     subtotal: number;
     discounts: number;
     taxes: number;
@@ -79,6 +87,7 @@ export type ElectronicInvoiceReadModel = {
     taxRegime: string | null;
     fiscalResponsibilityCodes: string[];
   } | null;
+  fiscalIssuerSnapshot?: FiscalIssuerSnapshot | null;
   taxLines?: Array<{
     type: string;
     code: string | null;

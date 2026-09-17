@@ -121,8 +121,33 @@ export type PosSaleTicketDataset = {
   } | null;
 };
 
+export type PrintableCompanyHeader = {
+  legalName: string | null;
+  nit: string | null;
+  dv: string | null;
+  taxResponsibilities: string | null;
+  regime: string | null;
+  vatResponsibility: string | null;
+  address: string | null;
+  city: string | null;
+  department: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  logo: string | null;
+  branchName: string | null;
+  branchAddress: string | null;
+  branchCity: string | null;
+  branchDepartment: string | null;
+  branchCountry: string | null;
+  branchPhone: string | null;
+  branchEmail: string | null;
+};
+
 export type PosSaleTicketPrintDataset = {
   tenantId: string;
+  company: PrintableCompanyHeader;
   ticket: PosSaleTicketDataset;
 };
 

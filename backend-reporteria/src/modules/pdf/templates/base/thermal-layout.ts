@@ -4,6 +4,7 @@ import type {
   TableCell,
   TDocumentDefinitions,
 } from "pdfmake/interfaces";
+import QRCode from "qrcode";
 
 type MetadataRow = {
   label: string;
@@ -18,10 +19,12 @@ type TotalsRow = {
 type ThermalLayoutOptions = {
   title: string;
   subtitle?: string | null;
+  logo?: string | null;
   metadata?: MetadataRow[];
   sections?: Content[];
   totals?: TotalsRow[];
   footerText?: string;
+  qrPayload?: string | null;
 };
 
 const pointsPerMillimeter = 72 / 25.4;
@@ -43,6 +46,8 @@ export const THERMAL_80MM_LAYOUT = {
   metadataLabelColumnWidthPt: 48,
 } as const;
 
+export const THERMAL_QR_MAX_WIDTH_PT = 40 * pointsPerMillimeter;
+
 const thermalSoftBreakInterval = 16;
 
 /**
@@ -61,6 +66,10 @@ export const addThermalSoftBreaks = (value: string) =>
           )
     )
     .join("");
+
+/** pdfmake fallback fonts do not encode zero-width spaces. */
+export const addPdfSoftBreaks = (value: string) =>
+  addThermalSoftBreaks(value).replace(/\u200B/g, "\n");
 
 export const buildThermalDivider = (): Content => ({
   margin: [0, 6, 0, 6],
@@ -99,7 +108,7 @@ export const buildThermalMetadata = (rows: MetadataRow[] = []): Content => ({
       (row) =>
         [
           { text: `${row.label}:`, style: "metadataLabel" },
-          { text: addThermalSoftBreaks(row.value), style: "metadataValue" },
+          { text: addPdfSoftBreaks(row.value), style: "metadataValue" },
         ] as TableCell[]
     ),
   },
@@ -126,6 +135,42 @@ export const buildThermalFooter = (text: string): Content => ({
   alignment: "center",
   style: "footer",
 });
+
+export const buildThermalQr = (payload: string): Content => {
+  const qr = QRCode.create(payload, { errorCorrectionLevel: "M" });
+  const moduleCount = qr.modules.size;
+  const quiet = 4;
+  // Keep the receipt QR compact. With the current 80 mm PDF width this is
+  // roughly 35-40 mm, including the quiet zone, instead of filling the page.
+  const cell = Math.max(
+    1,
+    Math.floor(THERMAL_QR_MAX_WIDTH_PT / (moduleCount + quiet * 2))
+  );
+  const size = (moduleCount + quiet * 2) * cell;
+  const rects: Array<{ type: "rect"; x: number; y: number; w: number; h: number; color: string }> = [];
+  for (let y = 0; y < moduleCount; y += 1) {
+    for (let x = 0; x < moduleCount; x += 1) {
+      if (qr.modules.get(x, y)) {
+        rects.push({
+          type: "rect",
+          x: (x + quiet) * cell,
+          y: (y + quiet) * cell,
+          w: cell,
+          h: cell,
+          color: "#000000",
+        });
+      }
+    }
+  }
+  return {
+    canvas: [
+      { type: "rect", x: 0, y: 0, w: size, h: size, color: "#ffffff" },
+      ...rects,
+    ],
+    alignment: "center",
+    margin: [0, 8, 0, 4],
+  };
+};
 
 export const thermalStyles: StyleDictionary = {
   title: {
@@ -181,6 +226,9 @@ export const buildThermalDocument = (
     THERMAL_80MM_LAYOUT.safeVerticalMarginPt,
   ],
   content: [
+    ...(options.logo && /^data:image\/(?:png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(options.logo)
+      ? [{ image: options.logo, width: 96, alignment: "center" as const, margin: [0, 0, 0, 4] as [number, number, number, number] }]
+      : []),
     buildThermalHeader(options.title, options.subtitle),
     ...(options.metadata && options.metadata.length > 0
       ? [buildThermalDivider(), buildThermalMetadata(options.metadata)]
@@ -192,6 +240,7 @@ export const buildThermalDocument = (
     ...(options.totals && options.totals.length > 0
       ? [buildThermalDivider(), buildThermalTotals(options.totals)]
       : []),
+    ...(options.qrPayload ? [buildThermalQr(options.qrPayload)] : []),
     buildThermalFooter(
       options.footerText ?? "Documento generado por Manus Tienda."
     ),

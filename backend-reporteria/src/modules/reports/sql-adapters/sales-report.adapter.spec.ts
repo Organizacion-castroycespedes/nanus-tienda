@@ -120,6 +120,18 @@ test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branc
             providerStatusMessage: "Aceptado",
             trackingId: "track-1",
             representationAvailable: true,
+            fiscalIssuerSnapshot: {
+              name: "Facturador DIAN",
+              identificationType: "NIT",
+              identificationNumber: "1045697508",
+              verificationDigit: "5",
+              address: "CL 18B 17F 24",
+              country: "CO",
+              department: "Atlántico",
+              municipality: "Barranquilla",
+              phone: "3022243805",
+              email: "fiscal@example.test",
+            },
             customerFiscalSnapshot: { name: "Cliente snapshot", fiscalResponsibilityCodes: ["O-13"] },
             taxLines: [{ type: "IVA", code: "01", rate: 19, taxableBase: "100", amount: "19" }],
             qrPayload: "https://qr.example/accepted",
@@ -140,6 +152,8 @@ test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branc
   );
 
   assert.equal(result?.representationAvailable, true);
+  assert.equal(result?.fiscalIssuerSnapshot?.identificationNumber, "1045697508");
+  assert.equal(result?.fiscalIssuerSnapshot?.verificationDigit, "5");
   assert.equal(result?.cufe, "cufe-1");
   assert.equal(result?.customerFiscalSnapshot?.name, "Cliente snapshot");
   assert.equal(result?.taxLines?.[0]?.amount, 19);
@@ -158,4 +172,39 @@ test("SalesReportAdapter.getElectronicInvoice: rejects ambiguous documents", asy
     ),
     /ambiguous electronic documents/
   );
+});
+
+test("SalesReportAdapter.getPrintableCompany: usa razon_social y branding, con fallback controlado", async () => {
+  const adapter = new SalesReportAdapter({ executeFunction: async () => null } as never, {
+    query: async () => ({ rows: [{
+      tenantName: "Tenant Principal",
+      config: { logo: "data:image/png;base64,AAA" },
+      legalName: "Razón Social S.A.S.",
+      nit: "900123456",
+      dv: "7",
+      taxResponsibilities: "O-13",
+      regime: "No responsable",
+      vatResponsibility: "NOT_RESPONSIBLE",
+      address: "Calle 1",
+      city: "Bogotá",
+      department: "Cundinamarca",
+      country: "Colombia",
+      phone: "3000000000",
+      email: "facturacion@example.test",
+      website: null,
+      branchName: "Principal",
+      branchAddress: "Calle 1",
+      branchCity: "Bogotá",
+      branchDepartment: "Cundinamarca",
+      branchCountry: "Colombia",
+      branchPhone: null,
+      branchEmail: null,
+    }] }),
+  } as never);
+  const result = await adapter.getPrintableCompany({
+    userId: "user-1", role: "USER", tenantId: "tenant-a", branchId: "branch-a",
+  });
+  assert.equal(result.legalName, "Razón Social S.A.S.");
+  assert.equal(result.logo, "data:image/png;base64,AAA");
+  assert.equal(result.branchName, "Principal");
 });
