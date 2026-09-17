@@ -479,3 +479,17 @@ export type CreatePaymentPayload = {
   allowOverpayment?: boolean;
   allocations?: CreatePaymentAllocationPayload[];
 };
+
+export type CreateDocumentPaymentPayload = {
+  operationKey?: string;
+  branchId: string;
+  cashSessionId: string;
+  referenceType: "PURCHASE" | "SALES_ORDER";
+  referenceId: string;
+  payments: Array<{
+    paymentMethodId: string;
+    amount: number;
+    referenceNumber?: string;
+    notes?: string;
+  }>;
+};

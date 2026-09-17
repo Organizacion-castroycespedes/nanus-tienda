@@ -56,12 +56,20 @@ export type PosCartContext = {
   posSessionId: string | null;
 };
 
+export type PosSaleAttempt = {
+  attemptId: string;
+  startedAt: string;
+};
+
+export type PosSaleStatus = "DRAFT" | "SUBMITTING" | "UNKNOWN" | "CONFIRMED";
+
 export type PosCartState = PosCartContext & {
   contextKey: string | null;
   items: PosCartItem[];
   selectedCustomerId: string | null;
   payments: PaymentDraft[];
-  saleStatus: "DRAFT" | "CONFIRMED";
+  saleStatus: PosSaleStatus;
+  saleAttempt: PosSaleAttempt | null;
 };
 
 export const POS_CART_STORAGE_PREFIX = "pos-cart:";
@@ -83,6 +91,7 @@ const buildEmptySaleState = () => ({
   selectedCustomerId: null as string | null,
   payments: buildDefaultPayments(),
   saleStatus: "DRAFT" as const,
+  saleAttempt: null as PosSaleAttempt | null,
 });
 
 export const buildPosCartStorageKey = (context: PosCartContext) => {
@@ -140,13 +149,28 @@ const normalizePersistedPosCartState = (value: unknown) => {
           typeof payment.reference === "string"
       )
     : [];
+  const persistedAttempt = candidate.saleAttempt;
+  const saleAttempt =
+    persistedAttempt &&
+    typeof persistedAttempt === "object" &&
+    typeof persistedAttempt.attemptId === "string" &&
+    typeof persistedAttempt.startedAt === "string"
+      ? persistedAttempt
+      : null;
+  const saleStatus: PosSaleStatus =
+    candidate.saleStatus === "CONFIRMED"
+      ? "CONFIRMED"
+      : candidate.saleStatus === "UNKNOWN" || candidate.saleStatus === "SUBMITTING"
+        ? "UNKNOWN"
+        : "DRAFT";
 
   return {
     items,
     selectedCustomerId:
       typeof candidate.selectedCustomerId === "string" ? candidate.selectedCustomerId : null,
     payments: payments.length > 0 ? payments : buildDefaultPayments(),
-    saleStatus: candidate.saleStatus === "CONFIRMED" ? "CONFIRMED" : "DRAFT",
+    saleStatus,
+    saleAttempt,
   };
 };
 
@@ -180,16 +204,49 @@ const posCartSlice = createSlice({
       Object.assign(state, normalizePersistedPosCartState(action.payload.snapshot));
     },
     setCartItems(state, action: PayloadAction<PosCartItem[]>) {
+      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+        return;
+      }
       state.items = action.payload;
     },
     setSelectedCustomerId(state, action: PayloadAction<string | null>) {
+      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+        return;
+      }
       state.selectedCustomerId = action.payload;
     },
     setPayments(state, action: PayloadAction<PaymentDraft[]>) {
+      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+        return;
+      }
       state.payments = action.payload.length > 0 ? action.payload : buildDefaultPayments();
     },
-    setSaleStatus(state, action: PayloadAction<"DRAFT" | "CONFIRMED">) {
+    setSaleStatus(state, action: PayloadAction<PosSaleStatus>) {
+      if (state.saleStatus === "UNKNOWN" && action.payload === "DRAFT") {
+        return;
+      }
       state.saleStatus = action.payload;
+      if (action.payload === "DRAFT") {
+        state.saleAttempt = null;
+      }
+    },
+    beginSaleSubmission(state, action: PayloadAction<PosSaleAttempt>) {
+      state.saleStatus = "SUBMITTING";
+      state.saleAttempt = action.payload;
+    },
+    markSaleSubmissionUnknown(state) {
+      if (state.saleAttempt) {
+        state.saleStatus = "UNKNOWN";
+      }
+    },
+    allowSaleSubmissionRetry(state) {
+      state.saleStatus = "DRAFT";
+      state.saleAttempt = null;
+    },
+    allowUnknownSaleRetry(state) {
+      if (state.saleStatus === "UNKNOWN" && state.saleAttempt) {
+        state.saleStatus = "DRAFT";
+      }
     },
     resetPosCartSale(state) {
       Object.assign(state, buildEmptySaleState());
@@ -248,6 +305,7 @@ export const persistPosCartState = (state: PosCartState) => {
         selectedCustomerId: state.selectedCustomerId,
         payments: state.payments,
         saleStatus: state.saleStatus,
+        saleAttempt: state.saleAttempt,
       })
     );
   } catch {
@@ -284,8 +342,13 @@ export const {
   setSelectedCustomerId,
   setPayments,
   setSaleStatus,
+  beginSaleSubmission,
+  markSaleSubmissionUnknown,
+  allowSaleSubmissionRetry,
+  allowUnknownSaleRetry,
   resetPosCartSale,
   clearPosCartState,
 } = posCartSlice.actions;
 
 export default posCartSlice.reducer;
+

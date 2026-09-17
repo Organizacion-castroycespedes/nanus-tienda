@@ -82,6 +82,12 @@ export type CreateSaleInput = SaleCreateContext & {
   payments?: CreateSalePaymentInput[];
 };
 
+export type SaleCreationIdempotencyRecord = {
+  requestHash: string;
+  saleId: string | null;
+  created: boolean;
+};
+
 type ProductForSaleRow = {
   id: string;
   tax_id: string | null;
@@ -544,6 +550,101 @@ export class SaleRepository {
     );
 
     return result.rows[0] ?? null;
+  }
+
+  async reserveSaleCreationIdempotency(
+    tenantId: string,
+    idempotencyKey: string,
+    requestHash: string,
+    client: PoolClient,
+  ): Promise<SaleCreationIdempotencyRecord | null> {
+    const inserted = await this.query<{
+      request_hash: string;
+      sale_id: string | null;
+    }>(
+      `INSERT INTO sale_creation_idempotency (
+        tenant_id,
+        idempotency_key,
+        request_hash
+      )
+      VALUES ($1, $2, $3)
+      ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+      RETURNING request_hash, sale_id`,
+      [tenantId, idempotencyKey, requestHash],
+      client,
+    );
+
+    if (inserted.rows[0]) {
+      return {
+        requestHash: inserted.rows[0].request_hash,
+        saleId: inserted.rows[0].sale_id,
+        created: true,
+      };
+    }
+
+    const existing = await this.query<{
+      request_hash: string;
+      sale_id: string | null;
+    }>(
+      `SELECT request_hash, sale_id
+       FROM sale_creation_idempotency
+       WHERE tenant_id = $1
+         AND idempotency_key = $2
+       FOR UPDATE`,
+      [tenantId, idempotencyKey],
+      client,
+    );
+    const row = existing.rows[0];
+    return row
+      ? {
+          requestHash: row.request_hash,
+          saleId: row.sale_id,
+          created: false,
+        }
+      : null;
+  }
+
+  async completeSaleCreationIdempotency(
+    tenantId: string,
+    idempotencyKey: string,
+    saleId: string,
+    client: PoolClient,
+  ) {
+    const result = await this.query<{ id: string }>(
+      `UPDATE sale_creation_idempotency
+       SET sale_id = $3,
+           completed_at = NOW()
+       WHERE tenant_id = $1
+         AND idempotency_key = $2
+         AND sale_id IS NULL
+       RETURNING idempotency_key AS id`,
+      [tenantId, idempotencyKey, saleId],
+      client,
+    );
+    if (result.rows.length !== 1) {
+      throw new Error("sale idempotency reservation could not be completed");
+    }
+  }
+
+  async findSaleByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<SaleCreationIdempotencyRecord | null> {
+    const result = await this.db.query<{
+      request_hash: string;
+      sale_id: string | null;
+    }>(
+      `SELECT request_hash, sale_id
+       FROM sale_creation_idempotency
+       WHERE tenant_id = $1
+         AND idempotency_key = $2
+       LIMIT 1`,
+      [tenantId, idempotencyKey],
+    );
+    const row = result.rows[0];
+    return row
+      ? { requestHash: row.request_hash, saleId: row.sale_id, created: false }
+      : null;
   }
 
   async invoiceOrderWithFunction(

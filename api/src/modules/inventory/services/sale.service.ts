@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -41,6 +42,10 @@ import {
   type CreateSaleInput,
   type SaleRow,
 } from "../repositories/sale.repository";
+import {
+  buildSaleIdempotencyHash,
+  normalizeSaleIdempotencyKey,
+} from "../sale-idempotency";
 import {
   canViewAllBranches,
   hasBranchScopedRole,
@@ -2406,10 +2411,15 @@ export class SaleService {
 
   async createSale(
     data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">,
-    context: SaleContext
+    context: SaleContext,
+    idempotencyKey?: string | string[] | null,
   ) {
     const saleContext = await this.normalizeSaleContext(context);
     this.ensureSaleInput(data);
+    const normalizedIdempotencyKey = normalizeSaleIdempotencyKey(idempotencyKey);
+    const requestHash = normalizedIdempotencyKey
+      ? buildSaleIdempotencyHash(data, saleContext)
+      : undefined;
 
     const client = await this.db.getClient();
     try {
@@ -2421,6 +2431,39 @@ export class SaleService {
       );
       if (!validPosSession) {
         throw new UnauthorizedException("POS session is invalid");
+      }
+
+      if (normalizedIdempotencyKey && requestHash) {
+        const reservation = await this.repository.reserveSaleCreationIdempotency(
+          saleContext.tenantId,
+          normalizedIdempotencyKey,
+          requestHash,
+          client,
+        );
+        if (reservation && !reservation.created) {
+          if (reservation.requestHash !== requestHash) {
+            throw new ConflictException(
+              "Idempotency-Key was already used with a different sale request",
+            );
+          }
+          if (!reservation.saleId) {
+            throw new ConflictException(
+              "Sale creation requires reconciliation before another attempt",
+            );
+          }
+
+          await client.query("COMMIT");
+          return this.getSaleById(reservation.saleId, {
+            roles: saleContext.roles,
+            userId: saleContext.userId,
+            tenantId: saleContext.tenantId,
+            branchId: saleContext.branchId,
+            terminalId: saleContext.terminalId,
+          });
+        }
+        if (!reservation) {
+          throw new ConflictException("Sale idempotency reservation was not found");
+        }
       }
 
       const validCustomer = await this.repository.validateCustomer(
@@ -2526,6 +2569,15 @@ export class SaleService {
         );
       }
 
+      if (normalizedIdempotencyKey) {
+        await this.repository.completeSaleCreationIdempotency(
+          saleContext.tenantId,
+          normalizedIdempotencyKey,
+          saleRow.id,
+          client,
+        );
+      }
+
       await client.query("COMMIT");
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
@@ -2536,13 +2588,41 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.getSaleById(saleRow.id, saleContext.tenantId);
+      return this.getSaleById(saleRow.id, saleContext);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  async getSaleByIdempotencyKey(
+    idempotencyKey: string | string[] | null | undefined,
+    actor: BranchScopedActor,
+  ) {
+    const normalizedIdempotencyKey = normalizeSaleIdempotencyKey(idempotencyKey);
+    if (!normalizedIdempotencyKey) {
+      throw new BadRequestException("Idempotency-Key is required");
+    }
+    if (!actor.tenantId) {
+      throw new UnauthorizedException("Tenant requerido");
+    }
+
+    const reservation = await this.repository.findSaleByIdempotencyKey(
+      actor.tenantId,
+      normalizedIdempotencyKey,
+    );
+    if (!reservation) {
+      throw new NotFoundException("sale idempotency key not found");
+    }
+    if (!reservation.saleId) {
+      throw new ConflictException(
+        "Sale creation requires reconciliation before another attempt",
+      );
+    }
+
+    return this.getSaleById(reservation.saleId, actor);
   }
 
   async createSaleFromOrderDelivery(

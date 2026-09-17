@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { createHash, randomUUID } from "node:crypto";
 import { plainToInstance } from "class-transformer";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
@@ -22,6 +24,7 @@ import {
 } from "../entities/payment.entity";
 import { PaymentMethodsRepository } from "../payment-methods/payment-methods.repository";
 import { CreatePaymentDto } from "./dto/create-payment.dto";
+import { CreateDocumentPaymentDto } from "./dto/create-document-payment.dto";
 import {
   PaymentAllocationResponseDto,
   PaymentResponseDto,
@@ -95,9 +98,10 @@ export class PaymentsService {
   private async assertBranchScope(
     actor: FinanceActor,
     tenantId: string,
-    branchId: string
+    branchId: string,
+    client?: PoolClient,
   ): Promise<FinanceBranchRecord> {
-    const branch = await this.accessRepository.findBranchById(branchId, tenantId);
+    const branch = await this.accessRepository.findBranchById(branchId, tenantId, client);
     if (!branch) {
       throw new BadRequestException("Sucursal invalida");
     }
@@ -111,7 +115,8 @@ export class PaymentsService {
     const allowed = await this.accessRepository.userHasBranchAccess(
       actor.userId,
       tenantId,
-      branchId
+      branchId,
+      client,
     );
     if (!allowed) {
       throw new ForbiddenException("No autorizado para esta sucursal");
@@ -134,8 +139,8 @@ export class PaymentsService {
     return branchIds;
   }
 
-  private async assertActiveUser(actor: FinanceActor, tenantId: string) {
-    const user = await this.accessRepository.findUserById(actor.userId, tenantId);
+  private async assertActiveUser(actor: FinanceActor, tenantId: string, client?: PoolClient) {
+    const user = await this.accessRepository.findUserById(actor.userId, tenantId, client);
     if (!user || user.estado !== "ACTIVE") {
       throw new ForbiddenException("Usuario no autorizado");
     }
@@ -193,10 +198,10 @@ export class PaymentsService {
     const balance = document.balance === null ? null : Number(document.balance);
 
     if (balance !== null) {
-      return Math.max(0, Math.min(balance, total - alreadyAllocated));
+      return Math.max(0, Math.min(balance, Number((total - alreadyAllocated).toFixed(2))));
     }
 
-    return Math.max(0, total - alreadyAllocated);
+    return Math.max(0, Number((total - alreadyAllocated).toFixed(2)));
   }
 
   private mapAllocation(record: PaymentAllocationRecord) {
@@ -408,11 +413,27 @@ export class PaymentsService {
   private async createInternal(
     payload: CreatePaymentDto,
     actor: FinanceActor,
-    existingClient?: PoolClient
+    existingClient?: PoolClient,
+    deferAudit = false,
   ) {
     const tenantId = this.resolveTenantId(actor, payload.tenantId);
-    await this.assertActiveUser(actor, tenantId);
-    await this.assertBranchScope(actor, tenantId, payload.branchId);
+    if ((payload.referenceType === "PURCHASE" || payload.referenceType === "PURCHASE_ORDER") && payload.direction !== "OUT") {
+      throw new BadRequestException("Los pagos de compra deben usar direccion OUT");
+    }
+    if (payload.referenceType === "SALES_ORDER" && payload.direction !== "IN") {
+      throw new BadRequestException("Los cobros de pedido deben usar direccion IN");
+    }
+    if (existingClient) {
+      const references = [
+        { referenceType: payload.referenceType, referenceId: payload.referenceId },
+        ...(payload.allocations ?? []),
+      ].sort((a, b) => `${a.referenceType}:${a.referenceId}`.localeCompare(`${b.referenceType}:${b.referenceId}`));
+      for (const reference of references) {
+        await this.repository.lockDocument(existingClient, tenantId, reference.referenceType, reference.referenceId);
+      }
+    }
+    await this.assertActiveUser(actor, tenantId, existingClient);
+    await this.assertBranchScope(actor, tenantId, payload.branchId, existingClient);
 
     const paymentMethod = await this.paymentMethodsRepository.findById(
       payload.paymentMethodId,
@@ -604,7 +625,7 @@ export class PaymentsService {
 
       const response = this.mapPayment(created, createdAllocations);
 
-      this.auditService.logEvent({
+      if (!deferAudit) this.auditService.logEvent({
         tenantId,
         userId: actor.userId,
         module: "finance",
@@ -634,7 +655,145 @@ export class PaymentsService {
     if (!this.canOperatePayments(actor)) {
       throw new ForbiddenException("No autorizado");
     }
-    return this.createInternal(payload, actor);
+    const hasDocument = [payload, ...(payload.allocations ?? [])].some(
+      (item) => ["PURCHASE", "PURCHASE_ORDER", "SALES_ORDER"].includes(item.referenceType),
+    );
+    if (!hasDocument) return this.createInternal(payload, actor);
+    // Legacy document writers acquire the same lock before reading balance.
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const response = await this.createInternal(payload, actor, client, true);
+      await client.query("COMMIT");
+      this.logCommittedDocumentPayments(actor, [response]);
+      return response;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private buildDocumentPaymentFingerprint(payload: CreateDocumentPaymentDto) {
+    const lines = [...payload.payments]
+      .map((line) => ({
+        paymentMethodId: line.paymentMethodId,
+        amount: Number(line.amount).toFixed(2),
+        referenceNumber: this.normalizeOptional(line.referenceNumber) ?? null,
+        notes: this.normalizeOptional(line.notes) ?? null,
+      }))
+      .sort((a, b) => {
+        const left = JSON.stringify(a);
+        const right = JSON.stringify(b);
+        return left < right ? -1 : left > right ? 1 : 0;
+      });
+    const canonical = JSON.stringify({
+      branchId: payload.branchId,
+      cashSessionId: payload.cashSessionId,
+      referenceType: payload.referenceType,
+      referenceId: payload.referenceId,
+      payments: lines,
+    });
+    return createHash("sha256").update(canonical, "utf8").digest("hex");
+  }
+
+  private logCommittedDocumentPayments(actor: FinanceActor, payments: PaymentResponseDto[]) {
+    for (const payment of payments) {
+      this.auditService.logEvent({
+        tenantId: payment.tenantId, userId: actor.userId, module: "finance",
+        entity: "payments", entityId: payment.id, action: "PAYMENT_CREATED", after: payment,
+      });
+    }
+  }
+
+  async createDocument(payload: CreateDocumentPaymentDto, actor: FinanceActor) {
+    if (!this.canOperatePayments(actor)) throw new ForbiddenException("No autorizado");
+    if (!["PURCHASE", "SALES_ORDER"].includes(payload.referenceType)) {
+      throw new BadRequestException("Documento no soportado");
+    }
+    if (!payload.payments?.length || payload.payments.length > 50 || payload.payments.some(
+      (line) => !Number.isFinite(line.amount) || line.amount <= 0 ||
+        line.amount > 999999999999.99 || Number(line.amount.toFixed(2)) !== line.amount,
+    )) throw new BadRequestException("Los pagos deben tener montos positivos con maximo dos decimales");
+
+    const tenantId = this.resolveTenantId(actor, payload.tenantId);
+    const operationKey = payload.operationKey ?? randomUUID();
+    const requestFingerprint = this.buildDocumentPaymentFingerprint(payload);
+    const client = await this.db.getClient();
+    let responses: PaymentResponseDto[];
+    try {
+      await client.query("BEGIN");
+      const operation = await this.repository.claimDocumentPaymentOperation(client, {
+        tenantId,
+        operationKey,
+        requestFingerprint,
+        referenceType: payload.referenceType,
+        referenceId: payload.referenceId,
+      });
+      if (!operation.record) {
+        throw new BadRequestException("No se pudo registrar la operacion de pago");
+      }
+      if (operation.record.request_fingerprint !== requestFingerprint) {
+        throw new ConflictException("La clave de operacion ya fue usada con otros datos");
+      }
+      if (!operation.created) {
+        if (operation.record.status !== "COMPLETED" || !operation.record.payment_ids?.length) {
+          throw new ConflictException("La operacion de pago esta incompleta y requiere revision");
+        }
+        const records = await this.repository.listByIds(
+          operation.record.payment_ids,
+          tenantId,
+          client
+        );
+        const allocations = await this.repository.listAllocationsByPaymentIds(
+          operation.record.payment_ids,
+          client
+        );
+        responses = records.map((record) => this.mapPayment(record, allocations));
+        await client.query("COMMIT");
+        return responses;
+      }
+      await this.repository.lockDocument(client, tenantId, payload.referenceType, payload.referenceId);
+      const document = await this.resolveReferenceDocument(tenantId, payload.referenceType, payload.referenceId, client);
+      if (!document.party_id) throw new BadRequestException("El documento no tiene tercero asociado");
+      if (!await this.repository.fitsDocumentBalance(client, tenantId, payload.referenceType,
+        payload.referenceId, document, payload.payments.map((line) => line.amount))) {
+        throw new BadRequestException("El pago excede el saldo actual del documento. Actualiza el documento.");
+      }
+      if (!payload.cashSessionId) throw new BadRequestException("Debes tener una caja abierta para registrar pagos");
+      await this.repository.lockPaymentCashSession(client, tenantId, payload.cashSessionId);
+      responses = [];
+      for (const line of payload.payments) {
+        const method = await this.paymentMethodsRepository.findById(line.paymentMethodId, tenantId, client);
+        if (!method?.active) throw new BadRequestException("Metodo de pago invalido o inactivo");
+        if (method.requires_reference && !line.referenceNumber?.trim()) {
+          throw new BadRequestException("El metodo de pago requiere referencia");
+        }
+        responses.push(await this.createInternal({
+          tenantId, branchId: payload.branchId, cashSessionId: payload.cashSessionId,
+          referenceType: payload.referenceType, referenceId: payload.referenceId,
+          direction: payload.referenceType === "PURCHASE" ? "OUT" : "IN", status: "COMPLETED",
+          paymentMethodId: line.paymentMethodId, amount: line.amount,
+          referenceNumber: line.referenceNumber, notes: line.notes,
+          allocations: [{ referenceType: payload.referenceType, referenceId: payload.referenceId, allocatedAmount: line.amount }],
+        }, actor, client, true));
+      }
+      await this.repository.completeDocumentPaymentOperation(
+        client,
+        tenantId,
+        operationKey,
+        responses.map((payment) => payment.id)
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    this.logCommittedDocumentPayments(actor, responses);
+    return responses;
   }
 
   async getById(paymentId: string, actor: FinanceActor) {

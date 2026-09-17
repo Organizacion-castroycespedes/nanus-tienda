@@ -9,12 +9,12 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 ## Alcance
 
 - Carga `MANUS_WEB_URL`.
-- Usa `http://localhost:3000` por defecto en desarrollo.
+- Usa `https://www.apptiendamanus.space/login` como fallback cuando no se configura una URL.
 - Puede resolver ruta inicial con `MANUS_START_PATH`.
 - Puede leer contexto local reservado de tenant, sucursal y terminal.
-- Mantiene Electron online-only.
-- Prioriza Windows para la primera validacion.
-- Puede generar un empaquetado Windows local de validacion.
+- Mantiene Electron online/static: el shell carga la URL web configurada y conserva su recuperacion del renderer.
+- Empaqueta el mismo shell para Windows, Linux y macOS.
+- Mantiene el agente de perifericos como proceso separado. No se incluye en los paquetes Electron.
 - Aplica baseline basico de seguridad Electron.
 
 ## Fuera de alcance
@@ -29,7 +29,7 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 - SQL.
 - Permisos.
 - Perifericos.
-- Instaladores productivos.
+- Instaladores productivos firmados.
 - Firma.
 - Auto-update.
 - Impresion nativa.
@@ -60,18 +60,18 @@ cd ..\desktop\electron
 npm run dev
 ```
 
-Por defecto Electron carga:
+Para desarrollo local, configurar de forma explicita:
 
 ```text
-http://localhost:3000
+MANUS_WEB_URL=http://localhost:3000
 ```
 
 ## Variables de entorno
 
 | Variable | Default | Uso |
 | --- | --- | --- |
-| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `http://localhost:3000` | URL base de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
-| `NEXT_PUBLIC_MANUS_WEB_URL` | `http://localhost:3000` | URL pública alternativa, útil cuando se comparte la configuración de Next.js. Se usa si no existe `MANUS_WEB_URL`. |
+| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `https://www.apptiendamanus.space/login` | URL de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
+| `NEXT_PUBLIC_MANUS_WEB_URL` | ninguno | URL pública alternativa, útil cuando se comparte la configuración de Next.js. Se usa si no existe `MANUS_WEB_URL`. |
 | `MANUS_START_PATH` | ninguno | Ruta inicial. Debe empezar con un solo `/`. Tiene prioridad sobre `MANUS_TENANT_ID`. |
 | `MANUS_TENANT_ID` | ninguno | Tenant inicial opcional. Si no hay `MANUS_START_PATH`, construye `/<tenantId>`. |
 | `MANUS_BRANCH_ID` | ninguno | Sucursal local reservada. No altera la URL en esta fase. |
@@ -134,11 +134,22 @@ npm test
 npm run typecheck
 npm run pack:win
 npm run dist:win
+npm run dist:linux
+npm run dist:mac
 ```
 
-## Empaquetado Windows local
+## Empaquetado por sistema operativo
 
-Esta fase usa `electron-builder` solo para validacion local Windows. No hay firma, certificados, auto-update ni publicacion automatica de releases.
+Los comandos generan artefactos sin firma para validacion. No publican releases ni hacen deploy.
+
+| Sistema | Comando | Artefactos | Runner requerido |
+| --- | --- | --- | --- |
+| Windows | `npm run pack:win` | directorio `win-unpacked` | Windows recomendado |
+| Windows | `npm run dist:win` | ejecutable portable `.exe` | Windows |
+| Linux | `npm run dist:linux` | `.AppImage` y `.deb` | Linux |
+| macOS | `npm run dist:mac` | `.dmg` y `.zip` | macOS |
+
+MSI es un formato de instalacion exclusivo de Windows. Este proyecto no configura MSI. Linux usa AppImage/DEB y macOS usa DMG/ZIP.
 
 Generar build desempaquetado:
 
@@ -166,7 +177,25 @@ $env:MANUS_START_PATH="/login"
 .\release\win-unpacked\Manus POS.exe
 ```
 
-Los artefactos de `release/`, `dist/` y `out/` no se versionan.
+Los artefactos de `release/`, `dist/` y `out/` no se versionan. El workflow `build-desktop.yml` conserva temporalmente los paquetes unsigned como artefactos de CI y no los despliega.
+
+## URL web y agente local
+
+El shell no contiene una copia del frontend. En desarrollo toma `MANUS_WEB_URL`, `NEXT_PUBLIC_MANUS_WEB_URL` y `MANUS_START_PATH`. En un paquete usa `resources/manus-shell.config.json`, salvo overrides permitidos por el runtime existente. La ruta `/login`, el allowlist HTTPS y el fallback/recovery no cambian por sistema operativo.
+
+El acceso al agente usa `http://127.0.0.1:4050`. El agente y sus instaladores viven en `backend-perifericos/` y tienen limites propios por OS. Los comandos `dist:*` de Electron no compilan ni incorporan ese backend.
+
+## Android
+
+No hay proyecto Android, Capacitor, React Native ni wrapper movil en el repositorio. Electron y `electron-builder` no generan APK/AAB. Por eso Android queda bloqueado y no se publica un paquete falso.
+
+El siguiente paso, si se aprueba Android como producto, es elegir un wrapper movil, definir navegacion segura hacia la web, ciclo de sesion, permisos y estrategia para perifericos; despues se agrega un proyecto Android y su toolchain/keystore por separado.
+
+## Firma y distribucion
+
+- Windows: el `.exe` de CI no esta firmado. La firma requiere certificado de code signing y configuracion segura en CI.
+- macOS: DMG/ZIP de CI quedan sin firma ni notarizacion. Una entrega publica requiere identidad Developer ID, credenciales Apple y notarizacion en runner macOS.
+- Linux: AppImage/DEB no incorporan firma de repositorio. La distribucion por repositorio APT requiere un flujo de firma separado.
 
 ## Seguridad base
 
@@ -187,3 +216,23 @@ Los artefactos de `release/`, `dist/` y `out/` no se versionan.
 - No integra perifericos.
 - No firma binarios.
 - No implementa auto-update.
+
+## Diagnostico de soporte
+
+La pantalla de conexion interrumpida solo indica que la carga inicial de la web fallo y reintenta la misma URL cada tres segundos. No demuestra que el API o el agente local esten disponibles y no habilita operacion offline.
+
+El agente ya expone una consulta de salud por el canal IPC `manusTerminal.getAgentHealth`. Antes de agregar datos tecnicos a la pantalla de fallback se debe definir una vista de soporte separada que:
+
+- consulte el API con un endpoint de salud estable, sin credenciales ni datos del negocio;
+- consulte la salud del agente mediante el canal existente;
+- muestre estados independientes para web, API y agente;
+- no cambie el reintento actual ni prometa continuidad de ventas sin API;
+- no exponga URLs internas, tokens, trazas ni configuracion sensible.
+
+Esta mejora queda pendiente porque incorporarla ahora cambiaria la experiencia productiva y requiere confirmar el contrato del endpoint de salud del API.
+
+## Mantenimiento de dependencias
+
+La instalacion reproducible actual informa paquetes deprecados transitivos (`inflight`, `rimraf@2`, `glob@7` y `boolean`) y un aviso de configuracion `http-proxy` de npm. No se modificaron dependencias ni lockfiles en esta correccion.
+
+El mantenimiento debe hacerse en un PR separado: identificar que dependencia directa introduce cada paquete, actualizar una familia a la vez, regenerar el lockfile con la version de Node/npm definida por el proyecto y repetir `npm run build`, `npm test` y el empaquetado de Windows. Los avisos de Browserslist pertenecen al frontend web y deben tratarse en su paquete, no desde Electron.
