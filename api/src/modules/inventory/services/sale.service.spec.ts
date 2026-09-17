@@ -301,6 +301,10 @@ class FakeCreateSaleClient {
       return { rows: [{ vat_responsibility: "RESPONSIBLE" }] as T[] };
     }
 
+    if (sql.includes("SELECT config FROM tenants")) {
+      return { rows: [{ config: {} }] as T[] };
+    }
+
     throw new Error(`Unexpected SQL in create sale test: ${sql}`);
   }
 

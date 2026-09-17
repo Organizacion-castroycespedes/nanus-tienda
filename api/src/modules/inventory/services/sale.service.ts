@@ -66,6 +66,8 @@ import {
 } from "../../integration-outbox/contracts/issuer-vat-billing-guard";
 import {
   getElectronicBillingMode,
+  resolveElectronicBillingPolicy,
+  type ElectronicBillingPolicy,
 } from "../../integration-outbox/contracts/electronic-billing-mode";
 import { StockMovementService } from "./stock-movement.service";
 import {
@@ -1281,6 +1283,17 @@ export class SaleService {
     return getElectronicBillingMode();
   }
 
+  private async getTenantElectronicBillingPolicy(
+    tenantId: string,
+    client: PoolClient,
+  ): Promise<ElectronicBillingPolicy> {
+    const result = await client.query<{ config: unknown }>(
+      "SELECT config FROM tenants WHERE id = $1",
+      [tenantId],
+    );
+    return resolveElectronicBillingPolicy(result.rows[0]?.config);
+  }
+
   private async requestElectronicBillingForSaleInTransaction(
     saleId: string,
     saleContext: SaleContext,
@@ -1301,6 +1314,14 @@ export class SaleService {
     const saleRow = saleResult.rows[0];
     if (!saleRow) {
       throw new NotFoundException("sale not found");
+    }
+
+    const policy = await this.getTenantElectronicBillingPolicy(
+      saleContext.tenantId!,
+      client,
+    );
+    if (!policy.enabled) {
+      throw new BadRequestException("electronic billing is disabled for this tenant");
     }
 
     const deterministicEventId = buildSaleCompletedForElectronicBillingEventId(
@@ -2486,7 +2507,11 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      if (getElectronicBillingMode() === "AUTOMATIC") {
+      const billingPolicy = await this.getTenantElectronicBillingPolicy(
+        saleContext.tenantId,
+        client,
+      );
+      if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           { ...saleRow, status: finalizedStatus },
@@ -2569,7 +2594,11 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      if (getElectronicBillingMode() === "AUTOMATIC") {
+      const billingPolicy = await this.getTenantElectronicBillingPolicy(
+        saleContext.tenantId,
+        client,
+      );
+      if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           saleRow,
