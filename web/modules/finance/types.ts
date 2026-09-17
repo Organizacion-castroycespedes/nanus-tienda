@@ -49,6 +49,9 @@ export type PaymentMethod = {
   requiresReference: boolean;
   allowsChange: boolean;
   active: boolean;
+  electronicBillingEnabled: boolean;
+  electronicPaymentMeansCode: "10" | "47" | "49" | null;
+  electronicPaymentMeansId: "1" | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -402,6 +405,9 @@ export type CreatePaymentMethodPayload = {
   requiresReference?: boolean;
   allowsChange?: boolean;
   active?: boolean;
+  electronicBillingEnabled?: boolean;
+  electronicPaymentMeansCode?: "10" | "47" | "49";
+  electronicPaymentMeansId?: "1";
 };
 
 export type UpdatePaymentMethodPayload = Partial<CreatePaymentMethodPayload>;

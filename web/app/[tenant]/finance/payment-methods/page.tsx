@@ -32,6 +32,9 @@ const emptyForm: CreatePaymentMethodPayload = {
   requiresReference: false,
   allowsChange: true,
   active: true,
+  electronicBillingEnabled: false,
+  electronicPaymentMeansCode: undefined,
+  electronicPaymentMeansId: undefined,
 };
 
 const PaymentMethodsPage = () => {
@@ -111,6 +114,9 @@ const PaymentMethodsPage = () => {
       requiresReference: item.requiresReference,
       allowsChange: item.allowsChange,
       active: item.active,
+      electronicBillingEnabled: item.electronicBillingEnabled,
+      electronicPaymentMeansCode: item.electronicPaymentMeansCode ?? undefined,
+      electronicPaymentMeansId: item.electronicPaymentMeansId ?? undefined,
     });
     setModalOpen(true);
   };
@@ -142,6 +148,13 @@ const PaymentMethodsPage = () => {
           requiresReference: form.requiresReference,
           allowsChange: form.allowsChange,
           active: form.active,
+          electronicBillingEnabled: form.electronicBillingEnabled,
+          electronicPaymentMeansCode: form.electronicBillingEnabled
+            ? form.electronicPaymentMeansCode
+            : undefined,
+          electronicPaymentMeansId: form.electronicBillingEnabled
+            ? "1"
+            : undefined,
         });
         setToastMessage("Metodo actualizado correctamente.");
       } else {

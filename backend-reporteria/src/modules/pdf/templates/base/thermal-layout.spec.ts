@@ -3,6 +3,7 @@ import test from "node:test";
 import { buildPosSaleTicketTemplate } from "../tickets/pos-sale-ticket.template";
 import type { PosSaleTicketDataset } from "../../../reports/types/sales-report.types";
 import {
+  addPdfSoftBreaks,
   addThermalSoftBreaks,
   buildThermalDocument,
   THERMAL_80MM_LAYOUT,
@@ -71,6 +72,10 @@ test("THERMAL_80MM adds safe breaks to long unbroken identifiers", () => {
 
   assert.match(result, /\u200B/);
   assert.equal(result.replaceAll("\u200B", ""), longSaleId);
+
+  const pdfResult = addPdfSoftBreaks(longSaleId);
+  assert.doesNotMatch(pdfResult, /\u200B/);
+  assert.equal(pdfResult.replaceAll("\n", ""), longSaleId);
 });
 
 test("POS ticket reserves item and total amount columns", () => {
@@ -105,4 +110,13 @@ test("POS ticket preserves full totals as presentation input", () => {
   const totalRow = totalsTable?.body?.find((row) => row[0]?.text === "Total");
 
   assert.equal(totalRow?.[1]?.text, "$ 40.000");
+});
+
+test("POS ticket does not contradict a paid aggregate when payment detail is absent", () => {
+  const document = buildPosSaleTicketTemplate({
+    ...ticketDataset,
+    paymentBreakdown: [],
+  });
+  assert.match(JSON.stringify(document), /Detalle de pago no disponible/);
+  assert.doesNotMatch(JSON.stringify(document), /Sin pagos registrados/);
 });

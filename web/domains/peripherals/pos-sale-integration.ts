@@ -4,6 +4,7 @@ import {
   openCashDrawer,
   printSaleTicket,
 } from "./contracts";
+import { canonicalPosSourceToSaleTicketInput } from "../../modules/reporteria/canonical-printable-document";
 import { isCashPaymentMethod } from "../../modules/shared/payments/payment-allocation.helper";
 import type {
   PeripheralOperationError,
@@ -39,6 +40,11 @@ export type PosSalePeripheralContext = {
   branchId?: string | null;
   terminalId?: string | null;
   businessName?: string | null;
+  nit?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  logo?: string | null;
+  address?: string | null;
   branchName?: string | null;
   cashier?: string | null;
   customerName?: string | null;
@@ -71,33 +77,40 @@ export const hasCashPeripheralPayment = (payments: PosSalePeripheralPayment[]) =
 export const buildSaleTicketInputFromPos = (
   context: PosSalePeripheralContext
 ): SaleTicketInput => ({
+  ...canonicalPosSourceToSaleTicketInput({
+    saleId: context.saleId,
+    saleNumber: context.saleNumber,
+    documentNumber: context.documentNumber,
+    date: context.date ?? new Date().toISOString(),
+    tenantId: context.tenantId,
+    branchId: context.branchId,
+    terminalId: context.terminalId ?? defaultTerminalId,
+    businessName: context.businessName ?? "Manus POS",
+    nit: context.nit,
+    phone: context.phone,
+    email: context.email,
+    logo: context.logo,
+    address: context.address ?? (context.branchName ? `Sucursal: ${context.branchName}` : undefined),
+    branchName: context.branchName,
+    cashier: context.cashier,
+    customerName: context.customerName ?? "Consumidor final",
+    items: context.items,
+    subtotal: context.subtotal,
+    taxes: context.taxes,
+    discounts: context.discounts,
+    total: context.total,
+    payments: context.payments.map<PeripheralTicketPayment>((payment) => ({
+      method: payment.methodName ?? payment.methodType ?? "Metodo de pago",
+      amount: payment.amount,
+    })),
+  }),
   tenantId: context.tenantId ?? undefined,
   branchId: context.branchId ?? undefined,
   terminalId: context.terminalId ?? defaultTerminalId,
   deviceId: defaultPrinterDeviceId,
-  businessName: context.businessName ?? "Manus POS",
-  address: context.branchName ? `Sucursal: ${context.branchName}` : undefined,
-  cashier: context.cashier ?? undefined,
-  customerName: context.customerName ?? "Consumidor final",
   saleId: context.saleId,
   saleNumber: context.saleNumber ?? context.saleId,
   documentNumber: context.documentNumber ?? context.saleNumber ?? context.saleId,
-  date: context.date ?? new Date().toISOString(),
-  items: context.items.map((item) => ({
-    name: item.name,
-    quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    total: item.total,
-  })),
-  subtotal: context.subtotal,
-  taxes: context.taxes,
-  discounts: context.discounts,
-  total: context.total,
-  payments: context.payments.map<PeripheralTicketPayment>((payment) => ({
-    method: payment.methodName ?? payment.methodType ?? "Metodo de pago",
-    amount: payment.amount,
-  })),
-  footer: "Gracias por su compra",
 });
 
 const isAgentOffline = (error?: PeripheralOperationError) =>

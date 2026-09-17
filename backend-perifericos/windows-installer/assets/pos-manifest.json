@@ -3,7 +3,7 @@
   "posVersion": "0.1.0",
   "executable": "Manus POS.exe",
   "shellConfig": "resources/manus-shell.config.json",
-  "payloadSize": 372231667,
+  "payloadSize": 372231841,
   "files": [
     {
       "path": "LICENSE.electron.txt",
@@ -18,7 +18,7 @@
     {
       "path": "Manus POS.exe",
       "size": 232313344,
-      "sha256": "61f4173523521af7880332e984973d0200e5c1488b16d530d1b5b4f30b886076"
+      "sha256": "81996992382b38df3ceaf29ce61f15b6eff1ec6ac28a0252d152e430b06df4d9"
     },
     {
       "path": "chrome_100_percent.pak",
@@ -347,8 +347,8 @@
     },
     {
       "path": "resources/app.asar",
-      "size": 1073339,
-      "sha256": "006a03756ec84fe8497f57e87f07c2142e142a8fdc037d2c72933c649e86548a"
+      "size": 1073513,
+      "sha256": "6eedd710da4636b4fd25166f82de4ecca969487fc18a0258353833cf21125923"
     },
     {
       "path": "resources/manus-shell.config.json",

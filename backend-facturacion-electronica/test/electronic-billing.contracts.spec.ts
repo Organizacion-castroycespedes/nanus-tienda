@@ -18,6 +18,7 @@ import {
 import {
   buildDeterministicSaleExternalReference,
   buildElectronicBillingCustomer,
+  buildElectronicBillingPayment,
   buildElectronicBillingInvoiceCommandFromSaleEvent,
 } from "../src/modules/electronic-billing/mappers/sale-completed-for-electronic-billing.mapper";
 import { FactuCoreMapper } from "../src/modules/electronic-billing/providers/factucore";
@@ -397,10 +398,18 @@ test("sale billing integration event keeps mixed payment snapshot in metadata", 
       payments: [
         {
           methodCode: "10",
+          paymentMethodId: "payment-cash",
+          paymentMethodCode: "001",
+          paymentMethodName: "Efectivo",
+          paymentMethodType: "CASH",
           amount: "700",
         },
         {
           methodCode: "20",
+          paymentMethodId: "payment-debit",
+          paymentMethodCode: "003",
+          paymentMethodName: "Debito",
+          paymentMethodType: "DIGITAL",
           amount: "490",
         },
       ],
@@ -430,6 +439,34 @@ test("sale billing integration event keeps mixed payment snapshot in metadata", 
   );
 
   assert.equal(command.payment, null);
+  assert.equal(command.payments?.length, 2);
+  assert.equal(command.payments?.[0]?.amount, "700");
+  assert.equal(command.payments?.[0]?.paymentMeansCode, null);
+  assert.equal(command.payments?.[1]?.amount, "490");
   assert.equal(Array.isArray(command.metadata?.payments), true);
   assert.equal((command.metadata?.payments as Array<unknown>).length, 2);
+  const paymentSnapshots = command.metadata?.payments as Array<Record<string, unknown>>;
+  assert.equal(paymentSnapshots[1]?.paymentMethodId, "payment-debit");
+  assert.equal(paymentSnapshots[1]?.paymentMethodCode, "003");
+  assert.equal(paymentSnapshots[1]?.paymentMethodType, "DIGITAL");
+});
+
+test("single transfer payment preserves its fiscal reference and catalog identity", () => {
+  const payment = buildElectronicBillingPayment([
+    {
+      methodCode: "002",
+      paymentMethodId: "payment-transfer",
+      paymentMethodCode: "002",
+      paymentMethodName: "Transferencias",
+      paymentMethodType: "DIGITAL",
+      requiresReference: true,
+      amount: "1190",
+      term: "IMMEDIATE",
+      reference: "TRX-123",
+    },
+  ]);
+
+  assert.equal(payment?.methodCode, "002");
+  assert.equal((payment?.metadata?.paymentBreakdown as Array<Record<string, unknown>>)[0]?.reference, "TRX-123");
+  assert.equal((payment?.metadata?.paymentBreakdown as Array<Record<string, unknown>>)[0]?.paymentMethodId, "payment-transfer");
 });

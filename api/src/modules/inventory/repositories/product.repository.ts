@@ -2,7 +2,11 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
 import type { ProductImageMimeType } from "../entities/product-category.entity";
-import { ProductEntity, type ProductProps } from "../entities/product.entity";
+import {
+  ProductEntity,
+  type ProductProps,
+  type ProductStandardIdentificationScheme,
+} from "../entities/product.entity";
 
 type ProductRow = QueryResultRow & {
   id: string;
@@ -12,6 +16,8 @@ type ProductRow = QueryResultRow & {
   name: string;
   description: string | null;
   sku: string;
+  dian_standard_item_scheme_id: ProductStandardIdentificationScheme | null;
+  dian_standard_item_code: string | null;
   price: string | number;
   cost: string | number;
   price_with_tax: string | number;
@@ -64,6 +70,7 @@ type UpdateProductData = Partial<
     | "name"
     | "description"
     | "sku"
+    | "standardIdentification"
     | "price"
     | "cost"
     | "priceWithTax"
@@ -140,6 +147,8 @@ export class ProductRepository {
     name,
     description,
     sku,
+    dian_standard_item_scheme_id,
+    dian_standard_item_code,
     price,
     cost,
     price_with_tax,
@@ -177,6 +186,13 @@ export class ProductRepository {
       name: row.name,
       description: row.description,
       sku: row.sku,
+      standardIdentification:
+        row.dian_standard_item_scheme_id && row.dian_standard_item_code
+          ? {
+              scheme: row.dian_standard_item_scheme_id,
+              code: row.dian_standard_item_code,
+            }
+          : null,
       price: Number(row.price),
       cost: Number(row.cost),
       priceWithTax: Number(row.price_with_tax),
@@ -240,6 +256,8 @@ export class ProductRepository {
         name,
         description,
         sku,
+        dian_standard_item_scheme_id,
+        dian_standard_item_code,
         price,
         cost,
         price_with_tax,
@@ -268,7 +286,7 @@ export class ProductRepository {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
         $20, $21, $22, $23, $24, $25, $26, $27, $28,
-        $29, $30, $31
+        $29, $30, $31, $32, $33
       )
       RETURNING
         ${this.selectColumns}
@@ -281,6 +299,8 @@ export class ProductRepository {
         product.name,
         product.description ?? null,
         product.sku,
+        product.standardIdentification?.scheme ?? null,
+        product.standardIdentification?.code ?? null,
         product.price,
         product.cost,
         product.priceWithTax,
@@ -419,6 +439,16 @@ export class ProductRepository {
     }
     if (data.sku !== undefined && data.sku !== null) {
       addUpdate("sku", data.sku);
+    }
+    if (data.standardIdentification !== undefined) {
+      addUpdate(
+        "dian_standard_item_scheme_id",
+        data.standardIdentification?.scheme ?? null,
+      );
+      addUpdate(
+        "dian_standard_item_code",
+        data.standardIdentification?.code ?? null,
+      );
     }
     if (data.price !== undefined && data.price !== null) {
       addUpdate("price", data.price);

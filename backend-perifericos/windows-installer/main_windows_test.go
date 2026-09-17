@@ -31,6 +31,34 @@ func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
 	}
 }
 
+func TestBuildAgentEnvironmentUsesPersistedConfigOverInheritedPeripheralValues(t *testing.T) {
+	base := []string{
+		"PATH=C:\\Windows\\System32",
+		"PERIPHERALS_MODE=MOCK",
+		"PERIPHERALS_ENABLE_REAL_ADAPTERS=false",
+		"PERIPHERALS_CONFIG_PATH=C:\\old\\config.json",
+		"PERIPHERALS_VERSION=old",
+	}
+
+	env := buildAgentEnvironment(base, `C:\ProgramData\Manus\PeripheralAgent\config\agent.config.local.json`, "0.1.1-qa.9")
+	joined := strings.Join(env, "\n")
+	if strings.Contains(joined, "PERIPHERALS_MODE=MOCK") {
+		t.Fatal("inherited MOCK mode must not reach the service child")
+	}
+	if strings.Contains(joined, "PERIPHERALS_ENABLE_REAL_ADAPTERS=false") {
+		t.Fatal("inherited adapter flag must not reach the service child")
+	}
+	if !strings.Contains(joined, "PERIPHERALS_CONFIG_PATH=C:\\ProgramData\\Manus\\PeripheralAgent\\config\\agent.config.local.json") {
+		t.Fatal("service config path must be explicit")
+	}
+	if !strings.Contains(joined, "PERIPHERALS_VERSION=0.1.1-qa.9") {
+		t.Fatal("service version must be explicit")
+	}
+	if !strings.Contains(joined, "PATH=C:\\Windows\\System32") {
+		t.Fatal("unrelated environment must be preserved")
+	}
+}
+
 func TestPOSPayloadValidRequiresCurrentPayload(t *testing.T) {
 	dir := t.TempDir()
 	current := filepath.Join(dir, "POS", "current")

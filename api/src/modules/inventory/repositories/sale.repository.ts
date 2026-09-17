@@ -132,6 +132,12 @@ type InventoryCreateSaleFunctionRow = {
 type PaymentMethodLookupRow = {
   id: string;
   tipo: string;
+  codigo: string;
+  nombre: string;
+  requires_reference: boolean;
+  electronic_billing_enabled?: boolean;
+  electronic_payment_means_code?: string | null;
+  electronic_payment_means_id?: string | null;
 };
 
 const CREATE_SALE_FUNCTION_NAMES = {
@@ -700,11 +706,13 @@ export class SaleRepository {
     client: PoolClient
   ) {
     if (paymentMethodIds.length === 0) {
-      return new Map<string, "CASH" | "CARD" | "TRANSFER" | "OTHER">();
+      return new Map<string, PaymentMethodLookupRow>();
     }
 
     const result = await this.query<PaymentMethodLookupRow>(
-      `SELECT id, tipo
+    `SELECT id, tipo, codigo, nombre, requires_reference,
+            electronic_billing_enabled, electronic_payment_means_code,
+            electronic_payment_means_id
        FROM payment_methods
        WHERE tenant_id = $1
          AND id = ANY($2::uuid[])`,
@@ -712,17 +720,7 @@ export class SaleRepository {
       client
     );
 
-    return new Map(
-      result.rows.map((row) => {
-        const paymentMethod =
-          row.tipo === "BANK"
-            ? "TRANSFER"
-            : row.tipo === "CASH" || row.tipo === "CARD"
-              ? row.tipo
-              : "OTHER";
-        return [row.id, paymentMethod as "CASH" | "CARD" | "TRANSFER" | "OTHER"];
-      })
-    );
+    return new Map(result.rows.map((row) => [row.id, row]));
   }
 
   async insertSaleItem(

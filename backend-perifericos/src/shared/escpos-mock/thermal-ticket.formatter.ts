@@ -40,6 +40,7 @@ const COMMAND_DESCRIPTIONS: Record<EscPosMockCommandName, string> = {
   CUT: "Paper cut",
   CASH_DRAWER_PULSE: "Cash drawer pulse",
   QR_CODE: "Native ESC/POS QR code",
+  IMAGE_RASTER: "Raster image",
 };
 
 export const createEscPosMockCommand = (
@@ -105,31 +106,50 @@ export const buildTicketPrintDocument = (
 ): ThermalMockDocument => {
   const writer = new ThermalTextWriter(input.widthChars);
   const content = input.content;
-  const title = content.header || content.businessName || content.title || "Manus POS";
+  const title = content.title || content.header || content.businessName || "Manus POS";
 
   writer.center(title);
+  const logoCommand = content.logo
+    ? createEscPosMockCommand(EscPosMockCommandName.ImageRaster, { payload: content.logo })
+    : null;
   if (content.businessName && content.businessName !== title) {
     writer.center(content.businessName);
   }
   if (content.nit) {
     writer.center("NIT: " + content.nit);
   }
+  if (content.phone) {
+    writer.center("Teléfono: " + content.phone);
+  }
+  if (content.email) {
+    writer.center(content.email);
+  }
   if (content.address) {
     writer.center(content.address);
   }
   writer.separator();
-  writer.pair("Tipo", input.ticketType);
-  writer.pair("Fecha", content.date || input.timestamp);
-  writer.pair("Terminal", input.terminalId);
-  writer.pair("Device", input.deviceId);
+  writer.pair("Fecha", formatDisplayDate(content.date || input.timestamp));
   if (content.cashier) {
     writer.pair("Cajero", content.cashier);
+  }
+  if (content.customerName) {
+    writer.pair("Cliente", content.customerName);
+  }
+  if (content.customerIdentification) {
+    writer.pair("Identificación", content.customerIdentification);
+  }
+  if (content.customerAddress) {
+    writer.pair("Dirección", content.customerAddress);
   }
   if (content.documentNumber) {
     writer.pair("Documento", content.documentNumber);
   }
-  if (content.saleNumber) {
-    writer.pair("Venta", content.saleNumber);
+  if (content.fiscalStatus) {
+    writer.pair("Estado", content.fiscalStatus);
+  }
+  if (content.cufe) {
+    writer.left("CUFE");
+    writer.left(content.cufe);
   }
   writer.separator();
 
@@ -184,9 +204,9 @@ export const buildTicketPrintDocument = (
   writer.center(content.footer || "Gracias por su compra");
 
   const qrCommand = content.qrPayload
-    ? createEscPosMockCommand(EscPosMockCommandName.QrCode, {
+      ? createEscPosMockCommand(EscPosMockCommandName.QrCode, {
         payload: content.qrPayload,
-        size: 6,
+        size: 4,
         errorCorrection: "M",
       })
     : null;
@@ -196,6 +216,7 @@ export const buildTicketPrintDocument = (
     commands: [
       createEscPosMockCommand(EscPosMockCommandName.Init),
       createEscPosMockCommand(EscPosMockCommandName.AlignCenter),
+      ...(logoCommand ? [logoCommand] : []),
       createEscPosMockCommand(EscPosMockCommandName.BoldOn),
       createEscPosMockCommand(EscPosMockCommandName.BoldOff),
       createEscPosMockCommand(EscPosMockCommandName.AlignLeft),
@@ -308,3 +329,14 @@ const money = (value: number): string =>
     maximumFractionDigits: 2,
     minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
   }).format(value);
+
+const formatDisplayDate = (value: string): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("es-CO", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+};

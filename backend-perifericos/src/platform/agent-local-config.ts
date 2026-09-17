@@ -85,5 +85,12 @@ export const loadAgentLocalConfig = (
     }
   }
 
+  // Older installed configs may not contain `mode`. Preserve their explicit
+  // real-adapter setting without making REAL the default for incomplete or
+  // development configs.
+  if (config.mode === undefined && config.enableRealAdapters === true && !environment.PERIPHERALS_MODE) {
+    environment.PERIPHERALS_MODE = "REAL";
+  }
+
   return configPath;
 };

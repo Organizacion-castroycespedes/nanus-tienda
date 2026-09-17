@@ -120,6 +120,13 @@ export type FactuCoreInvoiceRequest = {
   dueDate?: string | null;
   paymentMeansCode?: string | null;
   paymentMeansId?: string | null;
+  payments?: Array<{
+    amount: string;
+    reference?: string | null;
+    paymentMeansCode: "10" | "47" | "49";
+    paymentMeansId: "1";
+    requiresReference?: boolean;
+  }>;
   invoiceTypeCode?: string | null;
   operationType?: string | null;
   sourceSystem?: string | null;
@@ -144,6 +151,7 @@ export type FactuCoreCreditNoteRequest = {
   dueDate?: string | null;
   paymentMeansCode?: string | null;
   paymentMeansId?: string | null;
+  payments?: FactuCoreInvoiceRequest["payments"];
   invoiceTypeCode?: string | null;
   operationType?: string | null;
   sourceSystem?: string | null;

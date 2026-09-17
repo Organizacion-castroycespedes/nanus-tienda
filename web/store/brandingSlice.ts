@@ -16,6 +16,8 @@ export type BrandingConfig = {
     md: string;
     lg: string;
   };
+  electronicBillingEnabled?: boolean;
+  electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
 };
 
 export type BrandingState = {

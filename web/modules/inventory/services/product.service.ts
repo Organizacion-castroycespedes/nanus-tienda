@@ -26,6 +26,10 @@ export type GetInventoryProductsParams = {
 export type CreateProductPayload = {
   name: string;
   sku: string;
+  standardIdentification?: {
+    scheme: "001" | "010" | "020" | "999";
+    code: string;
+  } | null;
   price: number;
   cost: number;
   unitId: string;
