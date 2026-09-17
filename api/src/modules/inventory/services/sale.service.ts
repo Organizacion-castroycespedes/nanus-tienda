@@ -483,15 +483,31 @@ export class SaleService {
     );
 
     return payments.map((payment) => {
-      const paymentMethod = paymentMethodTypes.get(payment.paymentMethodId);
-      if (!paymentMethod) {
+      const paymentMethodRecord = paymentMethodTypes.get(payment.paymentMethodId);
+      if (!paymentMethodRecord) {
         throw new BadRequestException("payment method not found for tenant");
+      }
+
+      const paymentMethod = this.mapLegacySalePaymentMethod(paymentMethodRecord.tipo);
+      const reference = payment.referenceNumber ?? payment.notes ?? null;
+      if (paymentMethodRecord.requires_reference && !reference?.trim()) {
+        throw new BadRequestException(
+          `payment reference is required for ${paymentMethodRecord.nombre}`,
+        );
       }
 
       return {
         paymentMethod,
+        paymentMethodId: paymentMethodRecord.id,
+        paymentMethodCode: paymentMethodRecord.codigo,
+        paymentMethodName: paymentMethodRecord.nombre,
+        paymentMethodType: paymentMethodRecord.tipo,
+        requiresReference: paymentMethodRecord.requires_reference,
+        electronicBillingEnabled: paymentMethodRecord.electronic_billing_enabled ?? false,
+        electronicPaymentMeansCode: paymentMethodRecord.electronic_payment_means_code ?? null,
+        electronicPaymentMeansId: paymentMethodRecord.electronic_payment_means_id ?? null,
         amount: payment.amount,
-        reference: payment.referenceNumber ?? payment.notes ?? null,
+        reference,
       };
     });
   }
@@ -984,6 +1000,14 @@ export class SaleService {
   private buildElectronicBillingPayments(
     legacyPaymentMethods: Array<{
       paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      paymentMethodId?: string | null;
+      paymentMethodCode?: string | null;
+      paymentMethodName?: string | null;
+      paymentMethodType?: string | null;
+      requiresReference?: boolean;
+      electronicBillingEnabled?: boolean;
+      electronicPaymentMeansCode?: string | null;
+      electronicPaymentMeansId?: string | null;
       amount: number;
       reference?: string | null;
     }>,
@@ -995,24 +1019,44 @@ export class SaleService {
 
     const term = payments.length === 1 ? "IMMEDIATE" : "MIXED";
 
-    return payments.map((payment, index) => ({
-      methodCode:
-        legacyPaymentMethods[index]?.paymentMethod ??
-        legacyPaymentMethods[0]?.paymentMethod ??
-        "OTHER",
-      amount: this.toDecimalWireValue(payment.amount),
-      term,
-      dueDate: null,
-      reference: payment.referenceNumber ?? payment.notes ?? null,
-      metadata: {
-        index,
-        paymentMethodId: payment.paymentMethodId,
-        cashSessionId: payment.cashSessionId ?? null,
-        paymentMethod: legacyPaymentMethods[index]?.paymentMethod ?? null,
-        amount: payment.amount,
+    return payments.map((payment, index) => {
+      const catalogPayment = legacyPaymentMethods[index] ?? legacyPaymentMethods[0];
+      const methodCode =
+        catalogPayment?.paymentMethodType === "CASH"
+          ? "CASH"
+          : catalogPayment?.paymentMethodCode ?? catalogPayment?.paymentMethod ?? "OTHER";
+
+      return {
+        methodCode,
+        paymentMethodId: catalogPayment?.paymentMethodId ?? payment.paymentMethodId,
+        paymentMethodCode: catalogPayment?.paymentMethodCode ?? null,
+        paymentMethodName: catalogPayment?.paymentMethodName ?? null,
+        paymentMethodType: catalogPayment?.paymentMethodType ?? null,
+        requiresReference: catalogPayment?.requiresReference ?? null,
+        electronicBillingEnabled: catalogPayment?.electronicBillingEnabled ?? null,
+        electronicPaymentMeansCode: catalogPayment?.electronicPaymentMeansCode ?? null,
+        electronicPaymentMeansId: catalogPayment?.electronicPaymentMeansId ?? null,
+        amount: this.toDecimalWireValue(payment.amount),
+        term,
+        dueDate: null,
         reference: payment.referenceNumber ?? payment.notes ?? null,
-      },
-    }));
+        metadata: {
+          index,
+          paymentMethodId: payment.paymentMethodId,
+          cashSessionId: payment.cashSessionId ?? null,
+          paymentMethod: catalogPayment?.paymentMethod ?? null,
+          paymentMethodCode: catalogPayment?.paymentMethodCode ?? null,
+          paymentMethodName: catalogPayment?.paymentMethodName ?? null,
+          paymentMethodType: catalogPayment?.paymentMethodType ?? null,
+          requiresReference: catalogPayment?.requiresReference ?? null,
+          electronicBillingEnabled: catalogPayment?.electronicBillingEnabled ?? null,
+          electronicPaymentMeansCode: catalogPayment?.electronicPaymentMeansCode ?? null,
+          electronicPaymentMeansId: catalogPayment?.electronicPaymentMeansId ?? null,
+          amount: payment.amount,
+          reference: payment.referenceNumber ?? payment.notes ?? null,
+        },
+      };
+    });
   }
 
   private isElectronicBillingCustomerFiscalDataComplete(

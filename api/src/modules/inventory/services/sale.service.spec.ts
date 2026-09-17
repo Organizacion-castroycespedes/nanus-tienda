@@ -310,6 +310,16 @@ class FakeCreateSaleClient {
 }
 
 class FakeCreateSaleRepository {
+  constructor(
+    private readonly paymentMethodRecord = {
+      id: ids.paymentMethod,
+      tipo: "CASH",
+      codigo: "001",
+      nombre: "Efectivo",
+      requires_reference: false,
+    },
+  ) {}
+
   readonly createSaleCalls: Array<{
     data: CreateSaleInput;
     paymentMethods: Array<{
@@ -334,7 +344,9 @@ class FakeCreateSaleRepository {
   }
 
   async findPaymentMethodTypesByIds() {
-    return new Map([[ids.paymentMethod, "CASH"]]);
+    return new Map([
+      [ids.paymentMethod, this.paymentMethodRecord],
+    ]);
   }
 
   async createSaleWithFunction(
@@ -586,9 +598,16 @@ const buildCreateSaleService = (
   billing?: SaleBillingHarness,
   includeTaxSnapshot = false,
   saleItemTaxRows: Array<Record<string, unknown>> = defaultSaleItemTaxRows,
+  paymentMethodRecord?: {
+    id: string;
+    tipo: string;
+    codigo: string;
+    nombre: string;
+    requires_reference: boolean;
+  },
 ) => {
   const client = new FakeCreateSaleClient(includeTaxSnapshot, saleItemTaxRows);
-  const repository = new FakeCreateSaleRepository();
+  const repository = new FakeCreateSaleRepository(paymentMethodRecord);
   const pricingService = new FakePricingService([...previews]);
   const createdPayments: unknown[] = [];
   const auditEvents: unknown[] = [];
@@ -868,6 +887,93 @@ test("SaleService.createSale creates a sale billing outbox event when billing is
   assert.equal(event.payments[0].amount, "360.00");
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");
+});
+
+test("SaleService preserves non-cash catalog identity in the billing snapshot", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+        standardIdentification: { scheme: "999", code: "ARR-12" },
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({ id: ids.tax, name: "IVA", rate: 19 }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente prueba",
+        tradeName: "Cliente prueba",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+  const { service, outboxEvents } = buildCreateSaleService(
+    [makePreview({ taxAmount: 0, taxBase: 3000, lineTotal: 360 })],
+    billing,
+    false,
+    defaultSaleItemTaxRows,
+    {
+      id: ids.paymentMethod,
+      tipo: "DIGITAL",
+      codigo: "003",
+      nombre: "Debito",
+      requires_reference: false,
+    },
+  );
+
+  await service.createSale(createSalePayload(), posContext);
+
+  const event = outboxEvents[0] as {
+    payments: Array<{
+      methodCode: string;
+      paymentMethodId?: string | null;
+      paymentMethodCode?: string | null;
+      paymentMethodName?: string | null;
+      paymentMethodType?: string | null;
+      metadata?: Record<string, unknown>;
+    }>;
+  };
+  assert.equal(event.payments[0]?.methodCode, "003");
+  assert.equal(event.payments[0]?.paymentMethodId, ids.paymentMethod);
+  assert.equal(event.payments[0]?.paymentMethodCode, "003");
+  assert.equal(event.payments[0]?.paymentMethodName, "Debito");
+  assert.equal(event.payments[0]?.paymentMethodType, "DIGITAL");
+  assert.notEqual(event.payments[0]?.methodCode, "OTHER");
 });
 
 test("SaleService.createSale maps multi-tax whisky snapshot for electronic billing", async () => {

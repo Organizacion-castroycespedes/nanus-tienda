@@ -27,6 +27,15 @@ export class PaymentMethodResponseDto {
   active!: boolean;
 
   @Expose()
+  electronicBillingEnabled!: boolean;
+
+  @Expose()
+  electronicPaymentMeansCode!: string | null;
+
+  @Expose()
+  electronicPaymentMeansId!: string | null;
+
+  @Expose()
   createdAt!: string;
 
   @Expose()

@@ -75,6 +75,19 @@ export class PaymentMethodsService {
     return normalized;
   }
 
+  private validateElectronicFiscalConfig(input: {
+    enabled?: boolean;
+    code?: string | null;
+    id?: string | null;
+  }) {
+    if (!input.enabled) {
+      return;
+    }
+    if (!input.code || !input.id || input.id !== "1" || !["10", "47", "49"].includes(input.code)) {
+      throw new BadRequestException("Configuracion fiscal FE invalida: seleccione un medio DIAN soportado");
+    }
+  }
+
   private mapResponse(record: PaymentMethodRecord) {
     return plainToInstance(
       PaymentMethodResponseDto,
@@ -87,6 +100,9 @@ export class PaymentMethodsService {
         requiresReference: record.requires_reference,
         allowsChange: record.allows_change,
         active: record.active,
+        electronicBillingEnabled: record.electronic_billing_enabled,
+        electronicPaymentMeansCode: record.electronic_payment_means_code,
+        electronicPaymentMeansId: record.electronic_payment_means_id,
         createdAt: record.created_at,
         updatedAt: record.updated_at,
       },
@@ -116,6 +132,11 @@ export class PaymentMethodsService {
     }
 
     await this.assertUniqueCode(tenantId, codigo);
+    this.validateElectronicFiscalConfig({
+      enabled: payload.electronicBillingEnabled,
+      code: payload.electronicPaymentMeansCode,
+      id: payload.electronicPaymentMeansId,
+    });
 
     const client = await this.db.getClient();
     try {
@@ -128,6 +149,9 @@ export class PaymentMethodsService {
         requiresReference: payload.requiresReference ?? false,
         allowsChange: payload.allowsChange ?? false,
         active: payload.active ?? true,
+        electronicBillingEnabled: payload.electronicBillingEnabled ?? false,
+        electronicPaymentMeansCode: payload.electronicPaymentMeansCode ?? null,
+        electronicPaymentMeansId: payload.electronicPaymentMeansId ?? null,
       });
 
       await client.query("COMMIT");
@@ -202,6 +226,11 @@ export class PaymentMethodsService {
     }
 
     await this.assertUniqueCode(tenantId, nextCodigo, paymentMethodId);
+    this.validateElectronicFiscalConfig({
+      enabled: payload.electronicBillingEnabled ?? current.electronic_billing_enabled,
+      code: payload.electronicPaymentMeansCode ?? current.electronic_payment_means_code,
+      id: payload.electronicPaymentMeansId ?? current.electronic_payment_means_id,
+    });
 
     const client = await this.db.getClient();
     try {
@@ -213,6 +242,9 @@ export class PaymentMethodsService {
         requiresReference: payload.requiresReference,
         allowsChange: payload.allowsChange,
         active: payload.active,
+        electronicBillingEnabled: payload.electronicBillingEnabled,
+        electronicPaymentMeansCode: payload.electronicPaymentMeansCode,
+        electronicPaymentMeansId: payload.electronicPaymentMeansId,
       });
       await client.query("COMMIT");
 

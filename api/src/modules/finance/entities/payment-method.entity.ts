@@ -23,6 +23,9 @@ export type PaymentMethodProps = {
   requiresReference?: boolean;
   allowsChange?: boolean;
   active?: boolean;
+  electronicBillingEnabled?: boolean;
+  electronicPaymentMeansCode?: string | null;
+  electronicPaymentMeansId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -36,6 +39,9 @@ export class PaymentMethodEntity {
   readonly requiresReference: boolean;
   readonly allowsChange: boolean;
   readonly active: boolean;
+  readonly electronicBillingEnabled: boolean;
+  readonly electronicPaymentMeansCode: string | null;
+  readonly electronicPaymentMeansId: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -64,6 +70,14 @@ export class PaymentMethodEntity {
 
     const requiresReference = props.requiresReference ?? false;
     const allowsChange = props.allowsChange ?? false;
+    const electronicBillingEnabled = props.electronicBillingEnabled ?? false;
+    const electronicPaymentMeansCode = props.electronicPaymentMeansCode?.trim() || null;
+    const electronicPaymentMeansId = props.electronicPaymentMeansId?.trim() || null;
+
+    if (electronicBillingEnabled &&
+      (!electronicPaymentMeansCode || !["10", "47", "49"].includes(electronicPaymentMeansCode) || electronicPaymentMeansId !== "1")) {
+      throw new Error("electronic billing fiscal mapping is invalid");
+    }
 
     if (props.tipo === "CREDIT" && allowsChange) {
       throw new Error("credit payment methods cannot allow change");
@@ -77,6 +91,9 @@ export class PaymentMethodEntity {
     this.requiresReference = requiresReference;
     this.allowsChange = allowsChange;
     this.active = props.active ?? true;
+    this.electronicBillingEnabled = electronicBillingEnabled;
+    this.electronicPaymentMeansCode = electronicPaymentMeansCode;
+    this.electronicPaymentMeansId = electronicPaymentMeansId;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }
