@@ -98,11 +98,19 @@ export type PeripheralTicketTaxLine = {
 
 export type PeripheralTicketContent = {
   qrPayload?: string;
+  logo?: string;
   header?: string;
   businessName?: string;
   nit?: string;
+  phone?: string;
+  email?: string;
   address?: string;
   cashier?: string;
+  customerName?: string;
+  customerIdentification?: string;
+  customerAddress?: string;
+  fiscalStatus?: string;
+  cufe?: string;
   documentNumber?: string;
   saleNumber?: string;
   date?: string;
@@ -137,6 +145,9 @@ export type BaseTicketInput = {
   deviceId?: string;
   businessName?: string;
   nit?: string;
+  phone?: string;
+  email?: string;
+  logo?: string;
   address?: string;
   cashier?: string;
   documentNumber?: string;
