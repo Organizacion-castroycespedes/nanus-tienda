@@ -66,4 +66,11 @@ backend-perifericos/windows-installer/assets/pos/*.exe
 # Local database credentials
 scripts/config/db.env
 
-database
+/database/
+!scripts/database/
+!scripts/database/migrations/
+!scripts/database/migrations/V082__product_dian_standard_identification.sql
+!scripts/database/migrations/V083__payment_methods_electronic_billing_fiscal_config.sql
+
+# Local QA/build/runtime scratch content
+/tmp/
