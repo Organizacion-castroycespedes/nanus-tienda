@@ -203,6 +203,61 @@ test("document repository claims due background sync rows tenant safely", async 
   assert.match(calls[0].text, /last_status_check_at/);
 });
 
+test("document repository scopes initial claims to pre-provider documents without provider identity", async () => {
+  const { calls, db } = buildDb([]);
+  const repository = new ElectronicDocumentRepository(db as never);
+
+  await repository.claimDueForBackgroundSync({
+    statuses: ["PENDING"],
+    processingStages: ["PRE_PROVIDER_CREATE"],
+    providerDocumentIdAbsent: true,
+    dueBefore: new Date("2026-08-27T00:00:00.000Z"),
+    limit: 5,
+  });
+
+  assert.match(calls[0].text, /processing_stage = ANY\(\$5::text\[\]\)/);
+  assert.match(calls[0].text, /provider_document_id IS NULL/);
+  assert.deepEqual(calls[0].params[0], ["PENDING"]);
+  assert.deepEqual(calls[0].params[4], ["PRE_PROVIDER_CREATE"]);
+  assert.equal(calls[0].params[5], true);
+});
+
+test("background retry claim excludes provider-create intent without provider id", async () => {
+  const { calls, db } = buildDb([]);
+  const repository = new ElectronicDocumentRepository(db as never);
+
+  await repository.claimDueForBackgroundSync({
+    statuses: ["TECHNICAL_ERROR"],
+    excludePreProviderIntentWithoutProvider: true,
+    dueBefore: new Date("2026-08-27T00:00:00.000Z"),
+    limit: 5,
+  });
+
+  assert.match(calls[0].text, /PROVIDER_CREATE_INTENT/);
+  assert.match(calls[0].text, /provider_document_id IS NULL/);
+  assert.equal(calls[0].params[6], true);
+});
+
+test("document repository resets only an idle provider-create intent failure", async () => {
+  const { calls, db } = buildDb([{ id: ids.document }]);
+  const repository = new ElectronicDocumentRepository(db as never);
+
+  const result = await repository.recoverPreProviderCreateFailure(
+    ids.tenant,
+    ids.document,
+    "SALE-501",
+  );
+
+  assert.equal(result, ids.document);
+  assert.match(calls[0].text, /status = 'PENDING'/);
+  assert.match(calls[0].text, /processing_stage = 'PRE_PROVIDER_CREATE'/);
+  assert.match(calls[0].text, /status = 'TECHNICAL_ERROR'/);
+  assert.match(calls[0].text, /processing_stage = 'PROVIDER_CREATE_INTENT'/);
+  assert.match(calls[0].text, /provider_document_id IS NULL/);
+  assert.doesNotMatch(calls[0].text, /last_status_check_at <= NOW\(\)/);
+  assert.deepEqual(calls[0].params, [ids.tenant, ids.document, "SALE-501"]);
+});
+
 test("lines repository uses bulk insert and tenant-safe reads", async () => {
   const { calls, db } = buildDb([{ id: ids.line }]);
   const repository = new ElectronicDocumentLineRepository(db as never);

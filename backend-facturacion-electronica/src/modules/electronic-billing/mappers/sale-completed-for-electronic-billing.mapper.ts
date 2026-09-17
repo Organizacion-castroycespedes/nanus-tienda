@@ -114,25 +114,39 @@ export const buildElectronicBillingCustomer = (
   };
 };
 
-export const buildElectronicBillingPayment = (
-  payments: SalePaymentSnapshot[],
-): ElectronicPayment | null => {
-  if (payments.length !== 1) {
-    return null;
-  }
-
-  const [primaryPayment] = payments;
+const mapElectronicBillingPayment = (primaryPayment: SalePaymentSnapshot, payments: SalePaymentSnapshot[]): ElectronicPayment => {
   return {
     methodCode: primaryPayment.methodCode,
+    amount: primaryPayment.amount ?? null,
+    reference: primaryPayment.reference ?? null,
+    paymentMeansCode: primaryPayment.electronicPaymentMeansCode ?? null,
+    paymentMeansId: primaryPayment.electronicPaymentMeansId ?? null,
+    requiresReference: primaryPayment.requiresReference ?? false,
     term: primaryPayment.term ?? null,
     dueDate: primaryPayment.dueDate ?? null,
     metadata: {
+      paymentMethodId: primaryPayment.paymentMethodId ?? null,
+      paymentMethodCode: primaryPayment.paymentMethodCode ?? null,
+      paymentMethodName: primaryPayment.paymentMethodName ?? null,
+      paymentMethodType: primaryPayment.paymentMethodType ?? null,
+      requiresReference: primaryPayment.requiresReference ?? null,
+      electronicBillingEnabled: primaryPayment.electronicBillingEnabled ?? null,
+      electronicPaymentMeansCode: primaryPayment.electronicPaymentMeansCode ?? null,
+      electronicPaymentMeansId: primaryPayment.electronicPaymentMeansId ?? null,
       amount: primaryPayment.amount ?? null,
       reference: primaryPayment.reference ?? null,
       paymentBreakdown: payments,
     },
   };
 };
+
+export const buildElectronicBillingPayments = (
+  payments: SalePaymentSnapshot[],
+): ElectronicPayment[] => payments.map((payment) => mapElectronicBillingPayment(payment, payments));
+
+export const buildElectronicBillingPayment = (
+  payments: SalePaymentSnapshot[],
+): ElectronicPayment | null => payments.length === 1 ? buildElectronicBillingPayments(payments)[0] : null;
 
 const mapTaxes = (line: SaleLineSnapshot) =>
   line.taxes.map((tax) => ({
@@ -155,7 +169,8 @@ export const buildElectronicBillingInvoiceCommandFromSaleEvent = (
     event.tenantId,
     event.source.id,
   );
-  const payment = buildElectronicBillingPayment(event.payload.payments);
+  const payments = buildElectronicBillingPayments(event.payload.payments);
+  const payment = payments.length === 1 ? payments[0] : null;
   const lines: ElectronicDocumentLineInput[] = event.payload.lines.map((line) => ({
     sourceLineId: line.sourceLineId,
     sku: line.sku ?? null,
@@ -195,6 +210,7 @@ export const buildElectronicBillingInvoiceCommandFromSaleEvent = (
     issueDate: event.payload.sale.completedAt ?? null,
     issueTime: null,
     customer: buildElectronicBillingCustomer(event.payload.customer),
+    payments,
     payment,
     lines,
     totals,

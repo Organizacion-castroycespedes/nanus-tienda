@@ -388,6 +388,9 @@ export type ElectronicDocumentClaimOptions = {
 
 type BackgroundSyncClaimOptions = {
   statuses: ElectronicDocumentStatus[];
+  processingStages?: string[];
+  providerDocumentIdAbsent?: boolean;
+  excludePreProviderIntentWithoutProvider?: boolean;
   dueBefore: Date | string;
   limit: number;
   leaseMs?: number;
@@ -1033,6 +1036,37 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
     );
   }
 
+  async recoverPreProviderCreateFailure(
+    tenantId: string,
+    id: string,
+    externalReference: string,
+    client?: PoolClient,
+  ) {
+    const result = await this.query<{ id: string }>(
+      `UPDATE electronic_documents
+      SET status = 'PENDING',
+          provider_status = NULL,
+          provider_status_detail = NULL,
+          last_status_check_at = NULL,
+          processing_stage = 'PRE_PROVIDER_CREATE',
+          processing_stage_updated_at = NOW(),
+          last_error_code = NULL,
+          last_error_message = NULL,
+          updated_at = NOW()
+      WHERE tenant_id = $1
+        AND id = $2
+        AND external_reference = $3
+        AND status = 'TECHNICAL_ERROR'
+        AND processing_stage = 'PROVIDER_CREATE_INTENT'
+        AND provider_document_id IS NULL
+      RETURNING id`,
+      [tenantId, id, externalReference],
+      client,
+    );
+
+    return result.rows[0]?.id ?? null;
+  }
+
   async claimDueForBackgroundSync(
     options: BackgroundSyncClaimOptions,
     client?: PoolClient
@@ -1046,6 +1080,12 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         SELECT d.id
         FROM electronic_documents d
         WHERE d.status = ANY($1::text[])
+          AND ($5::text[] IS NULL OR d.processing_stage = ANY($5::text[]))
+          AND ($6::boolean IS NOT TRUE OR d.provider_document_id IS NULL)
+          AND (
+            $7::boolean IS NOT TRUE
+            OR NOT (d.processing_stage = 'PROVIDER_CREATE_INTENT' AND d.provider_document_id IS NULL)
+          )
           AND (d.last_status_check_at IS NULL OR d.last_status_check_at <= $2)
         ORDER BY COALESCE(d.last_status_check_at, d.created_at) ASC, d.created_at ASC, d.id ASC
         FOR UPDATE SKIP LOCKED
@@ -1097,7 +1137,15 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
           FROM electronic_document_events e
           WHERE e.electronic_document_id = d.id
         ), 0)::int AS latest_attempt`,
-      [options.statuses, options.dueBefore, options.limit, options.leaseMs ?? 0],
+      [
+        options.statuses,
+        options.dueBefore,
+        options.limit,
+        options.leaseMs ?? 0,
+        options.processingStages?.length ? options.processingStages : null,
+        options.providerDocumentIdAbsent ?? null,
+        options.excludePreProviderIntentWithoutProvider ?? null,
+      ],
       client
     );
 

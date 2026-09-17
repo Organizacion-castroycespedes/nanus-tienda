@@ -8,6 +8,7 @@ import { ElectronicDocumentRepository } from "../repositories/electronic-billing
 import { ElectronicBillingProcessingService } from "../services/electronic-billing-processing.service";
 
 type BackgroundCycleSummary = {
+  initialProcessing: number;
   processing: number;
   retry: number;
   skipped: number;
@@ -97,6 +98,7 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
   async runOnce(): Promise<BackgroundCycleSummary> {
     if (!this.enabled) {
       return {
+        initialProcessing: 0,
         processing: 0,
         retry: 0,
         skipped: 0,
@@ -105,6 +107,7 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
     }
 
     const summary: BackgroundCycleSummary = {
+      initialProcessing: 0,
       processing: 0,
       retry: 0,
       skipped: 0,
@@ -112,6 +115,18 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
     };
 
     const now = new Date();
+    const initialCandidates = await this.documentRepository.claimDueForBackgroundSync(
+      {
+        statuses: ["PENDING"],
+        processingStages: ["PRE_PROVIDER_CREATE"],
+        providerDocumentIdAbsent: true,
+        dueBefore: now,
+        limit: this.batchSize,
+        leaseMs: this.leaseMs,
+      },
+    );
+    summary.initialProcessing += await this.processInitialCandidates(initialCandidates, summary);
+
     const processingCandidates = await this.documentRepository.claimDueForBackgroundSync(
       {
         statuses: ["PROCESSING"],
@@ -125,6 +140,7 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
     const retryCandidates = await this.documentRepository.claimDueForBackgroundSync(
       {
         statuses: ["TECHNICAL_ERROR"],
+        excludePreProviderIntentWithoutProvider: true,
         dueBefore: now,
         limit: this.batchSize,
         leaseMs: this.leaseMs,
@@ -160,7 +176,7 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
     try {
       const summary = await this.runOnce();
       this.logger.debug(
-        `Electronic billing background cycle complete. processing=${summary.processing} retry=${summary.retry} skipped=${summary.skipped} errors=${summary.errors}`,
+        `Electronic billing background cycle complete. initialProcessing=${summary.initialProcessing} processing=${summary.processing} retry=${summary.retry} skipped=${summary.skipped} errors=${summary.errors}`,
       );
     } catch (error) {
       this.logger.error(
@@ -173,6 +189,32 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
         this.scheduleNext(this.scanIntervalMs);
       }
     }
+  }
+
+  private async processInitialCandidates(
+    candidates: ElectronicDocumentBackgroundSyncRecord[],
+    summary: BackgroundCycleSummary,
+  ) {
+    let processed = 0;
+
+    for (const candidate of candidates) {
+      try {
+        await this.processingService.processDocument(candidate.tenant_id, candidate.id);
+        processed += 1;
+      } catch (error) {
+        if (error instanceof ElectronicDocumentAlreadyProcessingError || error instanceof ElectronicDocumentNotProcessableError) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        summary.errors += 1;
+        this.logger.warn(
+          `Background initial processing failed for document ${candidate.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return processed;
   }
 
   private async processProcessingCandidates(

@@ -91,6 +91,19 @@ const parseJson = <T>(value: string, fallback: T): T => {
   }
 };
 
+const isApiClientAuthorizationFailure = (payload: unknown) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  const message = (payload as Record<string, unknown>).message;
+  if (typeof message !== "string") {
+    return false;
+  }
+  const normalized = message.toLowerCase();
+  return normalized.includes("api client no autenticado")
+    || normalized.includes("api client no tiene los permisos requeridos");
+};
+
 const buildUrl = (baseUrl: string, path: string) => new URL(path.startsWith("/") ? path : `/${path}`, normalizeBaseUrl(baseUrl));
 
 const isAbortError = (error: unknown) =>
@@ -321,8 +334,18 @@ export class FactuCoreClient {
       ? validationDetails.map((detail) => detail.path ? `${detail.path}: ${detail.message}` : detail.message).join("; ").slice(0, 2000)
       : "FactuCore rejected the request payload";
 
-    if (status === 401 || status === 403) {
+    if (status === 401 || (status === 403 && isApiClientAuthorizationFailure(payload))) {
       return new FactuCoreAuthenticationError(operation, status);
+    }
+
+    if (status === 403) {
+      return new FactuCoreValidationError(
+        operation,
+        status,
+        validationMessage,
+        validationDetails,
+        providerCode,
+      );
     }
 
     if (status === 409) {

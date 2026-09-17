@@ -52,6 +52,8 @@ const mapStatusRefreshResult = (result: SafeStatusReconciliationResult) => {
 
 const mapRetryability = (decision: ElectronicBillingRetryability) => ({
   canRetry: decision.canRetry,
+  canRecoverProviderCreateIntent: decision.canRecoverProviderCreateIntent,
+  canRecoverExistingProvider: decision.canRecoverExistingProvider ?? false,
   retryClass: decision.retryClass,
   decision: decision.decision,
   reasonCode: decision.reason,
@@ -236,6 +238,45 @@ export class ElectronicBillingSaleEventController {
       documentId,
     );
     return {
+      allowed: true,
+      recovery: "CONFIRMED_PROVIDER_ABSENCE",
+      resultCode: result.providerResult
+        ? "REMOTE_FOUND_RECONCILED"
+        : "REMOTE_NOT_FOUND_RECOVERED",
+      safeUserMessage: result.providerResult
+        ? "Se encontr\u00f3 y reconcili\u00f3 el documento existente en FactuCore."
+        : "FactuCore confirm\u00f3 que no existe el documento. El procesamiento continuar\u00e1 de forma segura.",
+      electronicDocumentId: result.document.id,
+      status: result.document.status,
+      processingStage: result.document.processing_stage,
+      providerStatus: result.document.provider_status,
+      providerDocumentId: result.document.provider_document_id,
+      fullNumber: documentNumber(result.document),
+      cufe: result.document.cufe,
+    };
+  }
+
+  @Post("documents/:documentId/recover-processing")
+  async recoverProcessing(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: RetryBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Recovery identity is required");
+    }
+    const result = await this.processingService.recoverProcessing(tenantId, documentId);
+    return {
+      allowed: true,
+      recovery: result.recovery,
+      resultCode: result.resultCode,
+      safeUserMessage: result.recovery === "EXISTING_PROVIDER_RESUMED"
+        ? "Se reutilizó el documento existente en FactuCore y se continuó su procesamiento."
+        : result.providerResult
+          ? "Se encontró y reconcilió el documento existente en FactuCore."
+          : "FactuCore confirmó que el documento no existía. El procesamiento continuará de forma segura.",
       electronicDocumentId: result.document.id,
       status: result.document.status,
       processingStage: result.document.processing_stage,

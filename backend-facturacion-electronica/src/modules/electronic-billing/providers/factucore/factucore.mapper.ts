@@ -60,12 +60,62 @@ const normalizeNullableString = (value: unknown) => {
 };
 
 type NormalizedFactuCorePaymentMeans = {
-  paymentMeansCode: "10";
+  paymentMeansCode: "10" | "47" | "49";
   paymentMeansId: "1";
 };
 
-const normalizePaymentMeans = (methodCode: string | null | undefined): NormalizedFactuCorePaymentMeans => {
+type NormalizedFactuCorePayment = NormalizedFactuCorePaymentMeans & {
+  amount: string;
+  reference: string | null;
+  requiresReference: boolean;
+};
+
+const toCents = (value: unknown, label: string): bigint => {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(raw)) throw new FactuCoreConfigurationError("payment_normalization", `${label} must be a positive monetary value`);
+  const [whole, fraction = ""] = raw.split(".");
+  const cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
+  if (cents <= 0n) throw new FactuCoreConfigurationError("payment_normalization", `${label} must be a positive monetary value`);
+  return cents;
+};
+
+const centsToMoney = (value: bigint) => `${value / 100n}.${String(value % 100n).padStart(2, "0")}`;
+
+const normalizePaymentMeans = (
+  methodCode: string | null | undefined,
+  explicitCode: string | null | undefined,
+  explicitId: string | null | undefined,
+  electronicBillingEnabled: boolean | null | undefined,
+): NormalizedFactuCorePaymentMeans => {
+  if (electronicBillingEnabled === false) {
+    throw new FactuCoreConfigurationError(
+      "payment_normalization",
+      "Payment method is disabled for electronic billing",
+    );
+  }
+  if (normalizeString(explicitCode) || normalizeString(explicitId)) {
+    if (!["10", "47", "49"].includes(normalizeString(explicitCode)) || normalizeString(explicitId) !== "1") {
+      throw new FactuCoreConfigurationError(
+        "payment_normalization",
+        "Payment method fiscal configuration is invalid",
+      );
+    }
+    return {
+      paymentMeansCode: normalizeString(explicitCode) as NormalizedFactuCorePaymentMeans["paymentMeansCode"],
+      paymentMeansId: "1",
+    };
+  }
   const normalizedMethodCode = normalizeString(methodCode).toUpperCase();
+
+  const catalogMapping: Record<string, NormalizedFactuCorePaymentMeans> = {
+    "001": { paymentMeansCode: "10", paymentMeansId: "1" },
+    "002": { paymentMeansCode: "47", paymentMeansId: "1" },
+    "003": { paymentMeansCode: "49", paymentMeansId: "1" },
+  };
+  const mapped = catalogMapping[normalizedMethodCode];
+  if (mapped) {
+    return mapped;
+  }
 
   if (normalizedMethodCode === "CASH" || normalizedMethodCode === "10") {
     return {
@@ -76,8 +126,52 @@ const normalizePaymentMeans = (methodCode: string | null | undefined): Normalize
 
   throw new FactuCoreConfigurationError(
     "payment_normalization",
-    "Payment method is not mapped to the FactuCore fiscal contract",
+    `Payment method ${normalizedMethodCode || "UNKNOWN"} is not mapped to the FactuCore fiscal contract`,
   );
+};
+
+const normalizeCommandPayments = (command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand): NormalizedFactuCorePayment[] => {
+  const legacy = command.payment ?? null;
+  const source = command.payments ?? (legacy ? [legacy] : []);
+  if (!source.length) {
+    throw new FactuCoreConfigurationError("payment_normalization", "At least one payment is required");
+  }
+  if (command.payments && legacy && command.payments.length !== 1) {
+    throw new FactuCoreConfigurationError("payment_normalization", "payment and payments cannot be supplied together");
+  }
+  const total = toCents(command.totals.totalAmount, "invoice total");
+  const normalized = source.map((payment) => {
+    const metadata = payment.metadata ?? {};
+    const means = normalizePaymentMeans(
+      payment.methodCode,
+      payment.paymentMeansCode ?? (typeof metadata.electronicPaymentMeansCode === "string" ? metadata.electronicPaymentMeansCode : null),
+      payment.paymentMeansId ?? (typeof metadata.electronicPaymentMeansId === "string" ? metadata.electronicPaymentMeansId : null),
+      typeof metadata.electronicBillingEnabled === "boolean" ? metadata.electronicBillingEnabled : null,
+    );
+    const amount = payment.amount ?? metadata.amount ?? (source.length === 1 ? command.totals.totalAmount : null);
+    const reference = normalizeNullableString(payment.reference ?? metadata.reference);
+    const requiresReference = payment.requiresReference ?? metadata.requiresReference === true;
+    if (requiresReference && !reference) {
+      throw new FactuCoreConfigurationError("payment_normalization", `Payment reference is required for ${means.paymentMeansCode}`);
+    }
+    return {
+      ...means,
+      amount: centsToMoney(toCents(amount, "payment amount")),
+      reference,
+      requiresReference,
+    };
+  });
+  const allocated = normalized.reduce((sum, payment) => sum + toCents(payment.amount, "payment amount"), 0n);
+  if (allocated !== total) {
+    throw new FactuCoreConfigurationError("payment_normalization", `Payment allocation total ${centsToMoney(allocated)} does not equal invoice total ${centsToMoney(total)}`);
+  }
+  if (command.payments && legacy && normalized.length === 1) {
+    const legacyMeans = normalizePaymentMeans(legacy.methodCode, typeof legacy.metadata?.electronicPaymentMeansCode === "string" ? legacy.metadata.electronicPaymentMeansCode : null, typeof legacy.metadata?.electronicPaymentMeansId === "string" ? legacy.metadata.electronicPaymentMeansId : null, null);
+    if (legacyMeans.paymentMeansCode !== normalized[0].paymentMeansCode || legacyMeans.paymentMeansId !== normalized[0].paymentMeansId) {
+      throw new FactuCoreConfigurationError("payment_normalization", "payment and payments conflict");
+    }
+  }
+  return normalized;
 };
 
 const mapUnitCode = (value: string | null | undefined) => value === "UNIT" || value === "UND" || !value ? "EA" : value;
@@ -117,6 +211,34 @@ const resolveCustomerType = (customer: ElectronicCustomer) => {
   return resolved === "NIT" || resolved === "NIT_OTHER_COUNTRY" ? "COMPANY" : "PERSON";
 };
 
+const resolveCustomerPartyTaxScheme = (customer: ElectronicCustomer) => {
+  const raw = normalizeString(customer.taxProfile?.taxScheme).toUpperCase();
+  const canonical = {
+    "01": { taxSchemeId: "01", taxSchemeName: "IVA" },
+    IVA: { taxSchemeId: "01", taxSchemeName: "IVA" },
+    "04": { taxSchemeId: "04", taxSchemeName: "INC" },
+    INC: { taxSchemeId: "04", taxSchemeName: "INC" },
+    ZA: { taxSchemeId: "ZA", taxSchemeName: "IVA e INC" },
+    ZZ: { taxSchemeId: "ZZ", taxSchemeName: "No aplica" },
+    "NO APLICA": { taxSchemeId: "ZZ", taxSchemeName: "No aplica" },
+  }[raw as "01" | "IVA" | "04" | "INC" | "ZA" | "ZZ" | "NO APLICA"];
+
+  if (canonical) {
+    return canonical;
+  }
+
+  if (!raw || raw === "ORDINARIO" || raw === "NATURAL" || raw === "JURIDICA" || raw === "R-99-PN") {
+    return resolveCustomerType(customer) === "PERSON"
+      ? { taxSchemeId: "ZZ", taxSchemeName: "No aplica" }
+      : { taxSchemeId: "01", taxSchemeName: "IVA" };
+  }
+
+  throw new FactuCoreConfigurationError(
+    "customer_tax_scheme_normalization",
+    "Customer TaxScheme is not a valid DIAN ID/name pair",
+  );
+};
+
 const resolveCustomerLegalName = (customer: ElectronicCustomer) => {
   const legalName = normalizeString(customer.legalName);
   if (legalName.length > 0) {
@@ -143,6 +265,10 @@ const TAX_TYPE_ALIASES: Record<string, FactuCoreTaxType> = {
   INC: "INC",
   IMPUESTO_NACIONAL_AL_CONSUMO: "INC",
   IMPUESTO_AL_CONSUMO: "INC",
+  NATIONAL_CONSUMPTION: "INC",
+  BEER_CONSUMPTION: "INC",
+  IMPUESTO_AL_CONSUMO_DE_CERVEZAS_Y_REFAJOS: "INC",
+  IMPUESTO_AL_CONSUMO_DE_LICORES: "INC",
   LIQUOR_CONSUMPTION: "INC",
   ICA: "ICA",
   IMPUESTO_DE_INDUSTRIA_Y_COMERCIO: "ICA",
@@ -224,6 +350,14 @@ const mapFactuCoreTaxSchemeId = (tax: ElectronicTaxInput) => {
     return canonicalId;
   }
 
+  // DIAN code 36 is the ad-valorem component of consumption taxes.
+  // FactuCore expects the enclosing DIAN TaxScheme (INC=04), not the
+  // internal tax code itself. Keep the tax type as OTHER; normalize only
+  // its TaxScheme at this provider boundary.
+  if (taxType === "OTHER" && normalizeString(tax.schemeId) === "36") {
+    return "04";
+  }
+
   const suppliedId = normalizeNullableString(tax.schemeId);
   return suppliedId === "01" || suppliedId === "04" || suppliedId === "03"
     ? suppliedId
@@ -232,15 +366,14 @@ const mapFactuCoreTaxSchemeId = (tax: ElectronicTaxInput) => {
 
 const resolveTaxProfile = (customer: ElectronicCustomer) => {
   const identificationTypeCode = normalizeString(customer.taxProfile?.identificationTypeCode) || normalizeString(customer.identification.typeCode);
-  const taxSchemeId = normalizeNullableString(customer.taxProfile?.taxScheme);
-  const taxSchemeName = taxSchemeId;
+  const partyTaxScheme = resolveCustomerPartyTaxScheme(customer);
   const liabilityCode = normalizeNullableString(customer.taxProfile?.liabilityTypeCode);
   const fiscalResponsibilityCodes = customer.taxProfile?.fiscalResponsibilityCodes?.filter((code) => normalizeString(code).length > 0) ?? null;
 
   return {
     identificationTypeCode,
-    taxSchemeId,
-    taxSchemeName,
+    taxSchemeId: partyTaxScheme.taxSchemeId,
+    taxSchemeName: partyTaxScheme.taxSchemeName,
     liabilityCode,
     fiscalResponsibilityCodes,
   };
@@ -290,17 +423,22 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
 const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   const taxType = mapFactuCoreTaxType(tax);
   const taxSchemeId = mapFactuCoreTaxSchemeId(tax);
+  const normalizedRate = Number(tax.rate);
+  if (!Number.isFinite(normalizedRate) || normalizedRate < 0) {
+    throw new FactuCoreConfigurationError("tax_rate_normalization", "Tax rate is not a valid non-negative number");
+  }
   return {
-  taxType,
-  rate: tax.rate,
-  taxableBase: tax.taxableBase,
-  taxAmount: tax.amount,
-  metadata: {
-    ...(tax.metadata ?? {}),
-    ...(tax.code ? { taxCode: tax.code } : {}),
-    ...(taxSchemeId ? { taxSchemeId } : {}),
-    ...(tax.schemeName ? { taxSchemeName: tax.schemeName } : {}),
-  },
+    taxType,
+    // Manus pricing stores 0.19; DIAN UBL Percent requires 19.
+    rate: normalizedRate > 0 && normalizedRate < 1 ? normalizedRate * 100 : normalizedRate,
+    taxableBase: tax.taxableBase,
+    taxAmount: tax.amount,
+    metadata: {
+      ...(tax.metadata ?? {}),
+      ...(tax.code ? { taxCode: tax.code } : {}),
+      ...(taxSchemeId ? { taxSchemeId } : {}),
+      ...(tax.schemeName ? { taxSchemeName: tax.schemeName } : {}),
+    },
   };
 };
 
@@ -319,7 +457,7 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => {
     quantity: line.quantity,
     unitPrice: line.unitPrice,
     discountAmount: line.discountAmount ?? null,
-    taxes: line.taxTreatment === "EXCLUDED" || line.taxTreatment === "NOT_APPLICABLE"
+    taxes: taxTreatment === "EXCLUDED" || taxTreatment === "NOT_APPLICABLE"
       ? undefined
       : line.taxes?.map(mapTax),
     metadata: line.metadata ?? {},
@@ -330,14 +468,13 @@ const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> => {
-  const paymentMeans = normalizePaymentMeans(command.payment?.methodCode);
+  const payments = normalizeCommandPayments(command);
 
   return {
     externalReference: command.externalReference,
     issueDate: toIsoString(command.issueDate) ?? new Date().toISOString(),
     issueTime: command.issueTime ?? null,
-    ...paymentMeans,
-    dueDate: toDateOnlyString(command.payment?.dueDate ?? null),
+    payments,
     lines: command.lines.map(mapLine),
     metadata: command.metadata ?? {},
     ...overrides,
