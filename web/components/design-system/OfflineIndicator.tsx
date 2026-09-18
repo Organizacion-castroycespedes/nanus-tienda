@@ -10,12 +10,12 @@ const RETRY_INTERVAL_MS = 5_000;
 const HEALTH_TIMEOUT_MS = 4_000;
 const LAST_CONNECTION_KEY = "manus:last-connection-at";
 
-const stateLabel: Record<ConnectivityState, string> = {
-  ONLINE: "En línea",
-  OFFLINE: "Sin conexión a Internet",
-  SERVICE_UNAVAILABLE: "Servicio temporalmente no disponible",
-  RECONNECTING: "Restableciendo conexión...",
-  RESTORED: "Conexión restablecida",
+const compactStatusLabel: Record<ConnectivityState, string> = {
+  ONLINE: "Conexión estable · Servicio disponible",
+  OFFLINE: "Sin conexión · Internet no disponible",
+  SERVICE_UNAVAILABLE: "Conexión activa · Servicio no disponible",
+  RECONNECTING: "Conexión en revisión · Verificando servicio",
+  RESTORED: "Conexión restablecida · Servicio disponible",
 };
 
 const stateTone: Record<ConnectivityState, string> = {
@@ -132,15 +132,16 @@ export function OfflineIndicator() {
 
   return (
     <>
-      <div className="fixed bottom-4 left-1/2 z-[9999] flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200">
-        <span className={`h-2.5 w-2.5 rounded-full ${stateTone[state]}`} aria-hidden="true" />
-        <span>{stateLabel[state]}</span>
-        {(state === "ONLINE" || state === "RESTORED") && (
-          <>
-            <span className="text-slate-400">·</span>
-            <span className="text-emerald-600">Servicio disponible</span>
-          </>
-        )}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        aria-label={compactStatusLabel[state]}
+        title={compactStatusLabel[state]}
+        className="fixed bottom-4 left-1/2 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+      >
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${stateTone[state]}`} aria-hidden="true" />
+        <span className="truncate">{compactStatusLabel[state]}</span>
       </div>
 
       {showOverlay ? (
