@@ -44,6 +44,8 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Wifi,
+  WifiOff,
   Wrench,
   X,
   type LucideIcon,
@@ -120,6 +122,7 @@ const iconByName: Record<string, LucideIcon> = {
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "flexibuild.sidebar.collapsed";
 const SIDEBAR_MENU_STATE_STORAGE_KEY = "sidebar_open_menu_items";
+type HeaderConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
 
 const TenantLayout = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
@@ -176,6 +179,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const tenantSlug = resolveTenantSlug(authUser);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
   const [posClock, setPosClock] = useState(() => new Date());
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
@@ -239,6 +243,18 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       setSidebarCollapsed(true);
     }
   }, [isPosRoute]);
+
+  useEffect(() => {
+    const handleConnectivityState = (event: Event) => {
+      const nextState = (event as CustomEvent<{ state?: HeaderConnectivityState }>).detail?.state;
+      if (nextState) {
+        setConnectivityState(nextState);
+      }
+    };
+
+    window.addEventListener("manus:connectivity-state", handleConnectivityState);
+    return () => window.removeEventListener("manus:connectivity-state", handleConnectivityState);
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -1294,6 +1310,54 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 aria-label="Mensajes"
               >
                 <MessageCircle className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color:
+                    connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE"
+                      ? "#e11d48"
+                      : connectivityState === "RECONNECTING"
+                        ? "#d97706"
+                        : "#059669",
+                }}
+                aria-label={
+                  connectivityState === "OFFLINE"
+                    ? "Sin conexión a Internet"
+                    : connectivityState === "SERVICE_UNAVAILABLE"
+                      ? "Servicio no disponible"
+                      : connectivityState === "RECONNECTING"
+                        ? "Reconectando con el servicio"
+                        : "Conexión estable, servicio disponible"
+                }
+                title={
+                  connectivityState === "OFFLINE"
+                    ? "Sin conexión a Internet"
+                    : connectivityState === "SERVICE_UNAVAILABLE"
+                      ? "Servicio no disponible"
+                      : connectivityState === "RECONNECTING"
+                        ? "Reconectando con el servicio"
+                        : "Conexión estable · Servicio disponible"
+                }
+              >
+                {connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE" ? (
+                  <WifiOff className="h-5 w-5" aria-hidden="true" />
+                ) : (
+                  <Wifi className="h-5 w-5" aria-hidden="true" />
+                )}
+                <span
+                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                    connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE"
+                      ? "bg-rose-500"
+                      : connectivityState === "RECONNECTING"
+                        ? "bg-amber-400"
+                        : "bg-emerald-500"
+                  }`}
+                  aria-hidden="true"
+                />
               </button>
               {hasPendingPosSale ? (
                 isPosRoute ? (
