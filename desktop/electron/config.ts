@@ -1,5 +1,5 @@
-//export const DEFAULT_MANUS_WEB_URL = "https://www.apptiendamanus.space/login";
-export const DEFAULT_MANUS_WEB_URL = "http://localhost:3000/login";
+export const DEFAULT_MANUS_WEB_URL = "https://www.apptiendamanus.space/login";
+//export const DEFAULT_MANUS_WEB_URL = "http://localhost:3000/login";
 export const DEFAULT_AGENT_LOOPBACK_ORIGIN = "http://127.0.0.1:4050";
 export const QA_MANUS_WEB_ORIGIN = "https://www.apptiendamanus.space";
 
