@@ -27,6 +27,7 @@ const DEFAULT_WINDOW_WIDTH = 1280;
 const DEFAULT_WINDOW_HEIGHT = 800;
 const MIN_WINDOW_WIDTH = 1024;
 const MIN_WINDOW_HEIGHT = 700;
+const REMOTE_HEARTBEAT_INTERVAL_MS = 3_000;
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["https:"]);
 
 let mainWindow: BrowserWindow | null = null;
@@ -239,6 +240,7 @@ const createMainWindow = async () => {
   window.webContents.on("did-finish-load", () => {
     const loadedUrl = window.webContents.getURL();
     if (isSameOrigin(loadedUrl)) {
+      remotePageLoaded = true;
       lastSuccessfulRemoteUrl = loadedUrl;
       retryAttempt = 0;
       clearRetryTimer();
@@ -285,6 +287,8 @@ const createMainWindow = async () => {
   let retryTimer: NodeJS.Timeout | null = null;
   let retryAttempt = 0;
   let probeInFlight = false;
+  let connectivityMonitor: NodeJS.Timeout | null = null;
+  let remotePageLoaded = false;
   let lastSuccessfulRemoteUrl = electronConfig.initialUrl.href;
 
   const clearRetryTimer = () => {
@@ -296,6 +300,7 @@ const createMainWindow = async () => {
 
   const loadConnectivityPage = async (state: ConnectivityState) => {
     if (window.isDestroyed()) return;
+    remotePageLoaded = false;
     isConnectivityPageLoading = true;
     try {
       await window.loadFile(connectivityPagePath, { query: { state } });
@@ -329,6 +334,7 @@ const createMainWindow = async () => {
   const attemptRemoteNavigation = async () => {
     if (window.isDestroyed() || isRemoteNavigationInFlight) return;
     isRemoteNavigationInFlight = true;
+    remotePageLoaded = false;
     try {
       await window.loadURL(lastSuccessfulRemoteUrl);
     } catch (error) {
@@ -367,6 +373,21 @@ const createMainWindow = async () => {
     setTimeout(() => void attemptRemoteNavigation(), 900);
   };
 
+  const monitorRemoteConnection = async () => {
+    if (!remotePageLoaded || probeInFlight || isConnectivityPageLoading || isRemoteNavigationInFlight || window.isDestroyed()) {
+      return;
+    }
+
+    const reachable = await probeRemoteService();
+    if (reachable || !remotePageLoaded || window.isDestroyed()) {
+      return;
+    }
+
+    remotePageLoaded = false;
+    await loadConnectivityPage("offline");
+    scheduleRetry();
+  };
+
   const handleNetworkFailure = (errorCode: number, errorDescription: string, validatedURL: string) => {
     console.warn(`[connectivity] remote navigation failed error=${errorDescription} code=${errorCode} url=${validatedURL}`);
     void loadConnectivityPage("offline").then(scheduleRetry);
@@ -379,6 +400,10 @@ const createMainWindow = async () => {
 
   window.on("closed", () => {
     clearRetryTimer();
+    if (connectivityMonitor) {
+      clearInterval(connectivityMonitor);
+      connectivityMonitor = null;
+    }
     requestManualRetry = null;
   });
 
@@ -392,6 +417,7 @@ const createMainWindow = async () => {
   });
 
   try {
+    connectivityMonitor = setInterval(() => void monitorRemoteConnection(), REMOTE_HEARTBEAT_INTERVAL_MS);
     await loadConnectivityPage("startup");
     // Keep a visible local state while the remote web is being verified. A
     // direct loadURL here can leave the BrowserWindow white while DNS/TLS
