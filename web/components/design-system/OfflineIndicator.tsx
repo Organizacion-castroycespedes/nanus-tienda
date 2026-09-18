@@ -137,6 +137,7 @@ export function OfflineIndicator() {
 
   useEffect(() => {
     lastStateRef.current = state;
+    window.dispatchEvent(new CustomEvent("manus:connectivity-state", { detail: { state } }));
   }, [state]);
 
   const showOverlay = hasChecked && !dismissed && (state === "OFFLINE" || state === "RECONNECTING" || state === "RESTORED" || state === "SERVICE_UNAVAILABLE");
