@@ -54,6 +54,12 @@ export class OperationalSalesController {
     return this.service.retryElectronicBilling(this.actor(request), saleId);
   }
 
+  @Post(":saleId/electronic-billing/recover-provider-create-intent")
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  recoverProviderCreateIntent(@Param("saleId") saleId: string, @Req() request: OperationalRequest) {
+    return this.service.recoverProviderCreateIntent(this.actor(request), saleId);
+  }
+
   private actor(request: OperationalRequest) {
     const context = request.context;
     const tenantId = context?.tenantId ?? request.user?.tenantId;

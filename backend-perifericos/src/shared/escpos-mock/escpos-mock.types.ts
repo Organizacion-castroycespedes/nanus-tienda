@@ -11,6 +11,7 @@ export const EscPosMockCommandName = {
   Cut: "CUT",
   CashDrawerPulse: "CASH_DRAWER_PULSE",
   QrCode: "QR_CODE",
+  ImageRaster: "IMAGE_RASTER",
 } as const;
 
 export type EscPosMockCommandName =
@@ -43,11 +44,19 @@ export type ThermalTicketTaxLine = {
 
 export type ThermalTicketContent = {
   qrPayload?: string;
+  logo?: string;
   header?: string;
   businessName?: string;
   nit?: string;
+  phone?: string;
+  email?: string;
   address?: string;
   cashier?: string;
+  customerName?: string;
+  customerIdentification?: string;
+  customerAddress?: string;
+  fiscalStatus?: string;
+  cufe?: string;
   documentNumber?: string;
   saleNumber?: string;
   date?: string;

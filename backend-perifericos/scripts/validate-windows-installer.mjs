@@ -7,11 +7,12 @@ import { execFileSync } from "node:child_process";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
+const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${packageJson.version}-win-x64.exe`;
 const installerPath = join(
   projectRoot,
   "dist-installer",
   "windows-x64",
-  `ManusTerminalSetup-${packageJson.version}-win-x64.exe`,
+  outputName,
 );
 
 assert.equal(existsSync(installerPath), true, `Missing installer artifact: ${installerPath}`);

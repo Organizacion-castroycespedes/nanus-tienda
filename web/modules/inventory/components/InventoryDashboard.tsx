@@ -349,8 +349,18 @@ export const InventoryDashboard = () => {
       startDate: filters.startDate,
       endDate: filters.endDate,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.tenantId, authRole, pos.terminalId]);
+  }, [
+    authRole,
+    authUser?.branchId,
+    authUser?.tenantId,
+    filters.branchId,
+    filters.cashSessionId,
+    filters.endDate,
+    filters.startDate,
+    filters.terminalId,
+    loadDashboard,
+    pos.terminalId,
+  ]);
 
   const handleApplyFilters = () => {
     void loadDashboard(filters);
@@ -1239,3 +1249,4 @@ export const InventoryDashboard = () => {
     </div>
   );
 };
+

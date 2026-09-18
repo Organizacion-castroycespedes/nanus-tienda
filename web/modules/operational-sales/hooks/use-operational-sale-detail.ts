@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../lib/request";
 import {
   fetchOperationalSaleDetail,
+  createSinglePostGuard,
+  providerCreateIntentRecoveryMessage,
+  recoverOperationalSaleProviderCreateIntent,
   requestOperationalSaleElectronicBilling,
   refreshOperationalSaleBillingStatus,
   retryOperationalSaleBilling,
@@ -16,6 +19,7 @@ export const useOperationalSaleDetail = (saleId: string) => {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const recoveryPostGuard = useRef(createSinglePostGuard()).current;
 
   const load = useCallback(() => {
     let active = true;
@@ -106,6 +110,37 @@ export const useOperationalSaleDetail = (saleId: string) => {
     }
   }, [actionLoading, saleId]);
 
+  const recoverProviderCreateIntent = useCallback(async () => {
+    let succeeded = false;
+    await recoveryPostGuard.run(async () => {
+      setActionLoading(true);
+      setActionMessage(null);
+      try {
+        const response = await recoverOperationalSaleProviderCreateIntent(saleId);
+        const recoveryResult = response.recoveryResult;
+        setActionMessage(
+          recoveryResult?.safeUserMessage
+          ?? (recoveryResult?.resultCode
+            ? providerCreateIntentRecoveryMessage(recoveryResult.resultCode)
+            : "Procesamiento electr\u00f3nico recuperado."),
+        );
+        setData(await fetchOperationalSaleDetail(saleId));
+        succeeded = true;
+      } catch (requestError: unknown) {
+        if (requestError instanceof ApiError && [400, 409, 422].includes(requestError.status)) {
+          setActionMessage("La factura ya no cumple las condiciones para esta recuperaci\u00f3n.");
+        } else if (requestError instanceof ApiError && requestError.status >= 500) {
+          setActionMessage("No fue posible confirmar el estado en FactuCore. No se realiz\u00f3 la recuperaci\u00f3n.");
+        } else {
+          setActionMessage("No fue posible recuperar el procesamiento electr\u00f3nico.");
+        }
+      } finally {
+        setActionLoading(false);
+      }
+    });
+    return succeeded;
+  }, [recoveryPostGuard, saleId]);
+
   return {
     data,
     loading,
@@ -114,6 +149,7 @@ export const useOperationalSaleDetail = (saleId: string) => {
     refreshBillingStatus,
     retryBilling,
     requestBilling,
+    recoverProviderCreateIntent,
     actionLoading,
     actionMessage,
   };

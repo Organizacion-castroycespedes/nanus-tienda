@@ -17,6 +17,7 @@ import {
   type ProductProps,
   type ProductRotationClass,
   type ProductSaleType,
+  type ProductStandardIdentification,
 } from "../entities/product.entity";
 import {
   PRODUCT_IMAGE_MIME_TYPES,
@@ -53,6 +54,7 @@ type CreateProductInput = {
   name: string;
   description?: string | null;
   sku: string;
+  standardIdentification?: ProductStandardIdentification | null;
   price: number;
   cost: number;
   priceWithTax?: number;
@@ -85,6 +87,7 @@ type UpdateProductInput = Partial<
     | "name"
     | "description"
     | "sku"
+    | "standardIdentification"
     | "price"
     | "cost"
     | "priceWithTax"
@@ -762,6 +765,7 @@ export class ProductService {
           name: entity.name,
           description: entity.description,
           sku: entity.sku,
+          standardIdentification: entity.standardIdentification,
           price: entity.price,
           cost: entity.cost,
           priceWithTax: entity.priceWithTax,

@@ -97,6 +97,7 @@ export const PdfPreviewModal = ({
       description={description}
       onClose={onClose}
       size="xl"
+      className="max-h-[calc(100vh-3rem)] overflow-y-auto"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -140,7 +141,7 @@ export const PdfPreviewModal = ({
         </>
       }
     >
-      <div className="min-h-[520px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+      <div className="min-h-[520px] max-h-[calc(100vh-12rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50">
         {loading ? (
           <div className="flex h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
             Generando vista previa del PDF...
@@ -155,7 +156,7 @@ export const PdfPreviewModal = ({
             onLoad={() => setFrameReady(true)}
             src={objectUrl}
             title={title}
-            className="h-[520px] w-full bg-white"
+            className="h-[70vh] min-h-[520px] w-full bg-white"
           />
         ) : (
           <div className="flex h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">

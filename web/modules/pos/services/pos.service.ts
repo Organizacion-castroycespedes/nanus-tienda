@@ -107,6 +107,12 @@ export const createSale = (payload: PosSalePayload, headers?: HeadersInit) =>
     body: JSON.stringify(payload),
   });
 
+export const reconcileSale = (idempotencyKey: string, headers?: HeadersInit) =>
+  apiClient<SaleResponse>(`/sales/idempotency/${encodeURIComponent(idempotencyKey)}`, {
+    headers,
+    includePosSession: true,
+  });
+
 export const previewPosLinePrice = (
   payload: PosLinePricePreviewPayload,
   headers?: HeadersInit

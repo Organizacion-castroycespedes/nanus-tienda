@@ -1,7 +1,7 @@
 import type { Content, TableCell } from "pdfmake/interfaces";
-import type { PosSaleTicketDataset } from "../../../reports/types/sales-report.types";
+import type { PosSaleTicketDataset, PrintableCompanyHeader } from "../../../reports/types/sales-report.types";
 import {
-  addThermalSoftBreaks,
+  addPdfSoftBreaks,
   buildThermalDocument,
   buildThermalSectionTitle,
   THERMAL_80MM_LAYOUT,
@@ -22,21 +22,24 @@ const formatDate = (value: string | null | undefined) =>
       }).format(new Date(value))
     : "N/A";
 
-export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
+type PosSalePdfDataset = PosSaleTicketDataset & { company?: PrintableCompanyHeader | null };
+
+export const buildPosSaleTicketTemplate = (dataset: PosSalePdfDataset) =>
   buildThermalDocument({
-    title: dataset.header.tenantName ?? "POS",
-    subtitle: dataset.header.branch ?? "Sucursal",
+    title: dataset.company?.legalName ?? dataset.header.tenantName ?? "POS",
+    subtitle: dataset.company?.branchName ?? dataset.header.branch ?? "Sucursal",
+    logo: dataset.company?.logo,
     metadata: [
       { label: "Documento", value: "Ticket de venta" },
-      { label: "Venta", value: dataset.header.saleId },
+      ...(dataset.company?.nit
+        ? [{ label: "NIT", value: `${dataset.company.nit}${dataset.company.dv ? `-${dataset.company.dv}` : ""}` }]
+        : []),
+      ...(dataset.company?.address ? [{ label: "Dirección", value: dataset.company.address }] : []),
+      ...(dataset.company?.phone ? [{ label: "Teléfono", value: dataset.company.phone }] : []),
+      ...(dataset.company?.email ? [{ label: "Correo", value: dataset.company.email }] : []),
       { label: "Fecha", value: formatDate(dataset.header.date) },
       { label: "Cliente", value: dataset.header.customer },
       { label: "Cajero", value: dataset.header.cashier },
-      { label: "Terminal", value: dataset.header.terminal ?? "N/A" },
-      {
-        label: "Estado",
-        value: `${dataset.header.status} / ${dataset.header.paymentStatus}`,
-      },
     ],
     sections: [
       {
@@ -56,7 +59,7 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
                       {
                         stack: [
                           {
-                            text: addThermalSoftBreaks(item.productName),
+                            text: addPdfSoftBreaks(item.productName),
                             bold: true,
                           },
                           {
@@ -100,22 +103,14 @@ export const buildPosSaleTicketTemplate = (dataset: PosSaleTicketDataset) =>
                   ],
                 })
               )
-            : [{ text: "Sin pagos registrados", fontSize: 8.5 }]),
+            : [{
+                text: dataset.totals.paid > 0
+                  ? "Detalle de pago no disponible"
+                  : "Sin pagos registrados",
+                fontSize: 8.5,
+              }]),
         ],
       },
-      ...(dataset.cashContext
-        ? [
-            {
-              fontSize: 8,
-              stack: [
-                buildThermalSectionTitle("Caja"),
-                { text: `Caja: ${dataset.cashContext.cashRegister ?? "N/A"}` },
-                { text: `Sesi\u00f3n: ${dataset.cashContext.cashSession ?? "N/A"}` },
-                { text: `Apertura: ${formatDate(dataset.cashContext.openedAt)}` },
-              ],
-            } as Content,
-          ]
-        : []),
     ],
     totals: [
       { label: "Subtotal", value: formatCurrency(dataset.totals.subtotal) },

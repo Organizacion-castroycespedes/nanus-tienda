@@ -38,6 +38,8 @@ export type BillingStatusRefreshResult = {
 
 export type BillingRetryabilityResult = {
   canRetry: boolean;
+  canRecoverProviderCreateIntent: boolean;
+  canRecoverExistingProvider?: boolean;
   retryClass: string;
   decision: string;
   reasonCode: string;
@@ -57,6 +59,20 @@ export type BillingRetryResult = {
   status: string | null;
   processingStage: string | null;
   safeUserMessage: string;
+};
+
+export type BillingPreProviderRecoveryResult = {
+  allowed: true;
+  recovery: "CONFIRMED_PROVIDER_ABSENCE" | "EXISTING_PROVIDER_RESUMED";
+  resultCode: "REMOTE_FOUND_RECONCILED" | "REMOTE_NOT_FOUND_RECOVERED" | "EXISTING_PROVIDER_RECONCILED";
+  safeUserMessage: string;
+  electronicDocumentId: string;
+  status: string | null;
+  processingStage: string | null;
+  providerStatus: string | null;
+  providerDocumentId: string | null;
+  fullNumber: string | null;
+  cufe: string | null;
 };
 
 const isSuccessStatus = (status: string) =>
@@ -205,6 +221,16 @@ export class BillingIntegrationClient {
   ): Promise<BillingRetryResult> {
     return this.postDocumentAction<BillingRetryResult>(
       `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/retry`,
+      tenantId,
+    );
+  }
+
+  async recoverProviderCreateIntent(
+    tenantId: string,
+    electronicDocumentId: string,
+  ): Promise<BillingPreProviderRecoveryResult> {
+    return this.postDocumentAction<BillingPreProviderRecoveryResult>(
+      `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/recover-processing`,
       tenantId,
     );
   }

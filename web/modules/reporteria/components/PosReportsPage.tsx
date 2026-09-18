@@ -11,10 +11,12 @@ import { usePosReports } from "../hooks/use-pos-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { printReporteriaSaleTicket } from "../direct-print";
+import { printElectronicInvoiceTicket } from "../electronic-invoice-direct-print";
 import {
   getPosSaleTicket,
   getPosSaleTicketPrintData,
   getElectronicInvoice,
+  getElectronicInvoicePrintData,
 } from "../services/reporting.service";
 import type { PosSalesListRow } from "../types";
 import {
@@ -84,17 +86,24 @@ const PosReportsPage = () => {
   const { dataset, loading, searched, error, loadReports } = usePosReports();
 
   const handleDirectPrint = useCallback(
-    async (saleId: string) => {
+    async (saleId: string, billingStatus?: PosSalesListRow["billingStatus"]) => {
       setPrintingSaleId(saleId);
       setDirectPrintFeedback(null);
 
       try {
         const ticket = await getPosSaleTicketPrintData(saleId);
-        const result = await printReporteriaSaleTicket(ticket, {
+        const terminal = {
           tenantId: posContext.tenantId ?? tenantId,
           branchId: posContext.branchId ?? branchId,
           terminalId: posContext.terminalId ?? undefined,
-        });
+        };
+        const result = billingStatus === "ACCEPTED"
+          ? await printElectronicInvoiceTicket(
+              await getElectronicInvoicePrintData(saleId),
+              ticket,
+              terminal,
+            )
+          : await printReporteriaSaleTicket(ticket, terminal);
 
         setDirectPrintFeedback({
           saleId,
@@ -316,7 +325,7 @@ const PosReportsPage = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void handleDirectPrint(row.saleId)}
+              onClick={() => void handleDirectPrint(row.saleId, row.billingStatus)}
               disabled={printingSaleId === row.saleId}
             >
               <Printer className="h-4 w-4" />

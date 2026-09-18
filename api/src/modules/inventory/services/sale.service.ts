@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -42,6 +43,10 @@ import {
   type SaleRow,
 } from "../repositories/sale.repository";
 import {
+  buildSaleIdempotencyHash,
+  normalizeSaleIdempotencyKey,
+} from "../sale-idempotency";
+import {
   canViewAllBranches,
   hasBranchScopedRole,
   normalizeOptionalFilter,
@@ -66,6 +71,8 @@ import {
 } from "../../integration-outbox/contracts/issuer-vat-billing-guard";
 import {
   getElectronicBillingMode,
+  resolveElectronicBillingPolicy,
+  type ElectronicBillingPolicy,
 } from "../../integration-outbox/contracts/electronic-billing-mode";
 import { StockMovementService } from "./stock-movement.service";
 import {
@@ -117,6 +124,35 @@ type SaleItemTaxRow = {
   calculation_method_code?: string | null;
   created_at: Date;
 };
+
+export function resolveElectronicBillingTaxTreatment(
+  taxes: Array<{
+    type?: string | null;
+    code?: string | null;
+    schemeName?: string | null;
+    metadata?: Record<string, unknown>;
+  }>,
+  taxAmount: number,
+): "EXEMPT" | "EXCLUDED" | "TAXED" {
+  const isExempt = taxes.some((tax) =>
+    [
+      tax.type,
+      tax.schemeName,
+      tax.metadata?.taxName,
+      tax.metadata?.taxTreatment,
+    ].some((value) =>
+      typeof value === "string" && value.trim().toUpperCase().includes("EXENTO"),
+    ),
+  );
+
+  if (isExempt) {
+    return "EXEMPT";
+  }
+  if (taxAmount > 0 || taxes.length > 0) {
+    return "TAXED";
+  }
+  return "EXCLUDED";
+}
 
 type SalePaymentMethodRow = {
   id: string;
@@ -454,15 +490,31 @@ export class SaleService {
     );
 
     return payments.map((payment) => {
-      const paymentMethod = paymentMethodTypes.get(payment.paymentMethodId);
-      if (!paymentMethod) {
+      const paymentMethodRecord = paymentMethodTypes.get(payment.paymentMethodId);
+      if (!paymentMethodRecord) {
         throw new BadRequestException("payment method not found for tenant");
+      }
+
+      const paymentMethod = this.mapLegacySalePaymentMethod(paymentMethodRecord.tipo);
+      const reference = payment.referenceNumber ?? payment.notes ?? null;
+      if (paymentMethodRecord.requires_reference && !reference?.trim()) {
+        throw new BadRequestException(
+          `payment reference is required for ${paymentMethodRecord.nombre}`,
+        );
       }
 
       return {
         paymentMethod,
+        paymentMethodId: paymentMethodRecord.id,
+        paymentMethodCode: paymentMethodRecord.codigo,
+        paymentMethodName: paymentMethodRecord.nombre,
+        paymentMethodType: paymentMethodRecord.tipo,
+        requiresReference: paymentMethodRecord.requires_reference,
+        electronicBillingEnabled: paymentMethodRecord.electronic_billing_enabled ?? false,
+        electronicPaymentMeansCode: paymentMethodRecord.electronic_payment_means_code ?? null,
+        electronicPaymentMeansId: paymentMethodRecord.electronic_payment_means_id ?? null,
         amount: payment.amount,
-        reference: payment.referenceNumber ?? payment.notes ?? null,
+        reference,
       };
     });
   }
@@ -921,9 +973,9 @@ export class SaleService {
           subtotalAmount: this.toDecimalWireValue(subtotalAmount),
           taxAmount: this.toDecimalWireValue(taxAmount),
           totalAmount: this.toDecimalWireValue(totalAmount),
-          taxTreatment: taxAmount > 0 || taxes.length > 0 ? "TAXED" : "EXCLUDED",
-          standardItemId: product.id,
-          standardItemSchemeId: "MANUS",
+          taxTreatment: resolveElectronicBillingTaxTreatment(taxes, taxAmount),
+          standardItemId: product.standardIdentification?.code ?? null,
+          standardItemSchemeId: product.standardIdentification?.scheme ?? null,
           taxes,
           metadata: {
             productId: product.id,
@@ -955,6 +1007,14 @@ export class SaleService {
   private buildElectronicBillingPayments(
     legacyPaymentMethods: Array<{
       paymentMethod: "CASH" | "CARD" | "TRANSFER" | "OTHER";
+      paymentMethodId?: string | null;
+      paymentMethodCode?: string | null;
+      paymentMethodName?: string | null;
+      paymentMethodType?: string | null;
+      requiresReference?: boolean;
+      electronicBillingEnabled?: boolean;
+      electronicPaymentMeansCode?: string | null;
+      electronicPaymentMeansId?: string | null;
       amount: number;
       reference?: string | null;
     }>,
@@ -966,24 +1026,44 @@ export class SaleService {
 
     const term = payments.length === 1 ? "IMMEDIATE" : "MIXED";
 
-    return payments.map((payment, index) => ({
-      methodCode:
-        legacyPaymentMethods[index]?.paymentMethod ??
-        legacyPaymentMethods[0]?.paymentMethod ??
-        "OTHER",
-      amount: this.toDecimalWireValue(payment.amount),
-      term,
-      dueDate: null,
-      reference: payment.referenceNumber ?? payment.notes ?? null,
-      metadata: {
-        index,
-        paymentMethodId: payment.paymentMethodId,
-        cashSessionId: payment.cashSessionId ?? null,
-        paymentMethod: legacyPaymentMethods[index]?.paymentMethod ?? null,
-        amount: payment.amount,
+    return payments.map((payment, index) => {
+      const catalogPayment = legacyPaymentMethods[index] ?? legacyPaymentMethods[0];
+      const methodCode =
+        catalogPayment?.paymentMethodType === "CASH"
+          ? "CASH"
+          : catalogPayment?.paymentMethodCode ?? catalogPayment?.paymentMethod ?? "OTHER";
+
+      return {
+        methodCode,
+        paymentMethodId: catalogPayment?.paymentMethodId ?? payment.paymentMethodId,
+        paymentMethodCode: catalogPayment?.paymentMethodCode ?? null,
+        paymentMethodName: catalogPayment?.paymentMethodName ?? null,
+        paymentMethodType: catalogPayment?.paymentMethodType ?? null,
+        requiresReference: catalogPayment?.requiresReference ?? null,
+        electronicBillingEnabled: catalogPayment?.electronicBillingEnabled ?? null,
+        electronicPaymentMeansCode: catalogPayment?.electronicPaymentMeansCode ?? null,
+        electronicPaymentMeansId: catalogPayment?.electronicPaymentMeansId ?? null,
+        amount: this.toDecimalWireValue(payment.amount),
+        term,
+        dueDate: null,
         reference: payment.referenceNumber ?? payment.notes ?? null,
-      },
-    }));
+        metadata: {
+          index,
+          paymentMethodId: payment.paymentMethodId,
+          cashSessionId: payment.cashSessionId ?? null,
+          paymentMethod: catalogPayment?.paymentMethod ?? null,
+          paymentMethodCode: catalogPayment?.paymentMethodCode ?? null,
+          paymentMethodName: catalogPayment?.paymentMethodName ?? null,
+          paymentMethodType: catalogPayment?.paymentMethodType ?? null,
+          requiresReference: catalogPayment?.requiresReference ?? null,
+          electronicBillingEnabled: catalogPayment?.electronicBillingEnabled ?? null,
+          electronicPaymentMeansCode: catalogPayment?.electronicPaymentMeansCode ?? null,
+          electronicPaymentMeansId: catalogPayment?.electronicPaymentMeansId ?? null,
+          amount: payment.amount,
+          reference: payment.referenceNumber ?? payment.notes ?? null,
+        },
+      };
+    });
   }
 
   private isElectronicBillingCustomerFiscalDataComplete(
@@ -1208,6 +1288,17 @@ export class SaleService {
     return getElectronicBillingMode();
   }
 
+  private async getTenantElectronicBillingPolicy(
+    tenantId: string,
+    client: PoolClient,
+  ): Promise<ElectronicBillingPolicy> {
+    const result = await client.query<{ config: unknown }>(
+      "SELECT config FROM tenants WHERE id = $1",
+      [tenantId],
+    );
+    return resolveElectronicBillingPolicy(result.rows[0]?.config);
+  }
+
   private async requestElectronicBillingForSaleInTransaction(
     saleId: string,
     saleContext: SaleContext,
@@ -1228,6 +1319,14 @@ export class SaleService {
     const saleRow = saleResult.rows[0];
     if (!saleRow) {
       throw new NotFoundException("sale not found");
+    }
+
+    const policy = await this.getTenantElectronicBillingPolicy(
+      saleContext.tenantId!,
+      client,
+    );
+    if (!policy.enabled) {
+      throw new BadRequestException("electronic billing is disabled for this tenant");
     }
 
     const deterministicEventId = buildSaleCompletedForElectronicBillingEventId(
@@ -2312,10 +2411,15 @@ export class SaleService {
 
   async createSale(
     data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">,
-    context: SaleContext
+    context: SaleContext,
+    idempotencyKey?: string | string[] | null,
   ) {
     const saleContext = await this.normalizeSaleContext(context);
     this.ensureSaleInput(data);
+    const normalizedIdempotencyKey = normalizeSaleIdempotencyKey(idempotencyKey);
+    const requestHash = normalizedIdempotencyKey
+      ? buildSaleIdempotencyHash(data, saleContext)
+      : undefined;
 
     const client = await this.db.getClient();
     try {
@@ -2327,6 +2431,39 @@ export class SaleService {
       );
       if (!validPosSession) {
         throw new UnauthorizedException("POS session is invalid");
+      }
+
+      if (normalizedIdempotencyKey && requestHash) {
+        const reservation = await this.repository.reserveSaleCreationIdempotency(
+          saleContext.tenantId,
+          normalizedIdempotencyKey,
+          requestHash,
+          client,
+        );
+        if (reservation && !reservation.created) {
+          if (reservation.requestHash !== requestHash) {
+            throw new ConflictException(
+              "Idempotency-Key was already used with a different sale request",
+            );
+          }
+          if (!reservation.saleId) {
+            throw new ConflictException(
+              "Sale creation requires reconciliation before another attempt",
+            );
+          }
+
+          await client.query("COMMIT");
+          return this.getSaleById(reservation.saleId, {
+            roles: saleContext.roles,
+            userId: saleContext.userId,
+            tenantId: saleContext.tenantId,
+            branchId: saleContext.branchId,
+            terminalId: saleContext.terminalId,
+          });
+        }
+        if (!reservation) {
+          throw new ConflictException("Sale idempotency reservation was not found");
+        }
       }
 
       const validCustomer = await this.repository.validateCustomer(
@@ -2413,7 +2550,11 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      if (getElectronicBillingMode() === "AUTOMATIC") {
+      const billingPolicy = await this.getTenantElectronicBillingPolicy(
+        saleContext.tenantId,
+        client,
+      );
+      if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           { ...saleRow, status: finalizedStatus },
@@ -2428,6 +2569,15 @@ export class SaleService {
         );
       }
 
+      if (normalizedIdempotencyKey) {
+        await this.repository.completeSaleCreationIdempotency(
+          saleContext.tenantId,
+          normalizedIdempotencyKey,
+          saleRow.id,
+          client,
+        );
+      }
+
       await client.query("COMMIT");
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
@@ -2438,13 +2588,41 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.getSaleById(saleRow.id, saleContext.tenantId);
+      return this.getSaleById(saleRow.id, saleContext);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  async getSaleByIdempotencyKey(
+    idempotencyKey: string | string[] | null | undefined,
+    actor: BranchScopedActor,
+  ) {
+    const normalizedIdempotencyKey = normalizeSaleIdempotencyKey(idempotencyKey);
+    if (!normalizedIdempotencyKey) {
+      throw new BadRequestException("Idempotency-Key is required");
+    }
+    if (!actor.tenantId) {
+      throw new UnauthorizedException("Tenant requerido");
+    }
+
+    const reservation = await this.repository.findSaleByIdempotencyKey(
+      actor.tenantId,
+      normalizedIdempotencyKey,
+    );
+    if (!reservation) {
+      throw new NotFoundException("sale idempotency key not found");
+    }
+    if (!reservation.saleId) {
+      throw new ConflictException(
+        "Sale creation requires reconciliation before another attempt",
+      );
+    }
+
+    return this.getSaleById(reservation.saleId, actor);
   }
 
   async createSaleFromOrderDelivery(
@@ -2496,7 +2674,11 @@ export class SaleService {
         saleContext.userId,
         client
       );
-      if (getElectronicBillingMode() === "AUTOMATIC") {
+      const billingPolicy = await this.getTenantElectronicBillingPolicy(
+        saleContext.tenantId,
+        client,
+      );
+      if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           saleRow,

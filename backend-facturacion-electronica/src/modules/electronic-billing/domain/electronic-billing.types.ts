@@ -20,7 +20,8 @@ export type ElectronicDocumentEventType =
   | "ACCEPTED"
   | "REJECTED"
   | "TECHNICAL_ERROR"
-  | "RETRY_REQUESTED";
+  | "RETRY_REQUESTED"
+  | "PROVIDER_CREATE_INTENT_RECOVERED";
 
 export type ElectronicDocumentDeliveryType = "EMAIL" | "WHATSAPP" | "PORTAL";
 
@@ -149,6 +150,11 @@ export type ElectronicDocumentTotals = {
 
 export type ElectronicPayment = {
   methodCode: string;
+  amount?: number | string | null;
+  reference?: string | null;
+  paymentMeansCode?: string | null;
+  paymentMeansId?: string | null;
+  requiresReference?: boolean;
   term?: string | null;
   dueDate?: Date | string | null;
   metadata?: Record<string, unknown>;
@@ -161,6 +167,8 @@ export type ElectronicDocumentIssueBaseCommand = {
   issueDate?: string | Date | null;
   issueTime?: string | null;
   customer: ElectronicCustomer;
+  /** Canonical payment contract. Legacy `payment` remains for one-payment callers. */
+  payments?: ElectronicPayment[] | null;
   payment?: ElectronicPayment | null;
   lines: ElectronicDocumentLineInput[];
   totals: ElectronicDocumentTotals;

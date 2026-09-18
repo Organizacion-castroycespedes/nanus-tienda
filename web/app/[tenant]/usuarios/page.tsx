@@ -130,7 +130,7 @@ const UsuariosPage = () => {
       headers["x-user-id"] = authUser.id;
     }
     return headers;
-  }, [permissions.length]);
+  }, [authUser?.id, authUser?.role, authUser?.tenantId]);
 
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
@@ -234,7 +234,7 @@ const UsuariosPage = () => {
         window.clearTimeout(timeoutId);
       }
     };
-  }, []);
+  }, [permissions.length]);
 
   useEffect(() => {
     if (!hasAccess) {
@@ -261,7 +261,7 @@ const UsuariosPage = () => {
     } else {
       void loadBranches(authUser?.tenantId);
     }
-  }, [hasAccess, isSuperAdmin, loadBranches, selectedTenantId]);
+  }, [authUser?.tenantId, hasAccess, isSuperAdmin, loadBranches, selectedTenantId]);
 
   const tenantOptions = useMemo(
     () => tenants.filter((tenant) => tenant.activo),
@@ -937,3 +937,4 @@ const UsuariosPage = () => {
 };
 
 export default UsuariosPage;
+

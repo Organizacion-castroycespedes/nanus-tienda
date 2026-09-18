@@ -105,6 +105,7 @@ const getDocumentId = () => randomUUID();
 
 const buildBillingSnapshotMetadata = (command: AggregateCommand) => ({
   customer: command.customer,
+  payments: command.payments ?? (command.payment ? [command.payment] : []),
   payment: command.payment ?? null,
 });
 
@@ -116,6 +117,8 @@ const buildLineSnapshotMetadata = (
     sourceLineId: line.sourceLineId ?? null,
     originalElectronicDocumentLineId: line.originalElectronicDocumentLineId ?? null,
     providerOriginalLineId: line.providerOriginalLineId ?? null,
+    standardItemId: line.standardItemId ?? null,
+    standardItemSchemeId: line.standardItemSchemeId ?? null,
   },
 });
 

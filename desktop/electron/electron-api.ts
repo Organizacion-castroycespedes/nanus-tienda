@@ -20,6 +20,7 @@ export const IPC_CHANNELS = {
   getRuntimeInfo: "manusTerminal.getRuntimeInfo",
   getShellInfo: "manusTerminal.getShellInfo",
   getAgentHealth: "manusTerminal.getAgentHealth",
+  retryConnection: "manusTerminal.retryConnection",
   listDevices: "manusTerminal.listDevices",
   discoverDevices: "manusTerminal.discoverDevices",
   createDevice: "manusTerminal.createDevice",
@@ -36,6 +37,7 @@ export type ManusTerminalApi = {
   getRuntimeInfo: () => Promise<RuntimeInfo>;
   getShellInfo: () => Promise<ShellInfo>;
   getAgentHealth: () => Promise<AgentHealth>;
+  retryConnection: () => void;
   listDevices: () => Promise<unknown[]>;
   discoverDevices: (terminalId: string) => Promise<{ devices: unknown[] }>;
   createDevice: (payload: unknown) => Promise<unknown>;

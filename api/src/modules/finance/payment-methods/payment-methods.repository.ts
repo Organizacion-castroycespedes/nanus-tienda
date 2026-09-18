@@ -11,6 +11,9 @@ export type PaymentMethodRecord = {
   requires_reference: boolean;
   allows_change: boolean;
   active: boolean;
+  electronic_billing_enabled: boolean;
+  electronic_payment_means_code: string | null;
+  electronic_payment_means_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -23,6 +26,9 @@ type CreatePaymentMethodInput = {
   requiresReference: boolean;
   allowsChange: boolean;
   active: boolean;
+  electronicBillingEnabled: boolean;
+  electronicPaymentMeansCode?: string | null;
+  electronicPaymentMeansId?: string | null;
 };
 
 type UpdatePaymentMethodInput = Partial<CreatePaymentMethodInput>;
@@ -65,6 +71,9 @@ export class PaymentMethodsRepository {
         requires_reference,
         allows_change,
         active,
+        electronic_billing_enabled,
+        electronic_payment_means_code,
+        electronic_payment_means_id,
         created_at,
         updated_at
       FROM payment_methods
@@ -123,6 +132,9 @@ export class PaymentMethodsRepository {
         requires_reference,
         allows_change,
         active,
+        electronic_billing_enabled,
+        electronic_payment_means_code,
+        electronic_payment_means_id,
         created_at,
         updated_at
       FROM payment_methods
@@ -145,9 +157,12 @@ export class PaymentMethodsRepository {
         tipo,
         requires_reference,
         allows_change,
-        active
+        active,
+        electronic_billing_enabled,
+        electronic_payment_means_code,
+        electronic_payment_means_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id`,
       [
         data.tenantId,
@@ -157,6 +172,9 @@ export class PaymentMethodsRepository {
         data.requiresReference,
         data.allowsChange,
         data.active,
+        data.electronicBillingEnabled,
+        data.electronicPaymentMeansCode ?? null,
+        data.electronicPaymentMeansId ?? null,
       ],
       client
     );
@@ -200,6 +218,18 @@ export class PaymentMethodsRepository {
     if (data.active !== undefined) {
       params.push(data.active);
       updates.push(`active = $${params.length}`);
+    }
+    if (data.electronicBillingEnabled !== undefined) {
+      params.push(data.electronicBillingEnabled);
+      updates.push(`electronic_billing_enabled = $${params.length}`);
+    }
+    if (data.electronicPaymentMeansCode !== undefined) {
+      params.push(data.electronicPaymentMeansCode);
+      updates.push(`electronic_payment_means_code = $${params.length}`);
+    }
+    if (data.electronicPaymentMeansId !== undefined) {
+      params.push(data.electronicPaymentMeansId);
+      updates.push(`electronic_payment_means_id = $${params.length}`);
     }
 
     if (updates.length === 0) {

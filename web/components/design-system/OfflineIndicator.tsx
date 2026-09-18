@@ -7,15 +7,16 @@ import { requestRaw } from "../../lib/request";
 type ConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
 
 const RETRY_INTERVAL_MS = 5_000;
+const HEALTH_CHECK_INTERVAL_MS = 3_000;
 const HEALTH_TIMEOUT_MS = 4_000;
 const LAST_CONNECTION_KEY = "manus:last-connection-at";
 
-const stateLabel: Record<ConnectivityState, string> = {
-  ONLINE: "En línea",
-  OFFLINE: "Sin conexión a Internet",
-  SERVICE_UNAVAILABLE: "Servicio temporalmente no disponible",
-  RECONNECTING: "Restableciendo conexión...",
-  RESTORED: "Conexión restablecida",
+const compactStatusLabel: Record<ConnectivityState, string> = {
+  ONLINE: "Conexión estable · Servicio disponible",
+  OFFLINE: "Sin conexión · Internet no disponible",
+  SERVICE_UNAVAILABLE: "Conexión activa · Servicio no disponible",
+  RECONNECTING: "Conexión en revisión · Verificando servicio",
+  RESTORED: "Conexión restablecida · Servicio disponible",
 };
 
 const stateTone: Record<ConnectivityState, string> = {
@@ -41,14 +42,21 @@ export function OfflineIndicator() {
   const lastStateRef = useRef<ConnectivityState>("RECONNECTING");
   const hasCheckedRef = useRef(false);
   const nextAttemptAtRef = useRef(0);
+  const checkInFlightRef = useRef(false);
+  const lastHealthCheckAtRef = useRef(0);
 
   const checkConnectivity = useCallback(async (manual = false) => {
+    if (checkInFlightRef.current) return false;
+    checkInFlightRef.current = true;
+    lastHealthCheckAtRef.current = Date.now();
+
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setBackendOnline(false);
       setState("OFFLINE");
       setHasChecked(true);
       setDismissed(false);
       nextAttemptAtRef.current = Date.now() + RETRY_INTERVAL_MS;
+      checkInFlightRef.current = false;
       return false;
     }
 
@@ -92,6 +100,7 @@ export function OfflineIndicator() {
       return false;
     } finally {
       window.clearTimeout(timeout);
+      checkInFlightRef.current = false;
     }
   }, []);
 
@@ -114,7 +123,9 @@ export function OfflineIndicator() {
     const poll = window.setInterval(() => {
       const seconds = Math.max(0, Math.ceil((nextAttemptAtRef.current - Date.now()) / 1000));
       setNextAttemptIn(seconds);
-      if (nextAttemptAtRef.current > 0 && seconds === 0) void checkConnectivity();
+      const retryDue = nextAttemptAtRef.current > 0 && seconds === 0;
+      const healthCheckDue = nextAttemptAtRef.current === 0 && Date.now() - lastHealthCheckAtRef.current >= HEALTH_CHECK_INTERVAL_MS;
+      if (retryDue || healthCheckDue) void checkConnectivity();
     }, 1000);
 
     return () => {
@@ -126,21 +137,23 @@ export function OfflineIndicator() {
 
   useEffect(() => {
     lastStateRef.current = state;
+    window.dispatchEvent(new CustomEvent("manus:connectivity-state", { detail: { state } }));
   }, [state]);
 
   const showOverlay = hasChecked && !dismissed && (state === "OFFLINE" || state === "RECONNECTING" || state === "RESTORED" || state === "SERVICE_UNAVAILABLE");
 
   return (
     <>
-      <div className="fixed bottom-4 left-1/2 z-[9999] flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200">
-        <span className={`h-2.5 w-2.5 rounded-full ${stateTone[state]}`} aria-hidden="true" />
-        <span>{stateLabel[state]}</span>
-        {(state === "ONLINE" || state === "RESTORED") && (
-          <>
-            <span className="text-slate-400">·</span>
-            <span className="text-emerald-600">Servicio disponible</span>
-          </>
-        )}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        aria-label={compactStatusLabel[state]}
+        title={compactStatusLabel[state]}
+        className="fixed bottom-4 left-1/2 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+      >
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${stateTone[state]}`} aria-hidden="true" />
+        <span className="truncate">{compactStatusLabel[state]}</span>
       </div>
 
       {showOverlay ? (

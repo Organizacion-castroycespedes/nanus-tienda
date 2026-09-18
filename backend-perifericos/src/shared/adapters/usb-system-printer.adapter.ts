@@ -200,7 +200,7 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
           );
         }
         const payload = renderThermalEscPos(commands, preview, {
-          encoding: "latin1",
+          encoding: "cp858",
           includePhysicalCut: commands.some(
             (command) => command.name === EscPosMockCommandName.Cut
           ),

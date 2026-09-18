@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -284,6 +285,16 @@ export class SalesReportsService {
       ? await this.getSaleTicketTaxBreakdown(actor, saleId)
       : [];
     const dataset = this.normalizeSaleTicketDataset(payload, taxBreakdown);
+    if (dataset.paymentBreakdown.length === 0 && dataset.totals.paid > 0) {
+      const payments = await this.salesReportAdapter.getSalePayments(actor, saleId);
+      if (payments.length > 0) {
+        dataset.payments = payments;
+        dataset.paymentBreakdown = payments.map((payment) => ({
+          method: payment.method,
+          amount: payment.amount,
+        }));
+      }
+    }
 
     if (["CANCELLED", "REFUNDED"].includes(dataset.header.status)) {
       throw new BadRequestException(
@@ -296,7 +307,12 @@ export class SalesReportsService {
 
   async getSaleTicketPdf(saleId: string, user?: ReportUser) {
     const dataset = await this.getSaleTicket(saleId, user);
-    return this.pdfEngine.generatePdf(buildPosSaleTicketTemplate(dataset));
+    const company = await this.salesReportAdapter.getPrintableCompany(
+      this.resolveActor(user)
+    );
+    return this.pdfEngine.generatePdf(
+      buildPosSaleTicketTemplate({ ...dataset, company })
+    );
   }
 
   async getSaleTicketPrintData(
@@ -305,8 +321,9 @@ export class SalesReportsService {
   ): Promise<PosSaleTicketPrintDataset> {
     const actor = this.resolveActor(user);
     const ticket = await this.getSaleTicket(saleId, user);
+    const company = await this.salesReportAdapter.getPrintableCompany(actor);
 
-    return { tenantId: actor.tenantId, ticket };
+    return { tenantId: actor.tenantId, company, ticket };
   }
 
   async getElectronicInvoice(saleId: string, user?: ReportUser) {
@@ -322,25 +339,25 @@ export class SalesReportsService {
     const actor = this.resolveActor(user);
     const ticket = await this.getSaleTicket(saleId, user);
     const document = await this.getElectronicInvoice(saleId, user);
+    if (document.status !== "ACCEPTED" || !document.representationAvailable || !document.fiscalIssuerSnapshot) {
+      throw new ConflictException("accepted electronic invoice fiscal issuer snapshot is unavailable");
+    }
+    const company = await this.salesReportAdapter.getPrintableCompany(actor);
     const representation = buildElectronicInvoiceRepresentation({
       status: document.status,
       issuer: {
-        name: ticket.header.tenantName ?? "POS",
-        identificationType: null,
-        identificationNumber: null,
-        address: ticket.header.branch,
-        country: null,
-        department: null,
-        municipality: null,
+        ...document.fiscalIssuerSnapshot,
       },
       customer: {
-        name: ticket.header.customer,
-        identificationType: null,
-        identificationNumber: null,
-        address: null,
-        country: null,
-        department: null,
-        municipality: null,
+        name: document.customerFiscalSnapshot?.name ?? ticket.header.customer,
+        identificationType: document.customerFiscalSnapshot?.identificationType ?? null,
+        identificationNumber: document.customerFiscalSnapshot?.identificationNumber ?? null,
+        address: document.customerFiscalSnapshot?.address ?? null,
+        country: document.customerFiscalSnapshot?.country ?? null,
+        department: document.customerFiscalSnapshot?.department ?? null,
+        municipality: document.customerFiscalSnapshot?.municipality ?? null,
+        phone: document.customerFiscalSnapshot?.phone ?? null,
+        email: document.customerFiscalSnapshot?.email ?? null,
       },
       invoice: {
         prefix: null,
@@ -351,6 +368,7 @@ export class SalesReportsService {
         providerStatusMessage: document.providerStatusMessage,
         trackingId: document.trackingId,
         cufe: document.cufe,
+        qrPayload: document.qrPayload,
       },
       sale: {
         saleId: ticket.header.saleId,
@@ -363,13 +381,19 @@ export class SalesReportsService {
           subtotal: item.subtotal,
           total: item.subtotal,
         })),
-        paymentMethod: ticket.paymentBreakdown.map((payment) => payment.method).join(", "),
+        paymentMethod: ticket.paymentBreakdown.length > 0
+          ? ticket.paymentBreakdown.map((payment) => payment.method).join(", ")
+          : ticket.totals.paid > 0
+            ? "Detalle de pago no disponible"
+            : "Sin pagos registrados",
+        paymentBreakdown: ticket.paymentBreakdown,
         subtotal: ticket.totals.subtotal,
         discounts: 0,
         taxes: ticket.totals.taxes,
         taxBreakdown: ticket.totals.taxBreakdown,
         total: ticket.totals.total,
       },
+      logo: company.logo,
     });
     return this.pdfEngine.generatePdf(
       buildElectronicInvoiceRepresentationTemplate(representation)

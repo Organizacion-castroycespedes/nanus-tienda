@@ -68,6 +68,8 @@ type AssignedTaxRow = {
 type ProductFormValues = {
   name: string;
   sku: string;
+  standardIdentificationScheme: "" | "001" | "010" | "020" | "999";
+  standardIdentificationCode: string;
   price: string;
   cost: string;
   unitId: string;
@@ -121,6 +123,9 @@ const createInitialValues = (product?: ProductResponse | null): ProductFormValue
   return {
     name: product?.name ?? "",
     sku: product?.sku ?? "",
+    standardIdentificationScheme: product?.standardIdentification?.scheme ?? (product ? "" : "999"),
+    standardIdentificationCode:
+      product?.standardIdentification?.code ?? (product ? "" : ""),
     price: product ? String(product.price) : "",
     cost: product ? String(product.cost) : "",
     unitId: product?.unitId ?? "",
@@ -589,6 +594,18 @@ export const ProductForm = ({
     if (!values.sku.trim()) {
       nextErrors.sku = "El SKU es requerido.";
     }
+    if (values.standardIdentificationScheme && !values.standardIdentificationCode.trim()) {
+      nextErrors.standardIdentificationCode =
+        "El código estándar es requerido cuando seleccionas un esquema DIAN.";
+    }
+    if (!values.standardIdentificationScheme && values.standardIdentificationCode.trim()) {
+      nextErrors.standardIdentificationCode =
+        "Selecciona un esquema DIAN para guardar este código.";
+    }
+    if (values.standardIdentificationCode.trim().match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      nextErrors.standardIdentificationCode =
+        "El UUID interno no es una identificación estándar DIAN.";
+    }
     if (!isValidNumber(values.price)) {
       nextErrors.price = "El precio es requerido.";
     } else if (Number(values.price) <= 0) {
@@ -723,6 +740,13 @@ export const ProductForm = ({
     const payload: CreateProductPayload = {
       name: values.name.trim(),
       sku: values.sku.trim(),
+      standardIdentification:
+        values.standardIdentificationScheme && values.standardIdentificationCode.trim()
+          ? {
+              scheme: values.standardIdentificationScheme,
+              code: values.standardIdentificationCode.trim(),
+            }
+          : null,
       price: Number(values.price),
       cost: Number(values.cost),
       unitId: values.unitId,
@@ -826,10 +850,68 @@ export const ProductForm = ({
               label="SKU"
               required
               value={values.sku}
-              onChange={(event) => setFieldValue("sku", event.target.value)}
+              onChange={(event) => {
+                const sku = event.target.value;
+                setFieldValue("sku", sku);
+                if (mode === "create" && values.standardIdentificationScheme === "999" && !values.standardIdentificationCode.trim()) {
+                  setFieldValue("standardIdentificationCode", sku);
+                }
+              }}
               placeholder="Ej: ARR-001"
             />
             {errors.sku ? <p className="text-xs text-rose-600">{errors.sku}</p> : null}
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-1">
+            <Select
+              label="Estándar de identificación DIAN"
+              value={values.standardIdentificationScheme}
+              onChange={(event) => {
+                const scheme = event.target.value as ProductFormValues["standardIdentificationScheme"];
+                setFieldValue("standardIdentificationScheme", scheme);
+                if (scheme === "999" && !values.standardIdentificationCode.trim()) {
+                  setFieldValue("standardIdentificationCode", values.sku);
+                }
+                if (scheme !== "999" && values.standardIdentificationScheme === "999") {
+                  setFieldValue("standardIdentificationCode", "");
+                }
+              }}
+              hint="999 permite el código persistente adoptado por el contribuyente; al crear, inicia con el SKU. 001, 010 y 020 requieren su código real."
+            >
+              <option value="">Sin estándar registrado</option>
+              <option value="001">001 — UNSPSC</option>
+              <option value="010">010 — GTIN</option>
+              <option value="020">020 — Partida arancelaria</option>
+              <option value="999">999 — Estándar adoptado por el contribuyente</option>
+            </Select>
+              <button
+                type="button"
+                aria-label="Ayuda sobre estándares de identificación DIAN"
+                title="001 UNSPSC, 010 GTIN, 020 partida arancelaria, 999 código adoptado por el contribuyente."
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-400 text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                ?
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Input
+              label="Código estándar DIAN"
+              value={values.standardIdentificationCode}
+              onChange={(event) =>
+                setFieldValue("standardIdentificationCode", event.target.value)
+              }
+              placeholder="Código real del producto"
+              disabled={!values.standardIdentificationScheme}
+            />
+            <p className="text-xs text-slate-500" role="note">
+              999: código propio persistente. 001: UNSPSC. 010: GTIN. 020: partida arancelaria.
+            </p>
+            {errors.standardIdentificationCode ? (
+              <p className="text-xs text-rose-600">{errors.standardIdentificationCode}</p>
+            ) : null}
           </div>
 
           <div className="space-y-1">

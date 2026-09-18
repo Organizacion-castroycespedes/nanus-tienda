@@ -118,6 +118,42 @@ export const PaymentMethodForm = ({
         <option value="active">Activo</option>
         <option value="inactive">Inactivo</option>
       </Select>
+      <Select
+        label="Facturacion electronica"
+        value={value.electronicBillingEnabled ? "enabled" : "disabled"}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            electronicBillingEnabled: event.target.value === "enabled",
+            electronicPaymentMeansId:
+              event.target.value === "enabled"
+                ? (value.electronicPaymentMeansId ?? "1")
+                : undefined,
+          })
+        }
+      >
+        <option value="disabled">Deshabilitada</option>
+        <option value="enabled">Habilitada</option>
+      </Select>
+      {value.electronicBillingEnabled ? (
+        <Select
+          label="Medio fiscal DIAN"
+          value={value.electronicPaymentMeansCode ?? ""}
+          onChange={(event) =>
+            onChange({
+              ...value,
+              electronicPaymentMeansCode: event.target.value as "10" | "47" | "49",
+              electronicPaymentMeansId: "1",
+            })
+          }
+          required
+        >
+          <option value="">Selecciona un medio fiscal</option>
+          <option value="10">10 - Efectivo</option>
+          <option value="47">47 - Transferencia debito bancaria</option>
+          <option value="49">49 - Tarjeta debito</option>
+        </Select>
+      ) : null}
     </div>
 
     <div className="flex flex-wrap justify-end gap-3">

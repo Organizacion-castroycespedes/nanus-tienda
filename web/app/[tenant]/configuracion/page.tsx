@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- The tenant logo preview accepts data URLs from FileReader. */
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -102,6 +103,8 @@ type BrandingFormState = {
   font: string;
   logo: string;
   spacing: BrandingConfig["spacing"];
+  electronicBillingEnabled: boolean;
+  electronicBillingMode: "AUTOMATIC" | "ON_DEMAND";
 };
 
 const brandingColorFields: Array<{
@@ -272,6 +275,8 @@ const ConfiguracionPage = () => {
       md: branding.spacing.md,
       lg: branding.spacing.lg,
     },
+    electronicBillingEnabled: branding.electronicBillingEnabled !== false,
+    electronicBillingMode: branding.electronicBillingMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
   }));
   const [status, setStatus] = useState<{
     message: string;
@@ -285,15 +290,21 @@ const ConfiguracionPage = () => {
   const isSuperUser = authUser?.role === "SUPER_USER";
   const isCurrentTenant =
     Boolean(selectedTenantId) && selectedTenantId === currentTenantId;
-  const setStatusMessage = (message: string, variant: ToastVariant) => {
+  const setStatusMessage = useCallback((message: string, variant: ToastVariant) => {
     setStatus({ message, variant });
-  };
-  const setStatusSuccess = (message: string) =>
-    setStatusMessage(message, "success");
-  const setStatusError = (message: string) =>
-    setStatusMessage(message, "error");
-  const setStatusWarning = (message: string) =>
-    setStatusMessage(message, "warning");
+  }, []);
+  const setStatusSuccess = useCallback(
+    (message: string) => setStatusMessage(message, "success"),
+    [setStatusMessage]
+  );
+  const setStatusError = useCallback(
+    (message: string) => setStatusMessage(message, "error"),
+    [setStatusMessage]
+  );
+  const setStatusWarning = useCallback(
+    (message: string) => setStatusMessage(message, "warning"),
+    [setStatusMessage]
+  );
 
   const buildBranchHeaders = useCallback(() => {
     const headers: Record<string, string> = {};
@@ -304,7 +315,7 @@ const ConfiguracionPage = () => {
       headers["x-tenant-id"] = authUser.tenantId;
     }
     return headers;
-  }, []);
+  }, [authUser?.role, authUser?.tenantId]);
 
   const loadCountries = useCallback(async () => {
     setCountriesLoading(true);
@@ -416,6 +427,8 @@ const ConfiguracionPage = () => {
       logo?: string;
       logoUrl?: string;
       spacing?: Record<string, unknown>;
+      electronicBillingEnabled?: boolean;
+      electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
     }): BrandingFormState => ({
       colors: {
         primary: resolveColorFormValue(
@@ -448,6 +461,8 @@ const ConfiguracionPage = () => {
             ? config.spacing.lg
             : defaultTheme.spacing.lg,
       },
+      electronicBillingEnabled: config?.electronicBillingEnabled !== false,
+      electronicBillingMode: config?.electronicBillingMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
     }),
     []
   );
@@ -469,7 +484,7 @@ const ConfiguracionPage = () => {
         setTenantsLoading(false);
       }
     },
-    [currentTenantId]
+    [currentTenantId, setStatusError]
   );
 
   const loadBranches = useCallback(async () => {
@@ -495,6 +510,7 @@ const ConfiguracionPage = () => {
     currentTenantId,
     isSuperAdmin,
     selectedTenantId,
+    setStatusError,
     toBranch,
   ]);
 
@@ -633,10 +649,8 @@ const ConfiguracionPage = () => {
   }, [branding, buildBrandingForm, isCurrentTenant]);
 
   useEffect(() => {
-    if (!isSuperAdmin) {
-      return;
-    }
-    if (!selectedTenantId || !tenantFormsVisible || activeTab === "sucursales") {
+    const targetTenantId = isSuperAdmin ? selectedTenantId : currentTenantId;
+    if (!targetTenantId || !tenantFormsVisible || activeTab === "sucursales") {
       return;
     }
     let active = true;
@@ -648,8 +662,8 @@ const ConfiguracionPage = () => {
     void (async () => {
       try {
         const [configResult, detailsResult] = await Promise.allSettled([
-          getTenantConfig(selectedTenantId),
-          getTenantDetails(selectedTenantId),
+          getTenantConfig(targetTenantId),
+          getTenantDetails(targetTenantId),
         ]);
         if (!active) {
           return;
@@ -723,7 +737,9 @@ const ConfiguracionPage = () => {
     branding,
     isCurrentTenant,
     isSuperAdmin,
+    currentTenantId,
     selectedTenantId,
+    setStatusError,
     tenantFormsVisible,
   ]);
 
@@ -881,6 +897,8 @@ const ConfiguracionPage = () => {
         md: brandingForm.spacing.md.trim() || defaultTheme.spacing.md,
         lg: brandingForm.spacing.lg.trim() || defaultTheme.spacing.lg,
       },
+      electronicBillingEnabled: brandingForm.electronicBillingEnabled,
+      electronicBillingMode: brandingForm.electronicBillingMode,
     }),
     [brandingForm]
   );
@@ -1374,6 +1392,28 @@ const ConfiguracionPage = () => {
             <p className="text-xs text-slate-500 dark:text-slate-400">Sin logo cargado.</p>
           )}
         </div>
+        <Select
+          label="Emisión de factura electrónica"
+          value={brandingForm.electronicBillingMode}
+          onChange={(event) => handleBrandingChange("electronicBillingMode", event.target.value)}
+          disabled={!brandingForm.electronicBillingEnabled}
+        >
+          <option value="AUTOMATIC">Automática</option>
+          <option value="ON_DEMAND">Bajo demanda</option>
+        </Select>
+        <label className="flex items-center gap-3 self-end pb-2 text-sm text-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={brandingForm.electronicBillingEnabled}
+            onChange={(event) =>
+              setBrandingForm((prev) => ({
+                ...prev,
+                electronicBillingEnabled: event.target.checked,
+              }))
+            }
+          />
+          Facturación electrónica habilitada
+        </label>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -1715,6 +1755,8 @@ const ConfiguracionPage = () => {
           md: savedConfig.spacing.md || normalizedBrandingConfig.spacing.md,
           lg: savedConfig.spacing.lg || normalizedBrandingConfig.spacing.lg,
         },
+        electronicBillingEnabled: savedConfig.electronicBillingEnabled,
+        electronicBillingMode: savedConfig.electronicBillingMode,
       };
 
       setBrandingForm(savedConfig);
@@ -2556,3 +2598,4 @@ const ConfiguracionPage = () => {
 };
 
 export default ConfiguracionPage;
+

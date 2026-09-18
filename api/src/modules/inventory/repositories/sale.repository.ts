@@ -82,6 +82,12 @@ export type CreateSaleInput = SaleCreateContext & {
   payments?: CreateSalePaymentInput[];
 };
 
+export type SaleCreationIdempotencyRecord = {
+  requestHash: string;
+  saleId: string | null;
+  created: boolean;
+};
+
 type ProductForSaleRow = {
   id: string;
   tax_id: string | null;
@@ -126,6 +132,12 @@ type InventoryCreateSaleFunctionRow = {
 type PaymentMethodLookupRow = {
   id: string;
   tipo: string;
+  codigo: string;
+  nombre: string;
+  requires_reference: boolean;
+  electronic_billing_enabled?: boolean;
+  electronic_payment_means_code?: string | null;
+  electronic_payment_means_id?: string | null;
 };
 
 const CREATE_SALE_FUNCTION_NAMES = {
@@ -540,6 +552,101 @@ export class SaleRepository {
     return result.rows[0] ?? null;
   }
 
+  async reserveSaleCreationIdempotency(
+    tenantId: string,
+    idempotencyKey: string,
+    requestHash: string,
+    client: PoolClient,
+  ): Promise<SaleCreationIdempotencyRecord | null> {
+    const inserted = await this.query<{
+      request_hash: string;
+      sale_id: string | null;
+    }>(
+      `INSERT INTO sale_creation_idempotency (
+        tenant_id,
+        idempotency_key,
+        request_hash
+      )
+      VALUES ($1, $2, $3)
+      ON CONFLICT (tenant_id, idempotency_key) DO NOTHING
+      RETURNING request_hash, sale_id`,
+      [tenantId, idempotencyKey, requestHash],
+      client,
+    );
+
+    if (inserted.rows[0]) {
+      return {
+        requestHash: inserted.rows[0].request_hash,
+        saleId: inserted.rows[0].sale_id,
+        created: true,
+      };
+    }
+
+    const existing = await this.query<{
+      request_hash: string;
+      sale_id: string | null;
+    }>(
+      `SELECT request_hash, sale_id
+       FROM sale_creation_idempotency
+       WHERE tenant_id = $1
+         AND idempotency_key = $2
+       FOR UPDATE`,
+      [tenantId, idempotencyKey],
+      client,
+    );
+    const row = existing.rows[0];
+    return row
+      ? {
+          requestHash: row.request_hash,
+          saleId: row.sale_id,
+          created: false,
+        }
+      : null;
+  }
+
+  async completeSaleCreationIdempotency(
+    tenantId: string,
+    idempotencyKey: string,
+    saleId: string,
+    client: PoolClient,
+  ) {
+    const result = await this.query<{ id: string }>(
+      `UPDATE sale_creation_idempotency
+       SET sale_id = $3,
+           completed_at = NOW()
+       WHERE tenant_id = $1
+         AND idempotency_key = $2
+         AND sale_id IS NULL
+       RETURNING idempotency_key AS id`,
+      [tenantId, idempotencyKey, saleId],
+      client,
+    );
+    if (result.rows.length !== 1) {
+      throw new Error("sale idempotency reservation could not be completed");
+    }
+  }
+
+  async findSaleByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<SaleCreationIdempotencyRecord | null> {
+    const result = await this.db.query<{
+      request_hash: string;
+      sale_id: string | null;
+    }>(
+      `SELECT request_hash, sale_id
+       FROM sale_creation_idempotency
+       WHERE tenant_id = $1
+         AND idempotency_key = $2
+       LIMIT 1`,
+      [tenantId, idempotencyKey],
+    );
+    const row = result.rows[0];
+    return row
+      ? { requestHash: row.request_hash, saleId: row.sale_id, created: false }
+      : null;
+  }
+
   async invoiceOrderWithFunction(
     data: SaleCreateContext & {
       orderId: string;
@@ -599,11 +706,13 @@ export class SaleRepository {
     client: PoolClient
   ) {
     if (paymentMethodIds.length === 0) {
-      return new Map<string, "CASH" | "CARD" | "TRANSFER" | "OTHER">();
+      return new Map<string, PaymentMethodLookupRow>();
     }
 
     const result = await this.query<PaymentMethodLookupRow>(
-      `SELECT id, tipo
+    `SELECT id, tipo, codigo, nombre, requires_reference,
+            electronic_billing_enabled, electronic_payment_means_code,
+            electronic_payment_means_id
        FROM payment_methods
        WHERE tenant_id = $1
          AND id = ANY($2::uuid[])`,
@@ -611,17 +720,7 @@ export class SaleRepository {
       client
     );
 
-    return new Map(
-      result.rows.map((row) => {
-        const paymentMethod =
-          row.tipo === "BANK"
-            ? "TRANSFER"
-            : row.tipo === "CASH" || row.tipo === "CARD"
-              ? row.tipo
-              : "OTHER";
-        return [row.id, paymentMethod as "CASH" | "CARD" | "TRANSFER" | "OTHER"];
-      })
-    );
+    return new Map(result.rows.map((row) => [row.id, row]));
   }
 
   async insertSaleItem(

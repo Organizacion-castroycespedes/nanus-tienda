@@ -4,13 +4,18 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
+import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { getElectronicInvoice, getElectronicInvoicePrintData, getPosSaleTicketPrintData } from "../../reporteria/services/reporting.service";
 import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { hasPermission } from "../../../lib/permissions";
 import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
-import { isEligibleForElectronicBillingRequest } from "../services/operational-sales.service";
+import {
+  isEligibleForElectronicBillingRequest,
+  PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
+  shouldShowProviderCreateIntentRecovery,
+} from "../services/operational-sales.service";
 import type { OperationalSaleDetail } from "../types";
 
 const labels: Record<string, string> = {
@@ -96,6 +101,7 @@ const ActionCard = ({
   onRefreshStatus,
   onRetry,
   onRequestBilling,
+  onRecoverProviderCreateIntent,
   onPrintInvoice,
   refreshLoading,
   printLoading,
@@ -106,15 +112,21 @@ const ActionCard = ({
   onRefreshStatus: () => Promise<void>;
   onRetry: () => Promise<void>;
   onRequestBilling: () => Promise<void>;
+  onRecoverProviderCreateIntent: () => Promise<boolean>;
   onPrintInvoice: () => Promise<void>;
   refreshLoading: boolean;
   printLoading: boolean;
   actionMessage: string | null;
 }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
   const canRetry = billing?.retryability?.canRetry === true;
+  const canRecoverProviderCreateIntent = shouldShowProviderCreateIntentRecovery(
+    sale,
+    hasPermission("POS", "write"),
+  );
   const canRequestBilling =
     hasPermission("POS", "write") &&
     isEligibleForElectronicBillingRequest(sale);
@@ -122,6 +134,12 @@ const ActionCard = ({
     () => getElectronicInvoice(sale.id),
     [sale.id]
   );
+  const confirmProviderCreateIntentRecovery = useCallback(async () => {
+    const succeeded = await onRecoverProviderCreateIntent();
+    if (succeeded) {
+      setRecoveryConfirmOpen(false);
+    }
+  }, [onRecoverProviderCreateIntent]);
 
   return (
     <>
@@ -173,12 +191,32 @@ const ActionCard = ({
               {refreshLoading ? "Reintentando FE..." : "Reintentar procesamiento"}
             </Button>
           ) : null}
+          {canRecoverProviderCreateIntent ? (
+            <Button
+              variant="outline"
+              onClick={() => setRecoveryConfirmOpen(true)}
+              disabled={refreshLoading}
+            >
+              {refreshLoading ? "Recuperando procesamiento..." : "Recuperar procesamiento"}
+            </Button>
+          ) : null}
         </div>
         <p className="mt-3 text-xs text-slate-500">
           La actualización solo recarga datos persistidos. No consulta ni retransmite al proveedor.
         </p>
         {actionMessage ? <p className="mt-3 text-sm text-slate-700">{actionMessage}</p> : null}
       </Card>
+      <ConfirmDialog
+        open={recoveryConfirmOpen}
+        onOpenChange={setRecoveryConfirmOpen}
+        title="Recuperar procesamiento de factura electrónica"
+        description={PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION}
+        confirmText="Recuperar procesamiento"
+        cancelText="Cancelar"
+        variant="default"
+        onConfirm={confirmProviderCreateIntentRecovery}
+        loading={refreshLoading}
+      />
       <PdfPreviewModal
         isOpen={previewOpen}
         title={`Factura electrónica ${sale.id.slice(0, 8)}`}
@@ -203,6 +241,7 @@ export const OperationalSaleDetailPage = () => {
     refreshBillingStatus,
     retryBilling,
     requestBilling,
+    recoverProviderCreateIntent,
     actionLoading,
     actionMessage,
   } = useOperationalSaleDetail(params.saleId);
@@ -279,6 +318,7 @@ export const OperationalSaleDetailPage = () => {
         onRefreshStatus={refreshBillingStatus}
         onRetry={retryBilling}
         onRequestBilling={requestBilling}
+        onRecoverProviderCreateIntent={recoverProviderCreateIntent}
         onPrintInvoice={printInvoice}
         refreshLoading={actionLoading}
         printLoading={printLoading}
