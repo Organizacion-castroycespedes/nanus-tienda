@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, ipcMain, net, screen, shell } from "electron";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 
@@ -15,12 +15,19 @@ import {
   shouldRecoverRenderer,
   showAndEnforceTerminalWindow,
 } from "./window-policy.js";
+import {
+  getRetryDelayMs,
+  isRecoverableNetworkError,
+  nextRetryAttempt,
+  type ConnectivityState,
+} from "./connectivity.js";
 
 const DEFAULT_WINDOW_TITLE = "Manus POS";
 const DEFAULT_WINDOW_WIDTH = 1280;
 const DEFAULT_WINDOW_HEIGHT = 800;
 const MIN_WINDOW_WIDTH = 1024;
 const MIN_WINDOW_HEIGHT = 700;
+const REMOTE_HEARTBEAT_INTERVAL_MS = 3_000;
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["https:"]);
 
 let mainWindow: BrowserWindow | null = null;
@@ -47,7 +54,7 @@ let manusWebOrigin = electronConfig.webBaseUrl.origin;
 let closeBehavior = parseCloseBehavior(process.env.MANUS_ELECTRON_CLOSE_BEHAVIOR);
 let rendererRecoveryTimes: number[] = [];
 let maintenanceExitAllowed = false;
-let rendererLoadedOnlinePage = false;
+let requestManualRetry: (() => void) | null = null;
 
 const getPrimaryDisplayBounds = () => calculateTerminalBounds(screen.getPrimaryDisplay().bounds);
 
@@ -95,6 +102,7 @@ const getShellInfo = (): ShellInfo => ({
 
 const registerIpcHandlers = () => {
   ipcMain.removeHandler(IPC_CHANNELS.getRuntimeInfo);
+  ipcMain.removeAllListeners(IPC_CHANNELS.retryConnection);
   ipcMain.handle(IPC_CHANNELS.getRuntimeInfo, async () => buildRuntimeInfo(
     app.getVersion(),
     packagedShellConfig ? await getAgentHealth(packagedShellConfig) : { available: false },
@@ -105,6 +113,7 @@ const registerIpcHandlers = () => {
   ipcMain.removeHandler(IPC_CHANNELS.discoverDevices);
   for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.printTicket, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
   ipcMain.handle(IPC_CHANNELS.getShellInfo, () => getShellInfo());
+  ipcMain.on(IPC_CHANNELS.retryConnection, () => requestManualRetry?.());
   ipcMain.handle(IPC_CHANNELS.getAgentHealth, async (): Promise<AgentHealth> => {
     if (!packagedShellConfig) {
       return { available: false, reason: "UNAVAILABLE" };
@@ -217,19 +226,25 @@ const createMainWindow = async () => {
     mainWindow = null;
   });
 
-  window.webContents.on("render-process-gone", () => {
+  window.webContents.on("render-process-gone", (_event, details) => {
+    console.warn(`[connectivity] renderer crash reason=${details.reason} exitCode=${details.exitCode}`);
     const now = Date.now();
     rendererRecoveryTimes = rendererRecoveryTimes.filter((time) => now - time < 60_000);
     if (!shouldRecoverRenderer(rendererRecoveryTimes, now)) {
-      void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent("<h1>Manus POS no pudo recuperarse.</h1><p>Reinicia la aplicación o contacta soporte.</p>")}`);
+      void loadConnectivityPage("offline");
       return;
     }
     rendererRecoveryTimes.push(now);
-    void window.webContents.reload();
+    void loadConnectivityPage("reconnecting").then(scheduleRetry);
   });
   window.webContents.on("did-finish-load", () => {
-    if (window.webContents.getURL().startsWith(electronConfig.webBaseUrl.origin)) {
-      rendererLoadedOnlinePage = true;
+    const loadedUrl = window.webContents.getURL();
+    if (isSameOrigin(loadedUrl)) {
+      remotePageLoaded = true;
+      lastSuccessfulRemoteUrl = loadedUrl;
+      retryAttempt = 0;
+      clearRetryTimer();
+      console.info(`[connectivity] remote navigation succeeded url=${loadedUrl}`);
     }
   });
   window.webContents.on("unresponsive", () => {
@@ -266,61 +281,152 @@ const createMainWindow = async () => {
     item.cancel();
   });
 
-  const writeAndLoadHtml = async (filename: string, htmlContent: string) => {
-    const filePath = path.join(app.getPath("userData"), filename);
-    const { writeFile } = await import("node:fs/promises");
-    await writeFile(filePath, htmlContent, "utf-8");
-    await window.loadFile(filePath);
+  const connectivityPagePath = path.join(__dirname, "../resources/connectivity/index.html");
+  let isConnectivityPageLoading = false;
+  let isRemoteNavigationInFlight = false;
+  let retryTimer: NodeJS.Timeout | null = null;
+  let retryAttempt = 0;
+  let probeInFlight = false;
+  let connectivityMonitor: NodeJS.Timeout | null = null;
+  let remotePageLoaded = false;
+  let lastSuccessfulRemoteUrl = electronConfig.initialUrl.href;
+
+  const clearRetryTimer = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
   };
 
-  const getLoadingHtml = async () => {
-    let logoDataUri = "";
+  const loadConnectivityPage = async (state: ConnectivityState) => {
+    if (window.isDestroyed()) return;
+    remotePageLoaded = false;
+    isConnectivityPageLoading = true;
     try {
-      const logoPath = path.join(__dirname, "../resources/manus-icon.png");
-      logoDataUri = `data:image/png;base64,${(await readFile(logoPath)).toString("base64")}`;
-    } catch {
-      // Ignore
-    }
-    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.pulse{animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;font-size:16px;font-weight:500;color:#4b5563;margin-top:24px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style></head><body>${logoDataUri ? `<img src="${logoDataUri}" alt="Manus POS" style="width:96px;height:96px;border-radius:24px;object-fit:cover;" />` : ''}<div class="pulse">Manus POS Iniciando...</div></body></html>`;
-    await writeAndLoadHtml("manus-loading.html", html);
-  };
-
-  let isShowingOfflinePage = false;
-  const loadOfflinePage = async () => {
-    if (isShowingOfflinePage) return;
-    isShowingOfflinePage = true;
-    const targetUrl = electronConfig.initialUrl.href;
-    let logoDataUri = "";
-    try {
-      const logoPath = path.join(__dirname, "../resources/manus-icon.png");
-      logoDataUri = `data:image/png;base64,${(await readFile(logoPath)).toString("base64")}`;
-    } catch {
-      // Ignore
-    }
-    
-    // Original styles and container
-    const offlineHtml = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Manus POS - Sin Conexión</title><style>body{font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;color:#111827;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0}.container{max-width:550px;text-align:center;padding:40px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 4px 6px -1px rgba(0,0,0,.1);border-radius:12px;margin:30px 0}.title{font-size:28px;font-weight:600;margin-bottom:12px;color:#000}.subtitle{font-size:16px;color:#4b5563;line-height:1.5}.pulse{animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;color:#6b7280;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:24px}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}</style></head><body><div class="container">${logoDataUri ? `<img src="${logoDataUri}" alt="Manus POS" style="width:96px;height:96px;border-radius:24px;object-fit:cover;margin-bottom:24px" />` : ''}<div class="title">Conexión interrumpida</div><div class="subtitle">No podemos comunicarnos con el servicio en este momento.<br>Reintentaremos automáticamente cuando la conexión esté disponible.</div><div class="pulse"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 4.24-11.23L2.5 8"/></svg> Restableciendo conexión...</div></div><script>const check=()=>{fetch('${targetUrl}',{mode:'no-cors',cache:'no-store'}).then(()=>location.href='${targetUrl}').catch(()=>{})};setInterval(()=>{if(navigator.onLine)check()},3000);window.addEventListener('online',check);</script></body></html>`;
-    
-    try {
-      await writeAndLoadHtml("manus-offline.html", offlineHtml);
-    } catch (e) {
-      console.warn("Failed to load offline page", e);
+      await window.loadFile(connectivityPagePath, { query: { state } });
+    } catch (error) {
+      console.warn(`[connectivity] local page failed state=${state}`, error);
     } finally {
-      isShowingOfflinePage = false;
+      isConnectivityPageLoading = false;
     }
   };
 
-  window.webContents.on("did-fail-load", (event, errorCode) => {
-    if (errorCode === -3) return; // Ignorar cancelaciones
-    if (rendererLoadedOnlinePage) return;
-    void loadOfflinePage();
+  const probeRemoteService = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await net.fetch(electronConfig.webBaseUrl.href, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "text/html" },
+        signal: controller.signal,
+      });
+      // A 401/403/404 proves the server is reachable and must remain a web/auth
+      // decision.  A 5xx is a temporary service failure and remains reconnectable.
+      return response.status >= 100 && response.status < 500;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const attemptRemoteNavigation = async () => {
+    if (window.isDestroyed() || isRemoteNavigationInFlight) return;
+    isRemoteNavigationInFlight = true;
+    remotePageLoaded = false;
+    try {
+      await window.loadURL(lastSuccessfulRemoteUrl);
+    } catch (error) {
+      console.warn("[connectivity] remote navigation rejected", error);
+    } finally {
+      isRemoteNavigationInFlight = false;
+    }
+  };
+
+  const scheduleRetry = () => {
+    if (retryTimer || window.isDestroyed()) return;
+    const delayMs = getRetryDelayMs(retryAttempt);
+    retryAttempt = nextRetryAttempt(retryAttempt);
+    console.info(`[connectivity] retryAttempt=${retryAttempt} nextRetryMs=${delayMs}`);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void checkAndReconnect();
+    }, delayMs);
+  };
+
+  const checkAndReconnect = async () => {
+    if (probeInFlight || window.isDestroyed()) return;
+    probeInFlight = true;
+    await loadConnectivityPage("reconnecting");
+    const reachable = await probeRemoteService();
+    probeInFlight = false;
+    if (!reachable) {
+      scheduleRetry();
+      return;
+    }
+
+    console.info(`[connectivity] remote service reachable restoring=${lastSuccessfulRemoteUrl}`);
+    retryAttempt = 0;
+    clearRetryTimer();
+    await loadConnectivityPage("restored");
+    setTimeout(() => void attemptRemoteNavigation(), 900);
+  };
+
+  const monitorRemoteConnection = async () => {
+    if (!remotePageLoaded || probeInFlight || isConnectivityPageLoading || isRemoteNavigationInFlight || window.isDestroyed()) {
+      return;
+    }
+
+    const reachable = await probeRemoteService();
+    if (reachable || !remotePageLoaded || window.isDestroyed()) {
+      return;
+    }
+
+    remotePageLoaded = false;
+    await loadConnectivityPage("offline");
+    scheduleRetry();
+  };
+
+  const handleNetworkFailure = (errorCode: number, errorDescription: string, validatedURL: string) => {
+    console.warn(`[connectivity] remote navigation failed error=${errorDescription} code=${errorCode} url=${validatedURL}`);
+    void loadConnectivityPage("offline").then(scheduleRetry);
+  };
+
+  requestManualRetry = () => {
+    clearRetryTimer();
+    void checkAndReconnect();
+  };
+
+  window.on("closed", () => {
+    clearRetryTimer();
+    if (connectivityMonitor) {
+      clearInterval(connectivityMonitor);
+      connectivityMonitor = null;
+    }
+    requestManualRetry = null;
+  });
+
+  window.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3 || isConnectivityPageLoading) return;
+    if (!isRecoverableNetworkError(errorCode)) {
+      console.warn(`[connectivity] non-recoverable navigation error=${errorDescription} code=${errorCode} url=${validatedURL}`);
+      return;
+    }
+    handleNetworkFailure(errorCode, errorDescription, validatedURL);
   });
 
   try {
-    await getLoadingHtml();
-    await window.loadURL(electronConfig.initialUrl.href);
+    connectivityMonitor = setInterval(() => void monitorRemoteConnection(), REMOTE_HEARTBEAT_INTERVAL_MS);
+    await loadConnectivityPage("startup");
+    // Keep a visible local state while the remote web is being verified. A
+    // direct loadURL here can leave the BrowserWindow white while DNS/TLS
+    // hangs, before did-fail-load has a chance to fire.
+    await checkAndReconnect();
   } catch (error) {
-    console.warn("Initial URL load failed, delegating to did-fail-load");
+    console.warn("[connectivity] initial remote navigation failed", error);
+    await loadConnectivityPage("offline");
+    scheduleRetry();
   }
 };
 
