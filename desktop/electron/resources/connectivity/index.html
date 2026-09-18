@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'none';" />
+    <title>Manus POS</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell" aria-live="polite">
+      <header class="topbar">
+        <div class="brand">
+          <img src="../manus-icon.png" alt="Manus POS" />
+          <div><strong>Manus</strong><span>POS</span></div>
+        </div>
+        <div class="status"><span class="status-dot"></span><span id="statusText">Conectando</span></div>
+      </header>
+
+      <section class="stage">
+        <div class="panel">
+          <div class="signal" id="signal" aria-hidden="true">◔</div>
+          <p class="eyebrow">MANUS POS</p>
+          <h1 id="title">Iniciando Manus POS</h1>
+          <p class="lead" id="lead">Estamos conectando tu terminal al servicio.</p>
+          <p class="muted" id="secondary">Esto puede tardar unos segundos.</p>
+
+          <div class="connection-card">
+            <div class="spinner" id="spinner" aria-hidden="true"></div>
+            <div><strong id="connectionTitle">Conectando con el servicio</strong><span id="connectionDetail">Preparando la conexión...</span></div>
+            <span class="badge" id="badge">Conectando</span>
+          </div>
+
+          <div class="actions" id="actions" hidden>
+            <button class="primary" id="retryButton" type="button">↻ &nbsp; Reintentar ahora</button>
+          </div>
+
+          <p class="footnote" id="footnote">No cierres la aplicación mientras se completa el inicio.</p>
+        </div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

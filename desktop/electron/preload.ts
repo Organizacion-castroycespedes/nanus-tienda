@@ -6,6 +6,7 @@ const api: ManusTerminalApi = {
   getRuntimeInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getRuntimeInfo),
   getShellInfo: () => ipcRenderer.invoke(IPC_CHANNELS.getShellInfo),
   getAgentHealth: () => ipcRenderer.invoke(IPC_CHANNELS.getAgentHealth),
+  retryConnection: () => ipcRenderer.send(IPC_CHANNELS.retryConnection),
   listDevices: () => ipcRenderer.invoke(IPC_CHANNELS.listDevices),
   discoverDevices: (terminalId) => ipcRenderer.invoke(IPC_CHANNELS.discoverDevices, terminalId),
   createDevice: (payload) => ipcRenderer.invoke(IPC_CHANNELS.createDevice, payload),

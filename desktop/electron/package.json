@@ -32,7 +32,8 @@
       "dist/electron-api.js",
       "dist/window-policy.js",
       "package.json",
-      "resources/manus-icon.png"
+      "resources/manus-icon.png",
+      "resources/connectivity/**/*"
     ],
     "extraResources": [
       {
