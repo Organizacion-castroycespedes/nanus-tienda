@@ -7,6 +7,7 @@ import { requestRaw } from "../../lib/request";
 type ConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
 
 const RETRY_INTERVAL_MS = 5_000;
+const HEALTH_CHECK_INTERVAL_MS = 3_000;
 const HEALTH_TIMEOUT_MS = 4_000;
 const LAST_CONNECTION_KEY = "manus:last-connection-at";
 
@@ -41,14 +42,21 @@ export function OfflineIndicator() {
   const lastStateRef = useRef<ConnectivityState>("RECONNECTING");
   const hasCheckedRef = useRef(false);
   const nextAttemptAtRef = useRef(0);
+  const checkInFlightRef = useRef(false);
+  const lastHealthCheckAtRef = useRef(0);
 
   const checkConnectivity = useCallback(async (manual = false) => {
+    if (checkInFlightRef.current) return false;
+    checkInFlightRef.current = true;
+    lastHealthCheckAtRef.current = Date.now();
+
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setBackendOnline(false);
       setState("OFFLINE");
       setHasChecked(true);
       setDismissed(false);
       nextAttemptAtRef.current = Date.now() + RETRY_INTERVAL_MS;
+      checkInFlightRef.current = false;
       return false;
     }
 
@@ -92,6 +100,7 @@ export function OfflineIndicator() {
       return false;
     } finally {
       window.clearTimeout(timeout);
+      checkInFlightRef.current = false;
     }
   }, []);
 
@@ -114,7 +123,9 @@ export function OfflineIndicator() {
     const poll = window.setInterval(() => {
       const seconds = Math.max(0, Math.ceil((nextAttemptAtRef.current - Date.now()) / 1000));
       setNextAttemptIn(seconds);
-      if (nextAttemptAtRef.current > 0 && seconds === 0) void checkConnectivity();
+      const retryDue = nextAttemptAtRef.current > 0 && seconds === 0;
+      const healthCheckDue = nextAttemptAtRef.current === 0 && Date.now() - lastHealthCheckAtRef.current >= HEALTH_CHECK_INTERVAL_MS;
+      if (retryDue || healthCheckDue) void checkConnectivity();
     }, 1000);
 
     return () => {
