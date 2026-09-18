@@ -16,7 +16,6 @@ const setState = (name) => {
   document.querySelector("#connectionDetail").textContent = state.detail;
   document.querySelector("#badge").textContent = state.badge;
   document.querySelector("#footnote").textContent = state.footnote;
-  document.querySelector("#signal").textContent = state.icon;
   document.querySelector("#actions").hidden = !state.actions;
 };
 

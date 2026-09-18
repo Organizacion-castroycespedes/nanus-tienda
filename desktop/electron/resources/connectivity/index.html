@@ -19,7 +19,17 @@
 
       <section class="stage">
         <div class="panel">
-          <div class="signal" id="signal" aria-hidden="true">◔</div>
+          <div class="signal" id="signal" aria-hidden="true">
+            <svg class="signal-icon signal-wifi" viewBox="0 0 120 120" role="img" aria-label="Sin conexión Wi-Fi">
+              <path d="M16 43c25-25 63-25 88 0" />
+              <path d="M31 59c17-17 41-17 58 0" />
+              <path d="M47 75c8-8 18-8 26 0" />
+              <circle cx="60" cy="91" r="6" />
+              <circle class="signal-alert" cx="91" cy="31" r="22" />
+              <path class="signal-alert-mark" d="M91 19v16M91 43v1" />
+            </svg>
+            <span class="signal-check" aria-hidden="true">✓</span>
+          </div>
           <p class="eyebrow">MANUS POS</p>
           <h1 id="title">Iniciando Manus POS</h1>
           <p class="lead" id="lead">Estamos conectando tu terminal al servicio.</p>
