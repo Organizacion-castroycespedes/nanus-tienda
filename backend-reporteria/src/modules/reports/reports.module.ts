@@ -23,6 +23,8 @@ import { CustomersReportAdapter } from "./sql-adapters/customers-report.adapter"
 import { DeliveriesReportAdapter } from "./sql-adapters/deliveries-report.adapter";
 import { OrdersReportAdapter } from "./sql-adapters/orders-report.adapter";
 import { PurchasesReportAdapter } from "./sql-adapters/purchases-report.adapter";
+import { ProductInventoryReportsController } from "./product-inventory-reports.controller";
+import { ProductInventoryReportsService } from "./product-inventory-reports.service";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 
 @Module({
@@ -36,6 +38,7 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     DeliveriesReportsController,
     CustomersReportsController,
     CurrentShiftReportsController,
+    ProductInventoryReportsController,
   ],
   providers: [
     ReportsService,
@@ -46,6 +49,7 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     DeliveriesReportsService,
     CustomersReportsService,
     CurrentShiftReportsService,
+    ProductInventoryReportsService,
     SalesReportAdapter,
     CashReportAdapter,
     PurchasesReportAdapter,
