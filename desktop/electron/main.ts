@@ -393,9 +393,14 @@ const createMainWindow = async () => {
 
   try {
     await loadConnectivityPage("startup");
-    await attemptRemoteNavigation();
+    // Keep a visible local state while the remote web is being verified. A
+    // direct loadURL here can leave the BrowserWindow white while DNS/TLS
+    // hangs, before did-fail-load has a chance to fire.
+    await checkAndReconnect();
   } catch (error) {
     console.warn("[connectivity] initial remote navigation failed", error);
+    await loadConnectivityPage("offline");
+    scheduleRetry();
   }
 };
 
