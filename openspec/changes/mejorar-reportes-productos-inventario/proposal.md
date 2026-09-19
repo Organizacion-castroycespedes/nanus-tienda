@@ -5,6 +5,7 @@
 ## What Changes
 
 - Resolve authorized active branch IDs in `backend-reporteria` from the authenticated user, tenant, roles and current database assignments.
+- Require a real JWT identity for report requests in QA and production; development/test mock auth must never apply there.
 - Make a missing branch filter mean all and only authorized branches. Reject unauthorized or cross-tenant requests.
 - Add a PostgreSQL reporting function as the sole operational data source, and produce one server snapshot containing preview data, PDF and XLSX.
 - Add report filters and compact entry controls on Inventory > Products; reuse the existing PDF viewer and normal document print action.
