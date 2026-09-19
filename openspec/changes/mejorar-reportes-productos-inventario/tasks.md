@@ -14,3 +14,8 @@
 - [x] 2.5 Add compact Products page controls and filters; verify frontend lint/build and client contract tests pass.
 - [x] 2.6 Execute manual QA for filters, known SKU/codes, lot balances, costs, branding/logo, multipage PDF, Excel dates, empty results, normal printer and cross-tenant isolation; record actual observations before release.
 - [x] 2.7 Add deterministic LIMIT/OFFSET pagination metadata, bounded preview navigation and complete export batching; verify builds and focused contract tests.
+
+## 3. Real report authentication
+
+- [x] 3.1 Restrict mock report authentication to explicit development/test runtimes and preserve 401/403 fail-closed behavior for QA/production.
+- [x] 3.2 Verify JWT identity mapping, database branch scope, and product-inventory GENERAL contract remain unchanged.
