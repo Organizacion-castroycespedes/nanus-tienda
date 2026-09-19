@@ -26,8 +26,13 @@ const DEFAULT_MOCK_REPORT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const isMockAuthAllowed = () =>
-  (process.env.REPORTS_ALLOW_MOCK_AUTH ?? "false").toLowerCase() === "true";
+const isMockAuthAllowed = () => {
+  const runtimeEnvironment = (process.env.NODE_ENV ?? "").toLowerCase();
+  const mockEnabled =
+    (process.env.REPORTS_ALLOW_MOCK_AUTH ?? "false").toLowerCase() === "true";
+
+  return mockEnabled && ["development", "test"].includes(runtimeEnvironment);
+};
 
 const firstHeaderValue = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
