@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Modal } from "../../../components/design-system/Modal";
 import { downloadBlob, getApiErrorMessage } from "../utils";
@@ -11,6 +11,11 @@ type PdfPreviewModalProps = {
   fileName: string;
   onClose: () => void;
   getPdf: () => Promise<Blob>;
+  description?: string;
+  onDownloadExcel?: () => void;
+  onDownloadPdf?: () => void;
+  allowPrint?: boolean;
+  pagination?: { page: number; totalPages: number; onPageChange: (page: number) => void };
 };
 
 export const PdfPreviewModal = ({
@@ -19,21 +24,30 @@ export const PdfPreviewModal = ({
   fileName,
   onClose,
   getPdf,
+  description = "Vista previa del Ticket",
+  onDownloadExcel,
+  onDownloadPdf,
+  allowPrint = false,
+  pagination,
 }: PdfPreviewModalProps) => {
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [frameReady, setFrameReady] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
       setBlob(null);
       setError(null);
+      setFrameReady(false);
       return;
     }
 
     let active = true;
     setLoading(true);
     setError(null);
+    setFrameReady(false);
 
     void getPdf()
       .then((result) => {
@@ -80,7 +94,7 @@ export const PdfPreviewModal = ({
   return (
     <Modal
       title={title}
-      description="Vista previa del Ticket"
+      description={description}
       onClose={onClose}
       size="xl"
       className="max-h-[calc(100vh-3rem)] overflow-y-auto"
@@ -92,14 +106,38 @@ export const PdfPreviewModal = ({
           <Button
             variant="outline"
             onClick={() => {
+              if (onDownloadPdf) {
+                onDownloadPdf();
+                return;
+              }
               if (blob) {
                 downloadBlob(blob, fileName);
               }
             }}
             disabled={!blob || loading}
           >
-            Descargar
+            Descargar PDF
           </Button>
+          {onDownloadExcel ? (
+            <Button variant="outline" onClick={onDownloadExcel} disabled={!blob || loading}>
+              Descargar Excel
+            </Button>
+          ) : null}
+          {allowPrint ? (
+            <Button variant="outline" onClick={() => frameRef.current?.contentWindow?.print()}
+              disabled={!blob || loading || !frameReady}>
+              Imprimir
+            </Button>
+          ) : null}
+          {pagination ? (
+            <>
+              <Button variant="ghost" onClick={() => pagination.onPageChange(pagination.page - 1)}
+                disabled={pagination.page <= 1}>Anterior</Button>
+              <span className="px-2 text-sm">Pagina {pagination.page} / {pagination.totalPages || 1}</span>
+              <Button variant="ghost" onClick={() => pagination.onPageChange(pagination.page + 1)}
+                disabled={pagination.page >= pagination.totalPages}>Siguiente</Button>
+            </>
+          ) : null}
         </>
       }
     >
@@ -114,6 +152,8 @@ export const PdfPreviewModal = ({
           </div>
         ) : objectUrl ? (
           <iframe
+            ref={frameRef}
+            onLoad={() => setFrameReady(true)}
             src={objectUrl}
             title={title}
             className="h-[70vh] min-h-[520px] w-full bg-white"

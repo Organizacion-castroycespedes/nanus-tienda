@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Barcode, DollarSign, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Barcode, DollarSign, FileSpreadsheet, FileText, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { listProducts } from "../../../../domains/products/api";
 import type {
   ProductMeasurementUnit,
@@ -35,6 +35,7 @@ import {
 } from "../../../../modules/inventory/services/product-classification.service";
 import { deleteProduct } from "../../../../modules/inventory/services/product.service";
 import { getProductClassificationErrorMessage } from "../../../../modules/inventory/utils/product-classification";
+import { ProductInventoryReportDialog } from "../../../../modules/reporteria/components/ProductInventoryReportDialog";
 
 type ProductFilters = {
   query: string;
@@ -199,6 +200,7 @@ const ProductsPage = () => {
     variant?: "default" | "success" | "danger" | "warning";
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const { currentTenant, isSuperRole } = useInventoryScope();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canViewAllTenants = role === "SUPER_ADMIN";
@@ -633,6 +635,16 @@ const ProductsPage = () => {
         onError={handlePriceChangeError}
       />
 
+      {reportOpen ? (
+        <ProductInventoryReportDialog
+          defaultTenantId={currentTenant ?? ""}
+          role={role}
+          categories={categories}
+          subcategories={subcategories}
+          onClose={() => setReportOpen(false)}
+        />
+      ) : null}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -652,6 +664,16 @@ const ProductsPage = () => {
               <RefreshCw className="h-4 w-4" />
               Actualizar
             </Button>
+            {canManageProducts && hasPermission("inventory.read") ? (
+              <>
+                <Button variant="outline" onClick={() => setReportOpen(true)}>
+                  <FileText className="h-4 w-4" /> PDF / Reporte
+                </Button>
+                <Button variant="outline" onClick={() => setReportOpen(true)}>
+                  <FileSpreadsheet className="h-4 w-4" /> Excel
+                </Button>
+              </>
+            ) : null}
             {canCreate ? (
               <Button onClick={() => setPendingHeaderAction("create")}>
                 <Plus className="h-4 w-4" />
