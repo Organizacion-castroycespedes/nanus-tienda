@@ -352,6 +352,24 @@ test("flattened customer location metadata survives the FactuCore mapping", () =
   assert.equal(request.customer.municipalityCode, "05001");
 });
 
+test("final consumer receives the canonical DIAN person names", () => {
+  const customer = buildElectronicBillingCustomer({
+    customerType: "PERSON",
+    identificationTypeCode: "13",
+    identificationNumber: "222222222222",
+    legalName: "CONSUMIDOR_FINAL",
+    isFinalConsumer: true,
+    metadata: { isFinalConsumer: true },
+  });
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(buildInvoiceCommand({
+    customer,
+  }));
+
+  assert.equal(request.customer.firstName, "CONSUMIDOR");
+  assert.equal(request.customer.familyName, "FINAL");
+});
+
 test("sale billing integration event keeps mixed payment snapshot in metadata", () => {
   const event: SaleCompletedForElectronicBillingEventEnvelope = {
     eventId: "event-2",

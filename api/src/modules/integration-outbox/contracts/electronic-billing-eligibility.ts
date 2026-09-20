@@ -8,6 +8,7 @@ export type ElectronicBillingEligibilityInput = {
   requestExists: boolean;
   hasTaxLines?: boolean;
   customerFiscalDataComplete?: boolean;
+  isFinalConsumer?: boolean;
 };
 
 export const evaluateElectronicBillingEligibility = (
@@ -22,7 +23,10 @@ export const evaluateElectronicBillingEligibility = (
   if (!input.customerId) {
     return "NO_CUSTOMER";
   }
-  if (input.hasTaxLines && input.customerFiscalDataComplete === false) {
+  if (
+    input.hasTaxLines &&
+    input.customerFiscalDataComplete === false
+  ) {
     return "INCOMPLETE_CUSTOMER_FISCAL_DATA";
   }
   if (input.documentStatuses.length > 1) {

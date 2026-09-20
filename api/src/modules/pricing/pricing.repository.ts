@@ -13,6 +13,8 @@ type PricingProductRow = QueryResultRow & {
   id: string;
   tenant_id: string;
   price: string | number;
+  price_with_tax: string | number | null;
+  price_without_tax: string | number | null;
   tax_id: string | null;
   tax_rate: string | number | null;
   tax_is_included: boolean | null;
@@ -110,6 +112,8 @@ export class PricingRepository {
         p.id,
         p.tenant_id,
         p.price,
+        p.price_with_tax,
+        p.price_without_tax,
         p.tax_id,
         COALESCE(t.rate, 0) AS tax_rate,
         COALESCE(t.is_included, FALSE) AS tax_is_included,
@@ -205,6 +209,12 @@ export class PricingRepository {
       id: row.id,
       tenantId: row.tenant_id,
       price: Number(row.price),
+      priceWithTax:
+        row.price_with_tax === null ? undefined : Number(row.price_with_tax),
+      priceWithoutTax:
+        row.price_without_tax === null
+          ? undefined
+          : Number(row.price_without_tax),
       taxId: row.tax_id,
       taxRate: Number(row.tax_rate ?? 0),
       taxIsIncluded: row.tax_is_included ?? false,

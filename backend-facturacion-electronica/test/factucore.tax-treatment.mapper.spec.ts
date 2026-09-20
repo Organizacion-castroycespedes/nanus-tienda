@@ -80,7 +80,7 @@ test("normalizes Manus fractional tax rates to FactuCore percentage points", () 
   assert.equal(request.lines[0].taxes?.[0].taxAmount, 8781.51);
 });
 
-test("maps the configured ad-valorem consumption component to its enclosing INC TaxScheme", () => {
+test("maps the configured ad-valorem component to the DIAN ADV TaxScheme", () => {
   const request = buildRequest([{
     ...structuredClone(exemptLine),
     taxTreatment: "TAXED",
@@ -97,11 +97,15 @@ test("maps the configured ad-valorem consumption component to its enclosing INC 
 
   const tax = request.lines[0].taxes?.[0];
   assert.equal(request.lines[0].taxTreatment, "TAXED");
-  assert.equal((tax?.metadata as Record<string, unknown>).taxSchemeId, "04");
+  assert.equal(tax?.taxType, "ADV");
+  assert.equal(tax?.taxSchemeId, "36");
+  assert.equal(tax?.taxSchemeName, "ADV");
+  assert.equal((tax?.metadata as Record<string, unknown>).taxSchemeId, "36");
+  assert.equal((tax?.metadata as Record<string, unknown>).taxSchemeName, "ADV");
   assert.equal((tax?.metadata as Record<string, unknown>).taxCode, "36");
 });
 
-test("maps catalog consumption tax types to the FactuCore INC TaxScheme", () => {
+test("maps catalog consumption tax types to their FactuCore DIAN TaxSchemes", () => {
   const request = buildRequest([{
     ...structuredClone(exemptLine),
     taxTreatment: "TAXED",
@@ -114,7 +118,7 @@ test("maps catalog consumption tax types to the FactuCore INC TaxScheme", () => 
 
   assert.deepEqual(
     request.lines[0].taxes?.map((tax) => (tax.metadata as Record<string, unknown>).taxSchemeId),
-    ["04", "04", "04"],
+    ["04", "04", "32"],
   );
 });
 

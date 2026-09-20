@@ -135,6 +135,16 @@ export class FactuCoreClient {
     });
   }
 
+  async issueInvoice(context: FactuCoreRuntimeContext, request: FactuCoreInvoiceRequest) {
+    return this.requestJson<FactuCoreDocumentResponse>({
+      method: "POST",
+      path: `${FACTUCORE_DOCUMENT_ENDPOINT}/invoices/issue`,
+      operation: "issue_invoice",
+      context,
+      body: request,
+    });
+  }
+
   async createCreditNote(context: FactuCoreRuntimeContext, request: FactuCoreCreditNoteRequest) {
     return this.requestJson<FactuCoreDocumentResponse>({
       method: "POST",

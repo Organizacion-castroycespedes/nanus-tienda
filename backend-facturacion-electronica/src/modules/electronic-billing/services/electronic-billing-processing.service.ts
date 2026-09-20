@@ -119,6 +119,10 @@ type LineSnapshot = {
   providerOriginalLineId?: string | null;
   standardItemId?: string | null;
   standardItemSchemeId?: string | null;
+  beverageCategory?: "LIQUOR" | "WINE" | "APERITIF" | "BEER" | null;
+  volumeMilliliters?: number | string | null;
+  alcoholDegrees?: number | string | null;
+  publicSalePriceBeforeTaxes?: number | string | null;
 };
 
 type LineResultMetadata = {
@@ -181,6 +185,25 @@ const readLineSnapshot = (metadata: Record<string, unknown>): LineSnapshot => {
     providerOriginalLineId: typeof snapshot.providerOriginalLineId === "string" ? snapshot.providerOriginalLineId : null,
     standardItemId: typeof snapshot.standardItemId === "string" ? snapshot.standardItemId : null,
     standardItemSchemeId: typeof snapshot.standardItemSchemeId === "string" ? snapshot.standardItemSchemeId : null,
+    beverageCategory:
+      snapshot.beverageCategory === "LIQUOR" ||
+      snapshot.beverageCategory === "WINE" ||
+      snapshot.beverageCategory === "APERITIF" ||
+      snapshot.beverageCategory === "BEER"
+        ? snapshot.beverageCategory
+        : null,
+    volumeMilliliters:
+      typeof snapshot.volumeMilliliters === "number" || typeof snapshot.volumeMilliliters === "string"
+        ? snapshot.volumeMilliliters
+        : null,
+    alcoholDegrees:
+      typeof snapshot.alcoholDegrees === "number" || typeof snapshot.alcoholDegrees === "string"
+        ? snapshot.alcoholDegrees
+        : null,
+    publicSalePriceBeforeTaxes:
+      typeof snapshot.publicSalePriceBeforeTaxes === "number" || typeof snapshot.publicSalePriceBeforeTaxes === "string"
+        ? snapshot.publicSalePriceBeforeTaxes
+        : null,
   };
 };
 
@@ -440,12 +463,19 @@ export class ElectronicBillingProcessingService {
       throw new ElectronicDocumentNotProcessableError("Electronic document not found");
     }
 
+    const allowAutomaticPreProviderRecovery = aggregate.document.status === "TECHNICAL_ERROR"
+      && aggregate.document.processing_stage === "PROVIDER_CREATE_INTENT"
+      && !aggregate.document.provider_document_id
+      && Boolean(aggregate.document.external_reference)
+      && isRetryableProviderCode(aggregate.document.last_error_code ?? "");
+
     return this.runProcessing(
       "RETRY_REQUESTED",
       tenantId,
       electronicDocumentId,
       "retry",
       this.isApprovedPreProviderRecovery(aggregate.document),
+      allowAutomaticPreProviderRecovery,
     );
   }
 
@@ -482,8 +512,25 @@ export class ElectronicBillingProcessingService {
       providerConfigId: aggregate.document.provider_config_id,
     });
 
-    const providerResult = await this.getProviderStatus(resolved, aggregate);
-    return this.persistProviderResult(tenantId, aggregate, providerResult, resolved, "STATUS_CHANGED", false, this.nextAttemptFromEvents(aggregate.events));
+    try {
+      const providerResult = await this.getProviderStatus(resolved, aggregate);
+      return this.persistProviderResult(tenantId, aggregate, providerResult, resolved, "STATUS_CHANGED", false, this.nextAttemptFromEvents(aggregate.events));
+    } catch (error) {
+      // A 404 is the explicit provider-absence signal used by the safe
+      // reconciliation flow. Do not convert it into a terminal rejection.
+      if (this.isProviderNotFoundError(error)) {
+        throw error;
+      }
+
+      return this.persistProviderError(
+        tenantId,
+        aggregate,
+        error,
+        resolved,
+        false,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+    }
   }
 
   async reconcileExistingProviderStatus(
@@ -1100,6 +1147,7 @@ export class ElectronicBillingProcessingService {
     electronicDocumentId: string,
     mode: "process" | "retry",
     allowApprovedPreProviderRecovery = false,
+    allowProviderCreateAfterReconciliation = false,
   ): Promise<ProcessingResult> {
     return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
       this.runProcessingUnlocked(
@@ -1108,6 +1156,7 @@ export class ElectronicBillingProcessingService {
         electronicDocumentId,
         mode,
         allowApprovedPreProviderRecovery,
+        allowProviderCreateAfterReconciliation,
       ),
     );
   }
@@ -1581,6 +1630,10 @@ export class ElectronicBillingProcessingService {
         taxAmount: line.tax_amount,
         totalAmount: line.total_amount,
         taxTreatment: line.tax_treatment,
+        beverageCategory: lineSnapshot.beverageCategory ?? null,
+        volumeMilliliters: lineSnapshot.volumeMilliliters ?? null,
+        alcoholDegrees: lineSnapshot.alcoholDegrees ?? null,
+        publicSalePriceBeforeTaxes: lineSnapshot.publicSalePriceBeforeTaxes ?? null,
         taxes: this.buildLineTaxes(aggregate, line.id),
         metadata: line.metadata,
       };
@@ -1646,6 +1699,10 @@ export class ElectronicBillingProcessingService {
       taxAmount: line.tax_amount,
       totalAmount: line.total_amount,
       taxTreatment: line.tax_treatment,
+      beverageCategory: readLineSnapshot(line.metadata).beverageCategory ?? null,
+      volumeMilliliters: readLineSnapshot(line.metadata).volumeMilliliters ?? null,
+      alcoholDegrees: readLineSnapshot(line.metadata).alcoholDegrees ?? null,
+      publicSalePriceBeforeTaxes: readLineSnapshot(line.metadata).publicSalePriceBeforeTaxes ?? null,
       taxes: (taxesByLineId.get(line.id) ?? []).map((tax) => ({
         type: tax.tax_type,
         code: tax.tax_code,

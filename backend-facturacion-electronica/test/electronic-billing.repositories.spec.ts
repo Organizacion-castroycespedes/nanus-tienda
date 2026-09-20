@@ -222,20 +222,19 @@ test("document repository scopes initial claims to pre-provider documents withou
   assert.equal(calls[0].params[5], true);
 });
 
-test("background retry claim excludes provider-create intent without provider id", async () => {
+test("background retry claim allows provider-create intent for worker classification", async () => {
   const { calls, db } = buildDb([]);
   const repository = new ElectronicDocumentRepository(db as never);
 
   await repository.claimDueForBackgroundSync({
     statuses: ["TECHNICAL_ERROR"],
-    excludePreProviderIntentWithoutProvider: true,
     dueBefore: new Date("2026-08-27T00:00:00.000Z"),
     limit: 5,
   });
 
   assert.match(calls[0].text, /PROVIDER_CREATE_INTENT/);
   assert.match(calls[0].text, /provider_document_id IS NULL/);
-  assert.equal(calls[0].params[6], true);
+  assert.equal(calls[0].params[6], null);
 });
 
 test("document repository resets only an idle provider-create intent failure", async () => {

@@ -48,6 +48,7 @@ test("IVA billing rejects an incomplete final-consumer fiscal profile", () => {
       ...base,
       hasTaxLines: true,
       customerFiscalDataComplete: false,
+      isFinalConsumer: true,
     }),
     "INCOMPLETE_CUSTOMER_FISCAL_DATA",
   );

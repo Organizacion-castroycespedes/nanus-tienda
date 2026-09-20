@@ -23,6 +23,7 @@ import type {
   ElectronicBillingResolvedCredential,
 } from "../../credentials";
 import {
+  FactuCoreConflictError,
   FactuCoreConfigurationError,
   FactuCoreError,
   FactuCoreMissingCredentialsError,
@@ -110,26 +111,40 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
           })),
         });
       }
-      const created = await this.client.createInvoice(runtime, request);
-      createdDocumentId = this.resolveProviderDocumentId(created);
-      if (!createdDocumentId) {
-        throw new FactuCoreConfigurationError("issue_invoice", "FactuCore create invoice response did not include a document id");
+      const issued = await this.client.issueInvoice(runtime, request);
+      createdDocumentId = this.resolveProviderDocumentId(issued);
+      if (createdDocumentId) {
+        await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
       }
 
-      await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
-      await command.onStage?.("XML_GENERATE_INTENT", createdDocumentId);
-      const generated = await this.client.generateXml(runtime, createdDocumentId);
-      await command.onStage?.("XML_GENERATED", createdDocumentId);
-      await command.onStage?.("SIGN_INTENT", createdDocumentId);
-      const signed = await this.client.sign(runtime, createdDocumentId);
-      await command.onStage?.("SIGNED", createdDocumentId);
-      await command.onStage?.("TRANSMISSION_INTENT", createdDocumentId);
-      const transmitted = await this.client.transmit(runtime, createdDocumentId);
-      await command.onStage?.("TRANSMITTED", createdDocumentId);
-      const merged = mergeDocumentResponses(created, generated, signed, transmitted);
-
-      return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
+      return buildDocumentResult(
+        this.mapper,
+        command.documentId,
+        issued,
+        issued.status ?? issued.providerStatus ?? "SENT",
+      );
     } catch (error) {
+      if (error instanceof FactuCoreConflictError && command.externalReference?.trim()) {
+        try {
+          const existing = await this.client.getStatusByExternalReference(
+            runtime,
+            command.externalReference.trim(),
+            "INVOICE",
+          );
+          const recoveredDocumentId = this.resolveProviderDocumentId(existing);
+          if (recoveredDocumentId) {
+            await command.onStage?.("PROVIDER_LINKED", recoveredDocumentId);
+            return buildDocumentResult(
+              this.mapper,
+              command.documentId,
+              existing,
+              existing.status ?? existing.providerStatus ?? "PROCESSING",
+            );
+          }
+        } catch {
+          // Preserve the original conflict when provider recovery is unavailable.
+        }
+      }
       if (createdDocumentId && error instanceof Error) {
         (error as Error & { providerDocumentId?: string }).providerDocumentId = createdDocumentId;
       }
