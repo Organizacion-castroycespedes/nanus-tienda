@@ -17,7 +17,6 @@ type AuthenticatedRequest = Request & {
 };
 
 @Controller("reports")
-@UseGuards(JwtAuthGuard, ReportAuthzGuard)
 export class ReportsController {
   constructor(
     @Inject(ReportsService)
@@ -29,11 +28,13 @@ export class ReportsController {
     return this.reportsService.getHealth();
   }
 
+  @UseGuards(JwtAuthGuard, ReportAuthzGuard)
   @Get("demo")
   getDemo(@Req() request: AuthenticatedRequest) {
     return this.reportsService.getDemo(request.user);
   }
 
+  @UseGuards(JwtAuthGuard, ReportAuthzGuard)
   @Get("demo-pdf")
   async getDemoPdf(
     @Req() request: AuthenticatedRequest,
