@@ -10,21 +10,23 @@ import { ReportLayout } from "../../../components/design-system/ReportLayout";
 import { ReportSummary } from "../../../components/design-system/ReportSummary";
 import { Select } from "../../../components/design-system/Select";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
+import { Input } from "../../../components/design-system/Input";
 import { usePurchasesReports } from "../hooks/use-purchases-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
-import { getPurchaseTicket } from "../services/reporting.service";
+import { getPurchaseTicket, getPurchasesReportExcel, getPurchasesReportPdf } from "../services/reporting.service";
 import type { PurchasesListRow } from "../types";
-import { downloadBlob, downloadReportWorkbook, formatCurrency, formatDateTime, getTodayRange } from "../utils";
+import { downloadBlob, downloadReportWorkbook, formatCurrency, formatDate, formatDateTime, getTodayRange } from "../utils";
 import { PdfPreviewModal } from "./PdfPreviewModal";
 import { ReportStatusBadge } from "./ReportStatusBadge";
 import { createReportScopeFilters } from "./report-scope-filters";
 
-type PdfConfig = { title: string; fileName: string; getPdf: () => Promise<Blob> };
+type PdfConfig = { title: string; fileName: string; getPdf: () => Promise<Blob>; onDownloadExcel?: () => void };
 
 const PurchasesReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
   const [status, setStatus] = useState("");
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
   const [page, setPage] = useState(1);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const pageSize = 25;
@@ -33,9 +35,9 @@ const PurchasesReportsPage = () => {
 
   const load = useCallback(async (range: { from: string; to: string }) => {
     if (!scope.tenantId) return;
-    await reports.loadReports({ tenantId: scope.tenantId, branchId: scope.branchId || undefined, dateFrom: range.from, dateTo: range.to, status: status || undefined });
+    await reports.loadReports({ tenantId: scope.tenantId, branchId: scope.branchId || undefined, dateFrom: range.from, dateTo: range.to, status: status || undefined, supplierInvoiceNumber: supplierInvoiceNumber || undefined });
     setPage(1);
-  }, [reports.loadReports, scope.branchId, scope.tenantId, status]);
+  }, [reports.loadReports, scope.branchId, scope.tenantId, status, supplierInvoiceNumber]);
 
   useEffect(() => {
     if (!scope.canViewReports || !scope.tenantId) return;
@@ -45,6 +47,7 @@ const PurchasesReportsPage = () => {
   const columns = useMemo<DataTableColumn<PurchasesListRow>[]>(() => [
     { key: "date", header: "Fecha", render: (row) => <div><p className="font-medium">{formatDateTime(row.date)}</p><p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p></div> },
     { key: "supplier", header: "Proveedor", render: (row) => <div><p className="font-medium">{row.supplierName}</p><p className="text-xs text-slate-500">Compra #{row.purchaseId.slice(0, 8)}</p></div> },
+    { key: "supplierInvoice", header: "Factura proveedor", render: (row) => <div><p className="font-medium">{row.supplierInvoiceNumber || "-"}</p><p className="text-xs text-slate-500">{formatDate(row.supplierInvoiceDate)}</p></div> },
     { key: "total", header: "Total", render: (row) => <div><p className="font-medium">{formatCurrency(row.total)}</p>{row.status === "CERRADA_PARCIAL" ? <p className="text-xs text-slate-500">Pedido: {formatCurrency(row.totalPedido ?? row.total)}</p> : null}</div> },
     { key: "difference", header: "No recibido", render: (row) => formatCurrency(row.diferenciaNoRecibida ?? 0) },
     { key: "paid", header: "Pagado", render: (row) => formatCurrency(row.paid) },
@@ -53,25 +56,33 @@ const PurchasesReportsPage = () => {
     { key: "actions", header: "Acciones", cellClassName: "min-w-[200px]", render: (row) => <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de compra ${row.purchaseId.slice(0, 8)}`, fileName: `ticket-compra-${row.purchaseId}.pdf`, getPdf: () => getPurchaseTicket(row.purchaseId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getPurchaseTicket(row.purchaseId), `ticket-compra-${row.purchaseId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></div> },
   ], []);
 
-  const filters = useMemo<ReportFilterDefinition[]>(() => createReportScopeFilters({ dateRange, initialRange, setDateRange, showTenantSelector: scope.showTenantSelector, showBranchSelector: scope.showBranchSelector, tenantId: scope.tenantId, branchId: scope.branchId, setTenantId: scope.setTenantId, setBranchId: scope.setBranchId, tenantOptions: scope.tenantOptions, branchOptions: scope.branchOptions, loadingTenants: scope.loadingTenants, loadingBranches: scope.loadingBranches, tenantLabel: scope.resolvedTenantLabel, branchLabel: scope.resolvedBranchLabel, extra: [{ key: "status", label: "Estado", priority: "secondary", active: Boolean(status), activeLabel: status || "Todos", render: () => <Select label="Estado" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option><option value="PENDING">PENDING</option><option value="PARTIAL">PARTIAL</option><option value="RECEIVED">RECEIVED</option><option value="CERRADA_PARCIAL">CERRADA_PARCIAL</option><option value="CANCELLED">CANCELLED</option></Select>, clear: () => setStatus("") }] }), [dateRange, initialRange, scope, status]);
+  const filters = useMemo<ReportFilterDefinition[]>(() => createReportScopeFilters({ dateRange, initialRange, setDateRange, showTenantSelector: scope.showTenantSelector, showBranchSelector: scope.showBranchSelector, tenantId: scope.tenantId, branchId: scope.branchId, setTenantId: scope.setTenantId, setBranchId: scope.setBranchId, tenantOptions: scope.tenantOptions, branchOptions: scope.branchOptions, loadingTenants: scope.loadingTenants, loadingBranches: scope.loadingBranches, tenantLabel: scope.resolvedTenantLabel, branchLabel: scope.resolvedBranchLabel, extra: [{ key: "status", label: "Estado", priority: "secondary", active: Boolean(status), activeLabel: status || "Todos", render: () => <Select label="Estado" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos</option><option value="PENDING">PENDING</option><option value="PARTIAL">PARTIAL</option><option value="RECEIVED">RECEIVED</option><option value="CERRADA_PARCIAL">CERRADA_PARCIAL</option><option value="CANCELLED">CANCELLED</option></Select>, clear: () => setStatus("") }, { key: "supplierInvoiceNumber", label: "Número de factura", priority: "secondary", active: Boolean(supplierInvoiceNumber), activeLabel: supplierInvoiceNumber || "Todas", render: () => <Input label="Número de factura" value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} />, clear: () => setSupplierInvoiceNumber("") }] }), [dateRange, initialRange, scope, status, supplierInvoiceNumber]);
 
   const exportReport = () => {
     const dataset = reports.dataset;
     if (!dataset) return;
-    downloadReportWorkbook({ fileName: `reporte-compras-${scope.tenantId}-${dateRange.from}-${dateRange.to}.xls`, summaryTitle: "Reporte de compras", detailTitle: "Detalle de compras", filters: [{ label: "Tenant", value: scope.resolvedTenantLabel }, { label: "Sucursal", value: scope.resolvedBranchLabel }, { label: "Desde", value: dateRange.from }, { label: "Hasta", value: dateRange.to }, { label: "Estado", value: status || "Todos" }], summary: [{ label: "Compras", value: dataset.summary.count }, { label: "Total", value: dataset.summary.total }, { label: "Diferencia no recibida", value: dataset.summary.totalNoRecibido ?? 0 }, { label: "Pagado", value: dataset.summary.paid }, { label: "Saldo", value: dataset.summary.balance }], columns: ["Fecha", "Sucursal", "Proveedor", "Compra ID", "Total", "Total pedido", "Total liquidado", "Diferencia no recibida", "Pagado", "Saldo", "Estado", "Estado pago"], rows: dataset.rows.map((row) => [formatDateTime(row.date), row.branchName ?? "", row.supplierName, row.purchaseId, row.total, row.totalPedido ?? row.total, row.totalLiquidado ?? row.total, row.diferenciaNoRecibida ?? 0, row.paid, row.balance, row.status, row.paymentStatus]) });
+    downloadReportWorkbook({ fileName: `reporte-compras-${scope.tenantId}-${dateRange.from}-${dateRange.to}.xls`, summaryTitle: "Reporte de compras", detailTitle: "Detalle de compras", filters: [{ label: "Tenant", value: scope.resolvedTenantLabel }, { label: "Sucursal", value: scope.resolvedBranchLabel }, { label: "Desde", value: dateRange.from }, { label: "Hasta", value: dateRange.to }, { label: "Estado", value: status || "Todos" }, { label: "Factura proveedor", value: supplierInvoiceNumber || "Todas" }], summary: [{ label: "Compras", value: dataset.summary.count }, { label: "Total", value: dataset.summary.total }, { label: "Diferencia no recibida", value: dataset.summary.totalNoRecibido ?? 0 }, { label: "Pagado", value: dataset.summary.paid }, { label: "Saldo", value: dataset.summary.balance }], columns: ["Fecha", "Sucursal", "Proveedor", "Factura proveedor", "Fecha factura", "Compra ID", "Total", "Total pedido", "Total liquidado", "Diferencia no recibida", "Pagado", "Saldo", "Estado", "Estado pago"], rows: dataset.rows.map((row) => [formatDateTime(row.date), row.branchName ?? "", row.supplierName, row.supplierInvoiceNumber ?? "", formatDate(row.supplierInvoiceDate), row.purchaseId, row.total, row.totalPedido ?? row.total, row.totalLiquidado ?? row.total, row.diferenciaNoRecibida ?? 0, row.paid, row.balance, row.status, row.paymentStatus]) });
   };
+
+  const reportFilters = { tenantId: scope.tenantId, branchId: scope.branchId || undefined, dateFrom: dateRange.from, dateTo: dateRange.to, status: status || undefined, supplierInvoiceNumber: supplierInvoiceNumber || undefined };
+  const openReport = () => setPdfConfig({
+    title: "Reporte de compras",
+    fileName: `reporte-compras-${dateRange.from}-${dateRange.to}.pdf`,
+    getPdf: () => getPurchasesReportPdf(reportFilters),
+    onDownloadExcel: () => void getPurchasesReportExcel(reportFilters).then((blob) => downloadBlob(blob, `reporte-compras-${dateRange.from}-${dateRange.to}.xlsx`)),
+  });
 
   if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar la reportería de compras." />;
 
   return (
     <ReportLayout title="Compras y tickets de proveedor" description="Consulta compras por fecha, estado y alcance operativo.">
       <div className="space-y-3">
-        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loading} disabled={!dateRange.from || !dateRange.to}>Buscar</Button><Button variant="outline" size="sm" disabled={!reports.dataset?.rows.length} onClick={exportReport}><Download className="h-4 w-4" /> Descargar reporte</Button></>} />
+        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loading} disabled={!dateRange.from || !dateRange.to}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId || !dateRange.from || !dateRange.to}>Reporte</Button><Button variant="outline" size="sm" disabled={!reports.dataset?.rows.length} onClick={exportReport}><Download className="h-4 w-4" /> Descargar reporte</Button></>} />
         <ReportSummary items={[{ label: "Compras", value: reports.dataset ? reports.dataset.summary.count : reports.searched ? 0 : "--" }, { label: "Total", value: reports.dataset ? formatCurrency(reports.dataset.summary.total) : reports.searched ? "$ 0" : "--" }, { label: "Pagado", value: reports.dataset ? formatCurrency(reports.dataset.summary.paid) : reports.searched ? "$ 0" : "--" }, { label: "Saldo", value: reports.dataset ? formatCurrency(reports.dataset.summary.balance) : reports.searched ? "$ 0" : "--" }]} />
         <DataTable columns={columns} rows={reports.dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? []} getRowKey={(row) => row.purchaseId} loading={reports.loading} error={reports.error} emptyState={reports.searched ? "No hay compras para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />
         {reports.dataset ? <Pagination page={page} pageSize={pageSize} totalItems={reports.dataset.rows.length} onPageChange={setPage} /> : null}
       </div>
-      {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onClose={() => setPdfConfig(null)} /> : null}
+      {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onDownloadExcel={pdfConfig.onDownloadExcel} allowPrint onClose={() => setPdfConfig(null)} /> : null}
     </ReportLayout>
   );
 };

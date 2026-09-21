@@ -101,3 +101,24 @@ The Caja report SHALL preserve its existing tabs and Web filters while using sep
 #### Scenario: Caja document shows corporate context
 - **WHEN** the active tenant has branding or branch details
 - **THEN** the document SHALL show available company, NIT and branch names without technical UUIDs or invented fallback data
+
+### Requirement: Compras uses a safe complete document export
+The Compras report SHALL expose one compact document action that preserves its date, status, tenant and branch filters, keeps supplier as a data column rather than an invented filter, and exposes the real supplier invoice number as an optional partial-search filter. Each row SHALL expose supplier invoice number and invoice date from `purchases`. PDF, Excel and print SHALL share the complete filtered dataset and corporate context, while legacy exports and purchase tickets remain available.
+
+#### Scenario: Compras export preserves the Web scope
+- **WHEN** an authorized user exports Compras with date, status, tenant and branch filters
+- **THEN** PDF preview, PDF download, Excel download and print SHALL use the same actor permissions, scope, stable ordering and complete filtered rows as the Web report, independent of UI pagination
+- **AND** a blank invoice-number filter SHALL not restrict results, while a non-blank filter SHALL use the same case-insensitive partial matching in Web, PDF and Excel
+
+#### Scenario: Compras export is safely bounded
+- **WHEN** the filtered Compras count is greater than 100000 rows
+- **THEN** the export SHALL fail explicitly without truncating, and otherwise read real batches of at most 1000 rows within one `REPEATABLE READ READ ONLY` snapshot
+
+#### Scenario: Compras documents preserve real fields and branding
+- **WHEN** the Compras document is rendered
+- **THEN** it SHALL include only contractual purchase fields, supplier, real totals and available tenant/branch branding, with repeated headers and indivisible rows; missing branding fields SHALL be omitted
+- **AND** invoice number SHALL remain full text in Excel, invoice date SHALL remain a spreadsheet date when present, and missing invoice values SHALL use the report's neutral display
+
+#### Scenario: Compras PDF and Excel render independently
+- **WHEN** the user requests either PDF or XLSX
+- **THEN** only the requested renderer SHALL execute, and existing purchase tickets and legacy export actions SHALL remain available

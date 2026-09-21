@@ -29,6 +29,7 @@ const buildQuery = (filters: ReportFilters) => {
     customerDocument: filters.customerDocument,
     customerName: filters.customerName,
     status: filters.status,
+    supplierInvoiceNumber: filters.supplierInvoiceNumber,
   });
 
   Object.entries(normalized).forEach(([key, value]) => {
@@ -153,6 +154,18 @@ export const getPurchasesReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<PurchasesListDataset>(
     reportsBaseUrl,
     `/reports/purchases${buildQuery(filters)}`
+  );
+
+export const getPurchasesReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/purchases${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getPurchasesReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/purchases${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
   );
 
 export const getPurchaseTicket = (purchaseId: string) =>

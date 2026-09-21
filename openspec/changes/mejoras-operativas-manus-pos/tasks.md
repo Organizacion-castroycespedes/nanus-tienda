@@ -59,3 +59,14 @@
 - [x] 9.4 Add compact Caja `Reporte` action selecting the active tab document while preserving legacy exports and individual tickets.
 - [x] 9.5 Add focused backend/frontend coverage for Caja scope, batching, tab selection, document definitions, Excel types and branding fallback.
 - [x] 9.6 Run Caja/POS regression tests, builds, lint, OpenSpec strict and diff check; leave Compras, Pedidos and Clientes pending.
+
+## 10. Compras document export adoption
+
+- [x] 10.1 Inspect the real Compras Web contract and preserve date/status/tenant/branch filters, supplier column, summaries, tickets and legacy export.
+- [x] 10.2 Add direct batchable Compras count/fetch queries with shared scope, stable order, read-only repeatable-read snapshot and 100000-row limit.
+- [x] 10.3 Add branded Compras PDF and ExcelJS definitions with real columns, repeated headers, indivisible rows and independent renderers.
+- [x] 10.4 Integrate the compact Compras `Reporte` action with `PdfPreviewModal` and preserve legacy actions.
+- [x] 10.5 Add focused backend/frontend coverage for scope, batching, workbook columns/types, PDF structure and renderer separation.
+- [x] 10.5.1 Propagate supplier invoice number/date through Web, PDF and XLSX with one optional partial-search filter and no invoice-date filter.
+- [ ] 10.6 Perform manual Compras QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
+- [ ] 10.7 Leave Pedidos and Clientes pending for later adoption.
