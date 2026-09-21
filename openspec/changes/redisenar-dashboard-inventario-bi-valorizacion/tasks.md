@@ -5,8 +5,10 @@
 
 ## 1. `/inventory` visual shell
 
-- [ ] 1.1 Replace the existing `/inventory` presentation in place with the approved BI shell; do not create a parallel dashboard.
-- [ ] 1.2 Preserve the existing tenant layout, header, sidebar, global modals, route guard, and permissions.
+- [x] 1.1 Replace the existing `/inventory` presentation in place with the approved BI shell; do not create a parallel dashboard.
+- [x] 1.2 Preserve the existing tenant layout, header, sidebar, global modals, route guard, and permissions.
+- [x] 1.3 Implement content-width responsive wide layout without changing the approved intermediate, tablet, or mobile layouts.
+- [x] 1.4 Complete manual visual QA for the Section 1 shell and record the certified PASS.
 
 ## 2. Scope and filters
 

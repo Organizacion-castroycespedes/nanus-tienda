@@ -1,5 +1,33 @@
 ## ADDED Requirements
 
+### Requirement: Section 1 visual shell
+
+Section 1 SHALL render the new Inventory BI shell in place at `/{tenant}/inventory` with the hierarchy Header, Filtros de inventario placeholder, six-card KPI shell, Distribución del capital group heading and shell, Salud operativa group heading and shell, Valorización de Inventario CTA shell, and Inventario operational table shell. The Header SHALL sit directly on the page background without a card border or shadow. Section 1 SHALL use structural skeletons and SHALL NOT display fabricated metrics, amounts, products, percentages, charts, or operational rows.
+
+#### Scenario: Visual shell review
+- **WHEN** an authorized user opens `/{tenant}/inventory` during Section 1
+- **THEN** the complete BI hierarchy SHALL be visible with neutral structural placeholders and no fake business data
+
+#### Scenario: Valuation CTA before route implementation
+- **WHEN** the user sees the valuation CTA in Section 1
+- **THEN** the CTA SHALL be disabled, visibly muted through the existing disabled Button variant, non-navigating, and accessible until the valuation route is implemented
+
+### Requirement: Section 1 responsive and state foundation
+
+The shell SHALL use existing tenant design tokens, the existing `Button` component, the existing `lucide-react` icon library, semantic headings, visible focus behavior, responsive grid/flex layout, and no structural absolute positioning. It SHALL provide stable loading skeletons and a reusable error panel with the exact message `No fue posible cargar el Dashboard de Inventario.` and optional retry action.
+
+#### Scenario: Responsive shell
+- **WHEN** the viewport changes across desktop, tablet, compact mobile, and sub-480px widths
+- **THEN** the shell SHALL reflow without body horizontal overflow and SHALL preserve hierarchy and readable controls; wide columns SHALL activate from the Inventory BI content container's usable inline width, not from viewport width alone
+
+#### Scenario: Loading state
+- **WHEN** the shell is loading
+- **THEN** skeletons SHALL preserve layout structure and SHALL not replace the full view with a plain loading message
+
+#### Scenario: Error state
+- **WHEN** the shell receives an error state
+- **THEN** Header and structural context SHALL remain visible and the compact error panel SHALL offer retry only when a callback exists
+
 ### Requirement: Section 0 is architecture-only
 
 Section 0 SHALL document architecture, data contracts, scope, pagination, valuation, export, route preservation, and incremental delivery. It SHALL NOT authorize production code, physical SQL functions, migrations, visual implementation, staging, commit, or push.

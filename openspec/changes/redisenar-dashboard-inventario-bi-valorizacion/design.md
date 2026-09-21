@@ -26,6 +26,36 @@ Section 0 is an architecture decision record. It prepares a later incremental im
 
 ## Decisions
 
+### Section 1 visual shell implementation
+
+Section 1 replaces the rendered root presentation in `web/app/[tenant]/inventory/page.tsx` with `InventoryBiDashboard` from `web/modules/inventory/components/InventoryBiDashboard.tsx`. The exact shell hierarchy is:
+
+```text
+main.InventoryBiDashboard
+├── header.InventoryBiHeader
+├── ScopeFiltersShell
+├── KpiShell (6 skeleton cards)
+├── CapitalDistributionShell
+│   ├── Distribución del capital group heading
+│   ├── Costo por sucursal
+│   ├── Costo por categoría
+│   └── Top productos
+├── OperationalHealthShell
+│   ├── Salud operativa group heading
+│   ├── 3 compact health cards
+│   └── Estado del inventario
+├── InventoryValuationCtaShell (disabled in Section 1)
+└── OperationalTableShell
+```
+
+The shell uses existing `Button` and `lucide-react` icons. It maps existing tenant theme variables instead of introducing a new palette: `--brand-background` for the page surface, `--brand-surface-card` for panels, `--brand-surface-text` for primary text, `--brand-surface-muted` for secondary text, `--brand-surface-border` for borders, and `--brand-primary-*` for the valuation CTA emphasis. The Header is intentionally plain on the page background; cards begin after the Header. The only local visual primitive is a small `InventoryBiSkeleton`, because no shared Skeleton component exists in the repository.
+
+The responsive foundation uses the repository's Tailwind defaults (`sm`, `md`, `lg`) for approved intermediate and compact layouts. The Inventory BI main element is also a named inline-size container; only when its usable content width reaches 1280px do six KPI columns, three capital panels (4/4/4), and the health cards/status row (6/6) activate. This avoids treating monitor viewport width as available width after the TenantLayout sidebar. The page is full width with responsive padding, 16px section gaps, no structural absolute positioning, and no body-level horizontal overflow. KPI cards retain a 160px minimum width. Capital and health groups have their own visible headings above the existing grids.
+
+Loading is represented by stable structural skeletons with `aria-busy` on the dashboard and no fabricated metrics. The component exposes `viewState="error"` and an optional retry callback for the later data integration; the error copy is exactly `No fue posible cargar el Dashboard de Inventario.` The refresh button accepts an optional existing refresh callback and remains disabled in this shell because Section 1 does not alter the current data contract. The valuation CTA is disabled and does not navigate because its route is not implemented yet.
+
+The previous `InventoryDashboard.tsx` component, all current services, controllers, endpoints, child routes, and `TenantLayout` remain untouched. This preserves the operational implementation for later re-homing and avoids deleting current capabilities while the visual shell is certified.
+
 ### Route replacement
 
 The existing `/{tenant}/inventory` route remains the main route and will later render the new Inventory BI Dashboard. The implementation must replace the existing experience in place. It must not create a second dashboard route. The existing route permission and all child routes remain available.
