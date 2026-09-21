@@ -28,6 +28,7 @@ import {
   deleteProductImage,
   getProduct,
   updateProduct,
+  getFiscalPreview,
   uploadProductImage,
   type CreateProductPayload,
   type UpdateProductPayload,
@@ -239,6 +240,55 @@ export const ProductForm = ({
   const [imageProduct, setImageProduct] = useState<ProductResponse | null>(
     product ?? null
   );
+  const [fiscalPricePreview, setFiscalPricePreview] = useState({
+    priceWithTax: values.priceWithTax ?? "",
+    priceWithoutTax: values.priceWithoutTax ?? "",
+  });
+
+  useEffect(() => {
+    const finalPrice = Number(values.price);
+    if (!Number.isFinite(finalPrice) || finalPrice < 0 || values.assignedTaxes.length === 0) {
+      setFiscalPricePreview({ priceWithTax: values.priceWithTax, priceWithoutTax: values.priceWithoutTax });
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const preview = await getFiscalPreview({
+          finalUnitPrice: finalPrice,
+          taxes: values.assignedTaxes.map((t, i) => ({
+            taxId: t.taxId,
+            calculationOrder: i + 1,
+            isIncluded: taxOptions.find(opt => opt.id === t.taxId)?.isIncluded ?? false
+          })),
+          taxProfile: values.taxProductCategoryId ? {
+            taxProductCategoryId: values.taxProductCategoryId,
+            alcoholDegree: values.alcoholDegree ? Number(values.alcoholDegree) : null,
+            netVolumeMl: values.netVolumeMl ? Number(values.netVolumeMl) : null,
+            daneCertifiedRetailPrice: values.daneCertifiedRetailPrice ? Number(values.daneCertifiedRetailPrice) : null,
+          } : null
+        });
+        setFiscalPricePreview({
+          priceWithTax: preview.lineTotal.toFixed(2),
+          priceWithoutTax: preview.lineSubtotal.toFixed(2),
+        });
+      } catch (err) {
+        console.error("Failed to fetch fiscal preview", err);
+      }
+    }, 400);
+
+    return () => clearTimeout(timeout);
+  }, [
+    values.price,
+    values.assignedTaxes,
+    values.taxProductCategoryId,
+    values.alcoholDegree,
+    values.netVolumeMl,
+    values.daneCertifiedRetailPrice,
+    taxOptions,
+    values.priceWithTax,
+    values.priceWithoutTax,
+  ]);
 
   useEffect(() => {
     setValues(createInitialValues(product));
@@ -754,11 +804,8 @@ export const ProductForm = ({
             }
           : null,
       price: Number(values.price),
-      priceWithTax: values.priceWithTax.trim() === "" ? Number(values.price) : Number(values.priceWithTax),
-      priceWithoutTax:
-        values.priceWithoutTax.trim() === ""
-          ? Number(values.price)
-          : Number(values.priceWithoutTax),
+      priceWithTax: undefined,
+      priceWithoutTax: undefined,
       cost: Number(values.cost),
       unitId: values.unitId,
       taxId: bridgeTaxId,
@@ -953,10 +1000,11 @@ export const ProductForm = ({
               type="number"
               min="0"
               step="0.01"
-              value={values.priceWithoutTax}
-              onChange={(event) => setFieldValue("priceWithoutTax", event.target.value)}
+              value={fiscalPricePreview.priceWithoutTax}
+              readOnly
+              className="bg-slate-100 text-slate-500"
               placeholder="0.00"
-              hint="Base fiscal usada para la factura."
+              hint="Base fiscal calculada por el backend usando el catalogo fiscal."
             />
           </div>
 
@@ -966,10 +1014,11 @@ export const ProductForm = ({
               type="number"
               min="0"
               step="0.01"
-              value={values.priceWithTax}
-              onChange={(event) => setFieldValue("priceWithTax", event.target.value)}
+              value={fiscalPricePreview.priceWithTax}
+              readOnly
+              className="bg-slate-100 text-slate-500"
               placeholder="0.00"
-              hint="Total esperado después de impuestos."
+              hint="Total final. Se toma del precio de venta."
             />
           </div>
 
@@ -1592,3 +1641,4 @@ export const ProductForm = ({
     </section>
   );
 };
+

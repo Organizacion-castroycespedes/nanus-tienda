@@ -11,6 +11,8 @@ import type {
   PricingProductSnapshot,
   PricingPromotionSnapshot,
   PricingProductTaxSnapshot,
+  PricingProductTaxProfileSnapshot,
+
 } from "./pricing.types";
 
 const CHANNELS = new Set(["POS", "ORDER"]);
@@ -658,4 +660,66 @@ export class PricingService {
         "products.price is treated as the visible unit price with tax included; active non-stackable promotion applied by priority, discount and recency.",
     });
   }
+
+  async calculateProposedLine(input: {
+    product: PricingProductSnapshot;
+    quantity: number;
+    finalUnitPrice: number;
+  }): Promise<LinePricePreview> {
+    const baseUnitPrice = this.getCustomerUnitPrice(input.product);
+    const quantity = this.roundCurrency(input.quantity);
+    const finalUnitPrice = this.roundCurrency(input.finalUnitPrice);
+
+    return this.calculateLinePreview({
+      product: input.product,
+      quantity,
+      finalUnitPrice,
+      discountAmount: 0,
+      discountPercent: 0,
+      appliedPromotionId: null,
+      appliedPromotionName: null,
+      explanation: "Proposed calculation based on provided product tax configuration.",
+    });
+  }
+
+  async previewProposedConfiguration(input: {
+    tenantId: string;
+    finalUnitPrice: number;
+    taxes: Array<{ taxId: string; calculationOrder: number; isIncluded: boolean }>;
+    taxProfile: PricingProductTaxProfileSnapshot | null;
+  }): Promise<LinePricePreview> {
+    const pricingDate = new Date();
+    const resolvedTaxes = await this.pricingRepository.resolveProposedTaxes(
+      input.tenantId,
+      input.taxes,
+      input.taxProfile?.taxProductCategoryId ?? null,
+      pricingDate
+    );
+
+    const bridgeTax = resolvedTaxes.find(t => t.calculationMethodCode === "PERCENTAGE" || !t.calculationMethodCode);
+
+    const snapshot: PricingProductSnapshot = {
+      id: "preview-id",
+      tenantId: input.tenantId,
+      price: input.finalUnitPrice,
+      priceWithTax: input.finalUnitPrice,
+      priceWithoutTax: input.finalUnitPrice,
+      taxId: bridgeTax?.taxId ?? null,
+      taxRate: bridgeTax?.rate ?? 0,
+      taxIsIncluded: bridgeTax?.isIncluded ?? false,
+      taxes: resolvedTaxes,
+      taxProfile: input.taxProfile,
+      isActive: true,
+    };
+
+    return this.calculateProposedLine({
+      product: snapshot,
+      quantity: 1,
+      finalUnitPrice: input.finalUnitPrice,
+    });
+  }
 }
+
+
+
+

@@ -277,4 +277,68 @@ export class PricingRepository {
       createdAt: new Date(row.created_at),
     }));
   }
+
+  async resolveProposedTaxes(
+    tenantId: string,
+    taxAssignments: Array<{ taxId: string; calculationOrder: number; isIncluded: boolean }>,
+    taxProductCategoryId: string | null,
+    pricingDate: Date
+  ): Promise<PricingProductTaxSnapshot[]> {
+    if (taxAssignments.length === 0) return [];
+
+    const taxIds = taxAssignments.map(t => t.taxId);
+    
+    const result = await this.db.query<PricingProductTaxRow>(
+      `
+      SELECT
+        t.id AS tax_id,
+        t.name AS tax_name,
+        tt.dian_code,
+        tt.code AS tax_type_code,
+        cm.code AS calculation_method_code,
+        bt.code AS tax_base_type_code,
+        1 AS calculation_order,
+        t.is_included,
+        COALESCE(t.rate, 0) AS tax_rate,
+        tr.percentage_rate,
+        tr.fixed_amount,
+        tr.base_quantity,
+        tr.base_unit_code
+      FROM taxes t
+      LEFT JOIN tax_types tt ON tt.id = t.tax_type_id
+      LEFT JOIN tax_calculation_methods cm ON cm.id = t.calculation_method_id
+      LEFT JOIN tax_base_types bt ON bt.id = t.tax_base_type_id
+      LEFT JOIN LATERAL (
+        SELECT tr_inner.percentage_rate, tr_inner.fixed_amount,
+               tr_inner.base_quantity, tr_inner.base_unit_code
+        FROM tax_rates tr_inner
+        WHERE tr_inner.tenant_id = t.tenant_id
+          AND tr_inner.tax_id = t.id
+          AND (tr_inner.tax_product_category_id = $3::uuid OR tr_inner.tax_product_category_id IS NULL)
+          AND tr_inner.effective_from <= $4::date
+          AND (tr_inner.effective_to IS NULL OR tr_inner.effective_to >= $4::date)
+          AND tr_inner.is_active = TRUE
+        ORDER BY CASE WHEN tr_inner.tax_product_category_id = $3::uuid THEN 0 ELSE 1 END,
+                 tr_inner.effective_from DESC,
+                 tr_inner.effective_to DESC NULLS LAST
+        LIMIT 1
+      ) AS tr ON TRUE
+      WHERE t.tenant_id = $1
+        AND t.id = ANY($2::uuid[])
+      `,
+      [tenantId, taxIds, taxProductCategoryId, pricingDate]
+    );
+
+    const taxesMap = new Map((result.rows ?? []).map(row => [row.tax_id, this.mapProductTax(row)]));
+    
+    return taxAssignments.map(assignment => {
+      const tax = taxesMap.get(assignment.taxId);
+      if (!tax) throw new Error("Tax not found");
+      return {
+        ...tax,
+        calculationOrder: assignment.calculationOrder,
+        isIncluded: assignment.isIncluded,
+      };
+    }).sort((a, b) => a.calculationOrder - b.calculationOrder);
+  }
 }

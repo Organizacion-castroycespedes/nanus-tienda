@@ -30,6 +30,8 @@ import { ProductRepository } from "../repositories/product.repository";
 import { ProductSubcategoryRepository } from "../repositories/product-subcategory.repository";
 import { TaxRepository } from "../repositories/tax.repository";
 import { StockMovementService } from "./stock-movement.service";
+import { PricingService } from "../../pricing/pricing.service";
+import { calculateProductPrices } from "./product-price-calculator";
 
 type ProductTaxAssignmentInput = {
   taxId: string;
@@ -157,6 +159,8 @@ export class ProductService {
     private readonly productSubcategoryRepository: ProductSubcategoryRepository,
     @Inject(TaxRepository)
     private readonly taxRepository: TaxRepository,
+    @Inject(PricingService)
+    private readonly pricingService: PricingService,
     @Inject(DatabaseService)
     private readonly db: DatabaseService
   ) {}
@@ -224,6 +228,7 @@ export class ProductService {
         bridgeTaxId: null as string | null,
         hasNonPercentage: false,
         hasAdv: false,
+        taxesById: new Map(),
       };
     }
 
@@ -263,6 +268,7 @@ export class ProductService {
       bridgeTaxId: percentageBridge?.taxId ?? null,
       hasNonPercentage,
       hasAdv,
+      taxesById: byId,
     };
   }
 
@@ -737,8 +743,24 @@ export class ProductService {
     }
 
     const now = new Date();
-    const priceWithoutTax = product.priceWithoutTax ?? product.price;
-    const priceWithTax = product.priceWithTax ?? product.price;
+    let priceWithTax = product.priceWithTax ?? product.price;
+    let priceWithoutTax = product.priceWithoutTax ?? product.price;
+
+    if (taxResolution.assignments.length > 0) {
+      const preview = await this.pricingService.previewProposedConfiguration({
+        tenantId: product.tenantId,
+        finalUnitPrice: product.price,
+        taxes: taxResolution.assignments.map(a => ({ ...a, isIncluded: a.isIncluded ?? false })),
+        taxProfile: product.taxProfile ? {
+           taxProductCategoryId: product.taxProfile.taxProductCategoryId,
+           alcoholDegree: product.taxProfile.alcoholDegree ?? null,
+           netVolumeMl: product.taxProfile.netVolumeMl ?? null,
+           daneCertifiedRetailPrice: product.taxProfile.daneCertifiedRetailPrice ?? null,
+        } : null
+      });
+      priceWithTax = preview.lineTotal;
+      priceWithoutTax = preview.lineSubtotal;
+    }
     const imageMetadata = this.buildCreateImageMetadata(product, now);
 
     const entity = ProductEntity.create({
@@ -808,7 +830,7 @@ export class ProductService {
         {
           tenantId: created.tenantId,
           productId: created.id,
-          taxes: taxResolution.assignments,
+          taxes: taxResolution.assignments.map(a => ({ ...a, isIncluded: a.isIncluded ?? false })),
         },
         client
       );
@@ -994,7 +1016,7 @@ export class ProductService {
           {
             tenantId,
             productId: id,
-            taxes: taxResolution.assignments,
+            taxes: taxResolution.assignments.map(a => ({ ...a, isIncluded: a.isIncluded ?? false })),
           },
           client
         );
@@ -1145,3 +1167,8 @@ export class ProductService {
     return deleted;
   }
 }
+
+
+
+
+
