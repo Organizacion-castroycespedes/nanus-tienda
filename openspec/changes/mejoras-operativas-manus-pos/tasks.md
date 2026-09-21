@@ -37,7 +37,7 @@
 - [x] 7.1 Adopt the reusable compact report composition in `/reporteria/caja`, preserving closings/audits queries, tabs, summaries, exports and ticket actions.
 - [x] 7.2 Adopt the reusable compact report composition in `/reporteria/compras`, preserving status/date/scope filters, summaries, exports and ticket actions.
 - [x] 7.3 Adopt the reusable compact report composition in `/reporteria/pedidos`, preserving scope filters, order states, summaries, exports and ticket actions.
-- [x] 7.4 Adopt the reusable compact report composition in `/reporteria/clientes`, preserving customer filters and aggregates without adding unsupported date filters or metrics.
+- [x] 7.4 Adopt the reusable compact report composition in `/reporteria/clientes` before the later customer-master redesign.
 - [x] 7.5 Add focused metadata coverage and validate the four report routes without changing backend contracts.
 
 ## 8. Standard document export pilot
@@ -69,7 +69,7 @@
 - [x] 10.5 Add focused backend/frontend coverage for scope, batching, workbook columns/types, PDF structure and renderer separation.
 - [x] 10.5.1 Propagate supplier invoice number/date through Web, PDF and XLSX with one optional partial-search filter and no invoice-date filter.
 - [ ] 10.6 Perform manual Compras QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
-- [ ] 10.7 Leave Pedidos and Clientes pending for later adoption.
+- [x] 10.7 Leave only Clientes pending for later adoption after the Compras phase.
 
 ## 11. Pedidos document export adoption
 
@@ -79,4 +79,14 @@
 - [x] 11.4 Integrate the compact Pedidos `Reporte` action with `PdfPreviewModal` and preserve legacy actions.
 - [x] 11.5 Add focused backend coverage for scope, batching, states, generated sale, workbook columns/types, PDF structure and renderer separation.
 - [x] 11.6 Perform manual Pedidos QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
-- [ ] 11.7 Leave Clientes pending for later adoption.
+- [x] 11.7 Start Clientes adoption only after Pedidos certification; preserve the customer master scope decision.
+
+## 12. Clientes customer master adoption
+
+- [x] 12.1 Confirm the customer commercial/fiscal source, identity precedence and tenant-only scope without branch or transactional relationships.
+- [x] 12.2 Add direct customer count/batch reads from `customers` and geographic catalogs with stable order, repeatable-read snapshot and export limit.
+- [x] 12.3 Replace the customer-order report contract with the tenant-scoped customer master Web contract while leaving `report_customer_orders_status` untouched.
+- [x] 12.4 Add compact customer list filters, commercial/fiscal detail panel, null states and fiscal status/active state rendering.
+- [x] 12.5 Add independent branded PDF/XLSX export through `DocumentExportService` and `PdfPreviewModal`.
+- [x] 12.6 Add focused coverage for tenant isolation, identity filter, count/batch, fiscal fields, PDF branding and XLSX serialization.
+- [x] 12.7 Perform manual Clientes QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print and tenant isolation.

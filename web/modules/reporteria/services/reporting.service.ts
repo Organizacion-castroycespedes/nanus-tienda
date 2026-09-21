@@ -8,6 +8,7 @@ import type {
   CurrentShiftFilters,
   CurrentShiftResponse,
   CustomerOrdersStatusDataset,
+  CustomerMasterDataset,
   OrderSalesListDataset,
   PosSalesListDataset,
   PosSaleTicketPrintDataset,
@@ -202,6 +203,33 @@ export const getCustomerOrdersStatusReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CustomerOrdersStatusDataset>(
     reportsBaseUrl,
     `/reports/customers/orders-status${buildQuery(filters)}`
+  );
+
+const buildCustomerMasterQuery = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) => {
+  const params = new URLSearchParams();
+  if (filters.tenantId) params.set("tenantId", filters.tenantId);
+  if (filters.customerDocument?.trim()) params.set("customerDocument", filters.customerDocument.trim());
+  if (filters.customerName?.trim()) params.set("customerName", filters.customerName.trim());
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
+export const getCustomerMasterReport = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) =>
+  apiClientWithBaseUrl<CustomerMasterDataset>(
+    reportsBaseUrl,
+    `/reports/customers${buildCustomerMasterQuery(filters)}`,
+  );
+
+export const getCustomerMasterReportPdf = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/customers${buildCustomerMasterQuery(filters)}${buildCustomerMasterQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getCustomerMasterReportExcel = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/customers${buildCustomerMasterQuery(filters)}${buildCustomerMasterQuery(filters) ? "&" : "?"}format=xlsx`,
   );
 
 export const getCurrentShiftReport = (filters: CurrentShiftFilters) =>

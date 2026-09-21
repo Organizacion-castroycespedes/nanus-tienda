@@ -24,7 +24,7 @@ Report filters SHALL be defined by report metadata rather than inferred from tab
 - **THEN** its implementation SHALL evaluate and reuse the standard composition without requiring a mass migration in this change
 
 ### Requirement: Progressive adoption preserves report contracts
-The caja, compras, pedidos and clientes reports SHALL adopt the standard composition progressively while preserving their existing service calls, query parameters, permissions, columns, actions and real summary fields.
+The caja, compras and pedidos reports SHALL adopt the standard composition progressively while preserving their existing service calls, query parameters, permissions, columns, actions and real summary fields. The clientes route SHALL follow the separate customer-master contract defined below.
 
 #### Scenario: Cash report is adopted
 - **WHEN** `/reporteria/caja` uses the standard composition
@@ -40,7 +40,26 @@ The caja, compras, pedidos and clientes reports SHALL adopt the standard composi
 
 #### Scenario: Customers report is adopted
 - **WHEN** `/reporteria/clientes` uses the standard composition
-- **THEN** its tenant/branch/customer document/customer name filters and customer-order aggregates remain unchanged in meaning, without adding a date filter or invented metric
+- **THEN** it represents the tenant-scoped customer master with commercial/identification and fiscal fields, keeps the document-number and optional name filters, has no branch/date filters or transactional metrics, and exposes a responsive customer detail panel
+
+### Requirement: Customers report is a commercial and fiscal customer master
+The Customers report SHALL use `public.customers` and only demonstrated geographic catalog joins as its source. It SHALL preserve tenant permissions, SHALL NOT use orders, sales, payments, payment allocations or `report_customer_orders_status`, and SHALL NOT expose transactional metrics or branch/date filters. It SHALL preserve the distinct meanings of operational name, legal name, trade name, document number, fiscal identification number and normalized document number.
+
+#### Scenario: Customer master list and detail
+- **WHEN** an authorized user opens `/reporteria/clientes`
+- **THEN** the compact list shows customer identity/contact, fiscal status and active state, while a responsive detail panel separates commercial data from fiscal data and renders null fields neutrally
+
+#### Scenario: Customer document filter
+- **WHEN** the user enters a document filter
+- **THEN** blank means no restriction and non-blank values use the demonstrated normalized identity precedence consistently in Web, PDF and XLSX with parameterized SQL
+
+#### Scenario: Customer master export is safe and complete
+- **WHEN** the user opens `Reporte` for the customer master
+- **THEN** PDF preview, PDF download, Excel download and print use the same tenant-scoped filter result, count first, read real 1000-row batches in one read-only repeatable-read snapshot, reject counts above 100000 and never truncate silently
+
+#### Scenario: Customer fiscal fields remain contractual
+- **WHEN** a customer has fiscal data
+- **THEN** the report preserves document type precedence, fiscal identification, DV, person type, tax regime, responsibility codes, fiscal status, DIAN validation and lookup status without exposing raw DIAN metadata or inventing responsibility labels
 
 ### Requirement: Standard report export uses a safe complete filtered snapshot
 Document exports SHALL use the same tenant, branch, date, permission and report-specific filter semantics as the Web query, but SHALL obtain the complete filtered dataset through a real count plus bounded batches inside a read-only repeatable-read snapshot. UI pagination SHALL NOT limit the document. Exports SHALL reject datasets above 100000 rows and SHALL never truncate silently.
