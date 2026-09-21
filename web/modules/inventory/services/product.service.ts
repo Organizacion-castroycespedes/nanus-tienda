@@ -242,3 +242,5 @@ export const setPrimaryProductBarcode = (
     method: "PATCH",
     headers,
   });
+
+export async function getFiscalPreview(payload: { finalUnitPrice: number; taxes: Array<{ taxId: string; calculationOrder: number; isIncluded: boolean }>; taxProfile: { taxProductCategoryId: string; alcoholDegree: number | null; netVolumeMl: number | null; daneCertifiedRetailPrice: number | null; } | null; }) { const response = await fetchClient('/api/pricing/fiscal-preview', { method: 'POST', body: JSON.stringify(payload), }); if (!response.ok) { throw new Error('Failed to get fiscal preview'); } return response.json(); }
