@@ -30,6 +30,7 @@ import { ProductRepository } from "../repositories/product.repository";
 import { ProductSubcategoryRepository } from "../repositories/product-subcategory.repository";
 import { TaxRepository } from "../repositories/tax.repository";
 import { StockMovementService } from "./stock-movement.service";
+import { calculateProductPrices } from "./product-price-calculator";
 
 type ProductTaxAssignmentInput = {
   taxId: string;
@@ -224,6 +225,7 @@ export class ProductService {
         bridgeTaxId: null as string | null,
         hasNonPercentage: false,
         hasAdv: false,
+        taxesById: new Map(),
       };
     }
 
@@ -263,6 +265,7 @@ export class ProductService {
       bridgeTaxId: percentageBridge?.taxId ?? null,
       hasNonPercentage,
       hasAdv,
+      taxesById: byId,
     };
   }
 
@@ -737,8 +740,24 @@ export class ProductService {
     }
 
     const now = new Date();
-    const priceWithoutTax = product.priceWithoutTax ?? product.price;
-    const priceWithTax = product.priceWithTax ?? product.price;
+    const derivedPrices = taxResolution.hasNonPercentage
+      ? {
+          priceWithTax: product.priceWithTax ?? product.price,
+          priceWithoutTax: product.priceWithoutTax ?? product.price,
+        }
+      : calculateProductPrices(
+          product.price,
+          taxResolution.assignments.map((assignment) => {
+            const tax = taxResolution.taxesById.get(assignment.taxId);
+            return {
+              rate: tax?.rate ?? 0,
+              calculationMethodCode: tax?.calculationMethodCode,
+              isIncluded: assignment.isIncluded ?? tax?.isIncluded ?? false,
+            };
+          })
+        );
+    const priceWithoutTax = derivedPrices.priceWithoutTax;
+    const priceWithTax = derivedPrices.priceWithTax;
     const imageMetadata = this.buildCreateImageMetadata(product, now);
 
     const entity = ProductEntity.create({

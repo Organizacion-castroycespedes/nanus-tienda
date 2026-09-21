@@ -239,6 +239,35 @@ export const ProductForm = ({
   const [imageProduct, setImageProduct] = useState<ProductResponse | null>(
     product ?? null
   );
+  const fiscalPricePreview = useMemo(() => {
+    const finalPrice = Number(values.price);
+    if (!Number.isFinite(finalPrice) || finalPrice < 0) {
+      return { priceWithTax: "", priceWithoutTax: "" };
+    }
+
+    const selectedTaxes = values.assignedTaxes
+      .map((assignment) => taxOptions.find((tax) => tax.id === assignment.taxId))
+      .filter((tax): tax is TaxInfo => Boolean(tax));
+    const percentageTax = selectedTaxes.find(
+      (tax) =>
+        !tax.calculationMethodCode || tax.calculationMethodCode === "PERCENTAGE"
+    );
+    const hasSpecialTax = selectedTaxes.some(
+      (tax) => tax.calculationMethodCode && tax.calculationMethodCode !== "PERCENTAGE"
+    );
+
+    if (hasSpecialTax || !percentageTax || !percentageTax.isIncluded) {
+      return {
+        priceWithTax: values.priceWithTax,
+        priceWithoutTax: values.priceWithoutTax,
+      };
+    }
+
+    return {
+      priceWithTax: finalPrice.toFixed(2),
+      priceWithoutTax: (finalPrice / (1 + percentageTax.rate)).toFixed(2),
+    };
+  }, [taxOptions, values.assignedTaxes, values.price, values.priceWithoutTax, values.priceWithTax]);
 
   useEffect(() => {
     setValues(createInitialValues(product));
@@ -754,11 +783,8 @@ export const ProductForm = ({
             }
           : null,
       price: Number(values.price),
-      priceWithTax: values.priceWithTax.trim() === "" ? Number(values.price) : Number(values.priceWithTax),
-      priceWithoutTax:
-        values.priceWithoutTax.trim() === ""
-          ? Number(values.price)
-          : Number(values.priceWithoutTax),
+      priceWithTax: undefined,
+      priceWithoutTax: undefined,
       cost: Number(values.cost),
       unitId: values.unitId,
       taxId: bridgeTaxId,
@@ -953,10 +979,11 @@ export const ProductForm = ({
               type="number"
               min="0"
               step="0.01"
-              value={values.priceWithoutTax}
-              onChange={(event) => setFieldValue("priceWithoutTax", event.target.value)}
+              value={fiscalPricePreview.priceWithoutTax}
+              readOnly
+              className="bg-slate-100 text-slate-500"
               placeholder="0.00"
-              hint="Base fiscal usada para la factura."
+              hint="Base fiscal calculada por el backend usando el catalogo fiscal."
             />
           </div>
 
@@ -966,10 +993,11 @@ export const ProductForm = ({
               type="number"
               min="0"
               step="0.01"
-              value={values.priceWithTax}
-              onChange={(event) => setFieldValue("priceWithTax", event.target.value)}
+              value={fiscalPricePreview.priceWithTax}
+              readOnly
+              className="bg-slate-100 text-slate-500"
               placeholder="0.00"
-              hint="Total esperado después de impuestos."
+              hint="Total final. Se toma del precio de venta."
             />
           </div>
 
