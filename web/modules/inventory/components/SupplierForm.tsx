@@ -903,7 +903,7 @@ export const SupplierForm = ({
 
         <div className="grid gap-4 md:grid-cols-3">
           <Select
-            label="personType"
+            label="Tipo persona"
             value={values.personType}
             onChange={(event) =>
               updateValue(
