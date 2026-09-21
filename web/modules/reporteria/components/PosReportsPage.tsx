@@ -27,11 +27,15 @@ import {
   getApiErrorMessage,
   getTodayRange,
 } from "../utils";
-import { FiltersBar } from "./FiltersBar";
 import { PdfPreviewModal } from "./PdfPreviewModal";
-import { ReportExportCard } from "./ReportExportCard";
-import { ReportMetricCard } from "./ReportMetricCard";
 import { ReportStatusBadge } from "./ReportStatusBadge";
+import { ReportLayout } from "../../../components/design-system/ReportLayout";
+import { Pagination } from "../../../components/design-system/Pagination";
+import { ReportSummary } from "../../../components/design-system/ReportSummary";
+import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
+import { Select } from "../../../components/design-system/Select";
+import { ReportFilters, type ReportFilterDefinition } from "../../../components/design-system/ReportFilters";
+import { canViewElectronicDocument } from "../utils/electronic-document-action";
 import {
   requestElectronicBilling,
   requestElectronicBillingBatch,
@@ -84,6 +88,8 @@ const PosReportsPage = () => {
     resolvedBranchLabel,
   } = useReportingScope();
   const { dataset, loading, searched, error, loadReports } = usePosReports();
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
   const handleDirectPrint = useCallback(
     async (saleId: string, billingStatus?: PosSalesListRow["billingStatus"]) => {
@@ -136,6 +142,7 @@ const PosReportsPage = () => {
       dateFrom: dateRange.from,
       dateTo: dateRange.to,
     });
+    setPage(1);
   }, [branchId, dateRange.from, dateRange.to, loadReports, tenantId]);
 
   const handleBillingRequest = useCallback(async (saleIds: string[]) => {
@@ -174,6 +181,7 @@ const PosReportsPage = () => {
       dateFrom: initialRange.from,
       dateTo: initialRange.to,
     });
+    setPage(1);
   }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
 
   const columns = useMemo<DataTableColumn<PosSalesListRow>[]>(
@@ -308,7 +316,7 @@ const PosReportsPage = () => {
               <Eye className="h-4 w-4" />
               Ver ticket
               </Button>
-            <Button
+            {canViewElectronicDocument(row.billingStatus) ? <Button
               variant="outline"
               size="sm"
               onClick={() =>
@@ -321,7 +329,7 @@ const PosReportsPage = () => {
             >
               <Eye className="h-4 w-4" />
               Ver factura electrónica
-            </Button>
+            </Button> : null}
             <Button
               variant="outline"
               size="sm"
@@ -365,6 +373,80 @@ const PosReportsPage = () => {
   );
 
   const canExport = Boolean(dataset?.rows.length);
+  const reportFilters = useMemo<ReportFilterDefinition[]>(
+    () => [
+      {
+        key: "date",
+        label: "Fecha",
+        priority: "primary",
+        active: false,
+        render: () => <DateRangePicker value={dateRange} onChange={setDateRange} compact />,
+        clear: () => setDateRange(initialRange),
+      },
+      ...(showTenantSelector
+        ? [{
+            key: "tenant",
+            label: "Tenant",
+            priority: "secondary" as const,
+            active: Boolean(tenantId),
+            activeLabel: resolvedTenantLabel,
+            render: () => (
+              <Select label="Tenant" value={tenantId} onChange={(event) => setTenantId(event.target.value)} disabled={loadingTenants}>
+                <option value="">{loadingTenants ? "Cargando tenants..." : "Selecciona un tenant"}</option>
+                {tenantOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </Select>
+            ),
+            clear: () => setTenantId(""),
+          }]
+        : []),
+      ...(showBranchSelector
+        ? [{
+            key: "branch",
+            label: "Sucursal",
+            priority: "secondary" as const,
+            active: Boolean(branchId),
+            activeLabel: resolvedBranchLabel,
+            render: () => (
+              <Select label="Sucursal" value={branchId} onChange={(event) => setBranchId(event.target.value)} disabled={loadingBranches || (!tenantId && showTenantSelector)}>
+                {branchOptions.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}
+              </Select>
+            ),
+            clear: () => setBranchId(""),
+          }]
+        : []),
+    ],
+    [branchId, branchOptions, dateRange, initialRange, loadingBranches, loadingTenants, resolvedBranchLabel, resolvedTenantLabel, setBranchId, setDateRange, setTenantId, showBranchSelector, showTenantSelector, tenantId, tenantOptions]
+  );
+  const visibleRows = useMemo(
+    () => dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? [],
+    [dataset?.rows, page]
+  );
+
+  const downloadConciliationReport = () => {
+    if (!dataset) return;
+    downloadReportWorkbook({
+      fileName: `reporte-pos-${tenantId}-${dateRange.from}-${dateRange.to}.xls`,
+      summaryTitle: "Reporte POS",
+      detailTitle: "Detalle de ventas POS",
+      filters: [
+        { label: "Tenant", value: resolvedTenantLabel },
+        { label: "Sucursal", value: resolvedBranchLabel },
+        { label: "Desde", value: dateRange.from },
+        { label: "Hasta", value: dateRange.to },
+      ],
+      summary: [
+        { label: "Ventas", value: dataset.summary.count },
+        { label: "Total", value: dataset.summary.total },
+        { label: "Pagado", value: dataset.summary.paid },
+        { label: "Saldo", value: dataset.summary.balance },
+      ],
+      columns: ["Fecha", "Sucursal", "Cliente", "Venta ID", "Total", "Pagado", "Saldo", "Estado", "Estado pago"],
+      rows: dataset.rows.map((row) => [
+        formatDateTime(row.date), row.branchName ?? "", row.customerName || "Consumidor final",
+        row.saleId, row.total, row.paid, row.balance, row.status, row.paymentStatus,
+      ]),
+    });
+  };
 
   if (!canViewReports) {
     return (
@@ -373,121 +455,38 @@ const PosReportsPage = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria POS</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Ventas y tickets POS</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Filtra ventas por rango y alcance operativo, revisa saldos y abre el ticket PDF.
-        </p>
-      </section>
+    <ReportLayout
+      title="Ventas y tickets POS"
+      description="Filtra ventas por rango y alcance operativo, revisa saldos y abre el ticket PDF."
+    >
+      <div className="space-y-4">
 
-      <FiltersBar
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        tenantId={tenantId}
-        branchId={branchId}
-        onTenantChange={setTenantId}
-        onBranchChange={setBranchId}
-        showTenantSelector={showTenantSelector}
-        showBranchSelector={showBranchSelector}
-        tenantOptions={tenantOptions}
-        branchOptions={branchOptions}
-        loadingTenants={loadingTenants}
-        loadingBranches={loadingBranches}
-        tenantLabel={resolvedTenantLabel}
-        branchLabel={resolvedBranchLabel}
-        isSearching={loading}
-        onSearch={() => void handleSearch()}
+      <ReportFilters
+        filters={reportFilters}
+        actions={
+          <>
+            <Button size="sm" onClick={() => void handleSearch()} isLoading={loading} disabled={!dateRange.from || !dateRange.to}>
+              Buscar
+            </Button>
+          <Button variant="outline" size="sm" disabled={!canExport} onClick={downloadConciliationReport}>
+            <Download className="h-4 w-4" /> Descargar reporte POS para conciliación
+          </Button>
+          </>
+        }
       />
 
-      <ReportExportCard
-        title="Descargar reporte POS para conciliacion"
-        description="Exporta un archivo Excel con resumen y detalle de ventas, pagos, saldos y estado por transaccion."
-        helper="Usa el mismo rango de fechas y alcance visible en pantalla para conciliar ventas contra caja o cartera."
-        actions={[
-          {
-            label: "Descargar Excel",
-            disabled: !canExport,
-            onClick: () => {
-              if (!dataset) {
-                return;
-              }
-
-              downloadReportWorkbook({
-                fileName: `reporte-pos-${tenantId}-${dateRange.from}-${dateRange.to}.xls`,
-                summaryTitle: "Reporte POS",
-                detailTitle: "Detalle de ventas POS",
-                filters: [
-                  { label: "Tenant", value: resolvedTenantLabel },
-                  { label: "Sucursal", value: resolvedBranchLabel },
-                  { label: "Desde", value: dateRange.from },
-                  { label: "Hasta", value: dateRange.to },
-                ],
-                summary: [
-                  { label: "Ventas", value: dataset.summary.count },
-                  { label: "Total", value: dataset.summary.total },
-                  { label: "Pagado", value: dataset.summary.paid },
-                  { label: "Saldo", value: dataset.summary.balance },
-                ],
-                columns: [
-                  "Fecha",
-                  "Sucursal",
-                  "Cliente",
-                  "Venta ID",
-                  "Total",
-                  "Pagado",
-                  "Saldo",
-                  "Estado",
-                  "Estado pago",
-                ],
-                rows: dataset.rows.map((row) => [
-                  formatDateTime(row.date),
-                  row.branchName ?? "",
-                  row.customerName || "Consumidor final",
-                  row.saleId,
-                  row.total,
-                  row.paid,
-                  row.balance,
-                  row.status,
-                  row.paymentStatus,
-                ]),
-              });
-            },
-          },
+      <ReportSummary
+        items={[
+          { label: "Ventas", value: dataset ? dataset.summary.count : searched ? 0 : "--", ariaLabel: "Ventas encontradas" },
+          { label: "Total", value: dataset ? formatCurrency(dataset.summary.total) : searched ? "$ 0" : "--", ariaLabel: "Monto total facturado" },
+          { label: "Pagado", value: dataset ? formatCurrency(dataset.summary.paid) : searched ? "$ 0" : "--", ariaLabel: "Pagos aplicados en el rango" },
+          { label: "Saldo", value: dataset ? formatCurrency(dataset.summary.balance) : searched ? "$ 0" : "--", ariaLabel: "Saldo pendiente según el backend" },
         ]}
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ReportMetricCard
-          label="Ventas"
-          value={dataset ? dataset.summary.count : searched ? 0 : "--"}
-          helper="Cantidad de ventas encontradas."
-          accent="blue"
-        />
-        <ReportMetricCard
-          label="Total"
-          value={dataset ? formatCurrency(dataset.summary.total) : searched ? "$ 0" : "--"}
-          helper="Monto total facturado."
-          accent="emerald"
-        />
-        <ReportMetricCard
-          label="Pagado"
-          value={dataset ? formatCurrency(dataset.summary.paid) : searched ? "$ 0" : "--"}
-          helper="Pagos aplicados en el rango."
-          accent="amber"
-        />
-        <ReportMetricCard
-          label="Saldo"
-          value={dataset ? formatCurrency(dataset.summary.balance) : searched ? "$ 0" : "--"}
-          helper="Saldo pendiente segun el backend."
-          accent="rose"
-        />
-      </section>
-
       <DataTable
         columns={columns}
-        rows={dataset?.rows ?? []}
+        rows={visibleRows}
         getRowKey={(row) => row.saleId}
         loading={loading}
         error={error}
@@ -497,6 +496,15 @@ const PosReportsPage = () => {
             : "Usa los filtros y ejecuta la busqueda para cargar el reporte."
         }
       />
+
+      {dataset ? (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={dataset.rows.length}
+          onPageChange={setPage}
+        />
+      ) : null}
 
       {selectedSaleIds.length > 0 ? (
         <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
@@ -550,7 +558,8 @@ const PosReportsPage = () => {
           />
         </Modal>
       ) : null}
-    </div>
+      </div>
+    </ReportLayout>
   );
 };
 

@@ -45,6 +45,8 @@ export type PurchaseProps = {
   totalPaid?: number;
   balanceDue?: number;
   createdAt: Date;
+  supplierInvoiceNumber?: string | null;
+  supplierInvoiceDate?: Date | null;
 };
 
 export class PurchaseEntity {
@@ -59,6 +61,8 @@ export class PurchaseEntity {
   readonly totalPaid: number;
   readonly balanceDue: number;
   readonly createdAt: Date;
+  readonly supplierInvoiceNumber: string | null;
+  readonly supplierInvoiceDate: Date | null;
 
   constructor(props: PurchaseProps) {
     if (!isUuid(props.id)) {
@@ -118,6 +122,8 @@ export class PurchaseEntity {
             ? "PAID"
             : "OVERPAID");
     this.createdAt = props.createdAt;
+    this.supplierInvoiceNumber = props.supplierInvoiceNumber ?? null;
+    this.supplierInvoiceDate = props.supplierInvoiceDate ?? null;
   }
 
   static create(props: PurchaseProps) {

@@ -374,9 +374,20 @@ export class InventoryService {
             endDate: scope.endDate,
           })
         : snapshot;
+    const inventoryCostTotal = await this.repository.getInventoryCostTotal({
+      tenantId: scope.tenantId,
+      branchId: scope.branchId,
+      terminalId: scope.terminalId,
+    });
+
+    const normalizedDashboard = this.normalizeDashboardData(effectiveSnapshot as Record<string, any>);
 
     return {
-      ...this.normalizeDashboardData(effectiveSnapshot as Record<string, any>),
+      ...normalizedDashboard,
+      summary: {
+        ...normalizedDashboard.summary,
+        inventoryCostTotal,
+      },
       scope: {
         tenantId: scope.tenantId,
         branchId: scope.branchId ?? null,
