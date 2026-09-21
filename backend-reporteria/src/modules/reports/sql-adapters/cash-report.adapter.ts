@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PoolClient } from "pg";
 import { FunctionRunnerService } from "../../database/function-runner.service";
 import { DatabaseService } from "../../database/database.service";
 import type {
@@ -6,8 +7,11 @@ import type {
   CashAuditTicketDataset,
   CashClosingListDataset,
   CashClosingTicketDataset,
+  CashClosingListRow,
+  CashAuditListRow,
   ReportActorContext,
 } from "../types/cash-report.types";
+import type { PrintableCompanyHeader } from "../types/sales-report.types";
 
 type CashListParams = {
   tenantId?: string;
@@ -15,6 +19,8 @@ type CashListParams = {
   dateFrom?: string;
   dateTo?: string;
 };
+
+export type CashExportFilters = CashListParams;
 
 type PaymentMethodCategory = "CASH" | "CARD" | "TRANSFER" | "DIGITAL" | "OTHER";
 
@@ -688,6 +694,286 @@ export class CashReportAdapter {
         filters.dateTo ?? null,
       ]
     );
+  }
+
+  private exportScopeParams(actor: ReportActorContext, filters: CashExportFilters) {
+    return [
+      actor.userId,
+      actor.role,
+      actor.tenantId,
+      actor.branchId,
+      filters.tenantId ?? null,
+      filters.branchId ?? null,
+      filters.dateFrom ?? null,
+      filters.dateTo ?? null,
+    ];
+  }
+
+  async getCashClosingsExportCount(
+    actor: ReportActorContext,
+    filters: CashExportFilters,
+    client: PoolClient,
+  ): Promise<number> {
+    const result = await client.query<{ count: string }>(
+      `WITH resolved AS (
+         SELECT (scope->>'tenantId')::uuid AS tenant_id,
+                NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+           FROM public.report_resolve_pos_scope(
+             $2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+           ) AS scope
+       )
+       SELECT COUNT(*)::text AS count
+       FROM public.cash_sessions AS session
+       INNER JOIN public.tenants AS tenant ON tenant.id = session.tenant_id
+       CROSS JOIN resolved
+       WHERE session.tenant_id = resolved.tenant_id
+         AND (resolved.branch_id IS NULL OR session.branch_id = resolved.branch_id)
+         AND ($7::timestamptz IS NULL OR COALESCE(session.closed_at, session.opened_at) >= $7::timestamptz)
+         AND ($8::timestamptz IS NULL OR COALESCE(session.closed_at, session.opened_at) < $8::timestamptz)
+         AND (
+           NOT resolved.restrict_to_user
+           OR session.opened_by_user_id = $1::uuid
+           OR session.closed_by_user_id = $1::uuid
+         )`,
+      this.exportScopeParams(actor, filters),
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async getCashClosingsExportBatch(
+    actor: ReportActorContext,
+    filters: CashExportFilters,
+    client: PoolClient,
+    offset: number,
+    limit: number,
+  ): Promise<CashClosingListRow[]> {
+    const result = await client.query<CashClosingListRow>(
+      `WITH resolved AS (
+         SELECT (scope->>'tenantId')::uuid AS tenant_id,
+                NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+           FROM public.report_resolve_pos_scope(
+             $2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+           ) AS scope
+       ), session_scope AS (
+         SELECT session.id, session.tenant_id, session.branch_id,
+                session.cash_register_id, session.opened_by_user_id,
+                session.closed_by_user_id, session.opened_at, session.closed_at,
+                session.opening_amount, session.closing_amount,
+                session.expected_amount, session.difference_amount, session.status,
+                tenant.nombre AS tenant_name, branch.nombre AS branch_name,
+                register.codigo AS cash_register_code,
+                register.nombre AS cash_register_name,
+                terminal.name AS terminal_name,
+                opened_user.email AS opened_by_email,
+                closed_user.email AS closed_by_email,
+                public.finance_cash_session_summary(session.tenant_id, session.id) AS summary
+           FROM public.cash_sessions AS session
+           CROSS JOIN resolved
+           INNER JOIN public.tenants AS tenant ON tenant.id = session.tenant_id
+           LEFT JOIN public.tenant_branches AS branch
+             ON branch.id = session.branch_id AND branch.tenant_id = session.tenant_id
+           LEFT JOIN public.cash_registers AS register
+             ON register.id = session.cash_register_id AND register.tenant_id = session.tenant_id
+           LEFT JOIN public.terminals AS terminal
+             ON terminal.id = register.terminal_id AND terminal.tenant_id = register.tenant_id
+           LEFT JOIN public.users AS opened_user
+             ON opened_user.id = session.opened_by_user_id AND opened_user.tenant_id = session.tenant_id
+           LEFT JOIN public.users AS closed_user
+             ON closed_user.id = session.closed_by_user_id AND closed_user.tenant_id = session.tenant_id
+          WHERE session.tenant_id = resolved.tenant_id
+            AND (resolved.branch_id IS NULL OR session.branch_id = resolved.branch_id)
+            AND ($7::timestamptz IS NULL OR COALESCE(session.closed_at, session.opened_at) >= $7::timestamptz)
+            AND ($8::timestamptz IS NULL OR COALESCE(session.closed_at, session.opened_at) < $8::timestamptz)
+            AND (
+              NOT resolved.restrict_to_user
+              OR session.opened_by_user_id = $1::uuid
+              OR session.closed_by_user_id = $1::uuid
+            )
+       )
+       SELECT session.id AS "cashSessionId", session.opened_at AS "openedAt",
+              session.closed_at AS "closedAt", session.status,
+              session.tenant_name AS "tenantName", session.branch_id AS "branchId",
+              session.branch_name AS "branchName", session.cash_register_name AS "cashRegister",
+              session.cash_register_code AS "cashRegisterCode", session.terminal_name AS terminal,
+              session.opened_by_email AS "openedBy", session.closed_by_email AS "closedBy",
+              COALESCE((session.summary->'totals'->>'openingAmount')::numeric, session.opening_amount, 0)::numeric AS "openingAmount",
+              (
+                COALESCE((session.summary->'totals'->>'salesPayments')::numeric, 0)
+                + COALESCE((SELECT SUM(payment.amount) FROM public.payments AS payment
+                   WHERE payment.tenant_id = session.tenant_id AND payment.cash_session_id = session.id
+                     AND payment.status IN ('PENDING', 'COMPLETED') AND payment.direction = 'IN'
+                     AND payment.reference_type = 'SALES_ORDER'), 0)
+              )::numeric AS "totalIn",
+              (
+                COALESCE((session.summary->'totals'->>'refundPayments')::numeric, 0)
+                + COALESCE((session.summary->'totals'->>'purchasePayments')::numeric, 0)
+                + COALESCE((session.summary->'totals'->>'expenses')::numeric, 0)
+                + COALESCE((session.summary->'totals'->>'withdrawals')::numeric, 0)
+                + COALESCE((session.summary->'totals'->>'adjustmentsOut')::numeric, 0)
+              )::numeric AS "totalOut",
+              COALESCE((session.summary->'totals'->>'expectedAmount')::numeric, session.expected_amount, 0)::numeric AS "expectedAmount",
+              COALESCE(session.closing_amount, (session.summary->'lastCount'->>'countedCashAmount')::numeric, 0)::numeric AS "closingAmount",
+              COALESCE(
+                session.difference_amount,
+                (session.summary->'lastCount'->>'differenceAmount')::numeric,
+                COALESCE(session.closing_amount, (session.summary->'lastCount'->>'countedCashAmount')::numeric, 0)
+                  - COALESCE((session.summary->'totals'->>'expectedAmount')::numeric, session.expected_amount, 0)
+              )::numeric AS difference
+         FROM session_scope AS session
+        ORDER BY session.opened_at DESC, session.id DESC
+        LIMIT $9::integer OFFSET $10::integer`,
+      [...this.exportScopeParams(actor, filters), limit, offset],
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      openingAmount: Number(row.openingAmount),
+      totalIn: Number(row.totalIn),
+      totalOut: Number(row.totalOut),
+      expectedAmount: Number(row.expectedAmount),
+      closingAmount: Number(row.closingAmount),
+      difference: Number(row.difference),
+    }));
+  }
+
+  async getCashAuditsExportCount(
+    actor: ReportActorContext,
+    filters: CashExportFilters,
+    client: PoolClient,
+  ): Promise<number> {
+    const result = await client.query<{ count: string }>(
+      `WITH resolved AS (
+         SELECT (scope->>'tenantId')::uuid AS tenant_id,
+                NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+           FROM public.report_resolve_pos_scope(
+             $2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+           ) AS scope
+       )
+       SELECT COUNT(*)::text AS count
+       FROM public.cash_counts AS count_data
+       INNER JOIN public.cash_sessions AS session
+         ON session.id = count_data.cash_session_id AND session.tenant_id = count_data.tenant_id
+       CROSS JOIN resolved
+       WHERE count_data.tenant_id = resolved.tenant_id
+         AND (resolved.branch_id IS NULL OR count_data.branch_id = resolved.branch_id)
+         AND ($7::timestamptz IS NULL OR count_data.counted_at >= $7::timestamptz)
+         AND ($8::timestamptz IS NULL OR count_data.counted_at < $8::timestamptz)
+         AND (
+           NOT resolved.restrict_to_user
+           OR count_data.counted_by_user_id = $1::uuid
+           OR session.opened_by_user_id = $1::uuid
+         )`,
+      this.exportScopeParams(actor, filters),
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async getCashAuditsExportBatch(
+    actor: ReportActorContext,
+    filters: CashExportFilters,
+    client: PoolClient,
+    offset: number,
+    limit: number,
+  ): Promise<CashAuditListRow[]> {
+    const result = await client.query<CashAuditListRow>(
+      `WITH resolved AS (
+         SELECT (scope->>'tenantId')::uuid AS tenant_id,
+                NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+           FROM public.report_resolve_pos_scope(
+             $2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+           ) AS scope
+       )
+       SELECT count_data.id AS "cashCountId", count_data.cash_session_id AS "cashSessionId",
+              count_data.branch_id AS "branchId", branch.nombre AS "branchName",
+              register.nombre AS "cashRegister", terminal.name AS terminal,
+              count_data.counted_at AS "countedAt", count_data.counted_cash_amount::numeric AS "countedAmount",
+              count_data.expected_amount::numeric AS "expectedAmount", count_data.difference_amount::numeric AS difference,
+              count_data.counted_by_user_id AS "countedByUserId", counter_user.email AS "countedBy",
+              count_data.notes, session.status AS "sessionStatus", session.opened_at AS "openedAt",
+              session.closed_at AS "closedAt"
+         FROM public.cash_counts AS count_data
+         INNER JOIN public.cash_sessions AS session
+           ON session.id = count_data.cash_session_id AND session.tenant_id = count_data.tenant_id
+         CROSS JOIN resolved
+         LEFT JOIN public.tenant_branches AS branch
+           ON branch.id = count_data.branch_id AND branch.tenant_id = count_data.tenant_id
+         LEFT JOIN public.cash_registers AS register
+           ON register.id = session.cash_register_id AND register.tenant_id = session.tenant_id
+         LEFT JOIN public.terminals AS terminal
+           ON terminal.id = register.terminal_id AND terminal.tenant_id = register.tenant_id
+         LEFT JOIN public.users AS counter_user
+           ON counter_user.id = count_data.counted_by_user_id AND counter_user.tenant_id = count_data.tenant_id
+        WHERE count_data.tenant_id = resolved.tenant_id
+          AND (resolved.branch_id IS NULL OR count_data.branch_id = resolved.branch_id)
+          AND ($7::timestamptz IS NULL OR count_data.counted_at >= $7::timestamptz)
+          AND ($8::timestamptz IS NULL OR count_data.counted_at < $8::timestamptz)
+          AND (
+            NOT resolved.restrict_to_user
+            OR count_data.counted_by_user_id = $1::uuid
+            OR session.opened_by_user_id = $1::uuid
+          )
+        ORDER BY count_data.counted_at DESC, count_data.id DESC
+        LIMIT $9::integer OFFSET $10::integer`,
+      [...this.exportScopeParams(actor, filters), limit, offset],
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      countedAmount: Number(row.countedAmount),
+      expectedAmount: Number(row.expectedAmount),
+      difference: Number(row.difference),
+    }));
+  }
+
+  async getPrintableCompany(actor: ReportActorContext): Promise<PrintableCompanyHeader> {
+    const result = await this.db.query<{
+      tenantName: string | null; config: unknown; legalName: string | null; nit: string | null;
+      dv: string | null; taxResponsibilities: string | null; regime: string | null;
+      vatResponsibility: string | null; address: string | null; city: string | null;
+      department: string | null; country: string | null; phone: string | null; email: string | null;
+      website: string | null; branchName: string | null; branchAddress: string | null;
+      branchCity: string | null; branchDepartment: string | null; branchCountry: string | null;
+      branchPhone: string | null; branchEmail: string | null;
+    }>(
+      `SELECT t.nombre AS "tenantName", t.config,
+              td.razon_social AS "legalName", td.nit, td.dv,
+              td.responsabilidades_dian AS "taxResponsibilities", td.regimen,
+              td.vat_responsibility AS "vatResponsibility", td.direccion_principal AS address,
+              td.ciudad AS city, td.departamento AS department, td.pais AS country,
+              td.telefono AS phone, td.email_corporativo AS email, td.sitio_web AS website,
+              tb.nombre AS "branchName", tb.direccion AS "branchAddress", tb.ciudad AS "branchCity",
+              tb.departamento AS "branchDepartment", tb.pais AS "branchCountry",
+              tb.telefono AS "branchPhone", tb.email AS "branchEmail"
+         FROM public.tenants AS t
+         LEFT JOIN public.tenants_detalles AS td ON td.tenant_id = t.id
+         LEFT JOIN public.tenant_branches AS tb
+           ON tb.tenant_id = t.id
+          AND (($2::uuid IS NOT NULL AND tb.id = $2::uuid)
+            OR ($2::uuid IS NULL AND tb.es_principal = TRUE))
+        WHERE t.id = $1::uuid AND t.activo = TRUE
+        LIMIT 1`,
+      [actor.tenantId, actor.branchId],
+    );
+    const row = result.rows[0];
+    const config = row?.config && typeof row.config === "object"
+      ? row.config as Record<string, unknown>
+      : {};
+    const logo = typeof config.logo === "string"
+      ? config.logo
+      : typeof config.logoUrl === "string" ? config.logoUrl : null;
+    return {
+      tenantName: row?.tenantName ?? null, legalName: row?.legalName ?? row?.tenantName ?? null,
+      nit: row?.nit ?? null, dv: row?.dv ?? null, taxResponsibilities: row?.taxResponsibilities ?? null,
+      regime: row?.regime ?? null, vatResponsibility: row?.vatResponsibility ?? null,
+      address: row?.address ?? null, city: row?.city ?? null, department: row?.department ?? null,
+      country: row?.country ?? null, phone: row?.phone ?? null, email: row?.email ?? null,
+      website: row?.website ?? null, logo, branchName: row?.branchName ?? null,
+      branchAddress: row?.branchAddress ?? null, branchCity: row?.branchCity ?? null,
+      branchDepartment: row?.branchDepartment ?? null, branchCountry: row?.branchCountry ?? null,
+      branchPhone: row?.branchPhone ?? null, branchEmail: row?.branchEmail ?? null,
+    };
   }
 
   async getCashAuditTicket(

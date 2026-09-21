@@ -47,6 +47,15 @@
 - [x] 8.3 Reuse the corporate branding source and configurable report definition for POS PDF and Excel output.
 - [x] 8.4 Integrate one compact POS `Reporte` action with the existing `PdfPreviewModal`, preserving individual POS/electronic ticket actions.
 - [x] 8.5 Add focused backend/frontend tests for count, batching, limit, scope parity, branding fallback and PDF/Excel/print actions.
-- [ ] 8.6 Validate POS API/Web tests, builds, lint, OpenSpec strict and diff check; leave Caja Cierres/Arqueos, Compras, Pedidos and Clientes for later adoption after pilot certification and manual QA.
+- [x] 8.6 Validate POS API/Web tests, builds, lint, OpenSpec strict and diff check; leave Caja Cierres/Arqueos, Compras, Pedidos and Clientes for later adoption after pilot certification and manual QA.
 - [x] 8.7 Correct POS PDF landscape layout, repeated headers, indivisible rows and readable corporate scope names without changing the export dataset.
 - [x] 8.8 Remove the frontend-only legacy POS reconciliation download action while preserving the standard `Reporte` viewer actions.
+
+## 9. Caja document export adoption
+
+- [x] 9.1 Inspect and preserve Caja Cierres/Arqueos filters, tabs, tickets and Web contracts; confirm the legacy SQL functions are not used as false export batching.
+- [x] 9.2 Add real count/batch adapters for Cierres and Arqueos with shared scope, stable ordering, read-only repeatable-read snapshot and export limit.
+- [x] 9.3 Add separate branded PDF and Excel definitions for Cierres and Arqueos with repeated headers and indivisible rows.
+- [x] 9.4 Add compact Caja `Reporte` action selecting the active tab document while preserving legacy exports and individual tickets.
+- [x] 9.5 Add focused backend/frontend coverage for Caja scope, batching, tab selection, document definitions, Excel types and branding fallback.
+- [x] 9.6 Run Caja/POS regression tests, builds, lint, OpenSpec strict and diff check; leave Compras, Pedidos and Clientes pending.

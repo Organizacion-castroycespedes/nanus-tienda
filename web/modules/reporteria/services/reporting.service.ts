@@ -107,6 +107,18 @@ export const getCashClosingsReport = (filters: ReportFilters) =>
     `/reports/cash-closings${buildQuery(filters)}`
   );
 
+export const getCashClosingsReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-closings${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getCashClosingsReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-closings${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getCashClosingTicket = (cashSessionId: string) =>
   apiBlobClientWithBaseUrl(
     reportsBaseUrl,
@@ -117,6 +129,18 @@ export const getCashAuditsReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CashAuditListDataset>(
     reportsBaseUrl,
     `/reports/cash-audits${buildQuery(filters)}`
+  );
+
+export const getCashAuditsReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-audits${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getCashAuditsReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-audits${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
   );
 
 export const getCashAuditTicket = (cashCountId: string) =>

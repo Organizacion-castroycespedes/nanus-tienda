@@ -82,3 +82,22 @@ The POS report SHALL expose one compact `Reporte` action that opens the reusable
 #### Scenario: POS report action replaces legacy reconciliation download
 - **WHEN** the user opens the POS report toolbar
 - **THEN** the compact `Reporte` action SHALL provide preview, PDF, Excel and print actions and the legacy reconciliation button SHALL not be rendered
+
+### Requirement: Caja uses separate safe document definitions for Cierres and Arqueos
+The Caja report SHALL preserve its existing tabs and Web filters while using separate document definitions for Cierres and Arqueos. Each definition SHALL use the active tab dataset, the same actor/tenant/branch/date scope as Web, complete filtered rows rather than the visible UI page, real 1000-row batches inside one `REPEATABLE READ READ ONLY` snapshot, the shared 100000-row limit, corporate branding and the reusable preview actions.
+
+#### Scenario: Caja Cierres exports its own dataset
+- **WHEN** the Cierres tab is active and the user opens `Reporte`
+- **THEN** PDF preview, PDF download, Excel download and print SHALL contain only the filtered cash-session closing rows and their real closing summaries, with repeated headers and indivisible rows
+
+#### Scenario: Caja Arqueos exports its own dataset
+- **WHEN** the Arqueos tab is active and the user opens `Reporte`
+- **THEN** PDF preview, PDF download, Excel download and print SHALL contain only the filtered cash-count audit rows and their real audit summaries, without mixing Cierres columns or data
+
+#### Scenario: Caja export preserves scope and safe batching
+- **WHEN** an authorized user exports either Caja tab
+- **THEN** actor permissions, tenant, branch and date semantics SHALL match the Web report, count and batches SHALL use the same stable order in one read-only repeatable-read snapshot, and results above 100000 rows SHALL fail without silent truncation
+
+#### Scenario: Caja document shows corporate context
+- **WHEN** the active tenant has branding or branch details
+- **THEN** the document SHALL show available company, NIT and branch names without technical UUIDs or invented fallback data
