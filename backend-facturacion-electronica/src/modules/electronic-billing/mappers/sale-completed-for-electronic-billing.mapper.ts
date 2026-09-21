@@ -40,6 +40,12 @@ export const buildElectronicBillingCustomer = (
   const flattened = (isRecord(customer) ? customer : {}) as Record<string, unknown>;
   const identificationNumber =
     typeof flattened.identificationNumber === "string" ? flattened.identificationNumber : "";
+  const customerMetadata = isRecord(flattened.metadata) ? flattened.metadata : {};
+  const isFinalConsumer =
+    flattened.isFinalConsumer === true || customerMetadata.isFinalConsumer === true;
+  const canonicalName =
+    typeof flattened.legalName === "string" ? flattened.legalName.trim() : "";
+  const canonicalNameParts = canonicalName.split(/\s+/).filter(Boolean);
 
   return {
     customerType:
@@ -64,8 +70,23 @@ export const buildElectronicBillingCustomer = (
           : null,
     },
     legalName: typeof flattened.legalName === "string" ? flattened.legalName : null,
-    firstName: null,
-    lastName: null,
+    // DIAN requires cac:Person names even for generic final consumers.
+    // Use the canonical generic identity only for the final-consumer snapshot;
+    // real customers must provide their actual names.
+    firstName:
+      typeof flattened.firstName === "string"
+        ? flattened.firstName
+        : isFinalConsumer
+          ? "CONSUMIDOR"
+          : canonicalNameParts[0] ?? null,
+    lastName:
+      typeof flattened.lastName === "string"
+        ? flattened.lastName
+        : isFinalConsumer
+          ? "FINAL"
+          : canonicalNameParts.length > 1
+            ? canonicalNameParts.slice(1).join(" ")
+            : null,
     email: typeof flattened.email === "string" ? flattened.email : null,
     phone: typeof flattened.phone === "string" ? flattened.phone : null,
     address:
@@ -98,7 +119,7 @@ export const buildElectronicBillingCustomer = (
         typeof flattened.taxLevelCode === "string" ? flattened.taxLevelCode : null,
     },
     metadata: {
-      ...(isRecord(flattened.metadata) ? flattened.metadata : {}),
+      ...customerMetadata,
       ...(typeof flattened.cityName === "string" ? { cityName: flattened.cityName } : {}),
       ...(typeof flattened.departmentCode === "string"
         ? { departmentCode: flattened.departmentCode }
@@ -183,6 +204,10 @@ export const buildElectronicBillingInvoiceCommandFromSaleEvent = (
     taxAmount: toDecimalWireValue(line.taxAmount),
     totalAmount: toDecimalWireValue(line.totalAmount),
     taxTreatment: line.taxTreatment ?? null,
+    beverageCategory: line.beverageCategory ?? null,
+    volumeMilliliters: line.volumeMilliliters ?? null,
+    alcoholDegrees: line.alcoholDegrees ?? null,
+    publicSalePriceBeforeTaxes: line.publicSalePriceBeforeTaxes ?? null,
     standardItemId: line.standardItemId ?? null,
     standardItemSchemeId: line.standardItemSchemeId ?? null,
     taxes: mapTaxes(line),

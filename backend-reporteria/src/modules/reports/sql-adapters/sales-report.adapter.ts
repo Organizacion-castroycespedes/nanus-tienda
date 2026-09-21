@@ -480,7 +480,7 @@ export class SalesReportAdapter {
          INNER JOIN electronic_documents AS document
            ON document.tenant_id = s.tenant_id
           AND document.source_type = 'SALE'
-          AND document.source_id = s.id
+          AND document.source_id = s.id::TEXT
         WHERE s.id = $1 AND s.tenant_id = $2
           AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR s.branch_id = $4::UUID)
         ORDER BY document.created_at DESC

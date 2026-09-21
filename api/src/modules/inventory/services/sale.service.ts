@@ -273,6 +273,27 @@ type InheritedOrderPaymentResult = {
 
 const POS_PRICING_SOURCE = "POS_PRICING_SERVICE";
 
+const resolveBeverageCategory = (
+  taxProfile: {
+    isAlcoholicBeverage: boolean;
+    taxProductCategoryCode: string | null;
+  } | null,
+): SaleLineSnapshot["beverageCategory"] => {
+  if (!taxProfile?.isAlcoholicBeverage || !taxProfile.taxProductCategoryCode) {
+    return null;
+  }
+
+  const code = taxProfile.taxProductCategoryCode.toUpperCase();
+  if (code.includes("BEER") || code.includes("CERVEZA")) return "BEER";
+  if (code.includes("WINE") || code.includes("VINO")) return "WINE";
+  if (code.includes("APERITIF") || code.includes("APERITIVO")) return "APERITIF";
+  if (code.includes("LIQUOR") || code.includes("LICOR") || code.includes("DISTILLED")) {
+    return "LIQUOR";
+  }
+
+  return null;
+};
+
 @Injectable()
 export class SaleService {
   constructor(
@@ -833,8 +854,14 @@ export class SaleService {
       resolvedCustomer?.legalName ??
       resolvedCustomer?.tradeName ??
       customer.name;
+    const personNameParts = legalName.trim().split(/\s+/).filter(Boolean);
+    const firstName = personNameParts[0] ?? null;
+    const familyName = personNameParts.length > 1
+      ? personNameParts.slice(1).join(" ")
+      : null;
 
     return {
+      isFinalConsumer: customer.isFinalConsumer,
       customerType:
         resolvedCustomer?.personType === "NATURAL"
           ? "PERSON"
@@ -854,6 +881,8 @@ export class SaleService {
       identificationNumber,
       verificationDigit: resolvedCustomer?.verificationDigit ?? null,
       legalName,
+      firstName,
+      familyName,
       email: resolvedCustomer?.invoiceEmail ?? resolvedCustomer?.fiscalEmail ?? customer.email,
       phone: resolvedCustomer?.phone ?? customer.phone,
       addressLine1: resolvedCustomer?.address ?? customer.address,
@@ -898,6 +927,11 @@ export class SaleService {
         if (!product) {
           throw new BadRequestException(`product not found for sale line ${item.productId}`);
         }
+
+        const taxProfile = this.productRepository?.findProductTaxProfile
+          ? await this.productRepository.findProductTaxProfile(tenantId, product.id)
+          : null;
+        const beverageCategory = resolveBeverageCategory(taxProfile);
 
         const subtotalAmount = this.roundCurrency(
           item.taxBase ?? item.priceWithoutTax * item.quantity
@@ -974,6 +1008,19 @@ export class SaleService {
           taxAmount: this.toDecimalWireValue(taxAmount),
           totalAmount: this.toDecimalWireValue(totalAmount),
           taxTreatment: resolveElectronicBillingTaxTreatment(taxes, taxAmount),
+          beverageCategory,
+          volumeMilliliters:
+            taxProfile?.netVolumeMl == null
+              ? null
+              : this.toDecimalWireValue(taxProfile.netVolumeMl),
+          alcoholDegrees:
+            taxProfile?.alcoholDegree == null
+              ? null
+              : this.toDecimalWireValue(taxProfile.alcoholDegree),
+          publicSalePriceBeforeTaxes:
+            taxProfile?.daneCertifiedRetailPrice == null
+              ? null
+              : this.toDecimalWireValue(taxProfile.daneCertifiedRetailPrice),
           standardItemId: product.standardIdentification?.code ?? null,
           standardItemSchemeId: product.standardIdentification?.scheme ?? null,
           taxes,
@@ -1069,15 +1116,25 @@ export class SaleService {
   private isElectronicBillingCustomerFiscalDataComplete(
     customer: SaleCustomerSnapshot,
   ) {
+    const requiresPersonNames =
+      customer.customerType === "PERSON" && customer.isFinalConsumer !== true;
     return Boolean(
       customer.identificationNumber?.trim() &&
+        customer.identificationTypeCode?.trim() &&
         customer.legalName?.trim() &&
         customer.countryCode?.trim() &&
+        customer.countryName?.trim() &&
         customer.departmentCode?.trim() &&
+        customer.departmentName?.trim() &&
         customer.municipalityCode?.trim() &&
+        customer.cityName?.trim() &&
+        customer.addressLine1?.trim() &&
+        customer.email?.trim() &&
         customer.taxLevelCode?.trim() &&
         customer.taxSchemeId?.trim() &&
-        customer.fiscalResponsibilityCodes?.length,
+        customer.fiscalResponsibilityCodes?.length &&
+        (requiresPersonNames ? customer.firstName?.trim() : true) &&
+        (requiresPersonNames ? customer.familyName?.trim() : true),
     );
   }
 
@@ -1457,6 +1514,7 @@ export class SaleService {
       requestExists: Boolean(deterministicEvent) && !stalePendingEvent && !failedRecoveryEvent,
       hasTaxLines: hasPositiveTaxLines(currentLines),
       customerFiscalDataComplete: currentCustomerFiscalDataComplete,
+      isFinalConsumer: currentCustomer.isFinalConsumer,
     });
     if (eligibility !== "ELIGIBLE") {
       return {

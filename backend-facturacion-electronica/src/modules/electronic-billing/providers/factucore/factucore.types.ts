@@ -58,6 +58,8 @@ export type FactuCoreCustomer = {
 export const FACTUCORE_TAX_TYPES = [
   "IVA",
   "INC",
+  "ICL",
+  "ADV",
   "ICA",
   "RETE_FUENTE",
   "RETE_IVA",
@@ -69,6 +71,8 @@ export type FactuCoreTaxType = (typeof FACTUCORE_TAX_TYPES)[number];
 
 export type FactuCoreTax = {
   taxType: FactuCoreTaxType;
+  taxSchemeId?: string | null;
+  taxSchemeName?: string | null;
   rate: number | string;
   taxableBase: number | string;
   taxAmount: number | string;
@@ -84,6 +88,10 @@ export type FactuCoreDocumentLine = {
   description: string;
   unitCode: string;
   taxTreatment?: string | null;
+  beverageCategory?: "LIQUOR" | "WINE" | "APERITIF" | "BEER" | null;
+  volumeMilliliters?: number | string | null;
+  alcoholDegrees?: number | string | null;
+  publicSalePriceBeforeTaxes?: number | string | null;
   taxSchemeId?: string | null;
   taxSchemeName?: string | null;
   quantity: number | string;

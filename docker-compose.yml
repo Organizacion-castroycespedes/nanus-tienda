@@ -14,6 +14,7 @@ services:
       - "4020:4020"
     environment:
       NODE_ENV: ${NODE_ENV:-local}
+      TZ: America/Bogota
       PORT: "4020"
       CORS_ORIGIN: http://localhost:3000
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
@@ -27,7 +28,7 @@ services:
       DB_LOGGING: "false"
       LOCAL_UPLOADS_DIR: storage/uploads
       REPORTS_API_BASE_URL: http://reporteria:4021/api
-      BILLING_BACKEND_INTERNAL_BASE_URL: http://facturacion:4030
+      BILLING_BACKEND_INTERNAL_BASE_URL: ${BILLING_BACKEND_INTERNAL_BASE_URL:-http://facturacion:4030}
       API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-}
       LEADS_WEBHOOK_TOKEN: ${LEADS_WEBHOOK_TOKEN:-}
       INTEGRATION_OUTBOX_DISPATCHER_ENABLED: ${INTEGRATION_OUTBOX_DISPATCHER_ENABLED:-false}
@@ -55,6 +56,7 @@ services:
       - "4021:4021"
     environment:
       NODE_ENV: ${NODE_ENV:-local}
+      TZ: America/Bogota
       PORT: "4021"
       CORS_ORIGIN: http://localhost:3000
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
@@ -84,23 +86,25 @@ services:
       - "4030:4030"
     environment:
       NODE_ENV: ${NODE_ENV:-local}
+      TZ: America/Bogota
       PORT: "4030"
       SERVICE_NAME: backend-facturacion-electronica
       FISCAL_PROVIDER: ${FISCAL_PROVIDER:-MOCK_LOCAL}
       API_BASE_URL: http://api:4020
       API_INTERNAL_TOKEN: ${API_INTERNAL_TOKEN:-}
+      FACTUCORE_BASE_URL: ${FACTUCORE_BASE_URL:-http://host.docker.internal:8000}
       DB_HOST: host.docker.internal
       DB_PORT: ${DB_PORT:-5432}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
-      DB_DATABASE: ${BILLING_DB_DATABASE:-manus_tienda_electronic_billing}
+      DB_DATABASE: ${BILLING_DB_DATABASE:-manus_tienda_qa}
       DB_SSL: ${DB_SSL:-false}
       DB_LOGGING: "false"
       DIAN_THIRD_PARTY_LOOKUP_ENABLED: "true"
       DIAN_THIRD_PARTY_LOOKUP_MODE: ${DIAN_THIRD_PARTY_LOOKUP_MODE:-mock}
       DIAN_GET_ACQUIRER_HTTP_ENABLED: "false"
       DIAN_ALLOW_EXTERNAL_CALLS: "false"
-      ELECTRONIC_BILLING_BACKGROUND_ENABLED: "false"
+      ELECTRONIC_BILLING_BACKGROUND_ENABLED: ${ELECTRONIC_BILLING_BACKGROUND_ENABLED:-true}
       LOG_LEVEL: debug
     volumes:
       - ./backend-facturacion-electronica:/app

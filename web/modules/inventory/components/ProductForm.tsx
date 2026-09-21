@@ -63,6 +63,7 @@ type TaxInfo = {
 type AssignedTaxRow = {
   taxId: string;
   calculationOrder: string;
+  isIncluded: boolean;
 };
 
 type ProductFormValues = {
@@ -71,6 +72,8 @@ type ProductFormValues = {
   standardIdentificationScheme: "" | "001" | "010" | "020" | "999";
   standardIdentificationCode: string;
   price: string;
+  priceWithTax: string;
+  priceWithoutTax: string;
   cost: string;
   unitId: string;
   taxId: string;
@@ -115,9 +118,10 @@ const createInitialValues = (product?: ProductResponse | null): ProductFormValue
       ? product.taxes.map((tax) => ({
           taxId: tax.taxId,
           calculationOrder: String(tax.calculationOrder),
+          isIncluded: tax.isIncluded ?? true,
         }))
       : product?.taxId
-        ? [{ taxId: product.taxId, calculationOrder: "100" }]
+        ? [{ taxId: product.taxId, calculationOrder: "100", isIncluded: true }]
         : [];
 
   return {
@@ -127,6 +131,8 @@ const createInitialValues = (product?: ProductResponse | null): ProductFormValue
     standardIdentificationCode:
       product?.standardIdentification?.code ?? (product ? "" : ""),
     price: product ? String(product.price) : "",
+    priceWithTax: product ? String(product.priceWithTax) : "",
+    priceWithoutTax: product ? String(product.priceWithoutTax) : "",
     cost: product ? String(product.cost) : "",
     unitId: product?.unitId ?? "",
     taxId: product?.taxId ?? "",
@@ -748,12 +754,18 @@ export const ProductForm = ({
             }
           : null,
       price: Number(values.price),
+      priceWithTax: values.priceWithTax.trim() === "" ? Number(values.price) : Number(values.priceWithTax),
+      priceWithoutTax:
+        values.priceWithoutTax.trim() === ""
+          ? Number(values.price)
+          : Number(values.priceWithoutTax),
       cost: Number(values.cost),
       unitId: values.unitId,
       taxId: bridgeTaxId,
       taxes: orderedTaxes.map((item) => ({
         taxId: item.taxId,
         calculationOrder: Number(item.calculationOrder),
+        isIncluded: item.isIncluded,
       })),
       taxProfile:
         values.taxProductCategoryId || hasNonPercentageTax
@@ -937,6 +949,32 @@ export const ProductForm = ({
 
           <div className="space-y-1">
             <Input
+              label="Precio sin impuestos"
+              type="number"
+              min="0"
+              step="0.01"
+              value={values.priceWithoutTax}
+              onChange={(event) => setFieldValue("priceWithoutTax", event.target.value)}
+              placeholder="0.00"
+              hint="Base fiscal usada para la factura."
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Input
+              label="Precio con impuestos"
+              type="number"
+              min="0"
+              step="0.01"
+              value={values.priceWithTax}
+              onChange={(event) => setFieldValue("priceWithTax", event.target.value)}
+              placeholder="0.00"
+              hint="Total esperado después de impuestos."
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Input
               label="Costo"
               required
               type="number"
@@ -991,6 +1029,7 @@ export const ProductForm = ({
                         calculationOrder: String(
                           (prev.assignedTaxes.length + 1) * 100
                         ),
+                        isIncluded: false,
                       },
                     ],
                   }))
@@ -1009,7 +1048,7 @@ export const ProductForm = ({
             {values.assignedTaxes.map((assignment, index) => (
               <div
                 key={`${assignment.taxId}-${index}`}
-                className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_120px_auto]"
+                className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_120px_180px_auto]"
               >
                 <Select
                   label={`Impuesto #${index + 1}`}
@@ -1049,6 +1088,23 @@ export const ProductForm = ({
                     })
                   }
                 />
+                <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700 dark:text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={assignment.isIncluded}
+                    onChange={(event) =>
+                      setValues((prev) => {
+                        const next = [...prev.assignedTaxes];
+                        next[index] = {
+                          ...next[index],
+                          isIncluded: event.target.checked,
+                        };
+                        return { ...prev, assignedTaxes: next };
+                      })
+                    }
+                  />
+                  Precio incluye impuesto
+                </label>
                 <div className="flex items-end">
                   <Button
                     type="button"

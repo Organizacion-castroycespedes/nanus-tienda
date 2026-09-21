@@ -23,10 +23,10 @@ import {
 } from "./connectivity.js";
 
 const DEFAULT_WINDOW_TITLE = "Manus POS";
-const DEFAULT_WINDOW_WIDTH = 1280;
-const DEFAULT_WINDOW_HEIGHT = 800;
+const DEFAULT_WINDOW_WIDTH = 1024;
+const DEFAULT_WINDOW_HEIGHT = 768;
 const MIN_WINDOW_WIDTH = 1024;
-const MIN_WINDOW_HEIGHT = 700;
+const MIN_WINDOW_HEIGHT = 768;
 const REMOTE_HEARTBEAT_INTERVAL_MS = 3_000;
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["https:"]);
 
@@ -177,8 +177,8 @@ const createMainWindow = async () => {
     icon: path.join(__dirname, "../resources/manus-icon.png"),
     width: initialWidth,
     height: initialHeight,
-    frame: false,
-    fullscreen: true,
+    frame: true,
+    fullscreen: false,
     minimizable: false,
     resizable: false,
     minWidth: MIN_WINDOW_WIDTH,

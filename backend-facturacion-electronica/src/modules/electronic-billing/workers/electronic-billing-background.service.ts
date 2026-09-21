@@ -21,6 +21,15 @@ const DEFAULT_MAX_RETRY_ATTEMPTS = 5;
 const DEFAULT_LEASE_MS = 300_000;
 const DEFAULT_MANUAL_REVIEW_DELAY_MS = 86_400_000;
 
+const isAutomaticPreProviderRetryableCode = (code: string | null | undefined) => {
+  const normalized = (code ?? "").toUpperCase();
+  return normalized.includes("TIMEOUT")
+    || normalized.includes("NETWORK")
+    || normalized.includes("RATE_LIMIT")
+    || normalized.includes("UNAVAILABLE")
+    || normalized.includes("TEMPORARY");
+};
+
 const readPositiveIntegerEnv = (name: string, fallback: number) => {
   const raw = Number(process.env[name]);
   if (Number.isInteger(raw) && raw > 0) {
@@ -140,7 +149,6 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
     const retryCandidates = await this.documentRepository.claimDueForBackgroundSync(
       {
         statuses: ["TECHNICAL_ERROR"],
-        excludePreProviderIntentWithoutProvider: true,
         dueBefore: now,
         limit: this.batchSize,
         leaseMs: this.leaseMs,
@@ -250,6 +258,15 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
     let retried = 0;
 
     for (const candidate of candidates) {
+      if (
+        candidate.processing_stage === "PROVIDER_CREATE_INTENT"
+        && !candidate.provider_document_id
+        && !isAutomaticPreProviderRetryableCode(candidate.last_error_code)
+      ) {
+        summary.skipped += 1;
+        continue;
+      }
+
       if (candidate.latest_attempt >= this.maxRetryAttempts) {
         await this.deferManualRetry(candidate);
         summary.skipped += 1;

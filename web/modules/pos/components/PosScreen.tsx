@@ -207,6 +207,13 @@ const normalizeText = (value: string) =>
     .trim()
     .toLowerCase();
 
+const isFinalConsumerCustomer = (customer: {
+  name: string;
+  isFinalConsumer?: boolean;
+}) =>
+  customer.isFinalConsumer === true ||
+  normalizeText(customer.name).replace(/[_-]+/g, " ").includes("consumidor final");
+
 const weighableUnitCodes = new Set([
   "kg",
   "lb",
@@ -827,10 +834,7 @@ export const PosScreen = () => {
   }, [activeBranchId]);
 
   useEffect(() => {
-    const defaultCustomer =
-      customers.find((customer) => normalizeText(customer.name).includes("consumidor final")) ??
-      customers[0] ??
-      null;
+    const defaultCustomer = customers.find(isFinalConsumerCustomer) ?? null;
 
     const hasValidSelectedCustomer = customers.some(
       (customer) => customer.id === selectedCustomerId
@@ -913,10 +917,7 @@ export const PosScreen = () => {
     [customers, selectedCustomerId]
   );
   const finalConsumerCustomer = useMemo(
-    () =>
-      customers.find((customer) =>
-        normalizeText(customer.name).includes("consumidor final")
-      ) ?? null,
+    () => customers.find(isFinalConsumerCustomer) ?? null,
     [customers]
   );
 
@@ -1593,11 +1594,11 @@ export const PosScreen = () => {
         name: product.name,
         sku: product.sku,
         quantity,
-        price: Number(product.price),
+        price: Number(product.priceWithTax ?? product.price),
         stock,
         taxId: product.taxId ?? null,
         priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
-        baseUnitPrice: Number(product.price),
+        baseUnitPrice: Number(product.priceWithTax ?? product.price),
         basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
       };
       queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
@@ -2026,6 +2027,7 @@ export const PosScreen = () => {
       const sale = await reconcileSale(saleAttempt.attemptId);
       setSaleStatus("CONFIRMED");
       setCartItemsAndRef([]);
+      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
       setExpandedTaxItems({});
       setPaymentModalOpen(false);
       resetPayments();
@@ -2045,6 +2047,12 @@ export const PosScreen = () => {
 
   const openChargeModal = useCallback(() => {
     setSubmitError(null);
+    const selectedCustomerIsAvailable = customers.some(
+      (customer) => customer.id === selectedCustomerId
+    );
+    if (!selectedCustomerIsAvailable) {
+      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+    }
     const result = createDefaultCashPayment(
       summary.total,
       paymentMethodsCatalog,
@@ -2053,7 +2061,16 @@ export const PosScreen = () => {
     setPaymentWarning(result.error);
     setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
     setPaymentModalOpen(true);
-  }, [createPaymentDraft, paymentMethodsCatalog, setPayments, summary.total]);
+  }, [
+    createPaymentDraft,
+    customers,
+    finalConsumerCustomer,
+    paymentMethodsCatalog,
+    selectedCustomerId,
+    setPayments,
+    setSelectedCustomerId,
+    summary.total,
+  ]);
 
   const closeChargeModal = () => {
     if (processingSale) {
@@ -2397,6 +2414,7 @@ export const PosScreen = () => {
       setSaleStatus("CONFIRMED");
       // Successful checkout clears the persisted sale for this POS context.
       setCartItemsAndRef([]);
+      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
       setExpandedTaxItems({});
       setPaymentModalOpen(false);
       resetPayments();
@@ -3325,7 +3343,7 @@ export const PosScreen = () => {
                                     Precio final
                                   </p>
                                   <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
-                                    {formatCurrency(Number(product.price))}
+                                    {formatCurrency(Number(product.priceWithTax ?? product.price))}
                                   </p>
                                 </div>
                                 {hasProductInCart ? (
@@ -3437,7 +3455,7 @@ export const PosScreen = () => {
                                   Precio final
                                 </p>
                                 <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
-                                  {formatCurrency(Number(product.price))}
+                                  {formatCurrency(Number(product.priceWithTax ?? product.price))}
                                 </p>
                               </div>
                               <span

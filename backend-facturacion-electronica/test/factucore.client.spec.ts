@@ -78,6 +78,29 @@ test("createInvoice posts to the FactuCore invoice endpoint with headers", async
   assert.equal(result.id, "factucore-doc-1");
 });
 
+test("issueInvoice posts the complete invoice to FactuCore's single-path endpoint", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new FactuCoreClient(async (url, init) => {
+    calls.push({ url: String(url), init });
+    return buildJsonResponse(200, { id: "factucore-doc-issue-1", status: "SENT" });
+  });
+
+  await client.issueInvoice(context, {
+    externalReference: "SALE-ISSUE-001",
+    issueDate: "2026-08-27T10:00:00.000Z",
+    customer: { identificationTypeCode: "13", identificationNumber: "222222222222", legalName: "CONSUMIDOR_FINAL", firstName: "CONSUMIDOR", familyName: "FINAL" } as never,
+    payments: [{ amount: "1190.00", paymentMeansCode: "10", paymentMeansId: "1" }],
+    lines: [],
+    totals: { subtotalAmount: 1000, discountAmount: 0, taxAmount: 190, totalAmount: 1190, currencyCode: "COP" },
+  } as never);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://factucore.test/api/v1/external/documents/invoices/issue");
+  const body = JSON.parse(String(calls[0].init?.body)) as Record<string, unknown>;
+  assert.equal((body.customer as Record<string, unknown>).firstName, "CONSUMIDOR");
+  assert.deepEqual(body.payments, [{ amount: "1190.00", paymentMeansCode: "10", paymentMeansId: "1" }]);
+});
+
 test("409 maps to conflict", async () => {
   const client = new FactuCoreClient(async () => buildJsonResponse(409, { message: "conflict" }));
 

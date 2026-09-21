@@ -141,20 +141,23 @@ export function OfflineIndicator() {
   }, [state]);
 
   const showOverlay = hasChecked && !dismissed && (state === "OFFLINE" || state === "RECONNECTING" || state === "RESTORED" || state === "SERVICE_UNAVAILABLE");
+  const showCompactStatus = hasChecked && (state === "OFFLINE" || state === "RECONNECTING" || state === "SERVICE_UNAVAILABLE");
 
   return (
     <>
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        aria-label={compactStatusLabel[state]}
-        title={compactStatusLabel[state]}
-        className="fixed bottom-4 left-1/2 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
-      >
-        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${stateTone[state]}`} aria-hidden="true" />
-        <span className="truncate">{compactStatusLabel[state]}</span>
-      </div>
+      {showCompactStatus ? (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-label={compactStatusLabel[state]}
+          title={compactStatusLabel[state]}
+          className="fixed bottom-4 left-1/2 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+        >
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${stateTone[state]}`} aria-hidden="true" />
+          <span className="truncate">{compactStatusLabel[state]}</span>
+        </div>
+      ) : null}
 
       {showOverlay ? (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/35 p-6 backdrop-blur-[2px]">

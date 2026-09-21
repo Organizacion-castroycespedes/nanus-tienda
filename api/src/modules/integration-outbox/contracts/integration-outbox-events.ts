@@ -46,12 +46,15 @@ export type SaleSnapshot = {
 
 export type SaleCustomerSnapshot = {
   customerId?: string | null;
+  isFinalConsumer?: boolean;
   customerType?: string | null;
   identificationType?: string | null;
   identificationTypeCode?: string | null;
   identificationNumber?: string | null;
   verificationDigit?: string | null;
   legalName?: string | null;
+  firstName?: string | null;
+  familyName?: string | null;
   email?: string | null;
   phone?: string | null;
   addressLine1?: string | null;
@@ -92,6 +95,11 @@ export type SaleLineSnapshot = {
   taxAmount: IntegrationOutboxDecimalWireValue;
   totalAmount: IntegrationOutboxDecimalWireValue;
   taxTreatment?: string | null;
+  /** Fiscal liquor profile required by the FactuCore legacy/new invoice contract. */
+  beverageCategory?: "LIQUOR" | "WINE" | "APERITIF" | "BEER" | null;
+  volumeMilliliters?: IntegrationOutboxDecimalWireValue | null;
+  alcoholDegrees?: IntegrationOutboxDecimalWireValue | null;
+  publicSalePriceBeforeTaxes?: IntegrationOutboxDecimalWireValue | null;
   standardItemId?: string | null;
   standardItemSchemeId?: string | null;
   taxes: SaleLineTaxSnapshot[];
