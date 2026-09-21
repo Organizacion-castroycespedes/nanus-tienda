@@ -101,12 +101,12 @@ const buildProductsQuery = (params: GetProductsParams = {}) => {
 
 export const getProducts = (
   params: GetProductsParams = {},
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) => apiClient<ProductResponse[]>(buildProductsQuery(params), { headers });
 
 export const getInventoryProducts = (
   params: GetInventoryProductsParams = {},
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) => {
   const query = new URLSearchParams();
   if (params.tenantId) {
@@ -116,12 +116,14 @@ export const getInventoryProducts = (
     query.set("branchId", params.branchId);
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return apiClient<ProductResponse[]>(`/inventory/products${suffix}`, { headers });
+  return apiClient<ProductResponse[]>(`/inventory/products${suffix}`, {
+    headers,
+  });
 };
 
 export const createProduct = (
   payload: CreateProductPayload,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
   apiClient<ProductResponse>("/products", {
     method: "POST",
@@ -135,7 +137,7 @@ export const getProduct = (productId: string, headers?: HeadersInit) =>
 export const updateProduct = (
   productId: string,
   payload: UpdateProductPayload,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
   apiClient<ProductResponse>(`/products/${productId}`, {
     method: "PUT",
@@ -147,7 +149,7 @@ export const uploadProductImage = (
   productId: string,
   file: File,
   altText?: string | null,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) => {
   const body = new FormData();
   body.append("file", file);
@@ -162,10 +164,7 @@ export const uploadProductImage = (
   });
 };
 
-export const deleteProductImage = (
-  productId: string,
-  headers?: HeadersInit
-) =>
+export const deleteProductImage = (productId: string, headers?: HeadersInit) =>
   apiClient<ProductResponse>(`/inventory/products/${productId}/image`, {
     method: "DELETE",
     headers,
@@ -179,17 +178,17 @@ export const deleteProduct = (productId: string, headers?: HeadersInit) =>
 
 export const getProductPriceHistory = (
   productId: string,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
   apiClient<ProductPriceHistoryEntry[]>(
     `/products/${productId}/price-history`,
-    { headers }
+    { headers },
   );
 
 export const changeProductPrice = (
   productId: string,
   payload: ChangeProductPricePayload,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
   apiClient<ProductPriceChangeResponse>(`/products/${productId}/change-price`, {
     method: "POST",
@@ -203,7 +202,7 @@ export const listProductBarcodes = (productId: string, headers?: HeadersInit) =>
 export const createProductBarcode = (
   productId: string,
   payload: CreateProductBarcodePayload,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
   apiClient<ProductBarcode>(`/products/${productId}/barcodes`, {
     method: "POST",
@@ -215,7 +214,7 @@ export const updateProductBarcode = (
   productId: string,
   barcodeId: string,
   payload: UpdateProductBarcodePayload,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
   apiClient<ProductBarcode>(`/products/${productId}/barcodes/${barcodeId}`, {
     method: "PUT",
@@ -226,21 +225,49 @@ export const updateProductBarcode = (
 export const deactivateProductBarcode = (
   productId: string,
   barcodeId: string,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
-  apiClient<ProductBarcode>(`/products/${productId}/barcodes/${barcodeId}/deactivate`, {
-    method: "PATCH",
-    headers,
-  });
+  apiClient<ProductBarcode>(
+    `/products/${productId}/barcodes/${barcodeId}/deactivate`,
+    {
+      method: "PATCH",
+      headers,
+    },
+  );
 
 export const setPrimaryProductBarcode = (
   productId: string,
   barcodeId: string,
-  headers?: HeadersInit
+  headers?: HeadersInit,
 ) =>
-  apiClient<ProductBarcode>(`/products/${productId}/barcodes/${barcodeId}/set-primary`, {
-    method: "PATCH",
-    headers,
-  });
+  apiClient<ProductBarcode>(
+    `/products/${productId}/barcodes/${barcodeId}/set-primary`,
+    {
+      method: "PATCH",
+      headers,
+    },
+  );
 
-export async function getFiscalPreview(payload: { finalUnitPrice: number; taxes: Array<{ taxId: string; calculationOrder: number; isIncluded: boolean }>; taxProfile: { taxProductCategoryId: string; alcoholDegree: number | null; netVolumeMl: number | null; daneCertifiedRetailPrice: number | null; } | null; }) { const response = await fetchClient('/api/pricing/fiscal-preview', { method: 'POST', body: JSON.stringify(payload), }); if (!response.ok) { throw new Error('Failed to get fiscal preview'); } return response.json(); }
+export async function getFiscalPreview(payload: {
+  finalUnitPrice: number;
+  taxes: Array<{
+    taxId: string;
+    calculationOrder: number;
+    isIncluded: boolean;
+  }>;
+  taxProfile: {
+    taxProductCategoryId: string;
+    alcoholDegree: number | null;
+    netVolumeMl: number | null;
+    daneCertifiedRetailPrice: number | null;
+  } | null;
+}) {
+  const response = await fetchClient("/api/pricing/fiscal-preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to get fiscal preview");
+  }
+  return response.json();
+}
