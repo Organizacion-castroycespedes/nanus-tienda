@@ -139,10 +139,12 @@ test("SalesReportAdapter POS export uses the same actor scope with real count an
 });
 
 test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branch", async () => {
+  let sql = "";
   const adapter = new SalesReportAdapter({
     executeFunction: async () => null,
   } as never, {
-    query: async (_sql: string, params: unknown[]) => {
+    query: async (query: string, params: unknown[]) => {
+      sql = query;
       assert.deepEqual(params, ["sale-1", "tenant-a", "USER", "branch-a"]);
       return {
         rows: [
@@ -195,6 +197,7 @@ test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branc
   assert.equal(result?.customerFiscalSnapshot?.name, "Cliente snapshot");
   assert.equal(result?.taxLines?.[0]?.amount, 19);
   assert.equal(result?.qrPayload, "https://qr.example/accepted");
+  assert.match(sql, /document\.source_id\s*=\s*s\.id::TEXT/i);
 });
 
 test("SalesReportAdapter.getElectronicInvoice: rejects ambiguous documents", async () => {

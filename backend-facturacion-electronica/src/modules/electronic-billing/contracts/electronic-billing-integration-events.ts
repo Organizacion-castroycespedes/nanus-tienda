@@ -68,6 +68,10 @@ export type SaleLineSnapshot = {
   taxAmount: DecimalWireValue;
   totalAmount: DecimalWireValue;
   taxTreatment?: string | null;
+  beverageCategory?: "LIQUOR" | "WINE" | "APERITIF" | "BEER" | null;
+  volumeMilliliters?: DecimalWireValue | null;
+  alcoholDegrees?: DecimalWireValue | null;
+  publicSalePriceBeforeTaxes?: DecimalWireValue | null;
   standardItemId?: string | null;
   standardItemSchemeId?: string | null;
   taxes: SaleLineTaxSnapshot[];

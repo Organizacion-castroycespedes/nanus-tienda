@@ -268,12 +268,17 @@ const TAX_TYPE_ALIASES: Record<string, FactuCoreTaxType> = {
   NATIONAL_CONSUMPTION: "INC",
   BEER_CONSUMPTION: "INC",
   IMPUESTO_AL_CONSUMO_DE_CERVEZAS_Y_REFAJOS: "INC",
-  IMPUESTO_AL_CONSUMO_DE_LICORES: "INC",
-  LIQUOR_CONSUMPTION: "INC",
+  IMPUESTO_AL_CONSUMO_DE_LICORES: "ICL",
+  LIQUOR_CONSUMPTION: "ICL",
+  ICL: "ICL",
   ICA: "ICA",
   IMPUESTO_DE_INDUSTRIA_Y_COMERCIO: "ICA",
   INDUSTRIA_Y_COMERCIO: "ICA",
-  AD_VALOREM: "OTHER",
+  // Ad-valorem is a distinct DIAN TaxScheme (36) in the liquor contract.
+  // Do not collapse it into INC (04), because FactuCore uses 36 to derive
+  // the DANE-certified retail-price base deterministically.
+  AD_VALOREM: "ADV",
+  ADV: "ADV",
   RETE_FUENTE: "RETE_FUENTE",
   RETENCION_EN_LA_FUENTE: "RETE_FUENTE",
   RETENCION_FUENTE: "RETE_FUENTE",
@@ -340,6 +345,8 @@ export const mapFactuCoreTaxTreatment = (
 const FACTUCORE_TAX_SCHEME_IDS: Partial<Record<FactuCoreTaxType, string>> = {
   IVA: "01",
   INC: "04",
+  ICL: "32",
+  ADV: "36",
   ICA: "03",
 };
 
@@ -348,14 +355,6 @@ const mapFactuCoreTaxSchemeId = (tax: ElectronicTaxInput) => {
   const canonicalId = FACTUCORE_TAX_SCHEME_IDS[taxType];
   if (canonicalId) {
     return canonicalId;
-  }
-
-  // DIAN code 36 is the ad-valorem component of consumption taxes.
-  // FactuCore expects the enclosing DIAN TaxScheme (INC=04), not the
-  // internal tax code itself. Keep the tax type as OTHER; normalize only
-  // its TaxScheme at this provider boundary.
-  if (taxType === "OTHER" && normalizeString(tax.schemeId) === "36") {
-    return "04";
   }
 
   const suppliedId = normalizeNullableString(tax.schemeId);
@@ -429,6 +428,8 @@ const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   }
   return {
     taxType,
+    taxSchemeId,
+    taxSchemeName: taxType,
     // Manus pricing stores 0.19; DIAN UBL Percent requires 19.
     rate: normalizedRate > 0 && normalizedRate < 1 ? normalizedRate * 100 : normalizedRate,
     taxableBase: tax.taxableBase,
@@ -437,7 +438,7 @@ const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
       ...(tax.metadata ?? {}),
       ...(tax.code ? { taxCode: tax.code } : {}),
       ...(taxSchemeId ? { taxSchemeId } : {}),
-      ...(tax.schemeName ? { taxSchemeName: tax.schemeName } : {}),
+      taxSchemeName: taxType,
     },
   };
 };
@@ -452,6 +453,10 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => {
     description: line.description,
     unitCode: mapUnitCode(line.unitCode),
     taxTreatment,
+    beverageCategory: line.beverageCategory ?? null,
+    volumeMilliliters: line.volumeMilliliters ?? null,
+    alcoholDegrees: line.alcoholDegrees ?? null,
+    publicSalePriceBeforeTaxes: line.publicSalePriceBeforeTaxes ?? null,
     taxSchemeId: line.taxes?.length === 1 ? mapFactuCoreTaxSchemeId(line.taxes[0]) : null,
     taxSchemeName: line.taxes?.length === 1 ? mapFactuCoreTaxType(line.taxes[0]) : null,
     quantity: line.quantity,

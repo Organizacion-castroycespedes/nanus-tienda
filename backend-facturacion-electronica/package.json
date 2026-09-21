@@ -4,13 +4,17 @@
   "private": true,
   "bin": "dist/main.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.21.0"
   },
   "scripts": {
     "start:dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.build.json",
+    "build:prod": "npm run build",
     "start": "node dist/main.js",
-    "build:bin": "npm run build && pkg . --compress Brotli",
+    "start:prod": "node dist/main.js",
+    "build:bin": "npm run build:linux-x64 && npm run build:windows-x64",
+    "build:linux-x64": "npm run build && pkg . --targets node24-linux-x64 --output dist-bin/emaus_facturacion --compress Brotli",
+    "build:windows-x64": "npm run build && pkg . --targets node24-win-x64 --output dist-bin/emaus_facturacion.exe --compress Brotli",
     "test": "tsx --test \"test/**/*.spec.ts\""
   },
   "pkg": {
@@ -18,8 +22,8 @@
       "dist/**/*"
     ],
     "targets": [
-      "node18-linux-x64",
-      "node18-win-x64"
+      "node24-linux-x64",
+      "node24-win-x64"
     ],
     "outputPath": "dist-bin",
     "scripts": [
@@ -39,7 +43,7 @@
   "devDependencies": {
     "@types/node": "^20.11.19",
     "@types/pg": "^8.23.1",
-    "pkg": "^5.8.1",
+    "@yao-pkg/pkg": "^6.15.0",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   }

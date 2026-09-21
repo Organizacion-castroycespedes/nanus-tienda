@@ -98,6 +98,36 @@ export class PricingService {
     return Number(tax.percentageRate ?? tax.rate ?? 0);
   }
 
+  private getCustomerUnitPrice(product: PricingProductSnapshot) {
+    return this.roundCurrency(product.priceWithTax ?? product.price);
+  }
+
+  private getTaxCalculationUnitPrice(
+    product: PricingProductSnapshot,
+    customerUnitPrice: number
+  ) {
+    const configuredCustomerPrice = product.priceWithTax;
+    const configuredFiscalPrice = product.priceWithoutTax;
+    if (
+      configuredCustomerPrice == null ||
+      configuredFiscalPrice == null ||
+      configuredCustomerPrice <= 0
+    ) {
+      return this.roundCurrency(product.price);
+    }
+
+    const promotionFactor = customerUnitPrice / configuredCustomerPrice;
+    return this.roundCurrency(configuredFiscalPrice * promotionFactor);
+  }
+
+  private hasSeparateCustomerPrice(product: PricingProductSnapshot) {
+    return (
+      product.priceWithTax != null &&
+      product.priceWithoutTax != null &&
+      product.priceWithTax !== product.priceWithoutTax
+    );
+  }
+
   private buildPreviewTax(
     tax: PricingProductTaxSnapshot,
     values: {
@@ -127,6 +157,11 @@ export class PricingService {
     const percentageTax = this.getBridgePercentageTax(input.product);
     const taxRate = this.getPercentageRate(percentageTax);
     const finalUnitPrice = this.roundCurrency(input.finalUnitPrice);
+    const taxCalculationUnitPrice = this.getTaxCalculationUnitPrice(
+      input.product,
+      finalUnitPrice
+    );
+    const hasSeparateCustomerPrice = this.hasSeparateCustomerPrice(input.product);
 
     let taxBase = 0;
     let taxAmount = 0;
@@ -134,10 +169,12 @@ export class PricingService {
     let lineTotal = 0;
 
     if (taxRate > 0 && !(percentageTax?.isIncluded ?? input.product.taxIsIncluded)) {
-      lineSubtotal = this.roundCurrency(input.quantity * finalUnitPrice);
+      lineSubtotal = this.roundCurrency(input.quantity * taxCalculationUnitPrice);
       taxBase = lineSubtotal;
       taxAmount = this.roundCurrency(taxBase * taxRate);
-      lineTotal = this.roundCurrency(lineSubtotal + taxAmount);
+      lineTotal = hasSeparateCustomerPrice
+        ? this.roundCurrency(input.quantity * finalUnitPrice)
+        : this.roundCurrency(lineSubtotal + taxAmount);
     } else {
       lineTotal = this.roundCurrency(input.quantity * finalUnitPrice);
       const unitPriceWithoutTax =
@@ -181,6 +218,11 @@ export class PricingService {
     const percentageTax = taxes.find((tax) => this.isPercentageTax(tax)) ?? null;
     const percentageRate = this.getPercentageRate(percentageTax);
     const lineFinal = this.roundCurrency(input.finalUnitPrice * input.quantity);
+    const taxCalculationLine = this.roundCurrency(
+      this.getTaxCalculationUnitPrice(input.product, input.finalUnitPrice) *
+        input.quantity
+    );
+    const hasSeparateCustomerPrice = this.hasSeparateCustomerPrice(input.product);
     const profile = input.product.taxProfile;
 
     const taxLines = new Map<string, LinePricePreview["taxes"][number]>();
@@ -209,7 +251,11 @@ export class PricingService {
         taxLines.set(
           tax.taxId,
           this.buildPreviewTax(tax, {
-            taxRate: 0,
+            // The ICL fiscal rate is the configured specific tariff (COP per
+            // alcohol-degree/volume unit), not a percentage. Preserve it in
+            // the billing snapshot so FactuCore can deterministically rebuild
+            // the amount from the product tax configuration.
+            taxRate: tax.fixedAmount,
             taxBase: taxableUnits,
             taxAmount,
           })
@@ -295,7 +341,11 @@ export class PricingService {
         };
       }
 
-      const taxBase = this.roundCurrency(lineFinal - consumoAmount);
+      // For excluded alcohol taxes, the VAT base is the visible line price.
+      // ICL and ADV are added on top of that base; they must not be removed
+      // before calculating VAT. The authorized liquor invoice contract uses
+      // IVA base = lineFinal and total = lineFinal + ICL + ADV + IVA.
+      const taxBase = hasSeparateCustomerPrice ? taxCalculationLine : lineFinal;
       const taxAmount = this.roundCurrency(taxBase * percentageRate);
       taxLines.set(
         percentageTax.taxId,
@@ -317,9 +367,11 @@ export class PricingService {
             Boolean(item)
           ),
         lineSubtotal: taxBase,
-        lineTotal: this.roundCurrency(
-          lineFinal + consumoAmount + taxAmount + fixedChargeAmount
-        ),
+        lineTotal: hasSeparateCustomerPrice
+          ? lineFinal
+          : this.roundCurrency(
+              lineFinal + consumoAmount + taxAmount + fixedChargeAmount
+            ),
       };
     }
 
@@ -395,7 +447,7 @@ export class PricingService {
     appliedPromotionName: string | null;
     explanation: string;
   }): LinePricePreview {
-    const baseUnitPrice = this.roundCurrency(input.product.price);
+    const baseUnitPrice = this.getCustomerUnitPrice(input.product);
     const finalUnitPrice = this.roundCurrency(input.finalUnitPrice);
     const taxes = this.getAssignedTaxes(input.product);
     const hasAlcoholTaxes = taxes.some(
@@ -469,7 +521,7 @@ export class PricingService {
     const basePreview = this.calculateLinePreview({
       product,
       quantity,
-      finalUnitPrice: product.price,
+      finalUnitPrice: this.getCustomerUnitPrice(product),
       discountAmount: 0,
       discountPercent: 0,
       appliedPromotionId: null,

@@ -1113,7 +1113,7 @@ test("SaleService.createSale maps multi-tax whisky snapshot for electronic billi
       tax_base: 40,
       tax_amount: 14400,
       is_included: true,
-      dian_code: "02",
+      dian_code: "32",
       tax_type_code: "ICL",
       calculation_method_code: "PER_ALCOHOL_DEGREE_VOLUME",
       created_at: new Date("2026-06-02T00:00:00.000Z"),
@@ -1128,7 +1128,7 @@ test("SaleService.createSale maps multi-tax whisky snapshot for electronic billi
       tax_base: 400000,
       tax_amount: 100000,
       is_included: true,
-      dian_code: "04",
+      dian_code: "36",
       tax_type_code: "AD_VALOREM",
       calculation_method_code: "AD_VALOREM",
       created_at: new Date("2026-06-02T00:00:01.000Z"),
@@ -1174,6 +1174,16 @@ test("SaleService.createSale maps multi-tax whisky snapshot for electronic billi
         name: "Whisky",
         description: "Whisky",
         measurementUnit: "UND",
+      }),
+      findProductTaxProfile: async () => ({
+        taxProductCategoryId: ids.product,
+        taxProductCategoryCode: "DISTILLED_LIQUOR",
+        isAlcoholicBeverage: true,
+        alcoholDegree: 40,
+        netVolumeMl: 700,
+        daneCertifiedRetailPrice: 109869,
+        danePriceEffectiveFrom: "2026-01-01",
+        danePriceEffectiveTo: null,
       }),
     },
     taxRepository: {
@@ -1251,11 +1261,19 @@ test("SaleService.createSale maps multi-tax whisky snapshot for electronic billi
   const event = outboxEvents[0] as {
     lines: Array<{
       taxes: Array<{ type: string; code: string | null; amount: string; rate: string }>;
+      beverageCategory: string | null;
+      volumeMilliliters: string | null;
+      alcoholDegrees: string | null;
+      publicSalePriceBeforeTaxes: string | null;
     }>;
     taxes: Array<{ sourceLineId?: string | null }>;
   };
 
   assert.equal(event.lines[0].taxes.length, 3);
+  assert.equal(event.lines[0].beverageCategory, "LIQUOR");
+  assert.equal(event.lines[0].volumeMilliliters, "700.00");
+  assert.equal(event.lines[0].alcoholDegrees, "40.00");
+  assert.equal(event.lines[0].publicSalePriceBeforeTaxes, "109869.00");
   assert.deepEqual(
     event.lines[0].taxes.map((tax) => ({
       type: tax.type,
@@ -1264,8 +1282,8 @@ test("SaleService.createSale maps multi-tax whisky snapshot for electronic billi
       amount: tax.amount,
     })),
     [
-      { type: "ICL", code: "02", rate: "0.00", amount: "14400.00" },
-      { type: "AD_VALOREM", code: "04", rate: "0.25", amount: "100000.00" },
+      { type: "ICL", code: "32", rate: "0.00", amount: "14400.00" },
+      { type: "AD_VALOREM", code: "36", rate: "0.25", amount: "100000.00" },
       { type: "VAT", code: "01", rate: "0.05", amount: "22647.62" },
     ]
   );

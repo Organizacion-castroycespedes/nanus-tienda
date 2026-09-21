@@ -171,11 +171,21 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
       const payload = event.payload as {
         sale?: { saleStatus?: string | null };
         customer?: {
+          isFinalConsumer?: boolean;
           identificationNumber?: string | null;
+          identificationTypeCode?: string | null;
+          customerType?: string | null;
+          firstName?: string | null;
+          familyName?: string | null;
           legalName?: string | null;
           countryCode?: string | null;
+          countryName?: string | null;
           departmentCode?: string | null;
+          departmentName?: string | null;
           municipalityCode?: string | null;
+          cityName?: string | null;
+          addressLine1?: string | null;
+          email?: string | null;
           taxLevelCode?: string | null;
           taxSchemeId?: string | null;
           fiscalResponsibilityCodes?: string[] | null;
@@ -188,21 +198,32 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
         ),
       );
       const customer = payload.customer;
+      const requiresPersonNames =
+        customer?.customerType === "PERSON" && customer.isFinalConsumer !== true;
       const customerFiscalDataComplete = Boolean(
         customer?.identificationNumber?.trim() &&
+          customer?.identificationTypeCode?.trim() &&
           customer.legalName?.trim() &&
           customer.countryCode?.trim() &&
+          customer.countryName?.trim() &&
           customer.departmentCode?.trim() &&
+          customer.departmentName?.trim() &&
           customer.municipalityCode?.trim() &&
+          customer.cityName?.trim() &&
+          customer.addressLine1?.trim() &&
+          customer.email?.trim() &&
           customer.taxLevelCode?.trim() &&
           customer.taxSchemeId?.trim() &&
-          customer.fiscalResponsibilityCodes?.length,
+          customer.fiscalResponsibilityCodes?.length &&
+          (requiresPersonNames ? customer.firstName?.trim() : true) &&
+          (requiresPersonNames ? customer.familyName?.trim() : true),
       );
       if (
         event.event_type === "SALE_COMPLETED_FOR_ELECTRONIC_BILLING" &&
         ((payload.sale?.saleStatus !== undefined &&
           payload.sale?.saleStatus !== "CONFIRMED") ||
-          (hasTaxLines && !customerFiscalDataComplete))
+          (hasTaxLines &&
+            !customerFiscalDataComplete))
       ) {
         await this.outboxService.markTerminalFailure(event.event_id, {
           lastError: JSON.stringify({
