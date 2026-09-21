@@ -25,6 +25,7 @@ type OrdersListQuery = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
   format?: string;
 };
 
@@ -98,6 +99,11 @@ export class OrdersReportsService {
     return date.toISOString();
   }
 
+  private normalizeCustomerDocument(value: string | undefined) {
+    const normalized = value?.trim().toUpperCase().replace(/[^0-9A-Z]/g, "");
+    return normalized || undefined;
+  }
+
   private toNumber(value: unknown) {
     return Number(value ?? 0);
   }
@@ -124,6 +130,7 @@ export class OrdersReportsService {
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      customerDocument: payload?.filters?.customerDocument ?? this.normalizeCustomerDocument(query.customerDocument) ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -198,6 +205,7 @@ export class OrdersReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     });
 
     return this.normalizeOrderSalesListDataset(payload, actor, query);
@@ -220,13 +228,13 @@ export class OrdersReportsService {
     if (dateFrom && dateTo && dateTo < dateFrom) {
       throw new BadRequestException("date_to must be greater than or equal to date_from");
     }
-    const filters = { tenantId: query.tenantId, branchId: query.branchId, dateFrom, dateTo };
+    const filters = { tenantId: query.tenantId, branchId: query.branchId, dateFrom, dateTo, customerDocument: this.normalizeCustomerDocument(query.customerDocument) };
     const rows = await this.documentExport.collect(
       (client) => this.ordersReportAdapter.getOrderSalesExportCount(actor, filters, client),
       (client, offset, limit) => this.ordersReportAdapter.getOrderSalesExportBatch(actor, filters, client, offset, limit),
     );
     return {
-      filters: { tenantId: filters.tenantId ?? actor.tenantId, branchId: filters.branchId ?? actor.branchId ?? null, dateFrom: filters.dateFrom ?? null, dateTo: filters.dateTo ?? null, actorRole: actor.role },
+      filters: { tenantId: filters.tenantId ?? actor.tenantId, branchId: filters.branchId ?? actor.branchId ?? null, dateFrom: filters.dateFrom ?? null, dateTo: filters.dateTo ?? null, customerDocument: filters.customerDocument ?? null, actorRole: actor.role },
       rows,
       summary: {
         count: rows.length,
@@ -254,6 +262,7 @@ export class OrdersReportsService {
       ["Sucursal", dataset.branding.branchName ?? dataset.filters.branchId ?? "Todas"],
       ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
       ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Documento cliente", dataset.filters.customerDocument ?? ""],
       ["Pedidos", dataset.summary.count], ["Completados", dataset.summary.completed], ["Parciales", dataset.summary.partial], ["Pendientes", dataset.summary.pending],
       ["Total", dataset.summary.total], ["Pagado", dataset.summary.paid], ["Saldo", dataset.summary.balance],
     ]);

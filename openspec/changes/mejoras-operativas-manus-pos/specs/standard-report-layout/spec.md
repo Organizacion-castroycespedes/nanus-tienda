@@ -160,3 +160,21 @@ The Pedidos report SHALL preserve its date, tenant and branch filters, order/pay
 #### Scenario: Pedidos PDF and Excel render independently
 - **WHEN** the user requests PDF or XLSX
 - **THEN** only the requested renderer SHALL execute, while individual tickets and legacy exports remain unchanged
+
+### Requirement: Pedidos supports customer identification filtering across documents
+The Pedidos report SHALL expose an optional secondary `Número de identificación` filter using the demonstrated customer identity precedence. Web, PDF preview, PDF download, Excel download and print SHALL apply the same parameterized filter to the complete dataset while preserving tenant, branch, date, actor, order-state, payment and generated-sale semantics.
+
+#### Scenario: Customer identification filter is secondary and consistent
+- **WHEN** an authorized user enters an exact or partial normalized customer identification in `/reporteria/pedidos`
+- **THEN** the value appears as an active secondary filter chip and the Web result, PDF, Excel and print contain only matching orders under the same scope
+
+#### Scenario: Empty identification filter has no restriction
+- **WHEN** the identification filter is blank or reset
+- **THEN** count, batches and Web results use the existing order scope without adding a customer restriction
+
+### Requirement: Standard reports use one compact Report action
+The Clientes, Pedidos, Compras and Caja toolbars SHALL show one compact `Reporte` action with the shared eye icon and text. Redundant legacy `Descargar reporte` toolbar actions SHALL be hidden without deleting their backend endpoints or unrelated ticket actions.
+
+#### Scenario: Report actions remain aligned
+- **WHEN** an authorized user opens any of the four operational report routes
+- **THEN** the `Reporte` buttons share the existing icon/text alignment and the table ticket/download actions remain available where they are separate from the report toolbar

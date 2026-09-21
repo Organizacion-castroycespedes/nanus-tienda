@@ -203,6 +203,7 @@ export type CashClosingListDataset = {
     branchId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
+    customerDocument: string | null;
     actorRole: string;
   };
   summary: {

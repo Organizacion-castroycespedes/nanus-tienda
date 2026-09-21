@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { Input } from "../../../components/design-system/Input";
@@ -15,7 +15,7 @@ import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotic
 import { getCustomerMasterReport, getCustomerMasterReportExcel, getCustomerMasterReportPdf } from "../services/reporting.service";
 import { useReportingScope } from "../hooks/use-reporting-scope";
 import type { CustomerMasterDataset, CustomerMasterRow } from "../types";
-import { downloadBlob, downloadReportWorkbook, formatDateTime, getApiErrorMessage } from "../utils";
+import { downloadBlob, formatDateTime, getApiErrorMessage } from "../utils";
 import { PdfPreviewModal } from "./PdfPreviewModal";
 import { ReportStatusBadge } from "./ReportStatusBadge";
 
@@ -117,17 +117,12 @@ const CustomersOrdersStatusPage = () => {
   const activeFilters = { tenantId: scope.tenantId, customerDocument: customerDocument || undefined, customerName: customerName || undefined };
   const openReport = () => setPdfConfig({ title: "Reporte de clientes", fileName: "reporte-clientes.pdf", getPdf: () => getCustomerMasterReportPdf(activeFilters), onDownloadExcel: () => void getCustomerMasterReportExcel(activeFilters).then((blob) => downloadBlob(blob, "reporte-clientes.xlsx")) });
 
-  const exportLegacy = () => {
-    if (!dataset) return;
-    downloadReportWorkbook({ fileName: `reporte-clientes-${scope.tenantId}.xls`, summaryTitle: "Maestro de clientes", detailTitle: "Clientes", filters: [{ label: "Tenant", value: scope.resolvedTenantLabel }, { label: "Documento", value: customerDocument || "-" }, { label: "Nombre", value: customerName || "-" }], summary: [{ label: "Clientes", value: dataset.summary.count }], columns: ["Cliente ID", "Nombre", "Razón social", "Tipo documento", "Número documento", "Correo", "Estado fiscal", "Estado"], rows: dataset.rows.map((row) => [row.customerId, row.name, row.legalName ?? "", row.dianIdentificationType ?? row.documentTypeCode ?? "", row.identificationNumber ?? row.documentNumber ?? "", row.email ?? "", row.fiscalStatus, row.isActive ? "Activo" : "Inactivo"]) });
-  };
-
   if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar clientes." />;
 
   return (
     <ReportLayout title="Clientes" description="Información comercial y fiscal de clientes.">
       <div className="space-y-3">
-        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(activeFilters)} isLoading={loading}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId}>Reporte</Button><Button variant="outline" size="sm" disabled={!dataset?.rows.length} onClick={exportLegacy}><Download className="h-4 w-4" /> Descargar reporte</Button></>} />
+        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(activeFilters)} isLoading={loading}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId}><Eye className="h-4 w-4" /> Reporte</Button></>} />
         <ReportSummary items={[{ label: "Clientes", value: dataset ? dataset.summary.count : searched ? 0 : "--" }]} />
         <DataTable columns={columns} rows={dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? []} getRowKey={(row) => row.customerId} loading={loading} error={error} emptyState={searched ? "No hay clientes para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el maestro."} />
         {dataset ? <Pagination page={page} pageSize={pageSize} totalItems={dataset.rows.length} onPageChange={setPage} /> : null}

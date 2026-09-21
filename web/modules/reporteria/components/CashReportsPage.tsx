@@ -22,7 +22,7 @@ import {
   getCashClosingsReportPdf,
 } from "../services/reporting.service";
 import type { CashAuditListRow, CashClosingListRow } from "../types";
-import { downloadBlob, downloadReportWorkbook, formatCurrency, formatDateTime, getTodayRange } from "../utils";
+import { downloadBlob, formatCurrency, formatDateTime, getTodayRange } from "../utils";
 import { PdfPreviewModal } from "./PdfPreviewModal";
 import { ReportStatusBadge } from "./ReportStatusBadge";
 import { createReportScopeFilters } from "./report-scope-filters";
@@ -76,17 +76,6 @@ const CashReportsPage = () => {
     { key: "actions", header: "Acciones", cellClassName: "min-w-[180px]", render: (row) => <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de arqueo ${row.cashCountId.slice(0, 8)}`, fileName: `ticket-arqueo-${row.cashCountId}.pdf`, getPdf: () => getCashAuditTicket(row.cashCountId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashAuditTicket(row.cashCountId), `ticket-arqueo-${row.cashCountId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></div> },
   ], []);
 
-  const exportClosings = () => {
-    const dataset = reports.closingsDataset;
-    if (!dataset) return;
-    downloadReportWorkbook({ fileName: `reporte-cierres-${scope.tenantId}-${dateRange.from}-${dateRange.to}.xls`, summaryTitle: "Reporte de cierres de caja", detailTitle: "Detalle de cierres", filters: [{ label: "Tenant", value: scope.resolvedTenantLabel }, { label: "Sucursal", value: scope.resolvedBranchLabel }, { label: "Desde", value: dateRange.from }, { label: "Hasta", value: dateRange.to }], summary: [{ label: "Cierres", value: dataset.summary.count }, { label: "Monto apertura", value: dataset.summary.openingAmount }, { label: "Ingresos", value: dataset.summary.totalIn }, { label: "Egresos", value: dataset.summary.totalOut }, { label: "Esperado", value: dataset.summary.expectedAmount }, { label: "Diferencia", value: dataset.summary.difference }], columns: ["Apertura", "Cierre", "Sucursal", "Caja", "Terminal", "Abierto por", "Cerrado por", "Apertura monto", "Ingresos", "Egresos", "Esperado", "Cierre", "Diferencia", "Estado"], rows: dataset.rows.map((row) => [formatDateTime(row.openedAt), formatDateTime(row.closedAt), row.branchName ?? "", row.cashRegister ?? "", row.terminal ?? "", row.openedBy ?? "", row.closedBy ?? "", row.openingAmount, row.totalIn, row.totalOut, row.expectedAmount, row.closingAmount, row.difference, row.status]) });
-  };
-  const exportAudits = () => {
-    const dataset = reports.auditsDataset;
-    if (!dataset) return;
-    downloadReportWorkbook({ fileName: `reporte-arqueos-${scope.tenantId}-${dateRange.from}-${dateRange.to}.xls`, summaryTitle: "Reporte de arqueos de caja", detailTitle: "Detalle de arqueos", filters: [{ label: "Tenant", value: scope.resolvedTenantLabel }, { label: "Sucursal", value: scope.resolvedBranchLabel }, { label: "Desde", value: dateRange.from }, { label: "Hasta", value: dateRange.to }], summary: [{ label: "Arqueos", value: dataset.summary.count }, { label: "Contado", value: dataset.summary.countedAmount }, { label: "Esperado", value: dataset.summary.expectedAmount }, { label: "Diferencia", value: dataset.summary.difference }], columns: ["Fecha", "Sucursal", "Caja", "Terminal", "Usuario", "Contado", "Esperado", "Diferencia", "Estado sesion", "Notas"], rows: dataset.rows.map((row) => [formatDateTime(row.countedAt), row.branchName ?? "", row.cashRegister ?? "", row.terminal ?? "", row.countedBy ?? "", row.countedAmount, row.expectedAmount, row.difference, row.sessionStatus, row.notes ?? ""]) });
-  };
-
   if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar cierres y arqueos de caja." />;
 
   const activeDataset = activeTab === "closings" ? reports.closingsDataset : reports.auditsDataset;
@@ -111,7 +100,7 @@ const CashReportsPage = () => {
   return (
     <ReportLayout title="Cierres y arqueos" description="Consulta cierres y arqueos por fecha y alcance operativo.">
       <div className="space-y-3">
-        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loadingClosings || reports.loadingAudits}>Buscar</Button><Button variant="outline" size="sm" disabled={!activeDataset} onClick={() => setReportPreviewOpen(true)}><Eye className="h-4 w-4" /> Reporte</Button><Button variant="outline" size="sm" disabled={!reports.closingsDataset?.rows.length && !reports.auditsDataset?.rows.length} onClick={activeTab === "closings" ? exportClosings : exportAudits}><Download className="h-4 w-4" /> Descargar {activeTab === "closings" ? "cierres" : "arqueos"}</Button></>} />
+        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loadingClosings || reports.loadingAudits}>Buscar</Button><Button variant="outline" size="sm" disabled={!activeDataset} onClick={() => setReportPreviewOpen(true)}><Eye className="h-4 w-4" /> Reporte</Button></>} />
         <ReportSummary items={summaryItems} />
         <Tabs items={[{ value: "closings", label: "Cierres", helper: `${reports.closingsDataset?.summary.count ?? 0} registros` }, { value: "audits", label: "Arqueos", helper: `${reports.auditsDataset?.summary.count ?? 0} registros` }]} value={activeTab} onChange={(value) => { setActiveTab(value as ActiveTab); setPage(1); }} />
         {activeTab === "closings" ? <DataTable columns={closingsColumns} rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashClosingListRow[]} getRowKey={(row) => row.cashSessionId} loading={reports.loadingClosings} error={reports.closingsError} emptyState={reports.searched ? "No hay cierres para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} /> : <DataTable columns={auditsColumns} rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashAuditListRow[]} getRowKey={(row) => row.cashCountId} loading={reports.loadingAudits} error={reports.auditsError} emptyState={reports.searched ? "No hay arqueos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />}

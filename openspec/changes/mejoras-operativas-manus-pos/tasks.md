@@ -90,3 +90,9 @@
 - [x] 12.5 Add independent branded PDF/XLSX export through `DocumentExportService` and `PdfPreviewModal`.
 - [x] 12.6 Add focused coverage for tenant isolation, identity filter, count/batch, fiscal fields, PDF branding and XLSX serialization.
 - [x] 12.7 Perform manual Clientes QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print and tenant isolation.
+
+## 13. Reporter operational alignment follow-up
+
+- [x] 13.1 Add the secondary normalized customer identification filter to Pedidos across Web, PDF, XLSX and print using the same direct SQL scope.
+- [x] 13.2 Homologate Clientes, Pedidos, Compras and Caja to one compact eye-icon `Reporte` action and remove only redundant legacy download buttons from their toolbars.
+- [x] 13.3 Perform manual QA for the Pedidos identification filter and the four aligned report toolbars at desktop, 1024px and mobile.

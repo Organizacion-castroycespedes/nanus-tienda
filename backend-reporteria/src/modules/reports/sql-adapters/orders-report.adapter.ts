@@ -14,6 +14,7 @@ type OrdersListParams = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
 };
 
 export type OrdersExportFilters = OrdersListParams;
@@ -31,19 +32,31 @@ export class OrdersReportAdapter {
     actor: ReportActorContext,
     filters: OrdersListParams
   ): Promise<OrderSalesListDataset | null> {
-    return this.functionRunnerService.executeFunction<OrderSalesListDataset | null>(
-      "report_orders_sales",
-      [
-        actor.userId,
-        actor.role,
-        actor.tenantId,
-        actor.branchId,
-        filters.tenantId ?? null,
-        filters.branchId ?? null,
-        filters.dateFrom ?? null,
-        filters.dateTo ?? null,
-      ]
+    const result = await this.databaseService.query<OrderSalesListRow>(
+      `${this.exportFromSql()} SELECT order_id AS "orderId", order_date::text AS date, customer_name AS "customerName", total, paid, balance, status, payment_status AS "paymentStatus", branch_id AS "branchId", branch_name AS "branchName", generated_sale_id AS "generatedSaleId" FROM order_rows ORDER BY order_date DESC, order_id DESC`,
+      this.exportParams(actor, filters),
     );
+    const rows = result.rows.map((row) => this.mapOrderRow(row));
+    return {
+      filters: {
+        tenantId: filters.tenantId ?? actor.tenantId,
+        branchId: filters.branchId ?? actor.branchId ?? null,
+        dateFrom: filters.dateFrom ?? null,
+        dateTo: filters.dateTo ?? null,
+        customerDocument: filters.customerDocument ?? null,
+        actorRole: actor.role,
+      },
+      rows,
+      summary: {
+        count: rows.length,
+        total: rows.reduce((sum, row) => sum + row.total, 0),
+        paid: rows.reduce((sum, row) => sum + row.paid, 0),
+        balance: rows.reduce((sum, row) => sum + row.balance, 0),
+        completed: rows.filter((row) => row.status === "COMPLETED").length,
+        partial: rows.filter((row) => row.status === "PARTIAL" || row.paymentStatus === "PARTIAL").length,
+        pending: rows.filter((row) => ["DRAFT", "CONFIRMED"].includes(row.status) || row.paymentStatus === "PENDING").length,
+      },
+    };
   }
 
   private exportParams(actor: ReportActorContext, filters: OrdersExportFilters) {
@@ -56,6 +69,7 @@ export class OrdersReportAdapter {
       filters.branchId ?? null,
       filters.dateFrom ?? null,
       filters.dateTo ?? null,
+      filters.customerDocument?.trim() || null,
     ];
   }
 
@@ -100,6 +114,14 @@ export class OrdersReportAdapter {
           AND ($7::timestamptz IS NULL OR o.created_at >= $7::timestamptz)
           AND ($8::timestamptz IS NULL OR o.created_at < $8::timestamptz)
           AND (resolved.branch_id IS NULL OR COALESCE(sale_context.branch_id, payment_context.branch_id) = resolved.branch_id)
+          AND (
+            $9::text IS NULL
+            OR COALESCE(
+              NULLIF(BTRIM(customer.document_number_normalized), ''),
+              NULLIF(regexp_replace(UPPER(BTRIM(customer.identification_number)), '[^0-9A-Z]', '', 'g'), ''),
+              NULLIF(regexp_replace(UPPER(BTRIM(customer.document_number)), '[^0-9A-Z]', '', 'g'), '')
+            ) ILIKE '%' || $9::text || '%'
+          )
           AND (NOT resolved.restrict_to_user
             OR EXISTS (SELECT 1 FROM public.sales AS sales_scope WHERE sales_scope.tenant_id = o.tenant_id AND sales_scope.order_id = o.id AND sales_scope.user_id = $1::uuid)
             OR EXISTS (SELECT 1 FROM public.payments AS pay_scope WHERE pay_scope.tenant_id = o.tenant_id AND pay_scope.reference_type = 'SALES_ORDER' AND pay_scope.reference_id = o.id AND pay_scope.created_by = $1::uuid)
@@ -117,7 +139,7 @@ export class OrdersReportAdapter {
   }
 
   async getOrderSalesExportBatch(actor: ReportActorContext, filters: OrdersExportFilters, client: PoolClient, offset: number, limit: number): Promise<OrderSalesListRow[]> {
-    const result = await client.query<OrderSalesListRow>(`${this.exportFromSql()} SELECT order_id AS "orderId", order_date::text AS date, customer_name AS "customerName", total, paid, balance, status, payment_status AS "paymentStatus", branch_id AS "branchId", branch_name AS "branchName", generated_sale_id AS "generatedSaleId" FROM order_rows ORDER BY order_date DESC, order_id DESC LIMIT $9::integer OFFSET $10::integer`, [...this.exportParams(actor, filters), limit, offset]);
+    const result = await client.query<OrderSalesListRow>(`${this.exportFromSql()} SELECT order_id AS "orderId", order_date::text AS date, customer_name AS "customerName", total, paid, balance, status, payment_status AS "paymentStatus", branch_id AS "branchId", branch_name AS "branchName", generated_sale_id AS "generatedSaleId" FROM order_rows ORDER BY order_date DESC, order_id DESC LIMIT $10::integer OFFSET $11::integer`, [...this.exportParams(actor, filters), limit, offset]);
     return result.rows.map((row) => this.mapOrderRow(row));
   }
 
