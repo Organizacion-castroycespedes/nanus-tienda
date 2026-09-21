@@ -33,7 +33,7 @@ const roles = [
   },
 ];
 
-test("RolesController: list is gated to SUPER_ADMIN only", () => {
+test("RolesController: list is available to roles that manage users", () => {
   const rolesMetadata = Reflect.getMetadata(
     ROLES_KEY,
     RolesController.prototype.list
@@ -43,9 +43,9 @@ test("RolesController: list is gated to SUPER_ADMIN only", () => {
     RolesController.prototype.list
   );
 
-  assert.deepEqual(rolesMetadata, ["SUPER_ADMIN"]);
+  assert.deepEqual(rolesMetadata, ["SUPER_ADMIN", "SUPER_USER"]);
   assert.deepEqual(permissionMetadata, {
-    menuKey: MENU_KEYS.CONFIG_ROLES,
+    menuKey: MENU_KEYS.CONFIG_USUARIOS,
     level: "READ",
   });
 });
@@ -67,4 +67,29 @@ test("RolesController: SUPER_ADMIN list keeps all roles", async () => {
     result.map((role) => role.nombre),
     ["SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER"]
   );
+});
+
+test("RolesController: SUPER_USER requests the assignable role list", async () => {
+  let actor: unknown;
+  const controller = new RolesController({
+    listRoles: async (value: unknown) => {
+      actor = value;
+      return roles.filter((role) => role.nombre !== "SUPER_ADMIN");
+    },
+  } as never);
+
+  const result = await controller.list({
+    user: {
+      id: "user-1",
+      tenantId: "tenant-1",
+      roles: ["SUPER_USER"],
+    },
+  } as never);
+
+  assert.deepEqual(result.map((role) => role.nombre), ["SUPER_USER", "ADMIN", "USER"]);
+  assert.deepEqual(actor, {
+    userId: "user-1",
+    tenantId: "tenant-1",
+    roles: ["SUPER_USER"],
+  });
 });

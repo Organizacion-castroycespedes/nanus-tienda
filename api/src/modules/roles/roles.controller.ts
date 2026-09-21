@@ -47,8 +47,8 @@ export class RolesController {
   }
 
   @Get()
-  @Roles("SUPER_ADMIN")
-  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_ROLES, level: "READ" })
+  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_USUARIOS, level: "READ" })
   async list(@Req() request: AuthRequest) {
     const actor = this.buildActor(request);
     return this.rolesService.listRoles(actor);
