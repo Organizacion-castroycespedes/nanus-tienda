@@ -40,16 +40,23 @@ export class CashReportsController {
     @Req() request: AuthenticatedRequest,
     @Res() response: Response
   ) {
-    if ((query.format ?? "json").toLowerCase() === "pdf") {
-      const pdfBuffer = await this.cashReportsService.getCashClosingsPdf(query, request.user);
-
-      response.setHeader("Content-Type", "application/pdf");
+    const format = (query.format ?? "json").toLowerCase();
+    if (format === "pdf" || format === "xlsx") {
+      const document = format === "pdf"
+        ? await this.cashReportsService.getCashClosingsPdf(query, request.user)
+        : await this.cashReportsService.getCashClosingsExcel(query, request.user);
+      response.setHeader(
+        "Content-Type",
+        format === "pdf"
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
       response.setHeader(
         "Content-Disposition",
-        'inline; filename="reporte-cierres-caja.pdf"'
+        `${format === "pdf" ? "inline" : "attachment"}; filename="reporte-cierres-caja.${format}"`,
       );
-      response.setHeader("Content-Length", pdfBuffer.length);
-      response.end(pdfBuffer);
+      response.setHeader("Content-Length", document.length);
+      response.end(document);
       return;
     }
 
@@ -90,16 +97,23 @@ export class CashReportsController {
     @Req() request: AuthenticatedRequest,
     @Res() response: Response
   ) {
-    if ((query.format ?? "json").toLowerCase() === "pdf") {
-      const pdfBuffer = await this.cashReportsService.getCashAuditsPdf(query, request.user);
-
-      response.setHeader("Content-Type", "application/pdf");
+    const format = (query.format ?? "json").toLowerCase();
+    if (format === "pdf" || format === "xlsx") {
+      const document = format === "pdf"
+        ? await this.cashReportsService.getCashAuditsPdf(query, request.user)
+        : await this.cashReportsService.getCashAuditsExcel(query, request.user);
+      response.setHeader(
+        "Content-Type",
+        format === "pdf"
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
       response.setHeader(
         "Content-Disposition",
-        'inline; filename="reporte-arqueos-caja.pdf"'
+        `${format === "pdf" ? "inline" : "attachment"}; filename="reporte-arqueos-caja.${format}"`,
       );
-      response.setHeader("Content-Length", pdfBuffer.length);
-      response.end(pdfBuffer);
+      response.setHeader("Content-Length", document.length);
+      response.end(document);
       return;
     }
 

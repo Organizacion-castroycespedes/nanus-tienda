@@ -1,4 +1,4 @@
-import type { ReportActorContext } from "./sales-report.types";
+import type { PrintableCompanyHeader, ReportActorContext } from "./sales-report.types";
 
 export type { ReportActorContext };
 
@@ -22,6 +22,7 @@ export type OrderSalesListDataset = {
     branchId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
+    customerDocument: string | null;
     actorRole: string;
   };
   summary: {
@@ -34,6 +35,7 @@ export type OrderSalesListDataset = {
     pending: number;
   };
   rows: OrderSalesListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type OrderSaleTicketDataset = {

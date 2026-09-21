@@ -1,15 +1,19 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
 import { buildPurchasesReportLayout } from "../pdf/templates/reports/purchases-report.template";
 import { buildPurchaseTicketTemplate } from "../pdf/templates/tickets/purchase-ticket.template";
 import { PurchasesReportAdapter } from "./sql-adapters/purchases-report.adapter";
+import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
+import { DocumentExportService } from "./document-export.service";
 import type {
   PurchaseReportListRow,
   PurchaseTicketDataset,
   PurchasesReportListDataset,
   ReportActorContext,
 } from "./types/purchases-report.types";
+import type { PrintableCompanyHeader } from "./types/sales-report.types";
 
 type PurchasesListQuery = {
   tenantId?: string;
@@ -17,6 +21,7 @@ type PurchasesListQuery = {
   dateFrom?: string;
   dateTo?: string;
   status?: string;
+  supplierInvoiceNumber?: string;
   format?: string;
 };
 
@@ -28,7 +33,11 @@ export class PurchasesReportsService {
     @Inject(PurchasesReportAdapter)
     private readonly purchasesReportAdapter: PurchasesReportAdapter,
     @Inject(PdfmakeEngine)
-    private readonly pdfEngine: PdfmakeEngine
+    private readonly pdfEngine: PdfmakeEngine,
+    @Inject(DocumentExportService)
+    private readonly documentExport: DocumentExportService,
+    @Inject(SalesReportAdapter)
+    private readonly salesReportAdapter: SalesReportAdapter,
   ) {}
 
   private pickActorRole(roles: string[]): string {
@@ -115,6 +124,7 @@ export class PurchasesReportsService {
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
       status: payload?.filters?.status ?? query.status ?? null,
+      supplierInvoiceNumber: payload?.filters?.supplierInvoiceNumber ?? query.supplierInvoiceNumber ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -181,20 +191,115 @@ export class PurchasesReportsService {
 
   async getPurchases(query: PurchasesListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dateFrom = this.normalizeDate(query.dateFrom);
+    const dateTo = this.normalizeDate(query.dateTo, true);
+    if (dateFrom && dateTo && dateTo < dateFrom) {
+      throw new BadRequestException("date_to must be greater than or equal to date_from");
+    }
     const payload = await this.purchasesReportAdapter.getPurchasesList(actor, {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
-      status: query.status,
+      dateFrom,
+      dateTo,
+      status: this.normalizeStatus(query.status),
+      supplierInvoiceNumber: query.supplierInvoiceNumber?.trim() || undefined,
     });
 
     return this.normalizePurchasesListDataset(payload, actor, query);
   }
 
   async getPurchasesPdf(query: PurchasesListQuery, user?: ReportUser) {
-    const dataset = await this.getPurchases(query, user);
+    const dataset = await this.createPurchasesDocumentDataset(query, user);
     return this.pdfEngine.generatePdf(buildPurchasesReportLayout(dataset));
+  }
+
+  async getPurchasesExcel(query: PurchasesListQuery, user?: ReportUser) {
+    const dataset = await this.createPurchasesDocumentDataset(query, user);
+    return this.buildPurchasesExcel(dataset);
+  }
+
+  private normalizeStatus(value: string | undefined) {
+    const status = value?.trim().toUpperCase() || undefined;
+    if (status && !["DRAFT", "PENDING", "PARTIAL", "RECEIVED", "CERRADA_PARCIAL", "CANCELLED"].includes(status)) {
+      throw new BadRequestException("invalid purchase status filter");
+    }
+    return status;
+  }
+
+  private async createPurchasesDocumentDataset(query: PurchasesListQuery, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const filters = {
+      tenantId: query.tenantId,
+      branchId: query.branchId,
+      dateFrom: this.normalizeDate(query.dateFrom),
+      dateTo: this.normalizeDate(query.dateTo, true),
+      status: this.normalizeStatus(query.status),
+      supplierInvoiceNumber: query.supplierInvoiceNumber?.trim() || undefined,
+    };
+    if (filters.dateFrom && filters.dateTo && filters.dateTo < filters.dateFrom) {
+      throw new BadRequestException("date_to must be greater than or equal to date_from");
+    }
+    const rows = await this.documentExport.collect(
+      (client) => this.purchasesReportAdapter.getPurchasesExportCount(actor, filters, client),
+      (client, offset, limit) => this.purchasesReportAdapter.getPurchasesExportBatch(actor, filters, client, offset, limit),
+    );
+    const active = rows.filter((row) => row.status !== "CANCELLED");
+    return {
+      filters: { tenantId: filters.tenantId ?? actor.tenantId, branchId: filters.branchId ?? actor.branchId ?? null, dateFrom: filters.dateFrom ?? null, dateTo: filters.dateTo ?? null, status: filters.status ?? null, supplierInvoiceNumber: filters.supplierInvoiceNumber ?? null, actorRole: actor.role },
+      rows,
+      summary: {
+        count: rows.length,
+        activeCount: active.length,
+        cancelled: rows.length - active.length,
+        total: active.reduce((sum, row) => sum + row.total, 0),
+        totalNoRecibido: active.reduce((sum, row) => sum + (row.diferenciaNoRecibida ?? 0), 0),
+        paid: active.reduce((sum, row) => sum + row.paid, 0),
+        balance: active.reduce((sum, row) => sum + row.balance, 0),
+      },
+      branding: await this.salesReportAdapter.getPrintableCompany(actor),
+    };
+  }
+
+  private async buildPurchasesExcel(dataset: Awaited<ReturnType<PurchasesReportsService["createPurchasesDocumentDataset"]>>) {
+    const workbook = new ExcelJS.Workbook();
+    const info = workbook.addWorksheet("Resumen");
+    info.addRows([
+      [dataset.branding.legalName ?? dataset.branding.tenantName ?? ""],
+      [dataset.branding.nit ? `NIT ${dataset.branding.nit}` : ""],
+      [dataset.branding.address ?? ""],
+      [dataset.branding.phone ?? "", dataset.branding.email ?? ""],
+      ["Reporte", "Compras"],
+      ["Tenant", dataset.branding.tenantName ?? dataset.filters.tenantId],
+      ["Sucursal", dataset.branding.branchName ?? dataset.filters.branchId ?? "Todas"],
+      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Estado", dataset.filters.status ?? "Todos"],
+      ["Compras", dataset.summary.count],
+      ["Total", dataset.summary.total],
+      ["Pagado", dataset.summary.paid],
+      ["Saldo", dataset.summary.balance],
+    ]);
+    info.getColumn(1).width = 24;
+    info.getColumn(2).width = 40;
+    const sheet = workbook.addWorksheet("Compras", { views: [{ state: "frozen", ySplit: 1 }] });
+    sheet.columns = [
+      { header: "Fecha", key: "date", width: 22 }, { header: "Compra", key: "purchaseId", width: 38 },
+      { header: "Proveedor", key: "supplierName", width: 28 }, { header: "Factura proveedor", key: "supplierInvoiceNumber", width: 24 },
+      { header: "Fecha factura", key: "supplierInvoiceDate", width: 18 }, { header: "Sucursal", key: "branchName", width: 24 },
+      { header: "Total", key: "total", width: 16 }, { header: "Total pedido", key: "totalPedido", width: 16 },
+      { header: "Total liquidado", key: "totalLiquidado", width: 17 }, { header: "No recibido", key: "diferenciaNoRecibida", width: 16 },
+      { header: "Pagado", key: "paid", width: 16 }, { header: "Saldo", key: "balance", width: 16 },
+      { header: "Estado", key: "status", width: 18 }, { header: "Estado pago", key: "paymentStatus", width: 18 },
+    ];
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: new Date(row.date), supplierInvoiceDate: row.supplierInvoiceDate ? new Date(row.supplierInvoiceDate) : null }));
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+    ["total", "totalPedido", "totalLiquidado", "diferenciaNoRecibida", "paid", "balance"].forEach((key) => {
+      sheet.getColumn(key).numFmt = "#,##0.00";
+    });
+    sheet.getColumn("date").numFmt = "yyyy-mm-dd hh:mm";
+    sheet.getColumn("supplierInvoiceDate").numFmt = "yyyy-mm-dd";
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
 
   async getPurchaseTicket(purchaseId: string, user?: ReportUser) {

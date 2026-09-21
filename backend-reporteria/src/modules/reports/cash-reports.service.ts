@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
 import { buildCashAuditsReportLayout } from "../pdf/templates/reports/cash-audits-report.template";
@@ -6,6 +7,7 @@ import { buildCashClosingsReportLayout } from "../pdf/templates/reports/cash-clo
 import { buildCashAuditTicketTemplate } from "../pdf/templates/tickets/cash-audit-ticket.template";
 import { buildCashClosingTicketTemplate } from "../pdf/templates/tickets/cash-closing-ticket.template";
 import { CashReportAdapter } from "./sql-adapters/cash-report.adapter";
+import { DocumentExportService } from "./document-export.service";
 import type {
   CashAuditListDataset,
   CashAuditListRow,
@@ -15,6 +17,7 @@ import type {
   CashClosingTicketDataset,
   ReportActorContext,
 } from "./types/cash-report.types";
+import type { PrintableCompanyHeader } from "./types/sales-report.types";
 
 type CashListQuery = {
   tenantId?: string;
@@ -32,7 +35,9 @@ export class CashReportsService {
     @Inject(CashReportAdapter)
     private readonly cashReportAdapter: CashReportAdapter,
     @Inject(PdfmakeEngine)
-    private readonly pdfEngine: PdfmakeEngine
+    private readonly pdfEngine: PdfmakeEngine,
+    @Inject(DocumentExportService)
+    private readonly documentExport: DocumentExportService
   ) {}
 
   private pickActorRole(roles: string[]): string {
@@ -361,8 +366,13 @@ export class CashReportsService {
   }
 
   async getCashClosingsPdf(query: CashListQuery, user?: ReportUser) {
-    const dataset = await this.getCashClosings(query, user);
+    const dataset = await this.createCashClosingsDataset(query, user);
     return this.pdfEngine.generatePdf(buildCashClosingsReportLayout(dataset));
+  }
+
+  async getCashClosingsExcel(query: CashListQuery, user?: ReportUser) {
+    const dataset = await this.createCashClosingsDataset(query, user);
+    return this.buildCashClosingsExcel(dataset);
   }
 
   async getCashClosingTicket(cashSessionId: string, user?: ReportUser) {
@@ -399,8 +409,145 @@ export class CashReportsService {
   }
 
   async getCashAuditsPdf(query: CashListQuery, user?: ReportUser) {
-    const dataset = await this.getCashAudits(query, user);
+    const dataset = await this.createCashAuditsDataset(query, user);
     return this.pdfEngine.generatePdf(buildCashAuditsReportLayout(dataset));
+  }
+
+  async getCashAuditsExcel(query: CashListQuery, user?: ReportUser) {
+    const dataset = await this.createCashAuditsDataset(query, user);
+    return this.buildCashAuditsExcel(dataset);
+  }
+
+  private async createCashClosingsDataset(query: CashListQuery, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const filters = {
+      tenantId: query.tenantId,
+      branchId: query.branchId,
+      dateFrom: this.normalizeDate(query.dateFrom),
+      dateTo: this.normalizeDate(query.dateTo, true),
+    };
+    const rows = await this.documentExport.collect(
+      (client) => this.cashReportAdapter.getCashClosingsExportCount(actor, filters, client),
+      (client, offset, limit) => this.cashReportAdapter.getCashClosingsExportBatch(actor, filters, client, offset, limit),
+    );
+    const branding = await this.cashReportAdapter.getPrintableCompany(actor);
+    const dataset: CashClosingListDataset & { branding: PrintableCompanyHeader } = {
+      filters: {
+        tenantId: filters.tenantId ?? actor.tenantId,
+        branchId: filters.branchId ?? actor.branchId ?? null,
+        dateFrom: filters.dateFrom ?? null,
+        dateTo: filters.dateTo ?? null,
+        actorRole: actor.role,
+      },
+      rows,
+      branding,
+      summary: {
+        count: rows.length,
+        openingAmount: rows.reduce((sum, row) => sum + row.openingAmount, 0),
+        totalIn: rows.reduce((sum, row) => sum + row.totalIn, 0),
+        totalOut: rows.reduce((sum, row) => sum + row.totalOut, 0),
+        expectedAmount: rows.reduce((sum, row) => sum + row.expectedAmount, 0),
+        closingAmount: rows.reduce((sum, row) => sum + row.closingAmount, 0),
+        difference: rows.reduce((sum, row) => sum + row.difference, 0),
+      },
+    };
+    return dataset;
+  }
+
+  private async createCashAuditsDataset(query: CashListQuery, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const filters = {
+      tenantId: query.tenantId,
+      branchId: query.branchId,
+      dateFrom: this.normalizeDate(query.dateFrom),
+      dateTo: this.normalizeDate(query.dateTo, true),
+    };
+    const rows = await this.documentExport.collect(
+      (client) => this.cashReportAdapter.getCashAuditsExportCount(actor, filters, client),
+      (client, offset, limit) => this.cashReportAdapter.getCashAuditsExportBatch(actor, filters, client, offset, limit),
+    );
+    const branding = await this.cashReportAdapter.getPrintableCompany(actor);
+    const dataset: CashAuditListDataset & { branding: PrintableCompanyHeader } = {
+      filters: {
+        tenantId: filters.tenantId ?? actor.tenantId,
+        branchId: filters.branchId ?? actor.branchId ?? null,
+        dateFrom: filters.dateFrom ?? null,
+        dateTo: filters.dateTo ?? null,
+        actorRole: actor.role,
+      },
+      rows,
+      branding,
+      summary: {
+        count: rows.length,
+        countedAmount: rows.reduce((sum, row) => sum + row.countedAmount, 0),
+        expectedAmount: rows.reduce((sum, row) => sum + row.expectedAmount, 0),
+        difference: rows.reduce((sum, row) => sum + row.difference, 0),
+      },
+    };
+    return dataset;
+  }
+
+  private addCompanySummary(sheet: ExcelJS.Worksheet, branding: PrintableCompanyHeader, title: string, dataset: CashClosingListDataset | CashAuditListDataset) {
+    sheet.addRows([
+      [branding.legalName ?? branding.tenantName ?? ""],
+      [branding.nit ? `NIT ${branding.nit}` : ""],
+      [branding.address ?? ""],
+      [branding.phone ?? "", branding.email ?? ""],
+      ["Reporte", title],
+      ["Tenant", dataset.branding?.tenantName ?? dataset.filters.tenantId],
+      ["Sucursal", dataset.branding?.branchName ?? dataset.filters.branchId ?? "Todas"],
+      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Registros", dataset.rows.length],
+    ]);
+    sheet.getColumn(1).width = 24;
+    sheet.getColumn(2).width = 36;
+  }
+
+  private async buildCashClosingsExcel(dataset: CashClosingListDataset & { branding: PrintableCompanyHeader }) {
+    const workbook = new ExcelJS.Workbook();
+    const summary = workbook.addWorksheet("Resumen");
+    this.addCompanySummary(summary, dataset.branding, "Cierres de caja", dataset);
+    summary.addRows([["Ingresos", dataset.summary.totalIn], ["Egresos", dataset.summary.totalOut], ["Esperado", dataset.summary.expectedAmount], ["Diferencia", dataset.summary.difference]]);
+    const sheet = workbook.addWorksheet("Cierres", { views: [{ state: "frozen", ySplit: 1 }] });
+    sheet.columns = [
+      ["Apertura", "openedAt", 22], ["Cierre", "closedAt", 22], ["Sucursal", "branchName", 24],
+      ["Caja", "cashRegister", 20], ["Terminal", "terminal", 20], ["Abierto por", "openedBy", 26],
+      ["Cerrado por", "closedBy", 26], ["Apertura monto", "openingAmount", 18], ["Ingresos", "totalIn", 16],
+      ["Egresos", "totalOut", 16], ["Esperado", "expectedAmount", 16], ["Cierre monto", "closingAmount", 16],
+      ["Diferencia", "difference", 16], ["Estado", "status", 16],
+    ].map(([header, key, width]) => ({ header: String(header), key: String(key), width: Number(width) }));
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, openedAt: new Date(row.openedAt), closedAt: row.closedAt ? new Date(row.closedAt) : null }));
+    this.formatCashSheet(sheet, ["openingAmount", "totalIn", "totalOut", "expectedAmount", "closingAmount", "difference"], ["openedAt", "closedAt"]);
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  private async buildCashAuditsExcel(dataset: CashAuditListDataset & { branding: PrintableCompanyHeader }) {
+    const workbook = new ExcelJS.Workbook();
+    const summary = workbook.addWorksheet("Resumen");
+    this.addCompanySummary(summary, dataset.branding, "Arqueos de caja", dataset);
+    summary.addRows([["Contado", dataset.summary.countedAmount], ["Esperado", dataset.summary.expectedAmount], ["Diferencia", dataset.summary.difference]]);
+    const sheet = workbook.addWorksheet("Arqueos", { views: [{ state: "frozen", ySplit: 1 }] });
+    sheet.columns = [
+      ["Fecha", "countedAt", 22], ["Sucursal", "branchName", 24], ["Caja", "cashRegister", 20],
+      ["Terminal", "terminal", 20], ["Usuario", "countedBy", 26], ["Contado", "countedAmount", 16],
+      ["Esperado", "expectedAmount", 16], ["Diferencia", "difference", 16], ["Estado sesión", "sessionStatus", 18], ["Notas", "notes", 32],
+    ].map(([header, key, width]) => ({ header: String(header), key: String(key), width: Number(width) }));
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, countedAt: new Date(row.countedAt) }));
+    this.formatCashSheet(sheet, ["countedAmount", "expectedAmount", "difference"], ["countedAt"]);
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  private formatCashSheet(sheet: ExcelJS.Worksheet, numericKeys: string[], dateKeys: string[]) {
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF334155" } };
+    for (const key of numericKeys) {
+      sheet.getColumn(key).numFmt = "#,##0.00";
+    }
+    for (const key of dateKeys) {
+      sheet.getColumn(key).numFmt = "yyyy-mm-dd hh:mm";
+    }
+    sheet.autoFilter = { from: "A1", to: sheet.getRow(1).getCell(sheet.columnCount).address };
   }
 
   async getCashAuditTicket(cashCountId: string, user?: ReportUser) {

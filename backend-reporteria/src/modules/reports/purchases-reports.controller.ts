@@ -35,21 +35,21 @@ export class PurchasesReportsController {
       dateFrom?: string;
       dateTo?: string;
       status?: string;
+      supplierInvoiceNumber?: string;
       format?: string;
     },
     @Req() request: AuthenticatedRequest,
     @Res() response: Response
   ) {
-    if ((query.format ?? "json").toLowerCase() === "pdf") {
-      const pdfBuffer = await this.purchasesReportsService.getPurchasesPdf(query, request.user);
-
-      response.setHeader("Content-Type", "application/pdf");
-      response.setHeader(
-        "Content-Disposition",
-        'inline; filename="reporte-compras.pdf"'
-      );
-      response.setHeader("Content-Length", pdfBuffer.length);
-      response.end(pdfBuffer);
+    const format = (query.format ?? "json").toLowerCase();
+    if (format === "pdf" || format === "xlsx") {
+      const document = format === "pdf"
+        ? await this.purchasesReportsService.getPurchasesPdf(query, request.user)
+        : await this.purchasesReportsService.getPurchasesExcel(query, request.user);
+      response.setHeader("Content-Type", format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      response.setHeader("Content-Disposition", `${format === "pdf" ? "inline" : "attachment"}; filename="reporte-compras.${format}"`);
+      response.setHeader("Content-Length", document.length);
+      response.end(document);
       return;
     }
 
