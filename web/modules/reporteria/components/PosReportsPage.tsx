@@ -32,6 +32,7 @@ import { PdfPreviewModal } from "./PdfPreviewModal";
 import { ReportExportCard } from "./ReportExportCard";
 import { ReportMetricCard } from "./ReportMetricCard";
 import { ReportStatusBadge } from "./ReportStatusBadge";
+import type { PeripheralOperationError } from "../../../domains/peripherals/types";
 import {
   requestElectronicBilling,
   requestElectronicBillingBatch,
@@ -54,6 +55,22 @@ type DirectPrintFeedback = {
   saleId: string;
   variant: "success" | "error";
   message: string;
+};
+
+const getDirectPrintUserMessage = (error: PeripheralOperationError) => {
+  switch (error.code) {
+    case "DEVICE_NOT_FOUND":
+      return "No encontramos la impresora de esta caja. Verifica que esté encendida, conectada y registrada en el agente de periféricos. Puedes descargar el ticket mientras tanto.";
+    case "PRINTER_NOT_CONFIGURED":
+      return "Esta caja no tiene una impresora configurada. Configúrala en Periféricos o descarga el ticket.";
+    case "AGENT_OFFLINE":
+    case "CONNECTION_REFUSED":
+      return "No pudimos comunicarnos con el servicio de impresión de este equipo. Verifica que esté iniciado y descarga el ticket mientras tanto.";
+    case "TIMEOUT":
+      return "La impresora tardó demasiado en responder. Verifica que esté encendida y vuelve a intentarlo.";
+    default:
+      return "No se pudo imprimir el ticket. Puedes descargarlo mientras revisas la conexión de la impresora.";
+  }
 };
 
 const PosReportsPage = () => {
@@ -110,8 +127,16 @@ const PosReportsPage = () => {
           variant: result.success ? "success" : "error",
           message: result.success
             ? "Ticket enviado a la impresora"
-            : result.error.message,
+            : getDirectPrintUserMessage(result.error),
         });
+        if (!result.success) {
+          console.warn("[POS] Fallo de impresión", {
+            saleId,
+            code: result.error.code,
+            operation: result.error.operation,
+            technicalMessage: result.error.message,
+          });
+        }
       } catch (error) {
         setDirectPrintFeedback({
           saleId,
@@ -276,89 +301,101 @@ const PosReportsPage = () => {
         key: "actions",
         header: "Acciones",
         cellClassName: "min-w-[350px]",
-        render: (row) => (
-          <div className="flex flex-wrap gap-2">
-            {row.billingStatus !== "ACCEPTED" &&
-            row.billingStatus !== "PENDING" &&
-            row.billingStatus !== "PROCESSING" &&
-            row.billingStatus !== "REJECTED" &&
-            row.billingStatus !== "TECHNICAL_ERROR" &&
-            row.billingStatus !== "CANCELLED" &&
-            row.billingStatus !== "AMBIGUOUS" ? (
+        render: (row) => {
+          const hasAcceptedInvoice = row.billingStatus === "ACCEPTED";
+
+          return (
+            <div className="flex flex-wrap gap-2">
+              {row.billingStatus !== "ACCEPTED" &&
+              row.billingStatus !== "PENDING" &&
+              row.billingStatus !== "PROCESSING" &&
+              row.billingStatus !== "REJECTED" &&
+              row.billingStatus !== "TECHNICAL_ERROR" &&
+              row.billingStatus !== "CANCELLED" &&
+              row.billingStatus !== "AMBIGUOUS" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleBillingRequest([row.saleId])}
+                  disabled={billingRequestBusy}
+                >
+                  Facturar electrónicamente
+                </Button>
+              ) : null}
+              {hasAcceptedInvoice ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setPdfConfig({
+                      title: `Factura electrónica ${row.saleId.slice(0, 8)}`,
+                      fileName: `factura-electronica-${row.saleId}.pdf`,
+                      getPdf: () => getElectronicInvoice(row.saleId),
+                    })
+                  }
+                >
+                  <Eye className="h-4 w-4" />
+                  Ver factura electrónica
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setPdfConfig({
+                      title: `Ticket de venta ${row.saleId.slice(0, 8)}`,
+                      fileName: `ticket-venta-${row.saleId}.pdf`,
+                      getPdf: () => getPosSaleTicket(row.saleId),
+                    })
+                  }
+                >
+                  <Eye className="h-4 w-4" />
+                  Ver ticket
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void handleBillingRequest([row.saleId])}
-                disabled={billingRequestBusy}
+                onClick={() => void handleDirectPrint(row.saleId, row.billingStatus)}
+                disabled={printingSaleId === row.saleId}
               >
-                Facturar electrónicamente
+                <Printer className="h-4 w-4" />
+                {printingSaleId === row.saleId ? "Imprimiendo..." : "Imprimir"}
               </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setPdfConfig({
-                  title: `Ticket de venta ${row.saleId.slice(0, 8)}`,
-                  fileName: `ticket-venta-${row.saleId}.pdf`,
-                  getPdf: () => getPosSaleTicket(row.saleId),
-                })
-              }
-            >
-              <Eye className="h-4 w-4" />
-              Ver ticket
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  const blob = hasAcceptedInvoice
+                    ? await getElectronicInvoice(row.saleId)
+                    : await getPosSaleTicket(row.saleId);
+                  downloadBlob(
+                    blob,
+                    `${hasAcceptedInvoice ? "factura-electronica" : "ticket-venta"}-${row.saleId}.pdf`,
+                  );
+                }}
+              >
+                <Download className="h-4 w-4" />
+                {hasAcceptedInvoice ? "Descargar factura" : "Descargar ticket"}
               </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setPdfConfig({
-                  title: `Factura electrónica ${row.saleId.slice(0, 8)}`,
-                  fileName: `factura-electronica-${row.saleId}.pdf`,
-                  getPdf: () => getElectronicInvoice(row.saleId),
-                })
-              }
-            >
-              <Eye className="h-4 w-4" />
-              Ver factura electrónica
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleDirectPrint(row.saleId, row.billingStatus)}
-              disabled={printingSaleId === row.saleId}
-            >
-              <Printer className="h-4 w-4" />
-              {printingSaleId === row.saleId ? "Imprimiendo..." : "Imprimir"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                const blob = await getPosSaleTicket(row.saleId);
-                downloadBlob(blob, `ticket-venta-${row.saleId}.pdf`);
-              }}
-            >
-              <Download className="h-4 w-4" />
-              Descargar
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setDeliveryRelation({
-                  id: row.saleId,
-                  tenantId: tenantId || "default",
-                  label: `Venta ${row.saleId.slice(0, 8)}`,
-                  customerName: row.customerName,
-                })
-              }
-            >
-              <Truck className="h-4 w-4" />
-              Domicilio
-            </Button>
-          </div>
-        ),
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setDeliveryRelation({
+                    id: row.saleId,
+                    tenantId: tenantId || "default",
+                    label: `Venta ${row.saleId.slice(0, 8)}`,
+                    customerName: row.customerName,
+                  })
+                }
+              >
+                <Truck className="h-4 w-4" />
+                Domicilio
+              </Button>
+            </div>
+          );
+        },
       },
     ],
     [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, tenantId]
