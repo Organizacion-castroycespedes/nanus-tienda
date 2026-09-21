@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PoolClient } from "pg";
 import { DatabaseService } from "../../database/database.service";
 import { FunctionRunnerService } from "../../database/function-runner.service";
 import type {
@@ -7,6 +8,7 @@ import type {
   PosSaleTicketPayment,
   PrintableCompanyHeader,
   PosSalesListDataset,
+  PosSalesListRow,
   ReportActorContext,
 } from "../types/sales-report.types";
 import type { ElectronicInvoiceReadModel } from "../types/electronic-invoice-representation.types";
@@ -16,6 +18,15 @@ type SalesListParams = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
+};
+
+export type PosExportFilters = {
+  tenantId?: string;
+  branchId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  customerDocument?: string;
 };
 
 @Injectable()
@@ -31,23 +42,44 @@ export class SalesReportAdapter {
     actor: ReportActorContext,
     filters: SalesListParams
   ): Promise<PosSalesListDataset | null> {
-    const dataset = await this.functionRunnerService.executeFunction<PosSalesListDataset | null>(
-      "report_pos_sales",
-      [
-        actor.userId,
-        actor.role,
-        actor.tenantId,
-        actor.branchId,
-        filters.tenantId ?? null,
-        filters.branchId ?? null,
-        filters.dateFrom ?? null,
-        filters.dateTo ?? null,
-      ]
+    const result = await this.databaseService.query<PosSalesListRow>(
+      `${this.posSalesFromSql()} SELECT sale.id AS "saleId", sale.created_at AS date, sale.status,
+              COALESCE(NULLIF(BTRIM(sale.customer_name), ''), 'CONSUMIDOR FINAL') AS "customerName",
+              sale.total::numeric AS total, COALESCE(sale.total_paid, 0)::numeric AS paid,
+              COALESCE(sale.balance_due, sale.balance,
+                GREATEST(sale.total - COALESCE(sale.total_paid, 0), 0))::numeric AS balance,
+              COALESCE(sale.payment_status, 'PENDING') AS "paymentStatus",
+              sale.branch_id AS "branchId", sale.branch_name AS "branchName",
+              sale.cash_session_id AS "cashSessionId"
+         FROM sale_rows AS sale
+        ORDER BY sale.created_at DESC, sale.id DESC`,
+      this.scopeParams(actor, filters),
     );
-    if (!dataset?.rows?.length) {
-      return dataset;
+    const rows = result.rows.map((row) => ({
+      ...row,
+      total: Number(row.total),
+      paid: Number(row.paid),
+      balance: Number(row.balance),
+      billingStatus: "NO_DOCUMENT" as const,
+      billingDocumentNumber: null,
+      billingCufe: null,
+      billingAcceptedAt: null,
+    }));
+    if (!rows.length) {
+      return {
+        filters: {
+          tenantId: filters.tenantId ?? actor.tenantId,
+          branchId: filters.branchId ?? actor.branchId ?? null,
+          dateFrom: filters.dateFrom ?? null,
+          dateTo: filters.dateTo ?? null,
+          customerDocument: filters.customerDocument ?? null,
+          actorRole: actor.role,
+        },
+        summary: { count: 0, total: 0, paid: 0, balance: 0, cancelled: 0, refunded: 0 },
+        rows: [],
+      };
     }
-    const saleIds = dataset.rows.map((row) => row.saleId);
+    const saleIds = rows.map((row) => row.saleId);
     const billing = await this.databaseService.query<{
       saleId: string;
       billingStatus: ElectronicInvoiceReadModel["status"] | "NO_DOCUMENT";
@@ -92,8 +124,23 @@ export class SalesReportAdapter {
     );
     const billingBySale = new Map(billing.rows.map((row) => [row.saleId, row]));
     return {
-      ...dataset,
-      rows: dataset.rows.map((row) => {
+      filters: {
+        tenantId: filters.tenantId ?? actor.tenantId,
+        branchId: filters.branchId ?? actor.branchId ?? null,
+        dateFrom: filters.dateFrom ?? null,
+        dateTo: filters.dateTo ?? null,
+        customerDocument: filters.customerDocument ?? null,
+        actorRole: actor.role,
+      },
+      summary: {
+        count: rows.length,
+        total: rows.reduce((sum, row) => sum + row.total, 0),
+        paid: rows.reduce((sum, row) => sum + row.paid, 0),
+        balance: rows.reduce((sum, row) => sum + row.balance, 0),
+        cancelled: rows.filter((row) => row.status === "CANCELLED").length,
+        refunded: rows.filter((row) => row.status === "REFUNDED").length,
+      },
+      rows: rows.map((row) => {
         const document = billingBySale.get(row.saleId);
         const tenantConfig = document?.tenantConfig && typeof document.tenantConfig === "object"
           ? document.tenantConfig as Record<string, unknown>
@@ -123,6 +170,142 @@ export class SalesReportAdapter {
         };
       }),
     };
+  }
+
+  private scopeParams(actor: ReportActorContext, filters: PosExportFilters) {
+    return [
+      actor.userId,
+      actor.role,
+      actor.tenantId,
+      actor.branchId,
+      filters.tenantId ?? null,
+      filters.branchId ?? null,
+      filters.dateFrom ?? null,
+      filters.dateTo ?? null,
+      filters.customerDocument?.trim() || null,
+    ];
+  }
+
+  private posSalesFromSql() {
+    return `
+      WITH resolved AS (
+        SELECT (scope->>'tenantId')::uuid AS tenant_id,
+               NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+               COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+          FROM public.report_resolve_pos_scope($2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid) AS scope
+      ), sale_rows AS (
+        SELECT sale.*, customer.name AS customer_name, branch.nombre AS branch_name,
+               payment_context.cash_session_id
+          FROM public.sales AS sale
+          LEFT JOIN public.customers AS customer
+            ON customer.id = sale.customer_id AND customer.tenant_id = sale.tenant_id
+          LEFT JOIN public.tenant_branches AS branch
+            ON branch.id = sale.branch_id AND branch.tenant_id = sale.tenant_id
+          LEFT JOIN LATERAL (
+            SELECT payment.cash_session_id
+              FROM public.payments AS payment
+             WHERE payment.tenant_id = sale.tenant_id
+               AND payment.reference_type = 'SALE'
+               AND payment.reference_id = sale.id
+               AND payment.direction = 'IN'
+             ORDER BY payment.created_at ASC, payment.id ASC
+             LIMIT 1
+          ) AS payment_context ON TRUE
+          CROSS JOIN resolved
+         WHERE sale.tenant_id = resolved.tenant_id
+           AND (resolved.branch_id IS NULL OR sale.branch_id = resolved.branch_id)
+           AND ($7::timestamptz IS NULL OR sale.created_at >= $7::timestamptz)
+           AND ($8::timestamptz IS NULL OR sale.created_at < $8::timestamptz)
+           AND (
+             $9::text IS NULL
+             OR COALESCE(
+               NULLIF(BTRIM(customer.document_number_normalized), ''),
+               NULLIF(regexp_replace(UPPER(BTRIM(customer.identification_number)), '[^0-9A-Z]', '', 'g'), ''),
+               NULLIF(regexp_replace(UPPER(BTRIM(customer.document_number)), '[^0-9A-Z]', '', 'g'), '')
+             ) ILIKE '%' || $9::text || '%'
+           )
+           AND (
+             NOT resolved.restrict_to_user
+             OR EXISTS (
+               SELECT 1
+                 FROM public.pos_user_sessions AS actor_session
+                WHERE actor_session.id = sale.pos_session_id
+                  AND actor_session.tenant_id = sale.tenant_id
+                  AND actor_session.user_id = $1::uuid
+                  AND actor_session.is_active = TRUE
+             )
+           )
+      )`;
+  }
+
+  async getPosExportCount(
+    actor: ReportActorContext,
+    filters: PosExportFilters,
+    client: PoolClient,
+  ): Promise<number> {
+    const result = await client.query<{ count: string }>(
+      `${this.posSalesFromSql()}
+       SELECT COUNT(*)::text AS count
+       FROM sale_rows`,
+      this.scopeParams(actor, filters),
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async getPosExportBatch(
+    actor: ReportActorContext,
+    filters: PosExportFilters,
+    client: PoolClient,
+    offset: number,
+    limit: number,
+  ): Promise<PosSalesListRow[]> {
+    const result = await client.query<PosSalesListRow & { billingStatus: PosSalesListRow["billingStatus"] }>(
+      `${this.posSalesFromSql()}
+       SELECT sale.id AS "saleId", sale.created_at AS date, sale.status,
+              COALESCE(NULLIF(BTRIM(sale.customer_name), ''), 'CONSUMIDOR FINAL') AS "customerName",
+              sale.total::numeric AS total,
+              COALESCE(sale.total_paid, 0)::numeric AS paid,
+              COALESCE(sale.balance_due, sale.balance,
+                GREATEST(sale.total - COALESCE(sale.total_paid, 0), 0))::numeric AS balance,
+              COALESCE(sale.payment_status, 'PENDING') AS "paymentStatus",
+              sale.branch_id AS "branchId", sale.branch_name AS "branchName",
+              sale.cash_session_id AS "cashSessionId",
+              COALESCE(document.status,
+                CASE WHEN request_context.request_exists THEN 'REQUESTED' ELSE 'NO_DOCUMENT' END
+              ) AS "billingStatus"
+       FROM sale_rows AS sale
+       LEFT JOIN LATERAL (
+         SELECT latest.status
+           FROM public.electronic_documents AS latest
+          WHERE latest.tenant_id = sale.tenant_id
+            AND latest.source_type = 'SALE'
+            AND latest.source_id = sale.id
+          ORDER BY latest.created_at DESC, latest.id DESC
+          LIMIT 1
+       ) AS document ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT EXISTS (
+           SELECT 1 FROM public.integration_outbox_events AS event
+            WHERE event.tenant_id = sale.tenant_id
+              AND event.source_type = 'SALE'
+              AND event.source_id = sale.id::text
+         ) AS request_exists
+       ) AS request_context ON TRUE
+
+       ORDER BY sale.created_at DESC, sale.id DESC
+       LIMIT $10::integer OFFSET $11::integer`,
+      [...this.scopeParams(actor, filters), limit, offset],
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      total: Number(row.total),
+      paid: Number(row.paid),
+      balance: Number(row.balance),
+      billingStatus: row.billingStatus,
+      billingDocumentNumber: null,
+      billingCufe: null,
+      billingAcceptedAt: null,
+    }));
   }
 
   async getSaleTicket(
@@ -226,6 +409,7 @@ export class SalesReportAdapter {
       ? config.logo
       : typeof config.logoUrl === "string" ? config.logoUrl : null;
     return {
+      tenantName: row?.tenantName ?? null,
       legalName: row?.legalName ?? row?.tenantName ?? null,
       nit: row?.nit ?? null,
       dv: row?.dv ?? null,

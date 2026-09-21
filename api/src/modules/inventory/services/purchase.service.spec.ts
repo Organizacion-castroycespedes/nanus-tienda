@@ -53,6 +53,8 @@ type Scenario = {
   auditTerminalName?: string | null;
   purchaseItems?: FakePurchaseItem[];
   currentCashSessionId?: string;
+  supplierInvoiceNumber?: string | null;
+  supplierInvoiceDate?: string | Date | null;
 };
 
 const buildPurchaseRow = (scenario: Scenario = {}) => ({
@@ -67,6 +69,8 @@ const buildPurchaseRow = (scenario: Scenario = {}) => ({
   total_paid: scenario.totalPaid ?? 0,
   balance_due: 100 - (scenario.totalPaid ?? 0),
   created_at: new Date("2026-05-27T00:00:00.000Z"),
+  supplier_invoice_number: scenario.supplierInvoiceNumber ?? null,
+  supplier_invoice_date: scenario.supplierInvoiceDate ?? null,
 });
 
 const actor = {
@@ -247,9 +251,9 @@ class FakeClient {
       return {
         rows: [
           {
-            ...buildPurchaseRow({
-              ...this.scenario,
-              status:
+              ...buildPurchaseRow({
+                ...this.scenario,
+                status:
                 typeof params[2] === "string" &&
                 ["PARTIAL", "RECEIVED"].includes(params[2])
                   ? (params[2] as "PARTIAL" | "RECEIVED")
@@ -265,6 +269,8 @@ class FakeClient {
               ["PARTIAL", "RECEIVED"].includes(params[2])
                 ? null
                 : params[3],
+            supplier_invoice_number: params[3] ?? this.scenario.supplierInvoiceNumber ?? null,
+            supplier_invoice_date: params[4] ?? this.scenario.supplierInvoiceDate ?? null,
             cancelado_en:
               typeof params[2] === "string" &&
               ["PARTIAL", "RECEIVED"].includes(params[2])
@@ -909,6 +915,26 @@ test("PurchaseService.receivePurchase: producto no loteado recibe compra como an
   assert.equal(result.status, "PARTIAL");
   assert.equal(stockMovementService.movements.length, 1);
   assert.equal(inventoryLotService.calls.length, 0);
+});
+
+test("PurchaseService.receivePurchase: persists supplier invoice document atomically", async () => {
+  const { service, db } = buildService({ status: "PENDING" });
+
+  const result = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2 }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor,
+    { supplierInvoiceNumber: "FV-1007", supplierInvoiceDate: "2026-09-20" },
+  );
+
+  assert.equal(result.supplierInvoiceNumber, "FV-1007");
+  assert.equal(result.supplierInvoiceDate?.toISOString().slice(0, 10), "2026-09-20");
+  assert.ok(db.client.queries.includes("BEGIN"));
+  assert.ok(db.client.queries.includes("COMMIT"));
+  const updateParams = db.client.params.find((params) => params[3] === "FV-1007");
+  assert.deepEqual(updateParams?.slice(3, 5), ["FV-1007", "2026-09-20"]);
 });
 
 test("PurchaseService.receivePurchase: producto no loteado rechaza datos de lote", async () => {

@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import { DatabaseService } from "../database/database.service";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
@@ -15,6 +16,7 @@ import { buildSaleCancelTicketTemplate } from "../pdf/templates/tickets/sale-can
 import { buildElectronicInvoiceRepresentation } from "./electronic-invoice-representation";
 import { buildElectronicInvoiceRepresentationTemplate } from "../pdf/templates/tickets/electronic-invoice-representation.template";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
+import { DocumentExportService } from "./document-export.service";
 import type {
   PosSaleCancelTicketDataset,
   PosSaleTicketPrintDataset,
@@ -22,6 +24,7 @@ import type {
   PosSaleTicketTaxBreakdown,
   PosSalesListDataset,
   PosSalesListRow,
+  PrintableCompanyHeader,
   ReportActorContext,
 } from "./types/sales-report.types";
 
@@ -30,6 +33,7 @@ type SalesListQuery = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
   format?: string;
 };
 
@@ -43,7 +47,9 @@ export class SalesReportsService {
     @Inject(DatabaseService)
     private readonly databaseService: DatabaseService,
     @Inject(PdfmakeEngine)
-    private readonly pdfEngine: PdfmakeEngine
+    private readonly pdfEngine: PdfmakeEngine,
+    @Inject(DocumentExportService)
+    private readonly documentExport: DocumentExportService
   ) {}
 
   private pickActorRole(roles: string[]): string {
@@ -101,6 +107,11 @@ export class SalesReportsService {
     return date.toISOString();
   }
 
+  private normalizeCustomerDocument(value: string | undefined) {
+    const normalized = value?.trim().toUpperCase().replace(/[^0-9A-Z]/g, "");
+    return normalized || undefined;
+  }
+
   private normalizeListRow(row: PosSalesListRow): PosSalesListRow {
     return {
       ...row,
@@ -125,6 +136,7 @@ export class SalesReportsService {
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      customerDocument: payload?.filters?.customerDocument ?? this.normalizeCustomerDocument(query.customerDocument) ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -265,14 +277,103 @@ export class SalesReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     });
 
     return this.normalizeSalesListDataset(payload, actor, query);
   }
 
   async getSalesListPdf(query: SalesListQuery, user?: ReportUser) {
-    const dataset = await this.getSalesList(query, user);
-    return this.pdfEngine.generatePdf(buildPosSalesReportLayout(dataset));
+    const report = await this.createSalesDocumentPackage(query, user);
+    return report.pdf;
+  }
+
+  async getSalesListExcel(query: SalesListQuery, user?: ReportUser) {
+    const report = await this.createSalesDocumentPackage(query, user);
+    return report.xlsx;
+  }
+
+  private async createSalesDocumentPackage(query: SalesListQuery, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const filters = {
+      tenantId: query.tenantId,
+      branchId: query.branchId,
+      dateFrom: this.normalizeDate(query.dateFrom),
+      dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeCustomerDocument(query.customerDocument),
+    };
+    const rows = await this.documentExport.collect(
+      (client) => this.salesReportAdapter.getPosExportCount(actor, filters, client),
+      (client, offset, limit) => this.salesReportAdapter.getPosExportBatch(actor, filters, client, offset, limit),
+    );
+    const dataset = {
+      filters: {
+        tenantId: filters.tenantId ?? actor.tenantId,
+        branchId: filters.branchId ?? actor.branchId ?? null,
+        dateFrom: filters.dateFrom ?? null,
+        dateTo: filters.dateTo ?? null,
+        customerDocument: filters.customerDocument ?? null,
+        actorRole: actor.role,
+      },
+      summary: {
+        count: rows.length,
+        total: rows.reduce((sum, row) => sum + row.total, 0),
+        paid: rows.reduce((sum, row) => sum + row.paid, 0),
+        balance: rows.reduce((sum, row) => sum + row.balance, 0),
+        cancelled: rows.filter((row) => row.status === "CANCELLED").length,
+        refunded: rows.filter((row) => row.status === "REFUNDED").length,
+      },
+      rows,
+      branding: await this.salesReportAdapter.getPrintableCompany(actor),
+    };
+    const [pdf, xlsx] = await Promise.all([
+      this.pdfEngine.generatePdf(buildPosSalesReportLayout(dataset)),
+      this.buildSalesExcel(dataset),
+    ]);
+    return { pdf, xlsx };
+  }
+
+  private async buildSalesExcel(dataset: PosSalesListDataset & { branding: PrintableCompanyHeader }) {
+    const workbook = new ExcelJS.Workbook();
+    const info = workbook.addWorksheet("Resumen");
+    info.addRows([
+      [dataset.branding.legalName ?? ""],
+      [dataset.branding.nit ? `NIT ${dataset.branding.nit}` : ""],
+      [dataset.branding.address ?? ""],
+      [dataset.branding.phone ?? "", dataset.branding.email ?? ""],
+      ["Reporte", "Ventas POS"],
+      ["Tenant", dataset.filters.tenantId],
+      ["Sucursal", dataset.filters.branchId ?? "Todas"],
+      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Número identificación", dataset.filters.customerDocument ?? ""],
+      ["Ventas", dataset.summary.count],
+      ["Total", dataset.summary.total],
+      ["Pagado", dataset.summary.paid],
+      ["Saldo", dataset.summary.balance],
+    ]);
+    info.getColumn(1).width = 24;
+    info.getColumn(2).width = 36;
+    const sheet = workbook.addWorksheet("Ventas POS", { views: [{ state: "frozen", ySplit: 1 }] });
+    sheet.columns = [
+      { header: "Fecha", key: "date", width: 22 },
+      { header: "Documento", key: "saleId", width: 38 },
+      { header: "Cliente", key: "customerName", width: 28 },
+      { header: "Sucursal", key: "branchName", width: 24 },
+      { header: "Total", key: "total", width: 16 },
+      { header: "Pagado", key: "paid", width: 16 },
+      { header: "Saldo", key: "balance", width: 16 },
+      { header: "Estado", key: "status", width: 16 },
+      { header: "Pago", key: "paymentStatus", width: 16 },
+      { header: "Facturación electrónica", key: "billingStatus", width: 24 },
+    ];
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: new Date(row.date) }));
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF334155" } };
+    for (const key of ["total", "paid", "balance"]) sheet.getColumn(key).numFmt = "#,##0.00";
+    sheet.getColumn("date").numFmt = "yyyy-mm-dd hh:mm";
+    sheet.autoFilter = { from: "A1", to: `J${Math.max(1, sheet.rowCount)}` };
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async getSaleTicket(saleId: string, user?: ReportUser) {

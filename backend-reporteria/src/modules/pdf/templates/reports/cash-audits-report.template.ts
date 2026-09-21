@@ -18,17 +18,26 @@ const formatDateTime = (value: string | null | undefined) =>
 
 const buildHeader = (dataset: CashAuditListDataset): Content => ({
   margin: [0, 0, 0, 16],
-  stack: [
-    { text: "Reporte de arqueos de caja", style: "title" },
+  columns: [
+    (() => {
+      const logo = dataset.branding?.logo;
+      if (logo && /^data:image\/(png|jpeg);base64,/i.test(logo)) return { image: logo, width: 56, height: 42 };
+      if (logo && /^data:image\/svg\+xml;base64,/i.test(logo)) {
+        const svg = Buffer.from(logo.split(",", 2)[1], "base64").toString("utf8");
+        if (svg.includes("<svg")) return { svg, width: 56, height: 42 };
+      }
+      return { text: "" };
+    })(),
     {
-      text: `Tenant: ${dataset.filters.tenantId}  |  Rol: ${dataset.filters.actorRole}`,
-      style: "meta",
-    },
-    {
-      text: `Sucursal: ${dataset.filters.branchId ?? "Todas"}  |  Desde: ${
-        dataset.filters.dateFrom ? formatDateTime(dataset.filters.dateFrom) : "-"
-      }  |  Hasta: ${dataset.filters.dateTo ? formatDateTime(dataset.filters.dateTo) : "-"}`,
-      style: "meta",
+      width: "*",
+      stack: [
+        { text: dataset.branding?.legalName ?? dataset.branding?.tenantName ?? "", style: "company" },
+        { text: dataset.branding?.nit ? `NIT ${dataset.branding.nit}` : "", style: "meta" },
+        { text: [dataset.branding?.address, dataset.branding?.phone, dataset.branding?.email].filter(Boolean).join("  |  "), style: "meta" },
+        { text: "Reporte de arqueos de caja", style: "title" },
+        { text: `Tenant: ${dataset.branding?.tenantName ?? dataset.branding?.legalName ?? "No disponible"}  |  Rol: ${dataset.filters.actorRole}`, style: "meta" },
+        { text: `Sucursal: ${dataset.branding?.branchName ?? "Todas"}  |  Desde: ${dataset.filters.dateFrom ? formatDateTime(dataset.filters.dateFrom) : "-"}  |  Hasta: ${dataset.filters.dateTo ? formatDateTime(dataset.filters.dateTo) : "-"}`, style: "meta" },
+      ],
     },
   ],
 });
@@ -52,6 +61,8 @@ const buildSummary = (dataset: CashAuditListDataset): Content => ({
 const buildTable = (dataset: CashAuditListDataset): Content => ({
   table: {
     headerRows: 1,
+    dontBreakRows: true,
+    keepWithHeaderRows: 1,
     widths: [60, 60, 60, 65, "*", 55],
     body: [
       [
@@ -90,6 +101,7 @@ export const buildCashAuditsReportLayout = (
   pageMargins: [28, 30, 28, 30],
   content: [buildHeader(dataset), buildSummary(dataset), buildTable(dataset)],
   styles: {
+    company: { fontSize: 12, bold: true },
     title: { fontSize: 18, bold: true },
     meta: { fontSize: 9, color: "#64748b", margin: [0, 3, 0, 0] },
     summaryCard: {

@@ -1,4 +1,4 @@
-import type { TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
+import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { PurchasesReportListDataset } from "../../../reports/types/purchases-report.types";
 
 const formatCurrency = (value: number) =>
@@ -16,26 +16,45 @@ const formatDate = (value: string | null | undefined) =>
       }).format(new Date(value))
     : "N/A";
 
+const formatInvoiceDate = (value: string | null | undefined) =>
+  value ? new Intl.DateTimeFormat("es-CO", { dateStyle: "medium" }).format(new Date(value)) : "-";
+
+const buildHeader = (dataset: PurchasesReportListDataset): Content => ({
+  margin: [0, 0, 0, 12],
+  columns: [
+    (() => {
+      const logo = dataset.branding?.logo;
+      if (logo && /^data:image\/(png|jpeg);base64,/i.test(logo)) return { image: logo, width: 56, height: 42 };
+      if (logo && /^data:image\/svg\+xml;base64,/i.test(logo)) {
+        const svg = Buffer.from(logo.split(",", 2)[1], "base64").toString("utf8");
+        if (svg.includes("<svg")) return { svg, width: 56, height: 42 };
+      }
+      return { text: "", width: 56 };
+    })(),
+    {
+      width: "*",
+      stack: [
+        { text: dataset.branding?.legalName ?? dataset.branding?.tenantName ?? "", style: "title" },
+        { text: dataset.branding?.nit ? `NIT ${dataset.branding.nit}` : "", style: "meta" },
+        { text: [dataset.branding?.address, dataset.branding?.phone, dataset.branding?.email].filter(Boolean).join(" | "), style: "meta" },
+        { text: "Reporte de compras", style: "reportTitle" },
+      ],
+    },
+  ],
+});
+
 export const buildPurchasesReportLayout = (
   dataset: PurchasesReportListDataset
 ): TDocumentDefinitions => ({
   pageSize: "A4",
+  pageOrientation: "landscape",
   pageMargins: [32, 32, 32, 32],
   content: [
+    buildHeader(dataset),
     {
-      margin: [0, 0, 0, 16],
-      stack: [
-        { text: "Reporte de compras", style: "title" },
-        { text: `Tenant: ${dataset.filters.tenantId}`, style: "subtitle" },
-        {
-          text: `Sucursal: ${dataset.filters.branchId ?? "Todas"} | Desde: ${formatDate(
-            dataset.filters.dateFrom
-          )} | Hasta: ${formatDate(dataset.filters.dateTo)} | Estado: ${
-            dataset.filters.status ?? "Todos"
-          }`,
-          style: "meta",
-        },
-      ],
+      margin: [0, 0, 0, 10],
+      text: `Tenant: ${dataset.branding?.tenantName ?? dataset.filters.tenantId} | Sucursal: ${dataset.branding?.branchName ?? dataset.filters.branchId ?? "Todas"} | Desde: ${formatDate(dataset.filters.dateFrom)} | Hasta: ${formatDate(dataset.filters.dateTo)} | Estado: ${dataset.filters.status ?? "Todos"}${dataset.filters.supplierInvoiceNumber ? ` | Factura: ${dataset.filters.supplierInvoiceNumber}` : ""}`,
+      style: "meta",
     },
     {
       margin: [0, 0, 0, 16],
@@ -59,11 +78,15 @@ export const buildPurchasesReportLayout = (
     {
       table: {
         headerRows: 1,
-        widths: ["auto", "*", "auto", "auto", "auto", "auto", "auto"],
+        dontBreakRows: true,
+        keepWithHeaderRows: 1,
+        widths: [72, "*", 84, 82, 72, 72, 72, 72, 72],
         body: [
           [
             { text: "Compra", style: "tableHeader" },
             { text: "Proveedor", style: "tableHeader" },
+            { text: "Factura proveedor", style: "tableHeader" },
+            { text: "Fecha factura", style: "tableHeader" },
             { text: "Estado", style: "tableHeader" },
             { text: "Total", style: "tableHeader", alignment: "right" },
             { text: "No recibido", style: "tableHeader", alignment: "right" },
@@ -75,6 +98,8 @@ export const buildPurchasesReportLayout = (
               [
                 { stack: [row.purchaseId, { text: formatDate(row.date), color: "#475569" }] },
                 row.supplierName,
+                row.supplierInvoiceNumber ?? "-",
+                formatInvoiceDate(row.supplierInvoiceDate),
                 `${row.status} / ${row.paymentStatus}`,
                 { text: formatCurrency(row.total), alignment: "right" },
                 {
@@ -91,7 +116,8 @@ export const buildPurchasesReportLayout = (
     },
   ],
   styles: {
-    title: { fontSize: 17, bold: true },
+    title: { fontSize: 13, bold: true },
+    reportTitle: { fontSize: 13, bold: true, margin: [0, 8, 0, 0] },
     subtitle: { fontSize: 10, margin: [0, 4, 0, 0] },
     meta: { fontSize: 9, color: "#64748b", margin: [0, 4, 0, 0] },
     summary: { fontSize: 10, bold: true },

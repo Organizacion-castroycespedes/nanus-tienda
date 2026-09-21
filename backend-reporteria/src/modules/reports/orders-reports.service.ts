@@ -5,11 +5,14 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
 import { buildOrderSalesReportLayout } from "../pdf/templates/reports/order-sales-report.template";
 import { buildOrderSaleTicketTemplate } from "../pdf/templates/tickets/order-sale-ticket.template";
 import { OrdersReportAdapter } from "./sql-adapters/orders-report.adapter";
+import { DocumentExportService } from "./document-export.service";
+import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import type {
   OrderSaleTicketDataset,
   OrderSalesListDataset,
@@ -22,6 +25,7 @@ type OrdersListQuery = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
   format?: string;
 };
 
@@ -33,7 +37,11 @@ export class OrdersReportsService {
     @Inject(OrdersReportAdapter)
     private readonly ordersReportAdapter: OrdersReportAdapter,
     @Inject(PdfmakeEngine)
-    private readonly pdfEngine: PdfmakeEngine
+    private readonly pdfEngine: PdfmakeEngine,
+    @Inject(DocumentExportService)
+    private readonly documentExport: DocumentExportService,
+    @Inject(SalesReportAdapter)
+    private readonly salesReportAdapter: SalesReportAdapter,
   ) {}
 
   private pickActorRole(roles: string[]): string {
@@ -91,6 +99,11 @@ export class OrdersReportsService {
     return date.toISOString();
   }
 
+  private normalizeCustomerDocument(value: string | undefined) {
+    const normalized = value?.trim().toUpperCase().replace(/[^0-9A-Z]/g, "");
+    return normalized || undefined;
+  }
+
   private toNumber(value: unknown) {
     return Number(value ?? 0);
   }
@@ -117,6 +130,7 @@ export class OrdersReportsService {
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      customerDocument: payload?.filters?.customerDocument ?? this.normalizeCustomerDocument(query.customerDocument) ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -191,14 +205,81 @@ export class OrdersReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     });
 
     return this.normalizeOrderSalesListDataset(payload, actor, query);
   }
 
   async getOrderSalesPdf(query: OrdersListQuery, user?: ReportUser) {
-    const dataset = await this.getOrderSales(query, user);
+    const dataset = await this.createOrderSalesDocumentDataset(query, user);
     return this.pdfEngine.generatePdf(buildOrderSalesReportLayout(dataset));
+  }
+
+  async getOrderSalesExcel(query: OrdersListQuery, user?: ReportUser) {
+    const dataset = await this.createOrderSalesDocumentDataset(query, user);
+    return this.buildOrderSalesExcel(dataset);
+  }
+
+  private async createOrderSalesDocumentDataset(query: OrdersListQuery, user?: ReportUser) {
+    const actor = this.resolveActor(user);
+    const dateFrom = this.normalizeDate(query.dateFrom);
+    const dateTo = this.normalizeDate(query.dateTo, true);
+    if (dateFrom && dateTo && dateTo < dateFrom) {
+      throw new BadRequestException("date_to must be greater than or equal to date_from");
+    }
+    const filters = { tenantId: query.tenantId, branchId: query.branchId, dateFrom, dateTo, customerDocument: this.normalizeCustomerDocument(query.customerDocument) };
+    const rows = await this.documentExport.collect(
+      (client) => this.ordersReportAdapter.getOrderSalesExportCount(actor, filters, client),
+      (client, offset, limit) => this.ordersReportAdapter.getOrderSalesExportBatch(actor, filters, client, offset, limit),
+    );
+    return {
+      filters: { tenantId: filters.tenantId ?? actor.tenantId, branchId: filters.branchId ?? actor.branchId ?? null, dateFrom: filters.dateFrom ?? null, dateTo: filters.dateTo ?? null, customerDocument: filters.customerDocument ?? null, actorRole: actor.role },
+      rows,
+      summary: {
+        count: rows.length,
+        total: rows.reduce((sum, row) => sum + row.total, 0),
+        paid: rows.reduce((sum, row) => sum + row.paid, 0),
+        balance: rows.reduce((sum, row) => sum + row.balance, 0),
+        completed: rows.filter((row) => row.status === "COMPLETED").length,
+        partial: rows.filter((row) => row.status === "PARTIAL" || row.paymentStatus === "PARTIAL").length,
+        pending: rows.filter((row) => ["DRAFT", "CONFIRMED"].includes(row.status) || row.paymentStatus === "PENDING").length,
+      },
+      branding: await this.salesReportAdapter.getPrintableCompany(actor),
+    };
+  }
+
+  private async buildOrderSalesExcel(dataset: Awaited<ReturnType<OrdersReportsService["createOrderSalesDocumentDataset"]>>) {
+    const workbook = new ExcelJS.Workbook();
+    const info = workbook.addWorksheet("Resumen");
+    info.addRows([
+      [dataset.branding.legalName ?? dataset.branding.tenantName ?? ""],
+      [dataset.branding.nit ? `NIT ${dataset.branding.nit}` : ""],
+      [dataset.branding.address ?? ""],
+      [dataset.branding.phone ?? "", dataset.branding.email ?? ""],
+      ["Reporte", "Pedidos"],
+      ["Tenant", dataset.branding.tenantName ?? dataset.filters.tenantId],
+      ["Sucursal", dataset.branding.branchName ?? dataset.filters.branchId ?? "Todas"],
+      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Documento cliente", dataset.filters.customerDocument ?? ""],
+      ["Pedidos", dataset.summary.count], ["Completados", dataset.summary.completed], ["Parciales", dataset.summary.partial], ["Pendientes", dataset.summary.pending],
+      ["Total", dataset.summary.total], ["Pagado", dataset.summary.paid], ["Saldo", dataset.summary.balance],
+    ]);
+    info.getColumn(1).width = 24;
+    info.getColumn(2).width = 40;
+    const sheet = workbook.addWorksheet("Pedidos", { views: [{ state: "frozen", ySplit: 1 }] });
+    sheet.columns = [
+      { header: "Fecha", key: "date", width: 22 }, { header: "Pedido", key: "orderId", width: 38 }, { header: "Cliente", key: "customerName", width: 28 },
+      { header: "Venta generada", key: "generatedSaleId", width: 38 }, { header: "Sucursal", key: "branchName", width: 24 }, { header: "Total", key: "total", width: 16 },
+      { header: "Pagado", key: "paid", width: 16 }, { header: "Saldo", key: "balance", width: 16 }, { header: "Estado", key: "status", width: 18 }, { header: "Estado pago", key: "paymentStatus", width: 18 },
+    ];
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: new Date(row.date), generatedSaleId: row.generatedSaleId ?? "" }));
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
+    ["total", "paid", "balance"].forEach((key) => { sheet.getColumn(key).numFmt = "#,##0.00"; });
+    sheet.getColumn("date").numFmt = "yyyy-mm-dd hh:mm";
+    return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
 
   async getOrderSaleTicket(orderId: string, user?: ReportUser) {
