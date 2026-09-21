@@ -122,3 +122,22 @@ The Compras report SHALL expose one compact document action that preserves its d
 #### Scenario: Compras PDF and Excel render independently
 - **WHEN** the user requests either PDF or XLSX
 - **THEN** only the requested renderer SHALL execute, and existing purchase tickets and legacy export actions SHALL remain available
+
+### Requirement: Pedidos uses a safe complete document export
+The Pedidos report SHALL preserve its date, tenant and branch filters, order/payment states and generated-sale relationship while exposing one compact document action. PDF, Excel and print SHALL use the complete filtered dataset from real count/batches in one read-only repeatable-read snapshot, with the same actor scope and permissions as Web. Legacy tickets and exports SHALL remain available.
+
+#### Scenario: Pedidos export preserves Web scope and order semantics
+- **WHEN** an authorized user exports Pedidos with a known date and scope
+- **THEN** PDF preview, PDF download, Excel download and print SHALL contain the same filtered orders, stable date/id ordering, real order/payment states and generated sale identifiers as Web, independent of UI pagination
+
+#### Scenario: Pedidos export is bounded and snapshot-consistent
+- **WHEN** the filtered Pedidos count is evaluated
+- **THEN** the export SHALL count first, read real batches of at most 1000 rows in one `REPEATABLE READ READ ONLY` snapshot, reject counts above 100000 and never truncate silently
+
+#### Scenario: Pedidos documents preserve branding and real fields
+- **WHEN** the Pedidos document is rendered
+- **THEN** it SHALL use available tenant/branch branding and logo with a clean fallback, preserve the generated-sale column, repeat headers and keep rows indivisible
+
+#### Scenario: Pedidos PDF and Excel render independently
+- **WHEN** the user requests PDF or XLSX
+- **THEN** only the requested renderer SHALL execute, while individual tickets and legacy exports remain unchanged

@@ -180,6 +180,18 @@ export const getOrderSalesReport = (filters: ReportFilters) =>
     `/reports/order-sales${buildQuery(filters)}`
   );
 
+export const getOrderSalesReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/order-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getOrderSalesReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/order-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getOrderSaleTicket = (orderId: string) =>
   apiBlobClientWithBaseUrl(
     reportsBaseUrl,

@@ -1,4 +1,4 @@
-import type { ReportActorContext } from "./sales-report.types";
+import type { PrintableCompanyHeader, ReportActorContext } from "./sales-report.types";
 
 export type { ReportActorContext };
 
@@ -34,6 +34,7 @@ export type OrderSalesListDataset = {
     pending: number;
   };
   rows: OrderSalesListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type OrderSaleTicketDataset = {

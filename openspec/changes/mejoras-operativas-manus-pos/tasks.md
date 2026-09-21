@@ -70,3 +70,13 @@
 - [x] 10.5.1 Propagate supplier invoice number/date through Web, PDF and XLSX with one optional partial-search filter and no invoice-date filter.
 - [ ] 10.6 Perform manual Compras QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
 - [ ] 10.7 Leave Pedidos and Clientes pending for later adoption.
+
+## 11. Pedidos document export adoption
+
+- [x] 11.1 Inspect and preserve Pedidos date/tenant/branch filters, order/payment states, generated-sale relationship, summaries, tickets and legacy export.
+- [x] 11.2 Add direct batchable Pedidos count/fetch queries with shared scope, stable order, read-only repeatable-read snapshot and 100000-row limit.
+- [x] 11.3 Add branded Pedidos PDF and ExcelJS definitions with generated-sale data, repeated headers, indivisible rows and independent renderers.
+- [x] 11.4 Integrate the compact Pedidos `Reporte` action with `PdfPreviewModal` and preserve legacy actions.
+- [x] 11.5 Add focused backend coverage for scope, batching, states, generated sale, workbook columns/types, PDF structure and renderer separation.
+- [x] 11.6 Perform manual Pedidos QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
+- [ ] 11.7 Leave Clientes pending for later adoption.

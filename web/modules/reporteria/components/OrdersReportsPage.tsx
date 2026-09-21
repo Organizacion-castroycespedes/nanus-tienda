@@ -11,14 +11,14 @@ import { ReportSummary } from "../../../components/design-system/ReportSummary";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
 import { useOrdersReports } from "../hooks/use-orders-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
-import { getOrderSaleTicket } from "../services/reporting.service";
+import { getOrderSaleTicket, getOrderSalesReportExcel, getOrderSalesReportPdf } from "../services/reporting.service";
 import type { OrderSalesListRow } from "../types";
 import { downloadBlob, downloadReportWorkbook, formatCurrency, formatDateTime, getTodayRange } from "../utils";
 import { PdfPreviewModal } from "./PdfPreviewModal";
 import { ReportStatusBadge } from "./ReportStatusBadge";
 import { createReportScopeFilters } from "./report-scope-filters";
 
-type PdfConfig = { title: string; fileName: string; getPdf: () => Promise<Blob> };
+type PdfConfig = { title: string; fileName: string; getPdf: () => Promise<Blob>; onDownloadExcel?: () => void };
 
 const OrdersReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
@@ -58,17 +58,25 @@ const OrdersReportsPage = () => {
     downloadReportWorkbook({ fileName: `reporte-pedidos-${scope.tenantId}-${dateRange.from}-${dateRange.to}.xls`, summaryTitle: "Reporte de pedidos", detailTitle: "Detalle de pedidos", filters: [{ label: "Tenant", value: scope.resolvedTenantLabel }, { label: "Sucursal", value: scope.resolvedBranchLabel }, { label: "Desde", value: dateRange.from }, { label: "Hasta", value: dateRange.to }], summary: [{ label: "Pedidos", value: dataset.summary.count }, { label: "Total", value: dataset.summary.total }, { label: "Pagado", value: dataset.summary.paid }, { label: "Saldo", value: dataset.summary.balance }, { label: "Completados", value: dataset.summary.completed }, { label: "Parciales", value: dataset.summary.partial }, { label: "Pendientes", value: dataset.summary.pending }], columns: ["Fecha", "Sucursal", "Cliente", "Pedido ID", "Venta generada", "Total", "Pagado", "Saldo", "Estado", "Estado pago"], rows: dataset.rows.map((row) => [formatDateTime(row.date), row.branchName ?? "", row.customerName, row.orderId, row.generatedSaleId ?? "", row.total, row.paid, row.balance, row.status, row.paymentStatus]) });
   };
 
+  const reportFilters = { tenantId: scope.tenantId, branchId: scope.branchId || undefined, dateFrom: dateRange.from, dateTo: dateRange.to };
+  const openReport = () => setPdfConfig({
+    title: "Reporte de pedidos",
+    fileName: `reporte-pedidos-${dateRange.from}-${dateRange.to}.pdf`,
+    getPdf: () => getOrderSalesReportPdf(reportFilters),
+    onDownloadExcel: () => void getOrderSalesReportExcel(reportFilters).then((blob) => downloadBlob(blob, `reporte-pedidos-${dateRange.from}-${dateRange.to}.xlsx`)),
+  });
+
   if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar la reportería de pedidos." />;
 
   return (
     <ReportLayout title="Pedidos y venta generada" description="Revisa pedidos por estado, pagos y venta asociada.">
       <div className="space-y-3">
-        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loading} disabled={!dateRange.from || !dateRange.to}>Buscar</Button><Button variant="outline" size="sm" disabled={!reports.dataset?.rows.length} onClick={exportReport}><Download className="h-4 w-4" /> Descargar reporte</Button></>} />
+        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loading} disabled={!dateRange.from || !dateRange.to}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId || !dateRange.from || !dateRange.to}>Reporte</Button><Button variant="outline" size="sm" disabled={!reports.dataset?.rows.length} onClick={exportReport}><Download className="h-4 w-4" /> Descargar reporte</Button></>} />
         <ReportSummary items={[{ label: "Pedidos", value: reports.dataset ? reports.dataset.summary.count : reports.searched ? 0 : "--" }, { label: "Completados", value: reports.dataset ? reports.dataset.summary.completed : reports.searched ? 0 : "--" }, { label: "Parciales", value: reports.dataset ? reports.dataset.summary.partial : reports.searched ? 0 : "--" }, { label: "Pendientes", value: reports.dataset ? reports.dataset.summary.pending : reports.searched ? 0 : "--" }]} />
         <DataTable columns={columns} rows={reports.dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? []} getRowKey={(row) => row.orderId} loading={reports.loading} error={reports.error} emptyState={reports.searched ? "No hay pedidos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />
         {reports.dataset ? <Pagination page={page} pageSize={pageSize} totalItems={reports.dataset.rows.length} onPageChange={setPage} /> : null}
       </div>
-      {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onClose={() => setPdfConfig(null)} /> : null}
+      {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onDownloadExcel={pdfConfig.onDownloadExcel} allowPrint onClose={() => setPdfConfig(null)} /> : null}
     </ReportLayout>
   );
 };
