@@ -31,3 +31,11 @@
 - [x] 6.1 Add/update focused tests for all five improvements and the reusable report components.
 - [x] 6.2 Run OpenSpec strict validation, relevant lint, tests and builds; separate pre-existing failures from regressions.
 - [x] 6.3 Perform Web/Electron visual QA at 1280x1024, desktop above 1280 and mobile; record PASS/FAIL/PARTIAL/BLOCKED evidence.
+
+## 7. Progressive standard-report adoption
+
+- [x] 7.1 Adopt the reusable compact report composition in `/reporteria/caja`, preserving closings/audits queries, tabs, summaries, exports and ticket actions.
+- [x] 7.2 Adopt the reusable compact report composition in `/reporteria/compras`, preserving status/date/scope filters, summaries, exports and ticket actions.
+- [x] 7.3 Adopt the reusable compact report composition in `/reporteria/pedidos`, preserving scope filters, order states, summaries, exports and ticket actions.
+- [x] 7.4 Adopt the reusable compact report composition in `/reporteria/clientes`, preserving customer filters and aggregates without adding unsupported date filters or metrics.
+- [x] 7.5 Add focused metadata coverage and validate the four report routes without changing backend contracts.

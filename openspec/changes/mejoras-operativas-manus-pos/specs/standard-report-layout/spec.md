@@ -22,3 +22,22 @@ Report filters SHALL be defined by report metadata rather than inferred from tab
 #### Scenario: Existing report is redesigned later
 - **WHEN** an existing report is migrated or redesigned
 - **THEN** its implementation SHALL evaluate and reuse the standard composition without requiring a mass migration in this change
+
+### Requirement: Progressive adoption preserves report contracts
+The caja, compras, pedidos and clientes reports SHALL adopt the standard composition progressively while preserving their existing service calls, query parameters, permissions, columns, actions and real summary fields.
+
+#### Scenario: Cash report is adopted
+- **WHEN** `/reporteria/caja` uses the standard composition
+- **THEN** its closings/audits tabs, date/tenant/branch filters, PDF tickets, Excel exports and tab-specific real summaries remain available
+
+#### Scenario: Purchases report is adopted
+- **WHEN** `/reporteria/compras` uses the standard composition
+- **THEN** its date/status/tenant/branch filters, purchase ticket actions, export and payment/receipt fields remain unchanged in meaning
+
+#### Scenario: Orders report is adopted
+- **WHEN** `/reporteria/pedidos` uses the standard composition
+- **THEN** its date/tenant/branch filters, generated-sale state, ticket actions and order status summaries remain unchanged in meaning
+
+#### Scenario: Customers report is adopted
+- **WHEN** `/reporteria/clientes` uses the standard composition
+- **THEN** its tenant/branch/customer document/customer name filters and customer-order aggregates remain unchanged in meaning, without adding a date filter or invented metric
