@@ -7,7 +7,6 @@ SERVICES=(
   "api"
   "backend-reporteria"
   "backend-facturacion-electronica"
-  "backend-perifericos"
 )
 
 for service in "${SERVICES[@]}"; do

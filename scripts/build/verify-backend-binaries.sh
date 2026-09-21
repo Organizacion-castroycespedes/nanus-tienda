@@ -7,7 +7,6 @@ BINARIES=(
   "api/dist-bin/api-linux"
   "backend-reporteria/dist-bin/backend-reporteria-linux"
   "backend-facturacion-electronica/dist-bin/backend-facturacion-electronica-linux"
-  "backend-perifericos/dist-bin/backend-perifericos-linux"
 )
 
 missing=0
