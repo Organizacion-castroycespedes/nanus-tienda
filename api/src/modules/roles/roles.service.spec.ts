@@ -61,6 +61,31 @@ test("RolesService: createRole persists tenant assignments", async () => {
   assert.ok(queries.some((query) => query.startsWith("INSERT INTO user_roles")));
 });
 
+test("RolesService: SUPER_USER query excludes SUPER_ADMIN", async () => {
+  let params: unknown[] | undefined;
+  const db = {
+    query: async (_text: string, queryParams: unknown[]) => {
+      params = queryParams;
+      return {
+        rows: [
+          { id: "role-user", nombre: "USER" },
+          { id: "role-admin", nombre: "ADMIN" },
+        ],
+      };
+    },
+  };
+
+  const service = new RolesService(db as never);
+  const result = await service.listRoles({
+    roles: ["SUPER_USER"],
+    userId: "user-1",
+    tenantId: "tenant-1",
+  });
+
+  assert.deepEqual(result.map((role) => role.nombre), ["USER", "ADMIN"]);
+  assert.deepEqual(params, ["user-1", false, "SUPER_ADMIN", "tenant-1"]);
+});
+
 test("RolesService: updateRole restores tenant assignments", async () => {
   const queries: string[] = [];
   const results = [

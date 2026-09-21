@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, Inject } from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
+import { SUPER_ADMIN_ROLE } from "../../common/services/role-assignment-policy";
 import type { CreateRoleDto } from "./dto/create-role.dto";
 import type { UpdateRoleDto } from "./dto/update-role.dto";
 
@@ -41,10 +42,17 @@ export class RolesService {
       LEFT JOIN user_roles
         ON user_roles.role_id = roles.id
         AND user_roles.user_id = $1
+        AND ($2::boolean OR user_roles.tenant_id = $4)
+      WHERE $2::boolean OR roles.nombre <> $3
       GROUP BY roles.id
       ORDER BY roles.nombre ASC
       `,
-      [userId]
+      [
+        userId,
+        actor.roles.includes(SUPER_ADMIN_ROLE),
+        SUPER_ADMIN_ROLE,
+        actor.tenantId ?? null,
+      ]
     );
     return result.rows ?? [];
   }

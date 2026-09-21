@@ -14,6 +14,10 @@ import type { ListUsersQueryDto } from "./dto/list-users-query.dto";
 import type { UserResponseDto } from "./dto/user-response.dto";
 import type { UpdateUserPasswordDto } from "./dto/update-password.dto";
 import type { UpdateProfileDto } from "../auth/dto/update-profile.dto";
+import {
+  assertCanAssignRole,
+  SUPER_ADMIN_ROLE,
+} from "../../common/services/role-assignment-policy";
 
 type ActorContext = {
   roles: string[];
@@ -55,7 +59,7 @@ export class UsersService {
   }
 
   private shouldFilterSuperAdmin(actor: ActorContext) {
-    return actor.roles.includes("ADMIN") && !this.isSuperAdmin(actor);
+    return !this.isSuperAdmin(actor);
   }
 
   private resolveTenantId(actor: ActorContext, tenantId?: string) {
@@ -265,12 +269,14 @@ export class UsersService {
       }
 
       const roleResult = await client.query(
-        `SELECT id FROM roles WHERE id = $1`,
+        `SELECT id, nombre FROM roles WHERE id = $1`,
         [payload.roleId]
       );
       if (!roleResult.rows[0]) {
         throw new BadRequestException("Rol inválido");
       }
+
+      assertCanAssignRole(actor.roles, roleResult.rows[0].nombre);
 
       const branchResult = await client.query(
         `SELECT id FROM tenant_branches WHERE id = $1 AND tenant_id = $2`,
@@ -362,7 +368,23 @@ export class UsersService {
     try {
       await client.query("BEGIN");
       const current = await this.fetchUserById(userId, client);
-      if (this.shouldFilterSuperAdmin(actor) && current.role_nombre === "SUPER_ADMIN") {
+      const assignedSuperAdminRole = await client.query(
+        `
+        SELECT 1
+        FROM user_roles
+        INNER JOIN roles ON roles.id = user_roles.role_id
+        WHERE user_roles.user_id = $1
+          AND user_roles.tenant_id = $2
+          AND roles.nombre = $3
+        LIMIT 1
+        `,
+        [userId, current.tenant_id, SUPER_ADMIN_ROLE]
+      );
+      if (
+        this.shouldFilterSuperAdmin(actor) &&
+        (current.role_nombre === SUPER_ADMIN_ROLE ||
+          assignedSuperAdminRole.rows[0])
+      ) {
         throw new ForbiddenException("No autorizado");
       }
       const tenantId = this.resolveTenantId(actor, current.tenant_id);
@@ -484,12 +506,14 @@ export class UsersService {
 
       if (payload.roleId) {
         const roleResult = await client.query(
-          `SELECT id FROM roles WHERE id = $1`,
+          `SELECT id, nombre FROM roles WHERE id = $1`,
           [payload.roleId]
         );
         if (!roleResult.rows[0]) {
           throw new BadRequestException("Rol inválido");
         }
+        assertCanAssignRole(actor.roles, roleResult.rows[0].nombre);
+
         await client.query(
           `DELETE FROM user_roles WHERE user_id = $1 AND tenant_id = $2`,
           [userId, tenantId]
