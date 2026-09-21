@@ -101,6 +101,43 @@ test("SalesReportAdapter.getSalesList: compara source_id text con sale UUID sin 
   assert.match(sql, /\$4::UUID\s+IS\s+NULL/i);
 });
 
+test("SalesReportAdapter POS export uses the same actor scope with real count and batches", async () => {
+  const queries: Array<{ sql: string; params: unknown[] }> = [];
+  const adapter = new SalesReportAdapter({ executeFunction: async () => null } as never, {} as never);
+  const client = {
+    query: async (sql: string, params: unknown[]) => {
+      queries.push({ sql, params });
+      return sql.includes("COUNT(*)")
+        ? { rows: [{ count: "1001" }] }
+        : { rows: [{ saleId: "sale-1", total: "10", paid: "10", balance: "0", billingStatus: "ACCEPTED" }] };
+    },
+  } as never;
+  const actor = {
+    userId: "40000000-0000-0000-0000-000000000001",
+    role: "USER",
+    tenantId: "00000000-0000-0000-0000-000000000001",
+    branchId: "30000000-0000-0000-0000-000000000001",
+  };
+
+  assert.equal(await adapter.getPosExportCount(actor, { dateFrom: "2026-09-20T00:00:00.000Z" }, client), 1001);
+  const rows = await adapter.getPosExportBatch(actor, { dateFrom: "2026-09-20T00:00:00.000Z" }, client, 1000, 1000);
+
+  assert.equal(rows[0].billingStatus, "ACCEPTED");
+  assert.match(queries[0].sql, /report_resolve_pos_scope/);
+  assert.match(queries[0].sql, /report_resolve_pos_scope\(\s*\$2::text,\s*\$3::uuid,\s*\$4::uuid,\s*\$5::uuid,\s*\$6::uuid\s*\)/i);
+  assert.match(queries[1].sql, /report_resolve_pos_scope\(\s*\$2::text,\s*\$3::uuid,\s*\$4::uuid,\s*\$5::uuid,\s*\$6::uuid\s*\)/i);
+  assert.deepEqual(queries[0].params.slice(0, 6), [
+    actor.userId,
+    actor.role,
+    actor.tenantId,
+    actor.branchId,
+    null,
+    null,
+  ]);
+  assert.match(queries[1].sql, /LIMIT \$9::integer OFFSET \$10::integer/);
+  assert.deepEqual(queries[1].params.slice(-2), [1000, 1000]);
+});
+
 test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branch", async () => {
   const adapter = new SalesReportAdapter({
     executeFunction: async () => null,

@@ -53,6 +53,7 @@ export type PosSalesListDataset = {
   };
   summary: PosSalesListSummary;
   rows: PosSalesListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type PosSaleTicketItem = {
@@ -122,6 +123,7 @@ export type PosSaleTicketDataset = {
 };
 
 export type PrintableCompanyHeader = {
+  tenantName: string | null;
   legalName: string | null;
   nit: string | null;
   dv: string | null;

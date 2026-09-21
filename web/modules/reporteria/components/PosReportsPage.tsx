@@ -15,13 +15,14 @@ import { printElectronicInvoiceTicket } from "../electronic-invoice-direct-print
 import {
   getPosSaleTicket,
   getPosSaleTicketPrintData,
+  getPosSalesReportPdf,
+  getPosSalesReportExcel,
   getElectronicInvoice,
   getElectronicInvoicePrintData,
 } from "../services/reporting.service";
 import type { PosSalesListRow } from "../types";
 import {
   downloadBlob,
-  downloadReportWorkbook,
   formatCurrency,
   formatDateTime,
   getApiErrorMessage,
@@ -64,6 +65,7 @@ const PosReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
+  const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
   const [deliveryRelation, setDeliveryRelation] =
     useState<SaleDeliveryRelation | null>(null);
   const [printingSaleId, setPrintingSaleId] = useState<string | null>(null);
@@ -372,7 +374,17 @@ const PosReportsPage = () => {
     [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, tenantId]
   );
 
-  const canExport = Boolean(dataset?.rows.length);
+  const canExport = Boolean(dataset);
+  const reportQuery = useMemo(() => ({
+    tenantId: tenantId || undefined,
+    branchId: branchId || undefined,
+    dateFrom: dateRange.from,
+    dateTo: dateRange.to,
+  }), [branchId, dateRange.from, dateRange.to, tenantId]);
+  const downloadReportExcel = useCallback(async () => {
+    const blob = await getPosSalesReportExcel(reportQuery);
+    downloadBlob(blob, `reporte-pos-${dateRange.from}-${dateRange.to}.xlsx`);
+  }, [dateRange.from, dateRange.to, reportQuery]);
   const reportFilters = useMemo<ReportFilterDefinition[]>(
     () => [
       {
@@ -422,32 +434,6 @@ const PosReportsPage = () => {
     [dataset?.rows, page]
   );
 
-  const downloadConciliationReport = () => {
-    if (!dataset) return;
-    downloadReportWorkbook({
-      fileName: `reporte-pos-${tenantId}-${dateRange.from}-${dateRange.to}.xls`,
-      summaryTitle: "Reporte POS",
-      detailTitle: "Detalle de ventas POS",
-      filters: [
-        { label: "Tenant", value: resolvedTenantLabel },
-        { label: "Sucursal", value: resolvedBranchLabel },
-        { label: "Desde", value: dateRange.from },
-        { label: "Hasta", value: dateRange.to },
-      ],
-      summary: [
-        { label: "Ventas", value: dataset.summary.count },
-        { label: "Total", value: dataset.summary.total },
-        { label: "Pagado", value: dataset.summary.paid },
-        { label: "Saldo", value: dataset.summary.balance },
-      ],
-      columns: ["Fecha", "Sucursal", "Cliente", "Venta ID", "Total", "Pagado", "Saldo", "Estado", "Estado pago"],
-      rows: dataset.rows.map((row) => [
-        formatDateTime(row.date), row.branchName ?? "", row.customerName || "Consumidor final",
-        row.saleId, row.total, row.paid, row.balance, row.status, row.paymentStatus,
-      ]),
-    });
-  };
-
   if (!canViewReports) {
     return (
       <FinanceAccessNotice description="No cuentas con permisos para consultar la reporteria POS." />
@@ -468,9 +454,9 @@ const PosReportsPage = () => {
             <Button size="sm" onClick={() => void handleSearch()} isLoading={loading} disabled={!dateRange.from || !dateRange.to}>
               Buscar
             </Button>
-          <Button variant="outline" size="sm" disabled={!canExport} onClick={downloadConciliationReport}>
-            <Download className="h-4 w-4" /> Descargar reporte POS para conciliación
-          </Button>
+            <Button variant="outline" size="sm" disabled={!canExport} onClick={() => setReportPreviewOpen(true)}>
+              <Eye className="h-4 w-4" /> Reporte
+            </Button>
           </>
         }
       />
@@ -539,6 +525,18 @@ const PosReportsPage = () => {
           fileName={pdfConfig.fileName}
           getPdf={pdfConfig.getPdf}
           onClose={() => setPdfConfig(null)}
+        />
+      ) : null}
+
+      {reportPreviewOpen ? (
+        <PdfPreviewModal
+          isOpen
+          title="Reporte de ventas POS"
+          fileName={`reporte-pos-${dateRange.from}-${dateRange.to}.pdf`}
+          getPdf={() => getPosSalesReportPdf(reportQuery)}
+          onDownloadExcel={() => void downloadReportExcel()}
+          allowPrint
+          onClose={() => setReportPreviewOpen(false)}
         />
       ) : null}
 

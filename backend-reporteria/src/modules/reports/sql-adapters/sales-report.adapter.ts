@@ -1,4 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
+import type { PoolClient } from "pg";
 import { DatabaseService } from "../../database/database.service";
 import { FunctionRunnerService } from "../../database/function-runner.service";
 import type {
@@ -7,11 +8,19 @@ import type {
   PosSaleTicketPayment,
   PrintableCompanyHeader,
   PosSalesListDataset,
+  PosSalesListRow,
   ReportActorContext,
 } from "../types/sales-report.types";
 import type { ElectronicInvoiceReadModel } from "../types/electronic-invoice-representation.types";
 
 type SalesListParams = {
+  tenantId?: string;
+  branchId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type PosExportFilters = {
   tenantId?: string;
   branchId?: string;
   dateFrom?: string;
@@ -125,6 +134,128 @@ export class SalesReportAdapter {
     };
   }
 
+  private scopeParams(actor: ReportActorContext, filters: PosExportFilters) {
+    return [
+      actor.userId,
+      actor.role,
+      actor.tenantId,
+      actor.branchId,
+      filters.tenantId ?? null,
+      filters.branchId ?? null,
+      filters.dateFrom ?? null,
+      filters.dateTo ?? null,
+    ];
+  }
+
+  async getPosExportCount(
+    actor: ReportActorContext,
+    filters: PosExportFilters,
+    client: PoolClient,
+  ): Promise<number> {
+    const result = await client.query<{ count: string }>(
+      `WITH resolved AS (
+         SELECT (scope->>'tenantId')::uuid AS tenant_id,
+                NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+           FROM public.report_resolve_pos_scope(
+             $2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+           ) AS scope
+       )
+       SELECT COUNT(*)::text AS count
+       FROM public.sales AS sale
+       CROSS JOIN resolved
+       WHERE sale.tenant_id = resolved.tenant_id
+         AND (resolved.branch_id IS NULL OR sale.branch_id = resolved.branch_id)
+         AND ($7::timestamptz IS NULL OR sale.created_at >= $7::timestamptz)
+         AND ($8::timestamptz IS NULL OR sale.created_at < $8::timestamptz)
+         AND (NOT resolved.restrict_to_user OR sale.user_id = $1::uuid)`,
+      this.scopeParams(actor, filters),
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async getPosExportBatch(
+    actor: ReportActorContext,
+    filters: PosExportFilters,
+    client: PoolClient,
+    offset: number,
+    limit: number,
+  ): Promise<PosSalesListRow[]> {
+    const result = await client.query<PosSalesListRow & { billingStatus: PosSalesListRow["billingStatus"] }>(
+      `WITH resolved AS (
+         SELECT (scope->>'tenantId')::uuid AS tenant_id,
+                NULLIF(scope->>'branchId', '')::uuid AS branch_id,
+                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
+           FROM public.report_resolve_pos_scope(
+             $2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid
+           ) AS scope
+       )
+       SELECT sale.id AS "saleId", sale.created_at AS date, sale.status,
+              COALESCE(NULLIF(BTRIM(customer.name), ''), 'CONSUMIDOR FINAL') AS "customerName",
+              sale.total::numeric AS total,
+              COALESCE(sale.total_paid, 0)::numeric AS paid,
+              COALESCE(sale.balance_due, sale.balance,
+                GREATEST(sale.total - COALESCE(sale.total_paid, 0), 0))::numeric AS balance,
+              COALESCE(sale.payment_status, 'PENDING') AS "paymentStatus",
+              sale.branch_id AS "branchId", branch.nombre AS "branchName",
+              payment_context.cash_session_id AS "cashSessionId",
+              COALESCE(document.status,
+                CASE WHEN request_context.request_exists THEN 'REQUESTED' ELSE 'NO_DOCUMENT' END
+              ) AS "billingStatus"
+       FROM public.sales AS sale
+       CROSS JOIN resolved
+       LEFT JOIN public.customers AS customer
+         ON customer.id = sale.customer_id AND customer.tenant_id = sale.tenant_id
+       LEFT JOIN public.tenant_branches AS branch
+         ON branch.id = sale.branch_id AND branch.tenant_id = sale.tenant_id
+       LEFT JOIN LATERAL (
+         SELECT payment.cash_session_id
+           FROM public.payments AS payment
+          WHERE payment.tenant_id = sale.tenant_id
+            AND payment.reference_type = 'SALE'
+            AND payment.reference_id = sale.id
+            AND payment.direction = 'IN'
+          ORDER BY payment.created_at ASC, payment.id ASC
+          LIMIT 1
+       ) AS payment_context ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT latest.status
+           FROM public.electronic_documents AS latest
+          WHERE latest.tenant_id = sale.tenant_id
+            AND latest.source_type = 'SALE'
+            AND latest.source_id = sale.id
+          ORDER BY latest.created_at DESC, latest.id DESC
+          LIMIT 1
+       ) AS document ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT EXISTS (
+           SELECT 1 FROM public.integration_outbox_events AS event
+            WHERE event.tenant_id = sale.tenant_id
+              AND event.source_type = 'SALE'
+              AND event.source_id = sale.id::text
+         ) AS request_exists
+       ) AS request_context ON TRUE
+       WHERE sale.tenant_id = resolved.tenant_id
+         AND (resolved.branch_id IS NULL OR sale.branch_id = resolved.branch_id)
+         AND ($7::timestamptz IS NULL OR sale.created_at >= $7::timestamptz)
+         AND ($8::timestamptz IS NULL OR sale.created_at < $8::timestamptz)
+         AND (NOT resolved.restrict_to_user OR sale.user_id = $1::uuid)
+       ORDER BY sale.created_at DESC, sale.id DESC
+       LIMIT $9::integer OFFSET $10::integer`,
+      [...this.scopeParams(actor, filters), limit, offset],
+    );
+    return result.rows.map((row) => ({
+      ...row,
+      total: Number(row.total),
+      paid: Number(row.paid),
+      balance: Number(row.balance),
+      billingStatus: row.billingStatus,
+      billingDocumentNumber: null,
+      billingCufe: null,
+      billingAcceptedAt: null,
+    }));
+  }
+
   async getSaleTicket(
     actor: ReportActorContext,
     saleId: string
@@ -226,6 +357,7 @@ export class SalesReportAdapter {
       ? config.logo
       : typeof config.logoUrl === "string" ? config.logoUrl : null;
     return {
+      tenantName: row?.tenantName ?? null,
       legalName: row?.legalName ?? row?.tenantName ?? null,
       nit: row?.nit ?? null,
       dv: row?.dv ?? null,

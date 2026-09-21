@@ -41,3 +41,44 @@ The caja, compras, pedidos and clientes reports SHALL adopt the standard composi
 #### Scenario: Customers report is adopted
 - **WHEN** `/reporteria/clientes` uses the standard composition
 - **THEN** its tenant/branch/customer document/customer name filters and customer-order aggregates remain unchanged in meaning, without adding a date filter or invented metric
+
+### Requirement: Standard report export uses a safe complete filtered snapshot
+Document exports SHALL use the same tenant, branch, date, permission and report-specific filter semantics as the Web query, but SHALL obtain the complete filtered dataset through a real count plus bounded batches inside a read-only repeatable-read snapshot. UI pagination SHALL NOT limit the document. Exports SHALL reject datasets above 100000 rows and SHALL never truncate silently.
+
+#### Scenario: POS export matches the filtered Web scope
+- **WHEN** an authorized user opens the POS report action with active filters
+- **THEN** PDF preview, PDF download, Excel download and print SHALL represent the complete result of those same filters and scope, independent of the visible UI page
+
+#### Scenario: POS export exceeds the safe limit
+- **WHEN** the filtered POS count is greater than 100000 rows
+- **THEN** the backend SHALL abort with a user-facing domain error asking for narrower filters
+
+#### Scenario: POS export reads multiple real batches
+- **WHEN** the filtered POS dataset requires more than one 1000-row batch
+- **THEN** all batches SHALL be read in one `REPEATABLE READ READ ONLY` snapshot and their count SHALL equal the initial count
+
+### Requirement: Standard report documents preserve corporate context
+Document preview, PDF and Excel SHALL use the active tenant and branch corporate context when available, including logo, legal name, tax identification and available contact fields, with a clean empty-field fallback. Individual POS tickets and accepted electronic documents SHALL remain separate actions.
+
+#### Scenario: POS document has corporate branding
+- **WHEN** the tenant has configured company details or logo
+- **THEN** the document header SHALL use those values and SHALL NOT use demo tenant data
+
+#### Scenario: POS document has incomplete branding
+- **WHEN** one or more corporate fields are absent
+- **THEN** the document SHALL omit those fields without inventing replacement values
+
+### Requirement: POS is the first standard document export adoption
+The POS report SHALL expose one compact `Reporte` action that opens the reusable PDF preview with Cerrar, Descargar PDF, Descargar Excel and Imprimir, while preserving its existing filters, summary, pagination, individual ticket and accepted electronic-document actions. Caja Cierres, Caja Arqueos, Compras, Pedidos and Clientes SHALL be adopted only after the POS pipeline is certified.
+
+#### Scenario: POS pilot is implemented before later reports
+- **WHEN** the standard document export phase is delivered incrementally
+- **THEN** `/reporteria/pos` is the first report using the safe export pipeline and the other five report variants remain unchanged until the pilot is certified
+
+#### Scenario: POS PDF fits operational report columns
+- **WHEN** the POS document has the seven contractual list columns
+- **THEN** its configured PDF orientation SHALL fit all columns, repeat the table header, keep each sale row indivisible, and show readable tenant and branch names without technical UUIDs
+
+#### Scenario: POS report action replaces legacy reconciliation download
+- **WHEN** the user opens the POS report toolbar
+- **THEN** the compact `Reporte` action SHALL provide preview, PDF, Excel and print actions and the legacy reconciliation button SHALL not be rendered

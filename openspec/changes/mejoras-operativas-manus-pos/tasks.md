@@ -39,3 +39,14 @@
 - [x] 7.3 Adopt the reusable compact report composition in `/reporteria/pedidos`, preserving scope filters, order states, summaries, exports and ticket actions.
 - [x] 7.4 Adopt the reusable compact report composition in `/reporteria/clientes`, preserving customer filters and aggregates without adding unsupported date filters or metrics.
 - [x] 7.5 Add focused metadata coverage and validate the four report routes without changing backend contracts.
+
+## 8. Standard document export pilot
+
+- [x] 8.1 Define a reusable server-side export pipeline with count, 1000-row real batches, `MAX_EXPORT_ROWS = 100000`, no silent truncation and one `REPEATABLE READ READ ONLY` snapshot.
+- [x] 8.2 Add POS export queries/adapters that preserve `report_resolve_pos_scope`, actor permissions, tenant, branch and date semantics without materializing `report_pos_sales` JSON.
+- [x] 8.3 Reuse the corporate branding source and configurable report definition for POS PDF and Excel output.
+- [x] 8.4 Integrate one compact POS `Reporte` action with the existing `PdfPreviewModal`, preserving individual POS/electronic ticket actions.
+- [x] 8.5 Add focused backend/frontend tests for count, batching, limit, scope parity, branding fallback and PDF/Excel/print actions.
+- [ ] 8.6 Validate POS API/Web tests, builds, lint, OpenSpec strict and diff check; leave Caja Cierres/Arqueos, Compras, Pedidos and Clientes for later adoption after pilot certification and manual QA.
+- [x] 8.7 Correct POS PDF landscape layout, repeated headers, indivisible rows and readable corporate scope names without changing the export dataset.
+- [x] 8.8 Remove the frontend-only legacy POS reconciliation download action while preserving the standard `Reporte` viewer actions.

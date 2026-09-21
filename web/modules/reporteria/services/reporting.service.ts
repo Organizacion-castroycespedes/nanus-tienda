@@ -68,6 +68,18 @@ export const getPosSalesReport = (filters: ReportFilters) =>
     `/reports/pos-sales${buildQuery(filters)}`
   );
 
+export const getPosSalesReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/pos-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getPosSalesReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/pos-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getPosSaleTicket = (saleId: string) =>
   apiBlobClientWithBaseUrl(reportsBaseUrl, `/reports/pos-sales/${saleId}/ticket`);
 

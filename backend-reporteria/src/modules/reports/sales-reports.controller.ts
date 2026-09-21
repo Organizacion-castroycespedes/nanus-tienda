@@ -41,16 +41,23 @@ export class SalesReportsController {
     @Req() request: AuthenticatedRequest,
     @Res() response: Response
   ) {
-    if ((query.format ?? "json").toLowerCase() === "pdf") {
-      const pdfBuffer = await this.salesReportsService.getSalesListPdf(query, request.user);
-
-      response.setHeader("Content-Type", "application/pdf");
+    const format = (query.format ?? "json").toLowerCase();
+    if (format === "pdf" || format === "xlsx") {
+      const document = format === "pdf"
+        ? await this.salesReportsService.getSalesListPdf(query, request.user)
+        : await this.salesReportsService.getSalesListExcel(query, request.user);
+      response.setHeader(
+        "Content-Type",
+        format === "pdf"
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
       response.setHeader(
         "Content-Disposition",
-        'inline; filename="reporte-ventas-pos.pdf"'
+        `${format === "pdf" ? "inline" : "attachment"}; filename="reporte-ventas-pos.${format}"`,
       );
-      response.setHeader("Content-Length", pdfBuffer.length);
-      response.end(pdfBuffer);
+      response.setHeader("Content-Length", document.length);
+      response.end(document);
       return;
     }
 
