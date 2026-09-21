@@ -664,17 +664,17 @@ export const CustomerForm = ({
       setPreview(nextPreview);
       setSelectedFields(buildDefaultSelectedFields(nextPreview, values));
       if (nextPreview.lookupStatus === "FOUND") {
-        setLookupMessage("Consulta DIAN mock lista.");
+        setLookupMessage("Consulta DIAN lista.");
         setLookupMessageVariant("success");
       } else {
-        setLookupMessage("DIAN mock no encontro datos. Puedes guardar manual.");
+        setLookupMessage("DIAN no encontro datos. Puedes guardar manual.");
         setLookupMessageVariant("warning");
       }
     } catch (error) {
       setLookupMessage(
         error instanceof Error
           ? error.message
-          : "No se pudo consultar DIAN mock."
+          : "No se pudo consultar DIAN."
       );
       setLookupMessageVariant("error");
     } finally {
@@ -693,7 +693,7 @@ export const CustomerForm = ({
 
   const handleApplyPreview = async () => {
     if (!preview || preview.lookupStatus !== "FOUND") {
-      setLookupMessage("Consulta DIAN mock requerida.");
+      setLookupMessage("Consulta DIAN requerida.");
       setLookupMessageVariant("warning");
       return;
     }
@@ -711,7 +711,7 @@ export const CustomerForm = ({
     if (mode === "create" || !customer) {
       setValues((current) => applyPreviewToValues(current, preview, selectedFields));
       setLastAppliedFields(selectedFields);
-      setLookupMessage("Campos DIAN mock aplicados al formulario.");
+      setLookupMessage("Campos DIAN aplicados al formulario.");
       setLookupMessageVariant("success");
       return;
     }
@@ -726,13 +726,13 @@ export const CustomerForm = ({
       });
       setValues((current) => mergeFiscalCustomerIntoValues(current, applied.customer));
       setLastAppliedFields(applied.appliedFields);
-      setLookupMessage("Campos DIAN mock aplicados al cliente.");
+      setLookupMessage("Campos DIAN aplicados al cliente.");
       setLookupMessageVariant("success");
     } catch (error) {
       setLookupMessage(
         error instanceof Error
           ? error.message
-          : "No se pudieron aplicar campos DIAN mock."
+          : "No se pudieron aplicar campos DIAN."
       );
       setLookupMessageVariant("error");
     } finally {
@@ -993,7 +993,7 @@ export const CustomerForm = ({
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
               <ShieldCheck className="h-4 w-4" />
-              Consultar DIAN mock
+              Consultar DIAN
             </div>
             <div className="flex flex-wrap gap-2">
               <Button

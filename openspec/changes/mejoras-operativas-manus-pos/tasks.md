@@ -1,0 +1,104 @@
+## 1. Inspection and contracts
+
+- [x] 1.1 Confirm current POS customer selector, shared tenant layout, inventory dashboard, purchase receiving, POS report, design-system and Electron loading path.
+- [x] 1.2 Confirm inventory cost source and dashboard response types; stop if no single persisted rule is demonstrable.
+- [x] 1.3 Confirm supplier invoice fields, receiving transaction boundaries and DIAN accepted enum/action contract.
+
+## 2. POS and navigation
+
+- [x] 2.1 Add stable Spanish A-Z customer ordering with focused tests and preserve search/selection behavior.
+- [x] 2.2 Apply the shared <=1280px drawer and >1280px persistent sidebar rule with accessible active state and focused tests where supported.
+
+## 3. Inventory
+
+- [x] 3.1 Add backend `inventoryCostTotal` only from the confirmed cost source and test the response/calculation.
+- [x] 3.2 Redesign inventory dashboard around existing real contract fields, compact filters, KPIs, tables, trends and explicit states without illustrative data.
+
+## 4. Purchase receiving
+
+- [x] 4.1 Extend receiving DTO/entity/repository/response with the demonstrated supplier invoice field and date only when required and absent.
+- [x] 4.2 Persist supplier invoice atomically in the existing receiving transaction and test success, retrieval and rollback.
+- [x] 4.3 Implement the compact Información -> Productos -> Confirmación receiving UX with nearby validation.
+
+## 5. POS reports and reusable pattern
+
+- [x] 5.1 Add the reusable report layout composition using existing tokens, table, states and pagination primitives.
+- [x] 5.2 Redesign POS report toolbar, current-day initial query, summary and table using the existing pagination.
+- [x] 5.3 Gate electronic document action on the real accepted-DIAN enum while preserving conventional POS ticket behavior.
+
+## 6. Validation
+
+- [x] 6.1 Add/update focused tests for all five improvements and the reusable report components.
+- [x] 6.2 Run OpenSpec strict validation, relevant lint, tests and builds; separate pre-existing failures from regressions.
+- [x] 6.3 Perform Web/Electron visual QA at 1280x1024, desktop above 1280 and mobile; record PASS/FAIL/PARTIAL/BLOCKED evidence.
+
+## 7. Progressive standard-report adoption
+
+- [x] 7.1 Adopt the reusable compact report composition in `/reporteria/caja`, preserving closings/audits queries, tabs, summaries, exports and ticket actions.
+- [x] 7.2 Adopt the reusable compact report composition in `/reporteria/compras`, preserving status/date/scope filters, summaries, exports and ticket actions.
+- [x] 7.3 Adopt the reusable compact report composition in `/reporteria/pedidos`, preserving scope filters, order states, summaries, exports and ticket actions.
+- [x] 7.4 Adopt the reusable compact report composition in `/reporteria/clientes` before the later customer-master redesign.
+- [x] 7.5 Add focused metadata coverage and validate the four report routes without changing backend contracts.
+
+## 8. Standard document export pilot
+
+- [x] 8.1 Define a reusable server-side export pipeline with count, 1000-row real batches, `MAX_EXPORT_ROWS = 100000`, no silent truncation and one `REPEATABLE READ READ ONLY` snapshot.
+- [x] 8.2 Add POS export queries/adapters that preserve `report_resolve_pos_scope`, actor permissions, tenant, branch and date semantics without materializing `report_pos_sales` JSON.
+- [x] 8.3 Reuse the corporate branding source and configurable report definition for POS PDF and Excel output.
+- [x] 8.4 Integrate one compact POS `Reporte` action with the existing `PdfPreviewModal`, preserving individual POS/electronic ticket actions.
+- [x] 8.5 Add focused backend/frontend tests for count, batching, limit, scope parity, branding fallback and PDF/Excel/print actions.
+- [x] 8.6 Validate POS API/Web tests, builds, lint, OpenSpec strict and diff check; leave Caja Cierres/Arqueos, Compras, Pedidos and Clientes for later adoption after pilot certification and manual QA.
+- [x] 8.7 Correct POS PDF landscape layout, repeated headers, indivisible rows and readable corporate scope names without changing the export dataset.
+- [x] 8.8 Remove the frontend-only legacy POS reconciliation download action while preserving the standard `Reporte` viewer actions.
+
+## 9. Caja document export adoption
+
+- [x] 9.1 Inspect and preserve Caja Cierres/Arqueos filters, tabs, tickets and Web contracts; confirm the legacy SQL functions are not used as false export batching.
+- [x] 9.2 Add real count/batch adapters for Cierres and Arqueos with shared scope, stable ordering, read-only repeatable-read snapshot and export limit.
+- [x] 9.3 Add separate branded PDF and Excel definitions for Cierres and Arqueos with repeated headers and indivisible rows.
+- [x] 9.4 Add compact Caja `Reporte` action selecting the active tab document while preserving legacy exports and individual tickets.
+- [x] 9.5 Add focused backend/frontend coverage for Caja scope, batching, tab selection, document definitions, Excel types and branding fallback.
+- [x] 9.6 Run Caja/POS regression tests, builds, lint, OpenSpec strict and diff check; leave Compras, Pedidos and Clientes pending.
+
+## 10. Compras document export adoption
+
+- [x] 10.1 Inspect the real Compras Web contract and preserve date/status/tenant/branch filters, supplier column, summaries, tickets and legacy export.
+- [x] 10.2 Add direct batchable Compras count/fetch queries with shared scope, stable order, read-only repeatable-read snapshot and 100000-row limit.
+- [x] 10.3 Add branded Compras PDF and ExcelJS definitions with real columns, repeated headers, indivisible rows and independent renderers.
+- [x] 10.4 Integrate the compact Compras `Reporte` action with `PdfPreviewModal` and preserve legacy actions.
+- [x] 10.5 Add focused backend/frontend coverage for scope, batching, workbook columns/types, PDF structure and renderer separation.
+- [x] 10.5.1 Propagate supplier invoice number/date through Web, PDF and XLSX with one optional partial-search filter and no invoice-date filter.
+- [ ] 10.6 Perform manual Compras QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
+- [x] 10.7 Leave only Clientes pending for later adoption after the Compras phase.
+
+## 11. Pedidos document export adoption
+
+- [x] 11.1 Inspect and preserve Pedidos date/tenant/branch filters, order/payment states, generated-sale relationship, summaries, tickets and legacy export.
+- [x] 11.2 Add direct batchable Pedidos count/fetch queries with shared scope, stable order, read-only repeatable-read snapshot and 100000-row limit.
+- [x] 11.3 Add branded Pedidos PDF and ExcelJS definitions with generated-sale data, repeated headers, indivisible rows and independent renderers.
+- [x] 11.4 Integrate the compact Pedidos `Reporte` action with `PdfPreviewModal` and preserve legacy actions.
+- [x] 11.5 Add focused backend coverage for scope, batching, states, generated sale, workbook columns/types, PDF structure and renderer separation.
+- [x] 11.6 Perform manual Pedidos QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print, branding, tickets and legacy export.
+- [x] 11.7 Start Clientes adoption only after Pedidos certification; preserve the customer master scope decision.
+
+## 12. Clientes customer master adoption
+
+- [x] 12.1 Confirm the customer commercial/fiscal source, identity precedence and tenant-only scope without branch or transactional relationships.
+- [x] 12.2 Add direct customer count/batch reads from `customers` and geographic catalogs with stable order, repeatable-read snapshot and export limit.
+- [x] 12.3 Replace the customer-order report contract with the tenant-scoped customer master Web contract while leaving `report_customer_orders_status` untouched.
+- [x] 12.4 Add compact customer list filters, commercial/fiscal detail panel, null states and fiscal status/active state rendering.
+- [x] 12.5 Add independent branded PDF/XLSX export through `DocumentExportService` and `PdfPreviewModal`.
+- [x] 12.6 Add focused coverage for tenant isolation, identity filter, count/batch, fiscal fields, PDF branding and XLSX serialization.
+- [x] 12.7 Perform manual Clientes QA at 1024px, desktop and mobile, comparing Web/PDF/XLSX/print and tenant isolation.
+
+## 13. Reporter operational alignment follow-up
+
+- [x] 13.1 Add the secondary normalized customer identification filter to Pedidos across Web, PDF, XLSX and print using the same direct SQL scope.
+- [x] 13.2 Homologate Clientes, Pedidos, Compras and Caja to one compact eye-icon `Reporte` action and remove only redundant legacy download buttons from their toolbars.
+- [x] 13.3 Perform manual QA for the Pedidos identification filter and the four aligned report toolbars at desktop, 1024px and mobile.
+
+## 14. POS customer identification filter
+
+- [ ] 14.1 Add the secondary normalized customer identification filter to POS Web, PDF, XLSX and print using the live sale-to-customer relationship and shared direct SQL scope.
+- [ ] 14.2 Add focused POS adapter, parameter mapping and frontend filter coverage without changing tickets, DIAN actions or payment semantics.
+- [x] 14.3 Perform manual POS QA for exact/partial/reset/no-result identification filters, export parity and responsive layouts.

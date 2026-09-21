@@ -60,6 +60,10 @@ type UpdatePurchaseBody = Partial<CreatePurchaseBody> & {
 };
 
 type ReceivePurchaseBody = {
+  supplierInvoiceNumber?: string;
+  supplier_invoice_number?: string;
+  supplierInvoiceDate?: string | null;
+  supplier_invoice_date?: string | null;
   items: Array<{
     product_id?: string;
     productId?: string;
@@ -227,7 +231,11 @@ export class PurchaseController {
               : undefined,
       })),
       this.getInventoryContext(request),
-      this.buildActor(request)
+      this.buildActor(request),
+      {
+        supplierInvoiceNumber: body.supplierInvoiceNumber ?? body.supplier_invoice_number,
+        supplierInvoiceDate: body.supplierInvoiceDate ?? body.supplier_invoice_date,
+      }
     );
   }
 

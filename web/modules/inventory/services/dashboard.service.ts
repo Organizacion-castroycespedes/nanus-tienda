@@ -23,6 +23,7 @@ export type InventoryDashboardCashSessionOption = {
 export type InventoryDashboardResponse = {
   summary: {
     stockTotal: number;
+    inventoryCostTotal: number;
     productsLow: number;
     productsOut: number;
     pendingPurchases: number;

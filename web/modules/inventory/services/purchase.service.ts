@@ -19,6 +19,8 @@ export type PurchaseResponse = {
   totalPaid: number;
   balanceDue: number;
   createdAt: string;
+  supplierInvoiceNumber?: string | null;
+  supplierInvoiceDate?: string | null;
   motivoCancelacion?: string | null;
   canceladoPor?: string | null;
   canceladoPorNombre?: string | null;
@@ -91,6 +93,8 @@ export type CreatePurchasePayload = {
 };
 
 export type ReceivePurchasePayload = {
+  supplierInvoiceNumber: string;
+  supplierInvoiceDate?: string | null;
   items: Array<{
     product_id?: string;
     productId?: string;

@@ -1,4 +1,4 @@
-import type { ReportActorContext } from "./sales-report.types";
+import type { PrintableCompanyHeader, ReportActorContext } from "./sales-report.types";
 
 export type { ReportActorContext };
 
@@ -41,6 +41,7 @@ export type CashClosingListDataset = {
     difference: number;
   };
   rows: CashClosingListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type CashClosingTicketDataset = {
@@ -217,6 +218,7 @@ export type CashAuditListDataset = {
     difference: number;
   };
   rows: CashAuditListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type CashAuditTicketDataset = {

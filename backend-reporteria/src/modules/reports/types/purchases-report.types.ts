@@ -1,4 +1,4 @@
-import type { ReportActorContext } from "./sales-report.types";
+import type { PrintableCompanyHeader, ReportActorContext } from "./sales-report.types";
 
 export type { ReportActorContext };
 
@@ -6,6 +6,8 @@ export type PurchaseReportListRow = {
   purchaseId: string;
   date: string;
   supplierName: string;
+  supplierInvoiceNumber: string | null;
+  supplierInvoiceDate: string | null;
   total: number;
   totalPedido?: number;
   totalLiquidado?: number;
@@ -25,6 +27,7 @@ export type PurchasesReportListDataset = {
     dateFrom: string | null;
     dateTo: string | null;
     status?: string | null;
+    supplierInvoiceNumber?: string | null;
     actorRole: string;
   };
   summary: {
@@ -37,6 +40,7 @@ export type PurchasesReportListDataset = {
     balance: number;
   };
   rows: PurchaseReportListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type PurchaseTicketDataset = {

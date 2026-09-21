@@ -25,6 +25,41 @@ export class CustomersReportsController {
     private readonly customersReportsService: CustomersReportsService
   ) {}
 
+  @Get()
+  async getCustomerMaster(
+    @Query()
+    query: {
+      tenantId?: string;
+      customerDocument?: string;
+      customerName?: string;
+      format?: string;
+    },
+    @Req() request: AuthenticatedRequest,
+    @Res() response: Response,
+  ) {
+    const format = (query.format ?? "json").toLowerCase();
+    if (format === "pdf" || format === "xlsx") {
+      const document = format === "pdf"
+        ? await this.customersReportsService.getCustomerMasterPdf(query, request.user)
+        : await this.customersReportsService.getCustomerMasterExcel(query, request.user);
+      response.setHeader(
+        "Content-Type",
+        format === "pdf"
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      response.setHeader(
+        "Content-Disposition",
+        `${format === "pdf" ? "inline" : "attachment"}; filename="reporte-clientes.${format}"`,
+      );
+      response.setHeader("Content-Length", document.length);
+      response.end(document);
+      return;
+    }
+
+    response.json(await this.customersReportsService.getCustomerMaster(query, request.user));
+  }
+
   @Get("orders-status")
   async getCustomerOrdersStatus(
     @Query()

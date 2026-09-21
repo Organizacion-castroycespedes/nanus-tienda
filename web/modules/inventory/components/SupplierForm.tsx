@@ -667,17 +667,17 @@ export const SupplierForm = ({
       setPreview(nextPreview);
       setSelectedFields(buildDefaultSelectedFields(nextPreview, values));
       if (nextPreview.lookupStatus === "FOUND") {
-        setLookupMessage("Consulta fiscal mock lista.");
+        setLookupMessage("Consulta fiscal lista.");
         setLookupMessageVariant("success");
       } else {
-        setLookupMessage("Mock fiscal sin datos. Puedes guardar manual.");
+        setLookupMessage("Fiscal sin datos. Puedes guardar manual.");
         setLookupMessageVariant("warning");
       }
     } catch (error) {
       setLookupMessage(
         error instanceof Error
           ? error.message
-          : "No se pudo consultar datos fiscales mock."
+          : "No se pudo consultar datos fiscales."
       );
       setLookupMessageVariant("error");
     } finally {
@@ -696,7 +696,7 @@ export const SupplierForm = ({
 
   const handleApplyPreview = async () => {
     if (!preview || preview.lookupStatus !== "FOUND") {
-      setLookupMessage("Consulta fiscal mock requerida.");
+      setLookupMessage("Consulta fiscal requerida.");
       setLookupMessageVariant("warning");
       return;
     }
@@ -714,7 +714,7 @@ export const SupplierForm = ({
     if (mode === "create" || !supplier) {
       setValues((current) => applyPreviewToValues(current, preview, selectedFields));
       setLastAppliedFields(selectedFields);
-      setLookupMessage("Campos mock aplicados al formulario.");
+      setLookupMessage("Campos aplicados al formulario.");
       setLookupMessageVariant("success");
       return;
     }
@@ -728,13 +728,13 @@ export const SupplierForm = ({
       });
       setValues((current) => mergeFiscalSupplierIntoValues(current, applied.supplier));
       setLastAppliedFields(applied.appliedFields);
-      setLookupMessage("Campos mock aplicados al proveedor.");
+      setLookupMessage("Campos aplicados al proveedor.");
       setLookupMessageVariant("success");
     } catch (error) {
       setLookupMessage(
         error instanceof Error
           ? error.message
-          : "No se pudieron aplicar campos fiscales mock."
+          : "No se pudieron aplicar campos fiscales."
       );
       setLookupMessageVariant("error");
     } finally {
@@ -903,7 +903,7 @@ export const SupplierForm = ({
 
         <div className="grid gap-4 md:grid-cols-3">
           <Select
-            label="personType"
+            label="Tipo persona"
             value={values.personType}
             onChange={(event) =>
               updateValue(
@@ -987,12 +987,12 @@ export const SupplierForm = ({
             isDianValidated
           </label>
         </div>
-
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        {/* API DIAN CONSULTA CLIENTE       */}
+        {/* <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
               <ShieldCheck className="h-4 w-4" />
-              Consulta fiscal mock
+              Consulta fiscal
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1004,7 +1004,7 @@ export const SupplierForm = ({
                 onClick={() => void handleLookup()}
               >
                 <FileCheck2 className="h-4 w-4" />
-                Consultar datos fiscales mock
+                Consultar datos fiscales
               </Button>
               <Button
                 type="button"
@@ -1125,8 +1125,8 @@ export const SupplierForm = ({
               <span>{lookupMessage}</span>
             </div>
           ) : null}
-        </div>
-
+        </div> */}
+        
         <div className="grid gap-4 md:grid-cols-3">
           <Select
             label="País"

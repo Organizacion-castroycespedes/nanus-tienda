@@ -4,314 +4,76 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Eye } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { Input } from "../../../components/design-system/Input";
+import { Pagination } from "../../../components/design-system/Pagination";
+import { ReportFilters } from "../../../components/design-system/ReportFilters";
+import { ReportLayout } from "../../../components/design-system/ReportLayout";
+import { ReportSummary } from "../../../components/design-system/ReportSummary";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
 import { useOrdersReports } from "../hooks/use-orders-reports";
 import { useReportingScope } from "../hooks/use-reporting-scope";
-import { getOrderSaleTicket } from "../services/reporting.service";
+import { getOrderSaleTicket, getOrderSalesReportExcel, getOrderSalesReportPdf } from "../services/reporting.service";
 import type { OrderSalesListRow } from "../types";
-import {
-  downloadBlob,
-  downloadReportWorkbook,
-  formatCurrency,
-  formatDateTime,
-  getTodayRange,
-} from "../utils";
-import { FiltersBar } from "./FiltersBar";
+import { downloadBlob, formatCurrency, formatDateTime, getTodayRange } from "../utils";
 import { PdfPreviewModal } from "./PdfPreviewModal";
-import { ReportExportCard } from "./ReportExportCard";
-import { ReportMetricCard } from "./ReportMetricCard";
 import { ReportStatusBadge } from "./ReportStatusBadge";
+import { createReportScopeFilters } from "./report-scope-filters";
 
-type PdfConfig = {
-  title: string;
-  fileName: string;
-  getPdf: () => Promise<Blob>;
-};
+type PdfConfig = { title: string; fileName: string; getPdf: () => Promise<Blob>; onDownloadExcel?: () => void };
 
 const OrdersReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
+  const [customerDocument, setCustomerDocument] = useState("");
+  const [page, setPage] = useState(1);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
-  const {
-    canViewReports,
-    showTenantSelector,
-    showBranchSelector,
-    tenantId,
-    branchId,
-    setTenantId,
-    setBranchId,
-    tenantOptions,
-    branchOptions,
-    loadingTenants,
-    loadingBranches,
-    resolvedTenantLabel,
-    resolvedBranchLabel,
-  } = useReportingScope();
-  const { dataset, loading, searched, error, loadReports } = useOrdersReports();
+  const pageSize = 25;
+  const scope = useReportingScope();
+  const reports = useOrdersReports();
 
-  const handleSearch = useCallback(async () => {
-    if (!tenantId) {
-      return;
-    }
-
-    await loadReports({
-      tenantId,
-      branchId: branchId || undefined,
-      dateFrom: dateRange.from,
-      dateTo: dateRange.to,
-    });
-  }, [branchId, dateRange.from, dateRange.to, loadReports, tenantId]);
+  const load = useCallback(async (range: { from: string; to: string }, documentFilter = "") => {
+    if (!scope.tenantId) return;
+    await reports.loadReports({ tenantId: scope.tenantId, branchId: scope.branchId || undefined, dateFrom: range.from, dateTo: range.to, customerDocument: documentFilter || undefined });
+    setPage(1);
+  }, [reports.loadReports, scope.branchId, scope.tenantId]);
 
   useEffect(() => {
-    if (!canViewReports || !tenantId) {
-      return;
-    }
+    if (!scope.canViewReports || !scope.tenantId) return;
+    void load(initialRange);
+  }, [initialRange, load, scope.canViewReports, scope.tenantId]);
 
-    void loadReports({
-      tenantId,
-      branchId: branchId || undefined,
-      dateFrom: initialRange.from,
-      dateTo: initialRange.to,
-    });
-  }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
+  const columns = useMemo<DataTableColumn<OrderSalesListRow>[]>(() => [
+    { key: "date", header: "Fecha", render: (row) => <div><p className="font-medium">{formatDateTime(row.date)}</p><p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p></div> },
+    { key: "customer", header: "Cliente", render: (row) => <div><p className="font-medium">{row.customerName || "Cliente sin nombre"}</p><p className="text-xs text-slate-500">Pedido #{row.orderId.slice(0, 8)}</p></div> },
+    { key: "total", header: "Total", render: (row) => formatCurrency(row.total) },
+    { key: "paid", header: "Pagado", render: (row) => formatCurrency(row.paid) },
+    { key: "balance", header: "Saldo", render: (row) => formatCurrency(row.balance) },
+    { key: "status", header: "Estado", render: (row) => <div><ReportStatusBadge value={row.status} /><p className="text-sm">{row.paymentStatus}</p><p className="text-xs text-slate-500">{row.generatedSaleId ? `Venta ${row.generatedSaleId.slice(0, 8)}` : "Sin venta generada"}</p></div> },
+    { key: "actions", header: "Acciones", cellClassName: "min-w-[200px]", render: (row) => <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de pedido ${row.orderId.slice(0, 8)}`, fileName: `ticket-pedido-${row.orderId}.pdf`, getPdf: () => getOrderSaleTicket(row.orderId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getOrderSaleTicket(row.orderId), `ticket-pedido-${row.orderId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></div> },
+  ], []);
 
-  const columns = useMemo<DataTableColumn<OrderSalesListRow>[]>(
-    () => [
-      {
-        key: "date",
-        header: "Fecha",
-        render: (row) => (
-          <div>
-            <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.date)}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{row.branchName ?? "Sucursal"}</p>
-          </div>
-        ),
-      },
-      {
-        key: "customer",
-        header: "Cliente",
-        render: (row) => (
-          <div>
-            <p className="font-medium text-slate-900 dark:text-white">{row.customerName || "Cliente sin nombre"}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Pedido #{row.orderId.slice(0, 8)}</p>
-          </div>
-        ),
-      },
-      {
-        key: "total",
-        header: "Total",
-        render: (row) => <span className="font-medium text-slate-900 dark:text-white">{formatCurrency(row.total)}</span>,
-      },
-      {
-        key: "paid",
-        header: "Pagado",
-        render: (row) => formatCurrency(row.paid),
-      },
-      {
-        key: "balance",
-        header: "Saldo",
-        render: (row) => formatCurrency(row.balance),
-      },
-      {
-        key: "status",
-        header: "Estado",
-        render: (row) => (
-          <div className="space-y-2">
-            <ReportStatusBadge value={row.status} />
-            <p className="text-sm text-slate-700 dark:text-slate-200">{row.paymentStatus}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {row.generatedSaleId ? `Venta ${row.generatedSaleId.slice(0, 8)}` : "Sin venta generada"}
-            </p>
-          </div>
-        ),
-      },
-      {
-        key: "actions",
-        header: "Acciones",
-        cellClassName: "min-w-[200px]",
-        render: (row) => (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setPdfConfig({
-                  title: `Ticket de pedido ${row.orderId.slice(0, 8)}`,
-                  fileName: `ticket-pedido-${row.orderId}.pdf`,
-                  getPdf: () => getOrderSaleTicket(row.orderId),
-                })
-              }
-            >
-              <Eye className="h-4 w-4" />
-              Ver ticket
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                const blob = await getOrderSaleTicket(row.orderId);
-                downloadBlob(blob, `ticket-pedido-${row.orderId}.pdf`);
-              }}
-            >
-              <Download className="h-4 w-4" />
-              Descargar
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    []
-  );
+  const filters = useMemo(() => createReportScopeFilters({ dateRange, initialRange, setDateRange, showTenantSelector: scope.showTenantSelector, showBranchSelector: scope.showBranchSelector, tenantId: scope.tenantId, branchId: scope.branchId, setTenantId: scope.setTenantId, setBranchId: scope.setBranchId, tenantOptions: scope.tenantOptions, branchOptions: scope.branchOptions, loadingTenants: scope.loadingTenants, loadingBranches: scope.loadingBranches, tenantLabel: scope.resolvedTenantLabel, branchLabel: scope.resolvedBranchLabel, extra: [{ key: "customerDocument", label: "Número de identificación", priority: "secondary", active: Boolean(customerDocument), activeLabel: customerDocument, render: () => <Input label="Número de identificación" placeholder="Buscar identificación" value={customerDocument} onChange={(event) => setCustomerDocument(event.target.value)} />, clear: () => setCustomerDocument("") }] }), [customerDocument, dateRange, initialRange, scope]);
 
-  const canExport = Boolean(dataset?.rows.length);
+  const reportFilters = { tenantId: scope.tenantId, branchId: scope.branchId || undefined, dateFrom: dateRange.from, dateTo: dateRange.to, customerDocument: customerDocument || undefined };
+  const openReport = () => setPdfConfig({
+    title: "Reporte de pedidos",
+    fileName: `reporte-pedidos-${dateRange.from}-${dateRange.to}.pdf`,
+    getPdf: () => getOrderSalesReportPdf(reportFilters),
+    onDownloadExcel: () => void getOrderSalesReportExcel(reportFilters).then((blob) => downloadBlob(blob, `reporte-pedidos-${dateRange.from}-${dateRange.to}.xlsx`)),
+  });
 
-  if (!canViewReports) {
-    return (
-      <FinanceAccessNotice description="No cuentas con permisos para consultar la reporteria de pedidos." />
-    );
-  }
+  if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar la reportería de pedidos." />;
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-        <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Reporteria pedidos</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Pedidos y venta generada</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-          Revisa pedidos por estado, pagos y venta asociada cuando ya fue generada desde operacion.
-        </p>
-      </section>
-
-      <FiltersBar
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        tenantId={tenantId}
-        branchId={branchId}
-        onTenantChange={setTenantId}
-        onBranchChange={setBranchId}
-        showTenantSelector={showTenantSelector}
-        showBranchSelector={showBranchSelector}
-        tenantOptions={tenantOptions}
-        branchOptions={branchOptions}
-        loadingTenants={loadingTenants}
-        loadingBranches={loadingBranches}
-        tenantLabel={resolvedTenantLabel}
-        branchLabel={resolvedBranchLabel}
-        isSearching={loading}
-        onSearch={() => void handleSearch()}
-      />
-
-      <ReportExportCard
-        title="Descargar reporte de pedidos para conciliacion"
-        description="Baja un Excel con pedidos, venta generada, pagos aplicados y estado operativo para conciliacion comercial."
-        helper="Pensado para contrastar pedido original, cobranza y venta final generada."
-        actions={[
-          {
-            label: "Descargar Excel",
-            disabled: !canExport,
-            onClick: () => {
-              if (!dataset) {
-                return;
-              }
-
-              downloadReportWorkbook({
-                fileName: `reporte-pedidos-${tenantId}-${dateRange.from}-${dateRange.to}.xls`,
-                summaryTitle: "Reporte de pedidos",
-                detailTitle: "Detalle de pedidos",
-                filters: [
-                  { label: "Tenant", value: resolvedTenantLabel },
-                  { label: "Sucursal", value: resolvedBranchLabel },
-                  { label: "Desde", value: dateRange.from },
-                  { label: "Hasta", value: dateRange.to },
-                ],
-                summary: [
-                  { label: "Pedidos", value: dataset.summary.count },
-                  { label: "Total", value: dataset.summary.total },
-                  { label: "Pagado", value: dataset.summary.paid },
-                  { label: "Saldo", value: dataset.summary.balance },
-                  { label: "Completados", value: dataset.summary.completed },
-                  { label: "Parciales", value: dataset.summary.partial },
-                  { label: "Pendientes", value: dataset.summary.pending },
-                ],
-                columns: [
-                  "Fecha",
-                  "Sucursal",
-                  "Cliente",
-                  "Pedido ID",
-                  "Venta generada",
-                  "Total",
-                  "Pagado",
-                  "Saldo",
-                  "Estado",
-                  "Estado pago",
-                ],
-                rows: dataset.rows.map((row) => [
-                  formatDateTime(row.date),
-                  row.branchName ?? "",
-                  row.customerName,
-                  row.orderId,
-                  row.generatedSaleId ?? "",
-                  row.total,
-                  row.paid,
-                  row.balance,
-                  row.status,
-                  row.paymentStatus,
-                ]),
-              });
-            },
-          },
-        ]}
-      />
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <ReportMetricCard
-          label="Pedidos"
-          value={dataset ? dataset.summary.count : searched ? 0 : "--"}
-          helper="Pedidos encontrados en el rango."
-          accent="blue"
-        />
-        <ReportMetricCard
-          label="Completados"
-          value={dataset ? dataset.summary.completed : searched ? 0 : "--"}
-          helper="Pedidos completados."
-          accent="emerald"
-        />
-        <ReportMetricCard
-          label="Parciales"
-          value={dataset ? dataset.summary.partial : searched ? 0 : "--"}
-          helper="Pedidos con pago o entrega parcial."
-          accent="amber"
-        />
-        <ReportMetricCard
-          label="Pendientes"
-          value={dataset ? dataset.summary.pending : searched ? 0 : "--"}
-          helper="Pedidos pendientes de completar."
-          accent="rose"
-        />
-      </section>
-
-      <DataTable
-        columns={columns}
-        rows={dataset?.rows ?? []}
-        getRowKey={(row) => row.orderId}
-        loading={loading}
-        error={error}
-        emptyState={
-          searched
-            ? "No hay pedidos para los filtros seleccionados."
-            : "Usa los filtros y ejecuta la busqueda para cargar el reporte."
-        }
-      />
-
-      {pdfConfig ? (
-        <PdfPreviewModal
-          isOpen={Boolean(pdfConfig)}
-          title={pdfConfig.title}
-          fileName={pdfConfig.fileName}
-          getPdf={pdfConfig.getPdf}
-          onClose={() => setPdfConfig(null)}
-        />
-      ) : null}
-    </div>
+    <ReportLayout title="Pedidos y venta generada" description="Revisa pedidos por estado, pagos y venta asociada.">
+      <div className="space-y-3">
+        <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange, customerDocument)} isLoading={reports.loading} disabled={!dateRange.from || !dateRange.to}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId || !dateRange.from || !dateRange.to}><Eye className="h-4 w-4" /> Reporte</Button></>} />
+        <ReportSummary items={[{ label: "Pedidos", value: reports.dataset ? reports.dataset.summary.count : reports.searched ? 0 : "--" }, { label: "Completados", value: reports.dataset ? reports.dataset.summary.completed : reports.searched ? 0 : "--" }, { label: "Parciales", value: reports.dataset ? reports.dataset.summary.partial : reports.searched ? 0 : "--" }, { label: "Pendientes", value: reports.dataset ? reports.dataset.summary.pending : reports.searched ? 0 : "--" }]} />
+        <DataTable columns={columns} rows={reports.dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? []} getRowKey={(row) => row.orderId} loading={reports.loading} error={reports.error} emptyState={reports.searched ? "No hay pedidos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />
+        {reports.dataset ? <Pagination page={page} pageSize={pageSize} totalItems={reports.dataset.rows.length} onPageChange={setPage} /> : null}
+      </div>
+      {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onDownloadExcel={pdfConfig.onDownloadExcel} allowPrint onClose={() => setPdfConfig(null)} /> : null}
+    </ReportLayout>
   );
 };
 
