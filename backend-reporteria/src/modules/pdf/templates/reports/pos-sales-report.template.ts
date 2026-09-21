@@ -50,7 +50,7 @@ const buildHeader = (dataset: PosSalesListDataset): Content => ({
         },
         { text: "Reporte de ventas POS", style: "title" },
         { text: `Tenant: ${dataset.branding?.tenantName ?? dataset.branding?.legalName ?? "No disponible"}`, style: "subtitle" },
-        { text: `Sucursal: ${dataset.branding?.branchName ?? "Todas"} | Desde: ${formatDate(dataset.filters.dateFrom)} | Hasta: ${formatDate(dataset.filters.dateTo)}`, style: "meta" },
+        { text: `Sucursal: ${dataset.branding?.branchName ?? "Todas"} | Desde: ${formatDate(dataset.filters.dateFrom)} | Hasta: ${formatDate(dataset.filters.dateTo)}${dataset.filters.customerDocument ? ` | Identificación: ${dataset.filters.customerDocument}` : ""}`, style: "meta" },
       ],
     },
   ],

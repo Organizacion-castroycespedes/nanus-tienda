@@ -35,6 +35,7 @@ import { Pagination } from "../../../components/design-system/Pagination";
 import { ReportSummary } from "../../../components/design-system/ReportSummary";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
 import { Select } from "../../../components/design-system/Select";
+import { Input } from "../../../components/design-system/Input";
 import { ReportFilters, type ReportFilterDefinition } from "../../../components/design-system/ReportFilters";
 import { canViewElectronicDocument } from "../utils/electronic-document-action";
 import {
@@ -64,6 +65,7 @@ type DirectPrintFeedback = {
 const PosReportsPage = () => {
   const initialRange = useMemo(() => getTodayRange(), []);
   const [dateRange, setDateRange] = useState(initialRange);
+  const [customerDocument, setCustomerDocument] = useState("");
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
   const [deliveryRelation, setDeliveryRelation] =
@@ -143,9 +145,10 @@ const PosReportsPage = () => {
       branchId: branchId || undefined,
       dateFrom: dateRange.from,
       dateTo: dateRange.to,
+      customerDocument: customerDocument || undefined,
     });
     setPage(1);
-  }, [branchId, dateRange.from, dateRange.to, loadReports, tenantId]);
+  }, [branchId, customerDocument, dateRange.from, dateRange.to, loadReports, tenantId]);
 
   const handleBillingRequest = useCallback(async (saleIds: string[]) => {
     setBillingRequestBusy(true);
@@ -182,6 +185,7 @@ const PosReportsPage = () => {
       branchId: branchId || undefined,
       dateFrom: initialRange.from,
       dateTo: initialRange.to,
+      customerDocument: undefined,
     });
     setPage(1);
   }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
@@ -380,7 +384,8 @@ const PosReportsPage = () => {
     branchId: branchId || undefined,
     dateFrom: dateRange.from,
     dateTo: dateRange.to,
-  }), [branchId, dateRange.from, dateRange.to, tenantId]);
+    customerDocument: customerDocument || undefined,
+  }), [branchId, customerDocument, dateRange.from, dateRange.to, tenantId]);
   const downloadReportExcel = useCallback(async () => {
     const blob = await getPosSalesReportExcel(reportQuery);
     downloadBlob(blob, `reporte-pos-${dateRange.from}-${dateRange.to}.xlsx`);
@@ -426,8 +431,24 @@ const PosReportsPage = () => {
             clear: () => setBranchId(""),
           }]
         : []),
+      {
+        key: "customerDocument",
+        label: "Número de identificación",
+        priority: "secondary",
+        active: Boolean(customerDocument),
+        activeLabel: customerDocument,
+        render: () => (
+          <Input
+            label="Número de identificación"
+            placeholder="Buscar identificación"
+            value={customerDocument}
+            onChange={(event) => setCustomerDocument(event.target.value)}
+          />
+        ),
+        clear: () => setCustomerDocument(""),
+      },
     ],
-    [branchId, branchOptions, dateRange, initialRange, loadingBranches, loadingTenants, resolvedBranchLabel, resolvedTenantLabel, setBranchId, setDateRange, setTenantId, showBranchSelector, showTenantSelector, tenantId, tenantOptions]
+    [branchId, branchOptions, customerDocument, dateRange, initialRange, loadingBranches, loadingTenants, resolvedBranchLabel, resolvedTenantLabel, setBranchId, setDateRange, setTenantId, showBranchSelector, showTenantSelector, tenantId, tenantOptions]
   );
   const visibleRows = useMemo(
     () => dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? [],

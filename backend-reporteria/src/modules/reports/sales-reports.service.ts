@@ -33,6 +33,7 @@ type SalesListQuery = {
   branchId?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerDocument?: string;
   format?: string;
 };
 
@@ -106,6 +107,11 @@ export class SalesReportsService {
     return date.toISOString();
   }
 
+  private normalizeCustomerDocument(value: string | undefined) {
+    const normalized = value?.trim().toUpperCase().replace(/[^0-9A-Z]/g, "");
+    return normalized || undefined;
+  }
+
   private normalizeListRow(row: PosSalesListRow): PosSalesListRow {
     return {
       ...row,
@@ -130,6 +136,7 @@ export class SalesReportsService {
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
       dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
       dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      customerDocument: payload?.filters?.customerDocument ?? this.normalizeCustomerDocument(query.customerDocument) ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -270,6 +277,7 @@ export class SalesReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     });
 
     return this.normalizeSalesListDataset(payload, actor, query);
@@ -292,6 +300,7 @@ export class SalesReportsService {
       branchId: query.branchId,
       dateFrom: this.normalizeDate(query.dateFrom),
       dateTo: this.normalizeDate(query.dateTo, true),
+      customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     };
     const rows = await this.documentExport.collect(
       (client) => this.salesReportAdapter.getPosExportCount(actor, filters, client),
@@ -303,6 +312,7 @@ export class SalesReportsService {
         branchId: filters.branchId ?? actor.branchId ?? null,
         dateFrom: filters.dateFrom ?? null,
         dateTo: filters.dateTo ?? null,
+        customerDocument: filters.customerDocument ?? null,
         actorRole: actor.role,
       },
       summary: {
@@ -336,6 +346,7 @@ export class SalesReportsService {
       ["Sucursal", dataset.filters.branchId ?? "Todas"],
       ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
       ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Número identificación", dataset.filters.customerDocument ?? ""],
       ["Ventas", dataset.summary.count],
       ["Total", dataset.summary.total],
       ["Pagado", dataset.summary.paid],

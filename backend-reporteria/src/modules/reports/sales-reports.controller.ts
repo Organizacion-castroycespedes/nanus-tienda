@@ -36,6 +36,7 @@ export class SalesReportsController {
       branchId?: string;
       dateFrom?: string;
       dateTo?: string;
+      customerDocument?: string;
       format?: string;
     },
     @Req() request: AuthenticatedRequest,

@@ -8,6 +8,7 @@ const dataset = {
     branchId: "branch-id",
     dateFrom: "2026-09-01T00:00:00.000Z",
     dateTo: "2026-09-21T00:00:00.000Z",
+    customerDocument: null,
     actorRole: "USER",
   },
   summary: { count: 1, total: 100, paid: 90, balance: 10, cancelled: 0, refunded: 0 },

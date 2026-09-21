@@ -178,3 +178,14 @@ The Clientes, Pedidos, Compras and Caja toolbars SHALL show one compact `Reporte
 #### Scenario: Report actions remain aligned
 - **WHEN** an authorized user opens any of the four operational report routes
 - **THEN** the `Reporte` buttons share the existing icon/text alignment and the table ticket/download actions remain available where they are separate from the report toolbar
+
+### Requirement: POS supports customer identification filtering across documents
+The POS report SHALL expose an optional secondary `Número de identificación` filter using the live `sales.customer_id` to `customers` relationship and the demonstrated identity precedence `document_number_normalized`, then normalized `identification_number`, then normalized `document_number`. Web, PDF preview, PDF download, Excel download and print SHALL apply the same parameterized filter to the complete dataset while preserving POS actor, tenant, branch and date scope.
+
+#### Scenario: POS identification filter is secondary and consistent
+- **WHEN** an authorized user enters an exact or partial normalized customer identification in `/reporteria/pos`
+- **THEN** the value appears as an active secondary filter chip and Web, PDF, Excel and print contain only matching sales under the same scope
+
+#### Scenario: Empty POS identification filter has no restriction
+- **WHEN** the identification filter is blank or reset
+- **THEN** the existing POS date, tenant, branch and actor scope is used without adding a customer restriction

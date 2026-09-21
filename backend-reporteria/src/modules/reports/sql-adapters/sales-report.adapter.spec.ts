@@ -18,12 +18,14 @@ function readMigration(fileName: string) {
   return readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
 }
 
-test("SalesReportAdapter.getSalesList: llama report_pos_sales con firma esperada", async () => {
-  const calls: Array<{ name: string; params: unknown[] }> = [];
+test("SalesReportAdapter.getSalesList: usa la fuente customers y el filtro normalizado", async () => {
+  let sql = "";
   const adapter = new SalesReportAdapter({
-    executeFunction: async (name: string, params: unknown[]) => {
-      calls.push({ name, params });
-      return null;
+    executeFunction: async () => null,
+  } as never, {
+    query: async (query: string) => {
+      sql = query;
+      return { rows: [] };
     },
   } as never);
 
@@ -39,22 +41,16 @@ test("SalesReportAdapter.getSalesList: llama report_pos_sales con firma esperada
       branchId: "30000000-0000-0000-0000-000000000001",
       dateFrom: "2026-06-11T00:00:00.000Z",
       dateTo: "2026-06-13T00:00:00.000Z",
+      customerDocument: "  900-123  ",
     }
   );
 
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].name, "report_pos_sales");
-  assert.equal(calls[0].params.length, 8);
-  assert.deepEqual(calls[0].params, [
-    "40000000-0000-0000-0000-000000000001",
-    "SUPER_ADMIN",
-    "00000000-0000-0000-0000-000000000001",
-    "30000000-0000-0000-0000-000000000001",
-    "00000000-0000-0000-0000-000000000001",
-    "30000000-0000-0000-0000-000000000001",
-    "2026-06-11T00:00:00.000Z",
-    "2026-06-13T00:00:00.000Z",
-  ]);
+  assert.match(sql, /public\.customers AS customer/);
+  assert.match(sql, /customer\.document_number_normalized/);
+  assert.match(sql, /customer\.identification_number/);
+  assert.match(sql, /customer\.document_number/);
+  assert.match(sql, /\$9::text/);
+  assert.doesNotMatch(sql, /report_pos_sales/);
 });
 
 test("V061 report_pos_sales: elimina overload legacy y conserva firma del adapter", () => {
@@ -76,7 +72,7 @@ test("V061 report_pos_sales: elimina overload legacy y conserva firma del adapte
   assert.match(sql, /report_pos_sales overload count expected 1/);
 });
 
-test("SalesReportAdapter.getSalesList: compara source_id text con sale UUID sin error de tipos", async () => {
+test("SalesReportAdapter.getSalesList: preserva scope de sesión y unión de cliente", async () => {
   let sql = "";
   const adapter = new SalesReportAdapter({
     executeFunction: async () => ({ rows: [{ saleId: "sale-1" }] }),
@@ -97,8 +93,9 @@ test("SalesReportAdapter.getSalesList: compara source_id text con sale UUID sin 
     { tenantId: undefined, branchId: undefined },
   );
 
-  assert.match(sql, /event\.source_id\s*=\s*s\.id::TEXT/i);
-  assert.match(sql, /\$4::UUID\s+IS\s+NULL/i);
+  assert.match(sql, /pos_user_sessions/);
+  assert.match(sql, /customer\.id\s*=\s*sale\.customer_id/i);
+  assert.match(sql, /\$9::text/);
 });
 
 test("SalesReportAdapter POS export uses the same actor scope with real count and batches", async () => {
@@ -119,8 +116,9 @@ test("SalesReportAdapter POS export uses the same actor scope with real count an
     branchId: "30000000-0000-0000-0000-000000000001",
   };
 
-  assert.equal(await adapter.getPosExportCount(actor, { dateFrom: "2026-09-20T00:00:00.000Z" }, client), 1001);
-  const rows = await adapter.getPosExportBatch(actor, { dateFrom: "2026-09-20T00:00:00.000Z" }, client, 1000, 1000);
+  const filters = { dateFrom: "2026-09-20T00:00:00.000Z", customerDocument: "900123" };
+  assert.equal(await adapter.getPosExportCount(actor, filters, client), 1001);
+  const rows = await adapter.getPosExportBatch(actor, filters, client, 1000, 1000);
 
   assert.equal(rows[0].billingStatus, "ACCEPTED");
   assert.match(queries[0].sql, /report_resolve_pos_scope/);
@@ -134,7 +132,9 @@ test("SalesReportAdapter POS export uses the same actor scope with real count an
     null,
     null,
   ]);
-  assert.match(queries[1].sql, /LIMIT \$9::integer OFFSET \$10::integer/);
+  assert.equal(queries[0].params[8], "900123");
+  assert.equal(queries[1].params[8], "900123");
+  assert.match(queries[1].sql, /LIMIT \$10::integer OFFSET \$11::integer/);
   assert.deepEqual(queries[1].params.slice(-2), [1000, 1000]);
 });
 

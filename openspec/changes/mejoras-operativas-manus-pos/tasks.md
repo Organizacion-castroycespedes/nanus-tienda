@@ -96,3 +96,9 @@
 - [x] 13.1 Add the secondary normalized customer identification filter to Pedidos across Web, PDF, XLSX and print using the same direct SQL scope.
 - [x] 13.2 Homologate Clientes, Pedidos, Compras and Caja to one compact eye-icon `Reporte` action and remove only redundant legacy download buttons from their toolbars.
 - [x] 13.3 Perform manual QA for the Pedidos identification filter and the four aligned report toolbars at desktop, 1024px and mobile.
+
+## 14. POS customer identification filter
+
+- [ ] 14.1 Add the secondary normalized customer identification filter to POS Web, PDF, XLSX and print using the live sale-to-customer relationship and shared direct SQL scope.
+- [ ] 14.2 Add focused POS adapter, parameter mapping and frontend filter coverage without changing tickets, DIAN actions or payment semantics.
+- [x] 14.3 Perform manual POS QA for exact/partial/reset/no-result identification filters, export parity and responsive layouts.

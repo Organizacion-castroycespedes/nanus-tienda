@@ -49,6 +49,7 @@ export type PosSalesListDataset = {
     branchId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
+    customerDocument: string | null;
     actorRole: string;
   };
   summary: PosSalesListSummary;
