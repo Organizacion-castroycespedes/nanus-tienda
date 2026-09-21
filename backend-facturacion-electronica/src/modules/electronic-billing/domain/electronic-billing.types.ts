@@ -134,6 +134,10 @@ export type ElectronicDocumentLineInput = {
   taxAmount: number | string;
   totalAmount: number | string;
   taxTreatment?: string | null;
+  beverageCategory?: "LIQUOR" | "WINE" | "APERITIF" | "BEER" | null;
+  volumeMilliliters?: number | string | null;
+  alcoholDegrees?: number | string | null;
+  publicSalePriceBeforeTaxes?: number | string | null;
   standardItemId?: string | null;
   standardItemSchemeId?: string | null;
   taxes?: ElectronicTaxInput[];

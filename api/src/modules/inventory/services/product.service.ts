@@ -34,6 +34,7 @@ import { StockMovementService } from "./stock-movement.service";
 type ProductTaxAssignmentInput = {
   taxId: string;
   calculationOrder?: number;
+  isIncluded?: boolean;
 };
 
 type ProductTaxProfileInput = {
@@ -204,6 +205,7 @@ export class ProductService {
       return {
         taxId: assignment.taxId.trim(),
         calculationOrder,
+        isIncluded: assignment.isIncluded,
       };
     });
 
@@ -214,7 +216,11 @@ export class ProductService {
 
     if (uniqueIds.length === 0) {
       return {
-        assignments: [] as Array<{ taxId: string; calculationOrder: number }>,
+        assignments: [] as Array<{
+          taxId: string;
+          calculationOrder: number;
+          isIncluded?: boolean;
+        }>,
         bridgeTaxId: null as string | null,
         hasNonPercentage: false,
         hasAdv: false,

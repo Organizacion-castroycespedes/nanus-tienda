@@ -66,6 +66,10 @@ export type PricingProductSnapshot = {
   id: string;
   tenantId: string;
   price: number;
+  /** Customer-facing unit price, including configured taxes when supplied. */
+  priceWithTax?: number;
+  /** Fiscal unit price before configured taxes when supplied. */
+  priceWithoutTax?: number;
   taxId: string | null;
   taxRate: number;
   taxIsIncluded: boolean;

@@ -26,7 +26,7 @@ import type {
 } from "../src/modules/electronic-billing/providers/factucore";
 import { ElectronicBillingProviderCapabilityError } from "../src/modules/electronic-billing/contracts/electronic-billing-errors";
 import { assertElectronicBillingProviderCapability } from "../src/modules/electronic-billing/contracts/electronic-billing-provider";
-import { FactuCoreValidationError } from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
+import { FactuCoreConflictError, FactuCoreValidationError } from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
 
 const makeContext = (tenantId: string): ElectronicBillingProviderContext => ({
   tenantId,
@@ -170,6 +170,11 @@ const buildStatusDoc = (overrides: Partial<FactuCoreStatusResponse> = {}): Factu
 class RecordingFactuCoreClient {
   public readonly calls: Array<{ op: string; context: FactuCoreRuntimeContext; request?: unknown; documentId?: string; externalReference?: string; attachmentType?: string }> = [];
 
+  async issueInvoice(context: FactuCoreRuntimeContext, request: unknown) {
+    this.calls.push({ op: "issueInvoice", context, request });
+    return buildDoc({ id: "factu-invoice-1", providerDocumentId: "factu-invoice-1", status: "SENT", providerStatus: "SENT" });
+  }
+
   async createInvoice(context: FactuCoreRuntimeContext, request: unknown) {
     this.calls.push({ op: "createInvoice", context, request });
     return buildDoc({ id: "factu-invoice-1", providerDocumentId: "factu-invoice-1" });
@@ -308,7 +313,7 @@ test("bootstrap registers FactuCore provider in registry", () => {
   assert.equal(registry.resolve("FACTUCORE").code, "FACTUCORE");
 });
 
-test("issueInvoice runs create then generate then sign then transmit", async () => {
+test("issueInvoice uses FactuCore's single issue endpoint", async () => {
   const client = new RecordingFactuCoreClient();
   const { resolver } = buildResolver();
   const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
@@ -318,20 +323,12 @@ test("issueInvoice runs create then generate then sign then transmit", async () 
 
   const result = await provider.issueInvoice(command);
 
-  assert.deepEqual(client.calls.map((call) => call.op), ["createInvoice", "generateXml", "sign", "transmit"]);
+  assert.deepEqual(client.calls.map((call) => call.op), ["issueInvoice"]);
   assert.equal(result.providerStatus, "SENT");
   assert.equal(result.normalizedStatus, "PROCESSING");
   assert.equal(result.providerDocumentId, "factu-invoice-1");
   assert.equal(client.calls[0].context.factuCoreTenantId, "factucore-tenant-a");
-  assert.deepEqual(stages, [
-    "PROVIDER_LINKED",
-    "XML_GENERATE_INTENT",
-    "XML_GENERATED",
-    "SIGN_INTENT",
-    "SIGNED",
-    "TRANSMISSION_INTENT",
-    "TRANSMITTED",
-  ]);
+  assert.deepEqual(stages, ["PROVIDER_LINKED"]);
 });
 
 test("resumeInvoice continues a validated provider document without create", async () => {
@@ -458,8 +455,9 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
   assert.equal(serialized.lines[0].standardItemSchemeId, "999");
   const taxedTax = taxed.lines[0].taxes?.[0] as Record<string, unknown>;
 
-  assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxType", "taxableBase"].sort());
-  assert.equal(taxedTax.taxSchemeId, undefined);
+  assert.deepEqual(Object.keys(taxedTax).sort(), ["metadata", "rate", "taxAmount", "taxSchemeId", "taxSchemeName", "taxType", "taxableBase"].sort());
+  assert.equal(taxedTax.taxSchemeId, "01");
+  assert.equal(taxedTax.taxSchemeName, "IVA");
   assert.equal((taxedTax.metadata as Record<string, unknown>).taxCode, "01");
   assert.equal((taxedTax.metadata as Record<string, unknown>).taxSchemeId, "01");
 
@@ -482,13 +480,13 @@ test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
     ["IVA 5%", "IVA"],
     ["IVA 0%", "IVA"],
     ["INC", "INC"],
-    ["LIQUOR_CONSUMPTION", "INC"],
+    ["LIQUOR_CONSUMPTION", "ICL"],
     ["ICA", "ICA"],
     ["Retención en la fuente", "RETE_FUENTE"],
     ["RETE IVA", "RETE_IVA"],
     ["RETE-ICA", "RETE_ICA"],
     ["Exento", "OTHER"],
-    ["AD_VALOREM", "OTHER"],
+    ["AD_VALOREM", "ADV"],
   ] as const;
 
   for (const [type, expected] of labels) {
@@ -499,7 +497,7 @@ test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
       amount: 19,
     }), expected);
   }
-  assert.deepEqual(FACTUCORE_TAX_TYPES, ["IVA", "INC", "ICA", "RETE_FUENTE", "RETE_IVA", "RETE_ICA", "OTHER"]);
+  assert.deepEqual(FACTUCORE_TAX_TYPES, ["IVA", "INC", "ICL", "ADV", "ICA", "RETE_FUENTE", "RETE_IVA", "RETE_ICA", "OTHER"]);
 });
 
 test("mapper does not send Manus tax regime as customer PartyTaxScheme", () => {
@@ -743,11 +741,13 @@ test("mapper translates generic and Manus UND units to FactuCore-compatible EA",
   assert.equal(manusRequest.lines[0].unitCode, "EA");
 });
 
-test("issueInvoice exposes provider ID when a later step fails", async () => {
+test("issueInvoice exposes provider ID when FactuCore issue fails after persistence", async () => {
   const client = new RecordingFactuCoreClient();
-  client.generateXml = async (context, documentId) => {
-    client.calls.push({ op: "generateXml", context, documentId });
-    throw new Error("generate XML failed");
+  client.issueInvoice = async (context, request) => {
+    client.calls.push({ op: "issueInvoice", context, request });
+    const error = new Error("issue failed") as Error & { providerDocumentId?: string };
+    error.providerDocumentId = "factu-invoice-1";
+    throw error;
   };
   const { resolver } = buildResolver();
   const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
@@ -759,7 +759,29 @@ test("issueInvoice exposes provider ID when a later step fails", async () => {
       return true;
     },
   );
-  assert.deepEqual(client.calls.map((call) => call.op), ["createInvoice", "generateXml"]);
+  assert.deepEqual(client.calls.map((call) => call.op), ["issueInvoice"]);
+});
+
+test("issueInvoice reconciles a FactuCore conflict by external reference", async () => {
+  const client = new RecordingFactuCoreClient();
+  client.issueInvoice = async (context, request) => {
+    client.calls.push({ op: "issueInvoice", context, request });
+    throw new FactuCoreConflictError("issue_invoice");
+  };
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => {
+    stages.push(stage);
+  };
+
+  const result = await provider.issueInvoice(command);
+
+  assert.equal(result.providerDocumentId, "factu-doc-by-reference");
+  assert.equal(result.providerStatus, "PENDING_RETRY");
+  assert.deepEqual(client.calls.map((call) => call.op), ["issueInvoice", "getStatusByExternalReference"]);
+  assert.deepEqual(stages, ["PROVIDER_LINKED"]);
 });
 
 test("issueCreditNote maps origin fields and provider line identity", async () => {
@@ -863,7 +885,7 @@ test("tenant credentials do not leak across interleaved calls", async () => {
   assert.equal(calls[0].tenantId, "tenant-a");
   assert.equal(calls[1].tenantId, "tenant-b");
   assert.equal(client.calls[0].context.credentials.clientKey, "key-tenant-a");
-  assert.equal(client.calls[4].context.credentials.clientKey, "key-tenant-b");
+  assert.equal(client.calls[1].context.credentials.clientKey, "key-tenant-b");
 });
 
 test("missing credential payload blocks FactuCore HTTP", async () => {

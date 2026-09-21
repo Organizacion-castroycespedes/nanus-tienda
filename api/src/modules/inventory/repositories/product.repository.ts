@@ -670,13 +670,18 @@ export class ProductRepository {
     input: {
       tenantId: string;
       productId: string;
-      taxes: Array<{ taxId: string; calculationOrder: number }>;
+      taxes: Array<{
+        taxId: string;
+        calculationOrder: number;
+        isIncluded?: boolean;
+      }>;
     },
     client?: PoolClient
   ): Promise<void> {
     const payload = input.taxes.map((tax) => ({
       tax_id: tax.taxId,
       calculation_order: tax.calculationOrder,
+      ...(tax.isIncluded === undefined ? {} : { is_included: tax.isIncluded }),
     }));
     await this.query(
       `SELECT public.prc_replace_product_taxes($1::uuid, $2::uuid, $3::jsonb) AS ok`,

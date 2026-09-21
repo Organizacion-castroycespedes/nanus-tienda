@@ -119,6 +119,10 @@ const buildLineSnapshotMetadata = (
     providerOriginalLineId: line.providerOriginalLineId ?? null,
     standardItemId: line.standardItemId ?? null,
     standardItemSchemeId: line.standardItemSchemeId ?? null,
+    beverageCategory: line.beverageCategory ?? null,
+    volumeMilliliters: line.volumeMilliliters ?? null,
+    alcoholDegrees: line.alcoholDegrees ?? null,
+    publicSalePriceBeforeTaxes: line.publicSalePriceBeforeTaxes ?? null,
   },
 });
 

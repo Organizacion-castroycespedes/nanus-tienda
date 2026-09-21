@@ -149,7 +149,7 @@ test("background worker refreshes processing documents and retries technical err
   assert.deepEqual(claimed[0].processingStages, ["PRE_PROVIDER_CREATE"]);
   assert.deepEqual(claimed[1].statuses, ["PROCESSING"]);
   assert.deepEqual(claimed[2].statuses, ["TECHNICAL_ERROR"]);
-  assert.equal(claimed[2].excludePreProviderIntentWithoutProvider, true);
+  assert.equal(claimed[2].excludePreProviderIntentWithoutProvider, undefined);
 
   if (originalEnabled === undefined) {
     delete process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;

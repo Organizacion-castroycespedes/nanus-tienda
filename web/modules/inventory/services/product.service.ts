@@ -34,7 +34,11 @@ export type CreateProductPayload = {
   cost: number;
   unitId: string;
   taxId?: string | null;
-  taxes?: Array<{ taxId: string; calculationOrder?: number }>;
+  taxes?: Array<{
+    taxId: string;
+    calculationOrder?: number;
+    isIncluded?: boolean;
+  }>;
   taxProfile?: {
     taxProductCategoryId: string;
     alcoholDegree?: number | null;

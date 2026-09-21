@@ -574,7 +574,7 @@ describe("PricingService", () => {
         dianCode: null,
         taxTypeCode: null,
         calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
-        taxRate: 0,
+        taxRate: 360,
         taxBase: 40,
         taxAmount: 14400,
         isIncluded: true,
@@ -602,6 +602,75 @@ describe("PricingService", () => {
         isIncluded: true,
       },
     ]);
+  });
+
+  it("calculates a liquor stack with excluded ICL ADV and IVA", async () => {
+    const iclTaxId = randomUUID();
+    const advTaxId = randomUUID();
+    const ivaTaxId = randomUUID();
+    const { service } = buildService(
+      baseProduct({
+        price: 162800,
+        priceWithTax: 199124.05,
+        priceWithoutTax: 162800,
+        taxId: ivaTaxId,
+        taxRate: 0.05,
+        taxIsIncluded: false,
+        taxes: [
+          productTax({
+            taxId: iclTaxId,
+            taxName: "ICL",
+            calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
+            calculationOrder: 1,
+            isIncluded: false,
+            rate: 0,
+            percentageRate: null,
+            fixedAmount: 19.2,
+            baseQuantity: 750,
+          }),
+          productTax({
+            taxId: advTaxId,
+            taxName: "ADV",
+            taxTypeCode: "AD_VALOREM",
+            calculationMethodCode: "AD_VALOREM",
+            calculationOrder: 2,
+            isIncluded: false,
+            rate: 0.25,
+            percentageRate: 0.25,
+          }),
+          productTax({
+            taxId: ivaTaxId,
+            taxName: "IVA 5%",
+            calculationMethodCode: "PERCENTAGE",
+            calculationOrder: 3,
+            isIncluded: false,
+            rate: 0.05,
+            percentageRate: 0.05,
+          }),
+        ],
+        taxProfile: taxProfile({
+          alcoholDegree: 40,
+          netVolumeMl: 700,
+          daneCertifiedRetailPrice: 109869,
+        }),
+      })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 1,
+    });
+
+    assert.equal(result.taxId, ivaTaxId);
+    assert.equal(result.baseUnitPrice, 199124.05);
+    assert.equal(result.finalUnitPrice, 199124.05);
+    assert.equal(result.taxBase, 162800);
+    assert.equal(result.taxAmount, 36324.05);
+    assert.equal(result.lineSubtotal, 162800);
+    assert.equal(result.lineTotal, 199124.05);
+    assert.equal(result.taxes[0]?.taxAmount, 716.8);
+    assert.equal(result.taxes[1]?.taxAmount, 27467.25);
+    assert.equal(result.taxes[2]?.taxAmount, 8140);
   });
 
   it("rejects quantity 0", async () => {
