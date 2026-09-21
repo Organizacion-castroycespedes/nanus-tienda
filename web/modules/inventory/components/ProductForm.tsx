@@ -28,6 +28,7 @@ import {
   deleteProductImage,
   getProduct,
   updateProduct,
+  getFiscalPreview,
   uploadProductImage,
   type CreateProductPayload,
   type UpdateProductPayload,
@@ -239,35 +240,55 @@ export const ProductForm = ({
   const [imageProduct, setImageProduct] = useState<ProductResponse | null>(
     product ?? null
   );
-  const fiscalPricePreview = useMemo(() => {
+  const [fiscalPricePreview, setFiscalPricePreview] = useState({
+    priceWithTax: values.priceWithTax ?? "",
+    priceWithoutTax: values.priceWithoutTax ?? "",
+  });
+
+  useEffect(() => {
     const finalPrice = Number(values.price);
-    if (!Number.isFinite(finalPrice) || finalPrice < 0) {
-      return { priceWithTax: "", priceWithoutTax: "" };
+    if (!Number.isFinite(finalPrice) || finalPrice < 0 || values.assignedTaxes.length === 0) {
+      setFiscalPricePreview({ priceWithTax: values.priceWithTax, priceWithoutTax: values.priceWithoutTax });
+      return;
     }
 
-    const selectedTaxes = values.assignedTaxes
-      .map((assignment) => taxOptions.find((tax) => tax.id === assignment.taxId))
-      .filter((tax): tax is TaxInfo => Boolean(tax));
-    const percentageTax = selectedTaxes.find(
-      (tax) =>
-        !tax.calculationMethodCode || tax.calculationMethodCode === "PERCENTAGE"
-    );
-    const hasSpecialTax = selectedTaxes.some(
-      (tax) => tax.calculationMethodCode && tax.calculationMethodCode !== "PERCENTAGE"
-    );
+    const timeout = setTimeout(async () => {
+      try {
+        const preview = await getFiscalPreview({
+          finalUnitPrice: finalPrice,
+          taxes: values.assignedTaxes.map((t, i) => ({
+            taxId: t.taxId,
+            calculationOrder: i + 1,
+            isIncluded: taxOptions.find(opt => opt.id === t.taxId)?.isIncluded ?? false
+          })),
+          taxProfile: values.taxProductCategoryId ? {
+            taxProductCategoryId: values.taxProductCategoryId,
+            alcoholDegree: values.alcoholDegree ? Number(values.alcoholDegree) : null,
+            netVolumeMl: values.netVolumeMl ? Number(values.netVolumeMl) : null,
+            daneCertifiedRetailPrice: values.daneCertifiedRetailPrice ? Number(values.daneCertifiedRetailPrice) : null,
+          } : null
+        });
+        setFiscalPricePreview({
+          priceWithTax: preview.lineTotal.toFixed(2),
+          priceWithoutTax: preview.lineSubtotal.toFixed(2),
+        });
+      } catch (err) {
+        console.error("Failed to fetch fiscal preview", err);
+      }
+    }, 400);
 
-    if (hasSpecialTax || !percentageTax || !percentageTax.isIncluded) {
-      return {
-        priceWithTax: values.priceWithTax,
-        priceWithoutTax: values.priceWithoutTax,
-      };
-    }
-
-    return {
-      priceWithTax: finalPrice.toFixed(2),
-      priceWithoutTax: (finalPrice / (1 + percentageTax.rate)).toFixed(2),
-    };
-  }, [taxOptions, values.assignedTaxes, values.price, values.priceWithoutTax, values.priceWithTax]);
+    return () => clearTimeout(timeout);
+  }, [
+    values.price,
+    values.assignedTaxes,
+    values.taxProductCategoryId,
+    values.alcoholDegree,
+    values.netVolumeMl,
+    values.daneCertifiedRetailPrice,
+    taxOptions,
+    values.priceWithTax,
+    values.priceWithoutTax,
+  ]);
 
   useEffect(() => {
     setValues(createInitialValues(product));
@@ -1620,3 +1641,4 @@ export const ProductForm = ({
     </section>
   );
 };
+
