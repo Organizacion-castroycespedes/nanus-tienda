@@ -8,6 +8,7 @@ import type {
   CurrentShiftFilters,
   CurrentShiftResponse,
   CustomerOrdersStatusDataset,
+  CustomerMasterDataset,
   OrderSalesListDataset,
   PosSalesListDataset,
   PosSaleTicketPrintDataset,
@@ -29,6 +30,7 @@ const buildQuery = (filters: ReportFilters) => {
     customerDocument: filters.customerDocument,
     customerName: filters.customerName,
     status: filters.status,
+    supplierInvoiceNumber: filters.supplierInvoiceNumber,
   });
 
   Object.entries(normalized).forEach(([key, value]) => {
@@ -68,6 +70,18 @@ export const getPosSalesReport = (filters: ReportFilters) =>
     `/reports/pos-sales${buildQuery(filters)}`
   );
 
+export const getPosSalesReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/pos-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getPosSalesReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/pos-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getPosSaleTicket = (saleId: string) =>
   apiBlobClientWithBaseUrl(reportsBaseUrl, `/reports/pos-sales/${saleId}/ticket`);
 
@@ -95,6 +109,18 @@ export const getCashClosingsReport = (filters: ReportFilters) =>
     `/reports/cash-closings${buildQuery(filters)}`
   );
 
+export const getCashClosingsReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-closings${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getCashClosingsReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-closings${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getCashClosingTicket = (cashSessionId: string) =>
   apiBlobClientWithBaseUrl(
     reportsBaseUrl,
@@ -105,6 +131,18 @@ export const getCashAuditsReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CashAuditListDataset>(
     reportsBaseUrl,
     `/reports/cash-audits${buildQuery(filters)}`
+  );
+
+export const getCashAuditsReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-audits${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getCashAuditsReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/cash-audits${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
   );
 
 export const getCashAuditTicket = (cashCountId: string) =>
@@ -119,6 +157,18 @@ export const getPurchasesReport = (filters: ReportFilters) =>
     `/reports/purchases${buildQuery(filters)}`
   );
 
+export const getPurchasesReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/purchases${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getPurchasesReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/purchases${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getPurchaseTicket = (purchaseId: string) =>
   apiBlobClientWithBaseUrl(
     reportsBaseUrl,
@@ -131,6 +181,18 @@ export const getOrderSalesReport = (filters: ReportFilters) =>
     `/reports/order-sales${buildQuery(filters)}`
   );
 
+export const getOrderSalesReportPdf = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/order-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getOrderSalesReportExcel = (filters: ReportFilters) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/order-sales${buildQuery(filters)}${buildQuery(filters) ? "&" : "?"}format=xlsx`,
+  );
+
 export const getOrderSaleTicket = (orderId: string) =>
   apiBlobClientWithBaseUrl(
     reportsBaseUrl,
@@ -141,6 +203,33 @@ export const getCustomerOrdersStatusReport = (filters: ReportFilters) =>
   apiClientWithBaseUrl<CustomerOrdersStatusDataset>(
     reportsBaseUrl,
     `/reports/customers/orders-status${buildQuery(filters)}`
+  );
+
+const buildCustomerMasterQuery = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) => {
+  const params = new URLSearchParams();
+  if (filters.tenantId) params.set("tenantId", filters.tenantId);
+  if (filters.customerDocument?.trim()) params.set("customerDocument", filters.customerDocument.trim());
+  if (filters.customerName?.trim()) params.set("customerName", filters.customerName.trim());
+  const query = params.toString();
+  return query ? `?${query}` : "";
+};
+
+export const getCustomerMasterReport = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) =>
+  apiClientWithBaseUrl<CustomerMasterDataset>(
+    reportsBaseUrl,
+    `/reports/customers${buildCustomerMasterQuery(filters)}`,
+  );
+
+export const getCustomerMasterReportPdf = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/customers${buildCustomerMasterQuery(filters)}${buildCustomerMasterQuery(filters) ? "&" : "?"}format=pdf`,
+  );
+
+export const getCustomerMasterReportExcel = (filters: Pick<ReportFilters, "tenantId" | "customerDocument" | "customerName">) =>
+  apiBlobClientWithBaseUrl(
+    reportsBaseUrl,
+    `/reports/customers${buildCustomerMasterQuery(filters)}${buildCustomerMasterQuery(filters) ? "&" : "?"}format=xlsx`,
   );
 
 export const getCurrentShiftReport = (filters: CurrentShiftFilters) =>

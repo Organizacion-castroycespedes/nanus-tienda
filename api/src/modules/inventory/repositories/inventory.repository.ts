@@ -55,6 +55,7 @@ export type InventoryDashboardScope = {
 export type InventoryDashboardSnapshot = {
   summary?: {
     stockTotal?: number;
+    inventoryCostTotal?: number;
     productsLow?: number;
     productsOut?: number;
     pendingPurchases?: number;
@@ -247,6 +248,36 @@ export class InventoryRepository {
     );
 
     return result.rows[0]?.payload ?? {};
+  }
+
+  async getInventoryCostTotal(scope: Pick<InventoryDashboardScope, "tenantId" | "branchId" | "terminalId">) {
+    const result = await this.db.query<{ inventory_cost_total: string | number }>(
+      `
+      SELECT COALESCE(SUM(balance.stock * product.cost), 0) AS inventory_cost_total
+      FROM products AS product
+      INNER JOIN LATERAL (
+        SELECT
+          product.id AS product_id,
+          branch.id AS branch_id,
+          COALESCE(SUM(CASE WHEN movement.type = 'IN' THEN movement.quantity ELSE -movement.quantity END), 0) AS stock
+        FROM tenant_branches AS branch
+        LEFT JOIN stock_movements AS movement
+          ON movement.product_id = product.id
+         AND movement.branch_id = branch.id
+         AND movement.tenant_id = product.tenant_id
+         AND ($3::uuid IS NULL OR movement.terminal_id = $3::uuid)
+        WHERE branch.tenant_id = product.tenant_id
+          AND branch.estado = 'ACTIVE'
+          AND ($2::uuid IS NULL OR branch.id = $2::uuid)
+        GROUP BY branch.id
+      ) AS balance ON TRUE
+      WHERE product.tenant_id = $1::uuid
+        AND product.is_active = TRUE
+      `,
+      [scope.tenantId, scope.branchId ?? null, scope.terminalId ?? null]
+    );
+
+    return Number(result.rows[0]?.inventory_cost_total ?? 0);
   }
 
   async listTenantOptions() {

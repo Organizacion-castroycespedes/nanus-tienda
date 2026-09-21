@@ -20,19 +20,38 @@ const formatDate = (value: string | null | undefined) =>
       }).format(new Date(value))
     : "N/A";
 
+const formatSaleIdentifier = (saleId: string) => saleId.length > 12
+  ? `${saleId.slice(0, 8)}…`
+  : saleId;
+
 const buildHeader = (dataset: PosSalesListDataset): Content => ({
   margin: [0, 0, 0, 16],
-  stack: [
-    { text: "Reporte de ventas POS", style: "title" },
+  columns: [
+    (() => {
+      const logo = dataset.branding?.logo;
+      if (logo && /^data:image\/(png|jpeg);base64,/i.test(logo)) {
+        return { image: logo, width: 56, height: 42 };
+      }
+      if (logo && /^data:image\/svg\+xml;base64,/i.test(logo)) {
+        const svg = Buffer.from(logo.split(",", 2)[1], "base64").toString("utf8");
+        if (svg.includes("<svg")) return { svg, width: 56, height: 42 };
+      }
+      return { text: "" };
+    })(),
     {
-      text: `Tenant: ${dataset.filters.tenantId}`,
-      style: "subtitle",
-    },
-    {
-      text: `Sucursal: ${dataset.filters.branchId ?? "Todas"} | Desde: ${formatDate(
-        dataset.filters.dateFrom
-      )} | Hasta: ${formatDate(dataset.filters.dateTo)}`,
-      style: "meta",
+      width: "*",
+      stack: [
+        { text: dataset.branding?.legalName ?? dataset.branding?.tenantName ?? "", style: "company" },
+        { text: dataset.branding?.nit ? `NIT ${dataset.branding.nit}` : "", style: "meta" },
+        {
+          text: [dataset.branding?.address, dataset.branding?.phone, dataset.branding?.email]
+            .filter(Boolean).join("  |  "),
+          style: "meta",
+        },
+        { text: "Reporte de ventas POS", style: "title" },
+        { text: `Tenant: ${dataset.branding?.tenantName ?? dataset.branding?.legalName ?? "No disponible"}`, style: "subtitle" },
+        { text: `Sucursal: ${dataset.branding?.branchName ?? "Todas"} | Desde: ${formatDate(dataset.filters.dateFrom)} | Hasta: ${formatDate(dataset.filters.dateTo)}${dataset.filters.customerDocument ? ` | Identificación: ${dataset.filters.customerDocument}` : ""}`, style: "meta" },
+      ],
     },
   ],
 });
@@ -67,11 +86,13 @@ const buildSummary = (dataset: PosSalesListDataset): Content => ({
 const buildRowsTable = (dataset: PosSalesListDataset): Content => ({
   table: {
     headerRows: 1,
-    widths: ["auto", "auto", "*", "auto", "auto", "auto", "auto"],
+    widths: [78, 108, "*", 102, 78, 78, 78],
+    dontBreakRows: true,
+    keepWithHeaderRows: 1,
     body: [
       [
         { text: "Venta", style: "tableHeader" },
-        { text: "Fecha", style: "tableHeader" },
+        { text: "Fecha/Hora", style: "tableHeader" },
         { text: "Cliente", style: "tableHeader" },
         { text: "Estado", style: "tableHeader" },
         { text: "Total", style: "tableHeader", alignment: "right" },
@@ -81,7 +102,7 @@ const buildRowsTable = (dataset: PosSalesListDataset): Content => ({
       ...dataset.rows.map(
         (row) =>
           [
-            row.saleId,
+            formatSaleIdentifier(row.saleId),
             formatDate(row.date),
             row.customerName,
             `${row.status} / ${row.paymentStatus}`,
@@ -99,9 +120,11 @@ export const buildPosSalesReportLayout = (
   dataset: PosSalesListDataset
 ): TDocumentDefinitions => ({
   pageSize: "A4",
+  pageOrientation: "landscape",
   pageMargins: [32, 32, 32, 32],
   content: [buildHeader(dataset), buildSummary(dataset), buildRowsTable(dataset)],
   styles: {
+    company: { fontSize: 12, bold: true },
     title: {
       fontSize: 17,
       bold: true,

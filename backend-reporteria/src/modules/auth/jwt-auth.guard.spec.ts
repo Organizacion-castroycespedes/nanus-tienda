@@ -60,8 +60,10 @@ test("JwtAuthGuard: decodifica JWT valido con claims de API", () => {
 test("JwtAuthGuard: usa actor mock cuando Bearer es invalido y mock auth esta permitido", () => {
   const previousSecret = process.env.JWT_SECRET;
   const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+  const previousNodeEnv = process.env.NODE_ENV;
   process.env.JWT_SECRET = "report-test-secret";
   process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
+  process.env.NODE_ENV = "development";
 
   try {
     const request: TestRequest = {
@@ -79,14 +81,17 @@ test("JwtAuthGuard: usa actor mock cuando Bearer es invalido y mock auth esta pe
   } finally {
     restoreEnv("JWT_SECRET", previousSecret);
     restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+    restoreEnv("NODE_ENV", previousNodeEnv);
   }
 });
 
 test("JwtAuthGuard: conserva x-report-user-id UUID en actor mock", () => {
   const previousSecret = process.env.JWT_SECRET;
   const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+  const previousNodeEnv = process.env.NODE_ENV;
   process.env.JWT_SECRET = "report-test-secret";
   process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
+  process.env.NODE_ENV = "test";
 
   try {
     const request: TestRequest = {
@@ -105,14 +110,17 @@ test("JwtAuthGuard: conserva x-report-user-id UUID en actor mock", () => {
   } finally {
     restoreEnv("JWT_SECRET", previousSecret);
     restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+    restoreEnv("NODE_ENV", previousNodeEnv);
   }
 });
 
 test("JwtAuthGuard: ignora x-report-user-id no UUID para evitar 22P02", () => {
   const previousSecret = process.env.JWT_SECRET;
   const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+  const previousNodeEnv = process.env.NODE_ENV;
   process.env.JWT_SECRET = "report-test-secret";
   process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
+  process.env.NODE_ENV = "test";
 
   try {
     const request: TestRequest = {
@@ -131,6 +139,7 @@ test("JwtAuthGuard: ignora x-report-user-id no UUID para evitar 22P02", () => {
   } finally {
     restoreEnv("JWT_SECRET", previousSecret);
     restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+    restoreEnv("NODE_ENV", previousNodeEnv);
   }
 });
 
@@ -175,3 +184,28 @@ test("JwtAuthGuard: requiere JWT cuando mock auth no esta configurado", () => {
     restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
   }
 });
+
+for (const runtimeEnvironment of ["qa", "production"]) {
+  test(`JwtAuthGuard: ignora mock auth en ${runtimeEnvironment}`, () => {
+    const previousSecret = process.env.JWT_SECRET;
+    const previousMockAuth = process.env.REPORTS_ALLOW_MOCK_AUTH;
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.JWT_SECRET = "report-test-secret";
+    process.env.REPORTS_ALLOW_MOCK_AUTH = "true";
+    process.env.NODE_ENV = runtimeEnvironment;
+
+    try {
+      const request: TestRequest = { headers: {} };
+
+      assert.throws(
+        () => new JwtAuthGuard().canActivate(buildContext(request)),
+        UnauthorizedException
+      );
+      assert.equal(request.user, undefined);
+    } finally {
+      restoreEnv("JWT_SECRET", previousSecret);
+      restoreEnv("REPORTS_ALLOW_MOCK_AUTH", previousMockAuth);
+      restoreEnv("NODE_ENV", previousNodeEnv);
+    }
+  });
+}

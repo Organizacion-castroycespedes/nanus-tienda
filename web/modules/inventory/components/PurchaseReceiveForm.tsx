@@ -36,8 +36,10 @@ type ReceiveItemValue = {
 
 type ReceiveFormErrors = {
   items?: string;
+  supplierInvoiceNumber?: string;
   submit?: string;
 };
+type ReceiveStep = "information" | "products" | "confirmation";
 
 type PurchaseReceiveFormProps = {
   purchaseId: string;
@@ -89,6 +91,9 @@ export const PurchaseReceiveForm = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lookupWarning, setLookupWarning] = useState<string | null>(null);
   const [errors, setErrors] = useState<ReceiveFormErrors>({});
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState(today);
+  const [receiveStep, setReceiveStep] = useState<ReceiveStep>("information");
 
   useEffect(() => {
     let mounted = true;
@@ -186,6 +191,10 @@ export const PurchaseReceiveForm = ({
   const validate = () => {
     const nextErrors: ReceiveFormErrors = {};
 
+    if (!supplierInvoiceNumber.trim()) {
+      nextErrors.supplierInvoiceNumber = "Número de factura requerido.";
+    }
+
     if (isBlockedStatus) {
       nextErrors.items = "No se puede recibir una compra cancelada, recibida o cerrada parcial.";
       setErrors(nextErrors);
@@ -259,7 +268,22 @@ export const PurchaseReceiveForm = ({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (receiveStep === "information") {
+      if (!supplierInvoiceNumber.trim()) {
+        setErrors({ supplierInvoiceNumber: "Número de factura requerido." });
+        return;
+      }
+      setErrors({});
+      setReceiveStep("products");
+      return;
+    }
+
     if (!validate()) {
+      return;
+    }
+
+    if (receiveStep === "products") {
+      setReceiveStep("confirmation");
       return;
     }
 
@@ -268,6 +292,8 @@ export const PurchaseReceiveForm = ({
 
     try {
       const payload = {
+        supplierInvoiceNumber: supplierInvoiceNumber.trim(),
+        supplierInvoiceDate: supplierInvoiceDate || null,
         items: getRowsWithReceivableQuantity(rows, values).map(({ item, index }) => {
           const quantity = getReceiveQuantity(values[index]);
           const product = productById.get(item.productId);
@@ -337,7 +363,33 @@ export const PurchaseReceiveForm = ({
         </div>
       ) : purchase ? (
         <form className="grid w-full min-w-0 gap-5" onSubmit={handleSubmit}>
+          <ol className="grid gap-2 sm:grid-cols-3" aria-label="Pasos de recepción">
+            {(["information", "products", "confirmation"] as ReceiveStep[]).map((step, index) => (
+              <li key={step} className={`rounded-xl border px-3 py-2 text-sm ${receiveStep === step ? "border-blue-500 bg-blue-50 font-semibold text-blue-800" : "border-slate-200 text-slate-500"}`}>
+                {index + 1}. {step === "information" ? "Información" : step === "products" ? "Productos" : "Confirmación"}
+              </li>
+            ))}
+          </ol>
           <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Número de factura del proveedor *"
+                value={supplierInvoiceNumber}
+                onChange={(event) => {
+                  setSupplierInvoiceNumber(event.target.value);
+                  setErrors((current) => ({ ...current, supplierInvoiceNumber: undefined }));
+                }}
+                hint={errors.supplierInvoiceNumber}
+                disabled={isBlockedStatus}
+              />
+              <Input
+                label="Fecha de factura"
+                type="date"
+                value={supplierInvoiceDate}
+                onChange={(event) => setSupplierInvoiceDate(event.target.value)}
+                disabled={isBlockedStatus}
+              />
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="min-w-0 rounded-xl bg-white/70 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Proveedor</p>
@@ -384,7 +436,7 @@ export const PurchaseReceiveForm = ({
             </div>
           ) : null}
 
-          {rows.length > 0 ? (
+          {receiveStep !== "information" && rows.length > 0 ? (
           <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
             <div className="w-full min-w-0 overflow-x-auto overscroll-x-contain">
               <div className="min-w-[1040px]">
@@ -590,11 +642,21 @@ export const PurchaseReceiveForm = ({
               </div>
             </div>
           </section>
-          ) : (
+          ) : receiveStep !== "information" ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
               Esta compra no tiene productos pendientes por recibir.
             </div>
-          )}
+          ) : null}
+
+          {receiveStep === "confirmation" ? (
+            <section className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-blue-900">
+              <p className="font-semibold">Revisa antes de confirmar</p>
+              <p className="mt-1">Proveedor: {purchase.supplierName || purchase.supplierId}</p>
+              <p>Factura: {supplierInvoiceNumber} · Fecha: {supplierInvoiceDate || "Sin fecha"}</p>
+              <p>Productos a recibir: {getRowsWithReceivableQuantity(rows, values).length}</p>
+              <p>Valor de compra: {formatCurrency(Number(purchase.total))}</p>
+            </section>
+          ) : null}
 
           {errors.items ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -614,13 +676,12 @@ export const PurchaseReceiveForm = ({
             </div>
           ) : null}
 
-          <section className="w-full min-w-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800 sm:px-5">
-            <p className="font-medium text-amber-950">Confirmar recepcion</p>
-            <p className="mt-1">
-              Al guardar, se registrara la recepcion parcial de esta compra y se actualizara
-              el inventario con las cantidades ingresadas.
-            </p>
-          </section>
+          {receiveStep === "confirmation" ? (
+            <section className="w-full min-w-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800 sm:px-5">
+              <p className="font-medium text-amber-950">Confirmar recepción</p>
+              <p className="mt-1">Al guardar, se registrará la recepción y se actualizará el inventario en una sola operación.</p>
+            </section>
+          ) : null}
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
             <Button
@@ -629,7 +690,11 @@ export const PurchaseReceiveForm = ({
               disabled={isBlockedStatus || rows.length === 0}
               className="w-full sm:w-auto"
             >
-              Confirmar recepcion
+              {receiveStep === "information"
+                ? "Continuar a productos"
+                : receiveStep === "products"
+                  ? "Revisar recepción"
+                  : "Confirmar recepción"}
             </Button>
             <Button
               type="button"

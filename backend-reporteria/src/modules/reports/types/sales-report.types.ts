@@ -49,10 +49,12 @@ export type PosSalesListDataset = {
     branchId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
+    customerDocument: string | null;
     actorRole: string;
   };
   summary: PosSalesListSummary;
   rows: PosSalesListRow[];
+  branding?: PrintableCompanyHeader;
 };
 
 export type PosSaleTicketItem = {
@@ -122,6 +124,7 @@ export type PosSaleTicketDataset = {
 };
 
 export type PrintableCompanyHeader = {
+  tenantName: string | null;
   legalName: string | null;
   nit: string | null;
   dv: string | null;

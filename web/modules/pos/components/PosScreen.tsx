@@ -68,6 +68,7 @@ import {
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
+import { sortPosCustomers } from "../utils/pos-customer-order";
 import type { TaxResponse } from "../../inventory/services/tax.service";
 import { QuickFiscalCustomerModal } from "./QuickFiscalCustomerModal";
 import type { ElectronicInvoicingCustomer } from "../../electronic-invoicing/services/customer.service";
@@ -927,15 +928,15 @@ export const PosScreen = () => {
   }, [selectedCustomer, customerDropdownOpen]);
 
   const filteredCustomers = useMemo(() => {
-    if (!customerSearchQuery.trim()) {
-      return customers;
-    }
     const lower = normalizeText(customerSearchQuery);
-    return customers.filter((c) => {
-      const matchName = normalizeText(c.name).includes(lower);
-      const matchDoc = c.documentNumber ? c.documentNumber.includes(lower) : false;
-      return matchName || matchDoc;
-    });
+    const matchingCustomers = lower
+      ? customers.filter((c) => {
+          const matchName = normalizeText(c.name).includes(lower);
+          const matchDoc = c.documentNumber ? c.documentNumber.includes(lower) : false;
+          return matchName || matchDoc;
+        })
+      : customers;
+    return sortPosCustomers(matchingCustomers);
   }, [customers, customerSearchQuery]);
 
   const handleSelectPosCustomer = useCallback(

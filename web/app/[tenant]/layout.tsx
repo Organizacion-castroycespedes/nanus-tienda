@@ -223,7 +223,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
-  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-3" : "lg:w-72 lg:px-4";
+  const desktopSidebarWidthClass = sidebarCollapsed ? "xl:w-20 xl:px-3" : "xl:w-72 xl:px-4";
   const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
   const applyTenantToMenu = useCallback(
@@ -1107,13 +1107,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm xl:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
         aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 lg:sticky lg:top-0 lg:z-30 lg:translate-x-0 lg:px-4 ${desktopSidebarWidthClass} ${
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 xl:sticky xl:top-0 xl:z-30 xl:translate-x-0 xl:px-4 ${desktopSidebarWidthClass} ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1122,8 +1122,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "lg:justify-center" : ""}`}>
-            <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "lg:flex-col" : ""}`}>
+          <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "xl:justify-center" : ""}`}>
+            <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "xl:flex-col" : ""}`}>
               {brandingLogo ? (
                 <img
                   src={brandingLogo}
@@ -1153,10 +1153,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </div>
               ) : null}
             </div>
-            <div className={`ml-auto flex items-center gap-2 ${isSidebarCompact ? "lg:ml-0" : ""}`}>
+            <div className={`ml-auto flex items-center gap-2 ${isSidebarCompact ? "xl:ml-0" : ""}`}>
               <button
                 type="button"
-                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
+                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:grid"
                 aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
                 onClick={() => setSidebarCollapsed((prev) => !prev)}
               >
@@ -1168,7 +1168,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
+                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:hidden"
                 aria-label="Cerrar menu lateral"
                 onClick={() => setSidebarOpen(false)}
               >
@@ -1196,7 +1196,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] lg:hidden"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] xl:hidden"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,

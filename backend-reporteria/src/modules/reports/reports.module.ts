@@ -26,6 +26,7 @@ import { PurchasesReportAdapter } from "./sql-adapters/purchases-report.adapter"
 import { ProductInventoryReportsController } from "./product-inventory-reports.controller";
 import { ProductInventoryReportsService } from "./product-inventory-reports.service";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
+import { DocumentExportService } from "./document-export.service";
 
 @Module({
   imports: [AuthModule, DatabaseModule, PdfModule],
@@ -56,6 +57,7 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
     OrdersReportAdapter,
     DeliveriesReportAdapter,
     CustomersReportAdapter,
+    DocumentExportService,
   ],
 })
 export class ReportsModule {}

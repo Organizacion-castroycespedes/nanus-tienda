@@ -514,46 +514,16 @@ export const InventoryDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700">
-        <div className="bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.22),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_30%),linear-gradient(135deg,_#0f172a,_#1e293b)] px-6 py-7 text-white">
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <p className="text-xs uppercase tracking-[0.28em] text-sky-100/80">
-                Inventory operativo
-              </p>
-              <h1 className="mt-3 text-3xl font-semibold">Dashboard contextual de inventory</h1>
-              <p className="mt-3 max-w-2xl text-sm text-slate-200">
-                Vista diaria de stock, compras, pedidos, ventas y movimiento real del modulo
-                segun tenant, sucursal, terminal y caja activa.
-              </p>
-            </div>
-            <div className="grid min-w-[280px] gap-3 text-sm sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-sky-100/70">Usuario</p>
-                <p className="mt-1 font-semibold">{authUser?.name ?? authUser?.email ?? "Usuario"}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-sky-100/70">Rol</p>
-                <p className="mt-1 font-semibold">{authRole || "Sin rol"}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-sky-100/70">Tenant</p>
-                <p className="mt-1 font-semibold">{tenantName}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-sky-100/70">Sucursal</p>
-                <p className="mt-1 font-semibold">{branchName}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-sky-100/70">Terminal</p>
-                <p className="mt-1 font-semibold">{terminalName}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-sky-100/70">Caja activa</p>
-                <p className="mt-1 font-semibold">{cashName}</p>
-              </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Inventario</p>
+              <h1 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">Operación diaria</h1>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{tenantName} · {branchName} · {terminalName} · {cashName}</p>
             </div>
           </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{authUser?.name ?? authUser?.email ?? "Usuario"}</p>
         </div>
       </section>
 
@@ -712,6 +682,13 @@ export const InventoryDashboard = () => {
               description="Saldo agregado en el alcance visible"
               icon={Boxes}
               tone="blue"
+            />
+            <KpiCard
+              title="Costo total inventario"
+              value={formatCurrency(dashboard.summary.inventoryCostTotal)}
+              description="Costo vigente calculado por backend"
+              icon={CreditCard}
+              tone="slate"
             />
             <KpiCard
               title="Productos bajos"

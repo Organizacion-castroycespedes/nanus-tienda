@@ -77,6 +77,11 @@ type ReceivePurchaseItemInput = {
   unitCost?: number;
 };
 
+type ReceivePurchaseDocumentInput = {
+  supplierInvoiceNumber?: string;
+  supplierInvoiceDate?: string | null;
+};
+
 type CancelPurchaseInput = {
   motivoCancelacion?: string;
   context?: InventoryContext;
@@ -102,6 +107,8 @@ type PurchaseRow = {
   total_paid: string | number;
   balance_due: string | number;
   created_at: string | Date;
+  supplier_invoice_number?: string | null;
+  supplier_invoice_date?: string | Date | null;
   motivo_cancelacion?: string | null;
   cancelado_por?: string | null;
   cancelado_por_nombre?: string | null;
@@ -236,6 +243,8 @@ export class PurchaseService {
       totalPaid: Number(row.total_paid ?? 0),
       balanceDue: Number(row.balance_due ?? row.balance ?? 0),
       createdAt: new Date(row.created_at),
+      supplierInvoiceNumber: row.supplier_invoice_number ?? null,
+      supplierInvoiceDate: row.supplier_invoice_date ? new Date(row.supplier_invoice_date) : null,
     });
   }
 
@@ -1044,6 +1053,8 @@ export class PurchaseService {
           p.total_paid,
           p.balance_due,
           p.created_at,
+          p.supplier_invoice_number,
+          p.supplier_invoice_date,
           p.motivo_cancelacion,
           p.cancelado_por::text AS cancelado_por,
           COALESCE(
@@ -1383,10 +1394,15 @@ export class PurchaseService {
     tenantId: string,
     itemsToReceive: ReceivePurchaseItemInput[],
     context?: InventoryContext,
-    actor?: BranchScopedActor
+    actor?: BranchScopedActor,
+    document?: ReceivePurchaseDocumentInput
   ) {
     if (!Array.isArray(itemsToReceive) || itemsToReceive.length === 0) {
       throw new BadRequestException("receive items are required");
+    }
+    const supplierInvoiceNumber = document?.supplierInvoiceNumber?.trim();
+    if (document && !supplierInvoiceNumber) {
+      throw new BadRequestException("supplier invoice number is required");
     }
 
     const client = await this.db.getClient();
@@ -1406,7 +1422,9 @@ export class PurchaseService {
             payment_status,
             total_paid,
             balance_due,
-            created_at
+            created_at,
+            supplier_invoice_number,
+            supplier_invoice_date
           FROM purchases
           WHERE id = $1 AND tenant_id = $2
           LIMIT 1
@@ -1658,7 +1676,9 @@ export class PurchaseService {
       const updatedPurchaseResult = await client.query<PurchaseRow>(
         `
           UPDATE purchases
-          SET status = $3
+          SET status = $3,
+              supplier_invoice_number = COALESCE($4, supplier_invoice_number),
+              supplier_invoice_date = COALESCE($5, supplier_invoice_date)
           WHERE id = $1 AND tenant_id = $2
           RETURNING
             id,
@@ -1671,9 +1691,11 @@ export class PurchaseService {
             payment_status,
             total_paid,
             balance_due,
-            created_at
+            created_at,
+            supplier_invoice_number,
+            supplier_invoice_date
         `,
-        [id, tenantId, nextStatus]
+        [id, tenantId, nextStatus, supplierInvoiceNumber, document?.supplierInvoiceDate ?? null]
       );
 
       await client.query("COMMIT");
