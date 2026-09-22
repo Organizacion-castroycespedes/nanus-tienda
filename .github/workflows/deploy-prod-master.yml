@@ -1,4 +1,4 @@
-name: Deploy Master VPS Full Stack
+name: Deploy Production Master VPS
 
 on:
   push:
@@ -34,7 +34,6 @@ jobs:
       - name: Build web
         working-directory: web
         env:
-          NODE_ENV: production
           NEXT_PUBLIC_API_BASE_URL: /api
           NEXT_PUBLIC_REPORTS_API_BASE_URL: /api
           API_PROXY_TARGET: http://127.0.0.1:4020
@@ -73,19 +72,19 @@ jobs:
           cp backend-reporteria/dist-bin/emaus_reporteria artifact/linux/emaus_reporteria
           cp backend-facturacion-electronica/dist-bin/emaus_facturacion artifact/linux/emaus_facturacion
           cp -R web/.next web/public web/package.json web/package-lock.json web/next.config.mjs artifact/web/
-          cp scripts/deploy/qa-deploy-full.sh artifact/qa-deploy-full.sh
-          tar -C artifact -czf qa-full-release.tar.gz .
+          cp scripts/deploy/prod-deploy-full.sh artifact/prod-deploy-full.sh
+          tar -C artifact -czf prod-master-release.tar.gz .
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qa-full-release
-          path: qa-full-release.tar.gz
+          name: prod-master-release
+          path: prod-master-release.tar.gz
           if-no-files-found: error
           retention-days: 7
 
   deploy:
-    name: Deploy to Master VPS
+    name: Deploy to Production VPS
     runs-on: ubuntu-latest
     needs: build
     if: github.ref == 'refs/heads/master'
@@ -93,7 +92,7 @@ jobs:
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
-          name: qa-full-release
+          name: prod-master-release
 
       - name: Validate deploy secrets
         shell: bash
@@ -133,11 +132,11 @@ jobs:
           PROD_DEPLOY_BASE_PATH: ${{ secrets.PROD_DEPLOY_BASE_PATH }}
         run: |
           set -euo pipefail
-          remote_tmp="${PROD_DEPLOY_BASE_PATH%/}/tmp/github-actions/full-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          remote_tmp="${PROD_DEPLOY_BASE_PATH%/}/tmp/github-actions/prod-master-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           ssh -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" "mkdir -p '${remote_tmp}'"
-          scp -P "${PROD_VPS_PORT:-22}" qa-full-release.tar.gz "${PROD_VPS_USER}@${PROD_VPS_HOST}:${remote_tmp}/qa-full-release.tar.gz"
+          scp -P "${PROD_VPS_PORT:-22}" prod-master-release.tar.gz "${PROD_VPS_USER}@${PROD_VPS_HOST}:${remote_tmp}/prod-master-release.tar.gz"
           ssh -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" \
-            "cd '${remote_tmp}' && tar -xzf qa-full-release.tar.gz && DEPLOY_BASE_PATH='${PROD_DEPLOY_BASE_PATH%/}' bash qa-deploy-full.sh '${remote_tmp}'"
+            "cd '${remote_tmp}' && tar -xzf prod-master-release.tar.gz && DEPLOY_BASE_PATH='${PROD_DEPLOY_BASE_PATH%/}' bash prod-deploy-full.sh '${remote_tmp}'"
 
       - name: Public smoke checks
         shell: bash
