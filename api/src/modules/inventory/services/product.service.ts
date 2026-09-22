@@ -372,6 +372,129 @@ export class ProductService {
     }
   }
 
+  private async deriveStoredPricesFromFinalUnitPrice(input: {
+    tenantId: string;
+    finalUnitPrice: number;
+    taxes: Array<{
+      taxId: string;
+      calculationOrder: number;
+      isIncluded: boolean;
+    }>;
+    taxProfile: {
+      taxProductCategoryId: string;
+      alcoholDegree: number | null;
+      netVolumeMl: number | null;
+      daneCertifiedRetailPrice: number | null;
+    } | null;
+  }): Promise<{ priceWithTax: number; priceWithoutTax: number }> {
+    if (input.taxes.length === 0) {
+      return {
+        priceWithTax: input.finalUnitPrice,
+        priceWithoutTax: input.finalUnitPrice,
+      };
+    }
+
+    const preview = await this.pricingService.previewProposedConfiguration({
+      tenantId: input.tenantId,
+      finalUnitPrice: input.finalUnitPrice,
+      taxes: input.taxes,
+      taxProfile: input.taxProfile,
+    });
+
+    return {
+      priceWithTax: preview.lineTotal,
+      priceWithoutTax: preview.lineSubtotal,
+    };
+  }
+
+  private mapAssignmentsForPricing(
+    assignments: Array<{
+      taxId: string;
+      calculationOrder: number;
+      isIncluded?: boolean | null;
+    }>
+  ) {
+    return assignments.map((assignment) => ({
+      taxId: assignment.taxId,
+      calculationOrder: assignment.calculationOrder,
+      isIncluded: assignment.isIncluded ?? false,
+    }));
+  }
+
+  private toPricingTaxProfile(
+    taxProfile:
+      | {
+          taxProductCategoryId: string;
+          alcoholDegree?: number | null;
+          netVolumeMl?: number | null;
+          daneCertifiedRetailPrice?: number | null;
+        }
+      | null
+      | undefined
+  ) {
+    if (!taxProfile?.taxProductCategoryId) {
+      return null;
+    }
+    return {
+      taxProductCategoryId: taxProfile.taxProductCategoryId,
+      alcoholDegree: taxProfile.alcoholDegree ?? null,
+      netVolumeMl: taxProfile.netVolumeMl ?? null,
+      daneCertifiedRetailPrice: taxProfile.daneCertifiedRetailPrice ?? null,
+    };
+  }
+
+  private async resolveStoredPricesForProduct(input: {
+    tenantId: string;
+    productId: string;
+    finalUnitPrice: number;
+    taxes?: Array<{
+      taxId: string;
+      calculationOrder: number;
+      isIncluded?: boolean | null;
+    }> | null;
+    taxProfile?: {
+      taxProductCategoryId: string;
+      alcoholDegree?: number | null;
+      netVolumeMl?: number | null;
+      daneCertifiedRetailPrice?: number | null;
+    } | null;
+    client?: Awaited<ReturnType<DatabaseService["getClient"]>>;
+  }) {
+    const taxes =
+      input.taxes ??
+      (
+        await this.productRepository.findProductTaxes(
+          input.tenantId,
+          input.productId,
+          input.client
+        )
+      )
+        .filter((tax) => tax.isActive)
+        .map((tax) => ({
+          taxId: tax.taxId,
+          calculationOrder: tax.calculationOrder,
+          isIncluded: tax.isIncluded,
+        }));
+
+    const taxProfile =
+      input.taxProfile !== undefined
+        ? this.toPricingTaxProfile(input.taxProfile)
+        : this.toPricingTaxProfile(
+            await this.productRepository.findProductTaxProfile(
+              input.tenantId,
+              input.productId,
+              input.client
+            )
+          );
+
+    return this.deriveStoredPricesFromFinalUnitPrice({
+      tenantId: input.tenantId,
+      finalUnitPrice: input.finalUnitPrice,
+      taxes: this.mapAssignmentsForPricing(taxes),
+      taxProfile,
+    });
+  }
+
   private assertNoDirectPriceUpdate(data: ProductUpdatePayload) {
     const blockedFields = [
       "price",
@@ -743,24 +866,14 @@ export class ProductService {
     }
 
     const now = new Date();
-    let priceWithTax = product.priceWithTax ?? product.price;
-    let priceWithoutTax = product.priceWithoutTax ?? product.price;
-
-    if (taxResolution.assignments.length > 0) {
-      const preview = await this.pricingService.previewProposedConfiguration({
-        tenantId: product.tenantId,
-        finalUnitPrice: product.price,
-        taxes: taxResolution.assignments.map(a => ({ ...a, isIncluded: a.isIncluded ?? false })),
-        taxProfile: product.taxProfile ? {
-           taxProductCategoryId: product.taxProfile.taxProductCategoryId,
-           alcoholDegree: product.taxProfile.alcoholDegree ?? null,
-           netVolumeMl: product.taxProfile.netVolumeMl ?? null,
-           daneCertifiedRetailPrice: product.taxProfile.daneCertifiedRetailPrice ?? null,
-        } : null
-      });
-      priceWithTax = preview.lineTotal;
-      priceWithoutTax = preview.lineSubtotal;
-    }
+    const derivedPrices = await this.deriveStoredPricesFromFinalUnitPrice({
+      tenantId: product.tenantId,
+      finalUnitPrice: product.price,
+      taxes: this.mapAssignmentsForPricing(taxResolution.assignments),
+      taxProfile: this.toPricingTaxProfile(product.taxProfile),
+    });
+    const priceWithTax = derivedPrices.priceWithTax;
+    const priceWithoutTax = derivedPrices.priceWithoutTax;
     const imageMetadata = this.buildCreateImageMetadata(product, now);
 
     const entity = ProductEntity.create({
@@ -997,12 +1110,57 @@ export class ProductService {
     try {
       await client.query("BEGIN");
 
+      const shouldRecalcStoredPrices =
+        Boolean(taxResolution) || this.hasOwn(data, "taxProfile");
+
+      let derivedPrices: {
+        priceWithTax: number;
+        priceWithoutTax: number;
+      } | null = null;
+
+      if (shouldRecalcStoredPrices) {
+        const taxesForPricing = taxResolution
+          ? taxResolution.assignments
+          : (
+              await this.productRepository.findProductTaxes(
+                tenantId,
+                id,
+                client
+              )
+            )
+              .filter((tax) => tax.isActive)
+              .map((tax) => ({
+                taxId: tax.taxId,
+                calculationOrder: tax.calculationOrder,
+                isIncluded: tax.isIncluded,
+              }));
+
+        const profileForPricing =
+          data.taxProfile !== undefined
+            ? data.taxProfile
+            : await this.productRepository.findProductTaxProfile(
+                tenantId,
+                id,
+                client
+              );
+
+        derivedPrices = await this.resolveStoredPricesForProduct({
+          tenantId,
+          productId: id,
+          finalUnitPrice: current.price,
+          taxes: taxesForPricing,
+          taxProfile: profileForPricing,
+          client,
+        });
+      }
+
       const updated = await this.productRepository.update(
         id,
         tenantId,
         {
           ...data,
           ...(taxResolution ? { taxId: taxResolution.bridgeTaxId } : {}),
+          ...(derivedPrices ?? {}),
           ...this.buildUpdateImageMetadata(data),
         },
         client
@@ -1113,10 +1271,21 @@ export class ProductService {
         client
       );
 
+      const derivedPrices = await this.resolveStoredPricesForProduct({
+        tenantId,
+        productId,
+        finalUnitPrice: data.newPrice,
+        client,
+      });
+
       const updated = await this.productRepository.update(
         productId,
         tenantId,
-        { price: data.newPrice },
+        {
+          price: data.newPrice,
+          priceWithTax: derivedPrices.priceWithTax,
+          priceWithoutTax: derivedPrices.priceWithoutTax,
+        },
         client
       );
       if (!updated) {

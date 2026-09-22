@@ -199,8 +199,7 @@ export const ProductForm = ({
           taxes: values.assignedTaxes.map((t, i) => ({
             taxId: t.taxId,
             calculationOrder: i + 1,
-            isIncluded:
-              taxOptions.find((opt) => opt.id === t.taxId)?.isIncluded ?? false,
+            isIncluded: t.isIncluded,
           })),
           taxProfile: values.taxProductCategoryId
             ? {
@@ -692,28 +691,45 @@ export const ProductForm = ({
     const taxIds = values.assignedTaxes
       .map((item) => item.taxId)
       .filter(Boolean);
-    if (new Set(taxIds).size !== taxIds.length) {
-      nextErrors.assignedTaxes = "No se permiten impuestos duplicados.";
-    }
-    for (const assignment of values.assignedTaxes) {
-      if (!assignment.taxId) {
-        nextErrors.assignedTaxes = "Selecciona un impuesto en cada fila.";
-        break;
+
+    if (canViewFiscalAdvanced) {
+      if (new Set(taxIds).size !== taxIds.length) {
+        nextErrors.assignedTaxes = "No se permiten impuestos duplicados.";
+      }
+      for (const assignment of values.assignedTaxes) {
+        if (!assignment.taxId) {
+          nextErrors.assignedTaxes = "Selecciona un impuesto en cada fila.";
+          break;
+        }
+        if (
+          assignment.calculationOrder.trim() === "" ||
+          Number.isNaN(Number(assignment.calculationOrder)) ||
+          Number(assignment.calculationOrder) <= 0
+        ) {
+          nextErrors.assignedTaxes = "El orden de calculo debe ser mayor a 0.";
+          break;
+        }
+      }
+
+      if (hasNonPercentageTax || selectedTaxCategory?.isAlcoholicBeverage) {
+        if (!values.taxProductCategoryId) {
+          nextErrors.taxProductCategoryId = "La categoria fiscal es requerida.";
+        }
       }
       if (
-        assignment.calculationOrder.trim() === "" ||
-        Number.isNaN(Number(assignment.calculationOrder)) ||
-        Number(assignment.calculationOrder) <= 0
+        hasAdvTax &&
+        (values.daneCertifiedRetailPrice.trim() === "" ||
+          Number.isNaN(Number(values.daneCertifiedRetailPrice)))
       ) {
-        nextErrors.assignedTaxes = "El orden de calculo debe ser mayor a 0.";
-        break;
+        nextErrors.daneCertifiedRetailPrice =
+          "El precio DANE es requerido cuando hay ADV.";
       }
     }
 
-    if (hasNonPercentageTax || selectedTaxCategory?.isAlcoholicBeverage) {
-      if (!values.taxProductCategoryId) {
-        nextErrors.taxProductCategoryId = "La categoria fiscal es requerida.";
-      }
+    const needsAlcoholTraits =
+      hasNonPercentageTax || Boolean(selectedTaxCategory?.isAlcoholicBeverage);
+
+    if (needsAlcoholTraits) {
       if (
         values.alcoholDegree.trim() === "" ||
         Number.isNaN(Number(values.alcoholDegree))
@@ -727,14 +743,6 @@ export const ProductForm = ({
       ) {
         nextErrors.netVolumeMl = "El volumen neto (ml) debe ser mayor a 0.";
       }
-    }
-    if (
-      hasAdvTax &&
-      (values.daneCertifiedRetailPrice.trim() === "" ||
-        Number.isNaN(Number(values.daneCertifiedRetailPrice)))
-    ) {
-      nextErrors.daneCertifiedRetailPrice =
-        "El precio DANE es requerido cuando hay ADV.";
     }
 
     setErrors(nextErrors);
@@ -763,7 +771,21 @@ export const ProductForm = ({
         );
       })?.taxId ?? null;
 
-    const payload: CreateProductPayload = {
+    const taxProfilePayload =
+      values.taxProductCategoryId || hasNonPercentageTax
+        ? {
+            taxProductCategoryId: values.taxProductCategoryId,
+            alcoholDegree: optionalNumber(values.alcoholDegree),
+            netVolumeMl: optionalNumber(values.netVolumeMl),
+            daneCertifiedRetailPrice: optionalNumber(
+              values.daneCertifiedRetailPrice,
+            ),
+            danePriceEffectiveFrom: values.danePriceEffectiveFrom || null,
+            danePriceEffectiveTo: values.danePriceEffectiveTo || null,
+          }
+        : null;
+
+    const basePayload: CreateProductPayload = {
       name: values.name.trim(),
       sku: values.sku.trim(),
       standardIdentification:
@@ -779,25 +801,6 @@ export const ProductForm = ({
       priceWithoutTax: undefined,
       cost: Number(values.cost),
       unitId: values.unitId,
-      taxId: bridgeTaxId,
-      taxes: orderedTaxes.map((item) => ({
-        taxId: item.taxId,
-        calculationOrder: Number(item.calculationOrder),
-        isIncluded: item.isIncluded,
-      })),
-      taxProfile:
-        values.taxProductCategoryId || hasNonPercentageTax
-          ? {
-              taxProductCategoryId: values.taxProductCategoryId,
-              alcoholDegree: optionalNumber(values.alcoholDegree),
-              netVolumeMl: optionalNumber(values.netVolumeMl),
-              daneCertifiedRetailPrice: optionalNumber(
-                values.daneCertifiedRetailPrice,
-              ),
-              danePriceEffectiveFrom: values.danePriceEffectiveFrom || null,
-              danePriceEffectiveTo: values.danePriceEffectiveTo || null,
-            }
-          : null,
       isActive: values.isActive,
       isPerishable: values.isPerishable,
       requiresLot: values.requiresLot,
@@ -813,6 +816,24 @@ export const ProductForm = ({
         subcategoryId: values.subcategoryId,
       }),
     };
+
+    // Solo Super Admin / Super User definen impuestos y DANE.
+    // Al editar, el resto no envia taxes/taxId para no pisar la config fiscal en BD.
+    const payload: CreateProductPayload = canViewFiscalAdvanced
+      ? {
+          ...basePayload,
+          taxId: bridgeTaxId,
+          taxes: orderedTaxes.map((item) => ({
+            taxId: item.taxId,
+            calculationOrder: Number(item.calculationOrder),
+            isIncluded: item.isIncluded,
+          })),
+          taxProfile: taxProfilePayload,
+        }
+      : {
+          ...basePayload,
+          ...(taxProfilePayload ? { taxProfile: taxProfilePayload } : {}),
+        };
 
     setIsSubmitting(true);
     setErrors({});
@@ -879,13 +900,6 @@ export const ProductForm = ({
           priceWithTax={fiscalPricePreview.priceWithTax}
           onFieldChange={setFieldValue}
         />
-
-        <ProductTraitsSection
-          values={values}
-          errors={errors}
-          onFieldChange={setFieldValue}
-        />
-
         <ProductClassificationImageSection
           mode={mode}
           values={values}
@@ -908,6 +922,18 @@ export const ProductForm = ({
           onImageDelete={handleImageDelete}
           imagePanelId={imagePanelId}
         />
+
+        
+        <ProductTraitsSection
+          values={values}
+          errors={errors}
+          requiresAlcoholTraits={
+            hasNonPercentageTax ||
+            Boolean(selectedTaxCategory?.isAlcoholicBeverage)
+          }
+          onFieldChange={setFieldValue}
+        />
+
 
         <ProductOperationalSection
           values={values}

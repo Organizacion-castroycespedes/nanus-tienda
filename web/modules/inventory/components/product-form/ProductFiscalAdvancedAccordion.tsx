@@ -42,6 +42,12 @@ export const ProductFiscalAdvancedAccordion = ({
     onAssignedTaxesChange(next);
   };
 
+  const bridgeAssignment = values.assignedTaxes.find(
+    (assignment) => assignment.taxId === catalogs.bridgeTax?.id,
+  );
+  const priceIncludesBridgeTax =
+    bridgeAssignment?.isIncluded ?? catalogs.bridgeTax?.isIncluded ?? true;
+
   return (
     <section className="overflow-hidden rounded-2xl border border-amber-200/80 bg-white shadow-sm dark:border-amber-900/40 dark:bg-slate-800">
       <button
@@ -148,7 +154,8 @@ export const ProductFiscalAdvancedAccordion = ({
                       calculationOrder: String(
                         (values.assignedTaxes.length + 1) * 100,
                       ),
-                      isIncluded: false,
+                      // Precio de góndola en Colombia suele incluir IVA.
+                      isIncluded: catalogs.bridgeTax?.isIncluded ?? true,
                     },
                   ])
                 }
@@ -173,9 +180,18 @@ export const ProductFiscalAdvancedAccordion = ({
                   label={`Aplicacion #${index + 1}`}
                   value={assignment.taxId}
                   disabled={catalogs.catalogLoading}
-                  onChange={(event) =>
-                    updateAssignment(index, { taxId: event.target.value })
-                  }
+                  onChange={(event) => {
+                    const taxId = event.target.value;
+                    const catalogTax = catalogs.taxOptions.find(
+                      (option) => option.id === taxId,
+                    );
+                    updateAssignment(index, {
+                      taxId,
+                      ...(catalogTax
+                        ? { isIncluded: catalogTax.isIncluded }
+                        : {}),
+                    });
+                  }}
                 >
                   <option value="">Selecciona impuesto</option>
                   {catalogs.taxOptions.map((option) => (
@@ -239,9 +255,9 @@ export const ProductFiscalAdvancedAccordion = ({
                   {(catalogs.bridgeTax.rate * 100).toFixed(2)}%
                 </p>
                 <p>
-                  {catalogs.bridgeTax.isIncluded
-                    ? "El precio ya incluye impuestos"
-                    : "El impuesto no esta incluido en el precio"}
+                  {priceIncludesBridgeTax
+                    ? "El precio ya incluye impuestos (segun la asignacion del producto)"
+                    : "El impuesto NO esta incluido en el precio (segun la asignacion del producto)"}
                 </p>
                 {catalogs.hasNonPercentageTax ? (
                   <p className="mt-2">
