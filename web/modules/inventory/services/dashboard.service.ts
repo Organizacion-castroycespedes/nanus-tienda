@@ -161,6 +161,19 @@ export type InventoryBiCapitalDistributionResponse = {
   }>;
 };
 
+export type InventoryBiOperationalHealthResponse = {
+  negativeUnits: string;
+  negativeInventoryCost: string;
+  expiredLotCount: number;
+  reconciliation: {
+    discrepancyCount: number;
+    criticalCount: number;
+    highCount: number;
+    warningCount: number;
+    infoCount: number;
+  };
+};
+
 export type GetInventoryBiSummaryParams = {
   tenantId?: string;
   branchId?: string;
@@ -231,6 +244,16 @@ export const getInventoryBiCapitalDistribution = (
 ) => {
   return apiClient<InventoryBiCapitalDistributionResponse>(
     `/inventory/bi-capital-distribution${buildInventoryBiSummaryQuery(params)}`,
+    { headers }
+  );
+};
+
+export const getInventoryBiOperationalHealth = (
+  params: GetInventoryBiSummaryParams = {},
+  headers?: HeadersInit
+) => {
+  return apiClient<InventoryBiOperationalHealthResponse>(
+    `/inventory/bi-operational-health${buildInventoryBiSummaryQuery(params)}`,
     { headers }
   );
 };

@@ -121,6 +121,12 @@ export type InventoryBiCapitalDistribution = {
   }>;
 };
 
+export type InventoryBiOperationalHealth = {
+  negative_units: string | number;
+  negative_inventory_cost: string | number;
+  expired_lot_count: string | number;
+};
+
 export type InventoryFilterOption = {
   id: string;
   name: string;
@@ -410,6 +416,98 @@ export class InventoryRepository {
       category_distribution: [],
       top_products: [],
     };
+  }
+
+  async getInventoryBiOperationalHealth(filters: {
+    tenantId: string;
+    branchId?: string;
+    branchIds?: string[];
+    productIds?: string[];
+    categoryId?: string;
+    stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
+  }): Promise<InventoryBiOperationalHealth> {
+    const branchIds = filters.branchId
+      ? [filters.branchId]
+      : filters.branchIds ?? null;
+    const productIds = filters.productIds?.length ? filters.productIds : null;
+    const result = await this.db.query<InventoryBiOperationalHealth>(
+      `
+      WITH base AS (
+        SELECT *
+        FROM public.inventory_bi_base(
+          $1::uuid,
+          $2::uuid[],
+          $3::uuid[],
+          $4::uuid,
+          $5::text
+        )
+      ), expired_lots AS (
+        SELECT COUNT(DISTINCT lot.id) AS expired_lot_count
+        FROM inventory_lots AS lot
+        INNER JOIN base
+          ON base.tenant_id = lot.tenant_id
+         AND base.branch_id = lot.branch_id
+         AND base.product_id = lot.product_id
+        WHERE lot.status = 'EXPIRED'
+      )
+      SELECT
+        COALESCE(SUM(real_stock) FILTER (WHERE real_stock < 0), 0)::numeric AS negative_units,
+        COALESCE(SUM(inventory_cost) FILTER (WHERE real_stock < 0), 0)::numeric AS negative_inventory_cost,
+        (SELECT expired_lot_count FROM expired_lots) AS expired_lot_count
+      FROM base
+      `,
+      [
+        filters.tenantId,
+        branchIds,
+        productIds,
+        filters.categoryId ?? null,
+        filters.stockStatus,
+      ]
+    );
+
+    return result.rows[0] ?? {
+      negative_units: "0",
+      negative_inventory_cost: "0",
+      expired_lot_count: 0,
+    };
+  }
+
+  async listInventoryBiScopeKeys(filters: {
+    tenantId: string;
+    branchId?: string;
+    branchIds?: string[];
+    productIds?: string[];
+    categoryId?: string;
+    stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
+  }) {
+    const branchIds = filters.branchId
+      ? [filters.branchId]
+      : filters.branchIds ?? null;
+    const productIds = filters.productIds?.length ? filters.productIds : null;
+    const result = await this.db.query<{
+      tenant_id: string;
+      branch_id: string;
+      product_id: string;
+    }>(
+      `
+      SELECT tenant_id, branch_id, product_id
+      FROM public.inventory_bi_base(
+        $1::uuid,
+        $2::uuid[],
+        $3::uuid[],
+        $4::uuid,
+        $5::text
+      )
+      `,
+      [
+        filters.tenantId,
+        branchIds,
+        productIds,
+        filters.categoryId ?? null,
+        filters.stockStatus,
+      ]
+    );
+    return result.rows;
   }
 
   async getDashboardSnapshot(scope: InventoryDashboardScope) {

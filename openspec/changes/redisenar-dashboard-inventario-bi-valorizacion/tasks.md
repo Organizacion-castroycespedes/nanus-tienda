@@ -33,8 +33,8 @@
 
 ## 5. Operational health
 
-- [ ] 5.1 Relocate low stock, out-of-stock, pending document, lot alert, and reconciliation capabilities.
-- [ ] 5.2 Preserve alert refresh and non-blocking alert failure behavior.
+- [x] 5.1 Complete discovery and contract gate for low stock, out-of-stock, pending document, lot alert, and reconciliation capabilities; preserve demonstrated gaps and do not invent thresholds.
+- [x] 5.2 Implement the V1 operational-health contract, preserve alert refresh, and keep operational failures non-blocking; automated, read-only DB, and manual visual QA passed.
 
 ## 6. Paginated operational table
 

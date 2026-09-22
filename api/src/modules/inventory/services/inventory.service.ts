@@ -8,6 +8,7 @@ import {
   InventoryRepository,
   type InventoryCashSessionOption,
   type InventoryBiCapitalDistribution,
+  type InventoryBiOperationalHealth,
   type InventoryDashboardScope,
   type InventoryProductRow,
 } from "../repositories/inventory.repository";
@@ -19,6 +20,7 @@ import {
   type BranchScopedFilters,
 } from "../utils/access";
 import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
+import { InventoryLotReconciliationService } from "./inventory-lot-reconciliation.service";
 
 type InventoryDashboardActor = BranchScopedActor & {
   userId?: string;
@@ -64,13 +66,28 @@ export type InventoryBiCapitalDistributionResponse = {
   }>;
 };
 
+export type InventoryBiOperationalHealthResponse = {
+  negativeUnits: string;
+  negativeInventoryCost: string;
+  expiredLotCount: number;
+  reconciliation: {
+    discrepancyCount: number;
+    criticalCount: number;
+    highCount: number;
+    warningCount: number;
+    infoCount: number;
+  };
+};
+
 @Injectable()
 export class InventoryService {
   constructor(
     @Inject(InventoryRepository)
     private readonly repository: InventoryRepository,
     @Inject(FinanceAccessRepository)
-    private readonly financeAccessRepository: FinanceAccessRepository
+    private readonly financeAccessRepository: FinanceAccessRepository,
+    @Inject(InventoryLotReconciliationService)
+    private readonly lotReconciliationService: InventoryLotReconciliationService
   ) {}
 
   private mapInventoryRow(row: InventoryProductRow) {
@@ -334,6 +351,101 @@ export class InventoryService {
             ? null
             : String(row.participationPercent),
       })),
+    };
+  }
+
+  async getInventoryBiOperationalHealth(
+    filters: InventoryBiSummaryFilters,
+    actor: BranchScopedActor
+  ): Promise<InventoryBiOperationalHealthResponse> {
+    const resolvedFilters = this.resolveProductFilters(actor, filters);
+    const tenantId = resolvedFilters.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+
+    let branchIds: string[] | undefined;
+    if (!canViewAllBranches(actor)) {
+      if (!actor.userId) {
+        throw new ForbiddenException("Usuario requerido");
+      }
+      branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+        actor.userId,
+        tenantId
+      );
+      if (branchIds.length === 0 && actor.branchId) {
+        branchIds = [actor.branchId];
+      }
+      if (!branchIds.length) {
+        throw new ForbiddenException("Usuario sin sucursales asignadas");
+      }
+      if (resolvedFilters.branchId && !branchIds.includes(resolvedFilters.branchId)) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+      if (hasBranchScopedRole(actor) && !resolvedFilters.branchId && actor.branchId) {
+        branchIds = branchIds.includes(actor.branchId) ? [actor.branchId] : branchIds;
+      }
+    }
+
+    const stockStatus = filters.stockStatus ?? "all";
+    if (!["all", "in_stock", "out_of_stock", "negative"].includes(stockStatus)) {
+      throw new BadRequestException("Estado de stock invalido");
+    }
+
+    const productIds = Array.from(
+      new Set((filters.productIds ?? []).map((id) => id.trim()).filter(Boolean))
+    );
+    const baseFilters = {
+      tenantId,
+      branchId:
+        branchIds && branchIds.length === 1 ? branchIds[0] : resolvedFilters.branchId,
+      branchIds,
+      productIds,
+      categoryId: normalizeOptionalFilter(filters.categoryId),
+      stockStatus,
+    } as const;
+    const [health, scopeRows] = await Promise.all([
+      this.repository.getInventoryBiOperationalHealth(baseFilters),
+      this.repository.listInventoryBiScopeKeys(baseFilters),
+    ]);
+    const allowedKeys = new Set(
+      scopeRows.map((row) => `${row.tenant_id}:${row.branch_id}:${row.product_id}`)
+    );
+
+    const reconciliationBranches = branchIds ?? [resolvedFilters.branchId].filter(Boolean) as string[];
+    const discrepancyLists = await Promise.all(
+      (reconciliationBranches.length ? reconciliationBranches : [undefined]).map((branchId) =>
+        this.lotReconciliationService.findDiscrepancies(
+          tenantId,
+          { branchId },
+          {
+            roles: actor.roles,
+            userId: actor.userId,
+            tenantId: actor.tenantId,
+            branchId: actor.branchId,
+          }
+        )
+      )
+    );
+    const discrepancies = discrepancyLists.flat().filter((item) =>
+      item.productId !== null &&
+      item.branchId !== null &&
+      allowedKeys.has(`${tenantId}:${item.branchId}:${item.productId}`)
+    );
+    const reconciliation = {
+      discrepancyCount: discrepancies.length,
+      criticalCount: discrepancies.filter((item) => item.severity === "CRITICAL").length,
+      highCount: discrepancies.filter((item) => item.severity === "HIGH").length,
+      warningCount: discrepancies.filter((item) => item.severity === "WARNING").length,
+      infoCount: discrepancies.filter((item) => item.severity === "INFO").length,
+    };
+
+    const typedHealth = health as InventoryBiOperationalHealth;
+    return {
+      negativeUnits: String(typedHealth.negative_units ?? "0"),
+      negativeInventoryCost: String(typedHealth.negative_inventory_cost ?? "0"),
+      expiredLotCount: Number(typedHealth.expired_lot_count ?? 0),
+      reconciliation,
     };
   }
 

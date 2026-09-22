@@ -362,3 +362,59 @@ The web dashboard SHALL use the authorized Recharts dependency only for branch a
 #### Scenario: Accessibility alternative
 - **WHEN** a chart is rendered
 - **THEN** its heading, labels, and values SHALL also be available through accessible text or table content and SHALL not depend only on color or tooltip
+
+### Requirement: Section 5.1 operational health discovery gate
+
+Before implementing Section 5, the change SHALL classify each operational-health signal from demonstrated repository contracts. The shared `public.inventory_bi_base` SHALL remain the source for stock/cost-derived facts, and existing legacy dashboard, lot, and reconciliation contracts SHALL remain preserved until their scope and filter mapping is explicitly defined. Discovery SHALL NOT authorize production code, a new endpoint, migration, function, view, index, cache, or threshold.
+
+The demonstrated current-state statuses are `WITH_STOCK`, `OUT_OF_STOCK`, and `NEGATIVE`. Existing summary counts are available but overlap Section 3. Negative units and negative inventory value MAY be derived later from the shared base with signed decimal semantics. `STOCK_LOW`, minimum-stock alerts, coverage, rotation, days-on-hand, and an overall health score SHALL remain unavailable or require a business rule until their exact formula, granularity, date behavior, and scope are approved. The existence of product `min_stock` fields alone SHALL not authorize a BI low-stock rule.
+
+Pending purchase/order counts, lot expiration/status signals, and lot-reconciliation discrepancy/severity counts SHALL be treated as secondary operational contracts. Their existing status sets, date behavior, branch authorization, and filter semantics SHALL not be silently converted into current-state BI semantics. A future Section 5 response SHALL use applied Tenant, Branch, `productIds`, category, and stock-status filters and SHALL preserve backend-enforced scope; terminal, cash, and dates SHALL not affect current-state stock or cost.
+
+#### Scenario: Safe health contract
+- **WHEN** a Section 5 metric is proposed
+- **THEN** it SHALL identify its source, aggregation, cardinality, filters, and whether it duplicates a Section 3 KPI before implementation
+
+#### Scenario: No invented health classification
+- **WHEN** the available signals are only descriptive counts or distributions
+- **THEN** the UI SHALL not label them healthy, critical, high risk, or as a general health score without an approved business rule
+
+#### Scenario: Insufficient independent indicators
+- **WHEN** fewer than three independent health indicators are contractually ready
+- **THEN** Section 5 SHALL reduce the card layout rather than display duplicated or fabricated metrics
+
+#### Scenario: Shared source reuse
+- **WHEN** a stock or inventory-cost health aggregate is implemented
+- **THEN** it SHALL reuse `public.inventory_bi_base` and SHALL not duplicate the `stock_movements` IN-OUT plus `products.cost` formula
+
+#### Scenario: API boundary
+- **WHEN** Section 5 needs existing summary counts
+- **THEN** it SHALL reuse `/inventory/bi-summary`; a specialized `/inventory/bi-operational-health` endpoint SHALL be introduced only for new, legitimate small aggregates whose cross-source scope contract has been approved
+
+### Requirement: Section 5.2 operational health V1
+
+Section 5.2 SHALL expose an additive typed `GET /inventory/bi-operational-health` contract under the existing `INVENTORY/READ` permission. It SHALL preserve legacy `/inventory/dashboard` and SHALL consume only applied authorized tenant, branch, `productIds`, category, and stock-status filters. Terminal, cash, and date context SHALL not affect current-state stock-derived values.
+
+The V1 response SHALL include signed negative units derived from `public.inventory_bi_base`, distinct expired-lot count from `inventory_lots.status = 'EXPIRED'` intersected with the filtered product-branch base, and reconciliation counts from `InventoryLotReconciliationService` intersected with the same filtered product-branch keys. Existing discrepancy severity names MAY be returned as a breakdown, but no severity threshold or overall health score SHALL be invented. Pending purchase/order counts SHALL not be exposed as current-state BI unless their legacy date/terminal/cash semantics achieve explicit filter parity; the approved fallback is negative units.
+
+The `/inventory` panel SHALL reuse the already loaded `/inventory/bi-summary` counts to present descriptive `WITH_STOCK`, `OUT_OF_STOCK`, and `NEGATIVE` counts and percentages. It SHALL not render a health score, healthy/critical/risk labels, trends, or low-stock values. `ProductEntity.minStock` and the legacy low-stock rule SHALL remain deferred until a branch-aware business rule is approved.
+
+#### Scenario: Operational filter parity
+- **WHEN** applied tenant, branch, product, category, or stock-status filters change
+- **THEN** every operational-health aggregate SHALL be restricted to the same authorized filtered product-branch scope
+
+#### Scenario: Safe pending fallback
+- **WHEN** pending documents cannot satisfy current-state filter parity
+- **THEN** the endpoint SHALL expose signed negative units as the fallback and SHALL not expose an unfiltered pending count
+
+#### Scenario: Expired lot semantics
+- **WHEN** a lot has status `EXPIRED`
+- **THEN** it MAY count once by distinct lot ID only when its tenant, branch, and product intersect the filtered BI base
+
+#### Scenario: Local operational failure
+- **WHEN** the operational-health request fails
+- **THEN** KPI and capital sections SHALL retain their own state and the health section SHALL show a localized error without fabricated zero values
+
+#### Scenario: Operational health visual QA
+- **WHEN** operational-health cards render zero or non-zero values
+- **THEN** zero values SHALL use a neutral soft accent, non-zero values SHALL use the existing semantic accent, and labels/values SHALL remain visible without exposing internal fallback, parity, or enum names

@@ -27,8 +27,10 @@ import { InventoryImagePreview } from "./InventoryImagePreview";
 import InventoryBiFiltersPanel from "./InventoryBiFiltersPanel";
 import {
   getInventoryBiCapitalDistribution,
+  getInventoryBiOperationalHealth,
   getInventoryBiSummary,
   type InventoryBiCapitalDistributionResponse,
+  type InventoryBiOperationalHealthResponse,
   type InventoryBiSummaryResponse,
 } from "../services/dashboard.service";
 import {
@@ -432,7 +434,7 @@ const CapitalDistributionShell = ({
   </section>
 );
 
-const OperationalHealthShell = () => (
+const OperationalHealthShellLegacy = () => (
   <section aria-label="Salud operativa">
     <div className="mb-3">
       <h2 className={sectionTitleClassName}>Salud operativa</h2>
@@ -456,6 +458,131 @@ const OperationalHealthShell = () => (
       >
         <InventoryBiSkeleton className="h-[96px] w-full" label="health-status" />
       </InventoryBiSection>
+    </div>
+  </section>
+);
+
+const OperationalHealthCard = ({
+  label,
+  value,
+  description,
+  tone,
+  active,
+}: {
+  label: string;
+  value: string;
+  description: string;
+  tone: string;
+  active: boolean;
+}) => (
+  <div className={`${panelClassName} min-w-0 min-h-[96px]`}>
+    <div className="flex items-start justify-between gap-3">
+      <p className="min-w-0 text-xs font-semibold leading-4 text-[var(--brand-surface-muted)]">{label}</p>
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${active ? tone : "bg-slate-300"}`} aria-hidden="true" />
+    </div>
+    <p className="mt-3 whitespace-nowrap text-xl font-bold leading-none tabular-nums text-[var(--brand-surface-text)]">{value}</p>
+    <p className="mt-2 text-xs leading-4 text-[var(--brand-surface-muted)]">{description}</p>
+  </div>
+);
+
+const StockStatePanel = ({
+  summary,
+  loading,
+  error,
+}: {
+  summary: InventoryBiSummaryResponse | null;
+  loading: boolean;
+  error: string | null;
+}) => {
+  const states = summary
+    ? [
+        { label: "Con stock", count: summary.productsWithStock, tone: "bg-emerald-500" },
+        { label: "Agotados", count: summary.outOfStockProducts, tone: "bg-amber-500" },
+        { label: "Stock negativo", count: summary.negativeStockProducts, tone: "bg-rose-500" },
+      ]
+    : [];
+  const total = states.reduce((sum, state) => sum + state.count, 0);
+
+  return (
+    <InventoryBiSection
+      title="Estado actual del stock"
+      subtitle="Distribución descriptiva de productos según los filtros aplicados."
+      className="inventory-bi-health-status lg:col-span-2"
+    >
+      {loading ? (
+        <InventoryBiSkeleton className="h-[96px] w-full" label="health-status" />
+      ) : error ? (
+        <p role="alert" className="text-sm text-rose-700">No fue posible cargar el estado del stock.</p>
+      ) : total === 0 ? (
+        <p className="text-sm text-[var(--brand-surface-muted)]">No hay productos para el filtro aplicado.</p>
+      ) : (
+        <div aria-label="Distribución actual del stock" className="space-y-3">
+          <div className="flex h-3 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+            {states.map((state) => (
+              <div key={state.label} className={state.tone} style={{ width: `${(state.count / total) * 100}%` }} />
+            ))}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {states.map((state) => (
+              <div key={state.label} className="min-w-0">
+                <p className="text-xs text-[var(--brand-surface-muted)]">{state.label}</p>
+                <p className="mt-1 text-base font-bold tabular-nums text-[var(--brand-surface-text)]">
+                  {state.count}
+                  <span className="ml-1 text-xs font-normal text-[var(--brand-surface-muted)]">
+                    {total ? `${((state.count / total) * 100).toFixed(1)}%` : "No disponible"}
+                  </span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </InventoryBiSection>
+  );
+};
+
+const OperationalHealthShell = ({
+  health,
+  summary,
+  loading,
+  error,
+  summaryLoading,
+  summaryError,
+}: {
+  health: InventoryBiOperationalHealthResponse | null;
+  summary: InventoryBiSummaryResponse | null;
+  loading: boolean;
+  error: string | null;
+  summaryLoading: boolean;
+  summaryError: string | null;
+}) => (
+  <section aria-label="Salud operativa">
+    <div className="mb-3">
+      <h2 className={sectionTitleClassName}>Salud operativa</h2>
+      <p className={sectionSubtitleClassName}>
+        Señales descriptivas de stock negativo, lotes vencidos y conciliación.
+      </p>
+    </div>
+    <div className="inventory-bi-health-grid grid gap-4 lg:grid-cols-2">
+      <div className="inventory-bi-health-cards grid gap-4 min-[480px]:grid-cols-2 lg:col-span-2 lg:grid-cols-3">
+        {loading ? Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className={`${panelClassName} min-h-[96px]`}>
+            <InventoryBiSkeleton className="h-3 w-2/5" label={`health-label-${index + 1}`} />
+            <InventoryBiSkeleton className="mt-4 h-6 w-1/2" label={`health-value-${index + 1}`} />
+          </div>
+        )) : error ? (
+          <div role="alert" className={`${panelClassName} min-h-[96px] text-sm text-rose-700`}>
+            No fue posible cargar las señales operativas.
+          </div>
+        ) : health ? (
+          <>
+            <OperationalHealthCard label="Unidades en stock negativo" value={formatInventoryUnits(health.negativeUnits) ?? "No disponible"} description="Suma de unidades con existencias por debajo de cero." tone="bg-rose-500" active={health.negativeUnits !== "0"} />
+            <OperationalHealthCard label="Discrepancias de conciliación" value={String(health.reconciliation.discrepancyCount)} description={`${health.reconciliation.criticalCount} críticas · ${health.reconciliation.highCount} altas`} tone="bg-amber-500" active={health.reconciliation.discrepancyCount > 0} />
+            <OperationalHealthCard label="Lotes vencidos" value={String(health.expiredLotCount)} description="Lotes actualmente registrados como vencidos." tone="bg-orange-500" active={health.expiredLotCount > 0} />
+          </>
+        ) : null}
+      </div>
+      <StockStatePanel summary={summary} loading={summaryLoading} error={summaryError} />
     </div>
   </section>
 );
@@ -532,11 +659,15 @@ export const InventoryBiDashboard = ({
   const [summary, setSummary] = useState<InventoryBiSummaryResponse | null>(null);
   const [capitalDistribution, setCapitalDistribution] =
     useState<InventoryBiCapitalDistributionResponse | null>(null);
+  const [operationalHealth, setOperationalHealth] =
+    useState<InventoryBiOperationalHealthResponse | null>(null);
   const [summaryFilters, setSummaryFilters] = useState<InventoryBiFilters | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(Boolean(authTenantId));
   const [capitalLoading, setCapitalLoading] = useState(Boolean(authTenantId));
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [capitalError, setCapitalError] = useState<string | null>(null);
+  const [operationalHealthLoading, setOperationalHealthLoading] = useState(Boolean(authTenantId));
+  const [operationalHealthError, setOperationalHealthError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const initialFilters = useMemo(
@@ -553,8 +684,10 @@ export const InventoryBiDashboard = ({
     if (!filters.requestedTenantId) return;
     setSummaryLoading(true);
     setCapitalLoading(true);
+    setOperationalHealthLoading(true);
     setSummaryError(null);
     setCapitalError(null);
+    setOperationalHealthError(null);
     try {
       const params = {
         tenantId: filters.requestedTenantId,
@@ -563,20 +696,41 @@ export const InventoryBiDashboard = ({
         categoryId: filters.categoryId || undefined,
         stockStatus: filters.stockStatus,
       } as const;
-      const [nextSummary, nextCapitalDistribution] = await Promise.all([
+      const [summaryResult, capitalResult, operationalResult] = await Promise.allSettled([
         getInventoryBiSummary(params),
         getInventoryBiCapitalDistribution(params),
+        getInventoryBiOperationalHealth(params),
       ]);
-      setSummary(nextSummary);
-      setCapitalDistribution(nextCapitalDistribution);
-      setSummaryFilters(filters);
-      setLastUpdated(new Date().toISOString());
+      if (summaryResult.status === "fulfilled") {
+        setSummary(summaryResult.value);
+        setSummaryError(null);
+      } else {
+        setSummaryError("No fue posible cargar los indicadores de inventario.");
+      }
+      if (capitalResult.status === "fulfilled") {
+        setCapitalDistribution(capitalResult.value);
+        setCapitalError(null);
+      } else {
+        setCapitalError("No fue posible cargar la distribución del capital.");
+      }
+      if (operationalResult.status === "fulfilled") {
+        setOperationalHealth(operationalResult.value);
+        setOperationalHealthError(null);
+      } else {
+        setOperationalHealthError("No fue posible cargar las señales operativas.");
+      }
+      if (summaryResult.status === "fulfilled" && capitalResult.status === "fulfilled") {
+        setSummaryFilters(filters);
+        setLastUpdated(new Date().toISOString());
+      }
     } catch {
+      setOperationalHealthError("No fue posible cargar las señales operativas.");
       setSummaryError("No fue posible cargar los indicadores de inventario.");
       setCapitalError("No fue posible cargar la distribución del capital.");
     } finally {
       setSummaryLoading(false);
       setCapitalLoading(false);
+      setOperationalHealthLoading(false);
     }
   }, []);
 
@@ -617,7 +771,14 @@ export const InventoryBiDashboard = ({
         loading={capitalLoading}
         error={capitalError}
       />
-      <OperationalHealthShell />
+      <OperationalHealthShell
+        health={operationalHealth}
+        summary={summary}
+        loading={operationalHealthLoading}
+        error={operationalHealthError}
+        summaryLoading={summaryLoading}
+        summaryError={summaryError}
+      />
       <InventoryValuationCtaShell />
       <OperationalTableShell />
     </main>
