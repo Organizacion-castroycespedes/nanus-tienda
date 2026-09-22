@@ -47,6 +47,7 @@ const isUuid = (value: string) =>
   );
 
 const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
+const MAX_PRODUCT_OPTION_LIMIT = 25;
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -92,6 +93,17 @@ export class InventoryController {
     }
 
     throw new BadRequestException(`${field} must be a valid UUID`);
+  }
+
+  private parseOptionalProductLimit(value: string | undefined) {
+    if (value === undefined || value.trim() === "") {
+      return undefined;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException("limit must be a positive integer");
+    }
+    return Math.min(parsed, MAX_PRODUCT_OPTION_LIMIT);
   }
 
   private sendImage(
@@ -161,12 +173,16 @@ export class InventoryController {
   listProducts(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
+    @Query("search") search: string | undefined,
+    @Query("limit") limit: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.inventoryService.listInventoryProducts(
       {
         tenantId,
         branchId,
+        search,
+        limit: this.parseOptionalProductLimit(limit),
       },
       this.buildActor(request)
     );

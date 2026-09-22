@@ -155,6 +155,8 @@ export class InventoryService {
       branchId:
         branchIds && branchIds.length === 1 ? branchIds[0] : resolvedFilters.branchId,
       branchIds,
+      search: normalizeOptionalFilter(filters.search),
+      limit: filters.limit,
     });
     return rows.map((row) => this.mapInventoryRow(row));
   }

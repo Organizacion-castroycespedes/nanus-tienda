@@ -21,6 +21,8 @@ export type GetProductsParams = {
 export type GetInventoryProductsParams = {
   tenantId?: string;
   branchId?: string;
+  search?: string;
+  limit?: number;
 };
 
 export type CreateProductPayload = {
@@ -79,7 +81,7 @@ export type CreateProductBarcodePayload = {
 
 export type UpdateProductBarcodePayload = Partial<CreateProductBarcodePayload>;
 
-const buildProductsQuery = (params: GetProductsParams = {}) => {
+export const buildProductsQuery = (params: GetProductsParams = {}) => {
   const searchParams = new URLSearchParams();
 
   if (params.search) {
@@ -104,9 +106,8 @@ export const getProducts = (
   headers?: HeadersInit
 ) => apiClient<ProductResponse[]>(buildProductsQuery(params), { headers });
 
-export const getInventoryProducts = (
-  params: GetInventoryProductsParams = {},
-  headers?: HeadersInit
+export const buildInventoryProductsQuery = (
+  params: GetInventoryProductsParams = {}
 ) => {
   const query = new URLSearchParams();
   if (params.tenantId) {
@@ -115,9 +116,21 @@ export const getInventoryProducts = (
   if (params.branchId) {
     query.set("branchId", params.branchId);
   }
+  if (params.search?.trim()) {
+    query.set("search", params.search.trim());
+  }
+  if (typeof params.limit === "number") {
+    query.set("limit", String(params.limit));
+  }
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return apiClient<ProductResponse[]>(`/inventory/products${suffix}`, { headers });
+  return `/inventory/products${suffix}`;
 };
+
+export const getInventoryProducts = (
+  params: GetInventoryProductsParams = {},
+  headers?: HeadersInit
+) =>
+  apiClient<ProductResponse[]>(buildInventoryProductsQuery(params), { headers });
 
 export const createProduct = (
   payload: CreateProductPayload,

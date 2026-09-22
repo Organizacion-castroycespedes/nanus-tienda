@@ -126,6 +126,8 @@ export class InventoryRepository {
     tenantId?: string;
     branchId?: string;
     branchIds?: string[];
+    search?: string;
+    limit?: number;
   }) {
     const params: unknown[] = [];
     const where: string[] = ["p.is_active = TRUE", "b.estado = 'ACTIVE'"];
@@ -142,6 +144,16 @@ export class InventoryRepository {
       params.push(filters.branchIds);
       where.push(`b.id = ANY($${params.length}::uuid[])`);
     }
+
+    if (filters.search?.trim()) {
+      params.push(`%${filters.search.trim()}%`);
+      where.push(`(p.name ILIKE $${params.length} OR p.sku ILIKE $${params.length})`);
+    }
+
+    const limitClause =
+      filters.limit === undefined
+        ? ""
+        : `LIMIT $${params.push(Math.min(Math.max(Math.trunc(filters.limit), 1), 25))}`;
 
     const result = await this.db.query<InventoryProductRow>(
       `
@@ -218,6 +230,7 @@ export class InventoryRepository {
         b.nombre ASC,
         p.name ASC,
         p.sku ASC
+      ${limitClause}
       `,
       params
     );

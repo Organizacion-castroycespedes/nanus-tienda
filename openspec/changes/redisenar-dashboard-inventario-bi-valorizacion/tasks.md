@@ -12,8 +12,10 @@
 
 ## 2. Scope and filters
 
-- [ ] 2.1 Implement the approved scope and filter experience while preserving role-aware behavior.
-- [ ] 2.2 Validate loading, error, reset, refresh, tenant, branch, terminal, cash, and date behavior.
+- [x] 2.1 Implement the approved scope and filter experience while preserving role-aware behavior.
+- [x] 2.2 Validate loading, error, reset, refresh, tenant, branch, terminal, cash, and date behavior.
+- [x] 2.3 Extend the existing category read contract with optional authorized `tenantId` support and focused cross-tenant authorization tests.
+- [x] 2.4 Extend the existing `/inventory/products` contract with optional scoped server-side `search` and defensive `limit`, replace local product filtering with debounced remote search, and add focused compatibility/scope tests.
 
 ## 3. Executive KPIs
 
@@ -77,6 +79,7 @@
 - [ ] 13.1 Validate the approved BI layout at widths above 1440, 1280, 1024, 768, and 480.
 - [ ] 13.2 Validate keyboard access, labels, focus, table semantics, contrast, and responsive overflow.
 - [ ] 13.3 Confirm use of existing icon library, typography, design tokens, flex/grid layout, and no prohibited visual patterns.
+- [ ] 13.4 Revalidate the open Producto searchable multi-select on mobile, including all selected items, individual removal, compact height, and the explicit `+N` summary indicator.
 
 ## 14. Global QA
 

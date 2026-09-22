@@ -28,6 +28,58 @@ The shell SHALL use existing tenant design tokens, the existing `Button` compone
 - **WHEN** the shell receives an error state
 - **THEN** Header and structural context SHALL remain visible and the compact error panel SHALL offer retry only when a callback exists
 
+### Requirement: Section 2 scope and filters
+
+Section 2 SHALL replace the `Filtros de inventario` shell with functional primary controls for tenant, branch, product, category, and stock status, plus operational secondary context under `Más filtros`. It SHALL use one typed filter state containing `requestedTenantId`, `requestedBranchId`, `productIds`, `categoryId`, `stockStatus`, `terminalId`, `cashSessionId`, `startDate`, and `endDate`. An empty `productIds` SHALL mean all products. It SHALL not calculate BI metrics or trigger future BI queries.
+
+#### Scenario: Role-aware controls
+- **WHEN** an authenticated actor opens the Inventory BI filters
+- **THEN** SUPER_ADMIN SHALL see tenant and branch selectors from the existing authorized dashboard options; SUPER_USER SHALL see its tenant as fixed context and branch options from the existing backend contract; ADMIN SHALL see tenant and assigned branch as fixed context
+
+#### Scenario: Dependent scope
+- **WHEN** tenant changes
+- **THEN** branch, productIds, category, terminal, and cash selections SHALL clear and only options for the selected tenant response SHALL remain available
+
+#### Scenario: Reset restricted scope
+- **WHEN** the actor selects `Limpiar`
+- **THEN** optional filters SHALL clear while authenticated tenant/branch defaults remain for restricted actors
+
+#### Scenario: Stock status
+- **WHEN** the actor selects stock status
+- **THEN** the state SHALL support Todos, Con stock, Agotado, and Stock negativo; Stock bajo SHALL not be offered without a demonstrated minimum-stock rule
+
+#### Scenario: Option failure
+- **WHEN** an option source fails
+- **THEN** the affected control SHALL expose an identifiable error and SHALL not silently present an empty successful state
+
+#### Scenario: Authorized tenant category catalog
+- **WHEN** SUPER_ADMIN selects an authorized tenant different from the authenticated tenant
+- **THEN** the existing `/inventory/product-categories` read route SHALL accept the optional requested tenant, validate it server-side with the existing access-control contract, and return categories for that tenant
+
+#### Scenario: Restricted category catalog
+- **WHEN** ADMIN or SUPER_USER requests categories for a tenant outside its demonstrated scope
+- **THEN** the backend SHALL reject the request and SHALL not return categories from the requested tenant
+
+#### Scenario: Exhaustive product search with bounded results
+- **WHEN** a user enters product text
+- **THEN** `GET /inventory/products` SHALL apply parameterized, case-insensitive search over the authorized full scope before applying the optional `limit`; the response SHALL remain the existing product array shape and the UI SHALL request a bounded result set without downloading the complete catalog
+
+#### Scenario: Product search backward compatibility
+- **WHEN** existing consumers omit `search` and `limit`
+- **THEN** `/inventory/products` SHALL preserve its current authorization, ordering, array response, and unbounded legacy behavior
+
+#### Scenario: Product search scope
+- **WHEN** a product search includes tenant, branch, search, or limit parameters
+- **THEN** backend scope resolution SHALL run before product search, ADMIN and SUPER_USER SHALL remain restricted, and SUPER_ADMIN SHALL use only the requested tenant permitted by the existing Inventory scope contract
+
+#### Scenario: Product multi-select
+- **WHEN** the user selects multiple product results
+- **THEN** the single Producto control SHALL retain every selected stable ID without duplicates, SHALL allow continued remote searching, SHALL show all selections with individual removal while open, and SHALL show only one or two compact names plus `+N` when closed
+
+#### Scenario: Product selection contract for future BI
+- **WHEN** a later BI section consumes the Section 2 filters
+- **THEN** it SHALL apply `productIds` as a product ID `IN`/`ANY` constraint, and an empty array SHALL omit that product constraint
+
 ### Requirement: Section 0 is architecture-only
 
 Section 0 SHALL document architecture, data contracts, scope, pagination, valuation, export, route preservation, and incremental delivery. It SHALL NOT authorize production code, physical SQL functions, migrations, visual implementation, staging, commit, or push.

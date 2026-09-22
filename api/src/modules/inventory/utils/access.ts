@@ -12,6 +12,8 @@ export type BranchScopedActor = {
 export type BranchScopedFilters = {
   tenantId?: string;
   branchId?: string;
+  search?: string;
+  limit?: number;
   fromDate?: string;
   toDate?: string;
   paymentMethod?: string;

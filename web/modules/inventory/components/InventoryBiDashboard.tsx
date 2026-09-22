@@ -3,6 +3,7 @@
 import { AlertTriangle, Eye, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "../../../components/design-system/Button";
+import InventoryBiFiltersPanel from "./InventoryBiFiltersPanel";
 
 type InventoryBiViewState = "loading" | "error" | "ready";
 
@@ -85,19 +86,6 @@ const InventoryBiHeader = ({ onRefresh }: { onRefresh?: () => void }) => (
       </Button>
     </div>
   </header>
-);
-
-const ScopeFiltersShell = () => (
-  <InventoryBiSection
-    title="Filtros de inventario"
-    subtitle="La selección de tenant, sucursal, terminal, caja y fechas se incorporará en la siguiente sección."
-  >
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-      {Array.from({ length: 5 }, (_, index) => (
-        <InventoryBiSkeleton key={index} className="h-10" label={`scope-${index + 1}`} />
-      ))}
-    </div>
-  </InventoryBiSection>
 );
 
 const KpiShell = () => (
@@ -238,7 +226,7 @@ export const InventoryBiDashboard = ({
   >
     <InventoryBiHeader onRefresh={onRefresh} />
     {viewState === "error" ? <InventoryBiErrorPanel onRetry={onRetry} /> : null}
-    <ScopeFiltersShell />
+    <InventoryBiFiltersPanel />
     <KpiShell />
     <CapitalDistributionShell />
     <OperationalHealthShell />
