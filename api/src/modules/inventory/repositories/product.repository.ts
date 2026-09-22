@@ -859,11 +859,12 @@ export class ProductRepository {
       danePriceEffectiveFrom:
         row.dane_price_effective_from === null
           ? null
-          : String(row.dane_price_effective_from).slice(0, 10),
+          : (row.dane_price_effective_from instanceof Date ? row.dane_price_effective_from.toISOString().slice(0, 10) : String(row.dane_price_effective_from).slice(0, 10)),
       danePriceEffectiveTo:
         row.dane_price_effective_to === null
           ? null
-          : String(row.dane_price_effective_to).slice(0, 10),
+          : (row.dane_price_effective_to instanceof Date ? row.dane_price_effective_to.toISOString().slice(0, 10) : String(row.dane_price_effective_to).slice(0, 10)),
     };
   }
 }
+
