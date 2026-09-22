@@ -88,10 +88,17 @@ PDF table refinement: the landscape detail table now reserves a dedicated wider 
 
 ## 13. Responsive and accessibility
 
-- [ ] 13.1 Validate the approved BI layout at widths above 1440, 1280, 1024, 768, and 480.
-- [ ] 13.2 Validate keyboard access, labels, focus, table semantics, contrast, and responsive overflow.
-- [ ] 13.3 Confirm use of existing icon library, typography, design tokens, flex/grid layout, and no prohibited visual patterns.
-- [ ] 13.4 Revalidate the open Producto searchable multi-select on mobile, including all selected items, individual removal, compact height, and the explicit `+N` summary indicator.
+Implementation note: automated/static review fixed the mobile-open Producto multi-select
+container sizing and keyboard/focus semantics. Manual viewport and interaction evidence
+was confirmed by the user: desktop 1440/1280 with both sidebar states, intermediate
+1024/768, mobile 480 with the dropdown open, multi-selection and chip removal, keyboard
+navigation and Escape, draft/applied behavior, loading/empty/error states, and preserved
+pagination, charts, and export controls. No API, DB, or business contract changed.
+
+- [x] 13.1 Validate the approved BI layout at widths above 1440, 1280, 1024, 768, and 480.
+- [x] 13.2 Validate keyboard access, labels, focus, table semantics, contrast, and responsive overflow.
+- [x] 13.3 Confirm use of existing icon library, typography, design tokens, flex/grid layout, and no prohibited visual patterns.
+- [x] 13.4 Revalidate the open Producto searchable multi-select on mobile, including all selected items, individual removal, compact height, and the explicit `+N` summary indicator.
 
 ## 14. Global QA
 

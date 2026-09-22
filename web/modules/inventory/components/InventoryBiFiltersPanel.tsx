@@ -86,6 +86,14 @@ const InventoryBiFiltersPanel = ({
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<InventoryBiFilters | null>(null);
   const productSearchRequestRef = useRef(0);
+  const productTriggerRef = useRef<HTMLButtonElement>(null);
+  const productSearchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (productPickerOpen) {
+      productSearchRef.current?.focus();
+    }
+  }, [productPickerOpen]);
 
   useEffect(() => {
     setFilters((current) => {
@@ -255,6 +263,11 @@ const InventoryBiFiltersPanel = ({
     setFilters((current) => removeInventoryProduct(current, productId));
   };
 
+  const closeProductPicker = () => {
+    setProductPickerOpen(false);
+    productTriggerRef.current?.focus();
+  };
+
   const selectedProducts = filters.productIds
     .map((id) => selectedProductLabels[id])
     .filter((product): product is { id: string; name: string; sku: string } => Boolean(product));
@@ -352,29 +365,62 @@ const InventoryBiFiltersPanel = ({
           <button
             type="button"
             className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-[var(--brand-surface-border)] bg-[var(--brand-surface-card)] px-3 py-2 text-left text-sm text-[var(--brand-surface-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
+            ref={productTriggerRef}
             aria-haspopup="listbox"
             aria-expanded={productPickerOpen}
+            aria-label={`Producto. ${productSummary}`}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && productPickerOpen) {
+                event.preventDefault();
+                closeProductPicker();
+              }
+            }}
             onClick={() => setProductPickerOpen((open) => !open)}
           >
             <span className="min-w-0 truncate">{productSummary}</span>
             <ChevronDown size={16} aria-hidden="true" />
           </button>
           {productPickerOpen ? (
-            <div className="absolute z-20 mt-1 w-full min-w-[260px] rounded-lg border border-[var(--brand-surface-border)] bg-[var(--brand-surface-card)] p-2 shadow-lg">
+            <div className="absolute left-0 right-0 z-30 mt-1 min-w-0 max-w-full rounded-lg border border-[var(--brand-surface-border)] bg-[var(--brand-surface-card)] p-2 shadow-lg">
               <Input
                 label="Buscar producto"
+                ref={productSearchRef}
+                id="inventory-product-search"
                 value={productSearch}
                 onChange={(event) => setProductSearch(event.target.value)}
                 placeholder="Nombre o SKU"
+                aria-controls="inventory-product-results"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeProductPicker();
+                    return;
+                  }
+
+                  if (event.key === "ArrowDown") {
+                    const firstOption = document.querySelector<HTMLButtonElement>(
+                      "#inventory-product-results [role=option]"
+                    );
+                    if (firstOption) {
+                      event.preventDefault();
+                      firstOption.focus();
+                    }
+                  }
+                }}
               />
               {selectedProducts.length > 0 ? (
-                <div className="mt-2 max-h-20 space-y-1 overflow-y-auto" aria-label="Productos seleccionados">
+                <div
+                  className="mt-2 max-h-20 space-y-1 overflow-y-auto overscroll-contain"
+                  role="group"
+                  tabIndex={0}
+                  aria-label="Productos seleccionados"
+                >
                   {selectedProducts.map((product) => (
                     <div key={product.id} className="flex items-center justify-between gap-2 rounded bg-[var(--brand-background)] px-2 py-1 text-xs">
                       <span className="truncate">{product.name}</span>
                       <button
                         type="button"
-                        className="shrink-0 rounded p-1 text-[var(--brand-surface-muted)] hover:text-[var(--brand-surface-text)]"
+                        className="shrink-0 rounded p-1 text-[var(--brand-surface-muted)] hover:text-[var(--brand-surface-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
                         aria-label={`Quitar ${product.name}`}
                         onClick={() => handleProductRemove(product.id)}
                       >
@@ -384,9 +430,51 @@ const InventoryBiFiltersPanel = ({
                   ))}
                 </div>
               ) : null}
-              <div className="mt-2 max-h-52 overflow-y-auto" role="listbox" aria-busy={productsLoading} aria-multiselectable="true" aria-label="Resultados de productos">
+              <div
+                id="inventory-product-results"
+                className="mt-2 max-h-52 overflow-y-auto overscroll-contain"
+                role="listbox"
+                aria-busy={productsLoading}
+                aria-multiselectable="true"
+                aria-label="Resultados de productos"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeProductPicker();
+                    return;
+                  }
+
+                  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                    return;
+                  }
+
+                  const options = Array.from(
+                    event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=option]")
+                  );
+                  if (options.length === 0) return;
+
+                  const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
+                  const nextIndex =
+                    event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? options.length - 1
+                        : Math.min(
+                            options.length - 1,
+                            Math.max(0, currentIndex + (event.key === "ArrowDown" ? 1 : -1))
+                          );
+
+                  event.preventDefault();
+                  options[nextIndex].focus();
+                }}
+              >
                 {productsLoading ? <p className="px-2 py-2 text-xs text-[var(--brand-surface-muted)]">Buscando productos...</p> : null}
                 {!productSearch.trim() && !productsLoading ? <p className="px-2 py-2 text-xs text-[var(--brand-surface-muted)]">Escribe para buscar</p> : null}
+                {productSearch.trim() && !productsLoading && !productsError && visibleProducts.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-[var(--brand-surface-muted)]" role="status">
+                    No se encontraron productos.
+                  </p>
+                ) : null}
                 {visibleProducts.map((product) => {
                   const selected = filters.productIds.includes(product.id);
                   return (
@@ -395,7 +483,7 @@ const InventoryBiFiltersPanel = ({
                       type="button"
                       role="option"
                       aria-selected={selected}
-                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-[var(--brand-background)]"
+                      className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-[var(--brand-background)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--brand-primary)]"
                       onClick={() => handleProductToggle(product)}
                     >
                       <span className="flex h-4 w-4 items-center justify-center rounded border border-[var(--brand-surface-border)]">
@@ -406,7 +494,7 @@ const InventoryBiFiltersPanel = ({
                   );
                 })}
               </div>
-              {productsError ? <p className="mt-1 text-xs text-rose-700">{productsError}</p> : null}
+              {productsError ? <p className="mt-1 text-xs text-rose-700" role="alert">{productsError}</p> : null}
             </div>
           ) : null}
         </div>
