@@ -52,7 +52,7 @@ const makeInvoiceCommand = (tenantId = "tenant-a"): IssueElectronicInvoiceComman
     identification: {
       typeCode: "31",
       number: "900123456",
-      verificationDigit: "7",
+      verificationDigit: "4",
     },
     legalName: "Cliente Uno SAS",
     email: "cliente@example.com",

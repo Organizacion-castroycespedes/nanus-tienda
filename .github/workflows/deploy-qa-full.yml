@@ -34,8 +34,10 @@ jobs:
       - name: Build web
         working-directory: web
         env:
+          NODE_ENV: production
           NEXT_PUBLIC_API_BASE_URL: /api
           NEXT_PUBLIC_REPORTS_API_BASE_URL: /api
+          API_PROXY_TARGET: http://127.0.0.1:4020
           NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL: http://localhost:4050
           NEXT_PUBLIC_PERIPHERALS_AGENT_WS_URL: ws://localhost:4050/peripherals
           NEXT_PUBLIC_PERIPHERALS_ENABLED: "true"
@@ -96,56 +98,56 @@ jobs:
       - name: Validate deploy secrets
         shell: bash
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_DEPLOY_BASE_PATH: ${{ secrets.VPS_DEPLOY_BASE_PATH }}
+          PROD_VPS_HOST: ${{ secrets.PROD_VPS_HOST }}
+          PROD_VPS_USER: ${{ secrets.PROD_VPS_USER }}
+          PROD_VPS_SSH_KEY: ${{ secrets.PROD_VPS_SSH_KEY }}
+          PROD_DEPLOY_BASE_PATH: ${{ secrets.PROD_DEPLOY_BASE_PATH }}
         run: |
           set -euo pipefail
-          : "${VPS_HOST:?Missing VPS_HOST}"
-          : "${VPS_USER:?Missing VPS_USER}"
-          : "${VPS_SSH_KEY:?Missing VPS_SSH_KEY}"
-          : "${VPS_DEPLOY_BASE_PATH:?Missing VPS_DEPLOY_BASE_PATH}"
+          : "${PROD_VPS_HOST:?Missing PROD_VPS_HOST}"
+          : "${PROD_VPS_USER:?Missing PROD_VPS_USER}"
+          : "${PROD_VPS_SSH_KEY:?Missing PROD_VPS_SSH_KEY}"
+          : "${PROD_DEPLOY_BASE_PATH:?Missing PROD_DEPLOY_BASE_PATH}"
 
       - name: Configure SSH
         shell: bash
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          PROD_VPS_HOST: ${{ secrets.PROD_VPS_HOST }}
+          PROD_VPS_PORT: ${{ secrets.PROD_VPS_PORT }}
+          PROD_VPS_SSH_KEY: ${{ secrets.PROD_VPS_SSH_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${PROD_VPS_SSH_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${VPS_PORT:-22}" -H "${VPS_HOST}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${PROD_VPS_PORT:-22}" -H "${PROD_VPS_HOST}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Upload release
         shell: bash
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_DEPLOY_BASE_PATH: ${{ secrets.VPS_DEPLOY_BASE_PATH }}
+          PROD_VPS_HOST: ${{ secrets.PROD_VPS_HOST }}
+          PROD_VPS_USER: ${{ secrets.PROD_VPS_USER }}
+          PROD_VPS_PORT: ${{ secrets.PROD_VPS_PORT }}
+          PROD_DEPLOY_BASE_PATH: ${{ secrets.PROD_DEPLOY_BASE_PATH }}
         run: |
           set -euo pipefail
-          remote_tmp="${VPS_DEPLOY_BASE_PATH%/}/tmp/github-actions/full-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ssh -p "${VPS_PORT:-22}" "${VPS_USER}@${VPS_HOST}" "mkdir -p '${remote_tmp}'"
-          scp -P "${VPS_PORT:-22}" qa-full-release.tar.gz "${VPS_USER}@${VPS_HOST}:${remote_tmp}/qa-full-release.tar.gz"
-          ssh -p "${VPS_PORT:-22}" "${VPS_USER}@${VPS_HOST}" \
-            "cd '${remote_tmp}' && tar -xzf qa-full-release.tar.gz && DEPLOY_BASE_PATH='${VPS_DEPLOY_BASE_PATH%/}' bash qa-deploy-full.sh '${remote_tmp}'"
+          remote_tmp="${PROD_DEPLOY_BASE_PATH%/}/tmp/github-actions/full-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" "mkdir -p '${remote_tmp}'"
+          scp -P "${PROD_VPS_PORT:-22}" qa-full-release.tar.gz "${PROD_VPS_USER}@${PROD_VPS_HOST}:${remote_tmp}/qa-full-release.tar.gz"
+          ssh -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" \
+            "cd '${remote_tmp}' && tar -xzf qa-full-release.tar.gz && DEPLOY_BASE_PATH='${PROD_DEPLOY_BASE_PATH%/}' bash qa-deploy-full.sh '${remote_tmp}'"
 
       - name: Public smoke checks
         shell: bash
         env:
-          QA_WEB_BASE_URL: ${{ secrets.QA_WEB_BASE_URL }}
-          QA_API_BASE_URL: ${{ secrets.QA_API_BASE_URL }}
+          PROD_WEB_BASE_URL: ${{ secrets.PROD_WEB_BASE_URL }}
+          PROD_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
         run: |
           set -euo pipefail
-          : "${QA_WEB_BASE_URL:?Missing QA_WEB_BASE_URL}"
-          : "${QA_API_BASE_URL:?Missing QA_API_BASE_URL}"
-          curl --fail --silent --show-error "${QA_WEB_BASE_URL%/}/login" >/dev/null
-          curl --fail --silent --show-error "${QA_API_BASE_URL%/}/api/system/version" >/dev/null
-          curl --fail --silent --show-error "${QA_API_BASE_URL%/}/api/reports/health" >/dev/null
+          : "${PROD_WEB_BASE_URL:?Missing PROD_WEB_BASE_URL}"
+          : "${PROD_API_BASE_URL:?Missing PROD_API_BASE_URL}"
+          curl --fail --silent --show-error "${PROD_WEB_BASE_URL%/}/login" >/dev/null
+          curl --fail --silent --show-error "${PROD_API_BASE_URL%/}/api/system/version" >/dev/null
+          curl --fail --silent --show-error "${PROD_API_BASE_URL%/}/api/reports/health" >/dev/null

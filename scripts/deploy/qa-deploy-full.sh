@@ -50,20 +50,23 @@ install -m 0755 "$STAGING_DIR/linux/emaus_api" "$API_PATH/emaus_api"
 install -m 0755 "$STAGING_DIR/linux/emaus_reporteria" "$REPORTERIA_PATH/emaus_reporteria"
 install -m 0755 "$STAGING_DIR/linux/emaus_facturacion" "$FACTURACION_PATH/emaus_facturacion"
 
-pm2 restart emaus-web emaus_api emaus_facturacion emaus_reporteria
+NODE_ENV=production API_PROXY_TARGET=http://127.0.0.1:4020 pm2 restart emaus-web --update-env
+pm2 restart emaus_api emaus_facturacion emaus_reporteria
 
 if ! wait_for_http http://127.0.0.1:3000/login \
   || ! wait_for_http http://127.0.0.1:4020/api/system/version \
   || ! wait_for_http http://127.0.0.1:4021/api/reports/health \
   || ! wait_for_http http://127.0.0.1:4022/health; then
   echo "Healthcheck failed. Restoring previous files." >&2
-  pm2 restart emaus-web emaus_api emaus_facturacion emaus_reporteria || true
+  NODE_ENV=production API_PROXY_TARGET=http://127.0.0.1:4020 pm2 restart emaus-web --update-env || true
+  pm2 restart emaus_api emaus_facturacion emaus_reporteria || true
   rm -rf "$WEB_PATH" "$API_PATH" "$FACTURACION_PATH" "$REPORTERIA_PATH"
   cp -a "$BACKUP_DIR/web" "$WEB_PATH"
   cp -a "$BACKUP_DIR/api" "$API_PATH"
   cp -a "$BACKUP_DIR/facturacion" "$FACTURACION_PATH"
   cp -a "$BACKUP_DIR/reporteria" "$REPORTERIA_PATH"
-  pm2 restart emaus-web emaus_api emaus_facturacion emaus_reporteria
+  NODE_ENV=production API_PROXY_TARGET=http://127.0.0.1:4020 pm2 restart emaus-web --update-env
+  pm2 restart emaus_api emaus_facturacion emaus_reporteria
   exit 70
 fi
 
