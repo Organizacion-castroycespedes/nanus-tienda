@@ -3,7 +3,7 @@ name: Deploy Production Master VPS
 on:
   push:
     branches:
-      - master
+      - master | feat/develop/deploy-config-master
   workflow_dispatch:
 
 permissions:
