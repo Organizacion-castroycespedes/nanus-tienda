@@ -4,6 +4,12 @@ import { ArrowLeft, Boxes, CircleDollarSign, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
+import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { downloadBlob, getApiErrorMessage } from "../../reporteria/utils";
+import {
+  base64ToBlob,
+  createInventoryValuationExport,
+} from "../../reporteria/services/inventory-bi-valuation-report.service";
 import InventoryBiFiltersPanel from "./InventoryBiFiltersPanel";
 import { InventoryImagePreview } from "./InventoryImagePreview";
 import {
@@ -551,6 +557,9 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
   const [valuationPageError, setValuationPageError] = useState<string | null>(null);
   const [valuationPageNumber, setValuationPageNumber] = useState(1);
   const [retryToken, setRetryToken] = useState(0);
+  const [exportPreviewOpen, setExportPreviewOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const handleApply = useCallback((filters: InventoryBiFilters) => {
     setValuationPageNumber(1);
@@ -639,6 +648,39 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
     }
   }, [valuationPage?.totalPages]);
 
+  const exportFilters = appliedFilters ? {
+    tenantId: appliedFilters.requestedTenantId,
+    branchId: appliedFilters.requestedBranchId || undefined,
+    productIds: appliedFilters.productIds,
+    categoryId: appliedFilters.categoryId || undefined,
+    stockStatus: appliedFilters.stockStatus,
+  } : null;
+
+  const getPreviewPdf = useCallback(async () => {
+    if (!exportFilters) throw new Error("Aplica filtros antes de exportar.");
+    const result = await createInventoryValuationExport(exportFilters, "preview");
+    return base64ToBlob(result.pdfBase64, "application/pdf");
+  }, [exportFilters]);
+
+  const downloadExport = useCallback(async (format: "pdf" | "xlsx") => {
+    if (!exportFilters || exportBusy) return;
+    setExportBusy(true);
+    setExportError(null);
+    try {
+      const result = await createInventoryValuationExport(exportFilters, "export");
+      const base64 = format === "pdf" ? result.pdfBase64 : result.xlsxBase64;
+      if (!base64) throw new Error("El archivo de exportación no está disponible.");
+      downloadBlob(base64ToBlob(base64, format === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+      format === "pdf" ? "valorizacion-inventario.pdf" : "valorizacion-inventario.xlsx");
+    } catch (error) {
+      setExportError(getApiErrorMessage(error, "No fue posible generar la exportación."));
+    } finally {
+      setExportBusy(false);
+    }
+  }, [exportBusy, exportFilters]);
+
   return (
     <main
       className="inventory-bi-main min-h-full w-full space-y-5 bg-[var(--brand-background)] px-3 pb-7 pt-4 text-[var(--brand-surface-text)] sm:px-4 sm:pt-5 md:px-5 lg:px-5"
@@ -652,15 +694,32 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Volver a Inventario
         </Link>
-        <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
           <h1 id="inventory-valuation-heading" className="text-xl font-bold leading-[1.15] tracking-[-0.02em] text-[var(--brand-surface-text)] sm:text-2xl lg:text-[26px]">
             Valorización de Inventario
           </h1>
           <p className="mt-2 text-[13px] leading-5 text-[var(--brand-surface-muted)] sm:text-sm">
             Reporte ejecutivo del inventario a valor de costo
           </p>
+          </div>
+          {appliedFilters ? (
+            <div className="flex flex-wrap gap-2" aria-label="Exportar valorización">
+              <Button variant="outline" size="sm" onClick={() => setExportPreviewOpen(true)} disabled={exportBusy}>
+                Vista previa PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void downloadExport("pdf")} disabled={exportBusy} isLoading={exportBusy}>
+                Descargar PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void downloadExport("xlsx")} disabled={exportBusy}>
+                Descargar Excel
+              </Button>
+            </div>
+          ) : null}
         </div>
       </header>
+
+      {exportError ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{exportError}</p> : null}
 
       <InventoryBiFiltersPanel
         title="Filtros de valorización"
@@ -694,6 +753,19 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
         onRetry={() => setRetryToken((token) => token + 1)}
         onPageChange={handleValuationPageChange}
       />
+
+      {exportFilters ? (
+        <PdfPreviewModal
+          isOpen={exportPreviewOpen}
+          title="Vista previa de valorización de inventario"
+          description="Documento completo del conjunto filtrado. No depende de la página visible."
+          fileName="valorizacion-inventario.pdf"
+          onClose={() => setExportPreviewOpen(false)}
+          getPdf={getPreviewPdf}
+          onDownloadPdf={() => void downloadExport("pdf")}
+          onDownloadExcel={() => void downloadExport("xlsx")}
+        />
+      ) : null}
     </main>
   );
 };

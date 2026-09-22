@@ -75,10 +75,16 @@
 
 ## 12. Document export
 
-- [ ] 12.1 Reuse the certified `DocumentExportService` and reportería export standard.
-- [ ] 12.2 Implement count-first, 1000-row batching, configured maximum, repeatable-read read-only transaction, rollback, and explicit over-limit rejection.
-- [ ] 12.3 Generate PDF and XLSX from the complete filtered dataset, independent of web pagination.
-- [ ] 12.4 Add export contract tests for empty, bounded, over-limit, and concurrent-data scenarios.
+Implementation evidence: `POST /reports/inventory-bi-valuation` uses the certified reporteria export engine, complete filtered read model, 1000-row batches, the configured 100000-row rejection limit, and a repeatable-read read-only snapshot. Automated, read-only, and manual PDF/XLSX document QA passed.
+
+- [x] 12.1 Reuse the certified `DocumentExportService` and reporteria export standard.
+- [x] 12.2 Implement count-first, 1000-row batching, configured maximum, repeatable-read read-only transaction, rollback, and explicit over-limit rejection.
+- [x] 12.3 Generate PDF and XLSX from the complete filtered dataset, independent of web pagination.
+- [x] 12.4 Add export contract tests for empty, bounded, over-limit, and concurrent-data scenarios.
+
+Presentation evidence: `POST /reports/inventory-bi-valuation` resolves authorized applied filter IDs to readable company, branch, product, category, and stock-status labels. PDF summary/detail values use readable COP, unit, and percent formats with generation time in COT. XLSX uses `Resumen`/`Detalle` sheets, readable headers, filters, widths, and safe decimal handling. Manual PDF/XLSX QA passed for the complete dataset and the representative CARNICOS filter.
+Residual presentation fix: report status enums are normalized from the real uppercase/lowercase values to `Con stock`, `Agotado`, and `Stock negativo` in both formats. Participation is rendered consistently as localized exact text for zero, 100, and fractional values; economic source strings remain unchanged. Manual QA passed.
+PDF table refinement: the landscape detail table now reserves a dedicated wider Estado column, uses compact cell padding, and keeps status cells non-wrapping so all nine fields remain visible without horizontal clipping. Manual QA passed for both PDF margin criteria.
 
 ## 13. Responsive and accessibility
 

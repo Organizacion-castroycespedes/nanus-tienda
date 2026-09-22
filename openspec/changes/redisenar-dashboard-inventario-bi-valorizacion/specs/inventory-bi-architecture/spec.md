@@ -196,6 +196,12 @@ Exports SHALL reuse the certified `DocumentExportService` and reportería standa
 - **WHEN** the count exceeds the configured maximum
 - **THEN** export SHALL be rejected explicitly and SHALL not truncate silently
 
+#### Scenario: Inventory valuation document contract
+- **WHEN** an authorized user requests `POST /reports/inventory-bi-valuation`
+- **THEN** the request SHALL use only applied `tenantId`, `branchId`, `productIds[]`, `categoryId`, and `stockStatus` filters, SHALL enforce `INVENTORY/READ` and backend scope, and SHALL return PDF preview or PDF/XLSX for the complete filtered valuation dataset
+- **AND** each document SHALL contain Product, SKU, Category, Branch, Current stock, Unit cost, Total cost, Participation, and Stock status in that order
+- **AND** summary cost and units SHALL reconcile with the same repeatable-read snapshot as the detail rows
+
 ### Requirement: Backend-enforced role scope
 
 The backend SHALL enforce role scope for `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN`. `ADMIN` SHALL use its real tenant and permitted branches. `SUPER_USER` SHALL use tenants and branches permitted by demonstrated repository rules. `SUPER_ADMIN` SHALL support global scope with optional tenant and branch filters.

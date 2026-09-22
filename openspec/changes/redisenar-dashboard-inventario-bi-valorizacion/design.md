@@ -270,6 +270,12 @@ Future PDF/XLSX export must use the complete filtered dataset, not the visible w
 
 The export design must not use `jsonb_agg` for the complete dataset and must not export only the visible page.
 
+Section 12 implements `POST /reports/inventory-bi-valuation` in `backend-reporteria`. It accepts only applied `tenantId`, `branchId`, `productIds[]`, `categoryId`, `stockStatus`, and `mode=preview|export`. The route reuses `DocumentExportService`, `PdfmakeEngine`, and `ExcelJS`; it uses the backend `INVENTORY/READ` contract and `ReportBranchScopeService` before reading `public.inventory_bi_base`.
+
+The document contains the nine certified fields in order: Product, SKU, Category, Branch, Current stock, Unit cost, Total cost, Participation, and Stock status. Summary cost and units come from the same repeatable-read snapshot as the detail rows. PDF includes available tenant branding, generation timestamp, applied filters, summary, and all rows. XLSX contains `Resumen` and `Detalle` sheets; safe decimal values use numeric Excel cells, while unsafe values remain exact decimal strings. Negative values remain signed and zero total cost produces no fabricated participation. Automated, read-only, and manual PDF/XLSX QA passed for the complete dataset and the representative CARNICOS filter.
+
+Presentation refinement: PDF and XLSX resolve authorized applied filter IDs to readable labels instead of exposing UUIDs. PDF uses local COP/unit/percent presentation, a readable COT generation timestamp, wrapped filters, and a landscape detail table with stable widths and non-breaking numeric cells. XLSX keeps the nine contract columns, readable headers/statuses, automatic filters, useful widths, and exact decimal strings when a numeric Excel cell could lose precision. Manual PDF/XLSX QA passed, including complete Estado values within PDF margins and consistent participation presentation in XLSX.
+
 ### Role scope
 
 Scope is enforced by the backend. Frontend controls filter UX only.
