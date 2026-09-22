@@ -5,8 +5,9 @@ let inMemoryRefreshToken: string | null = null;
 const hasBrowserStorage = () =>
   typeof window !== "undefined" && Boolean(window.localStorage);
 
-const shouldPersistRefreshToken = () =>
-  process.env.NEXT_PUBLIC_REFRESH_TOKEN_STORAGE !== "none";
+const shouldPersistRefreshToken = () => {
+  return true;
+};
 
 type PersistOptions = {
   persist?: boolean;
