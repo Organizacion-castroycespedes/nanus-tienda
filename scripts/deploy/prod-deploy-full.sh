@@ -7,6 +7,7 @@ WEB_PATH="${WEB_PATH:-/var/www/emaus-web}"
 API_PATH="${API_PATH:-/opt/emaus/tienda/emaus_api}"
 FACTURACION_PATH="${FACTURACION_PATH:-/opt/emaus/tienda/emaus_facturacion}"
 REPORTERIA_PATH="${REPORTERIA_PATH:-/opt/emaus/tienda/emaus_reporteria}"
+NODE_BIN="${NODE_BIN:-/home/ubuntu/.nvm/versions/node/v24.21.0/bin}"
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 BACKUP_DIR="${DEPLOY_BASE_PATH}/backups/production/${TIMESTAMP}"
 
@@ -17,6 +18,12 @@ fi
 if [[ -z "${DEPLOY_BASE_PATH}" || "${DEPLOY_BASE_PATH}" == "/" ]]; then
   echo "DEPLOY_BASE_PATH is unsafe" >&2
   exit 65
+fi
+
+export PATH="${NODE_BIN}:${PATH}"
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm not found in NODE_BIN=${NODE_BIN}" >&2
+  exit 66
 fi
 
 wait_for_http() {
