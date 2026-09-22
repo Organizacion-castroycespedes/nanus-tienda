@@ -150,7 +150,7 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" "mkdir -p '${remote_tmp}'"
           scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -P "${PROD_VPS_PORT:-22}" prod-master-release.tar.gz "${PROD_VPS_USER}@${PROD_VPS_HOST}:${remote_tmp}/prod-master-release.tar.gz"
           ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" \
-            "cd '${remote_tmp}' && tar -xzf prod-master-release.tar.gz && DEPLOY_BASE_PATH='${PROD_DEPLOY_BASE_PATH%/}' bash prod-deploy-full.sh '${remote_tmp}'"
+            "cd '${remote_tmp}' && tar -xzf prod-master-release.tar.gz && DEPLOY_BASE_PATH='${PROD_DEPLOY_BASE_PATH%/}' WEB_PATH='/var/www/emaus-web' API_PATH='/opt/emaus/tienda/emaus_api' FACTURACION_PATH='/opt/emaus/tienda/emaus_facturacion' REPORTERIA_PATH='/opt/emaus/tienda/emaus_reporteria' bash prod-deploy-full.sh '${remote_tmp}'"
 
       - name: Public smoke checks
         shell: bash
