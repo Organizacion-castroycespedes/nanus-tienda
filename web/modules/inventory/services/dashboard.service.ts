@@ -138,6 +138,29 @@ export type InventoryBiSummaryResponse = {
   negativeStockProducts: number;
 };
 
+export type InventoryBiCapitalDistributionResponse = {
+  branchDistribution: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    totalCost: string;
+  }>;
+  categoryDistribution: Array<{
+    tenantId: string;
+    categoryId: string | null;
+    categoryName: string;
+    totalCost: string;
+  }>;
+  topProducts: Array<{
+    rank: number;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    totalCost: string;
+    participationPercent: string | null;
+  }>;
+};
+
 export type GetInventoryBiSummaryParams = {
   tenantId?: string;
   branchId?: string;
@@ -200,4 +223,14 @@ export const getInventoryBiSummary = (
   return apiClient<InventoryBiSummaryResponse>(`/inventory/bi-summary${buildInventoryBiSummaryQuery(params)}`, {
     headers,
   });
+};
+
+export const getInventoryBiCapitalDistribution = (
+  params: GetInventoryBiSummaryParams = {},
+  headers?: HeadersInit
+) => {
+  return apiClient<InventoryBiCapitalDistributionResponse>(
+    `/inventory/bi-capital-distribution${buildInventoryBiSummaryQuery(params)}`,
+    { headers }
+  );
 };

@@ -108,14 +108,47 @@ test("InventoryRepository summarizes the scoped BI base with contractual stock a
     out_of_stock_products: "1",
     negative_stock_products: "1",
   }][0]);
-  assert.match(sql, /WITH inventory_bi_base AS/);
-  assert.match(sql, /SUM\(CASE WHEN sm\.type = 'IN'/);
-  assert.match(sql, /real_stock \* real_unit_cost/);
-  assert.match(sql, /WHEN real_stock > 0 THEN 'WITH_STOCK'/);
-  assert.match(sql, /WHEN real_stock < 0 THEN 'NEGATIVE'/);
-  assert.match(sql, /ELSE 'OUT_OF_STOCK'/);
+  assert.match(sql, /FROM public\.inventory_bi_base\(/);
   assert.match(sql, /COUNT\(DISTINCT product_id\)/);
-  assert.match(sql, /p\.id = ANY\(\$3::uuid\[\]\)/);
-  assert.match(sql, /stock_status = CASE/);
-  assert.deepEqual(params, ["tenant-1", "branch-1", ["product-1", "product-2"], "category-1", "negative"]);
+  assert.match(sql, /inventory_cost/);
+  assert.match(sql, /real_stock/);
+  assert.match(sql, /negative_stock_products/);
+  assert.match(sql, /COUNT\(DISTINCT product_id\)/);
+  assert.deepEqual(params, ["tenant-1", ["branch-1"], ["product-1", "product-2"], "category-1", "negative"]);
+});
+
+test("InventoryRepository reuses the BI base for capital distributions and keeps small aggregates", async () => {
+  let sql = "";
+  const repository = new InventoryRepository({
+    query: async (query: string) => {
+      sql = query;
+      return {
+        rows: [{
+          branch_distribution: [{ branchId: "branch-1", totalCost: "100.00" }],
+          category_distribution: [{ categoryId: null, categoryName: "Sin categoría", totalCost: "100.00" }],
+          top_products: [{
+            rank: 1,
+            productId: "product-1",
+            productName: "Producto",
+            sku: "SKU-1",
+            totalCost: "100.00",
+            participationPercent: "100.0000",
+          }],
+        }],
+      };
+    },
+  } as never);
+
+  const result = await repository.getInventoryBiCapitalDistribution({
+    tenantId: "tenant-1",
+    branchIds: ["branch-1"],
+    stockStatus: "all",
+  });
+
+  assert.equal(result.category_distribution[0].categoryName, "Sin categoría");
+  assert.match(sql, /FROM public\.inventory_bi_base\(/);
+  assert.match(sql, /LIMIT 5/);
+  assert.match(sql, /ORDER BY total_cost DESC, product_id/);
+  assert.match(sql, /GROUP BY product_id/);
+  assert.match(sql, /NULLIF\(\(SELECT total_cost FROM total\), 0\)/);
 });

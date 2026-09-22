@@ -321,3 +321,44 @@ The open Producto searchable multi-select SHALL keep the same search input mount
 #### Scenario: Product search loading or error
 - **WHEN** product results are loading, empty, or failed
 - **THEN** the dropdown SHALL remain open and the search input SHALL remain available for typing and correction
+
+### Requirement: Section 4 shared BI base
+
+Section 4 SHALL extract the certified product-branch semantics into one reusable `public.inventory_bi_base` read source before adding capital analytics. The source SHALL be a tabular `STABLE SECURITY INVOKER` read function, SHALL preserve active products and active branches, and SHALL derive `real_stock` from `stock_movements` as `IN - OUT`, `real_unit_cost` from `products.cost`, `inventory_cost` as `real_stock * real_unit_cost`, and status as positive/zero/negative without clamping. Backend scope resolution SHALL occur before the source is called.
+
+#### Scenario: Summary regression gate
+- **WHEN** `/inventory/bi-summary` is migrated to the shared source
+- **THEN** all five Section 3 KPI values and decimal-string contracts SHALL remain unchanged for the certified scopes and filters
+
+### Requirement: Section 4 capital distribution
+
+Section 4 SHALL expose an additive typed `/inventory/bi-capital-distribution` read contract using the same applied tenant, branch, `productIds`, category, and stock-status filters as the summary. It SHALL return small aggregate datasets only: branch cost grouped by branch ID, category cost grouped by category ID, and at most five products grouped by product ID across included branches. Five is the executive dashboard maximum. Branch and category totals SHALL reconcile exactly with `totalInventoryCost` for the same snapshot. `category_id IS NULL` SHALL be returned as the user-facing `Sin categoría` bucket. Negative costs SHALL remain negative.
+
+#### Scenario: Capital datasets
+- **WHEN** an authorized user requests capital distribution
+- **THEN** branch and category costs SHALL be ordered by descending cost, Top products SHALL be ordered by descending total cost, and no complete product dataset SHALL be returned
+
+#### Scenario: Product participation
+- **WHEN** a Top product is returned
+- **THEN** participation SHALL use exact decimal semantics against the filtered total cost, and a zero denominator SHALL produce null rather than `NaN` or `Infinity`
+
+### Requirement: Inventory BI visual contract
+
+The Section 4 visual implementation SHALL establish the reusable Inventory BI visual contract for Sections 5-14: neutral page background, white surfaces, moderate existing radius, subtle border/shadow, approximately 20px section rhythm, compact 12-16px card gaps, dense readable spacing, and no gradients, glassmorphism, 3D decoration, or invented metrics. The contract SHALL use the existing container-query architecture with five balanced KPI cards in one wide row, symmetric 3+2 KPI distribution in intermediate content width, and progressive compact/mobile stacking. The filter surface SHALL remain compact without changing hit targets or draft/applied behavior. Capital charts SHALL retain bounded responsive heights, direct string-safe COP labels, accessible alternatives, and no body-level horizontal overflow. This contract SHALL be the default visual reference for later sections unless a later business requirement explicitly justifies an exception.
+
+#### Scenario: Preserve real-data visual hierarchy
+
+- **WHEN** the dashboard is rendered at wide, intermediate, or compact content width
+- **THEN** it SHALL prioritize the five real KPIs, applied filter context, and capital distribution without adding unsupported trends, percentages, comparisons, or other mock-only metrics
+
+### Requirement: Section 4 presentation and reconciliation
+
+The web dashboard SHALL use the authorized Recharts dependency only for branch and category bar charts, and an accessible HTML ranking for Top products. Raw numeric strings SHALL remain authoritative; any finite, safe conversion SHALL be limited to chart geometry. Loading, error, and empty states SHALL remain local, and the charts SHALL preserve the approved container-query responsive layout without body overflow.
+
+#### Scenario: Applied filter consistency
+- **WHEN** the user applies filters or refreshes the dashboard
+- **THEN** the KPI summary and all capital datasets SHALL be requested from the same applied filter set
+
+#### Scenario: Accessibility alternative
+- **WHEN** a chart is rendered
+- **THEN** its heading, labels, and values SHALL also be available through accessible text or table content and SHALL not depend only on color or tooltip

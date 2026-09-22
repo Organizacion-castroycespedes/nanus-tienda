@@ -57,6 +57,30 @@
 .inventory-bi-main {
   container-name: inventory-bi;
   container-type: inline-size;
+  --inventory-bi-primary: #1a73e8;
+}
+
+.inventory-bi-filter-grid {
+  gap: 0.625rem;
+}
+
+.inventory-bi-filter-grid label {
+  gap: 0.25rem;
+}
+
+@container inventory-bi (min-width: 800px) {
+  .inventory-bi-kpi-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .inventory-bi-kpi-grid > * {
+    grid-column: span 2 / span 2;
+    min-width: 0;
+  }
+
+  .inventory-bi-kpi-grid > :nth-child(n + 4) {
+    grid-column: span 3 / span 3;
+  }
 }
 
 @container inventory-bi (min-width: 1280px) {
@@ -65,7 +89,11 @@
   }
 
   .inventory-bi-kpi-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .inventory-bi-kpi-grid > * {
+    grid-column: auto;
   }
 
   .inventory-bi-capital-grid,
@@ -77,6 +105,11 @@
   .inventory-bi-capital-category,
   .inventory-bi-capital-products {
     grid-column: span 4 / span 4;
+    min-width: 0;
+  }
+
+  .inventory-bi-capital-products .inventory-bi-top-products-sku {
+    display: none;
   }
 
   .inventory-bi-health-cards,

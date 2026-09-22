@@ -173,3 +173,53 @@ describe("InventoryService BI summary", () => {
     );
   });
 });
+
+describe("InventoryService BI capital distribution", () => {
+  it("maps branch, category, and top-product decimal strings without recalculation", async () => {
+    let receivedFilters: Record<string, unknown> | undefined;
+    const service = new InventoryService(
+      {
+        getInventoryBiCapitalDistribution: async (filters: Record<string, unknown>) => {
+          receivedFilters = filters;
+          return {
+            branch_distribution: [{
+              tenantId: "tenant-1",
+              branchId: "branch-1",
+              branchName: "Sucursal",
+              totalCost: "1000000000000.0000",
+            }],
+            category_distribution: [{
+              tenantId: "tenant-1",
+              categoryId: null,
+              categoryName: "Sin categoría",
+              totalCost: "1000000000000.0000",
+            }],
+            top_products: [{
+              rank: 1,
+              productId: "product-1",
+              productName: "Producto",
+              sku: "SKU-1",
+              totalCost: "1000000000000.0000",
+              participationPercent: null,
+            }],
+          };
+        },
+      } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    const result = await service.getInventoryBiCapitalDistribution(
+      {
+        tenantId: "tenant-1",
+        productIds: ["product-1", "product-1"],
+        stockStatus: "all",
+      },
+      { roles: ["SUPER_ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+    );
+
+    assert.equal(result.branchDistribution[0].totalCost, "1000000000000.0000");
+    assert.equal(result.categoryDistribution[0].categoryName, "Sin categoría");
+    assert.equal(result.topProducts[0].participationPercent, null);
+    assert.deepEqual(receivedFilters?.productIds, ["product-1"]);
+  });
+});

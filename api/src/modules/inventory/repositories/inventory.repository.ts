@@ -6,6 +6,8 @@ import type {
   ProductRotationClass,
 } from "../entities/product.entity";
 
+const INVENTORY_BI_TOP_PRODUCTS_LIMIT = 5;
+
 export type InventoryProductRow = QueryResultRow & {
   tenant_id: string;
   tenant_name: string;
@@ -94,6 +96,29 @@ export type InventoryDashboardSnapshot = {
     criticalProducts?: Array<Record<string, unknown>>;
     pendingOrders?: Array<Record<string, unknown>>;
   };
+};
+
+export type InventoryBiCapitalDistribution = {
+  branch_distribution: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    totalCost: string | number;
+  }>;
+  category_distribution: Array<{
+    tenantId: string;
+    categoryId: string | null;
+    categoryName: string;
+    totalCost: string | number;
+  }>;
+  top_products: Array<{
+    rank: number | string;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    totalCost: string | number;
+    participationPercent: string | number | null;
+  }>;
 };
 
 export type InventoryFilterOption = {
@@ -246,29 +271,10 @@ export class InventoryRepository {
     categoryId?: string;
     stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
   }) {
-    const params: unknown[] = [filters.tenantId];
-    const where: string[] = ["p.is_active = TRUE", "b.estado = 'ACTIVE'", "p.tenant_id = $1"];
-
-    if (filters.branchId) {
-      params.push(filters.branchId);
-      where.push(`b.id = $${params.length}`);
-    } else if ((filters.branchIds?.length ?? 0) > 0) {
-      params.push(filters.branchIds);
-      where.push(`b.id = ANY($${params.length}::uuid[])`);
-    }
-
-    if (filters.productIds && filters.productIds.length > 0) {
-      params.push(filters.productIds);
-      where.push(`p.id = ANY($${params.length}::uuid[])`);
-    }
-
-    if (filters.categoryId) {
-      params.push(filters.categoryId);
-      where.push(`p.category_id = $${params.length}`);
-    }
-
-    params.push(filters.stockStatus);
-    const statusParam = `$${params.length}`;
+    const branchIds = filters.branchId
+      ? [filters.branchId]
+      : filters.branchIds ?? null;
+    const productIds = filters.productIds?.length ? filters.productIds : null;
     const result = await this.db.query<{
       total_inventory_cost: string | number;
       total_inventory_units: string | number;
@@ -277,51 +283,27 @@ export class InventoryRepository {
       negative_stock_products: string | number;
     }>(
       `
-      WITH inventory_bi_base AS (
-        SELECT
-          p.tenant_id,
-          b.id AS branch_id,
-          p.id AS product_id,
-          p.category_id,
-          COALESCE(SUM(CASE WHEN sm.type = 'IN' THEN sm.quantity ELSE -sm.quantity END), 0)::numeric AS real_stock,
-          p.cost::numeric AS real_unit_cost
-        FROM products AS p
-        INNER JOIN tenant_branches AS b
-          ON b.tenant_id = p.tenant_id
-        LEFT JOIN stock_movements AS sm
-          ON sm.tenant_id = p.tenant_id
-         AND sm.product_id = p.id
-         AND sm.branch_id = b.id
-        WHERE ${where.join("\n          AND ")}
-        GROUP BY p.tenant_id, b.id, p.id, p.category_id, p.cost
-      ), classified AS (
-        SELECT
-          *,
-          real_stock * real_unit_cost AS inventory_cost,
-          CASE
-            WHEN real_stock > 0 THEN 'WITH_STOCK'
-            WHEN real_stock < 0 THEN 'NEGATIVE'
-            ELSE 'OUT_OF_STOCK'
-          END AS stock_status
-        FROM inventory_bi_base
-      ), filtered AS (
-        SELECT *
-        FROM classified
-        WHERE ${statusParam} = 'all' OR stock_status = CASE
-          WHEN ${statusParam} = 'in_stock' THEN 'WITH_STOCK'
-          WHEN ${statusParam} = 'out_of_stock' THEN 'OUT_OF_STOCK'
-          WHEN ${statusParam} = 'negative' THEN 'NEGATIVE'
-        END
-      )
       SELECT
         COALESCE(SUM(inventory_cost), 0)::numeric AS total_inventory_cost,
         COALESCE(SUM(real_stock), 0)::numeric AS total_inventory_units,
         COUNT(DISTINCT product_id) FILTER (WHERE real_stock > 0) AS products_with_stock,
         COUNT(DISTINCT product_id) FILTER (WHERE real_stock = 0) AS out_of_stock_products,
         COUNT(DISTINCT product_id) FILTER (WHERE real_stock < 0) AS negative_stock_products
-      FROM filtered
+      FROM public.inventory_bi_base(
+        $1::uuid,
+        $2::uuid[],
+        $3::uuid[],
+        $4::uuid,
+        $5::text
+      )
       `,
-      params
+      [
+        filters.tenantId,
+        branchIds,
+        productIds,
+        filters.categoryId ?? null,
+        filters.stockStatus,
+      ]
     );
 
     return result.rows[0] ?? {
@@ -330,6 +312,103 @@ export class InventoryRepository {
       products_with_stock: 0,
       out_of_stock_products: 0,
       negative_stock_products: 0,
+    };
+  }
+
+  async getInventoryBiCapitalDistribution(filters: {
+    tenantId: string;
+    branchId?: string;
+    branchIds?: string[];
+    productIds?: string[];
+    categoryId?: string;
+    stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
+  }): Promise<InventoryBiCapitalDistribution> {
+    const branchIds = filters.branchId
+      ? [filters.branchId]
+      : filters.branchIds ?? null;
+    const productIds = filters.productIds?.length ? filters.productIds : null;
+    const result = await this.db.query<InventoryBiCapitalDistribution>(
+      `
+      WITH base AS (
+        SELECT *
+        FROM public.inventory_bi_base(
+          $1::uuid,
+          $2::uuid[],
+          $3::uuid[],
+          $4::uuid,
+          $5::text
+        )
+      ), total AS (
+        SELECT COALESCE(SUM(inventory_cost), 0)::numeric AS total_cost
+        FROM base
+      ), branch_rows AS (
+        SELECT tenant_id, branch_id, branch_name,
+          SUM(inventory_cost)::numeric AS total_cost
+        FROM base
+        GROUP BY tenant_id, branch_id, branch_name
+      ), category_rows AS (
+        SELECT tenant_id, category_id,
+          COALESCE(category_name, 'Sin categoría') AS category_name,
+          SUM(inventory_cost)::numeric AS total_cost
+        FROM base
+        GROUP BY tenant_id, category_id, category_name
+      ), product_rows AS (
+        SELECT product_id, MAX(product_name) AS product_name, MAX(sku) AS sku,
+          SUM(inventory_cost)::numeric AS total_cost
+        FROM base
+        GROUP BY product_id
+      ), ranked_products AS (
+        SELECT product_id, product_name, sku, total_cost,
+          ROW_NUMBER() OVER (ORDER BY total_cost DESC, product_id) AS rank,
+          (total_cost * 100 / NULLIF((SELECT total_cost FROM total), 0))::numeric AS participation_percent
+        FROM product_rows
+        ORDER BY total_cost DESC, product_id
+        LIMIT ${INVENTORY_BI_TOP_PRODUCTS_LIMIT}
+      )
+      SELECT
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'tenantId', tenant_id,
+            'branchId', branch_id,
+            'branchName', branch_name,
+            'totalCost', total_cost::text
+          ) ORDER BY total_cost DESC, branch_id)
+          FROM branch_rows
+        ), '[]'::jsonb) AS branch_distribution,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'tenantId', tenant_id,
+            'categoryId', category_id,
+            'categoryName', category_name,
+            'totalCost', total_cost::text
+          ) ORDER BY total_cost DESC, category_name)
+          FROM category_rows
+        ), '[]'::jsonb) AS category_distribution,
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'rank', rank,
+            'productId', product_id,
+            'productName', product_name,
+            'sku', sku,
+            'totalCost', total_cost::text,
+            'participationPercent', participation_percent::text
+          ) ORDER BY rank)
+          FROM ranked_products
+        ), '[]'::jsonb) AS top_products
+      `,
+      [
+        filters.tenantId,
+        branchIds,
+        productIds,
+        filters.categoryId ?? null,
+        filters.stockStatus,
+      ]
+    );
+
+    return result.rows[0] ?? {
+      branch_distribution: [],
+      category_distribution: [],
+      top_products: [],
     };
   }
 

@@ -25,9 +25,11 @@
 
 ## 4. Capital distribution
 
-- [ ] 4.1 Implement cost distribution by branch and category using the shared base semantics.
-- [ ] 4.2 Implement Top N and other small aggregate outputs without full-dataset payloads.
-- [ ] 4.3 Add reconciliation tests for capital aggregates.
+- [x] 4.1 Extract the certified inventory semantics into the shared tabular BI base and migrate the Section 3 summary to consume it; regression tests pass.
+- [x] 4.2 Implement typed branch/category distributions and Top 5 product aggregation without a full-dataset payload.
+- [x] 4.3 Add repository/service tests for shared-base reuse, null-category preservation, bounded Top 5 output, decimal-string mapping, and applied-filter forwarding.
+- [x] 4.4 Apply `V091` only to `manus_tienda_qa`, execute read-only database reconciliation, and capture EXPLAIN evidence for summary, branch, category, and Top 5 aggregates.
+- [x] 4.5 Complete manual visual QA for the Recharts views and responsive capital layout; certified PASS for homologated BI hierarchy, density, responsive modes, thumbnails, Top 5 table, chart labels/tooltips, and no horizontal overflow.
 
 ## 5. Operational health
 

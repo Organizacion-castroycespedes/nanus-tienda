@@ -32,7 +32,7 @@ type InventoryBiFiltersPanelProps = {
 };
 
 const panelClassName =
-  "rounded-xl border border-[var(--brand-surface-border)] bg-[var(--brand-surface-card)] p-4 shadow-sm";
+  "inventory-bi-filter-panel rounded-xl border border-[var(--brand-surface-border)] bg-[var(--brand-surface-card)] p-3.5 shadow-sm";
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -271,7 +271,7 @@ const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
 
   return (
     <section className={panelClassName} aria-labelledby="inventory-filters-title">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2
             id="inventory-filters-title"
@@ -300,7 +300,7 @@ const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
         </div>
       </div>
 
-      <div className="inventory-bi-filter-grid grid gap-3">
+      <div className="inventory-bi-filter-grid grid">
         {canSelectTenant ? (
           <Select
             label="Tenant"
@@ -436,7 +436,7 @@ const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
         </p>
       ) : null}
 
-      <div className="mt-4 border-t border-[var(--brand-surface-border)] pt-3">
+      <div className="mt-3 border-t border-[var(--brand-surface-border)] pt-2">
         <Button
           variant="ghost"
           size="sm"

@@ -7,6 +7,7 @@ import {
 import {
   InventoryRepository,
   type InventoryCashSessionOption,
+  type InventoryBiCapitalDistribution,
   type InventoryDashboardScope,
   type InventoryProductRow,
 } from "../repositories/inventory.repository";
@@ -38,6 +39,29 @@ type InventoryBiSummaryFilters = BranchScopedFilters & {
   productIds?: string[];
   categoryId?: string;
   stockStatus?: "all" | "in_stock" | "out_of_stock" | "negative";
+};
+
+export type InventoryBiCapitalDistributionResponse = {
+  branchDistribution: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    totalCost: string;
+  }>;
+  categoryDistribution: Array<{
+    tenantId: string;
+    categoryId: string | null;
+    categoryName: string;
+    totalCost: string;
+  }>;
+  topProducts: Array<{
+    rank: number;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    totalCost: string;
+    participationPercent: string | null;
+  }>;
 };
 
 @Injectable()
@@ -225,6 +249,91 @@ export class InventoryService {
       productsWithStock: Number(row.products_with_stock ?? 0),
       outOfStockProducts: Number(row.out_of_stock_products ?? 0),
       negativeStockProducts: Number(row.negative_stock_products ?? 0),
+    };
+  }
+
+  async getInventoryBiCapitalDistribution(
+    filters: InventoryBiSummaryFilters,
+    actor: BranchScopedActor
+  ): Promise<InventoryBiCapitalDistributionResponse> {
+    const resolvedFilters = this.resolveProductFilters(actor, filters);
+    const tenantId = resolvedFilters.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+
+    let branchIds: string[] | undefined;
+    if (!canViewAllBranches(actor)) {
+      if (!actor.userId) {
+        throw new ForbiddenException("Usuario requerido");
+      }
+      branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+        actor.userId,
+        tenantId
+      );
+      if (branchIds.length === 0) {
+        if (actor.branchId) {
+          branchIds = [actor.branchId];
+        } else {
+          throw new ForbiddenException("Usuario sin sucursales asignadas");
+        }
+      }
+      if (resolvedFilters.branchId && !branchIds.includes(resolvedFilters.branchId)) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+      if (hasBranchScopedRole(actor) && !resolvedFilters.branchId && actor.branchId) {
+        branchIds = branchIds.includes(actor.branchId) ? [actor.branchId] : branchIds;
+      }
+    }
+
+    const stockStatus = filters.stockStatus ?? "all";
+    if (![
+      "all",
+      "in_stock",
+      "out_of_stock",
+      "negative",
+    ].includes(stockStatus)) {
+      throw new BadRequestException("Estado de stock invalido");
+    }
+
+    const productIds = Array.from(
+      new Set((filters.productIds ?? []).map((id) => id.trim()).filter(Boolean))
+    );
+    const distribution: InventoryBiCapitalDistribution =
+      await this.repository.getInventoryBiCapitalDistribution({
+        tenantId,
+        branchId:
+          branchIds && branchIds.length === 1 ? branchIds[0] : resolvedFilters.branchId,
+        branchIds,
+        productIds,
+        categoryId: normalizeOptionalFilter(filters.categoryId),
+        stockStatus,
+      });
+
+    return {
+      branchDistribution: (distribution.branch_distribution ?? []).map((row) => ({
+        tenantId: row.tenantId,
+        branchId: row.branchId,
+        branchName: row.branchName,
+        totalCost: String(row.totalCost),
+      })),
+      categoryDistribution: (distribution.category_distribution ?? []).map((row) => ({
+        tenantId: row.tenantId,
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        totalCost: String(row.totalCost),
+      })),
+      topProducts: (distribution.top_products ?? []).map((row) => ({
+        rank: Number(row.rank),
+        productId: row.productId,
+        productName: row.productName,
+        sku: row.sku,
+        totalCost: String(row.totalCost),
+        participationPercent:
+          row.participationPercent === null || row.participationPercent === undefined
+            ? null
+            : String(row.participationPercent),
+      })),
     };
   }
 

@@ -220,6 +220,28 @@ export class InventoryController {
     );
   }
 
+  @Get("bi-capital-distribution")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiCapitalDistribution(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiCapitalDistribution(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+      },
+      this.buildActor(request)
+    );
+  }
+
   @Get("dashboard")
   @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
   getDashboard(
