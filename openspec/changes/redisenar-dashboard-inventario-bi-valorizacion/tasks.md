@@ -57,8 +57,9 @@
 
 ## 9. Valuation KPIs
 
-- [ ] 9.1 Implement current valuation quantity and cost KPIs from the shared base read model.
-- [ ] 9.2 Preserve negative stock semantics and prevent frontend valuation recalculation.
+- [x] 9.1 Implement current valuation quantity and cost KPIs from the shared base read model through the existing `/inventory/bi-summary` contract. Automated and read-only QA passed.
+- [x] 9.2 Preserve negative stock semantics, decimal-string transport, and prevent frontend valuation recalculation. Automated and read-only QA passed; no negative rows existed in the QA dataset.
+- [x] 9.3 Complete manual visual QA for applied-filter refresh, KPI formatting, loading/error/zero states, and responsive layout. Automated, DB, and manual functional/visual QA passed.
 
 ## 10. Valuation analytics
 

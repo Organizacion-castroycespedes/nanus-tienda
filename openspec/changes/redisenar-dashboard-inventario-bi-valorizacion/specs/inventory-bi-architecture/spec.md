@@ -474,3 +474,19 @@ The valuation route SHALL own an independent draft/applied filter state containi
 #### Scenario: Reset valuation filters
 - **WHEN** the user activates `Limpiar`
 - **THEN** optional product/category/status selections SHALL clear while required tenant/branch scope SHALL remain intact, and `productIds` SHALL become an empty array
+
+### Requirement: Section 9 valuation KPIs
+
+The valuation summary SHALL show only the real current-state KPIs defined for Section 9: total valued cost and valued units. It SHALL consume the applied Section 8 filters through the existing `/inventory/bi-summary` contract and certified `public.inventory_bi_base`; it SHALL not duplicate stock movement or cost formulas and SHALL not request analytics, detail rows, or exports.
+
+#### Scenario: Reconcile valuation KPIs
+- **WHEN** an applied valuation filter snapshot is queried
+- **THEN** total valued cost SHALL equal `SUM(inventory_cost)` and valued units SHALL equal `SUM(real_stock)` over the same filtered product-branch rows
+
+#### Scenario: Preserve valuation numeric semantics
+- **WHEN** the base returns decimal or negative values
+- **THEN** the API SHALL preserve numeric strings, the UI SHALL format them with the certified string-safe formatters, and negative values SHALL not be clamped or recalculated in the frontend
+
+#### Scenario: Handle valuation summary states
+- **WHEN** the summary is loading, unavailable, or valid with zero values
+- **THEN** the summary SHALL preserve its skeleton/error state, show `No disponible` for unavailable values, and show zero for valid zero results without silently converting errors to zero
