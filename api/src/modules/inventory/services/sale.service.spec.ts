@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import type { PoolClient } from "pg";
-import { SaleService, resolveElectronicBillingTaxTreatment } from "./sale.service";
+import {
+  SaleService,
+  normalizeElectronicBillingTaxForQuantity,
+  resolveElectronicBillingTaxTreatment,
+} from "./sale.service";
 import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
 import type { CreateSaleInput } from "../repositories/sale.repository";
 import type {
@@ -50,6 +54,21 @@ test("electronic billing maps authoritative Exento tax to EXEMPT", () => {
     ),
     "TAXED",
   );
+});
+
+test("electronic billing normalizes IVA base and amount for three units", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 3,
+    lineBase: 300000,
+    tax: {
+      dianCode: "01",
+      taxRate: 0.05,
+      taxBase: 100000,
+      taxAmount: 5000,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 300000, amount: 15000 });
 });
 
 type Scenario = {
