@@ -418,3 +418,23 @@ The `/inventory` panel SHALL reuse the already loaded `/inventory/bi-summary` co
 #### Scenario: Operational health visual QA
 - **WHEN** operational-health cards render zero or non-zero values
 - **THEN** zero values SHALL use a neutral soft accent, non-zero values SHALL use the existing semantic accent, and labels/values SHALL remain visible without exposing internal fallback, parity, or enum names
+
+### Requirement: Section 6 operational detail
+
+The `/inventory` operational table SHALL consume `GET /inventory/bi-operational-page` with backend-enforced scope and the applied tenant, branch, product, category, and stock-status filters. The endpoint SHALL return only the requested page and `page`, `pageSize`, `total`, and `totalPages` metadata. It SHALL use the shared `public.inventory_bi_base` semantics and SHALL apply `COUNT` and page retrieval to the same filtered dataset.
+
+#### Scenario: Request an operational page
+- **WHEN** an authorized user requests page 2 with a bounded page size
+- **THEN** the backend SHALL execute server-side pagination with deterministic ordering and SHALL not return rows outside that page
+
+#### Scenario: Render operational columns
+- **WHEN** the page contains rows
+- **THEN** the table SHALL show Product, SKU, Category, Branch, Current stock, and Stock status, preserving negative stock and decimal-safe values
+
+#### Scenario: Change applied filters
+- **WHEN** applied scope or inventory filters change
+- **THEN** the frontend SHALL request page 1 and the backend SHALL apply identical filters to `total` and `items`
+
+#### Scenario: Narrow operational table
+- **WHEN** the named Inventory BI content container is below 800px
+- **THEN** the desktop table SHALL be hidden and the UI SHALL use an accessible labeled row representation without causing document horizontal overflow

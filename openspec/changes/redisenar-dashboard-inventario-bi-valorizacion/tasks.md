@@ -38,9 +38,9 @@
 
 ## 6. Paginated operational table
 
-- [ ] 6.1 Implement the `/inventory` operational table with server-side pagination.
-- [ ] 6.2 Preserve movements, purchases, critical products, pending orders, status, scope, and error semantics.
-- [ ] 6.3 Verify that no complete dataset is paginated in memory.
+- [x] 6.1 Implement the `/inventory` operational table with server-side pagination over `public.inventory_bi_base`, bounded page metadata, and the approved operational columns.
+- [x] 6.2 Preserve applied filter scope, status semantics, loading/empty/error behavior, and responsive accessibility without changing legacy dashboard capabilities.
+- [x] 6.3 Verify that count and items use backend `COUNT` plus `LIMIT/OFFSET`; no complete dataset is paginated in memory. Automated, read-only DB, and manual visual QA passed: desktop table, pagination, sidebar reflow, WIDE/INTERMEDIATE KPI layouts, monetary KPI formatting, and compact/mobile operational cards.
 
 ## 7. Valuation CTA
 

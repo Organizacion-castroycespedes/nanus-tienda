@@ -152,3 +152,48 @@ test("InventoryRepository reuses the BI base for capital distributions and keeps
   assert.match(sql, /GROUP BY product_id/);
   assert.match(sql, /NULLIF\(\(SELECT total_cost FROM total\), 0\)/);
 });
+
+test("InventoryRepository paginates operational rows in SQL and keeps count filters aligned", async () => {
+  const queries: string[] = [];
+  const params: unknown[][] = [];
+  const repository = new InventoryRepository({
+    query: async (query: string, values: unknown[]) => {
+      queries.push(query);
+      params.push(values);
+      if (query.includes("COUNT(*)")) return { rows: [{ total: "27" }] };
+      return {
+        rows: [{
+          tenant_id: "tenant-1",
+          branch_id: "branch-1",
+          branch_name: "Sucursal",
+          product_id: "product-1",
+          product_name: "Producto",
+          sku: "SKU-1",
+          category_id: null,
+          category_name: null,
+          real_stock: "-2.50",
+          stock_status: "NEGATIVE",
+        }],
+      };
+    },
+  } as never);
+
+  const result = await repository.getInventoryBiOperationalPage({
+    tenantId: "tenant-1",
+    branchId: "branch-1",
+    productIds: [],
+    stockStatus: "negative",
+    page: 2,
+    pageSize: 10,
+  });
+
+  assert.equal(result.total, 27);
+  assert.equal(result.rows[0].real_stock, "-2.50");
+  assert.equal(queries.length, 2);
+  assert.ok(queries.every((query) => query.includes("public.inventory_bi_base")));
+  assert.match(queries[1], /LIMIT \$6::integer/);
+  assert.match(queries[1], /OFFSET \$7::integer/);
+  assert.match(queries[1], /ORDER BY product_name ASC, branch_name ASC, product_id ASC, branch_id ASC/);
+  assert.deepEqual(params[0], ["tenant-1", ["branch-1"], null, null, "negative"]);
+  assert.deepEqual(params[1], ["tenant-1", ["branch-1"], null, null, "negative", 10, 10]);
+});

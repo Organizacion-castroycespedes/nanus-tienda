@@ -9,6 +9,7 @@ import {
   type InventoryCashSessionOption,
   type InventoryBiCapitalDistribution,
   type InventoryBiOperationalHealth,
+  type InventoryBiOperationalRow,
   type InventoryDashboardScope,
   type InventoryProductRow,
 } from "../repositories/inventory.repository";
@@ -77,6 +78,25 @@ export type InventoryBiOperationalHealthResponse = {
     warningCount: number;
     infoCount: number;
   };
+};
+
+export type InventoryBiOperationalPageResponse = {
+  items: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
+    realStock: string;
+    stockStatus: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 @Injectable()
@@ -446,6 +466,78 @@ export class InventoryService {
       negativeInventoryCost: String(typedHealth.negative_inventory_cost ?? "0"),
       expiredLotCount: Number(typedHealth.expired_lot_count ?? 0),
       reconciliation,
+    };
+  }
+
+  async getInventoryBiOperationalPage(
+    filters: InventoryBiSummaryFilters & { page: number; pageSize: number },
+    actor: BranchScopedActor
+  ): Promise<InventoryBiOperationalPageResponse> {
+    const resolvedFilters = this.resolveProductFilters(actor, filters);
+    const tenantId = resolvedFilters.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+
+    let branchIds: string[] | undefined;
+    if (!canViewAllBranches(actor)) {
+      if (!actor.userId) {
+        throw new ForbiddenException("Usuario requerido");
+      }
+      branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+        actor.userId,
+        tenantId
+      );
+      if (branchIds.length === 0 && actor.branchId) {
+        branchIds = [actor.branchId];
+      }
+      if (!branchIds.length) {
+        throw new ForbiddenException("Usuario sin sucursales asignadas");
+      }
+      if (resolvedFilters.branchId && !branchIds.includes(resolvedFilters.branchId)) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+      if (hasBranchScopedRole(actor) && !resolvedFilters.branchId && actor.branchId) {
+        branchIds = branchIds.includes(actor.branchId) ? [actor.branchId] : branchIds;
+      }
+    }
+
+    const stockStatus = filters.stockStatus ?? "all";
+    if (!["all", "in_stock", "out_of_stock", "negative"].includes(stockStatus)) {
+      throw new BadRequestException("Estado de stock invalido");
+    }
+    const productIds = Array.from(
+      new Set((filters.productIds ?? []).map((id) => id.trim()).filter(Boolean))
+    );
+    const result = await this.repository.getInventoryBiOperationalPage({
+      tenantId,
+      branchId:
+        branchIds && branchIds.length === 1 ? branchIds[0] : resolvedFilters.branchId,
+      branchIds,
+      productIds,
+      categoryId: normalizeOptionalFilter(filters.categoryId),
+      stockStatus,
+      page: filters.page,
+      pageSize: filters.pageSize,
+    });
+    const rows = result.rows as InventoryBiOperationalRow[];
+    return {
+      items: rows.map((row) => ({
+        tenantId: row.tenant_id,
+        branchId: row.branch_id,
+        branchName: row.branch_name,
+        productId: row.product_id,
+        productName: row.product_name,
+        sku: row.sku,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        realStock: String(row.real_stock),
+        stockStatus: row.stock_status,
+      })),
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total: result.total,
+      totalPages: Math.ceil(result.total / filters.pageSize),
     };
   }
 

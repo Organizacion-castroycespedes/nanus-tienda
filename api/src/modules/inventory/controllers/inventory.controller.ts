@@ -48,6 +48,8 @@ const isUuid = (value: string) =>
 
 const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
 const MAX_PRODUCT_OPTION_LIMIT = 25;
+const DEFAULT_BI_PAGE_SIZE = 10;
+const MAX_BI_PAGE_SIZE = 50;
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -114,6 +116,24 @@ export class InventoryController {
       throw new BadRequestException("productIds must contain valid UUIDs");
     }
     return productIds;
+  }
+
+  private parseBiPage(value: string | undefined) {
+    if (value === undefined || value.trim() === "") return 1;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException("page must be a positive integer");
+    }
+    return parsed;
+  }
+
+  private parseBiPageSize(value: string | undefined) {
+    if (value === undefined || value.trim() === "") return DEFAULT_BI_PAGE_SIZE;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException("pageSize must be a positive integer");
+    }
+    return Math.min(parsed, MAX_BI_PAGE_SIZE);
   }
 
   private sendImage(
@@ -259,6 +279,32 @@ export class InventoryController {
         productIds: this.parseProductIds(productIds),
         categoryId,
         stockStatus,
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-operational-page")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiOperationalPage(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Query("page") page: string | undefined,
+    @Query("pageSize") pageSize: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiOperationalPage(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+        page: this.parseBiPage(page),
+        pageSize: this.parseBiPageSize(pageSize),
       },
       this.buildActor(request)
     );

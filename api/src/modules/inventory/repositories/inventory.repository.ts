@@ -127,6 +127,19 @@ export type InventoryBiOperationalHealth = {
   expired_lot_count: string | number;
 };
 
+export type InventoryBiOperationalRow = QueryResultRow & {
+  tenant_id: string;
+  branch_id: string;
+  branch_name: string;
+  product_id: string;
+  product_name: string;
+  sku: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  real_stock: string | number;
+  stock_status: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
+};
+
 export type InventoryFilterOption = {
   id: string;
   name: string;
@@ -508,6 +521,75 @@ export class InventoryRepository {
       ]
     );
     return result.rows;
+  }
+
+  async getInventoryBiOperationalPage(filters: {
+    tenantId: string;
+    branchId?: string;
+    branchIds?: string[];
+    productIds?: string[];
+    categoryId?: string;
+    stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
+    page: number;
+    pageSize: number;
+  }) {
+    const branchIds = filters.branchId
+      ? [filters.branchId]
+      : filters.branchIds ?? null;
+    const productIds = filters.productIds?.length ? filters.productIds : null;
+    const params = [
+      filters.tenantId,
+      branchIds,
+      productIds,
+      filters.categoryId ?? null,
+      filters.stockStatus,
+    ];
+    const [countResult, pageResult] = await Promise.all([
+      this.db.query<{ total: string | number }>(
+        `
+        SELECT COUNT(*)::bigint AS total
+        FROM public.inventory_bi_base(
+          $1::uuid,
+          $2::uuid[],
+          $3::uuid[],
+          $4::uuid,
+          $5::text
+        )
+        `,
+        params
+      ),
+      this.db.query<InventoryBiOperationalRow>(
+        `
+        SELECT
+          tenant_id,
+          branch_id,
+          branch_name,
+          product_id,
+          product_name,
+          sku,
+          category_id,
+          category_name,
+          real_stock,
+          stock_status
+        FROM public.inventory_bi_base(
+          $1::uuid,
+          $2::uuid[],
+          $3::uuid[],
+          $4::uuid,
+          $5::text
+        )
+        ORDER BY product_name ASC, branch_name ASC, product_id ASC, branch_id ASC
+        LIMIT $6::integer
+        OFFSET $7::integer
+        `,
+        [...params, filters.pageSize, (filters.page - 1) * filters.pageSize]
+      ),
+    ]);
+
+    return {
+      total: Number(countResult.rows[0]?.total ?? 0),
+      rows: pageResult.rows,
+    };
   }
 
   async getDashboardSnapshot(scope: InventoryDashboardScope) {

@@ -68,6 +68,31 @@
   gap: 0.25rem;
 }
 
+.inventory-bi-kpi-value {
+  max-width: 100%;
+}
+
+/* Currency keeps the complete formatted value visible inside narrow KPI cards.
+   cqw follows the real Inventory BI content container, not the viewport. */
+.inventory-bi-kpi-value--currency {
+  font-size: clamp(0.95rem, 1.2cqw, 1.35rem);
+}
+
+/* Operational detail follows usable BI content width, not viewport width. */
+.inventory-bi-operational-cards {
+  display: block;
+}
+
+@container inventory-bi (min-width: 800px) {
+  .inventory-bi-operational-table {
+    display: block;
+  }
+
+  .inventory-bi-operational-cards {
+    display: none;
+  }
+}
+
 @container inventory-bi (min-width: 800px) {
   .inventory-bi-kpi-grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -83,17 +108,27 @@
   }
 }
 
-@container inventory-bi (min-width: 1280px) {
-  .inventory-bi-filter-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
+/* The KPI strip reaches its wide five-column mode at 1200px of usable content width.
+   Sidebar and page padding reduce the content width below the physical viewport. */
+@container inventory-bi (min-width: 1200px) {
   .inventory-bi-kpi-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .inventory-bi-kpi-grid > * {
     grid-column: auto;
+  }
+
+  /* Match the intermediate nth-child specificity so cards 4 and 5
+     leave their full-width spans when the sidebar changes the container width. */
+  .inventory-bi-kpi-grid > :nth-child(n + 4) {
+    grid-column: auto;
+  }
+}
+
+@container inventory-bi (min-width: 1280px) {
+  .inventory-bi-filter-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .inventory-bi-capital-grid,

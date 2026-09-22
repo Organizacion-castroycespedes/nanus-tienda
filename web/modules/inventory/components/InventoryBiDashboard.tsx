@@ -27,10 +27,12 @@ import { InventoryImagePreview } from "./InventoryImagePreview";
 import InventoryBiFiltersPanel from "./InventoryBiFiltersPanel";
 import {
   getInventoryBiCapitalDistribution,
+  getInventoryBiOperationalPage,
   getInventoryBiOperationalHealth,
   getInventoryBiSummary,
   type InventoryBiCapitalDistributionResponse,
   type InventoryBiOperationalHealthResponse,
+  type InventoryBiOperationalPageResponse,
   type InventoryBiSummaryResponse,
 } from "../services/dashboard.service";
 import {
@@ -278,7 +280,7 @@ const KpiShell = ({
               <Icon className="h-4 w-4" aria-hidden="true" />
             </span>
           </div>
-          <p className="mt-3 min-w-0 whitespace-nowrap text-[clamp(1.1rem,1.8vw,1.75rem)] font-bold leading-none tabular-nums text-[var(--brand-surface-text)]">
+          <p className={`inventory-bi-kpi-value mt-3 min-w-0 whitespace-nowrap font-bold leading-none tabular-nums text-[var(--brand-surface-text)] ${label === "Costo total del inventario" || label === "Unidades en inventario" ? "inventory-bi-kpi-value--currency" : "text-[clamp(1.1rem,1.8vw,1.75rem)]"}`}>
             {error || value === null ? "No disponible" : value}
           </p>
         </div>
@@ -613,22 +615,118 @@ const InventoryValuationCtaShell = () => (
   </section>
 );
 
-const OperationalTableShell = () => (
-  <InventoryBiSection title="Inventario" subtitle="Detalle operativo del inventario">
-    <div className="overflow-hidden rounded-lg border border-[var(--brand-surface-border)]">
-      <div className="grid grid-cols-2 gap-4 border-b border-[var(--brand-surface-border)] bg-slate-50 px-4 py-3 sm:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <InventoryBiSkeleton key={index} className="h-3" label={`table-header-${index + 1}`} />
-        ))}
-      </div>
-      <div className="space-y-3 px-4 py-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <InventoryBiSkeleton key={index} className="h-10 w-full" label={`table-row-${index + 1}`} />
-        ))}
-      </div>
-    </div>
-  </InventoryBiSection>
-);
+const statusLabel = (status: InventoryBiOperationalPageResponse["items"][number]["stockStatus"]) => {
+  if (status === "WITH_STOCK") return "Con stock";
+  if (status === "OUT_OF_STOCK") return "Agotado";
+  return "Stock negativo";
+};
+
+const statusClassName = (status: InventoryBiOperationalPageResponse["items"][number]["stockStatus"]) => {
+  if (status === "WITH_STOCK") return "bg-emerald-50 text-emerald-700";
+  if (status === "OUT_OF_STOCK") return "bg-amber-50 text-amber-700";
+  return "bg-rose-50 text-rose-700";
+};
+
+const OperationalTable = ({
+  page,
+  loading,
+  error,
+  onRetry,
+  onPageChange,
+}: {
+  page: InventoryBiOperationalPageResponse | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onPageChange: (nextPage: number) => void;
+}) => {
+  const totalPages = page?.totalPages ?? 0;
+  const currentPage = page?.page ?? 1;
+  const start = page && page.total > 0 ? (currentPage - 1) * page.pageSize + 1 : 0;
+  const end = page ? Math.min(currentPage * page.pageSize, page.total) : 0;
+
+  return (
+    <InventoryBiSection title="Inventario" subtitle="Detalle operativo del inventario">
+      {loading ? (
+        <div className="space-y-3" aria-label="Cargando inventario" aria-busy="true">
+          {Array.from({ length: 5 }, (_, index) => (
+            <InventoryBiSkeleton key={index} className="h-12 w-full" label={`table-row-${index + 1}`} />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <span>No fue posible cargar el detalle del inventario.</span>
+          <Button variant="outline" onClick={onRetry} className="w-full sm:w-auto">
+            Reintentar
+          </Button>
+        </div>
+      ) : !page || page.total === 0 ? (
+        <p className="rounded-lg border border-dashed border-[var(--brand-surface-border)] px-4 py-8 text-center text-sm text-[var(--brand-surface-muted)]">
+          No hay productos para los filtros aplicados.
+        </p>
+      ) : (
+        <>
+          <div className="inventory-bi-operational-table hidden overflow-hidden rounded-lg border border-[var(--brand-surface-border)]">
+            <table className="w-full table-fixed text-left text-sm">
+              <caption className="sr-only">Detalle operativo del inventario</caption>
+              <colgroup>
+                <col className="w-[27%]" />
+                <col className="w-[13%]" />
+                <col className="w-[18%]" />
+                <col className="w-[18%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <thead className="bg-slate-50 text-xs font-semibold text-[var(--brand-surface-muted)]">
+                <tr>
+                  {['Producto', 'SKU', 'Categoría', 'Sucursal', 'Stock actual', 'Estado'].map((label) => (
+                    <th key={label} scope="col" className="px-3 py-3">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--brand-surface-border)]">
+                {page.items.map((item) => (
+                  <tr key={`${item.productId}-${item.branchId}`}>
+                    <td className="max-w-0 truncate px-3 py-3 font-medium text-[var(--brand-surface-text)]" title={item.productName}>{item.productName}</td>
+                    <td className="truncate px-3 py-3 text-[var(--brand-surface-muted)]">{item.sku || "—"}</td>
+                    <td className="truncate px-3 py-3 text-[var(--brand-surface-muted)]">{item.categoryName || "Sin categoría"}</td>
+                    <td className="truncate px-3 py-3 text-[var(--brand-surface-muted)]">{item.branchName}</td>
+                    <td className="px-3 py-3 tabular-nums text-[var(--brand-surface-text)]">{formatInventoryUnits(item.realStock) ?? "No disponible"}</td>
+                    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusClassName(item.stockStatus)}`}>{statusLabel(item.stockStatus)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="inventory-bi-operational-cards space-y-3" aria-label="Detalle operativo del inventario">
+            {page.items.map((item) => (
+              <article key={`${item.productId}-${item.branchId}`} className="rounded-lg border border-[var(--brand-surface-border)] p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="min-w-0 truncate font-semibold text-[var(--brand-surface-text)]" title={item.productName}>{item.productName}</h3>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${statusClassName(item.stockStatus)}`}>{statusLabel(item.stockStatus)}</span>
+                </div>
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <div><dt className="text-[var(--brand-surface-muted)]">SKU</dt><dd className="truncate text-[var(--brand-surface-text)]">{item.sku || "—"}</dd></div>
+                  <div><dt className="text-[var(--brand-surface-muted)]">Stock actual</dt><dd className="tabular-nums text-[var(--brand-surface-text)]">{formatInventoryUnits(item.realStock) ?? "No disponible"}</dd></div>
+                  <div><dt className="text-[var(--brand-surface-muted)]">Categoría</dt><dd className="truncate text-[var(--brand-surface-text)]">{item.categoryName || "Sin categoría"}</dd></div>
+                  <div><dt className="text-[var(--brand-surface-muted)]">Sucursal</dt><dd className="truncate text-[var(--brand-surface-text)]">{item.branchName}</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--brand-surface-border)] pt-3 text-xs text-[var(--brand-surface-muted)] sm:flex-row sm:items-center sm:justify-between">
+            <span>{start}-{end} de {page.total}</span>
+            <div className="flex items-center gap-2">
+              <span>Página {currentPage} de {totalPages}</span>
+              <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1} aria-label="Página anterior">Anterior</Button>
+              <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages} aria-label="Página siguiente">Siguiente</Button>
+            </div>
+          </div>
+        </>
+      )}
+    </InventoryBiSection>
+  );
+};
 
 const InventoryBiErrorPanel = ({ onRetry }: { onRetry?: () => void }) => (
   <section
@@ -661,6 +759,8 @@ export const InventoryBiDashboard = ({
     useState<InventoryBiCapitalDistributionResponse | null>(null);
   const [operationalHealth, setOperationalHealth] =
     useState<InventoryBiOperationalHealthResponse | null>(null);
+  const [operationalPage, setOperationalPage] =
+    useState<InventoryBiOperationalPageResponse | null>(null);
   const [summaryFilters, setSummaryFilters] = useState<InventoryBiFilters | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(Boolean(authTenantId));
   const [capitalLoading, setCapitalLoading] = useState(Boolean(authTenantId));
@@ -668,6 +768,9 @@ export const InventoryBiDashboard = ({
   const [capitalError, setCapitalError] = useState<string | null>(null);
   const [operationalHealthLoading, setOperationalHealthLoading] = useState(Boolean(authTenantId));
   const [operationalHealthError, setOperationalHealthError] = useState<string | null>(null);
+  const [operationalPageLoading, setOperationalPageLoading] = useState(Boolean(authTenantId));
+  const [operationalPageError, setOperationalPageError] = useState<string | null>(null);
+  const [operationalPageNumber, setOperationalPageNumber] = useState(1);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const initialFilters = useMemo(
@@ -680,14 +783,16 @@ export const InventoryBiDashboard = ({
     [authBranchId, authTenantId]
   );
 
-  const loadSummary = useCallback(async (filters: InventoryBiFilters) => {
+  const loadSummary = useCallback(async (filters: InventoryBiFilters, page = 1) => {
     if (!filters.requestedTenantId) return;
     setSummaryLoading(true);
     setCapitalLoading(true);
     setOperationalHealthLoading(true);
+    setOperationalPageLoading(true);
     setSummaryError(null);
     setCapitalError(null);
     setOperationalHealthError(null);
+    setOperationalPageError(null);
     try {
       const params = {
         tenantId: filters.requestedTenantId,
@@ -696,11 +801,19 @@ export const InventoryBiDashboard = ({
         categoryId: filters.categoryId || undefined,
         stockStatus: filters.stockStatus,
       } as const;
-      const [summaryResult, capitalResult, operationalResult] = await Promise.allSettled([
+      const [summaryResult, capitalResult, operationalResult, operationalPageResult] = await Promise.allSettled([
         getInventoryBiSummary(params),
         getInventoryBiCapitalDistribution(params),
         getInventoryBiOperationalHealth(params),
+        getInventoryBiOperationalPage({ ...params, page, pageSize: 10 }),
       ]);
+      if (operationalPageResult.status === "fulfilled") {
+        setOperationalPage(operationalPageResult.value);
+        setOperationalPageNumber(operationalPageResult.value.page);
+        setOperationalPageError(null);
+      } else {
+        setOperationalPageError("No fue posible cargar el detalle del inventario.");
+      }
       if (summaryResult.status === "fulfilled") {
         setSummary(summaryResult.value);
         setSummaryError(null);
@@ -731,6 +844,7 @@ export const InventoryBiDashboard = ({
       setSummaryLoading(false);
       setCapitalLoading(false);
       setOperationalHealthLoading(false);
+      setOperationalPageLoading(false);
     }
   }, []);
 
@@ -739,7 +853,8 @@ export const InventoryBiDashboard = ({
   }, [authTenantId, initialFilters, loadSummary, summaryFilters]);
 
   const handleApply = useCallback((filters: InventoryBiFilters) => {
-    void loadSummary(filters);
+    setOperationalPageNumber(1);
+    void loadSummary(filters, 1);
   }, [loadSummary]);
 
   const handleRefresh = useCallback(() => {
@@ -753,6 +868,13 @@ export const InventoryBiDashboard = ({
     void loadSummary(filters);
     onRetry?.();
   }, [initialFilters, loadSummary, onRetry, summaryFilters]);
+
+  const handleOperationalPageChange = useCallback((page: number) => {
+    if (page < 1) return;
+    const filters = summaryFilters ?? initialFilters;
+    setOperationalPageNumber(page);
+    void loadSummary(filters, page);
+  }, [initialFilters, loadSummary, summaryFilters]);
 
   return (
     <main
@@ -780,7 +902,13 @@ export const InventoryBiDashboard = ({
         summaryError={summaryError}
       />
       <InventoryValuationCtaShell />
-      <OperationalTableShell />
+      <OperationalTable
+        page={operationalPage}
+        loading={operationalPageLoading}
+        error={operationalPageError}
+        onRetry={() => void loadSummary(summaryFilters ?? initialFilters, operationalPageNumber)}
+        onPageChange={handleOperationalPageChange}
+      />
     </main>
   );
 };

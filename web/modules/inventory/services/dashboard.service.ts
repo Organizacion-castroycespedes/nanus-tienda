@@ -174,6 +174,25 @@ export type InventoryBiOperationalHealthResponse = {
   };
 };
 
+export type InventoryBiOperationalPageResponse = {
+  items: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
+    realStock: string;
+    stockStatus: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type GetInventoryBiSummaryParams = {
   tenantId?: string;
   branchId?: string;
@@ -254,6 +273,20 @@ export const getInventoryBiOperationalHealth = (
 ) => {
   return apiClient<InventoryBiOperationalHealthResponse>(
     `/inventory/bi-operational-health${buildInventoryBiSummaryQuery(params)}`,
+    { headers }
+  );
+};
+
+export const getInventoryBiOperationalPage = (
+  params: GetInventoryBiSummaryParams & { page?: number; pageSize?: number } = {},
+  headers?: HeadersInit
+) => {
+  const query = new URLSearchParams(buildInventoryBiSummaryQuery(params).replace(/^\?/, ""));
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiClient<InventoryBiOperationalPageResponse>(
+    `/inventory/bi-operational-page${suffix}`,
     { headers }
   );
 };
