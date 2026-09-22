@@ -94,6 +94,11 @@
 }
 
 @container inventory-bi (min-width: 800px) {
+  .valuation-analytics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
   .inventory-bi-kpi-grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }

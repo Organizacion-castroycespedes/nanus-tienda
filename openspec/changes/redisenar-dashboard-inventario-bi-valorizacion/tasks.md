@@ -63,8 +63,9 @@
 
 ## 10. Valuation analytics
 
-- [ ] 10.1 Implement branch, category, product Top N, and status analytics as non-paginated aggregates.
-- [ ] 10.2 Certify that valuation analytics reconcile with the detail dataset.
+- [x] 10.1 Implement branch, category, bounded Top 5 product, and status analytics as non-paginated aggregates by reusing the certified BI endpoints. Automated validation passed.
+- [x] 10.2 Certify that branch/category analytics reconcile with the valuation total and preserve null-category/Top 5 semantics. Read-only QA passed on `manus_tienda_qa`; no new SQL was required.
+- [x] 10.3 Complete manual visual QA for charts, compact thumbnail/fallback ranking, status distribution, responsive sidebar reflow, labels/tooltips, and empty/error states. User-confirmed desktop, POS/intermediate, and mobile QA passed without visible document overflow.
 
 ## 11. Valuation table
 

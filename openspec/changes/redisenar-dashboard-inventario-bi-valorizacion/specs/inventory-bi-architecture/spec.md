@@ -490,3 +490,23 @@ The valuation summary SHALL show only the real current-state KPIs defined for Se
 #### Scenario: Handle valuation summary states
 - **WHEN** the summary is loading, unavailable, or valid with zero values
 - **THEN** the summary SHALL preserve its skeleton/error state, show `No disponible` for unavailable values, and show zero for valid zero results without silently converting errors to zero
+
+### Requirement: Section 10 valuation analytics
+
+The valuation analytics SHALL reuse the certified capital-distribution and summary contracts with the applied Section 8 filters. It SHALL show branch cost, category cost, bounded product ranking, and descriptive stock-status distribution without adding economic formulas, historical trends, health scores, or a complete detail dataset.
+
+#### Scenario: Reconcile analytics with valuation total
+- **WHEN** analytics and summary are requested for the same applied scope and filters
+- **THEN** the sum of branch costs and the sum of category costs SHALL equal the valuation total cost, null categories SHALL remain in `Sin categoría`, and product ranking SHALL remain grouped by `product_id`
+
+#### Scenario: Render bounded analytics accessibly
+- **WHEN** branch/category analytics have data
+- **THEN** the UI SHALL render the existing Recharts bar pattern with direct safe currency labels and tooltips, while Top products and status distribution SHALL expose textual values independently of color or tooltip
+
+#### Scenario: Render compact valuation product ranking
+- **WHEN** the valuation Top 5 has product rows
+- **THEN** each row SHALL show a real product thumbnail or initials fallback, an accessible controlled product name, string-safe cost, and participation without clipping; row height SHALL remain content-driven and the neighboring status panel SHALL not be artificially stretched
+
+#### Scenario: Preserve analytics states
+- **WHEN** analytics are loading, unavailable, or empty for valid filters
+- **THEN** the analytics area SHALL show localized skeleton/error/empty states without fake bars, zero substitution for errors, horizontal document overflow, or disruption of filters and valuation KPIs
