@@ -140,6 +140,22 @@ export type InventoryBiOperationalRow = QueryResultRow & {
   stock_status: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
 };
 
+export type InventoryBiValuationRow = QueryResultRow & {
+  tenant_id: string;
+  branch_id: string;
+  branch_name: string;
+  product_id: string;
+  product_name: string;
+  sku: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  real_stock: string | number;
+  real_unit_cost: string | number;
+  inventory_cost: string | number;
+  participation_percent: string | number | null;
+  stock_status: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
+};
+
 export type InventoryFilterOption = {
   id: string;
   name: string;
@@ -579,6 +595,89 @@ export class InventoryRepository {
           $5::text
         )
         ORDER BY product_name ASC, branch_name ASC, product_id ASC, branch_id ASC
+        LIMIT $6::integer
+        OFFSET $7::integer
+        `,
+        [...params, filters.pageSize, (filters.page - 1) * filters.pageSize]
+      ),
+    ]);
+
+    return {
+      total: Number(countResult.rows[0]?.total ?? 0),
+      rows: pageResult.rows,
+    };
+  }
+
+  async getInventoryBiValuationPage(filters: {
+    tenantId: string;
+    branchId?: string;
+    branchIds?: string[];
+    productIds?: string[];
+    categoryId?: string;
+    stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
+    page: number;
+    pageSize: number;
+  }) {
+    const branchIds = filters.branchId
+      ? [filters.branchId]
+      : filters.branchIds ?? null;
+    const productIds = filters.productIds?.length ? filters.productIds : null;
+    const params = [
+      filters.tenantId,
+      branchIds,
+      productIds,
+      filters.categoryId ?? null,
+      filters.stockStatus,
+    ];
+    const [countResult, pageResult] = await Promise.all([
+      this.db.query<{ total: string | number }>(
+        `
+        SELECT COUNT(*)::bigint AS total
+        FROM public.inventory_bi_base(
+          $1::uuid,
+          $2::uuid[],
+          $3::uuid[],
+          $4::uuid,
+          $5::text
+        )
+        `,
+        params
+      ),
+      this.db.query<InventoryBiValuationRow>(
+        `
+        WITH base AS (
+          SELECT *
+          FROM public.inventory_bi_base(
+            $1::uuid,
+            $2::uuid[],
+            $3::uuid[],
+            $4::uuid,
+            $5::text
+          )
+        ), totals AS (
+          SELECT COALESCE(SUM(inventory_cost), 0)::numeric AS total_cost
+          FROM base
+        )
+        SELECT
+          base.tenant_id,
+          base.branch_id,
+          base.branch_name,
+          base.product_id,
+          base.product_name,
+          base.sku,
+          base.category_id,
+          base.category_name,
+          base.real_stock,
+          base.real_unit_cost,
+          base.inventory_cost,
+          CASE
+            WHEN totals.total_cost = 0 THEN NULL
+            ELSE (base.inventory_cost / totals.total_cost * 100)::numeric
+          END AS participation_percent,
+          base.stock_status
+        FROM base
+        CROSS JOIN totals
+        ORDER BY base.product_name ASC, base.branch_name ASC, base.product_id ASC, base.branch_id ASC
         LIMIT $6::integer
         OFFSET $7::integer
         `,

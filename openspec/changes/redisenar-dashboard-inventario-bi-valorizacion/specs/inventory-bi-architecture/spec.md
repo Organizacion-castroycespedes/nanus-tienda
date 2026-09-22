@@ -510,3 +510,23 @@ The valuation analytics SHALL reuse the certified capital-distribution and summa
 #### Scenario: Preserve analytics states
 - **WHEN** analytics are loading, unavailable, or empty for valid filters
 - **THEN** the analytics area SHALL show localized skeleton/error/empty states without fake bars, zero substitution for errors, horizontal document overflow, or disruption of filters and valuation KPIs
+
+### Requirement: Section 11 valuation detail
+
+The valuation route SHALL expose a typed, backend-paginated detail dataset through `GET /inventory/bi-valuation-page`. It SHALL reuse `public.inventory_bi_base`, backend-enforced `INVENTORY/READ` scope, and applied tenant, branch, product IDs, category, and stock-status filters. `productIds=[]` SHALL mean no product restriction; terminal, cash, and date filters SHALL be excluded.
+
+#### Scenario: Request a valuation detail page
+- **WHEN** an authorized user requests a page with a bounded page size
+- **THEN** the backend SHALL execute a matching filtered `COUNT(*)` and `LIMIT/OFFSET` query and return only that page with `page`, `pageSize`, `total`, and `totalPages`
+
+#### Scenario: Preserve valuation row semantics
+- **WHEN** the page contains rows
+- **THEN** each row SHALL represent one active product-branch record and expose product, SKU, category, branch, real stock, real unit cost, inventory cost, participation, and stock status using decimal-safe values
+
+#### Scenario: Calculate participation over the full set
+- **WHEN** a filtered detail page is requested
+- **THEN** participation SHALL use the complete filtered inventory cost total, not the visible page; zero total cost SHALL produce null and negative values SHALL remain signed
+
+#### Scenario: Render valuation detail responsively
+- **WHEN** the usable BI container is compact
+- **THEN** the table SHALL switch to labeled accessible cards without document horizontal overflow, while desktop/intermediate containers SHALL retain semantic table headers and accessible pagination

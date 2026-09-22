@@ -83,12 +83,24 @@
   display: block;
 }
 
+.valuation-detail-cards {
+  display: block;
+}
+
 @container inventory-bi (min-width: 800px) {
   .inventory-bi-operational-table {
     display: block;
   }
 
   .inventory-bi-operational-cards {
+    display: none;
+  }
+
+  .valuation-detail-table {
+    display: block;
+  }
+
+  .valuation-detail-cards {
     display: none;
   }
 }

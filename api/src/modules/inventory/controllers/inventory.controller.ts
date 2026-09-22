@@ -310,6 +310,32 @@ export class InventoryController {
     );
   }
 
+  @Get("bi-valuation-page")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiValuationPage(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Query("page") page: string | undefined,
+    @Query("pageSize") pageSize: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiValuationPage(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+        page: this.parseBiPage(page),
+        pageSize: this.parseBiPageSize(pageSize),
+      },
+      this.buildActor(request)
+    );
+  }
+
   @Get("dashboard")
   @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
   getDashboard(

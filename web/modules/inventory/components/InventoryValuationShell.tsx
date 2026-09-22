@@ -9,8 +9,10 @@ import { InventoryImagePreview } from "./InventoryImagePreview";
 import {
   getInventoryBiSummary,
   getInventoryBiCapitalDistribution,
+  getInventoryBiValuationPage,
   type InventoryBiCapitalDistributionResponse,
   type InventoryBiSummaryResponse,
+  type InventoryBiValuationPageResponse,
 } from "../services/dashboard.service";
 import {
   Bar,
@@ -83,6 +85,18 @@ const ValuationProductThumbnail = ({
     lazy
   />
 );
+
+const valuationStatusLabel = (status: InventoryBiValuationPageResponse["items"][number]["stockStatus"]) => {
+  if (status === "WITH_STOCK") return "Con stock";
+  if (status === "OUT_OF_STOCK") return "Agotado";
+  return "Stock negativo";
+};
+
+const valuationStatusClassName = (status: InventoryBiValuationPageResponse["items"][number]["stockStatus"]) => {
+  if (status === "WITH_STOCK") return "bg-emerald-50 text-emerald-700";
+  if (status === "OUT_OF_STOCK") return "bg-amber-50 text-amber-700";
+  return "bg-rose-50 text-rose-700";
+};
 
 type ValuationCostTooltipProps = {
   active?: boolean;
@@ -393,6 +407,137 @@ const ValuationAnalytics = ({
   );
 };
 
+type ValuationDetailProps = {
+  page: InventoryBiValuationPageResponse | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onPageChange: (nextPage: number) => void;
+};
+
+const ValuationDetail = ({
+  page,
+  loading,
+  error,
+  onRetry,
+  onPageChange,
+}: ValuationDetailProps) => {
+  const currentPage = page?.page ?? 1;
+  const totalPages = page?.totalPages ?? 0;
+  const start = page && page.total > 0 ? (currentPage - 1) * page.pageSize + 1 : 0;
+  const end = page ? Math.min(currentPage * page.pageSize, page.total) : 0;
+
+  return (
+    <section aria-labelledby="valuation-detail-heading">
+      <div className="mb-3">
+        <h2 id="valuation-detail-heading" className="text-base font-bold leading-5">
+          Detalle de valorización
+        </h2>
+        <p className="mt-1 text-[13px] leading-5 text-[var(--brand-surface-muted)]">
+          Inventario valorizado por producto y sucursal.
+        </p>
+      </div>
+      {loading ? (
+        <div className={`${panelClassName} space-y-3`} aria-label="Cargando detalle de valorización" aria-busy="true">
+          {Array.from({ length: 5 }, (_, index) => (
+            <Skeleton key={index} className="h-12 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className={`${panelClassName} flex flex-col gap-3 text-sm text-rose-700`} role="alert">
+          <span>No fue posible cargar el detalle de valorización.</span>
+          <Button variant="outline" size="sm" onClick={onRetry} className="w-full sm:w-fit">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Reintentar
+          </Button>
+        </div>
+      ) : !page || page.total === 0 ? (
+        <div className={`${panelClassName} py-8 text-center text-sm text-[var(--brand-surface-muted)]`}>
+          No hay productos para los filtros aplicados.
+        </div>
+      ) : (
+        <div className={panelClassName}>
+          <div className="valuation-detail-table hidden overflow-hidden rounded-lg border border-[var(--brand-surface-border)]">
+            <table className="w-full table-fixed text-left text-xs">
+              <caption className="sr-only">Detalle paginado de valorización de inventario</caption>
+              <colgroup>
+                <col className="w-[20%]" />
+                <col className="w-[9%]" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[10%]" />
+                <col className="w-[11%]" />
+                <col className="w-[11%]" />
+                <col className="w-[7%]" />
+                <col className="w-[9%]" />
+              </colgroup>
+              <thead className="bg-slate-50 font-semibold text-[var(--brand-surface-muted)]">
+                <tr>
+                  {['Producto', 'SKU', 'Categoría', 'Sucursal', 'Stock', 'Costo unitario', 'Costo total', 'Part.', 'Estado'].map((label) => (
+                    <th key={label} scope="col" className="px-2 py-3">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--brand-surface-border)]">
+                {page.items.map((item) => (
+                  <tr key={`${item.productId}-${item.branchId}`}>
+                    <td className="max-w-0 px-2 py-3 font-medium" title={item.productName}>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <ValuationProductThumbnail productId={item.productId} productName={item.productName} />
+                        <span className="min-w-0 truncate">{item.productName}</span>
+                      </div>
+                    </td>
+                    <td className="truncate px-2 py-3 text-[var(--brand-surface-muted)]">{item.sku ?? "—"}</td>
+                    <td className="truncate px-2 py-3 text-[var(--brand-surface-muted)]">{item.categoryName ?? "Sin categoría"}</td>
+                    <td className="truncate px-2 py-3 text-[var(--brand-surface-muted)]">{item.branchName}</td>
+                    <td className="whitespace-nowrap px-2 py-3 tabular-nums">{formatInventoryUnits(item.realStock) ?? "No disponible"}</td>
+                    <td className="whitespace-nowrap px-2 py-3 tabular-nums">{formatInventoryCurrency(item.realUnitCost) ?? "No disponible"}</td>
+                    <td className="whitespace-nowrap px-2 py-3 font-semibold tabular-nums">{formatInventoryCurrency(item.inventoryCost) ?? "No disponible"}</td>
+                    <td className="whitespace-nowrap px-2 py-3 tabular-nums text-[var(--brand-surface-muted)]">{formatPercent(item.participationPercent)}</td>
+                    <td className="px-2 py-3"><span className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 font-semibold ${valuationStatusClassName(item.stockStatus)}`}>{valuationStatusLabel(item.stockStatus)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="valuation-detail-cards space-y-3" aria-label="Detalle paginado de valorización">
+            {page.items.map((item) => (
+              <article key={`${item.productId}-${item.branchId}`} className="rounded-lg border border-[var(--brand-surface-border)] p-3">
+                <div className="flex items-start gap-3">
+                  <ValuationProductThumbnail productId={item.productId} productName={item.productName} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="min-w-0 truncate font-semibold" title={item.productName}>{item.productName}</h3>
+                      <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ${valuationStatusClassName(item.stockStatus)}`}>{valuationStatusLabel(item.stockStatus)}</span>
+                    </div>
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <div><dt className="text-[var(--brand-surface-muted)]">SKU</dt><dd className="truncate">{item.sku ?? "—"}</dd></div>
+                      <div><dt className="text-[var(--brand-surface-muted)]">Sucursal</dt><dd className="truncate">{item.branchName}</dd></div>
+                      <div><dt className="text-[var(--brand-surface-muted)]">Categoría</dt><dd className="truncate">{item.categoryName ?? "Sin categoría"}</dd></div>
+                      <div><dt className="text-[var(--brand-surface-muted)]">Stock actual</dt><dd className="tabular-nums">{formatInventoryUnits(item.realStock) ?? "No disponible"}</dd></div>
+                      <div><dt className="text-[var(--brand-surface-muted)]">Costo unitario</dt><dd className="whitespace-nowrap tabular-nums">{formatInventoryCurrency(item.realUnitCost) ?? "No disponible"}</dd></div>
+                      <div><dt className="text-[var(--brand-surface-muted)]">Costo total</dt><dd className="whitespace-nowrap font-semibold tabular-nums">{formatInventoryCurrency(item.inventoryCost) ?? "No disponible"}</dd></div>
+                      <div><dt className="text-[var(--brand-surface-muted)]">Participación</dt><dd className="tabular-nums">{formatPercent(item.participationPercent)}</dd></div>
+                    </dl>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--brand-surface-border)] pt-3 text-xs text-[var(--brand-surface-muted)] sm:flex-row sm:items-center sm:justify-between">
+            <span>{start}-{end} de {page.total}</span>
+            <div className="flex items-center gap-2">
+              <span>Página {currentPage} de {totalPages}</span>
+              <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1} aria-label="Página anterior">Anterior</Button>
+              <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages} aria-label="Página siguiente">Siguiente</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
+
 export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: string }) => {
   const [appliedFilters, setAppliedFilters] = useState<InventoryValuationFilters | null>(null);
   const [summary, setSummary] = useState<InventoryBiSummaryResponse | null>(null);
@@ -401,9 +546,14 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
   const [distribution, setDistribution] = useState<InventoryBiCapitalDistributionResponse | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [valuationPage, setValuationPage] = useState<InventoryBiValuationPageResponse | null>(null);
+  const [valuationPageLoading, setValuationPageLoading] = useState(false);
+  const [valuationPageError, setValuationPageError] = useState<string | null>(null);
+  const [valuationPageNumber, setValuationPageNumber] = useState(1);
   const [retryToken, setRetryToken] = useState(0);
 
   const handleApply = useCallback((filters: InventoryBiFilters) => {
+    setValuationPageNumber(1);
     setAppliedFilters(toValuationFilters(filters));
   }, []);
 
@@ -413,6 +563,8 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
       setSummaryError(null);
       setDistribution(null);
       setAnalyticsError(null);
+      setValuationPage(null);
+      setValuationPageError(null);
       return;
     }
 
@@ -421,6 +573,8 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
     setSummaryError(null);
     setAnalyticsLoading(true);
     setAnalyticsError(null);
+    setValuationPageLoading(true);
+    setValuationPageError(null);
 
     const request = {
       tenantId: appliedFilters.requestedTenantId,
@@ -457,10 +611,33 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
         if (active) setAnalyticsLoading(false);
       });
 
+    void getInventoryBiValuationPage({
+      ...request,
+      page: valuationPageNumber,
+      pageSize: 10,
+    })
+      .then((result) => {
+        if (active) setValuationPage(result);
+      })
+      .catch(() => {
+        if (!active) return;
+        setValuationPage(null);
+        setValuationPageError("No fue posible cargar el detalle de valorización.");
+      })
+      .finally(() => {
+        if (active) setValuationPageLoading(false);
+      });
+
     return () => {
       active = false;
     };
-  }, [appliedFilters, retryToken]);
+  }, [appliedFilters, retryToken, valuationPageNumber]);
+
+  const handleValuationPageChange = useCallback((page: number) => {
+    if (page >= 1 && page <= (valuationPage?.totalPages ?? Number.MAX_SAFE_INTEGER)) {
+      setValuationPageNumber(page);
+    }
+  }, [valuationPage?.totalPages]);
 
   return (
     <main
@@ -510,13 +687,13 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
         onRetry={() => setRetryToken((token) => token + 1)}
       />
 
-      <section className="grid gap-4 lg:grid-cols-2" aria-label="Detalle de valorización">
-        <div className={`${panelClassName} lg:col-span-2`}>
-          <h2 className="text-base font-bold leading-5">Detalle de valorización</h2>
-          <p className="mt-1 text-[13px] leading-5 text-[var(--brand-surface-muted)]">Área reservada para el detalle operativo valorizado.</p>
-          <div className="mt-4 space-y-3">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-10 w-full" />)}</div>
-        </div>
-      </section>
+      <ValuationDetail
+        page={valuationPage}
+        loading={valuationPageLoading}
+        error={valuationPageError}
+        onRetry={() => setRetryToken((token) => token + 1)}
+        onPageChange={handleValuationPageChange}
+      />
     </main>
   );
 };

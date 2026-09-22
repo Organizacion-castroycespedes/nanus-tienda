@@ -197,3 +197,54 @@ test("InventoryRepository paginates operational rows in SQL and keeps count filt
   assert.deepEqual(params[0], ["tenant-1", ["branch-1"], null, null, "negative"]);
   assert.deepEqual(params[1], ["tenant-1", ["branch-1"], null, null, "negative", 10, 10]);
 });
+
+test("InventoryRepository paginates valuation rows with backend participation over the full filtered total", async () => {
+  const queries: string[] = [];
+  const params: unknown[][] = [];
+  const repository = new InventoryRepository({
+    query: async (query: string, values: unknown[]) => {
+      queries.push(query);
+      params.push(values);
+      if (query.includes("COUNT(*)")) return { rows: [{ total: "77" }] };
+      return {
+        rows: [{
+          tenant_id: "tenant-1",
+          branch_id: "branch-1",
+          branch_name: "Sucursal",
+          product_id: "product-1",
+          product_name: "Producto",
+          sku: "SKU-1",
+          category_id: "category-1",
+          category_name: "Categoría",
+          real_stock: "2.50",
+          real_unit_cost: "100.00",
+          inventory_cost: "250.00",
+          participation_percent: "12.5000",
+          stock_status: "WITH_STOCK",
+        }],
+      };
+    },
+  } as never);
+
+  const result = await repository.getInventoryBiValuationPage({
+    tenantId: "tenant-1",
+    branchId: "branch-1",
+    productIds: [],
+    stockStatus: "all",
+    page: 2,
+    pageSize: 10,
+  });
+
+  assert.equal(result.total, 77);
+  assert.equal(result.rows[0].inventory_cost, "250.00");
+  assert.equal(result.rows[0].participation_percent, "12.5000");
+  assert.equal(queries.length, 2);
+  assert.ok(queries.every((query) => query.includes("public.inventory_bi_base")));
+  assert.match(queries[1], /SUM\(inventory_cost\)/);
+  assert.match(queries[1], /participation_percent/);
+  assert.match(queries[1], /LIMIT \$6::integer/);
+  assert.match(queries[1], /OFFSET \$7::integer/);
+  assert.match(queries[1], /ORDER BY base\.product_name ASC, base\.branch_name ASC, base\.product_id ASC, base\.branch_id ASC/);
+  assert.deepEqual(params[0], ["tenant-1", ["branch-1"], null, null, "all"]);
+  assert.deepEqual(params[1], ["tenant-1", ["branch-1"], null, null, "all", 10, 10]);
+});

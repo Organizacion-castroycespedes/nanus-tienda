@@ -69,9 +69,9 @@
 
 ## 11. Valuation table
 
-- [ ] 11.1 Implement the valuation detail table with real server-side pagination.
-- [ ] 11.2 Add product drilldowns with the repository-standard pagination mechanism.
-- [ ] 11.3 Verify tenant and branch isolation for every query.
+- [x] 11.1 Implement the valuation detail table with real server-side pagination through `GET /inventory/bi-valuation-page`, using the certified BI base and typed page metadata. Automated and read-only QA passed.
+- [x] 11.2 Add product-level valuation rows with the repository-standard `COUNT(*)` plus `LIMIT/OFFSET` mechanism, complete-filter participation, decimal-safe costs, and responsive table/card rendering. Automated and read-only QA passed.
+- [x] 11.3 Verify tenant and branch isolation for every valuation query by reusing the certified backend scope resolver and parameterized BI-base call. Automated scope-preservation coverage and user-confirmed manual visual/functional QA passed.
 
 ## 12. Document export
 
