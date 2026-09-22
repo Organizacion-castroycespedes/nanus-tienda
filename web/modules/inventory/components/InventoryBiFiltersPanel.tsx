@@ -29,6 +29,10 @@ import {
 
 type InventoryBiFiltersPanelProps = {
   onApply?: (filters: InventoryBiFilters) => void;
+  title?: string;
+  description?: string;
+  appliedMessage?: string;
+  includeOperationalFilters?: boolean;
 };
 
 const panelClassName =
@@ -36,7 +40,13 @@ const panelClassName =
 
 const today = new Date().toISOString().slice(0, 10);
 
-const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
+const InventoryBiFiltersPanel = ({
+  onApply,
+  title = "Filtros de inventario",
+  description = "Define el alcance y los filtros que usarán las próximas vistas BI.",
+  appliedMessage = "Filtros preparados para las vistas BI.",
+  includeOperationalFilters = true,
+}: InventoryBiFiltersPanelProps) => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canSelectTenant = role === "SUPER_ADMIN";
@@ -277,10 +287,10 @@ const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
             id="inventory-filters-title"
             className="text-base font-bold leading-5 text-[var(--brand-surface-text)]"
           >
-            Filtros de inventario
+            {title}
           </h2>
           <p className="mt-1 text-[13px] leading-5 text-[var(--brand-surface-muted)]">
-            Define el alcance y los filtros que usarán las próximas vistas BI.
+            {description}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -432,11 +442,12 @@ const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
       {scopeError ? <p className="mt-3 text-xs text-rose-700" role="alert">{scopeError}</p> : null}
       {appliedFilters ? (
         <p className="mt-3 text-xs text-[var(--brand-surface-muted)]" role="status">
-          Filtros preparados para las vistas BI.
+          {appliedMessage}
         </p>
       ) : null}
 
-      <div className="mt-3 border-t border-[var(--brand-surface-border)] pt-2">
+      {includeOperationalFilters ? (
+        <div className="mt-3 border-t border-[var(--brand-surface-border)] pt-2">
         <Button
           variant="ghost"
           size="sm"
@@ -462,7 +473,8 @@ const InventoryBiFiltersPanel = ({ onApply }: InventoryBiFiltersPanelProps) => {
             <Input label="Fecha final" type="date" value={filters.endDate} onChange={(event) => updateFilter("endDate", event.target.value)} />
           </div>
         ) : null}
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 };

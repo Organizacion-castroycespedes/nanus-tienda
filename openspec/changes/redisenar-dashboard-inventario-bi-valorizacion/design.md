@@ -230,6 +230,12 @@ Section 7 enables the existing `Valorización de Inventario` CTA in `/inventory`
 
 The valuation page is a visual shell only: a back link to Inventory, the heading `Valorización de Inventario`, the subtitle `Reporte ejecutivo del inventario a valor de costo`, and neutral reserved surfaces for future valuation filters, summary, analytics, and detail. Sections 8-12 own those functional areas. No valuation data, calculations, endpoint, pagination, export, or fabricated metric is introduced here. The shell inherits the Inventory BI container, spacing, surfaces, typography, and responsive rules without global layout changes.
 
+### Section 8 valuation filters
+
+Section 8 replaces only the valuation filter placeholder with an independent instance of the certified `InventoryBiFiltersPanel`. The valuation instance exposes Tenant, Sucursal, Producto, Categoría, and Estado de stock. It reuses the existing dashboard scope source, category source, `/inventory/products` remote search contract, `productIds` multi-select state, and backend-enforced role behavior. `productIds=[]` means all products. Terminal, cash, and date controls remain excluded from current-state valuation.
+
+Draft changes stay local to the valuation filter instance until `Aplicar filtros`; the applied callback exposes only `requestedTenantId`, `requestedBranchId`, `productIds`, `categoryId`, and `stockStatus` for Sections 9-12. `Limpiar` restores role-required scope defaults and clears optional selections. Tenant and branch changes clear incompatible product/category selections through the certified state transitions. No valuation request is made in Section 8, and no dashboard filters are inherited through URL, storage, or shared state. The panel keeps remote product search with debounce, bounded results, stable product IDs, focus continuity, granular loading/error states, and the existing container-query responsive behavior. Historical DateRangePicker behavior is explicitly out of scope.
+
 ### Document export
 
 Future PDF/XLSX export must use the complete filtered dataset, not the visible web page. The implementation must reuse the certified `DocumentExportService` and reportería standard: count first, batches of 1000, `MAX_REPORT_EXPORT_ROWS=100000` or the real configured equivalent, one `REPEATABLE READ READ ONLY` transaction, rollback on failure, and explicit rejection when the limit is exceeded. PDF and XLSX generation remain decoupled from the web page and its pagination.

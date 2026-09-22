@@ -454,3 +454,23 @@ The Inventory dashboard SHALL expose an enabled `Ver valorización` CTA that nav
 #### Scenario: Valuation shell boundary
 - **WHEN** the Section 7 valuation shell renders
 - **THEN** it SHALL show only structural future-work surfaces and SHALL not show fabricated metrics, filters with business behavior, analytics, detail data, pagination, or export controls
+
+### Requirement: Section 8 valuation filters
+
+The valuation route SHALL own an independent draft/applied filter state containing only authorized tenant, branch, product IDs, category ID, and stock status. It SHALL reuse the certified scope and catalog contracts, SHALL apply `productIds=[]` as no product filter, and SHALL exclude terminal, cash, and date context from current-state valuation. Section 8 SHALL not request valuation KPIs, analytics, detail rows, or exports.
+
+#### Scenario: Apply valuation filters
+- **WHEN** an authorized user changes Tenant, Sucursal, Producto, Categoría, or Estado de stock and activates `Aplicar filtros`
+- **THEN** the route SHALL expose the applied filter snapshot for later valuation sections without inheriting dashboard filters or making a valuation data request in Section 8
+
+#### Scenario: Preserve authorized scope
+- **WHEN** tenant or branch changes
+- **THEN** the filter state SHALL clear incompatible branch, product, and category selections and SHALL preserve the backend-enforced role scope; frontend controls SHALL not grant cross-tenant or cross-branch authority
+
+#### Scenario: Remote product selection
+- **WHEN** the user searches Producto
+- **THEN** the UI SHALL reuse server-side `/inventory/products` search with debounce and a bounded result set, preserve focus while loading/results change, store stable `productIds` without duplicates, and allow individual removal
+
+#### Scenario: Reset valuation filters
+- **WHEN** the user activates `Limpiar`
+- **THEN** optional product/category/status selections SHALL clear while required tenant/branch scope SHALL remain intact, and `productIds` SHALL become an empty array

@@ -16,6 +16,11 @@ export type InventoryBiFilters = {
   endDate: string;
 };
 
+export type InventoryValuationFilters = Pick<
+  InventoryBiFilters,
+  "requestedTenantId" | "requestedBranchId" | "productIds" | "categoryId" | "stockStatus"
+>;
+
 type InventoryBiFilterDefaults = Pick<
   InventoryBiFilters,
   "requestedTenantId" | "requestedBranchId" | "startDate" | "endDate"

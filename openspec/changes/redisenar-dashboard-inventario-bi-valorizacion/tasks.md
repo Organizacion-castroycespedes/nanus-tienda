@@ -50,9 +50,10 @@
 
 ## 8. Valuation shell and filters
 
-- [ ] 8.1 Create `/{tenant}/inventory/valuation` as the specialized current valuation view.
-- [ ] 8.2 Implement tenant, branch, product, category, and status filters using backend-enforced scope.
-- [ ] 8.3 Do not add a DateRangePicker unless a later functional decision approves historical behavior.
+- [x] 8.1 Create `/{tenant}/inventory/valuation` as the specialized current valuation view and replace only its filter placeholder with the certified filter panel. Automated validation passed.
+- [x] 8.2 Implement independent draft/applied Tenant, Sucursal, Producto, Categoría, and Estado de stock filters using backend-enforced scope, remote product search, and stable `productIds`. Automated and manual functional/visual QA passed.
+- [x] 8.3 Do not add a DateRangePicker or Terminal/Caja context to current-state valuation without a later functional decision.
+- [x] 8.4 Complete manual desktop, POS, and mobile QA for scope dependencies, apply/reset, remote product multi-select focus, and no inherited dashboard filters. Automated and manual functional/visual QA passed.
 
 ## 9. Valuation KPIs
 

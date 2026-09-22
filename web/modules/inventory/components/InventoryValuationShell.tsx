@@ -1,5 +1,10 @@
-import Link from "next/link";
+"use client";
+
 import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import InventoryBiFiltersPanel from "./InventoryBiFiltersPanel";
+import type { InventoryValuationFilters } from "../state/inventoryBiFilters";
 
 const panelClassName =
   "min-w-0 rounded-xl border border-[var(--brand-surface-border)] bg-[var(--brand-surface-card)] p-4 shadow-sm";
@@ -30,13 +35,7 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
       </div>
     </header>
 
-    <section className={panelClassName} aria-labelledby="valuation-filters-heading">
-      <h2 id="valuation-filters-heading" className="text-base font-bold leading-5">Filtros de valorización</h2>
-      <p className="mt-1 text-[13px] leading-5 text-[var(--brand-surface-muted)]">Los filtros de esta vista se habilitarán en la siguiente etapa.</p>
-      <div className="mt-4 grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-10" />)}
-      </div>
-    </section>
+    <InventoryValuationFiltersSection />
 
     <section aria-labelledby="valuation-summary-heading">
       <div className="mb-3">
@@ -62,3 +61,25 @@ export const InventoryValuationShell = ({ tenantSegment }: { tenantSegment: stri
     </section>
   </main>
 );
+
+const InventoryValuationFiltersSection = () => {
+  const [, setAppliedFilters] = useState<InventoryValuationFilters | null>(null);
+
+  return (
+    <InventoryBiFiltersPanel
+      title="Filtros de valorización"
+      description="Define el alcance y los filtros para el inventario valorizado."
+      appliedMessage="Filtros aplicados para valorización."
+      includeOperationalFilters={false}
+      onApply={(filters) => {
+        setAppliedFilters({
+          requestedTenantId: filters.requestedTenantId,
+          requestedBranchId: filters.requestedBranchId,
+          productIds: filters.productIds,
+          categoryId: filters.categoryId,
+          stockStatus: filters.stockStatus,
+        });
+      }}
+    />
+  );
+};
