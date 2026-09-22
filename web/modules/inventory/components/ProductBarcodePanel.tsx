@@ -1,7 +1,7 @@
 "use client";
 
 import { Ban, Pencil, Plus, RefreshCw, Star } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmationMessage } from "../../../components/design-system/confirmation-message";
 import { Input } from "../../../components/design-system/Input";
@@ -82,6 +82,7 @@ export const ProductBarcodePanel = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingDeactivate, setPendingDeactivate] = useState<ProductBarcode | null>(null);
   const [pendingPrimary, setPendingPrimary] = useState<ProductBarcode | null>(null);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const activeBarcodes = useMemo(
     () => barcodes.filter((barcode) => barcode.isActive).length,
@@ -112,6 +113,16 @@ export const ProductBarcodePanel = ({
     resetForm();
     void loadBarcodes();
   }, [productId]);
+
+  useEffect(() => {
+    if (!showForm) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      barcodeInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showForm, editingBarcode?.id]);
 
   const startCreate = () => {
     setEditingBarcode(null);
@@ -324,11 +335,13 @@ export const ProductBarcodePanel = ({
           <div className="grid gap-4 md:grid-cols-[1fr_220px_auto]">
             <div className="space-y-1">
               <Input
+                ref={barcodeInputRef}
                 label="Codigo de barras"
                 required
                 value={values.barcode}
                 onChange={(event) => setFieldValue("barcode", event.target.value)}
                 placeholder="Ej: 7701234567890"
+                autoComplete="off"
               />
               {errors.barcode ? <p className="text-xs text-rose-600">{errors.barcode}</p> : null}
             </div>
