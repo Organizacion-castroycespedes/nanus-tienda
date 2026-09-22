@@ -10,6 +10,7 @@ import {
   RefreshCw,
   TriangleAlert,
 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -589,7 +590,7 @@ const OperationalHealthShell = ({
   </section>
 );
 
-const InventoryValuationCtaShell = () => (
+const InventoryValuationCtaShell = ({ tenantSegment, onNavigate }: { tenantSegment: string; onNavigate: () => void }) => (
   <section
     className={`${panelClassName} flex flex-col gap-4 border-[var(--brand-primary-border)] bg-[var(--brand-primary-soft-bg)] sm:flex-row sm:items-center sm:justify-between`}
     aria-labelledby="inventory-valuation-title"
@@ -603,10 +604,9 @@ const InventoryValuationCtaShell = () => (
       </p>
     </div>
     <Button
-      variant="disabled"
-      disabled
-      aria-label="Ver valorización de inventario, disponible próximamente"
-      title="Disponible en una sección posterior"
+      variant="primary"
+      onClick={onNavigate}
+      aria-label="Ver valorización de inventario"
       className="w-full shrink-0 sm:w-auto"
     >
       <Eye className="h-[18px] w-[18px]" aria-hidden="true" />
@@ -752,6 +752,8 @@ export const InventoryBiDashboard = ({
   onRefresh,
   onRetry,
 }: InventoryBiDashboardProps) => {
+  const router = useRouter();
+  const routeParams = useParams<{ tenant?: string | string[] }>();
   const authTenantId = useAppSelector((state) => state.auth.tenantId ?? state.auth.user?.tenantId ?? "");
   const authBranchId = useAppSelector((state) => state.auth.user?.branchId ?? "");
   const [summary, setSummary] = useState<InventoryBiSummaryResponse | null>(null);
@@ -782,6 +784,9 @@ export const InventoryBiDashboard = ({
     }),
     [authBranchId, authTenantId]
   );
+  const tenantSegment = Array.isArray(routeParams?.tenant)
+    ? routeParams.tenant[0]
+    : routeParams?.tenant ?? authTenantId;
 
   const loadSummary = useCallback(async (filters: InventoryBiFilters, page = 1) => {
     if (!filters.requestedTenantId) return;
@@ -901,7 +906,10 @@ export const InventoryBiDashboard = ({
         summaryLoading={summaryLoading}
         summaryError={summaryError}
       />
-      <InventoryValuationCtaShell />
+      <InventoryValuationCtaShell
+        tenantSegment={tenantSegment}
+        onNavigate={() => router.push(`/${tenantSegment}/inventory/valuation`)}
+      />
       <OperationalTable
         page={operationalPage}
         loading={operationalPageLoading}

@@ -44,9 +44,9 @@
 
 ## 7. Valuation CTA
 
-- [ ] 7.1 Add the valuation CTA from `/inventory`.
-- [ ] 7.2 Navigate to the approved target route instead of opening a PDF directly.
-- [ ] 7.3 Implement and review the future route-permission and menu strategy.
+- [x] 7.1 Add the enabled valuation CTA from `/inventory` and render the Section 7 structural valuation shell. Automated and manual visual QA passed.
+- [x] 7.2 Navigate to the approved `/{tenant}/inventory/valuation` route without transferring dashboard filters or opening a PDF. Manual navigation QA passed: direct navigation, refresh, tenant context, and return link verified.
+- [x] 7.3 Apply the existing `INVENTORY/READ` route permission and preserve TenantLayout behavior. Automated and manual navigation/visual QA passed.
 
 ## 8. Valuation shell and filters
 

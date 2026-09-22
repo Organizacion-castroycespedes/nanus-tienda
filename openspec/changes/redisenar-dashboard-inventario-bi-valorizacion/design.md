@@ -224,6 +224,12 @@ The table columns are limited to demonstrated operational facts: Product, SKU, C
 
 Desktop and intermediate containers at or above 800px use semantic table markup. Containers below 800px use the labeled row-card representation; this decision uses the named `inventory-bi` inline-size container, not viewport media queries, so a wide monitor with an expanded sidebar still gets cards when the usable content is compact. Loading, empty, and table-local error states preserve the surrounding dashboard. Status labels remain textual: `Con stock`, `Agotado`, and `Stock negativo`.
 
+### Section 7 valuation entry
+
+Section 7 enables the existing `Valorización de Inventario` CTA in `/inventory` and navigates with the tenant route segment to `/{tenant}/inventory/valuation`. It does not serialize dashboard filters, use local storage, introduce shared state, or open a PDF. The route uses the existing TenantLayout and the existing `INVENTORY` read permission rule.
+
+The valuation page is a visual shell only: a back link to Inventory, the heading `Valorización de Inventario`, the subtitle `Reporte ejecutivo del inventario a valor de costo`, and neutral reserved surfaces for future valuation filters, summary, analytics, and detail. Sections 8-12 own those functional areas. No valuation data, calculations, endpoint, pagination, export, or fabricated metric is introduced here. The shell inherits the Inventory BI container, spacing, surfaces, typography, and responsive rules without global layout changes.
+
 ### Document export
 
 Future PDF/XLSX export must use the complete filtered dataset, not the visible web page. The implementation must reuse the certified `DocumentExportService` and reportería standard: count first, batches of 1000, `MAX_REPORT_EXPORT_ROWS=100000` or the real configured equivalent, one `REPEATABLE READ READ ONLY` transaction, rollback on failure, and explicit rejection when the limit is exceeded. PDF and XLSX generation remain decoupled from the web page and its pagination.

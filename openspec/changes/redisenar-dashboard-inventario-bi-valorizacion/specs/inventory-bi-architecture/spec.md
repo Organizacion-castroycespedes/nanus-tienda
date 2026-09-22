@@ -438,3 +438,19 @@ The `/inventory` operational table SHALL consume `GET /inventory/bi-operational-
 #### Scenario: Narrow operational table
 - **WHEN** the named Inventory BI content container is below 800px
 - **THEN** the desktop table SHALL be hidden and the UI SHALL use an accessible labeled row representation without causing document horizontal overflow
+
+### Requirement: Section 7 valuation entry
+
+The Inventory dashboard SHALL expose an enabled `Ver valorización` CTA that navigates to `/{tenant}/inventory/valuation` using the current tenant route segment. The route SHALL use the existing TenantLayout and the existing `INVENTORY` read permission requirement. Section 7 SHALL not transfer dashboard filters or implement valuation data behavior.
+
+#### Scenario: Navigate to valuation
+- **WHEN** an authorized user activates `Ver valorización` from `/{tenant}/inventory`
+- **THEN** the application SHALL navigate to exactly `/{tenant}/inventory/valuation`
+
+#### Scenario: Open valuation directly
+- **WHEN** an authorized user opens `/{tenant}/inventory/valuation` directly or refreshes it
+- **THEN** the route SHALL render the valuation shell with tenant context and the standard TenantLayout
+
+#### Scenario: Valuation shell boundary
+- **WHEN** the Section 7 valuation shell renders
+- **THEN** it SHALL show only structural future-work surfaces and SHALL not show fabricated metrics, filters with business behavior, analytics, detail data, pagination, or export controls
