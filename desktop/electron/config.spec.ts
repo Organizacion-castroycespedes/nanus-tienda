@@ -13,8 +13,8 @@ describe("resolveElectronConfig", () => {
   it("opens the hosted login page by default", () => {
     const config = resolve();
 
-    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/login");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.webBaseUrl.href, "https://portal.emaus.centrivosoft.com/login");
+    assert.equal(config.initialUrl.href, "https://portal.emaus.centrivosoft.com/login");
     assert.equal(config.startPath, null);
     assert.equal(config.tenantId, null);
     assert.equal(config.branchId, null);
@@ -23,11 +23,11 @@ describe("resolveElectronConfig", () => {
 
   it("uses MANUS_WEB_URL when configured", () => {
     const config = resolve({
-      MANUS_WEB_URL: "https://www.apptiendamanus.space",
+      MANUS_WEB_URL: "https://portal.emaus.centrivosoft.com",
     });
 
-    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/");
+    assert.equal(config.webBaseUrl.href, "https://portal.emaus.centrivosoft.com/");
+    assert.equal(config.initialUrl.href, "https://portal.emaus.centrivosoft.com/");
   });
 
   it("uses MANUS_START_PATH when it starts with slash", () => {
@@ -36,7 +36,7 @@ describe("resolveElectronConfig", () => {
     });
 
     assert.equal(config.startPath, "/login");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "https://portal.emaus.centrivosoft.com/login");
   });
 
   it("rejects MANUS_START_PATH when it does not start with slash", () => {
@@ -55,7 +55,7 @@ describe("resolveElectronConfig", () => {
     });
 
     assert.equal(config.tenantId, "tenant-demo");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/tenant-demo");
+    assert.equal(config.initialUrl.href, "https://portal.emaus.centrivosoft.com/tenant-demo");
   });
 
   it("gives MANUS_START_PATH priority over tenant id", () => {
@@ -65,7 +65,7 @@ describe("resolveElectronConfig", () => {
     });
 
     assert.equal(config.tenantId, "tenant-demo");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "https://portal.emaus.centrivosoft.com/login");
   });
 
   it("reads branch and terminal without changing the startup URL", () => {
@@ -76,22 +76,22 @@ describe("resolveElectronConfig", () => {
 
     assert.equal(config.branchId, "branch-1");
     assert.equal(config.terminalId, "terminal-1");
-    assert.equal(config.initialUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.initialUrl.href, "https://portal.emaus.centrivosoft.com/login");
   });
 });
 
 describe("validateVersionedShellConfig", () => {
   const valid = {
     environment: "qa" as const,
-    frontendUrl: "https://www.apptiendamanus.space",
-    allowedOrigins: ["https://www.apptiendamanus.space"],
+    frontendUrl: "https://portal.emaus.centrivosoft.com",
+    allowedOrigins: ["https://portal.emaus.centrivosoft.com"],
     agentLoopbackOrigin: "http://127.0.0.1:4050",
   };
 
   it("accepts the approved QA configuration", () => {
     assert.deepEqual(validateVersionedShellConfig(valid), {
       ...valid,
-      frontendUrl: "https://www.apptiendamanus.space/",
+      frontendUrl: "https://portal.emaus.centrivosoft.com/",
     });
   });
 
@@ -118,16 +118,16 @@ describe("validateVersionedShellConfig", () => {
       NEXT_PUBLIC_MANUS_WEB_URL: "not-a-url",
     });
 
-    assert.equal(config.webBaseUrl.href, "https://www.apptiendamanus.space/login");
+    assert.equal(config.webBaseUrl.href, "https://portal.emaus.centrivosoft.com/login");
   });
 
   it("preserves the packaged login startup path", () => {
     const config = validateVersionedShellConfig({
       ...valid,
-      frontendUrl: "https://www.apptiendamanus.space/login",
+      frontendUrl: "https://portal.emaus.centrivosoft.com/login",
     });
 
-    assert.equal(config.frontendUrl, "https://www.apptiendamanus.space/login");
+    assert.equal(config.frontendUrl, "https://portal.emaus.centrivosoft.com/login");
   });
 
   it("rejects invalid environment, frontend, and agent origins", () => {
