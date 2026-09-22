@@ -8,7 +8,7 @@ API_PATH="${API_PATH:-/opt/emaus/tienda/emaus_api}"
 FACTURACION_PATH="${FACTURACION_PATH:-/opt/emaus/tienda/emaus_facturacion}"
 REPORTERIA_PATH="${REPORTERIA_PATH:-/opt/emaus/tienda/emaus_reporteria}"
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
-BACKUP_DIR="${DEPLOY_BASE_PATH}/backups/full/${TIMESTAMP}"
+BACKUP_DIR="${DEPLOY_BASE_PATH}/backups/production/${TIMESTAMP}"
 
 if [[ -z "${STAGING_DIR}" || ! -d "${STAGING_DIR}" ]]; then
   echo "Usage: $0 <staging-dir>" >&2
@@ -70,4 +70,4 @@ if ! wait_for_http http://127.0.0.1:3000/login \
   exit 70
 fi
 
-echo "Full deploy completed. Backup: $BACKUP_DIR"
+echo "Production deploy completed. Backup: $BACKUP_DIR"
