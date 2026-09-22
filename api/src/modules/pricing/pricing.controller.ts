@@ -29,6 +29,18 @@ type PreviewLineBody = Omit<CalculateLinePriceInput, "tenantId"> & {
   channel: PricingChannel;
 };
 
+type PreviewProposedBody = {
+  tenantId?: string;
+  finalUnitPrice: number;
+  taxes: Array<{ taxId: string; calculationOrder: number; isIncluded: boolean }>;
+  taxProfile: {
+    taxProductCategoryId: string;
+    alcoholDegree: number | null;
+    netVolumeMl: number | null;
+    daneCertifiedRetailPrice: number | null;
+  } | null;
+};
+
 const pricingPreviewOperationalRoles = ["USER", "ADMIN", "SUPER_USER"];
 
 @Controller("pricing")
@@ -56,6 +68,20 @@ export class PricingController {
   })
   previewLine(@Body() body: PreviewLineBody, @Req() request: AuthRequest) {
     return this.pricingService.calculateLinePrice({
+      ...body,
+      tenantId: this.getTenantId(request),
+    });
+  }
+
+  @Post("fiscal-preview")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({
+    menuKey: MENU_KEYS.INVENTORY_PRODUCTS,
+    level: "READ",
+    operationalRoles: pricingPreviewOperationalRoles,
+  })
+  previewFiscal(@Body() body: PreviewProposedBody, @Req() request: AuthRequest) {
+    return this.pricingService.previewProposedConfiguration({
       ...body,
       tenantId: this.getTenantId(request),
     });
