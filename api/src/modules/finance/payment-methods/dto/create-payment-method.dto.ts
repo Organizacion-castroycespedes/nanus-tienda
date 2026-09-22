@@ -30,6 +30,23 @@ export class CreatePaymentMethodDto {
 
   @IsOptional()
   @IsBoolean()
+  requiresFinancialInstitution?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  icon?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  color?: string;
+
+  @IsOptional()
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
   allowsChange?: boolean;
 
   @IsOptional()

@@ -524,6 +524,7 @@ export class SaleService {
         paymentMethodId: payment.paymentMethodId,
         amount,
         cashSessionId: payment.cashSessionId ?? null,
+        financialInstitutionId: payment.financialInstitutionId ?? null,
         referenceNumber: payment.referenceNumber ?? null,
         notes: payment.notes ?? null,
       };
@@ -2485,6 +2486,7 @@ export class SaleService {
         branchId: saleContext.branchId,
         paymentMethodId: payment.paymentMethodId,
         cashSessionId: payment.cashSessionId,
+        financialInstitutionId: payment.financialInstitutionId,
         referenceType: "SALE",
         referenceId: saleId,
         direction: "IN",

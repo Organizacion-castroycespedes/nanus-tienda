@@ -44,11 +44,14 @@ import { fetchSystemVersion } from "../../../domains/system/api";
 import {
   getCurrentCashSession,
   listPaymentMethods,
+  listFinancialInstitutions,
 } from "../../finance/services/finance.service";
 import type {
   CashSession,
   PaymentMethod as FinancePaymentMethod,
+  FinancialInstitution,
 } from "../../finance/types";
+import { PaymentDialog, type PosPaymentRow } from "./payment/PaymentDialog";
 import {
   createSale,
   getPosCustomers,
@@ -75,6 +78,7 @@ import type { ElectronicInvoicingCustomer } from "../../electronic-invoicing/ser
 import {
   createDefaultCashPayment,
   findCashPaymentMethod,
+  formatPaymentAmount,
   isCashPaymentMethod,
   parsePaymentAmount,
   rebalanceCashPayment,
@@ -556,6 +560,7 @@ export const PosScreen = () => {
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
   const [paymentMethodsCatalog, setPaymentMethodsCatalog] = useState<FinancePaymentMethod[]>([]);
+  const [financialInstitutionsCatalog, setFinancialInstitutionsCatalog] = useState<FinancialInstitution[]>([]);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [processingSale, setProcessingSale] = useState(false);
@@ -850,9 +855,10 @@ export const PosScreen = () => {
 
     const loadFinanceCatalog = async () => {
       try {
-        const [methods, session] = await Promise.all([
+        const [methods, session, banks] = await Promise.all([
           listPaymentMethods({ active: true }),
           getCurrentCashSession(),
+          listFinancialInstitutions().catch(() => []),
         ]);
 
         if (!active) {
@@ -861,6 +867,7 @@ export const PosScreen = () => {
 
         setPaymentMethodsCatalog(methods.filter((method) => method.active));
         setCurrentCashSession(session);
+        setFinancialInstitutionsCatalog(banks.filter((b) => b.active));
       } catch {
         if (!active) {
           return;
@@ -2182,7 +2189,11 @@ export const PosScreen = () => {
       paymentMethodsCatalog[0] ??
       null;
     setSubmitError(null);
-    const newDraft = createPaymentDraft(firstNonCashMethod?.id ?? "", "");
+    const remaining = round(Math.max(summary.total - totalPaid, 0));
+    const newDraft = createPaymentDraft(
+      firstNonCashMethod?.id ?? "",
+      remaining > 0 ? formatPaymentAmount(remaining) : ""
+    );
     setPayments(
       rebalancePaymentsForTotal([
         ...payments,
@@ -2225,6 +2236,7 @@ export const PosScreen = () => {
         paymentMethodId: payment.paymentMethodId,
         amount: payment.numericAmount,
         cashSessionId: currentCashSession?.id ?? null,
+        financialInstitutionId: payment.financialInstitutionId ?? null,
         referenceNumber: payment.reference.trim() || null,
         notes: null,
       }));
@@ -2239,6 +2251,7 @@ export const PosScreen = () => {
             paymentMethodId: payment.paymentMethodId,
             amount: payment.numericAmount,
             cashSessionId: currentCashSession?.id ?? null,
+            financialInstitutionId: payment.financialInstitutionId ?? null,
             referenceNumber: payment.reference.trim() || null,
             notes: null,
           };
@@ -2251,6 +2264,7 @@ export const PosScreen = () => {
           paymentMethodId: payment.paymentMethodId,
           amount: adjustedAmount,
           cashSessionId: currentCashSession?.id ?? null,
+          financialInstitutionId: payment.financialInstitutionId ?? null,
           referenceNumber: payment.reference.trim() || null,
           notes: null,
         };
@@ -2404,6 +2418,7 @@ export const PosScreen = () => {
             paymentMethodId: payment.paymentMethodId,
             amount: payment.amount,
             cashSessionId: payment.cashSessionId ?? undefined,
+            financialInstitutionId: payment.financialInstitutionId ?? undefined,
             referenceNumber: payment.referenceNumber,
             notes: payment.notes,
           })),
@@ -3538,327 +3553,47 @@ export const PosScreen = () => {
 
 
       {/* Payment Modal */}
-      {paymentModalOpen ? (
-        <Modal
-          title="Cobrar venta"
-          size="xl"
-          onClose={closeChargeModal}
-          className="dark:bg-slate-950"
-        >
-          <div className="flex max-h-[calc(90vh-120px)] flex-col">
-            <div className="mb-5 flex-shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    <UserRound className="h-4 w-4" />
-                    Cliente de la venta
-                  </div>
-                  <div className="relative z-50">
-                    <div className="relative flex items-center">
-                      <input
-                        placeholder="Buscar por nombre o doc..."
-                        value={customerSearchQuery}
-                        onChange={(e) => {
-                          setCustomerSearchQuery(e.target.value);
-                          setCustomerDropdownOpen(true);
-                        }}
-                        onFocus={() => {
-                          setCustomerSearchQuery("");
-                          setCustomerDropdownOpen(true);
-                        }}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setCustomerDropdownOpen(false);
-                          }, 200);
-                        }}
-                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                      />
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        <Search className="h-4 w-4" />
-                      </div>
-                      {customerSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomerSearchQuery("");
-                            setCustomerDropdownOpen(true);
-                          }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-
-                    {customerDropdownOpen && (
-                      <div className="absolute left-0 top-full mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-800">
-                        {filteredCustomers.length === 0 ? (
-                          <div className="px-3 py-4 text-center text-sm text-slate-500">
-                            No hay clientes encontrados
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {filteredCustomers.map((customer) => {
-                              const isSelected = selectedCustomerId === customer.id;
-                              return (
-                                <button
-                                  key={customer.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedCustomerId(customer.id);
-                                    setCustomerDropdownOpen(false);
-                                  }}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                                    isSelected
-                                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300 font-medium"
-                                      : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700/50"
-                                  }`}
-                                >
-                                  <span className="truncate">
-                                    {customer.name}
-                                    {customer.documentNumber && (
-                                      <span className="ml-1 text-xs opacity-70">
-                                        ({customer.documentNumber})
-                                      </span>
-                                    )}
-                                  </span>
-                                  {isSelected && <CheckCircle2 className="h-4 w-4 flex-shrink-0" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setQuickFiscalCustomerOpen(true)}
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      Cliente fiscal
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleUseFinalConsumer}
-                      disabled={!finalConsumerCustomer}
-                    >
-                      <UserRound className="h-4 w-4" />
-                      Consumidor Final
-                    </Button>
-                  </div>
-                </div>
-                <div className="text-right border-t border-slate-200 pt-3 dark:border-slate-700 md:border-t-0 md:pt-0">
-                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Total
-                  </p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
-                    {formatCurrency(summary.total)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto pr-2">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <div className="space-y-4">
-                  {payments.map((payment, index) => (
-                    <div
-                      key={payment.id}
-                      className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700"
-                    >
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-                          <CreditCard className="h-4 w-4" />
-                          Metodo #{index + 1}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removePaymentRow(payment.id)}
-                          className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200 dark:text-slate-200"
-                          disabled={payments.length === 1}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <div
-                            className="grid gap-2"
-                            style={{ gridTemplateColumns: `repeat(${Math.min(paymentMethodOptions.length, 4)}, minmax(0, 1fr))` }}
-                          >
-                            {paymentMethodOptions.map((option) => {
-                              const labelLower = option.label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                              let icon = "💲";
-                              if (labelLower.includes("efectivo") || labelLower.includes("cash")) icon = "💵";
-                              else if (labelLower.includes("debito") || labelLower.includes("debit")) icon = "💳";
-                              else if (labelLower.includes("credito") || labelLower.includes("credit")) icon = "💳";
-                              else if (labelLower.includes("transferencia") || labelLower.includes("transfer")) icon = "🏦";
-                              else if (labelLower.includes("nequi") || labelLower.includes("daviplata") || labelLower.includes("app")) icon = "📱";
-
-                              const isSelected = payment.paymentMethodId === option.value;
-
-                              return (
-                                <button
-                                  key={option.value}
-                                  type="button"
-                                  onClick={() =>
-                                    handlePaymentMethodSelect(payment.id, option.value)
-                                  }
-                                  className={`flex min-h-[48px] flex-row items-center justify-center gap-2 rounded-xl border px-2 py-2 text-center transition-all ${
-                                    isSelected
-                                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-600 dark:border-blue-500 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500"
-                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-                                  }`}
-                                  title={option.label}
-                                >
-                                  <span className="text-xl flex-shrink-0">{icon}</span>
-                                  <span className="truncate text-sm font-medium leading-tight">
-                                    {option.label}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Input
-                            id={`payment-amount-${payment.id}`}
-                            label="Monto"
-                            inputMode="decimal"
-                            value={payment.amount}
-                            onChange={(event) =>
-                              updatePayment(payment.id, "amount", event.target.value)
-                            }
-                            placeholder="0"
-                          />
-
-                          <Input
-                            label={
-                              paymentMethodById[payment.paymentMethodId]?.requiresReference
-                                ? "Referencia obligatoria"
-                                : "Referencia"
-                            }
-                            value={payment.reference}
-                            onChange={(event) =>
-                              updatePayment(payment.id, "reference", event.target.value)
-                            }
-                            placeholder="Opcional"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  <Button variant="outline" onClick={addPaymentRow} className="w-full">
-                    <Plus className="h-4 w-4" />
-                    Agregar metodo de pago
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="sticky top-0 space-y-4">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-slate-600 dark:text-slate-300">Total pagado</span>
-                        <span className="font-semibold text-slate-950 dark:text-white">
-                          {formatCurrency(totalPaid)}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <span className="text-slate-600 dark:text-slate-300">Cambio</span>
-                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-                          {formatCurrency(paymentDerivedState.change)}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <span className="text-slate-600 dark:text-slate-300">Saldo pendiente</span>
-                        <span className="font-semibold text-amber-700 dark:text-amber-300">
-                          {formatCurrency(paymentDerivedState.pending)}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                        Si el total pagado no cubre la venta completa, se registrara como venta a credito.
-                      </p>
-                      {currentCashSession ? (
-                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                          Caja activa: {currentCashSession.cashRegisterNombre ?? "Caja actual"}
-                        </p>
-                      ) : (
-                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                          No hay caja abierta para este usuario. El efectivo quedara bloqueado.
-                        </p>
-                      )}
-                    </div>
-
-                    {paymentWarning ? (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                        {paymentWarning}
-                      </div>
-                    ) : null}
-
-                    {submitError ? (
-                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                        {submitError}
-                      </div>
-                    ) : null}
-
-                    {saleStatus === "UNKNOWN" ? (
-                      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-                        <p className="font-semibold">Venta pendiente de verificacion</p>
-                        <p className="mt-1">
-                          Este equipo no puede confirmar si el API alcanzo a registrar la venta. Revisa la lista de ventas antes de permitir otro intento.
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void reconcileUnknownSale()}
-                            isLoading={processingSale}
-                          >
-                            Verificar venta
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              allowUnknownSaleRetry();
-                              setSubmitError(null);
-                            }}
-                            disabled={processingSale}
-                          >
-                            Reintentar con la misma clave
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex-shrink-0 border-t border-slate-200 pt-5 dark:border-slate-800">
-              <div className="flex flex-wrap justify-end gap-3">
-                <Button variant="ghost" onClick={closeChargeModal} disabled={processingSale}>
-                  Cancelar
-                </Button>
-                <Button
-                  isLoading={processingSale}
-                  disabled={saleStatus === "UNKNOWN"}
-                  onClick={() => void submitSale()}
-                >
-                  Confirmar venta
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
+      <PaymentDialog
+        open={paymentModalOpen}
+        onClose={closeChargeModal}
+        totalAmount={summary.total}
+        paymentMethods={paymentMethodsCatalog}
+        financialInstitutions={financialInstitutionsCatalog}
+        customers={customers}
+        selectedCustomerId={selectedCustomerId}
+        onSelectCustomer={(customerId) => {
+          const customer = customers.find((item) => item.id === customerId);
+          if (customer) handleSelectPosCustomer(customer);
+        }}
+        onUseFinalConsumer={handleUseFinalConsumer}
+        onOpenQuickFiscalCustomer={() => setQuickFiscalCustomerOpen(true)}
+        finalConsumerCustomer={finalConsumerCustomer}
+        activeSessionInfo={
+          currentCashSession
+            ? {
+                cashRegisterName: currentCashSession.cashRegisterNombre || undefined,
+                branchName: authUser?.branchName || undefined,
+              }
+            : null
+        }
+        isSubmitting={processingSale}
+        onConfirm={(paymentRows, customerId) => {
+          if (customerId) {
+            setSelectedCustomerId(customerId);
+          }
+          const formattedPayments: PaymentDraft[] = paymentRows.map((r) => ({
+            id: buildPaymentId(),
+            paymentMethodId: r.paymentMethodId,
+            amount: r.amount,
+            reference: r.reference,
+            financialInstitutionId: r.financialInstitutionId,
+          }));
+          setPayments(formattedPayments);
+          setTimeout(() => {
+            void submitSale();
+          }, 50);
+        }}
+      />
 
       {quickFiscalCustomerOpen ? (
         <QuickFiscalCustomerModal

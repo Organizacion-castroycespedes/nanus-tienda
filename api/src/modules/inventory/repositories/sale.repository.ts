@@ -70,6 +70,7 @@ export type CreateSalePaymentInput = {
   paymentMethodId: string;
   amount: number;
   cashSessionId?: string | null;
+  financialInstitutionId?: string | null;
   referenceNumber?: string | null;
   notes?: string | null;
 };
@@ -659,6 +660,7 @@ export class SaleRepository {
       payment_method_id: payment.paymentMethodId,
       amount: payment.amount,
       cash_session_id: payment.cashSessionId ?? null,
+      financial_institution_id: payment.financialInstitutionId ?? null,
       reference_number: payment.referenceNumber ?? null,
       notes: payment.notes ?? null,
     }));

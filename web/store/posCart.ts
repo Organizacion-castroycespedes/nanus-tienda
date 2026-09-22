@@ -5,6 +5,7 @@ export type PaymentDraft = {
   paymentMethodId: string;
   amount: string;
   reference: string;
+  financialInstitutionId?: string | null;
 };
 
 export type PosCartPricingStatus = "PENDING" | "READY" | "ERROR";
