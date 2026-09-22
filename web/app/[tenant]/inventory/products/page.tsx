@@ -919,7 +919,7 @@ const ProductsPage = () => {
                 <th className={thClass}>Clasificación</th>
                 <th className={thClass}>Ubicación</th>
                 <th className={thClass}>Venta</th>
-                <th className={`${thClass} text-right`}>Precio</th>
+                <th className={`${thClass} text-right`}>Precio final</th>
                 <th className={`${thClass} text-right`}>Stock</th>
                 <th className={`${thClass} w-24 text-right`}>Acciones</th>
               </tr>
@@ -1012,7 +1012,11 @@ const ProductsPage = () => {
                         </span>
                       </td>
                       <td className={`${tdClass} text-right font-medium tabular-nums text-slate-900 dark:text-white`}>
-                        {formatCurrency(product.price)}
+                        {formatCurrency(
+                          Number(
+                            product.priceWithTax ?? product.price ?? 0,
+                          ),
+                        )}
                       </td>
                       <td className={`${tdClass} text-right`}>
                         <div className="inline-flex flex-col items-end gap-0.5">

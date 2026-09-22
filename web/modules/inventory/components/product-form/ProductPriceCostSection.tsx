@@ -31,13 +31,13 @@ export const ProductPriceCostSection = ({
 }: ProductPriceCostSectionProps) => (
   <ProductSectionCard
     title="Precio y costo"
-    description="Define el precio de venta y el costo. Los valores fiscales se reflejan automáticamente."
+    description="El precio de venta es la base. Precio final al cliente = precio con impuestos."
     icon={<CircleDollarSign className="h-5 w-5" />}
   >
     <div className="grid gap-6 md:grid-cols-2">
       <div className="space-y-1">
         <Input
-          label="Precio de venta"
+          label="Precio de venta (base)"
           required={mode === "create"}
           type="number"
           min="0"
@@ -50,7 +50,7 @@ export const ProductPriceCostSection = ({
           hint={
             mode === "edit"
               ? "Para trazabilidad use Cambiar precio desde el listado."
-              : undefined
+              : "Base del producto. Si el impuesto no esta incluido, el POS suma tributos encima."
           }
         />
         {errors.price ? <p className="text-xs text-rose-600">{errors.price}</p> : null}
@@ -85,7 +85,7 @@ export const ProductPriceCostSection = ({
 
       <div className="space-y-1">
         <Input
-          label="Precio con impuestos"
+          label="Precio con impuestos (final)"
           type="number"
           min="0"
           step="0.01"
