@@ -238,6 +238,101 @@ export class InventoryRepository {
     return result.rows ?? [];
   }
 
+  async getInventoryBiSummary(filters: {
+    tenantId: string;
+    branchId?: string;
+    branchIds?: string[];
+    productIds?: string[];
+    categoryId?: string;
+    stockStatus: "all" | "in_stock" | "out_of_stock" | "negative";
+  }) {
+    const params: unknown[] = [filters.tenantId];
+    const where: string[] = ["p.is_active = TRUE", "b.estado = 'ACTIVE'", "p.tenant_id = $1"];
+
+    if (filters.branchId) {
+      params.push(filters.branchId);
+      where.push(`b.id = $${params.length}`);
+    } else if ((filters.branchIds?.length ?? 0) > 0) {
+      params.push(filters.branchIds);
+      where.push(`b.id = ANY($${params.length}::uuid[])`);
+    }
+
+    if (filters.productIds && filters.productIds.length > 0) {
+      params.push(filters.productIds);
+      where.push(`p.id = ANY($${params.length}::uuid[])`);
+    }
+
+    if (filters.categoryId) {
+      params.push(filters.categoryId);
+      where.push(`p.category_id = $${params.length}`);
+    }
+
+    params.push(filters.stockStatus);
+    const statusParam = `$${params.length}`;
+    const result = await this.db.query<{
+      total_inventory_cost: string | number;
+      total_inventory_units: string | number;
+      products_with_stock: string | number;
+      out_of_stock_products: string | number;
+      negative_stock_products: string | number;
+    }>(
+      `
+      WITH inventory_bi_base AS (
+        SELECT
+          p.tenant_id,
+          b.id AS branch_id,
+          p.id AS product_id,
+          p.category_id,
+          COALESCE(SUM(CASE WHEN sm.type = 'IN' THEN sm.quantity ELSE -sm.quantity END), 0)::numeric AS real_stock,
+          p.cost::numeric AS real_unit_cost
+        FROM products AS p
+        INNER JOIN tenant_branches AS b
+          ON b.tenant_id = p.tenant_id
+        LEFT JOIN stock_movements AS sm
+          ON sm.tenant_id = p.tenant_id
+         AND sm.product_id = p.id
+         AND sm.branch_id = b.id
+        WHERE ${where.join("\n          AND ")}
+        GROUP BY p.tenant_id, b.id, p.id, p.category_id, p.cost
+      ), classified AS (
+        SELECT
+          *,
+          real_stock * real_unit_cost AS inventory_cost,
+          CASE
+            WHEN real_stock > 0 THEN 'WITH_STOCK'
+            WHEN real_stock < 0 THEN 'NEGATIVE'
+            ELSE 'OUT_OF_STOCK'
+          END AS stock_status
+        FROM inventory_bi_base
+      ), filtered AS (
+        SELECT *
+        FROM classified
+        WHERE ${statusParam} = 'all' OR stock_status = CASE
+          WHEN ${statusParam} = 'in_stock' THEN 'WITH_STOCK'
+          WHEN ${statusParam} = 'out_of_stock' THEN 'OUT_OF_STOCK'
+          WHEN ${statusParam} = 'negative' THEN 'NEGATIVE'
+        END
+      )
+      SELECT
+        COALESCE(SUM(inventory_cost), 0)::numeric AS total_inventory_cost,
+        COALESCE(SUM(real_stock), 0)::numeric AS total_inventory_units,
+        COUNT(DISTINCT product_id) FILTER (WHERE real_stock > 0) AS products_with_stock,
+        COUNT(DISTINCT product_id) FILTER (WHERE real_stock = 0) AS out_of_stock_products,
+        COUNT(DISTINCT product_id) FILTER (WHERE real_stock < 0) AS negative_stock_products
+      FROM filtered
+      `,
+      params
+    );
+
+    return result.rows[0] ?? {
+      total_inventory_cost: "0",
+      total_inventory_units: "0",
+      products_with_stock: 0,
+      out_of_stock_products: 0,
+      negative_stock_products: 0,
+    };
+  }
+
   async getDashboardSnapshot(scope: InventoryDashboardScope) {
     const result = await this.db.query<{ payload: InventoryDashboardSnapshot }>(
       `

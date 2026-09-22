@@ -73,3 +73,49 @@ test("InventoryRepository keeps the legacy unbounded query when search and limit
   assert.doesNotMatch(sql, /ILIKE/);
   assert.doesNotMatch(sql, /LIMIT \$/);
 });
+
+test("InventoryRepository summarizes the scoped BI base with contractual stock and cost semantics", async () => {
+  let sql = "";
+  let params: unknown[] = [];
+  const repository = new InventoryRepository({
+    query: async (query: string, values: unknown[]) => {
+      sql = query;
+      params = values;
+      return {
+        rows: [{
+          total_inventory_cost: "150.50",
+          total_inventory_units: "3.50",
+          products_with_stock: "1",
+          out_of_stock_products: "1",
+          negative_stock_products: "1",
+        }],
+      };
+    },
+  } as never);
+
+  const result = await repository.getInventoryBiSummary({
+    tenantId: "tenant-1",
+    branchId: "branch-1",
+    productIds: ["product-1", "product-2"],
+    categoryId: "category-1",
+    stockStatus: "negative",
+  });
+
+  assert.deepEqual(result, [{
+    total_inventory_cost: "150.50",
+    total_inventory_units: "3.50",
+    products_with_stock: "1",
+    out_of_stock_products: "1",
+    negative_stock_products: "1",
+  }][0]);
+  assert.match(sql, /WITH inventory_bi_base AS/);
+  assert.match(sql, /SUM\(CASE WHEN sm\.type = 'IN'/);
+  assert.match(sql, /real_stock \* real_unit_cost/);
+  assert.match(sql, /WHEN real_stock > 0 THEN 'WITH_STOCK'/);
+  assert.match(sql, /WHEN real_stock < 0 THEN 'NEGATIVE'/);
+  assert.match(sql, /ELSE 'OUT_OF_STOCK'/);
+  assert.match(sql, /COUNT\(DISTINCT product_id\)/);
+  assert.match(sql, /p\.id = ANY\(\$3::uuid\[\]\)/);
+  assert.match(sql, /stock_status = CASE/);
+  assert.deepEqual(params, ["tenant-1", "branch-1", ["product-1", "product-2"], "category-1", "negative"]);
+});

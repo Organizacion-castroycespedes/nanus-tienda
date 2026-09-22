@@ -106,6 +106,16 @@ export class InventoryController {
     return Math.min(parsed, MAX_PRODUCT_OPTION_LIMIT);
   }
 
+  private parseProductIds(value: string | undefined) {
+    const productIds = Array.from(
+      new Set((value ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+    );
+    if (productIds.some((productId) => !isUuid(productId))) {
+      throw new BadRequestException("productIds must contain valid UUIDs");
+    }
+    return productIds;
+  }
+
   private sendImage(
     response: Response,
     image: { buffer: Buffer; mimeType: string }
@@ -183,6 +193,28 @@ export class InventoryController {
         branchId,
         search,
         limit: this.parseOptionalProductLimit(limit),
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-summary")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiSummary(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiSummary(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
       },
       this.buildActor(request)
     );

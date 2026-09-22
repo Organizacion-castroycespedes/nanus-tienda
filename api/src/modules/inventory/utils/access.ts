@@ -14,6 +14,9 @@ export type BranchScopedFilters = {
   branchId?: string;
   search?: string;
   limit?: number;
+  productIds?: string[];
+  categoryId?: string;
+  stockStatus?: "all" | "in_stock" | "out_of_stock" | "negative";
   fromDate?: string;
   toDate?: string;
   paymentMethod?: string;

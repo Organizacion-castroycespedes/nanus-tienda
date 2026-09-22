@@ -130,6 +130,38 @@ export type GetInventoryDashboardParams = {
   endDate?: string;
 };
 
+export type InventoryBiSummaryResponse = {
+  totalInventoryCost: string;
+  totalInventoryUnits: string;
+  productsWithStock: number;
+  outOfStockProducts: number;
+  negativeStockProducts: number;
+};
+
+export type GetInventoryBiSummaryParams = {
+  tenantId?: string;
+  branchId?: string;
+  productIds?: string[];
+  categoryId?: string;
+  stockStatus?: "all" | "in_stock" | "out_of_stock" | "negative";
+};
+
+export const buildInventoryBiSummaryQuery = (
+  params: GetInventoryBiSummaryParams = {}
+) => {
+  const query = new URLSearchParams();
+  if (params.tenantId) query.set("tenantId", params.tenantId);
+  if (params.branchId) query.set("branchId", params.branchId);
+  if (params.productIds && params.productIds.length > 0) {
+    query.set("productIds", params.productIds.join(","));
+  }
+  if (params.categoryId) query.set("categoryId", params.categoryId);
+  if (params.stockStatus && params.stockStatus !== "all") {
+    query.set("stockStatus", params.stockStatus);
+  }
+  return query.toString() ? `?${query.toString()}` : "";
+};
+
 export const getInventoryDashboard = (
   params: GetInventoryDashboardParams = {},
   headers?: HeadersInit
@@ -157,6 +189,15 @@ export const getInventoryDashboard = (
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiClient<InventoryDashboardResponse>(`/inventory/dashboard${suffix}`, {
+    headers,
+  });
+};
+
+export const getInventoryBiSummary = (
+  params: GetInventoryBiSummaryParams = {},
+  headers?: HeadersInit
+) => {
+  return apiClient<InventoryBiSummaryResponse>(`/inventory/bi-summary${buildInventoryBiSummaryQuery(params)}`, {
     headers,
   });
 };

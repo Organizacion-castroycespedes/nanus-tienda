@@ -19,8 +19,9 @@
 
 ## 3. Executive KPIs
 
-- [ ] 3.1 Implement KPI data and presentation from the approved Inventory BI summary contract.
-- [ ] 3.2 Certify quantity, cost, sales, risk, and active-cash behavior against authorized scope.
+- [x] 3.1 Implement the first Inventory BI base CTE, additive `/inventory/bi-summary` contract, and five real executive KPI cards from the demonstrated stock/cost sources.
+- [x] 3.2 Add focused tests for stock formula, negative/zero/positive status classification, product/category/status filters, distinct product counts, decimal-safe mapping, and backend scope enforcement.
+- [x] 3.3 Perform manual data reconciliation and representative `EXPLAIN (ANALYZE, BUFFERS)` review; confirm KPI cost/units/counts against read-only database evidence. QA passed on sanitized T1/C2 scope; no negative rows existed, endpoint HTTP comparison was not automated, and production-scale representativeness remains limited.
 
 ## 4. Capital distribution
 

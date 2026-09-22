@@ -34,6 +34,12 @@ type InventoryDashboardFilters = {
   endDate?: string;
 };
 
+type InventoryBiSummaryFilters = BranchScopedFilters & {
+  productIds?: string[];
+  categoryId?: string;
+  stockStatus?: "all" | "in_stock" | "out_of_stock" | "negative";
+};
+
 @Injectable()
 export class InventoryService {
   constructor(
@@ -159,6 +165,67 @@ export class InventoryService {
       limit: filters.limit,
     });
     return rows.map((row) => this.mapInventoryRow(row));
+  }
+
+  async getInventoryBiSummary(
+    filters: InventoryBiSummaryFilters,
+    actor: BranchScopedActor
+  ) {
+    const resolvedFilters = this.resolveProductFilters(actor, filters);
+    const tenantId = resolvedFilters.tenantId;
+    if (!tenantId) {
+      throw new ForbiddenException("Tenant requerido");
+    }
+
+    let branchIds: string[] | undefined;
+    if (!canViewAllBranches(actor)) {
+      if (!actor.userId) {
+        throw new ForbiddenException("Usuario requerido");
+      }
+      branchIds = await this.financeAccessRepository.findAccessibleBranchIds(
+        actor.userId,
+        tenantId
+      );
+      if (branchIds.length === 0) {
+        if (actor.branchId) {
+          branchIds = [actor.branchId];
+        } else {
+          throw new ForbiddenException("Usuario sin sucursales asignadas");
+        }
+      }
+      if (resolvedFilters.branchId && !branchIds.includes(resolvedFilters.branchId)) {
+        throw new ForbiddenException("No autorizado para otra sucursal");
+      }
+      if (hasBranchScopedRole(actor) && !resolvedFilters.branchId && actor.branchId) {
+        branchIds = branchIds.includes(actor.branchId) ? [actor.branchId] : branchIds;
+      }
+    }
+
+    const stockStatus = filters.stockStatus ?? "all";
+    if (!["all", "in_stock", "out_of_stock", "negative"].includes(stockStatus)) {
+      throw new BadRequestException("Estado de stock invalido");
+    }
+
+    const productIds = Array.from(
+      new Set((filters.productIds ?? []).map((id) => id.trim()).filter(Boolean))
+    );
+    const row = await this.repository.getInventoryBiSummary({
+      tenantId,
+      branchId:
+        branchIds && branchIds.length === 1 ? branchIds[0] : resolvedFilters.branchId,
+      branchIds,
+      productIds,
+      categoryId: normalizeOptionalFilter(filters.categoryId),
+      stockStatus,
+    });
+
+    return {
+      totalInventoryCost: String(row.total_inventory_cost ?? "0"),
+      totalInventoryUnits: String(row.total_inventory_units ?? "0"),
+      productsWithStock: Number(row.products_with_stock ?? 0),
+      outOfStockProducts: Number(row.out_of_stock_products ?? 0),
+      negativeStockProducts: Number(row.negative_stock_products ?? 0),
+    };
   }
 
   private parseDate(value: string | undefined, fallback: Date) {

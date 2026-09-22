@@ -1,9 +1,22 @@
 "use client";
 
 import { AlertTriangle, Eye, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "../../../components/design-system/Button";
+import { useAppSelector } from "../../../store/hooks";
 import InventoryBiFiltersPanel from "./InventoryBiFiltersPanel";
+import {
+  getInventoryBiSummary,
+  type InventoryBiSummaryResponse,
+} from "../services/dashboard.service";
+import {
+  createInventoryBiFilters,
+  type InventoryBiFilters,
+} from "../state/inventoryBiFilters";
+import {
+  formatInventoryCurrency,
+  formatInventoryUnits,
+} from "../utils/kpi-formatters";
 
 type InventoryBiViewState = "loading" | "error" | "ready";
 
@@ -56,7 +69,13 @@ const InventoryBiSection = ({
   </section>
 );
 
-const InventoryBiHeader = ({ onRefresh }: { onRefresh?: () => void }) => (
+const InventoryBiHeader = ({
+  onRefresh,
+  lastUpdated,
+}: {
+  onRefresh?: () => void;
+  lastUpdated?: string | null;
+}) => (
   <header
     className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
   >
@@ -71,7 +90,7 @@ const InventoryBiHeader = ({ onRefresh }: { onRefresh?: () => void }) => (
 
     <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center md:shrink-0">
       <p className="text-xs text-[var(--brand-surface-muted)] sm:text-right">
-        Última actualización: pendiente
+        Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleString("es-CO") : "pendiente"}
       </p>
       <Button
         variant="outline"
@@ -88,20 +107,47 @@ const InventoryBiHeader = ({ onRefresh }: { onRefresh?: () => void }) => (
   </header>
 );
 
-const KpiShell = () => (
+const KpiShell = ({
+  summary,
+  loading,
+  error,
+}: {
+  summary: InventoryBiSummaryResponse | null;
+  loading: boolean;
+  error: string | null;
+}) => {
+  const cards = summary
+    ? [
+        ["Costo total del inventario", formatInventoryCurrency(summary.totalInventoryCost)],
+        ["Unidades en inventario", formatInventoryUnits(summary.totalInventoryUnits)],
+        ["Productos con stock", String(summary.productsWithStock)],
+        ["Productos agotados", String(summary.outOfStockProducts)],
+        ["Stock negativo", String(summary.negativeStockProducts)],
+      ]
+    : [];
+
+  return (
   <section
     aria-label="Indicadores ejecutivos"
     className="inventory-bi-kpi-grid grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 md:grid-cols-2 lg:grid-cols-3"
   >
-    {Array.from({ length: 6 }, (_, index) => (
+    {loading ? Array.from({ length: 5 }, (_, index) => (
       <div key={index} className={`${panelClassName} min-w-[160px] min-h-[110px]`}>
         <InventoryBiSkeleton className="h-3 w-2/5" label={`kpi-label-${index + 1}`} />
         <InventoryBiSkeleton className="mt-4 h-7 w-3/5" label={`kpi-value-${index + 1}`} />
         <InventoryBiSkeleton className="mt-3 h-3 w-4/5" label={`kpi-description-${index + 1}`} />
       </div>
+    )) : cards.map(([label, value]) => (
+      <div key={label} className={`${panelClassName} min-w-[160px] min-h-[110px]`}>
+        <p className="text-xs font-semibold text-[var(--brand-surface-muted)]">{label}</p>
+        <p className="mt-4 min-w-0 break-all text-2xl font-bold leading-none text-[var(--brand-surface-text)]">
+          {error || value === null ? "No disponible" : value}
+        </p>
+      </div>
     ))}
   </section>
-);
+  );
+};
 
 const CapitalDistributionShell = () => (
   <section aria-label="Distribución del capital">
@@ -216,21 +262,86 @@ const InventoryBiErrorPanel = ({ onRetry }: { onRetry?: () => void }) => (
 );
 
 export const InventoryBiDashboard = ({
-  viewState = "loading",
+  viewState = "ready",
   onRefresh,
   onRetry,
-}: InventoryBiDashboardProps) => (
-  <main
-    className="inventory-bi-main min-h-full w-full space-y-4 bg-[var(--brand-background)] px-3 pb-7 pt-4 text-[var(--brand-surface-text)] sm:px-4 sm:pt-5 md:px-5 lg:px-5"
-    aria-busy={viewState === "loading"}
-  >
-    <InventoryBiHeader onRefresh={onRefresh} />
-    {viewState === "error" ? <InventoryBiErrorPanel onRetry={onRetry} /> : null}
-    <InventoryBiFiltersPanel />
-    <KpiShell />
-    <CapitalDistributionShell />
-    <OperationalHealthShell />
-    <InventoryValuationCtaShell />
-    <OperationalTableShell />
-  </main>
-);
+}: InventoryBiDashboardProps) => {
+  const authTenantId = useAppSelector((state) => state.auth.tenantId ?? state.auth.user?.tenantId ?? "");
+  const authBranchId = useAppSelector((state) => state.auth.user?.branchId ?? "");
+  const [summary, setSummary] = useState<InventoryBiSummaryResponse | null>(null);
+  const [summaryFilters, setSummaryFilters] = useState<InventoryBiFilters | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(Boolean(authTenantId));
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  const initialFilters = useMemo(
+    () => createInventoryBiFilters({
+      requestedTenantId: authTenantId,
+      requestedBranchId: authBranchId,
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: new Date().toISOString().slice(0, 10),
+    }),
+    [authBranchId, authTenantId]
+  );
+
+  const loadSummary = useCallback(async (filters: InventoryBiFilters) => {
+    if (!filters.requestedTenantId) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const nextSummary = await getInventoryBiSummary({
+        tenantId: filters.requestedTenantId,
+        branchId: filters.requestedBranchId || undefined,
+        productIds: filters.productIds,
+        categoryId: filters.categoryId || undefined,
+        stockStatus: filters.stockStatus,
+      });
+      setSummary(nextSummary);
+      setSummaryFilters(filters);
+      setLastUpdated(new Date().toISOString());
+    } catch {
+      setSummaryError("No fue posible cargar los indicadores de inventario.");
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authTenantId && !summaryFilters) void loadSummary(initialFilters);
+  }, [authTenantId, initialFilters, loadSummary, summaryFilters]);
+
+  const handleApply = useCallback((filters: InventoryBiFilters) => {
+    void loadSummary(filters);
+  }, [loadSummary]);
+
+  const handleRefresh = useCallback(() => {
+    const filters = summaryFilters ?? initialFilters;
+    void loadSummary(filters);
+    onRefresh?.();
+  }, [initialFilters, loadSummary, onRefresh, summaryFilters]);
+
+  const handleRetry = useCallback(() => {
+    const filters = summaryFilters ?? initialFilters;
+    void loadSummary(filters);
+    onRetry?.();
+  }, [initialFilters, loadSummary, onRetry, summaryFilters]);
+
+  return (
+    <main
+      className="inventory-bi-main min-h-full w-full space-y-4 bg-[var(--brand-background)] px-3 pb-7 pt-4 text-[var(--brand-surface-text)] sm:px-4 sm:pt-5 md:px-5 lg:px-5"
+      aria-busy={viewState === "loading" || summaryLoading}
+    >
+      <InventoryBiHeader
+        onRefresh={handleRefresh}
+        lastUpdated={lastUpdated}
+      />
+      {viewState === "error" || summaryError ? <InventoryBiErrorPanel onRetry={handleRetry} /> : null}
+      <InventoryBiFiltersPanel onApply={handleApply} />
+      <KpiShell summary={summary} loading={summaryLoading} error={summaryError} />
+      <CapitalDistributionShell />
+      <OperationalHealthShell />
+      <InventoryValuationCtaShell />
+      <OperationalTableShell />
+    </main>
+  );
+};

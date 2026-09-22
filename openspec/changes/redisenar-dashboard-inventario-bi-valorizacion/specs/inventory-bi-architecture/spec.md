@@ -257,3 +257,67 @@ Later sections SHALL NOT use gradients, glassmorphism, pie charts, or heavy anim
 #### Scenario: Implement visual section
 - **WHEN** a later section creates UI
 - **THEN** it SHALL follow the approved visual and responsive constraints
+
+### Requirement: Section 3 first Inventory BI summary
+
+Section 3 SHALL consume the demonstrated inventory sources: current stock from `stock_movements` as `IN - OUT` per active product and branch, and unit cost from `products.cost numeric(12,2) NOT NULL`. The base grain SHALL be one active product-branch row and SHALL preserve decimal and negative stock. Inventory cost SHALL be derived backend-side as `real_stock * real_unit_cost`.
+
+#### Scenario: Contractual source of truth
+- **WHEN** the summary is requested
+- **THEN** it SHALL use stock movements and product cost, SHALL not use sale price or fabricated cost rules, and SHALL not double count through lot joins
+
+#### Scenario: Stock classification
+- **WHEN** a base row is classified
+- **THEN** stock > 0 SHALL be `WITH_STOCK`, stock = 0 SHALL be `OUT_OF_STOCK`, and stock < 0 SHALL be `NEGATIVE`; `STOCK_LOW` SHALL remain unavailable without a demonstrated minimum-stock contract
+
+### Requirement: Executive KPI summary
+
+Section 3 SHALL expose an additive `/inventory/bi-summary` read contract with exactly five aggregate KPIs: `totalInventoryCost`, `totalInventoryUnits`, `productsWithStock`, `outOfStockProducts`, and `negativeStockProducts`. Cost and units SHALL be decimal strings; product counts SHALL be distinct `product_id` counts over the filtered product-branch base. The response SHALL not contain the complete product dataset.
+
+#### Scenario: KPI consistency
+- **WHEN** one scope and one applied filter set are queried
+- **THEN** total cost SHALL equal the sum of `inventory_cost` in the filtered base and total units SHALL equal the sum of `real_stock`
+
+#### Scenario: No fabricated sixth KPI
+- **WHEN** the dashboard renders the executive cards
+- **THEN** it SHALL render the five real KPIs and SHALL not invent Stock bajo, sales, cash, or another metric for the sixth shell position
+
+### Requirement: Section 3 applied filters and scope
+
+The summary SHALL consume authorized tenant/branch, `productIds`, category, and stock status from Section 2. Empty `productIds` SHALL omit the product constraint. Product IDs SHALL use parameterized `ANY`/`IN` semantics. Terminal, cash, and date context SHALL not alter current stock or valuation in Section 3. Backend scope enforcement SHALL remain authoritative for `ADMIN`, `SUPER_USER`, and `SUPER_ADMIN`.
+
+#### Scenario: Filtered summary
+- **WHEN** product, category, branch, or status filters are applied
+- **THEN** all five KPIs SHALL be computed from the same filtered dataset
+
+### Requirement: Section 3 implementation boundary
+
+Section 3 MAY use the repository's parameterized CTE/read-query convention and an additive endpoint. It SHALL not add a physical stored function, migration, index, materialized view, persistent cache, operational table, chart, valuation route, or export.
+
+#### Scenario: Legacy compatibility
+- **WHEN** Section 3 is deployed
+- **THEN** legacy `/inventory/dashboard`, product/category consumers, route guards, child routes, and TenantLayout SHALL remain operational and unchanged in contract
+
+### Requirement: Section 3 KPI numeric presentation
+
+The KPI visual layer SHALL preserve decimal strings received from the backend and format them only for display. Inventory cost SHALL display `COP` with `es-CO` grouping and exactly two decimal places. Inventory units SHALL display `es-CO` grouping with up to two decimal places. Negative values SHALL retain their sign. Missing, invalid, loading, or failed values SHALL not be rendered as zero.
+
+#### Scenario: Format financial and unit strings
+- **WHEN** the backend returns `158831520.0000` for cost and `9926.97` for units
+- **THEN** the UI SHALL show `COP 158.831.520,00` and `9.926,97` while preserving the raw strings in the data contract
+
+#### Scenario: Preserve missing-value semantics
+- **WHEN** a KPI value is missing or its request fails
+- **THEN** the UI SHALL show its loading/error state and SHALL not show `COP 0,00` or `0` as a silent fallback
+
+### Requirement: Product search focus continuity
+
+The open Producto searchable multi-select SHALL keep the same search input mounted and enabled while the controlled search term changes, debounce executes, loading changes, and results, empty states, or errors update. Loading SHALL be communicated on the results region and SHALL not disable or replace the search input.
+
+#### Scenario: Continuous product typing
+- **WHEN** the user types consecutive characters in `Buscar producto`
+- **THEN** the input SHALL retain focus while remote search is debounced and results are replaced, without requiring another click
+
+#### Scenario: Product search loading or error
+- **WHEN** product results are loading, empty, or failed
+- **THEN** the dropdown SHALL remain open and the search input SHALL remain available for typing and correction

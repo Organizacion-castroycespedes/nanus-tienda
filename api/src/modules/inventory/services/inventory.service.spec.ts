@@ -118,3 +118,58 @@ describe("InventoryService product mapping", () => {
     );
   });
 });
+
+describe("InventoryService BI summary", () => {
+  it("maps numeric BI values without converting decimal fields to JS numbers", async () => {
+    let receivedFilters: Record<string, unknown> | undefined;
+    const service = new InventoryService(
+      {
+        getInventoryBiSummary: async (filters: Record<string, unknown>) => {
+          receivedFilters = filters;
+          return {
+            total_inventory_cost: "999999999999.99",
+            total_inventory_units: "12.50",
+            products_with_stock: "2",
+            out_of_stock_products: "1",
+            negative_stock_products: "1",
+          };
+        },
+      } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    const result = await service.getInventoryBiSummary(
+      {
+        tenantId: "tenant-1",
+        productIds: ["product-1", "product-1"],
+        stockStatus: "negative",
+      },
+      { roles: ["SUPER_ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+    );
+
+    assert.deepEqual(result, {
+      totalInventoryCost: "999999999999.99",
+      totalInventoryUnits: "12.50",
+      productsWithStock: 2,
+      outOfStockProducts: 1,
+      negativeStockProducts: 1,
+    });
+    assert.deepEqual(receivedFilters?.productIds, ["product-1"]);
+    assert.equal(receivedFilters?.stockStatus, "negative");
+  });
+
+  it("rejects a restricted actor requesting another tenant BI summary", async () => {
+    const service = new InventoryService(
+      { getInventoryBiSummary: async () => ({}) } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    await assert.rejects(
+      () => service.getInventoryBiSummary(
+        { tenantId: "tenant-2", stockStatus: "all" },
+        { roles: ["ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+      ),
+      /No autorizado para otro tenant/
+    );
+  });
+});
