@@ -3,16 +3,9 @@
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
-import { Input } from "../../../components/design-system/Input";
-import { Select } from "../../../components/design-system/Select";
-import { InventoryImageUploadPanel } from "./InventoryImageUploadPanel";
-import type {
-  ProductMeasurementUnit,
-  ProductOperationalStatus,
-  ProductResponse,
-  ProductRotationClass,
-  ProductSaleType,
-} from "../../../domains/products/dtos";
+import type { ProductResponse } from "../../../domains/products/dtos";
+import { useAppSelector } from "../../../store/hooks";
+
 import {
   getTaxCatalogs,
   getTaxes,
@@ -42,65 +35,20 @@ import {
   resolveSubcategoryForCategory,
   validateProductClassificationSelection,
 } from "../utils/product-classification";
-
-type ProductOption = {
-  id: string;
-  label: string;
-};
-
-type TaxInfo = {
-  id: string;
-  name: string;
-  rate: number;
-  isIncluded: boolean;
-  label: string;
-  calculationMethodCode: string | null;
-  taxTypeCode: string | null;
-};
-
-type AssignedTaxRow = {
-  taxId: string;
-  calculationOrder: string;
-  isIncluded: boolean;
-};
-
-type ProductFormValues = {
-  name: string;
-  sku: string;
-  standardIdentificationScheme: "" | "001" | "010" | "020" | "999";
-  standardIdentificationCode: string;
-  price: string;
-  priceWithTax: string;
-  priceWithoutTax: string;
-  cost: string;
-  unitId: string;
-  taxId: string;
-  assignedTaxes: AssignedTaxRow[];
-  taxProductCategoryId: string;
-  alcoholDegree: string;
-  netVolumeMl: string;
-  daneCertifiedRetailPrice: string;
-  danePriceEffectiveFrom: string;
-  danePriceEffectiveTo: string;
-  isActive: boolean;
-  isPerishable: boolean;
-  requiresLot: boolean;
-  requiresExpiration: boolean;
-  operationalStatus: ProductOperationalStatus;
-  rotationClass: "" | ProductRotationClass;
-  saleType: ProductSaleType;
-  measurementUnit: ProductMeasurementUnit;
-  minStock: string;
-  maxStock: string;
-  categoryId: string;
-  subcategoryId: string;
-};
-
-type ProductFormErrors = Partial<Record<keyof ProductFormValues, string>> & {
-  assignedTaxes?: string;
-  taxProfile?: string;
-  submit?: string;
-};
+import { ProductBasicSection } from "./product-form/ProductBasicSection";
+import { ProductClassificationImageSection } from "./product-form/ProductClassificationImageSection";
+import { ProductFiscalAdvancedAccordion } from "./product-form/ProductFiscalAdvancedAccordion";
+import { ProductOperationalSection } from "./product-form/ProductOperationalSection";
+import { ProductPriceCostSection } from "./product-form/ProductPriceCostSection";
+import { ProductSummaryCard } from "./product-form/ProductSummaryCard";
+import { ProductTraitsSection } from "./product-form/ProductTraitsSection";
+import type {
+  AssignedTaxRow,
+  ProductFormErrors,
+  ProductFormValues,
+  ProductOption,
+  TaxInfo,
+} from "./product-form/types";
 
 type ProductFormProps = {
   mode: "create" | "edit";
@@ -184,43 +132,6 @@ const isOptionalNumber = (value: string) =>
 const optionalNumber = (value: string) =>
   value.trim() === "" ? null : Number(value);
 
-const operationalStatusOptions: Array<{
-  value: ProductOperationalStatus;
-  label: string;
-}> = [
-  { value: "ACTIVE", label: "Activo" },
-  { value: "INACTIVE", label: "Inactivo" },
-  { value: "BLOCKED", label: "Bloqueado" },
-  { value: "DISCONTINUED", label: "Descontinuado" },
-];
-
-const rotationClassOptions: Array<{
-  value: ProductRotationClass;
-  label: string;
-}> = [
-  { value: "HIGH", label: "Alta rotacion" },
-  { value: "MEDIUM", label: "Media" },
-  { value: "LOW", label: "Baja" },
-  { value: "NO_MOVEMENT", label: "Sin movimiento" },
-];
-
-const saleTypeOptions: Array<{ value: ProductSaleType; label: string }> = [
-  { value: "UNIT", label: "Unidad" },
-  { value: "WEIGHT", label: "Peso" },
-  { value: "BOTH", label: "Unidad y peso" },
-];
-
-const measurementUnitOptions: Array<{
-  value: ProductMeasurementUnit;
-  label: string;
-}> = [
-  { value: "UND", label: "UND - Unidad" },
-  { value: "KG", label: "KG - Kilogramo" },
-  { value: "LB", label: "LB - Libra" },
-  { value: "G", label: "G - Gramo" },
-  { value: "OZ", label: "OZ - Onza" },
-];
-
 export const ProductForm = ({
   mode,
   product,
@@ -230,6 +141,13 @@ export const ProductForm = ({
 }: ProductFormProps) => {
   const params = useParams<{ tenant: string }>();
   const tenantSlug = params?.tenant ?? "default";
+  const role = useAppSelector(
+    (state) => state.auth.user?.role ?? state.auth.role ?? "",
+  );
+  const canViewFiscalAdvanced =
+    role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const imagePanelId = "product-form-image-panel";
+
   const [values, setValues] = useState<ProductFormValues>(
     createInitialValues(product),
   );
@@ -515,6 +433,15 @@ export const ProductForm = ({
     setErrors((prev) => ({ ...prev, [field]: undefined, submit: undefined }));
   };
 
+  const setAssignedTaxes = (assignedTaxes: AssignedTaxRow[]) => {
+    setValues((prev) => ({ ...prev, assignedTaxes }));
+    setErrors((prev) => ({
+      ...prev,
+      assignedTaxes: undefined,
+      submit: undefined,
+    }));
+  };
+
   const setCategoryValue = (categoryId: string) => {
     setValues((prev) => ({
       ...prev,
@@ -633,24 +560,6 @@ export const ProductForm = ({
       (item) => item.id === values.taxProductCategoryId,
     ) ?? null;
 
-  const sortedCategories = useMemo(
-    () =>
-      [...categories].sort(
-        (left, right) =>
-          left.sortOrder - right.sortOrder ||
-          left.name.localeCompare(right.name, "es"),
-      ),
-    [categories],
-  );
-  const sortedSubcategories = useMemo(
-    () =>
-      [...subcategories].sort(
-        (left, right) =>
-          left.sortOrder - right.sortOrder ||
-          left.name.localeCompare(right.name, "es"),
-      ),
-    [subcategories],
-  );
   const categoriesPath = `/${tenantSlug}/inventory/product-categories`;
   const currentImageProduct = imageProduct ?? product ?? null;
 
@@ -937,888 +846,90 @@ export const ProductForm = ({
 
   return (
     <div className="space-y-6">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Producto
-          </p>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-            {mode === "create" ? "Crear producto" : "Editar producto"}
-          </h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Completa los campos requeridos para guardar el producto.
-          </p>
-        </div>
-        <Button variant="ghost" onClick={onCancel}>
-          Cancelar
-        </Button>
-      </div>
+      <form className="space-y-6" onSubmit={handleSubmit}>
+        {mode === "edit" && product ? (
+          <ProductSummaryCard
+            name={values.name}
+            sku={values.sku}
+            isActive={values.isActive}
+            imageUrl={currentImageProduct?.imageUrl}
+            onChangeImageClick={() => {
+              document
+                .getElementById(imagePanelId)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        ) : null}
 
-      <form className="space-y-8" onSubmit={handleSubmit}>
-        {mode === "edit" && product && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:bg-slate-800 dark:border-slate-700 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 dark:border-slate-700 dark:bg-slate-900 overflow-hidden">
-                {product.imageUrl ? (
-                  <img
-                    src={product.imageUrl}
-                    alt={product.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-medium text-slate-400">
-                    IMG
-                  </span>
-                )}
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {values.name || "Sin nombre"}
-                </h3>
-                <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-slate-500">
-                  <span>SKU: {values.sku || "-"}</span>
-                  {values.isActive ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                      Activo
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
-                      Inactivo
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700 overflow-hidden">
-          <div className="border-b border-slate-100 p-6 dark:border-slate-700">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-                <svg
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Datos básicos
-                </h3>
-                <p className="text-sm text-slate-500">
-                  Información general del producto para su identificación en el
-                  sistema.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="grid gap-6 p-6 md:grid-cols-2">
-            <div className="space-y-1">
-              <Input
-                label="Nombre"
-                required
-                value={values.name}
-                onChange={(event) => setFieldValue("name", event.target.value)}
-                placeholder="Ej: Arroz premium"
-              />
-              {errors.name ? (
-                <p className="text-xs text-rose-600">{errors.name}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="SKU"
-                required
-                value={values.sku}
-                onChange={(event) => {
-                  const sku = event.target.value;
-                  setFieldValue("sku", sku);
-                  if (
-                    mode === "create" &&
-                    values.standardIdentificationScheme === "999" &&
-                    !values.standardIdentificationCode.trim()
-                  ) {
-                    setFieldValue("standardIdentificationCode", sku);
-                  }
-                }}
-                placeholder="Ej: ARR-001"
-              />
-              {errors.sku ? (
-                <p className="text-xs text-rose-600">{errors.sku}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-1">
-                <Select
-                  label="Estándar de identificación DIAN"
-                  value={values.standardIdentificationScheme}
-                  onChange={(event) => {
-                    const scheme = event.target
-                      .value as ProductFormValues["standardIdentificationScheme"];
-                    setFieldValue("standardIdentificationScheme", scheme);
-                    if (
-                      scheme === "999" &&
-                      !values.standardIdentificationCode.trim()
-                    ) {
-                      setFieldValue("standardIdentificationCode", values.sku);
-                    }
-                    if (
-                      scheme !== "999" &&
-                      values.standardIdentificationScheme === "999"
-                    ) {
-                      setFieldValue("standardIdentificationCode", "");
-                    }
-                  }}
-                  hint="999 permite el código persistente adoptado por el contribuyente; al crear, inicia con el SKU. 001, 010 y 020 requieren su código real."
-                >
-                  <option value="">Sin estándar registrado</option>
-                  <option value="001">001 — UNSPSC</option>
-                  <option value="010">010 — GTIN</option>
-                  <option value="020">020 — Partida arancelaria</option>
-                  <option value="999">
-                    999 — Estándar adoptado por el contribuyente
-                  </option>
-                </Select>
-                <button
-                  type="button"
-                  aria-label="Ayuda sobre estándares de identificación DIAN"
-                  title="001 UNSPSC, 010 GTIN, 020 partida arancelaria, 999 código adoptado por el contribuyente."
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-400 text-xs font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  ?
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Código estándar DIAN"
-                value={values.standardIdentificationCode}
-                onChange={(event) =>
-                  setFieldValue(
-                    "standardIdentificationCode",
-                    event.target.value,
-                  )
-                }
-                placeholder="Código real del producto"
-                disabled={!values.standardIdentificationScheme}
-              />
-              <p className="text-xs text-slate-500" role="note">
-                999: código propio persistente. 001: UNSPSC. 010: GTIN. 020:
-                partida arancelaria.
-              </p>
-              {errors.standardIdentificationCode ? (
-                <p className="text-xs text-rose-600">
-                  {errors.standardIdentificationCode}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Precio"
-                required={mode === "create"}
-                type="number"
-                min="0"
-                step="0.01"
-                value={values.price}
-                onChange={(event) => setFieldValue("price", event.target.value)}
-                placeholder="0.00"
-                disabled={mode === "edit"}
-                className={
-                  mode === "edit" ? "bg-slate-100 text-slate-500" : undefined
-                }
-                hint={
-                  mode === "edit"
-                    ? "Para trazabilidad use Cambiar precio desde el listado."
-                    : undefined
-                }
-              />
-              {errors.price ? (
-                <p className="text-xs text-rose-600">{errors.price}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Precio sin impuestos"
-                type="number"
-                min="0"
-                step="0.01"
-                value={fiscalPricePreview.priceWithoutTax}
-                readOnly
-                className="bg-slate-100 text-slate-500"
-                placeholder="0.00"
-                hint="Base fiscal calculada por el backend usando el catalogo fiscal."
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Precio con impuestos"
-                type="number"
-                min="0"
-                step="0.01"
-                value={fiscalPricePreview.priceWithTax}
-                readOnly
-                className="bg-slate-100 text-slate-500"
-                placeholder="0.00"
-                hint="Total final. Se toma del precio de venta."
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Costo"
-                required
-                type="number"
-                min="0"
-                step="0.01"
-                value={values.cost}
-                onChange={(event) => setFieldValue("cost", event.target.value)}
-                placeholder="0.00"
-              />
-              {errors.cost ? (
-                <p className="text-xs text-rose-600">{errors.cost}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Select
-                label="Unidad"
-                required
-                value={values.unitId}
-                onChange={(event) =>
-                  setFieldValue("unitId", event.target.value)
-                }
-                disabled={catalogLoading || unitOptions.length === 0}
-                hint={
-                  unitOptions.length === 0
-                    ? "Aun no hay unidades disponibles para seleccionar."
-                    : undefined
-                }
-              >
-                <option value="">Selecciona una unidad</option>
-                {unitOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              {errors.unitId ? (
-                <p className="text-xs text-rose-600">{errors.unitId}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-3 md:col-span-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                  Impuestos del producto
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={catalogLoading}
-                  onClick={() =>
-                    setValues((prev) => ({
-                      ...prev,
-                      assignedTaxes: [
-                        ...prev.assignedTaxes,
-                        {
-                          taxId: "",
-                          calculationOrder: String(
-                            (prev.assignedTaxes.length + 1) * 100,
-                          ),
-                          isIncluded: false,
-                        },
-                      ],
-                    }))
-                  }
-                >
-                  Agregar impuesto
-                </Button>
-              </div>
-
-              {values.assignedTaxes.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Sin impuestos. El POS tratara el producto como exento/sin
-                  tributo.
-                </p>
-              ) : null}
-
-              {values.assignedTaxes.map((assignment, index) => (
-                <div
-                  key={`${assignment.taxId}-${index}`}
-                  className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_120px_180px_auto]"
-                >
-                  <Select
-                    label={`Impuesto #${index + 1}`}
-                    value={assignment.taxId}
-                    disabled={catalogLoading}
-                    onChange={(event) =>
-                      setValues((prev) => {
-                        const next = [...prev.assignedTaxes];
-                        next[index] = {
-                          ...next[index],
-                          taxId: event.target.value,
-                        };
-                        return { ...prev, assignedTaxes: next };
-                      })
-                    }
-                  >
-                    <option value="">Selecciona impuesto</option>
-                    {taxOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input
-                    label="Orden"
-                    type="number"
-                    min="1"
-                    value={assignment.calculationOrder}
-                    onChange={(event) =>
-                      setValues((prev) => {
-                        const next = [...prev.assignedTaxes];
-                        next[index] = {
-                          ...next[index],
-                          calculationOrder: event.target.value,
-                        };
-                        return { ...prev, assignedTaxes: next };
-                      })
-                    }
-                  />
-                  <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-700 dark:text-slate-200">
-                    <input
-                      type="checkbox"
-                      checked={assignment.isIncluded}
-                      onChange={(event) =>
-                        setValues((prev) => {
-                          const next = [...prev.assignedTaxes];
-                          next[index] = {
-                            ...next[index],
-                            isIncluded: event.target.checked,
-                          };
-                          return { ...prev, assignedTaxes: next };
-                        })
-                      }
-                    />
-                    Precio incluye impuesto
-                  </label>
-                  <div className="flex items-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() =>
-                        setValues((prev) => ({
-                          ...prev,
-                          assignedTaxes: prev.assignedTaxes.filter(
-                            (_item, itemIndex) => itemIndex !== index,
-                          ),
-                        }))
-                      }
-                    >
-                      Quitar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-
-              {errors.assignedTaxes ? (
-                <p className="text-xs text-rose-600">{errors.assignedTaxes}</p>
-              ) : null}
-
-              {bridgeTax ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                  <p className="font-semibold">POS usara: {bridgeTax.name}</p>
-                  <p>Porcentaje puente: {(bridgeTax.rate * 100).toFixed(2)}%</p>
-                  <p>
-                    {bridgeTax.isIncluded
-                      ? "El precio ya incluye impuestos"
-                      : "El impuesto no esta incluido en el precio"}
-                  </p>
-                  {hasNonPercentageTax ? (
-                    <p className="mt-2">
-                      ICL/ADV se calculan en caja con el perfil fiscal (grado,
-                      ml, DANE). El porcentaje puente sigue siendo el IVA de
-                      POS.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {(hasNonPercentageTax ||
-                selectedTaxCategory?.isAlcoholicBeverage ||
-                values.taxProductCategoryId) && (
-                <div className="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-2">
-                  <Select
-                    label="Categoria fiscal"
-                    value={values.taxProductCategoryId}
-                    onChange={(event) =>
-                      setFieldValue("taxProductCategoryId", event.target.value)
-                    }
-                  >
-                    <option value="">Selecciona categoria</option>
-                    {taxProductCategories.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input
-                    label="Grado alcoholico"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.001"
-                    value={values.alcoholDegree}
-                    onChange={(event) =>
-                      setFieldValue("alcoholDegree", event.target.value)
-                    }
-                  />
-                  <Input
-                    label="Volumen neto (ml)"
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    value={values.netVolumeMl}
-                    onChange={(event) =>
-                      setFieldValue("netVolumeMl", event.target.value)
-                    }
-                  />
-                  <Input
-                    label="Precio DANE certificado"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={values.daneCertifiedRetailPrice}
-                    onChange={(event) =>
-                      setFieldValue(
-                        "daneCertifiedRetailPrice",
-                        event.target.value,
-                      )
-                    }
-                  />
-                  <Input
-                    label="DANE vigente desde"
-                    type="date"
-                    value={values.danePriceEffectiveFrom}
-                    onChange={(event) =>
-                      setFieldValue(
-                        "danePriceEffectiveFrom",
-                        event.target.value,
-                      )
-                    }
-                  />
-                  <Input
-                    label="DANE vigente hasta"
-                    type="date"
-                    value={values.danePriceEffectiveTo}
-                    onChange={(event) =>
-                      setFieldValue("danePriceEffectiveTo", event.target.value)
-                    }
-                  />
-                  {errors.taxProductCategoryId ? (
-                    <p className="text-xs text-rose-600 md:col-span-2">
-                      {errors.taxProductCategoryId}
-                    </p>
-                  ) : null}
-                  {errors.alcoholDegree ? (
-                    <p className="text-xs text-rose-600">
-                      {errors.alcoholDegree}
-                    </p>
-                  ) : null}
-                  {errors.netVolumeMl ? (
-                    <p className="text-xs text-rose-600">
-                      {errors.netVolumeMl}
-                    </p>
-                  ) : null}
-                  {errors.daneCertifiedRetailPrice ? (
-                    <p className="text-xs text-rose-600 md:col-span-2">
-                      {errors.daneCertifiedRetailPrice}
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Select
-                label="Modelo de venta"
-                required
-                value={values.saleType}
-                onChange={(event) =>
-                  setSaleModelValue(
-                    "saleType",
-                    event.target.value as ProductSaleType,
-                  )
-                }
-                hint="Unidad no usa balanza. Peso usa balanza. Mixto permite ambos modos en POS."
-              >
-                {saleTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              {errors.saleType ? (
-                <p className="text-xs text-rose-600">{errors.saleType}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Select
-                label="Unidad comercial"
-                required
-                value={values.measurementUnit}
-                onChange={(event) =>
-                  setSaleModelValue(
-                    "measurementUnit",
-                    event.target.value as ProductMeasurementUnit,
-                  )
-                }
-                hint="Para peso usa KG, LB, G u OZ."
-              >
-                {measurementUnitOptions.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                    disabled={
-                      values.saleType === "UNIT"
-                        ? option.value !== "UND"
-                        : option.value === "UND"
-                    }
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              {errors.measurementUnit ? (
-                <p className="text-xs text-rose-600">
-                  {errors.measurementUnit}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="md:col-span-4 grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 mt-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                    Clasificacion
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    La subcategoria depende de la categoria seleccionada.
-                  </p>
-                </div>
-                {categories.length === 0 && !categoriesLoading ? (
-                  <a
-                    className="text-sm font-semibold text-blue-700 hover:text-blue-800"
-                    href={categoriesPath}
-                  >
-                    Crear categorias
-                  </a>
-                ) : null}
-              </div>
-
-              {categories.length === 0 && !categoriesLoading ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  No hay categorias creadas. Puedes guardar el producto sin
-                  clasificacion.
-                </div>
-              ) : null}
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <Select
-                    label="Categoria"
-                    value={values.categoryId}
-                    onChange={(event) => setCategoryValue(event.target.value)}
-                    disabled={categoriesLoading || categories.length === 0}
-                    hint={
-                      categoriesLoading
-                        ? "Cargando categorias..."
-                        : "Campo opcional."
-                    }
-                  >
-                    <option value="">Sin categoria</option>
-                    {sortedCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                        {category.isActive ? "" : " (inactiva)"}
-                      </option>
-                    ))}
-                  </Select>
-                  {errors.categoryId ? (
-                    <p className="text-xs text-rose-600">{errors.categoryId}</p>
-                  ) : null}
-                </div>
-
-                <div className="space-y-1">
-                  <Select
-                    label="Subcategoria"
-                    value={values.subcategoryId}
-                    onChange={(event) =>
-                      setSubcategoryValue(event.target.value)
-                    }
-                    disabled={
-                      !values.categoryId ||
-                      subcategoriesLoading ||
-                      sortedSubcategories.length === 0
-                    }
-                    hint={
-                      !values.categoryId
-                        ? "Selecciona una categoria primero."
-                        : subcategoriesLoading
-                          ? "Cargando subcategorias..."
-                          : sortedSubcategories.length === 0
-                            ? "La categoria no tiene subcategorias."
-                            : "Campo opcional."
-                    }
-                  >
-                    <option value="">Sin subcategoria</option>
-                    {sortedSubcategories.map((subcategory) => (
-                      <option key={subcategory.id} value={subcategory.id}>
-                        {subcategory.name}
-                        {subcategory.isActive ? "" : " (inactiva)"}
-                      </option>
-                    ))}
-                  </Select>
-                  {errors.subcategoryId ? (
-                    <p className="text-xs text-rose-600">
-                      {errors.subcategoryId}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-
-              {categoriesError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {categoriesError} Puedes guardar el producto sin
-                  clasificacion.
-                </div>
-              ) : null}
-
-              {subcategoriesError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {subcategoriesError}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <InventoryImageUploadPanel
-          entityId={mode === "edit" ? product?.id : null}
-          title="Imagen del producto"
-          imageUrl={currentImageProduct?.imageUrl}
-          imageAltText={currentImageProduct?.imageAltText}
-          imageMimeType={currentImageProduct?.imageMimeType}
-          imageSizeBytes={currentImageProduct?.imageSizeBytes}
-          disabledMessage="Guarda primero el producto para poder cargar imagen."
-          fallbackLabel={values.name || "Producto"}
-          onUpload={handleImageUpload}
-          onDelete={handleImageDelete}
+        <ProductBasicSection
+          mode={mode}
+          values={values}
+          errors={errors}
+          unitOptions={unitOptions}
+          catalogLoading={catalogLoading}
+          onFieldChange={setFieldValue}
+          onSaleModelChange={setSaleModelValue}
         />
 
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
-          <input
-            type="checkbox"
-            checked={values.isActive}
-            onChange={(event) =>
-              setFieldValue("isActive", event.target.checked)
-            }
-            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+        <ProductPriceCostSection
+          mode={mode}
+          values={values}
+          errors={errors}
+          priceWithoutTax={fiscalPricePreview.priceWithoutTax}
+          priceWithTax={fiscalPricePreview.priceWithTax}
+          onFieldChange={setFieldValue}
+        />
+
+        <ProductTraitsSection
+          values={values}
+          errors={errors}
+          onFieldChange={setFieldValue}
+        />
+
+        <ProductClassificationImageSection
+          mode={mode}
+          values={values}
+          errors={errors}
+          classification={{
+            categories,
+            subcategories,
+            categoriesPath,
+            categoriesLoading,
+            subcategoriesLoading,
+            categoriesError,
+            subcategoriesError,
+          }}
+          imageProduct={currentImageProduct}
+          productId={product?.id}
+          onCategoryChange={setCategoryValue}
+          onSubcategoryChange={setSubcategoryValue}
+          onActiveChange={(isActive) => setFieldValue("isActive", isActive)}
+          onImageUpload={handleImageUpload}
+          onImageDelete={handleImageDelete}
+          imagePanelId={imagePanelId}
+        />
+
+        <ProductOperationalSection
+          values={values}
+          errors={errors}
+          onOperationalChange={setOperationalValue}
+        />
+
+        {canViewFiscalAdvanced ? (
+          <ProductFiscalAdvancedAccordion
+            values={values}
+            errors={errors}
+            catalogs={{
+              taxOptions,
+              taxProductCategories,
+              catalogLoading,
+              bridgeTax,
+              hasNonPercentageTax,
+            }}
+            onFieldChange={setFieldValue}
+            onAssignedTaxesChange={setAssignedTaxes}
           />
-          Producto activo
-        </label>
-
-        <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-              Configuracion operativa
-            </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Define reglas de lote, vencimiento, estado y stock objetivo.
-            </p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={values.isPerishable}
-                onChange={(event) =>
-                  setOperationalValue("isPerishable", event.target.checked)
-                }
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
-              />
-              <span>
-                <span className="block font-medium text-slate-900 dark:text-white">
-                  Producto perecedero
-                </span>
-                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                  Recomendado para alimentos, farmacia o productos con vida
-                  util.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={values.requiresLot}
-                onChange={(event) =>
-                  setOperationalValue("requiresLot", event.target.checked)
-                }
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
-              />
-              <span>
-                <span className="block font-medium text-slate-900 dark:text-white">
-                  Requiere lote
-                </span>
-                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                  Activa trazabilidad por lote en compras, ajustes y ventas v2.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={values.requiresExpiration}
-                onChange={(event) =>
-                  setOperationalValue(
-                    "requiresExpiration",
-                    event.target.checked,
-                  )
-                }
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
-              />
-              <span>
-                <span className="block font-medium text-slate-900 dark:text-white">
-                  Requiere vencimiento
-                </span>
-                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                  Al activarlo, lote queda marcado automaticamente.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          {values.isPerishable ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Producto perecedero: revisa si debe exigir lote y vencimiento
-              antes de venderlo por v2.
-            </div>
-          ) : null}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <Select
-                label="Estado operativo"
-                value={values.operationalStatus}
-                onChange={(event) =>
-                  setOperationalValue(
-                    "operationalStatus",
-                    event.target.value as ProductOperationalStatus,
-                  )
-                }
-              >
-                {operationalStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              {errors.operationalStatus ? (
-                <p className="text-xs text-rose-600">
-                  {errors.operationalStatus}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Select
-                label="Rotacion"
-                value={values.rotationClass}
-                onChange={(event) =>
-                  setOperationalValue(
-                    "rotationClass",
-                    event.target.value as "" | ProductRotationClass,
-                  )
-                }
-              >
-                <option value="">Sin clasificar</option>
-                {rotationClassOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              {errors.rotationClass ? (
-                <p className="text-xs text-rose-600">{errors.rotationClass}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Stock minimo"
-                type="number"
-                min="0"
-                step="0.01"
-                value={values.minStock}
-                onChange={(event) =>
-                  setOperationalValue("minStock", event.target.value)
-                }
-                placeholder="Opcional"
-              />
-              {errors.minStock ? (
-                <p className="text-xs text-rose-600">{errors.minStock}</p>
-              ) : null}
-            </div>
-
-            <div className="space-y-1">
-              <Input
-                label="Stock maximo"
-                type="number"
-                min="0"
-                step="0.01"
-                value={values.maxStock}
-                onChange={(event) =>
-                  setOperationalValue("maxStock", event.target.value)
-                }
-                placeholder="Opcional"
-              />
-              {errors.maxStock ? (
-                <p className="text-xs text-rose-600">{errors.maxStock}</p>
-              ) : null}
-            </div>
-          </div>
-
-          {errors.isPerishable ? (
-            <p className="text-xs text-rose-600">{errors.isPerishable}</p>
-          ) : null}
-          {errors.requiresLot ? (
-            <p className="text-xs text-rose-600">{errors.requiresLot}</p>
-          ) : null}
-          {errors.requiresExpiration ? (
-            <p className="text-xs text-rose-600">{errors.requiresExpiration}</p>
-          ) : null}
-        </section>
+        ) : null}
 
         {catalogLoading ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
@@ -1838,10 +949,7 @@ export const ProductForm = ({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-3">
-          <Button type="submit" isLoading={isSubmitting}>
-            {mode === "create" ? "Guardar producto" : "Actualizar producto"}
-          </Button>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
           <Button
             type="button"
             variant="ghost"
@@ -1849,6 +957,9 @@ export const ProductForm = ({
             disabled={isSubmitting}
           >
             Cancelar
+          </Button>
+          <Button type="submit" isLoading={isSubmitting}>
+            {mode === "create" ? "Guardar producto" : "Actualizar producto"}
           </Button>
         </div>
       </form>

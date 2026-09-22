@@ -248,7 +248,12 @@ export const setPrimaryProductBarcode = (
     },
   );
 
-export async function getFiscalPreview(payload: {
+export type FiscalPreviewResponse = {
+  lineSubtotal: number;
+  lineTotal: number;
+};
+
+export const getFiscalPreview = (payload: {
   finalUnitPrice: number;
   taxes: Array<{
     taxId: string;
@@ -261,13 +266,8 @@ export async function getFiscalPreview(payload: {
     netVolumeMl: number | null;
     daneCertifiedRetailPrice: number | null;
   } | null;
-}) {
-  const response = await fetch("/api/pricing/fiscal-preview", {
+}) =>
+  apiClient<FiscalPreviewResponse>("/pricing/fiscal-preview", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  if (!response.ok) {
-    throw new Error("Failed to get fiscal preview");
-  }
-  return response.json();
-}
