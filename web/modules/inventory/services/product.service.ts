@@ -262,7 +262,7 @@ export async function getFiscalPreview(payload: {
     daneCertifiedRetailPrice: number | null;
   } | null;
 }) {
-  const response = await fetchClient("/api/pricing/fiscal-preview", {
+  const response = await fetch("/api/pricing/fiscal-preview", {
     method: "POST",
     body: JSON.stringify(payload),
   });
