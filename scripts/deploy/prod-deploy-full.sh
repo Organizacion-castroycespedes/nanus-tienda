@@ -61,8 +61,12 @@ restore_contents() {
   local target_dir="$1"
   local backup_dir="$2"
 
-  find "$target_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-  cp -a "$backup_dir/." "$target_dir/"
+  mkdir -p "$target_dir"
+  (
+    cd "$backup_dir"
+    find . -mindepth 1 ! -name '.env*' \
+      -exec cp -a --parents "{}" "$target_dir" \;
+  )
 }
 
 mkdir -p "$BACKUP_ROOT" "$BACKUP_DIR" "$DEPLOY_BASE_PATH/logs"
