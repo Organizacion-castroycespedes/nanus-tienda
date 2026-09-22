@@ -129,7 +129,7 @@ Estado actual:
 
 Recomendacion de almacenamiento:
 - Ideal: refresh token en cookie HttpOnly (ver `docs/auth-session.md`).
-- Actual: refresh token en `sessionStorage` (opt-in con `NEXT_PUBLIC_REFRESH_TOKEN_STORAGE=session`).
+- Actual: refresh token en `sessionStorage` (opt-in con ` =session`).
 
 Flujo real en frontend:
 - Login -> `startSessionFromLogin` -> rehidrata perfil y menu (`/auth/me`, `/me/menu`).

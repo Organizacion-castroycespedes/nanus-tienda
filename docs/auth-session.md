@@ -12,7 +12,7 @@
 
 - `access_token` se conserva en memoria (Redux). Se limpia en logout/falla de refresh.
 - `refresh_token` **preferido** en cookie HttpOnly (SameSite=Lax/Strict + Secure). Esto evita exposición a XSS.
-- Si backend aún no soporta cookie HttpOnly, se permite `sessionStorage` **opt-in** vía `NEXT_PUBLIC_REFRESH_TOKEN_STORAGE=session`.
+- Si backend aún no soporta cookie HttpOnly, se permite `sessionStorage` **opt-in** vía ` =session`.
   - En este modo, el refresh token vive sólo por sesión del navegador y se minimiza el tiempo de exposición.
   - Se recomienda CSP estricta y sanitización exhaustiva para reducir riesgo XSS.
 - El caché de menú se mueve a Redux y, si se desea performance, se guarda en `sessionStorage` cifrado con el access token.

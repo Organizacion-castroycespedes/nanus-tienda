@@ -189,7 +189,8 @@ Ambiente usado:
 - API: `http://localhost:4020/api`.
 - Tenant: `<TENANT_ID_LOCAL>`.
 - Browser: Chrome local headless por CDP `9223`.
-- Nota ambiente: el Browser plugin quedo bloqueado por sandbox. Se uso Chrome CDP local. Web se reinicio en `3001` con `NEXT_PUBLIC_REFRESH_TOKEN_STORAGE=session` para poder validar navegacion directa y refresh. API se levanto local con `CORS_ORIGIN=http://localhost:3001`. No se editaron `.env`.
+- Nota ambiente: el Browser plugin quedo bloqueado por sandbox. Se uso Chrome CDP local. Web se reinicio en `3001`
+para poder validar navegacion directa y refresh. API se levanto local con `CORS_ORIGIN=http://localhost:3001`. No se editaron `.env`.
 
 Evidencia generada:
 
@@ -484,7 +485,7 @@ Ambiente local:
 Preparacion local:
 
 - Browser plugin no se pudo usar por sandbox interno; se uso Chrome CDP local.
-- Web local quedo corriendo con `NEXT_PUBLIC_REFRESH_TOKEN_STORAGE=session` solo en proceso local para validar rutas directas despues de login.
+- Web local quedo corriendo con ` =session` solo en proceso local para validar rutas directas despues de login.
 - Backend reporteria se reinicio solo local con `CORS_ORIGIN=http://localhost:3000,http://localhost:3001`.
 - Preflight CORS de ticket desde `http://localhost:3001` respondio `Access-Control-Allow-Origin: http://localhost:3001`.
 - Antes y despues del QA se verifico que no quedaron cajas `OPEN` en el tenant local.

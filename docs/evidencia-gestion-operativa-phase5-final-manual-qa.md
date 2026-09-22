@@ -18,7 +18,7 @@ authenticated browser session and no safe refresh token was available.
 
 - TASK: `PHASE 5.23 RESOLVE AUTH SESSION CONFLICT`
 - CDP REACHABLE: `YES`
-- SESSION STORAGE MODEL: access token in client state; refresh token in memory and optionally `sessionStorage` when `NEXT_PUBLIC_REFRESH_TOKEN_STORAGE=session`; no auth cookie is used by the frontend request path, while backend logout clears `access_token` defensively
+- SESSION STORAGE MODEL: access token in client state; refresh token in memory and optionally `sessionStorage` when ` =session`; no auth cookie is used by the frontend request path, while backend logout clears `access_token` defensively
 - AUTH_SESSION_CONFLICT ROOT CAUSE: `SESSION_REUSE` / server-side one-active-session-per-user rule (`auth_sessions_user_active`)
 - ISOLATION METHOD: `BLOCKED` (separate profiles do not remove server-side active sessions; normal logout unavailable)
 - USER ISOLATED LOGIN: `FAIL` (`AUTH_SESSION_CONFLICT` in attached browser)
