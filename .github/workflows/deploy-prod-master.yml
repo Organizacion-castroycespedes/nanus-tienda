@@ -123,6 +123,19 @@ jobs:
           ssh-keyscan -p "${PROD_VPS_PORT:-22}" -H "${PROD_VPS_HOST}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Test SSH authentication
+        shell: bash
+        env:
+          PROD_VPS_HOST: ${{ secrets.PROD_VPS_HOST }}
+          PROD_VPS_PORT: ${{ secrets.PROD_VPS_PORT }}
+          PROD_VPS_USER: ${{ secrets.PROD_VPS_USER }}
+          PROD_DEPLOY_BASE_PATH: ${{ secrets.PROD_DEPLOY_BASE_PATH }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes \
+            -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" \
+            "id -un && test -d '${PROD_DEPLOY_BASE_PATH}' && test -w '${PROD_DEPLOY_BASE_PATH}'"
+
       - name: Upload release
         shell: bash
         env:
@@ -133,9 +146,9 @@ jobs:
         run: |
           set -euo pipefail
           remote_tmp="${PROD_DEPLOY_BASE_PATH%/}/tmp/github-actions/prod-master-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          ssh -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" "mkdir -p '${remote_tmp}'"
-          scp -P "${PROD_VPS_PORT:-22}" prod-master-release.tar.gz "${PROD_VPS_USER}@${PROD_VPS_HOST}:${remote_tmp}/prod-master-release.tar.gz"
-          ssh -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" \
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" "mkdir -p '${remote_tmp}'"
+          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -P "${PROD_VPS_PORT:-22}" prod-master-release.tar.gz "${PROD_VPS_USER}@${PROD_VPS_HOST}:${remote_tmp}/prod-master-release.tar.gz"
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -p "${PROD_VPS_PORT:-22}" "${PROD_VPS_USER}@${PROD_VPS_HOST}" \
             "cd '${remote_tmp}' && tar -xzf prod-master-release.tar.gz && DEPLOY_BASE_PATH='${PROD_DEPLOY_BASE_PATH%/}' bash prod-deploy-full.sh '${remote_tmp}'"
 
       - name: Public smoke checks
