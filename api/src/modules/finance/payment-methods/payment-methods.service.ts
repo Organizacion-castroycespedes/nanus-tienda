@@ -83,7 +83,7 @@ export class PaymentMethodsService {
     if (!input.enabled) {
       return;
     }
-    if (!input.code || !input.id || input.id !== "1" || !["10", "47", "49"].includes(input.code)) {
+    if (!input.code || !input.id || input.id !== "1" || !["10", "45", "47", "49"].includes(input.code)) {
       throw new BadRequestException("Configuracion fiscal FE invalida: seleccione un medio DIAN soportado");
     }
   }

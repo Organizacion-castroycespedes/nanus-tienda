@@ -58,7 +58,7 @@ export class CreatePaymentMethodDto {
   electronicBillingEnabled?: boolean;
 
   @IsOptional()
-  @IsIn(["10", "47", "49"])
+  @IsIn(["10", "45", "47", "49"])
   electronicPaymentMeansCode?: string;
 
   @IsOptional()
