@@ -11,6 +11,11 @@ export type ReportExportBatchReader<T> = (
   limit: number,
 ) => Promise<T[]>;
 
+export type ReportExportCount<TSummary> = {
+  totalRows: number;
+  summary: TSummary;
+};
+
 @Injectable()
 export class DocumentExportService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
@@ -19,10 +24,25 @@ export class DocumentExportService {
     countRows: (client: PoolClient) => Promise<number>,
     readBatch: ReportExportBatchReader<T>,
   ): Promise<T[]> {
+    const result = await this.collectWithSummary<T, undefined>(
+      async (client) => ({
+        totalRows: await countRows(client),
+        summary: undefined,
+      }),
+      readBatch,
+    );
+    return result.rows;
+  }
+
+  async collectWithSummary<T, TSummary>(
+    countAndSummarize: (client: PoolClient) => Promise<ReportExportCount<TSummary>>,
+    readBatch: ReportExportBatchReader<T>,
+  ): Promise<{ rows: T[]; summary: TSummary }> {
     const client = await this.database.getClient();
     try {
       await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-      const totalRows = await countRows(client);
+      const counted = await countAndSummarize(client);
+      const totalRows = counted.totalRows;
       if (!Number.isSafeInteger(totalRows) || totalRows < 0) {
         throw new BadRequestException("The report count is invalid");
       }
@@ -47,7 +67,7 @@ export class DocumentExportService {
       }
 
       await client.query("COMMIT");
-      return rows;
+      return { rows, summary: counted.summary };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw error;
