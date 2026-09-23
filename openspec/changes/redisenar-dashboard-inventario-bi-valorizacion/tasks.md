@@ -102,7 +102,98 @@ pagination, charts, and export controls. No API, DB, or business contract change
 
 ## 14. Global QA
 
-- [ ] 14.1 Run automated tests for scope, source-of-truth formula, pagination, export, and consistency invariants.
-- [ ] 14.2 Validate every existing Inventory child route and current dashboard capability after replacement.
-- [ ] 14.3 Run security review for SQL parameters, function privileges, scope enforcement, and any future `SECURITY DEFINER` use.
-- [ ] 14.4 Record implementation evidence and certify the complete Inventory BI and valuation flow before release.
+Section 14 evidence to date: API regression completed with 675 tests passing and 2
+skipped; focused Inventory scope/source/pagination tests passed, and backend-reporteria
+completed with 119 tests passing. API and backend-reporteria builds, Web lint/build, and
+OpenSpec strict validation passed. Read-only QA against `manus_tienda_qa` confirmed the
+current tenant snapshot at 78 base rows, cost `3051647610.0000`, units `46072.97`, and
+stock counts 19/59/0; an independent source query matched the certified
+`public.inventory_bi_base` result. Representative EXPLAIN recorded 4.587 ms planning,
+0.746 ms execution, and 23 shared hits. `V091` remains `SECURITY INVOKER`; no
+`SECURITY DEFINER` was introduced. No API, DB schema, or business data changed during
+QA. Web focused test runner is not configured.
+
+Contract review: `spec.md` requires backend-enforced role scope, parameterized read-only
+SQL, `SECURITY INVOKER` by default, and validation/certification evidence before the next
+section (requirements at lines 205-245 and 247-255). `proposal.md`, `design.md`,
+`spec.md`, and this task list do not require live authenticated HTTP requests as a
+separate acceptance criterion. The HTTP authenticated matrix is additional coverage, not
+an explicit OpenSpec gate.
+
+Manual evidence: the user confirmed authenticated access PASS for QA `ADMIN`,
+`SUPER_USER`, and `SUPER_ADMIN`, plus access with a user from another tenant. The user
+confirmed correct role scope and observable tenant isolation. The user also confirmed six
+integrated browser journeys PASS and individual QA PASS for all ten Inventory child routes,
+including load, authorized scope, and return to `/{tenant}/inventory`. This proves the
+manual scenarios listed in the traceability matrix; it does not prove automated HTTP
+negative cases for manipulated cross-tenant, cross-branch, product, or category IDs.
+
+HTTP authenticated gate: NOT RUN/BLOCKED — CREDENTIALS REQUIRED. The user confirmed the
+QA ADMIN, SUPER_USER, and SUPER_ADMIN accounts and authorized controlled login, and the
+local API/reporter services are configured for `manus_tienda_qa` on ports 4020 and 4021.
+However, no reusable QA token or secure credential-store integration is available in this
+workspace, and credentials cannot be requested through chat or placed in commands/files.
+Read-only account discovery found 1 ADMIN, 2 SUPER_USER, and 1 SUPER_ADMIN membership in
+the QA database; no emails, IDs, or credentials were recorded. Seed credentials were not
+used. No login, `replace-session`, user creation, permission change, or business request
+was attempted. ADMIN, SUPER_USER, and SUPER_ADMIN live HTTP scenarios remain pending;
+unit/guard coverage is the available security evidence. This is a documented residual
+risk and additional coverage gap, not an OpenSpec acceptance failure.
+
+Closure decision: Section 14 is CLOSED. Live HTTP is not mandatory under the reviewed
+OpenSpec contract. The user-confirmed ten route checks provide the missing 14.2 evidence;
+the matrix records them without adding identities, timestamps, screenshots, or unexecuted
+HTTP results.
+
+### 14.2 traceability matrix
+
+The approved contract is `spec.md` Requirement `Inventory route replacement`, Scenarios
+`Navigate to inventory` and `Child route preservation` (lines 91-101), plus the
+`Current capability preservation matrix` (lines 103-105). The matrix below uses only
+repository paths and evidence already available. The six manual journeys and ten route
+checks were confirmed by the user and are mapped below.
+
+Static route evidence: all ten paths exist under `web/app/[tenant]/inventory/`. The shared
+`web/app/[tenant]/layout.tsx` applies the route permission resolver, and
+`web/lib/route-permissions.ts` maps the paths to existing READ permissions: `INVENTORY` for
+the dashboard/valuation, `INVENTORY_PRODUCTS` for products and classifications,
+`INVENTORY_PROMOTIONS` for promotions, `INVENTORY_UNITS` for units,
+`INVENTORY_LOCATIONS` for locations, `INVENTORY_LOTS` for lots,
+`INVENTORY_TAXES` for taxes, `INVENTORY_PURCHASES` for purchases, and
+`INVENTORY_SUPPLIERS` for suppliers. This proves route existence and configured guard
+mapping only. It does not prove authenticated rendering, scope isolation, or return
+navigation for each route.
+
+| Requirement | Real route/capability | Scenario | Identifiable evidence | Source | Status | Observation |
+|---|---|---|---|---|---|---|
+| Principal Inventory entry | `/{tenant}/inventory` | Open authorized Inventory entry | `web/app/[tenant]/inventory/page.tsx`; `InventoryBiDashboard`; user-confirmed integrated browser QA | Route source, prior Section 1-13 QA | PASS | Main route remains the BI entry point. |
+| Executive summary | `/inventory/bi-summary` | Load five KPI summary with applied filters | `InventoryService BI summary` tests; API regression 675 PASS | `api/src/modules/inventory/services/inventory.service.spec.ts`; prior API report | PASS | Scope, decimal mapping, and KPI source have automated coverage. |
+| Capital distribution | `/inventory/bi-capital-distribution` | Load branch/category/Top 5/status analytics | `InventoryService BI capital distribution` tests; prior DB reconciliation; six integrated browser QA | API focused tests, DB QA, manual QA | PASS | Existing contract and reconciliation are documented. |
+| Operational health | `/inventory/bi-operational-health` | Load negative units, reconciliation, and expired lots | API regression and prior manual integrated QA | API regression report, manual QA | PASS | No live HTTP matrix; unit/guard evidence remains available. |
+| Operational detail | `/inventory/bi-operational-page` | Load paginated detail and preserve filters | Inventory focused pagination tests; prior DB QA; prior manual QA | Focused Inventory tests, DB QA, manual QA | PASS | COUNT plus LIMIT/OFFSET and responsive cards were certified. |
+| Valuation entry | `/{tenant}/inventory/valuation` | Navigate, refresh, preserve tenant, return to Inventory | Prior Section 7 navigation QA; user-confirmed integrated browser QA | `tasks.md` Section 7 | PASS | Route and back navigation are documented. |
+| Valuation filters | `/{tenant}/inventory/valuation` | Apply/reset tenant, branch, product, category, status | Prior Section 8 functional/visual QA | `tasks.md` Section 8 | PASS | Independent draft/applied state and remote product search documented. |
+| Valuation KPIs | `/inventory/bi-summary` from valuation view | Refresh cost and units only after Apply | Prior Section 9 automated, DB, and manual QA | `tasks.md` Section 9 | PASS | Uses the certified summary contract. |
+| Valuation analytics | `/inventory/bi-capital-distribution` from valuation view | Reconcile charts and Top 5 with applied filters | Prior Section 10 automated, DB, and manual QA | `tasks.md` Section 10 | PASS | Four analytics areas and empty/error states documented. |
+| Valuation detail | `/inventory/bi-valuation-page` | Paginate complete-filter detail | Prior Section 11 API/DB/manual QA | `tasks.md` Section 11 | PASS | Nine columns, stable pagination, and cards documented. |
+| Valuation export | `/reports/inventory-bi-valuation` | Preview/download complete filtered PDF/XLSX | Prior Section 12 reporteria tests, DB QA, and manual document QA | `tasks.md` Section 12; backend-reporteria tests | PASS | Full dataset, labels, PDF margins, and XLSX presentation documented. |
+| Existing child route | `/{tenant}/inventory/locations` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/lots` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/product-categories` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/product-subcategories` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/products` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/promotions` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/purchases` | Open authorized route, verify scope, return to Inventory | Route re-exports purchases page; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/suppliers` | Open authorized route, verify scope, return to Inventory | Route re-exports suppliers page; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/taxes` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+| Existing child route | `/{tenant}/inventory/units` | Open authorized route, verify scope, return to Inventory | Route exists; user confirmed individual QA PASS | Repository tree, route-permission map, user manual QA | PASS | Authorized load, scope, and return confirmed. |
+
+### 14.2 evidence boundary
+
+The ten route PASS results are user-confirmed manual QA. They do not convert the HTTP
+automated matrix into PASS. HTTP remains `NOT RUN` and is additional coverage only.
+
+- [x] 14.1 Run automated tests for scope, source-of-truth formula, pagination, export, and consistency invariants.
+- [x] 14.2 Validate every existing Inventory child route and current dashboard capability after replacement.
+- [x] 14.3 Run security review for SQL parameters, function privileges, scope enforcement, and any future `SECURITY DEFINER` use.
+- [x] 14.4 Record implementation evidence and certify the complete Inventory BI and valuation flow before release.
