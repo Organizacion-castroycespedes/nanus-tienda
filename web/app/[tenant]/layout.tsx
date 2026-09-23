@@ -1199,14 +1199,20 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] xl:hidden"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Abrir menu lateral"
+                onClick={() => {
+                  if (window.matchMedia("(min-width: 1280px)").matches) {
+                    setSidebarCollapsed((previous) => !previous);
+                    return;
+                  }
+                  setSidebarOpen(true);
+                }}
+                aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Abrir menu lateral"}
               >
                 <Menu className="h-5 w-5" />
               </button>
