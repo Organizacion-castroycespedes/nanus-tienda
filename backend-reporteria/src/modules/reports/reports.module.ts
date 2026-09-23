@@ -27,6 +27,8 @@ import { ProductInventoryReportsController } from "./product-inventory-reports.c
 import { ProductInventoryReportsService } from "./product-inventory-reports.service";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import { DocumentExportService } from "./document-export.service";
+import { InventoryBiValuationReportsController } from "./inventory-bi-valuation-reports.controller";
+import { InventoryBiValuationReportsService } from "./inventory-bi-valuation-reports.service";
 
 @Module({
   imports: [AuthModule, DatabaseModule, PdfModule],
@@ -40,6 +42,7 @@ import { DocumentExportService } from "./document-export.service";
     CustomersReportsController,
     CurrentShiftReportsController,
     ProductInventoryReportsController,
+    InventoryBiValuationReportsController,
   ],
   providers: [
     ReportsService,
@@ -58,6 +61,7 @@ import { DocumentExportService } from "./document-export.service";
     DeliveriesReportAdapter,
     CustomersReportAdapter,
     DocumentExportService,
+    InventoryBiValuationReportsService,
   ],
 })
 export class ReportsModule {}

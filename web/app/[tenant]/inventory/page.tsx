@@ -1,7 +1,7 @@
-import { InventoryDashboard } from "../../../modules/inventory/components/InventoryDashboard";
+import { InventoryBiDashboard } from "../../../modules/inventory/components/InventoryBiDashboard";
 
 const InventoryPage = () => {
-  return <InventoryDashboard />;
+  return <InventoryBiDashboard />;
 };
 
 export default InventoryPage;

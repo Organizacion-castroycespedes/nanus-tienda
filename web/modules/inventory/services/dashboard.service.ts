@@ -130,6 +130,115 @@ export type GetInventoryDashboardParams = {
   endDate?: string;
 };
 
+export type InventoryBiSummaryResponse = {
+  totalInventoryCost: string;
+  totalInventoryUnits: string;
+  productsWithStock: number;
+  outOfStockProducts: number;
+  negativeStockProducts: number;
+};
+
+export type InventoryBiCapitalDistributionResponse = {
+  branchDistribution: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    totalCost: string;
+  }>;
+  categoryDistribution: Array<{
+    tenantId: string;
+    categoryId: string | null;
+    categoryName: string;
+    totalCost: string;
+  }>;
+  topProducts: Array<{
+    rank: number;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    totalCost: string;
+    participationPercent: string | null;
+  }>;
+};
+
+export type InventoryBiOperationalHealthResponse = {
+  negativeUnits: string;
+  negativeInventoryCost: string;
+  expiredLotCount: number;
+  reconciliation: {
+    discrepancyCount: number;
+    criticalCount: number;
+    highCount: number;
+    warningCount: number;
+    infoCount: number;
+  };
+};
+
+export type InventoryBiOperationalPageResponse = {
+  items: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
+    realStock: string;
+    stockStatus: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type InventoryBiValuationPageResponse = {
+  items: Array<{
+    tenantId: string;
+    branchId: string;
+    branchName: string;
+    productId: string;
+    productName: string;
+    sku: string | null;
+    categoryId: string | null;
+    categoryName: string | null;
+    realStock: string;
+    realUnitCost: string;
+    inventoryCost: string;
+    participationPercent: string | null;
+    stockStatus: "WITH_STOCK" | "OUT_OF_STOCK" | "NEGATIVE";
+  }>;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type GetInventoryBiSummaryParams = {
+  tenantId?: string;
+  branchId?: string;
+  productIds?: string[];
+  categoryId?: string;
+  stockStatus?: "all" | "in_stock" | "out_of_stock" | "negative";
+};
+
+export const buildInventoryBiSummaryQuery = (
+  params: GetInventoryBiSummaryParams = {}
+) => {
+  const query = new URLSearchParams();
+  if (params.tenantId) query.set("tenantId", params.tenantId);
+  if (params.branchId) query.set("branchId", params.branchId);
+  if (params.productIds && params.productIds.length > 0) {
+    query.set("productIds", params.productIds.join(","));
+  }
+  if (params.categoryId) query.set("categoryId", params.categoryId);
+  if (params.stockStatus && params.stockStatus !== "all") {
+    query.set("stockStatus", params.stockStatus);
+  }
+  return query.toString() ? `?${query.toString()}` : "";
+};
+
 export const getInventoryDashboard = (
   params: GetInventoryDashboardParams = {},
   headers?: HeadersInit
@@ -159,4 +268,61 @@ export const getInventoryDashboard = (
   return apiClient<InventoryDashboardResponse>(`/inventory/dashboard${suffix}`, {
     headers,
   });
+};
+
+export const getInventoryBiSummary = (
+  params: GetInventoryBiSummaryParams = {},
+  headers?: HeadersInit
+) => {
+  return apiClient<InventoryBiSummaryResponse>(`/inventory/bi-summary${buildInventoryBiSummaryQuery(params)}`, {
+    headers,
+  });
+};
+
+export const getInventoryBiCapitalDistribution = (
+  params: GetInventoryBiSummaryParams = {},
+  headers?: HeadersInit
+) => {
+  return apiClient<InventoryBiCapitalDistributionResponse>(
+    `/inventory/bi-capital-distribution${buildInventoryBiSummaryQuery(params)}`,
+    { headers }
+  );
+};
+
+export const getInventoryBiOperationalHealth = (
+  params: GetInventoryBiSummaryParams = {},
+  headers?: HeadersInit
+) => {
+  return apiClient<InventoryBiOperationalHealthResponse>(
+    `/inventory/bi-operational-health${buildInventoryBiSummaryQuery(params)}`,
+    { headers }
+  );
+};
+
+export const getInventoryBiOperationalPage = (
+  params: GetInventoryBiSummaryParams & { page?: number; pageSize?: number } = {},
+  headers?: HeadersInit
+) => {
+  const query = new URLSearchParams(buildInventoryBiSummaryQuery(params).replace(/^\?/, ""));
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiClient<InventoryBiOperationalPageResponse>(
+    `/inventory/bi-operational-page${suffix}`,
+    { headers }
+  );
+};
+
+export const getInventoryBiValuationPage = (
+  params: GetInventoryBiSummaryParams & { page?: number; pageSize?: number } = {},
+  headers?: HeadersInit
+) => {
+  const query = new URLSearchParams(buildInventoryBiSummaryQuery(params).replace(/^\?/, ""));
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiClient<InventoryBiValuationPageResponse>(
+    `/inventory/bi-valuation-page${suffix}`,
+    { headers }
+  );
 };
