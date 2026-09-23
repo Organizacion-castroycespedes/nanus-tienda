@@ -347,7 +347,8 @@ const arePaymentsEqual = (
       payment.id === other.id &&
       payment.paymentMethodId === other.paymentMethodId &&
       payment.amount === other.amount &&
-      payment.reference === other.reference
+      payment.reference === other.reference &&
+      (payment.financialInstitutionId ?? null) === (other.financialInstitutionId ?? null)
     );
   });
 
@@ -1119,6 +1120,7 @@ export const PosScreen = () => {
       paymentMethodId,
       amount,
       reference: "",
+      financialInstitutionId: null,
     }),
     []
   );
@@ -2228,10 +2230,53 @@ export const PosScreen = () => {
     );
   };
 
-  const buildEffectivePayments = () => {
-    const basePayments = parsedPayments.filter((payment) => payment.numericAmount > 0);
+  type ParsedPosPayment = PaymentDraft & {
+    numericAmount: number;
+    method: (typeof paymentMethodsCatalog)[number] | null;
+  };
 
-    if (paymentDerivedState.overpayment <= 0) {
+  const parsePaymentDrafts = (drafts: PaymentDraft[]): ParsedPosPayment[] =>
+    drafts.map((payment) => ({
+      ...payment,
+      numericAmount: parsePaymentAmount(payment.amount),
+      method: paymentMethodById[payment.paymentMethodId] ?? null,
+    }));
+
+  const derivePaymentState = (localParsed: ParsedPosPayment[]) => {
+    const localTotalPaid = round(
+      localParsed.reduce((sum, payment) => sum + payment.numericAmount, 0)
+    );
+    const localCashEntered = round(
+      localParsed
+        .filter((payment) => payment.method && isCashPaymentMethod(payment.method))
+        .reduce((sum, payment) => sum + payment.numericAmount, 0)
+    );
+    const localNonCashPaid = round(
+      localParsed
+        .filter((payment) => !payment.method || !isCashPaymentMethod(payment.method))
+        .reduce((sum, payment) => sum + payment.numericAmount, 0)
+    );
+    const pending = round(Math.max(summary.total - localTotalPaid, 0));
+    const overpayment = round(Math.max(localTotalPaid - summary.total, 0));
+    const change = localCashEntered > 0 ? overpayment : 0;
+
+    return {
+      totalPaid: localTotalPaid,
+      totalCashEntered: localCashEntered,
+      totalNonCashPaid: localNonCashPaid,
+      pending,
+      overpayment,
+      change,
+    };
+  };
+
+  const buildEffectivePayments = (
+    localParsed: ParsedPosPayment[],
+    overpayment: number
+  ) => {
+    const basePayments = localParsed.filter((payment) => payment.numericAmount > 0);
+
+    if (overpayment <= 0) {
       return basePayments.map((payment) => ({
         paymentMethodId: payment.paymentMethodId,
         amount: payment.numericAmount,
@@ -2242,7 +2287,7 @@ export const PosScreen = () => {
       }));
     }
 
-    let remainingChange = paymentDerivedState.overpayment;
+    let remainingChange = overpayment;
 
     return basePayments
       .map((payment) => {
@@ -2272,8 +2317,12 @@ export const PosScreen = () => {
       .filter((payment) => payment.amount > 0);
   };
 
-  const validateBeforeSubmit = () => {
-    if (!selectedCustomerId) {
+  const validateBeforeSubmit = (
+    customerId: string | null,
+    localParsed: ParsedPosPayment[],
+    derived: ReturnType<typeof derivePaymentState>
+  ) => {
+    if (!customerId) {
       return "Selecciona un cliente para continuar.";
     }
 
@@ -2303,29 +2352,29 @@ export const PosScreen = () => {
       return paymentWarning;
     }
 
-    if (paymentDerivedState.overpayment > 0 && totalNonCashPaid > summary.total) {
+    if (derived.overpayment > 0 && derived.totalNonCashPaid > summary.total) {
       return "Los pagos no en efectivo no pueden exceder el total de la venta.";
     }
 
-    if (paymentDerivedState.overpayment > 0 && totalCashEntered <= 0) {
+    if (derived.overpayment > 0 && derived.totalCashEntered <= 0) {
       return "El cambio solo puede calcularse cuando existe un pago en efectivo.";
     }
 
-    const hasInvalidPayments = parsedPayments.some(
+    const hasInvalidPayments = localParsed.some(
       (payment) => payment.amount.trim() !== "" && payment.numericAmount <= 0
     );
     if (hasInvalidPayments) {
       return "Los metodos de pago deben tener montos mayores a cero.";
     }
 
-    const hasMissingPaymentMethod = parsedPayments.some(
+    const hasMissingPaymentMethod = localParsed.some(
       (payment) => payment.amount.trim() !== "" && !payment.method
     );
     if (hasMissingPaymentMethod) {
       return "Selecciona un metodo de pago valido en cada linea.";
     }
 
-    const hasMissingReference = parsedPayments.some(
+    const hasMissingReference = localParsed.some(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method?.requiresReference &&
@@ -2335,14 +2384,14 @@ export const PosScreen = () => {
       return "Los metodos que exigen referencia deben incluirla.";
     }
 
-    const duplicateMethods = parsedPayments
+    const duplicateMethods = localParsed
       .filter((payment) => payment.numericAmount > 0 && payment.paymentMethodId)
       .map((payment) => payment.paymentMethodId);
     if (new Set(duplicateMethods).size !== duplicateMethods.length) {
       return "No repitas el mismo metodo de pago en varias lineas.";
     }
 
-    const hasCashWithoutSession = parsedPayments.some(
+    const hasCashWithoutSession = localParsed.some(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method &&
@@ -2353,18 +2402,21 @@ export const PosScreen = () => {
       return "Abre una caja antes de registrar efectivo en el POS.";
     }
 
-    if (paymentDerivedState.pending === 0 && totalPaid === 0) {
+    if (derived.pending === 0 && derived.totalPaid === 0) {
       return "Registra al menos un metodo de pago para una venta al contado.";
     }
 
-    if (paymentDerivedState.pending > 0) {
+    if (derived.pending > 0) {
       return "El total pagado debe ser igual al total de la venta.";
     }
 
     return null;
   };
 
-  const submitSale = async () => {
+  const submitSale = async (options?: {
+    paymentsOverride?: PaymentDraft[];
+    customerIdOverride?: string | null;
+  }) => {
     if (saleStatus === "UNKNOWN") {
       setSubmitError(
         "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
@@ -2372,16 +2424,27 @@ export const PosScreen = () => {
       return;
     }
 
-    const validationError = validateBeforeSubmit();
+    // Always prefer explicit drafts from PaymentDialog — never rely on async setPayments.
+    const draftsForSubmit = options?.paymentsOverride ?? payments;
+    const customerIdForSubmit = options?.customerIdOverride ?? selectedCustomerId;
+    const localParsed = parsePaymentDrafts(draftsForSubmit);
+    const derived = derivePaymentState(localParsed);
+
+    const validationError = validateBeforeSubmit(
+      customerIdForSubmit,
+      localParsed,
+      derived
+    );
     if (validationError) {
       setSubmitError(validationError);
       return;
     }
 
-    const effectivePayments = buildEffectivePayments();
+    const effectivePayments = buildEffectivePayments(localParsed, derived.overpayment);
     const paymentTotal = round(
       effectivePayments.reduce((sum, payment) => sum + payment.amount, 0)
     );
+    // CASH = venta al contado (pagada completa). No indica medio "Efectivo".
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
@@ -2396,7 +2459,7 @@ export const PosScreen = () => {
     try {
       const sale = await createSale(
         {
-          customerId: selectedCustomerId!,
+          customerId: customerIdForSubmit!,
           type: saleType,
           items: cartWithDerivedValues.map((item) => ({
             productId: item.productId,
@@ -3589,9 +3652,12 @@ export const PosScreen = () => {
             financialInstitutionId: r.financialInstitutionId,
           }));
           setPayments(formattedPayments);
-          setTimeout(() => {
-            void submitSale();
-          }, 50);
+          // Pass drafts explicitly — setPayments is async and the old setTimeout
+          // submitted the previous default (Efectivo) without bank/reference.
+          void submitSale({
+            paymentsOverride: formattedPayments,
+            customerIdOverride: customerId ?? selectedCustomerId,
+          });
         }}
       />
 

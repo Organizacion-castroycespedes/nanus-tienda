@@ -1,5 +1,5 @@
-import React from "react";
-import { Building2, Wallet, CreditCard, Landmark, Smartphone, QrCode } from "lucide-react";
+import React, { useState } from "react";
+import { Landmark, Smartphone, QrCode } from "lucide-react";
 
 type BankLogoProps = {
   code?: string | null;
@@ -31,18 +31,76 @@ const CANONICAL_LOGO_BY_CODE: Record<string, string> = {
   AGRARIO: "/payment-institutions/banco-agrario.svg",
 };
 
-export const BankLogo: React.FC<BankLogoProps> = ({ code, name, logoUrl, className = "h-7 w-auto max-h-7 max-w-full" }) => {
-  // Use custom logoUrl if valid external URL
+const normalizeCode = (code?: string | null) =>
+  (code || "").toUpperCase().replace(/[-\s]/g, "_");
+
+const getInitials = (name?: string | null, code?: string | null) => {
+  const source = (name || code || "?").trim();
+  const words = source.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+  return source.slice(0, 2).toUpperCase();
+};
+
+const InitialsFallback: React.FC<{ name?: string | null; code?: string | null; className?: string }> = ({
+  name,
+  code,
+  className,
+}) => (
+  <span
+    className={`inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-200 ${className ?? ""}`}
+    aria-hidden
+  >
+    {getInitials(name, code)}
+  </span>
+);
+
+const LogoImage: React.FC<{
+  src: string;
+  alt: string;
+  className: string;
+  name?: string | null;
+  code?: string | null;
+}> = ({ src, alt, className, name, code }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <InitialsFallback name={name} code={code} className={className} />;
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={`object-contain ${className}`}
+      onError={() => setFailed(true)}
+    />
+  );
+};
+
+export const BankLogo: React.FC<BankLogoProps> = ({
+  code,
+  name,
+  logoUrl,
+  className = "h-7 w-auto max-h-7 max-w-full",
+}) => {
+  // Prefer configured logoUrl from API/BD when it is a real URL (not legacy data-URI placeholders)
   if (logoUrl && !logoUrl.startsWith("data:image/svg+xml;base64,")) {
-    return <img src={logoUrl} alt={name || "Banco"} className={`object-contain ${className}`} />;
+    return (
+      <LogoImage
+        src={logoUrl}
+        alt={name || "Banco"}
+        className={className}
+        name={name}
+        code={code}
+      />
+    );
   }
 
-  const normalizedCode = (code || "").toUpperCase().replace(/[-\s]/g, "_");
+  const normalizedCode = normalizeCode(code);
 
-  // Specific Daviplata vector brand logo
-  if (normalizedCode === "DAVIPLATA" || (name || "").toLowerCase().includes("daviplata")) {
+  if (normalizedCode === "DAVIPLATA") {
     return (
-      <svg viewBox="0 0 100 100" className={className || "h-7 w-7"} xmlns="http://www.w3.org/2000/svg">
+      <svg viewBox="0 0 100 100" className={className || "h-7 w-7"} xmlns="http://www.w3.org/2000/svg" aria-label="Daviplata">
         <rect width="100" height="100" rx="22" fill="#ED1C24" />
         <g transform="translate(18, 16)">
           <circle cx="32" cy="18" r="11" fill="#FFFFFF" />
@@ -56,57 +114,17 @@ export const BankLogo: React.FC<BankLogoProps> = ({ code, name, logoUrl, classNa
   const canonicalLogo = CANONICAL_LOGO_BY_CODE[normalizedCode];
   if (canonicalLogo) {
     return (
-      <img
+      <LogoImage
         src={canonicalLogo}
         alt={name || code || "Entidad financiera"}
-        className={`object-contain ${className}`}
+        className={className}
+        name={name}
+        code={code}
       />
     );
   }
 
-  const normalized = (code || name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-  if (normalized.includes("bancolombia")) {
-    return <img src="/payment-institutions/bancolombia.svg" alt="Bancolombia" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("nequi")) {
-    return <img src="/payment-institutions/nequi.svg" alt="Nequi" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("davivienda")) {
-    return <img src="/payment-institutions/davivienda.png" alt="Davivienda" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("bogota")) {
-    return <img src="/payment-institutions/banco-bogota.svg" alt="Banco de Bogotá" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("bbva")) {
-    return <img src="/payment-institutions/bbva.svg" alt="BBVA" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("popular")) {
-    return <img src="/payment-institutions/banco-popular.svg" alt="Banco Popular" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("villas")) {
-    return <img src="/payment-institutions/av-villas.svg" alt="Banco AV Villas" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("scotiabank") || normalized.includes("patria")) {
-    return <img src="/payment-institutions/scotiabank.svg" alt="Scotiabank Colpatria" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("itau")) {
-    return <img src="/payment-institutions/itau.svg" alt="Itaú" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("agrario")) {
-    return <img src="/payment-institutions/banco-agrario.svg" alt="Banco Agrario" className={`object-contain ${className}`} />;
-  }
-
-  if (normalized.includes("bre-b") || normalized.includes("breb") || normalized.includes("qr")) {
+  if (normalizedCode.includes("BREB") || normalizedCode.includes("QR")) {
     return (
       <div className="flex items-center justify-center rounded-lg bg-teal-700 p-1 text-white shadow-sm">
         <QrCode className="h-5 w-5 text-amber-300" />
@@ -114,8 +132,12 @@ export const BankLogo: React.FC<BankLogoProps> = ({ code, name, logoUrl, classNa
     );
   }
 
-  if (normalized.includes("wallet") || normalized.includes("billetera")) {
+  if (normalizedCode.includes("WALLET") || normalizedCode.includes("BILLETERA")) {
     return <Smartphone className="h-6 w-6 text-blue-600 dark:text-blue-400" />;
+  }
+
+  if (name || code) {
+    return <InitialsFallback name={name} code={code} className={className} />;
   }
 
   return <Landmark className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />;
