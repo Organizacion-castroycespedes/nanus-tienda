@@ -1125,8 +1125,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "xl:justify-center" : ""}`}>
-            <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "xl:flex-col" : ""}`}>
+          <div
+            className={`mb-5 flex items-center gap-3 ${
+              isSidebarCompact ? "xl:flex-col xl:gap-2" : ""
+            }`}
+          >
+            <div
+              className={`flex min-w-0 shrink-0 items-center gap-2.5 ${
+                isSidebarCompact ? "xl:flex-col xl:items-center" : ""
+              }`}
+            >
               {brandingLogo ? (
                 <img
                   src={brandingLogo}
@@ -1156,11 +1164,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </div>
               ) : null}
             </div>
-            <div className={`ml-auto flex items-center gap-2 ${isSidebarCompact ? "xl:ml-0" : ""}`}>
+            <div
+              className={`ml-auto flex items-center gap-2 ${
+                isSidebarCompact ? "xl:ml-0" : ""
+              }`}
+            >
               <button
                 type="button"
                 className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:grid"
                 aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
+                title={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
                 onClick={() => setSidebarCollapsed((prev) => !prev)}
               >
                 {sidebarCollapsed ? (
