@@ -47,6 +47,9 @@ const isUuid = (value: string) =>
   );
 
 const operationalCatalogReadRoles = ["USER", "ADMIN", "SUPER_USER"];
+const MAX_PRODUCT_OPTION_LIMIT = 25;
+const DEFAULT_BI_PAGE_SIZE = 10;
+const MAX_BI_PAGE_SIZE = 50;
 
 @Controller("inventory")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -92,6 +95,45 @@ export class InventoryController {
     }
 
     throw new BadRequestException(`${field} must be a valid UUID`);
+  }
+
+  private parseOptionalProductLimit(value: string | undefined) {
+    if (value === undefined || value.trim() === "") {
+      return undefined;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException("limit must be a positive integer");
+    }
+    return Math.min(parsed, MAX_PRODUCT_OPTION_LIMIT);
+  }
+
+  private parseProductIds(value: string | undefined) {
+    const productIds = Array.from(
+      new Set((value ?? "").split(",").map((id) => id.trim()).filter(Boolean))
+    );
+    if (productIds.some((productId) => !isUuid(productId))) {
+      throw new BadRequestException("productIds must contain valid UUIDs");
+    }
+    return productIds;
+  }
+
+  private parseBiPage(value: string | undefined) {
+    if (value === undefined || value.trim() === "") return 1;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException("page must be a positive integer");
+    }
+    return parsed;
+  }
+
+  private parseBiPageSize(value: string | undefined) {
+    if (value === undefined || value.trim() === "") return DEFAULT_BI_PAGE_SIZE;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      throw new BadRequestException("pageSize must be a positive integer");
+    }
+    return Math.min(parsed, MAX_BI_PAGE_SIZE);
   }
 
   private sendImage(
@@ -161,12 +203,134 @@ export class InventoryController {
   listProducts(
     @Query("tenantId") tenantId: string | undefined,
     @Query("branchId") branchId: string | undefined,
+    @Query("search") search: string | undefined,
+    @Query("limit") limit: string | undefined,
     @Req() request: AuthRequest
   ) {
     return this.inventoryService.listInventoryProducts(
       {
         tenantId,
         branchId,
+        search,
+        limit: this.parseOptionalProductLimit(limit),
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-summary")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiSummary(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiSummary(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-capital-distribution")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiCapitalDistribution(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiCapitalDistribution(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-operational-health")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiOperationalHealth(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiOperationalHealth(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-operational-page")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiOperationalPage(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Query("page") page: string | undefined,
+    @Query("pageSize") pageSize: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiOperationalPage(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+        page: this.parseBiPage(page),
+        pageSize: this.parseBiPageSize(pageSize),
+      },
+      this.buildActor(request)
+    );
+  }
+
+  @Get("bi-valuation-page")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getBiValuationPage(
+    @Query("tenantId") tenantId: string | undefined,
+    @Query("branchId") branchId: string | undefined,
+    @Query("productIds") productIds: string | undefined,
+    @Query("categoryId") categoryId: string | undefined,
+    @Query("stockStatus") stockStatus: "all" | "in_stock" | "out_of_stock" | "negative" | undefined,
+    @Query("page") page: string | undefined,
+    @Query("pageSize") pageSize: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.inventoryService.getInventoryBiValuationPage(
+      {
+        tenantId,
+        branchId,
+        productIds: this.parseProductIds(productIds),
+        categoryId,
+        stockStatus,
+        page: this.parseBiPage(page),
+        pageSize: this.parseBiPageSize(pageSize),
       },
       this.buildActor(request)
     );

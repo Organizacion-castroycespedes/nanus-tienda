@@ -72,4 +72,154 @@ describe("InventoryService product mapping", () => {
     assert.equal(product.categoryId, row.category_id);
     assert.equal(product.subcategoryId, row.subcategory_id);
   });
+
+  it("forwards remote product search and limit after enforcing tenant scope", async () => {
+    const row = buildInventoryProductRow();
+    let receivedFilters: Record<string, unknown> | undefined;
+    const repository = {
+      listInventoryProducts: async (filters: Record<string, unknown>) => {
+        receivedFilters = filters;
+        return [row];
+      },
+    };
+    const service = new InventoryService(
+      repository as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    await service.listInventoryProducts(
+      {
+        tenantId: row.tenant_id,
+        branchId: row.branch_id,
+        search: "needle",
+        limit: 25,
+      },
+      { roles: ["SUPER_ADMIN"], tenantId: row.tenant_id, userId: randomUUID() }
+    );
+
+    assert.equal(receivedFilters?.search, "needle");
+    assert.equal(receivedFilters?.limit, 25);
+    assert.equal(receivedFilters?.tenantId, row.tenant_id);
+  });
+
+  it("rejects a restricted actor requesting another tenant product search", async () => {
+    const service = new InventoryService(
+      { listInventoryProducts: async () => [] } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    await assert.rejects(
+      () =>
+        service.listInventoryProducts(
+          { tenantId: "tenant-2", search: "needle", limit: 25 },
+          { roles: ["ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+        ),
+      /No autorizado para otro tenant/
+    );
+  });
+});
+
+describe("InventoryService BI summary", () => {
+  it("maps numeric BI values without converting decimal fields to JS numbers", async () => {
+    let receivedFilters: Record<string, unknown> | undefined;
+    const service = new InventoryService(
+      {
+        getInventoryBiSummary: async (filters: Record<string, unknown>) => {
+          receivedFilters = filters;
+          return {
+            total_inventory_cost: "999999999999.99",
+            total_inventory_units: "12.50",
+            products_with_stock: "2",
+            out_of_stock_products: "1",
+            negative_stock_products: "1",
+          };
+        },
+      } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    const result = await service.getInventoryBiSummary(
+      {
+        tenantId: "tenant-1",
+        productIds: ["product-1", "product-1"],
+        stockStatus: "negative",
+      },
+      { roles: ["SUPER_ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+    );
+
+    assert.deepEqual(result, {
+      totalInventoryCost: "999999999999.99",
+      totalInventoryUnits: "12.50",
+      productsWithStock: 2,
+      outOfStockProducts: 1,
+      negativeStockProducts: 1,
+    });
+    assert.deepEqual(receivedFilters?.productIds, ["product-1"]);
+    assert.equal(receivedFilters?.stockStatus, "negative");
+  });
+
+  it("rejects a restricted actor requesting another tenant BI summary", async () => {
+    const service = new InventoryService(
+      { getInventoryBiSummary: async () => ({}) } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    await assert.rejects(
+      () => service.getInventoryBiSummary(
+        { tenantId: "tenant-2", stockStatus: "all" },
+        { roles: ["ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+      ),
+      /No autorizado para otro tenant/
+    );
+  });
+});
+
+describe("InventoryService BI capital distribution", () => {
+  it("maps branch, category, and top-product decimal strings without recalculation", async () => {
+    let receivedFilters: Record<string, unknown> | undefined;
+    const service = new InventoryService(
+      {
+        getInventoryBiCapitalDistribution: async (filters: Record<string, unknown>) => {
+          receivedFilters = filters;
+          return {
+            branch_distribution: [{
+              tenantId: "tenant-1",
+              branchId: "branch-1",
+              branchName: "Sucursal",
+              totalCost: "1000000000000.0000",
+            }],
+            category_distribution: [{
+              tenantId: "tenant-1",
+              categoryId: null,
+              categoryName: "Sin categoría",
+              totalCost: "1000000000000.0000",
+            }],
+            top_products: [{
+              rank: 1,
+              productId: "product-1",
+              productName: "Producto",
+              sku: "SKU-1",
+              totalCost: "1000000000000.0000",
+              participationPercent: null,
+            }],
+          };
+        },
+      } as any,
+      { findAccessibleBranchIds: async () => [] } as any
+    );
+
+    const result = await service.getInventoryBiCapitalDistribution(
+      {
+        tenantId: "tenant-1",
+        productIds: ["product-1", "product-1"],
+        stockStatus: "all",
+      },
+      { roles: ["SUPER_ADMIN"], tenantId: "tenant-1", userId: randomUUID() }
+    );
+
+    assert.equal(result.branchDistribution[0].totalCost, "1000000000000.0000");
+    assert.equal(result.categoryDistribution[0].categoryName, "Sin categoría");
+    assert.equal(result.topProducts[0].participationPercent, null);
+    assert.deepEqual(receivedFilters?.productIds, ["product-1"]);
+  });
 });

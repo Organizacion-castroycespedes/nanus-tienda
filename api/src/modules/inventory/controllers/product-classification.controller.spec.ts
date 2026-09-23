@@ -8,6 +8,45 @@ const tenantId = "00000000-0000-0000-0000-000000000001";
 const categoryId = "c15d4693-56ba-4106-8a0e-34dfbc807ab4";
 
 describe("product classification controllers", () => {
+  it("allows SUPER_ADMIN to list categories for the requested tenant", async () => {
+    const requestedTenantId = "00000000-0000-0000-0000-000000000002";
+    let resolvedTenantId = "";
+    const controller = new ProductCategoryController(
+      {
+        list: async (requested: string) => {
+          resolvedTenantId = requested;
+          return [];
+        },
+      } as any,
+      {} as any,
+      { canAccessTenant: () => true } as any
+    );
+
+    await controller.list("true", undefined, requestedTenantId, {
+      user: { tenantId, roles: ["SUPER_ADMIN"] },
+    } as any);
+
+    assert.equal(resolvedTenantId, requestedTenantId);
+  });
+
+  it("rejects a non-super actor requesting another tenant category catalog", async () => {
+    const controller = new ProductCategoryController(
+      { list: async () => [] } as any,
+      {} as any,
+      {
+        canAccessTenant: (actor: { tenantId?: string }, requested: string) =>
+          actor.tenantId === requested,
+      } as any
+    );
+
+    assert.throws(
+      () => controller.list("true", undefined, "00000000-0000-0000-0000-000000000002", {
+        user: { tenantId, roles: ["ADMIN"] },
+      } as any),
+      /Tenant scope mismatch/
+    );
+  });
+
   it("accepts valid UUID categoryId when creating a subcategory", () => {
     const controller = new ProductSubcategoryController({
       create: (input: unknown) => input,

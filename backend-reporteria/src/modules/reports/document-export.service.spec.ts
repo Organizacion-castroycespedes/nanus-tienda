@@ -70,3 +70,13 @@ test("DocumentExportService rejects a short batch instead of truncating", async 
     "ROLLBACK",
   ]);
 });
+
+test("DocumentExportService returns summary from the same repeatable snapshot", async () => {
+  const client = fakeClient();
+  const service = new DocumentExportService({ getClient: async () => client } as never);
+  const result = await service.collectWithSummary(
+    async () => ({ totalRows: 2, summary: { totalCost: "12.50" } }),
+    async () => ["row-1", "row-2"],
+  );
+  assert.deepEqual(result, { rows: ["row-1", "row-2"], summary: { totalCost: "12.50" } });
+});
