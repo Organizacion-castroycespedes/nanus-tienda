@@ -2624,6 +2624,7 @@ export class SaleService {
           branchId: saleContext.branchId,
           paymentMethodId: payment.paymentMethodId,
           cashSessionId: payment.cashSessionId,
+          financialInstitutionId: payment.financialInstitutionId,
           referenceType: "SALE",
           referenceId: saleRow.id,
           direction: "IN",
@@ -2765,6 +2766,23 @@ export class SaleService {
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
       }
+
+      const selectedInstitutionCount = payments.filter(
+        (payment) => Boolean(payment.financialInstitutionId),
+      ).length;
+      const assignedInstitutionCount =
+        await this.repository.assignFinancialInstitutionsToSalePayments(
+          saleContext.tenantId,
+          saleRow.id,
+          payments,
+          client,
+        );
+      if (assignedInstitutionCount !== selectedInstitutionCount) {
+        throw new BadRequestException(
+          "Entidad financiera invalida o pago de la venta no encontrado",
+        );
+      }
+
       await this.syncOrderSaleItemTaxesFromSnapshot(
         saleRow.id,
         saleContext.tenantId,

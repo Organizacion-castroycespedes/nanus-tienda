@@ -702,6 +702,65 @@ export class SaleRepository {
     return result.rows[0] ?? null;
   }
 
+  async assignFinancialInstitutionsToSalePayments(
+    tenantId: string,
+    saleId: string,
+    payments: CreateSalePaymentInput[],
+    client: PoolClient,
+  ): Promise<number> {
+    let assigned = 0;
+
+    for (const payment of payments) {
+      if (!payment.financialInstitutionId) {
+        continue;
+      }
+
+      const result = await this.query<{ id: string }>(
+        `WITH target_payment AS (
+           SELECT payment.id
+           FROM payments AS payment
+           WHERE payment.tenant_id = $1
+             AND payment.reference_type = 'SALE'
+             AND payment.reference_id = $2
+             AND payment.payment_method_id = $3
+             AND payment.financial_institution_id IS NULL
+             AND payment.amount = $5::numeric
+             AND payment.cash_session_id IS NOT DISTINCT FROM $6::uuid
+             AND COALESCE(payment.reference_number, '') = COALESCE($7, '')
+           ORDER BY payment.created_at ASC, payment.id ASC
+           LIMIT 1
+           FOR UPDATE
+         )
+         UPDATE payments AS payment
+         SET financial_institution_id = $4
+         FROM target_payment
+         WHERE payment.id = target_payment.id
+           AND EXISTS (
+             SELECT 1
+             FROM financial_institutions AS institution
+             WHERE institution.id = $4
+               AND institution.active = TRUE
+               AND (institution.tenant_id = $1 OR institution.tenant_id IS NULL)
+           )
+         RETURNING payment.id`,
+        [
+          tenantId,
+          saleId,
+          payment.paymentMethodId,
+          payment.financialInstitutionId,
+          payment.amount,
+          payment.cashSessionId ?? null,
+          payment.referenceNumber ?? null,
+        ],
+        client,
+      );
+
+      assigned += result.rows.length;
+    }
+
+    return assigned;
+  }
+
   async findPaymentMethodTypesByIds(
     tenantId: string,
     paymentMethodIds: string[],

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { X, Plus, Trash2, Check, CreditCard, Banknote, Landmark, QrCode, Smartphone, Layers } from "lucide-react";
 import { Button } from "../../../../components/design-system/Button";
 import { Input } from "../../../../components/design-system/Input";
@@ -6,7 +6,6 @@ import type { FinancialInstitution, PaymentMethod } from "../../../finance/types
 import { CustomerSection } from "./CustomerSection";
 import { FinancialInstitutionSelector } from "./FinancialInstitutionSelector";
 import { PaymentSummarySidebar } from "./PaymentSummarySidebar";
-import { BankLogo } from "../../../shared/payments/BankLogo";
 
 export type PosPaymentRow = {
   id: string;
@@ -61,6 +60,8 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
 }) => {
   const [payments, setPayments] = useState<PosPaymentRow[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [focusPaymentId, setFocusPaymentId] = useState<string | null>(null);
+  const amountInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     if (open) {
@@ -82,8 +83,23 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         },
       ]);
       setValidationError(null);
+      setFocusPaymentId("pm-1");
     }
   }, [open, totalAmount, paymentMethods]);
+
+  useEffect(() => {
+    if (!open || !focusPaymentId) return;
+
+    const timer = window.setTimeout(() => {
+      const input = amountInputRefs.current[focusPaymentId];
+      if (!input) return;
+      input.focus();
+      input.select();
+      setFocusPaymentId(null);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [focusPaymentId, open, payments]);
 
   // Handle ESC key
   useEffect(() => {
@@ -129,17 +145,19 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     const defaultMethod = activeMethods[0];
     const totalPaidSoFar = payments.reduce((acc, p) => acc + (parseFloat(p.amount) || 0), 0);
     const remaining = Math.max(0, totalAmount - totalPaidSoFar);
+    const paymentId = `pm-${Date.now()}`;
 
     setPayments((prev) => [
       ...prev,
       {
-        id: `pm-${Date.now()}`,
+        id: paymentId,
         paymentMethodId: defaultMethod?.id || "",
         amount: remaining > 0 ? String(remaining) : "",
         reference: "",
         financialInstitutionId: null,
       },
     ]);
+    setFocusPaymentId(paymentId);
   };
 
   const removePaymentRow = (id: string) => {
@@ -195,20 +213,20 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-0 backdrop-blur-sm sm:p-2 md:p-3">
-      <div className="flex h-full w-full flex-col bg-white shadow-2xl dark:bg-slate-900 sm:h-[96vh] sm:w-[98%] sm:max-w-none sm:rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-1.5 sm:p-3 backdrop-blur-sm overflow-hidden">
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[min(96vh,720px)] sm:w-[calc(100vw-1.5rem)] sm:max-w-[1040px] xl:max-w-[1100px] sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 my-auto">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-              <CreditCard className="h-5 w-5" />
+        <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 shadow-sm">
+              <CreditCard className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-tight">
                 Cobrar venta
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Registra los medios de pago para completar la venta
               </p>
             </div>
@@ -216,18 +234,18 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Modal Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px] items-start">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+          <div className="grid min-h-0 grid-cols-1 items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_310px]">
             
             {/* Main Form Left Column */}
-            <div className="space-y-6">
+            <div className="min-h-0 space-y-3 lg:pr-1">
               
               {/* 1. Customer Section */}
               <CustomerSection
@@ -241,13 +259,13 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
 
               {/* Validation Alert */}
               {validationError && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-medium text-rose-700 shadow-sm dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs font-medium text-rose-700 shadow-sm dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
                   {validationError}
                 </div>
               )}
 
               {/* 2. Payment Method Rows */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {payments.map((payment, index) => {
                   const selectedMethod = paymentMethods.find((m) => m.id === payment.paymentMethodId);
                   const requiresFinancialInst =
@@ -260,105 +278,123 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                   return (
                     <div
                       key={payment.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-800 dark:bg-slate-800/40 space-y-4"
+                      className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-3.5 shadow-sm transition dark:border-slate-800 dark:bg-slate-800/40 space-y-2.5"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
                           Método de pago #{index + 1}
                         </span>
-                        {payments.length > 1 && (
+                        <div className="flex items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => removePaymentRow(payment.id)}
-                            className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 font-medium transition"
+                            onClick={addPaymentRow}
+                            className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Eliminar
+                            <Plus className="h-3 w-3" />
+                            Agregar otro método
                           </button>
-                        )}
-                      </div>
-
-                      {/* Payment Method Cards */}
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-                        {activeMethods.map((method) => {
-                          const isSelected = payment.paymentMethodId === method.id;
-                          return (
-                            <button
-                              key={method.id}
-                              type="button"
-                              onClick={() => updatePaymentRow(payment.id, "paymentMethodId", method.id)}
-                              className={`flex min-h-[60px] flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition-all ${
-                                isSelected
-                                  ? "border-blue-600 bg-blue-50/90 text-blue-700 ring-2 ring-blue-600 dark:border-blue-500 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-500 font-semibold"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700/50"
-                              }`}
-                            >
-                              {getMethodIcon(method)}
-                              <span className="truncate text-xs leading-tight">{method.nombre}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Financial Institution Selector (Contextual) */}
-                      {requiresFinancialInst && (
-                        <FinancialInstitutionSelector
-                          institutions={financialInstitutions}
-                          selectedInstitutionId={payment.financialInstitutionId}
-                          onSelectInstitution={(instId) =>
-                            updatePaymentRow(payment.id, "financialInstitutionId", instId)
-                          }
-                        />
-                      )}
-
-                      {/* Amount & Reference Inputs */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Input
-                          label="Monto *"
-                          inputMode="decimal"
-                          value={payment.amount}
-                          onChange={(e) => updatePaymentRow(payment.id, "amount", e.target.value)}
-                          placeholder="0"
-                          className="rounded-xl font-medium"
-                        />
-
-                        <div className="relative">
-                          <Input
-                            label="Número de referencia *"
-                            value={payment.reference}
-                            onChange={(e) => updatePaymentRow(payment.id, "reference", e.target.value)}
-                            placeholder="123456789"
-                            className="rounded-xl font-medium pr-8"
-                          />
-                          {payment.reference && (
+                          {payments.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => updatePaymentRow(payment.id, "reference", "")}
-                              className="absolute right-3 top-[34px] rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              onClick={() => removePaymentRow(payment.id)}
+                              className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 font-semibold transition"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <Trash2 className="h-3 w-3" />
+                              Eliminar
                             </button>
                           )}
                         </div>
+                      </div>
+
+                      <div
+                        className={
+                          requiresFinancialInst
+                            ? "grid grid-cols-1 sm:grid-cols-[minmax(220px,0.85fr)_minmax(270px,1.15fr)] gap-3 items-start"
+                            : "space-y-2.5"
+                        }
+                      >
+                        <div className="space-y-2.5">
+                          {/* Payment Method Cards */}
+                          <div className={`grid ${requiresFinancialInst ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-4"} gap-2`}>
+                            {activeMethods.map((method) => {
+                              const isSelected = payment.paymentMethodId === method.id;
+                              return (
+                                <button
+                                  key={method.id}
+                                  type="button"
+                                  onClick={() => {
+                                    updatePaymentRow(payment.id, "paymentMethodId", method.id);
+                                    setFocusPaymentId(payment.id);
+                                  }}
+                                  className={`flex h-[54px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl border p-1 text-center transition-all ${
+                                    isSelected
+                                      ? "border-blue-600 bg-blue-50/80 font-semibold text-blue-700 ring-2 ring-blue-600 dark:border-blue-500 dark:bg-blue-500/20 dark:text-blue-300 dark:ring-blue-500 shadow-sm"
+                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700/50"
+                                  }`}
+                                >
+                                  {getMethodIcon(method)}
+                                  <span className="w-full truncate text-[10.5px] leading-tight">{method.nombre}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Amount & Reference Inputs */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              ref={(input) => {
+                                amountInputRefs.current[payment.id] = input;
+                              }}
+                              label="Valor recibido *"
+                              inputMode="decimal"
+                              value={payment.amount}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onChange={(e) => updatePaymentRow(payment.id, "amount", e.target.value)}
+                              placeholder="$ 0"
+                              className="rounded-xl text-xs font-semibold"
+                            />
+
+                            <div className="relative">
+                              <Input
+                                label="No. Referencia *"
+                                value={payment.reference}
+                                onChange={(e) => updatePaymentRow(payment.id, "reference", e.target.value)}
+                                placeholder="123456789"
+                                className="rounded-xl text-xs font-medium pr-7"
+                              />
+                              {payment.reference && (
+                                <button
+                                  type="button"
+                                  onClick={() => updatePaymentRow(payment.id, "reference", "")}
+                                  className="absolute right-2 top-[30px] rounded-full p-0.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Financial Institution Selector (Contextual) */}
+                        {requiresFinancialInst && (
+                          <FinancialInstitutionSelector
+                            institutions={financialInstitutions}
+                            selectedInstitutionId={payment.financialInstitutionId}
+                            onSelectInstitution={(instId) => {
+                              updatePaymentRow(payment.id, "financialInstitutionId", instId);
+                              if (instId) setFocusPaymentId(payment.id);
+                            }}
+                          />
+                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
-
-              {/* Add Payment Method Button */}
-              <button
-                type="button"
-                onClick={addPaymentRow}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/40 py-3.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 hover:border-blue-300 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-300 dark:hover:bg-blue-900/30 transition"
-              >
-                <Plus className="h-4 w-4" />
-                Agregar método de pago
-              </button>
             </div>
 
             {/* Right Column: Payment Summary Sidebar */}
-            <div className="lg:sticky lg:top-0">
+            <div>
               <PaymentSummarySidebar
                 totalAmount={totalAmount}
                 totalPaid={totalPaid}
@@ -371,7 +407,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 flex-shrink-0">
+        <div className="flex items-center justify-between border-t border-slate-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 flex-shrink-0">
           <div className="text-xs text-slate-400 hidden sm:flex items-center gap-1.5">
             <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
               ESC
@@ -379,12 +415,12 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
             <span>para cancelar</span>
           </div>
 
-          <div className="flex w-full sm:w-auto items-center gap-2.5">
+          <div className="flex w-full sm:w-auto items-center justify-end gap-2.5">
             <Button
               variant="outline"
               type="button"
               onClick={onClose}
-              className="w-1/2 sm:w-auto rounded-xl"
+              className="w-1/2 sm:w-auto rounded-xl px-4 h-8 text-xs font-semibold"
               disabled={isSubmitting}
             >
               Cancelar
@@ -394,9 +430,9 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
               type="button"
               onClick={handleConfirm}
               isLoading={isSubmitting}
-              className="w-1/2 sm:w-auto rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold px-6 shadow-lg shadow-blue-600/20"
+              className="w-1/2 sm:w-auto rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold px-5 h-8 text-xs shadow-md shadow-blue-600/20"
             >
-              <Check className="h-4 w-4 mr-1.5" />
+              <Check className="h-3.5 w-3.5 mr-1" />
               Confirmar venta
             </Button>
           </div>
