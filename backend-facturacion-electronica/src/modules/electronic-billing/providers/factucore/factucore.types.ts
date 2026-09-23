@@ -131,7 +131,7 @@ export type FactuCoreInvoiceRequest = {
   payments?: Array<{
     amount: string;
     reference?: string | null;
-    paymentMeansCode: "10" | "47" | "49";
+    paymentMeansCode: "10" | "45" | "47" | "49";
     paymentMeansId: "1";
     requiresReference?: boolean;
   }>;
