@@ -12,6 +12,7 @@ export type PaymentRecord = {
   payment_method_nombre: string | null;
   payment_method_tipo: string | null;
   cash_session_id: string | null;
+  financial_institution_id: string | null;
   cash_register_id: string | null;
   cash_register_nombre: string | null;
   reference_type: PaymentReferenceType;
@@ -73,6 +74,7 @@ type CreatePaymentInput = {
   branchId: string;
   paymentMethodId: string;
   cashSessionId?: string | null;
+  financialInstitutionId?: string | null;
   referenceType: PaymentReferenceType;
   referenceId: string;
   direction: string;
@@ -153,6 +155,7 @@ export class PaymentsRepository {
       method.nombre AS payment_method_nombre,
       method.tipo AS payment_method_tipo,
       payment.cash_session_id,
+      payment.financial_institution_id,
       session.cash_register_id,
       register.nombre AS cash_register_nombre,
       payment.reference_type,
@@ -269,6 +272,7 @@ export class PaymentsRepository {
         branch_id,
         payment_method_id,
         cash_session_id,
+        financial_institution_id,
         reference_type,
         reference_id,
         direction,
@@ -279,13 +283,14 @@ export class PaymentsRepository {
         paid_by_person_id,
         created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id`,
       [
         data.tenantId,
         data.branchId,
         data.paymentMethodId,
         data.cashSessionId ?? null,
+        data.financialInstitutionId ?? null,
         data.referenceType,
         data.referenceId,
         data.direction,

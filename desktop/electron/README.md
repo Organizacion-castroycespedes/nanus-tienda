@@ -9,7 +9,7 @@ Abrir la web existente de Manus POS dentro de Electron. Este paquete no contiene
 ## Alcance
 
 - Carga `MANUS_WEB_URL`.
-- Usa `https://www.apptiendamanus.space/login` como fallback cuando no se configura una URL.
+- Usa `https://portal.emaus.centrivosoft.com/login` como fallback cuando no se configura una URL.
 - Puede resolver ruta inicial con `MANUS_START_PATH`.
 - Puede leer contexto local reservado de tenant, sucursal y terminal.
 - Mantiene Electron online/static: el shell carga la URL web configurada y conserva su recuperacion del renderer.
@@ -70,7 +70,7 @@ MANUS_WEB_URL=http://localhost:3000
 
 | Variable | Default | Uso |
 | --- | --- | --- |
-| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `https://www.apptiendamanus.space/login` | URL de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
+| `MANUS_WEB_URL` | `NEXT_PUBLIC_MANUS_WEB_URL` o `https://portal.emaus.centrivosoft.com/login` | URL de la web que Electron debe cargar. Tiene prioridad sobre `NEXT_PUBLIC_MANUS_WEB_URL`. |
 | `NEXT_PUBLIC_MANUS_WEB_URL` | ninguno | URL pública alternativa, útil cuando se comparte la configuración de Next.js. Se usa si no existe `MANUS_WEB_URL`. |
 | `MANUS_START_PATH` | ninguno | Ruta inicial. Debe empezar con un solo `/`. Tiene prioridad sobre `MANUS_TENANT_ID`. |
 | `MANUS_TENANT_ID` | ninguno | Tenant inicial opcional. Si no hay `MANUS_START_PATH`, construye `/<tenantId>`. |
@@ -89,6 +89,26 @@ $env:MANUS_WEB_URL="http://localhost:3000"
 $env:MANUS_START_PATH="/login"
 npm run dev
 ```
+
+### Ambientes
+
+Para desarrollo local:
+
+```powershell
+npm run dev:local
+```
+
+Este comando usa `http://localhost:3000/login` y permite que el agente acepte `http://localhost:3000`.
+
+Para generar el shell Windows de QA o production, usa el comando correspondiente desde `backend-perifericos`:
+
+```powershell
+cd ..\..\backend-perifericos
+npm run installer:windows-x64:qa
+npm run installer:windows-x64:production
+```
+
+El comando configura automáticamente `manus-shell.config.json`, genera `win-unpacked`, crea el instalador del agente y ejecuta su validación. `main` debe conservar production; `develop` puede generar QA.
 
 ### Abrir ruta tenant en PowerShell
 

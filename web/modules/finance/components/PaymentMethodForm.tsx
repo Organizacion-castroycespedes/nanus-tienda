@@ -3,13 +3,21 @@
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
-import type { CreatePaymentMethodPayload, PaymentMethod } from "../types";
+import { BankLogo } from "../../shared/payments/BankLogo";
+import type {
+  CreatePaymentMethodPayload,
+  FinancialInstitution,
+  PaymentMethod,
+} from "../types";
 
 type PaymentMethodFormProps = {
   value: CreatePaymentMethodPayload;
   tenantOptions: Array<{ id: string; name: string }>;
   isSuperRole: boolean;
   isEditing?: boolean;
+  financialInstitutions: FinancialInstitution[];
+  selectedInstitutionIds: string[];
+  onSelectedInstitutionIdsChange: (ids: string[]) => void;
   onChange: (value: CreatePaymentMethodPayload) => void;
   onCancel: () => void;
   onSubmit: () => void;
@@ -21,6 +29,9 @@ export const PaymentMethodForm = ({
   tenantOptions,
   isSuperRole,
   isEditing = false,
+  financialInstitutions,
+  selectedInstitutionIds,
+  onSelectedInstitutionIdsChange,
   onChange,
   onCancel,
   onSubmit,
@@ -92,6 +103,30 @@ export const PaymentMethodForm = ({
         <option value="yes">Si</option>
       </Select>
       <Select
+        label="Requiere Banco/Billetera"
+        value={value.requiresFinancialInstitution ? "yes" : "no"}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            requiresFinancialInstitution: event.target.value === "yes",
+          })
+        }
+      >
+        <option value="no">No</option>
+        <option value="yes">Sí (Muestra lista de bancos)</option>
+      </Select>
+      <Input
+        label="Orden de aparición"
+        type="number"
+        value={value.sortOrder ?? 0}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            sortOrder: parseInt(event.target.value) || 0,
+          })
+        }
+      />
+      <Select
         label="Permite cambio"
         value={value.allowsChange ? "yes" : "no"}
         onChange={(event) =>
@@ -155,6 +190,55 @@ export const PaymentMethodForm = ({
         </Select>
       ) : null}
     </div>
+
+    {value.requiresFinancialInstitution ? (
+      <div className="space-y-2 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+        <div>
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+            Bancos y billeteras disponibles
+          </p>
+          <p className="text-xs text-slate-500">
+            Selecciona las entidades que aparecerán para este medio de pago.
+          </p>
+        </div>
+        <div className="grid max-h-52 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+          {financialInstitutions
+            .filter((institution) => institution.active)
+            .map((institution) => {
+              const selected = selectedInstitutionIds.includes(institution.id);
+              return (
+                <label
+                  key={institution.id}
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border p-2 text-xs transition ${
+                    selected
+                      ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-200"
+                      : "border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() =>
+                      onSelectedInstitutionIdsChange(
+                        selected
+                          ? selectedInstitutionIds.filter((id) => id !== institution.id)
+                          : [...selectedInstitutionIds, institution.id]
+                      )
+                    }
+                  />
+                  <BankLogo
+                    code={institution.codigo}
+                    name={institution.nombre}
+                    logoUrl={institution.logoUrl}
+                    className="h-6 w-6 shrink-0"
+                  />
+                  <span className="truncate">{institution.nombreCorto || institution.nombre}</span>
+                </label>
+              );
+            })}
+        </div>
+      </div>
+    ) : null}
 
     <div className="flex flex-wrap justify-end gap-3">
       <Button variant="ghost" onClick={onCancel}>

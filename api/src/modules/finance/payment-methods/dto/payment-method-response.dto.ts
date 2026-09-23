@@ -21,6 +21,18 @@ export class PaymentMethodResponseDto {
   requiresReference!: boolean;
 
   @Expose()
+  requiresFinancialInstitution!: boolean;
+
+  @Expose()
+  icon!: string | null;
+
+  @Expose()
+  color!: string | null;
+
+  @Expose()
+  sortOrder!: number;
+
+  @Expose()
   allowsChange!: boolean;
 
   @Expose()

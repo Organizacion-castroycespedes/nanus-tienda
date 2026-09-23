@@ -80,3 +80,32 @@ test("cash helper supports default and rebalance flows", () => {
   assert.equal(rebalanceResult.payments[1]?.paymentMethodId, "cash-1");
   assert.equal(rebalanceResult.payments[1]?.amount, "10000");
 });
+
+test("rebalanceCashPayment preserves row order and does not insert cash rows when selecting non-cash method", () => {
+  const cashMethod = { id: "cash-1", tipo: "CASH", codigo: "EFECTIVO", nombre: "Efectivo" };
+
+  // 1. Changing single row from cash to non-cash method
+  const singleNonCash = rebalanceCashPayment(
+    55000,
+    [{ id: "pm-1", paymentMethodId: "debit-1", amount: "55000" }],
+    cashMethod,
+    (id, amount) => ({ id: `new-${id}`, paymentMethodId: id, amount })
+  );
+
+  assert.equal(singleNonCash.payments.length, 1);
+  assert.equal(singleNonCash.payments[0]?.id, "pm-1");
+  assert.equal(singleNonCash.payments[0]?.paymentMethodId, "debit-1");
+  assert.equal(singleNonCash.payments[0]?.amount, "55000");
+
+  // 2. Editing non-cash amount without existing cash row
+  const editedNonCash = rebalanceCashPayment(
+    55000,
+    [{ id: "pm-1", paymentMethodId: "debit-1", amount: "20000" }],
+    cashMethod,
+    (id, amount) => ({ id: `new-${id}`, paymentMethodId: id, amount })
+  );
+
+  assert.equal(editedNonCash.payments.length, 1);
+  assert.equal(editedNonCash.payments[0]?.id, "pm-1");
+  assert.equal(editedNonCash.payments[0]?.amount, "20000");
+});
