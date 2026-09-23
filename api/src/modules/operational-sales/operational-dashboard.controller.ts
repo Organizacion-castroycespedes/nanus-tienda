@@ -17,7 +17,11 @@ export class OperationalDashboardController {
   constructor(@Inject(OperationalSalesService) private readonly service: OperationalSalesService) {}
 
   @Get("dashboard")
-  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "READ" })
+  @RequirePermission({
+    menuKey: ["POS", "OPERATIONS_SALES"],
+    level: "READ",
+    operationalRoles: ["USER"],
+  })
   dashboard(@Query() query: OperationalDashboardQueryDto, @Req() request: OperationalRequest) {
     const context = request.context;
     const tenantId = context?.tenantId ?? request.user?.tenantId;

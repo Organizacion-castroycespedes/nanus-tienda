@@ -35,6 +35,7 @@ type SaleQueryRow = QueryResultRow & {
   billing_created_at: string | null;
   billing_updated_at: string | null;
   billing_document_count: string;
+  electronic_billing_enabled: boolean;
 };
 
 export type OperationalSaleListItem = {
@@ -48,6 +49,7 @@ export type OperationalSaleListItem = {
   branch: { id: string; name: string | null };
   operator: { id: string | null; email: string | null };
   cashSessionId: string | null;
+  electronicBillingEnabled: boolean;
   electronicBilling: {
     status: string;
     electronicDocumentId: string | null;
@@ -205,7 +207,17 @@ export class OperationalSalesRepository {
       document.last_error_code AS billing_error_code,
       document.last_error_message AS billing_error_message,
       document.created_at AS billing_created_at, document.updated_at AS billing_updated_at,
-      COALESCE(document.document_count, 0)::text AS billing_document_count
+      COALESCE(document.document_count, 0)::text AS billing_document_count,
+      CASE
+        WHEN to_regprocedure('public.resolve_parameter_value(text, uuid, uuid, uuid)') IS NOT NULL
+        THEN COALESCE(public.resolve_parameter_value(
+          'SEND_INVOICE', s.tenant_id, s.branch_id, s.terminal_id
+        ), 'DISABLED') <> 'DISABLED'
+         AND COALESCE(public.resolve_parameter_value(
+          'GENERATE_INVOICE', s.tenant_id, s.branch_id, s.terminal_id
+        ), 'AUTOMATIC') <> 'DISABLED'
+        ELSE COALESCE((SELECT config->>'electronicBillingEnabled' FROM tenants WHERE id = s.tenant_id), 'true') <> 'false'
+      END AS electronic_billing_enabled
       FROM sales AS s
       LEFT JOIN customers AS c ON c.id = s.customer_id AND c.tenant_id = s.tenant_id
       LEFT JOIN tenant_branches AS branch ON branch.id = s.branch_id AND branch.tenant_id = s.tenant_id
@@ -324,6 +336,7 @@ export class OperationalSalesRepository {
       branch: { id: row.branch_id, name: row.branch_name },
       operator: { id: row.user_id, email: row.operator_email },
       cashSessionId: row.cash_session_id,
+      electronicBillingEnabled: row.electronic_billing_enabled,
       electronicBilling: row.billing_document_id
         ? {
             status: billingStatus,

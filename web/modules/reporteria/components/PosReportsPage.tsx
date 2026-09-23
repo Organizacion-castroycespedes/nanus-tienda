@@ -33,7 +33,6 @@ import { ReportStatusBadge } from "./ReportStatusBadge";
 import { ReportLayout } from "../../../components/design-system/ReportLayout";
 import { Pagination } from "../../../components/design-system/Pagination";
 import { ReportSummary } from "../../../components/design-system/ReportSummary";
-import { useAppSelector } from "../../../store/hooks";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
 import { Select } from "../../../components/design-system/Select";
 import { Input } from "../../../components/design-system/Input";
@@ -76,10 +75,6 @@ const PosReportsPage = () => {
     useState<DirectPrintFeedback | null>(null);
   const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
   const [billingRequestBusy, setBillingRequestBusy] = useState(false);
-  const branding = useAppSelector((state) => state.branding.config);
-  const showElectronicBilling =
-    branding.electronicBillingConfigured === true &&
-    branding.electronicBillingEnabled === true;
   const posContext = usePosContext();
   const {
     canViewReports,
@@ -97,6 +92,7 @@ const PosReportsPage = () => {
     resolvedBranchLabel,
   } = useReportingScope();
   const { dataset, loading, searched, error, loadReports } = usePosReports();
+  const showElectronicBilling = dataset?.electronicBillingEnabled === true;
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
@@ -165,7 +161,9 @@ const PosReportsPage = () => {
       setDirectPrintFeedback({
         saleId: saleIds[0],
         variant: "success",
-        message: `${requested} solicitud(es) de facturacion electronica creada(s).`,
+        message: requested === 1
+          ? "Se creó una solicitud de facturación electrónica."
+          : `Se crearon ${requested} solicitudes de facturación electrónica.`,
       });
       setSelectedSaleIds([]);
       await handleSearch();
@@ -173,7 +171,10 @@ const PosReportsPage = () => {
       setDirectPrintFeedback({
         saleId: saleIds[0] ?? "billing",
         variant: "error",
-        message: getApiErrorMessage(error, "No se pudo solicitar la facturacion electronica."),
+        message: getApiErrorMessage(
+          error,
+          "No se pudo solicitar la facturación electrónica.",
+        ),
       });
     } finally {
       setBillingRequestBusy(false);

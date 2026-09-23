@@ -140,7 +140,7 @@ export class SaleController {
   }
 
   @Post(":id/electronic-billing")
-  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  @RequirePermission({ menuKey: "POS", level: "WRITE", operationalRoles: ["USER"] })
   requestElectronicBilling(@Param("id") id: string, @Req() request: AuthRequest) {
     return this.saleService.requestElectronicBillingForSale(id, this.buildActor(request));
   }

@@ -31,19 +31,27 @@ export class OperationalSalesController {
   ) {}
 
   @Get()
-  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "READ" })
+  @RequirePermission({
+    menuKey: ["POS", "OPERATIONS_SALES"],
+    level: "READ",
+    operationalRoles: ["USER"],
+  })
   list(@Query() query: OperationalSalesQueryDto, @Req() request: OperationalRequest) {
     return this.service.list(this.actor(request), query);
   }
 
   @Get(":saleId")
-  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "READ" })
+  @RequirePermission({
+    menuKey: ["POS", "OPERATIONS_SALES"],
+    level: "READ",
+    operationalRoles: ["USER"],
+  })
   detail(@Param("saleId") saleId: string, @Req() request: OperationalRequest) {
     return this.service.detail(this.actor(request), saleId);
   }
 
   @Post(":saleId/electronic-billing/refresh")
-  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  @RequirePermission({ menuKey: "POS", level: "READ", operationalRoles: ["USER"] })
   refreshElectronicBillingStatus(@Param("saleId") saleId: string, @Req() request: OperationalRequest) {
     return this.service.refreshElectronicBillingStatus(this.actor(request), saleId);
   }

@@ -77,6 +77,19 @@ const hasOperationalCustomerFallback = (
   moduleName === normalizeValue(MENU_KEYS.CUSTOMERS) &&
   operationalCustomerActions.has(actionName);
 
+const hasOperationalSalesFallback = (
+  role: string,
+  moduleName: string,
+  actionName: string,
+) =>
+  role === "USER" &&
+  [
+    normalizeValue(MENU_KEYS.OPERATIONS),
+    normalizeValue(MENU_KEYS.OPERATIONS_SALES),
+    normalizeValue("POS"),
+  ].includes(moduleName) &&
+  actionName === "read";
+
 const isUserBlockedFromAdminModule = (
   role: string,
   moduleName: string,
@@ -211,6 +224,9 @@ export const hasPermission = (
   if (hasOperationalCustomerFallback(role, module, resolvedAction)) {
     return true;
   }
+  if (hasOperationalSalesFallback(role, module, resolvedAction)) {
+    return true;
+  }
   if (hasOperationalAdminFallback(role, module, resolvedAction)) {
     return true;
   }
@@ -299,6 +315,19 @@ export const hasMenuAccess = (menuKey: string, level: AccessLevel) => {
     )
   ) {
     return false;
+  }
+
+  if (
+    role === "USER" &&
+    level === "READ" &&
+    normalizedCandidates.some((candidate) =>
+      [
+        normalizeValue(MENU_KEYS.OPERATIONS),
+        normalizeValue(MENU_KEYS.OPERATIONS_SALES),
+      ].includes(candidate)
+    )
+  ) {
+    return true;
   }
 
   return candidates.some((candidate) => {

@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
-import { getElectronicInvoice, getElectronicInvoicePrintData, getPosSaleTicketPrintData } from "../../reporteria/services/reporting.service";
+import { getElectronicInvoice, getElectronicInvoicePrintData, getPosSaleTicket, getPosSaleTicketPrintData } from "../../reporteria/services/reporting.service";
 import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
+import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { hasPermission } from "../../../lib/permissions";
+import { useAppSelector } from "../../../store/hooks";
 import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
 import {
   isEligibleForElectronicBillingRequest,
@@ -103,8 +105,10 @@ const ActionCard = ({
   onRequestBilling,
   onRecoverProviderCreateIntent,
   onPrintInvoice,
+  onPrintTicket,
   refreshLoading,
   printLoading,
+  ticketLoading,
   actionMessage,
 }: {
   sale: OperationalSaleDetail;
@@ -114,21 +118,28 @@ const ActionCard = ({
   onRequestBilling: () => Promise<void>;
   onRecoverProviderCreateIntent: () => Promise<boolean>;
   onPrintInvoice: () => Promise<void>;
+  onPrintTicket: () => Promise<void>;
   refreshLoading: boolean;
   printLoading: boolean;
+  ticketLoading: boolean;
   actionMessage: string | null;
 }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
-  const canRetry = billing?.retryability?.canRetry === true;
+  const showElectronicBilling = sale.electronicBillingEnabled;
+  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
+  const canRetry =
+    hasPermission("POS", "write") && billing?.retryability?.canRetry === true;
   const canRecoverProviderCreateIntent = shouldShowProviderCreateIntentRecovery(
     sale,
     hasPermission("POS", "write"),
   );
   const canRequestBilling =
-    hasPermission("POS", "write") &&
+    showElectronicBilling &&
+    (hasPermission("POS", "write") || role.toUpperCase() === "USER") &&
     isEligibleForElectronicBillingRequest(sale);
   const getPdf = useCallback(
     () => getElectronicInvoice(sale.id),
@@ -148,7 +159,7 @@ const ActionCard = ({
           <Button variant="outline" onClick={onReload}>
             Actualizar datos
           </Button>
-          {billing && billing.status !== "CANCELLED" ? (
+          {showElectronicBilling && billing && billing.status !== "CANCELLED" ? (
             <Button variant="outline" onClick={() => void onRefreshStatus()} disabled={refreshLoading}>
               {refreshLoading ? "Consultando FE..." : "Actualizar estado FE"}
             </Button>
@@ -168,17 +179,17 @@ const ActionCard = ({
               {refreshLoading ? "Solicitando FE..." : "Facturar electrónicamente"}
             </Button>
           ) : null}
-          {accepted ? (
+          {showElectronicBilling && accepted ? (
             <Button variant="outline" onClick={() => setPreviewOpen(true)}>
               Ver / reimprimir factura electrónica
             </Button>
           ) : null}
-          {accepted ? (
+          {showElectronicBilling && accepted ? (
             <Button variant="outline" onClick={() => void onPrintInvoice()} disabled={printLoading}>
               {printLoading ? "Imprimiendo FE..." : "Imprimir factura electrónica"}
             </Button>
           ) : null}
-          {canRetry ? (
+          {showElectronicBilling && canRetry ? (
             <Button
               variant="outline"
               onClick={() => {
@@ -191,7 +202,7 @@ const ActionCard = ({
               {refreshLoading ? "Reintentando FE..." : "Reintentar procesamiento"}
             </Button>
           ) : null}
-          {canRecoverProviderCreateIntent ? (
+          {showElectronicBilling && canRecoverProviderCreateIntent ? (
             <Button
               variant="outline"
               onClick={() => setRecoveryConfirmOpen(true)}
@@ -200,6 +211,12 @@ const ActionCard = ({
               {refreshLoading ? "Recuperando procesamiento..." : "Recuperar procesamiento"}
             </Button>
           ) : null}
+          <Button variant="outline" onClick={() => setTicketPreviewOpen(true)}>
+            Ver ticket
+          </Button>
+          <Button variant="outline" onClick={() => void onPrintTicket()} disabled={ticketLoading}>
+            {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
+          </Button>
         </div>
         <p className="mt-3 text-xs text-slate-500">
           La actualización solo recarga datos persistidos. No consulta ni retransmite al proveedor.
@@ -224,6 +241,13 @@ const ActionCard = ({
         onClose={() => setPreviewOpen(false)}
         getPdf={getPdf}
       />
+      <PdfPreviewModal
+        isOpen={ticketPreviewOpen}
+        title={`Ticket de venta ${sale.id.slice(0, 8)}`}
+        fileName={`ticket-venta-${sale.id}.pdf`}
+        onClose={() => setTicketPreviewOpen(false)}
+        getPdf={() => getPosSaleTicket(sale.id)}
+      />
     </>
   );
 };
@@ -233,6 +257,7 @@ export const OperationalSaleDetailPage = () => {
   const tenant = params.tenant;
   const posContext = usePosContext();
   const [printLoading, setPrintLoading] = useState(false);
+  const [ticketLoading, setTicketLoading] = useState(false);
   const {
     data: sale,
     loading,
@@ -260,6 +285,19 @@ export const OperationalSaleDetailPage = () => {
       });
     } finally {
       setPrintLoading(false);
+    }
+  }, [params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
+  const printTicket = useCallback(async () => {
+    setTicketLoading(true);
+    try {
+      const ticket = await getPosSaleTicketPrintData(params.saleId);
+      await printReporteriaSaleTicket(ticket, {
+        tenantId: posContext.tenantId,
+        branchId: posContext.branchId,
+        terminalId: posContext.terminalId,
+      });
+    } finally {
+      setTicketLoading(false);
     }
   }, [params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
 
@@ -320,8 +358,10 @@ export const OperationalSaleDetailPage = () => {
         onRequestBilling={requestBilling}
         onRecoverProviderCreateIntent={recoverProviderCreateIntent}
         onPrintInvoice={printInvoice}
+        onPrintTicket={printTicket}
         refreshLoading={actionLoading}
         printLoading={printLoading}
+        ticketLoading={ticketLoading}
         actionMessage={actionMessage}
       />
 

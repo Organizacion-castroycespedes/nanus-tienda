@@ -70,6 +70,7 @@ export type PosSalesListDataset = {
     refunded: number;
   };
   rows: PosSalesListRow[];
+  electronicBillingEnabled?: boolean;
 };
 
 export type PosSaleTicketPrintDataset = {
