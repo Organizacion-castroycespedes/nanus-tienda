@@ -177,7 +177,7 @@ export const PaymentMethodForm = ({
           onChange={(event) =>
             onChange({
               ...value,
-              electronicPaymentMeansCode: event.target.value as "10" | "47" | "49",
+              electronicPaymentMeansCode: event.target.value as "10" | "45" | "47" | "49",
               electronicPaymentMeansId: "1",
             })
           }
@@ -185,6 +185,7 @@ export const PaymentMethodForm = ({
         >
           <option value="">Selecciona un medio fiscal</option>
           <option value="10">10 - Efectivo</option>
+          <option value="45">45 - Transferencia credito</option>
           <option value="47">47 - Transferencia debito bancaria</option>
           <option value="49">49 - Tarjeta debito</option>
         </Select>

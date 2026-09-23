@@ -54,7 +54,7 @@ export type PaymentMethod = {
   allowsChange: boolean;
   active: boolean;
   electronicBillingEnabled: boolean;
-  electronicPaymentMeansCode: "10" | "47" | "49" | null;
+  electronicPaymentMeansCode: "10" | "45" | "47" | "49" | null;
   electronicPaymentMeansId: "1" | null;
   createdAt: string;
   updatedAt: string;
@@ -431,7 +431,7 @@ export type CreatePaymentMethodPayload = {
   allowsChange?: boolean;
   active?: boolean;
   electronicBillingEnabled?: boolean;
-  electronicPaymentMeansCode?: "10" | "47" | "49";
+  electronicPaymentMeansCode?: "10" | "45" | "47" | "49";
   electronicPaymentMeansId?: "1";
 };
 
