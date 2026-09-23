@@ -635,14 +635,17 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     >
       {items.map((item) => {
         const Icon = getMenuIcon(item.label, item.module, item.icon);
-        const isActive = pathname === item.route;
+        const menuRoute = item.route.includes("/crm/customers")
+          ? `/${tenantSlug}/customers`
+          : item.route;
+        const isActive = pathname === menuRoute;
         const hasChildren = Array.isArray(item.children) && item.children.length > 0;
         const isExpanded = openMenuItems[item.id] ?? false;
         const posRequiresCash =
           isPosMenuItem(item) && cashSessionChecked && !layoutCashSession;
         const effectiveRoute = posRequiresCash
           ? `/${tenantSlug}/pos/select-context`
-          : item.route;
+          : menuRoute;
         const activeChildChain = hasChildren
           ? getActiveMenuChain(item.children ?? [], pathname ?? "")
           : [];

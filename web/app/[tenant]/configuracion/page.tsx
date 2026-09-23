@@ -1765,6 +1765,7 @@ const ConfiguracionPage = () => {
                       <td className="px-4 py-3 font-mono text-xs">{parameter.code}</td>
                       <td className="px-4 py-3">
                         <Input
+                          label="Etiqueta"
                           value={parameter.label}
                           onChange={(event) =>
                             setParameters((prev) =>
@@ -1779,6 +1780,7 @@ const ConfiguracionPage = () => {
                       </td>
                       <td className="px-4 py-3">
                         <Select
+                          label="Default"
                           value={parameter.default_value}
                           onChange={(event) =>
                             setParameters((prev) =>
@@ -1967,8 +1969,15 @@ const ConfiguracionPage = () => {
       }
       const generateMode = tenantDocumentModes.GENERATE_INVOICE ?? "AUTOMATIC";
       const currentConfig = await getTenantConfig(tenantId);
+      const currentBranding: BrandingConfig = {
+        colors: normalizedBrandingConfig.colors,
+        font: normalizedBrandingConfig.font,
+        logo: normalizedBrandingConfig.logo,
+        spacing: normalizedBrandingConfig.spacing,
+      };
       await updateTenantConfig(tenantId, {
         ...(currentConfig.config ?? {}),
+        ...currentBranding,
         electronicBillingEnabled: generateMode !== "DISABLED",
         electronicBillingMode:
           generateMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
@@ -2985,4 +2994,3 @@ const ConfiguracionPage = () => {
 };
 
 export default ConfiguracionPage;
-
