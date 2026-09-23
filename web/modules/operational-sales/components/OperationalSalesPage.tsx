@@ -1,12 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { Select } from "../../../components/design-system/Select";
+import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { useAppSelector } from "../../../store/hooks";
 import { useOperationalSales } from "../hooks/use-operational-sales";
+import {
+  getElectronicInvoicePrintData,
+  getPosSaleTicket,
+  getPosSaleTicketPrintData,
+} from "../../reporteria/services/reporting.service";
+import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
+import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
+import { downloadBlob } from "../../reporteria/utils";
+import {
+  isEligibleForElectronicBillingRequest,
+  requestOperationalSaleElectronicBilling,
+} from "../services/operational-sales.service";
 import {
   ELECTRONIC_BILLING_STATUSES,
   PAYMENT_STATUSES,
@@ -53,6 +67,7 @@ const scopeCopy: Record<string, string> = {
 
 export const OperationalSalesPage = () => {
   const params = useParams<{ tenant: string }>();
+  const posContext = usePosContext();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const {
     data,
@@ -64,12 +79,70 @@ export const OperationalSalesPage = () => {
     resetFilters,
     updateFilter,
     toggleSort,
+    reload,
   } = useOperationalSales();
+  const [actionSaleId, setActionSaleId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
   const hasFilters = Object.values(filters).some(Boolean);
   const emptyState = hasFilters
     ? "No encontramos ventas con los filtros seleccionados."
     : "No hay ventas en el alcance operativo actual.";
+
+  const getTerminalContext = useCallback(
+    (branchId: string) => ({
+      tenantId: posContext.tenantId ?? undefined,
+      branchId: posContext.branchId ?? branchId,
+      terminalId: posContext.terminalId ?? undefined,
+    }),
+    [posContext.branchId, posContext.terminalId, posContext.tenantId],
+  );
+
+  const handleBillingRequest = useCallback(async (saleId: string) => {
+    setActionSaleId(saleId);
+    setActionMessage(null);
+    try {
+      const response = await requestOperationalSaleElectronicBilling(saleId);
+      setActionMessage(response.message ?? "Se creó la solicitud de facturación electrónica.");
+      await reload();
+    } catch (requestError) {
+      setActionMessage(
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudo solicitar la factura electrónica.",
+      );
+    } finally {
+      setActionSaleId(null);
+    }
+  }, [reload]);
+
+  const handlePrint = useCallback(async (sale: OperationalSaleListItem) => {
+    setActionSaleId(sale.id);
+    setActionMessage(null);
+    try {
+      const ticket = await getPosSaleTicketPrintData(sale.id);
+      const terminal = getTerminalContext(sale.branch.id);
+      const result = sale.electronicBilling?.status === "ACCEPTED"
+        ? await printElectronicInvoiceTicket(
+            await getElectronicInvoicePrintData(sale.id),
+            ticket,
+            terminal,
+          )
+        : await printReporteriaSaleTicket(ticket, terminal);
+      if (!result.success) {
+        throw result.error;
+      }
+      setActionMessage("Documento enviado a la impresora.");
+    } catch (printError) {
+      setActionMessage(
+        printError instanceof Error
+          ? printError.message
+          : "No se pudo imprimir el documento.",
+      );
+    } finally {
+      setActionSaleId(null);
+    }
+  }, [getTerminalContext]);
 
   const columns = useMemo<DataTableColumn<OperationalSaleListItem>[]>(
     () => [
@@ -108,11 +181,6 @@ export const OperationalSalesPage = () => {
         render: (sale) => sale.branch.name ?? "Sin sucursal",
       },
       {
-        key: "operator",
-        header: "Operador",
-        render: (sale) => sale.operator.email ?? "Sin operador",
-      },
-      {
         key: "electronicBilling",
         header: "Facturación electrónica",
         render: (sale) =>
@@ -134,8 +202,50 @@ export const OperationalSalesPage = () => {
         cellClassName: "text-right font-semibold",
         render: (sale) => formatMoney(sale.total),
       },
+      {
+        key: "actions",
+        header: "Acciones",
+        cellClassName: "min-w-[320px]",
+        render: (sale) => (
+          <div className="flex flex-wrap gap-2">
+            {sale.electronicBillingEnabled &&
+            !sale.electronicBilling &&
+            isEligibleForElectronicBillingRequest(sale) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleBillingRequest(sale.id)}
+                disabled={actionSaleId === sale.id}
+              >
+                {actionSaleId === sale.id ? "Solicitando..." : "Facturar electrónicamente"}
+              </Button>
+            ) : null}
+            <Link
+              className="inline-flex min-h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+              href={`/${params.tenant}/operations/sales/${sale.id}`}
+            >
+              Ver ticket
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handlePrint(sale)}
+              disabled={actionSaleId === sale.id}
+            >
+              {actionSaleId === sale.id ? "Imprimiendo..." : "Imprimir"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void getPosSaleTicket(sale.id).then((blob) => downloadBlob(blob, `ticket-venta-${sale.id}.pdf`))}
+            >
+              Descargar
+            </Button>
+          </div>
+        ),
+      },
     ],
-    [toggleSort]
+    [actionSaleId, handleBillingRequest, handlePrint, params.tenant, toggleSort]
   );
 
   return (
@@ -165,6 +275,11 @@ export const OperationalSalesPage = () => {
       </section>
 
       <DataTable columns={columns} rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
+      {actionMessage ? (
+        <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+          {actionMessage}
+        </p>
+      ) : null}
 
       <footer className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
         <span>{data.total} ventas · Página {page} de {totalPages}</span>

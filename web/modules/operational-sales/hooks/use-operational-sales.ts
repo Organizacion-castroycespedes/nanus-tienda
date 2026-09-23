@@ -20,7 +20,14 @@ const emptyResponse: OperationalSalesResponse = {
 
 const friendlyError = (error: unknown) => {
   if (error instanceof ApiError && error.status === 403) {
-    if (error.message.toLowerCase().includes("turno")) {
+    const message = error.message.toLowerCase();
+    if (message.includes("sucursal")) {
+      return "Selecciona una sucursal y una terminal POS antes de consultar ventas operativas.";
+    }
+    if (message.includes("sesion pos") || message.includes("pos session")) {
+      return "Selecciona una terminal POS antes de consultar ventas operativas.";
+    }
+    if (message.includes("turno")) {
       return "No tienes un turno de caja abierto para consultar ventas operativas.";
     }
     return "No tienes permisos para consultar ventas operativas.";
@@ -89,5 +96,6 @@ export const useOperationalSales = () => {
     resetFilters,
     updateFilter,
     toggleSort,
+    reload: load,
   };
 };

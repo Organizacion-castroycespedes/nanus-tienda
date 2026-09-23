@@ -37,6 +37,7 @@ import { DateRangePicker } from "../../../components/design-system/DateRangePick
 import { Select } from "../../../components/design-system/Select";
 import { Input } from "../../../components/design-system/Input";
 import { ReportFilters, type ReportFilterDefinition } from "../../../components/design-system/ReportFilters";
+import { resolveTenantSettings } from "../../../domains/parameters/api";
 import { canViewElectronicDocument } from "../utils/electronic-document-action";
 import {
   requestElectronicBilling,
@@ -76,6 +77,8 @@ const PosReportsPage = () => {
   const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
   const [billingRequestBusy, setBillingRequestBusy] = useState(false);
   const posContext = usePosContext();
+  const [resolvedElectronicBillingEnabled, setResolvedElectronicBillingEnabled] =
+    useState<boolean | null>(null);
   const {
     canViewReports,
     showTenantSelector,
@@ -92,7 +95,8 @@ const PosReportsPage = () => {
     resolvedBranchLabel,
   } = useReportingScope();
   const { dataset, loading, searched, error, loadReports } = usePosReports();
-  const showElectronicBilling = dataset?.electronicBillingEnabled === true;
+  const showElectronicBilling =
+    resolvedElectronicBillingEnabled ?? dataset?.electronicBillingEnabled === true;
   const [page, setPage] = useState(1);
   const pageSize = 25;
 
@@ -195,6 +199,47 @@ const PosReportsPage = () => {
     });
     setPage(1);
   }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!tenantId) {
+      setResolvedElectronicBillingEnabled(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void Promise.all([
+      resolveTenantSettings({
+        tenantId,
+        branchId: posContext.branchId ?? branchId ?? undefined,
+        terminalId: posContext.terminalId ?? undefined,
+        code: "SEND_INVOICE",
+      }),
+      resolveTenantSettings({
+        tenantId,
+        branchId: posContext.branchId ?? branchId ?? undefined,
+        terminalId: posContext.terminalId ?? undefined,
+        code: "GENERATE_INVOICE",
+      }),
+    ])
+      .then(([sendInvoice, generateInvoice]) => {
+        if (!cancelled) {
+          setResolvedElectronicBillingEnabled(
+            sendInvoice.value !== "DISABLED" && generateInvoice.value !== "DISABLED",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedElectronicBillingEnabled(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId, posContext.branchId, posContext.terminalId, tenantId]);
 
   const columns = useMemo<DataTableColumn<PosSalesListRow>[]>(
     () => [

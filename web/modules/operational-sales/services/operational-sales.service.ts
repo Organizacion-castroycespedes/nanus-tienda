@@ -1,6 +1,7 @@
 import { apiClient } from "../../../lib/http";
 import type {
   OperationalSaleDetail,
+  OperationalSaleListItem,
   OperationalSalesFilters,
   OperationalSalesResponse,
 } from "../types";
@@ -14,7 +15,7 @@ export type OperationalSalesRequest = {
 };
 
 export const isEligibleForElectronicBillingRequest = (
-  sale: Pick<OperationalSaleDetail, "status" | "paymentStatus" | "electronicBilling" | "customer">
+  sale: Pick<OperationalSaleListItem, "status" | "paymentStatus" | "electronicBilling" | "customer">
 ) =>
   !sale.electronicBilling &&
   sale.status === "CONFIRMED" &&
@@ -35,16 +36,22 @@ export const fetchOperationalSales = (request: OperationalSalesRequest) => {
     }
   });
 
-  return apiClient<OperationalSalesResponse>(`/operations/sales?${params.toString()}`);
+  return apiClient<OperationalSalesResponse>(
+    `/operations/sales?${params.toString()}`,
+    { includePosSession: true },
+  );
 };
 
 export const fetchOperationalSaleDetail = (saleId: string) =>
-  apiClient<OperationalSaleDetail>(`/operations/sales/${encodeURIComponent(saleId)}`);
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}`,
+    { includePosSession: true },
+  );
 
 export const refreshOperationalSaleBillingStatus = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/refresh`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export type ElectronicBillingRequestResult = {
@@ -59,19 +66,19 @@ export type ElectronicBillingRequestResult = {
 export const requestOperationalSaleElectronicBilling = (saleId: string) =>
   apiClient<ElectronicBillingRequestResult>(
     `/sales/${encodeURIComponent(saleId)}/electronic-billing`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export const retryOperationalSaleBilling = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/retry`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export const recoverOperationalSaleProviderCreateIntent = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/recover-provider-create-intent`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export const shouldShowProviderCreateIntentRecovery = (
