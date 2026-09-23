@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   UserRound,
   UserPlus,
+  Wallet,
   X,
 } from "lucide-react";
 import {
@@ -2066,6 +2067,14 @@ export const PosScreen = () => {
   ]);
 
   const cancelCurrentSale = useCallback(() => {
+    if (cartRef.current.length > 0) {
+      const confirmed = window.confirm(
+        "¿Cancelar la venta actual? Se vaciará el carrito."
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
     resetPosCartSale();
     setCartItemsAndRef([]);
     setExpandedTaxItems({});
@@ -2081,6 +2090,10 @@ export const PosScreen = () => {
     setSelectedCustomerId,
   ]);
 
+  const closeCartSheet = useCallback(() => {
+    setCartSheetOpen(false);
+  }, [setCartSheetOpen]);
+
   const closeChargeModal = () => {
     if (processingSale) {
       return;
@@ -2093,7 +2106,7 @@ export const PosScreen = () => {
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
       const editableTarget = isEditableShortcutTarget(event.target);
 
-      if (event.key === "/" && !editableTarget && !paymentModalOpen && !cartSheetOpen) {
+      if (event.key === "/" && !editableTarget && !paymentModalOpen) {
         event.preventDefault();
         openProductTools();
         return;
@@ -2110,7 +2123,7 @@ export const PosScreen = () => {
         }
         if (cartSheetOpen) {
           event.preventDefault();
-          cancelCurrentSale();
+          closeCartSheet();
           return;
         }
         if (query.trim()) {
@@ -2137,9 +2150,6 @@ export const PosScreen = () => {
 
       if ((event.key === "F4" || event.key === "F12") && canCharge) {
         event.preventDefault();
-        if (cartSheetOpen) {
-          setCartSheetOpen(false);
-        }
         openChargeModal();
       }
     };
@@ -2148,7 +2158,7 @@ export const PosScreen = () => {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [
     canCharge,
-    cancelCurrentSale,
+    closeCartSheet,
     focusProductSearch,
     cartSheetOpen,
     openChargeModal,
@@ -2157,7 +2167,6 @@ export const PosScreen = () => {
     query,
     quickFiscalCustomerOpen,
     productToolsOpen,
-    setCartSheetOpen,
   ]);
 
   const firstPaymentId = payments[0]?.id;
@@ -3281,7 +3290,7 @@ export const PosScreen = () => {
         resolvePresentation={resolveCartItemPresentation}
         formatCurrency={formatCurrency}
         parseQuantityInput={parseQuantityInput}
-        onClose={() => setCartSheetOpen(false)}
+        onClose={closeCartSheet}
         onCancelSale={cancelCurrentSale}
         onCharge={openChargeModal}
         onUpdateQuantity={updateQuantity}
@@ -3307,9 +3316,7 @@ export const PosScreen = () => {
           onPointerUp={cartFloatingControl.buttonProps.onPointerUp}
           onPointerCancel={cartFloatingControl.buttonProps.onPointerCancel}
           onClick={cartFloatingControl.buttonProps.onClick}
-          style={{
-            ...cartFloatingControl.buttonStyle,
-          }}
+          style={cartFloatingControl.buttonStyle}
           className={`fixed z-30 flex cursor-grab select-none items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-white shadow-2xl transition hover:scale-105 hover:bg-slate-800 active:cursor-grabbing active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 sm:px-6 sm:py-4 ${cartFloatingControl.isDragging ? "scale-[1.02] shadow-[0_24px_60px_-24px_rgba(15,23,42,0.65)]" : ""}`}
           aria-label={`Abrir carrito con ${cartItemCount} productos`}
           title="Abrir carrito. Arrastra para mover."
@@ -3318,6 +3325,33 @@ export const PosScreen = () => {
           <span className="font-semibold">
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
+          {canCharge ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openChargeModal();
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openChargeModal();
+                }
+              }}
+              className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-blue-400"
+              aria-label={`Cobrar ${formatCurrency(summary.total)}`}
+              title="Cobrar (F4 / F12)"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              Cobrar
+            </span>
+          ) : null}
         </button>
       ) : null}
 
