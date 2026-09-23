@@ -1969,15 +1969,20 @@ const ConfiguracionPage = () => {
       }
       const generateMode = tenantDocumentModes.GENERATE_INVOICE ?? "AUTOMATIC";
       const currentConfig = await getTenantConfig(tenantId);
-      const currentBranding: BrandingConfig = {
-        colors: normalizedBrandingConfig.colors,
-        font: normalizedBrandingConfig.font,
-        logo: normalizedBrandingConfig.logo,
-        spacing: normalizedBrandingConfig.spacing,
+      const currentBrandingConfig: BrandingConfig = {
+        ...normalizedBrandingConfig,
+        ...currentConfig.config,
+        colors: {
+          ...normalizedBrandingConfig.colors,
+          ...currentConfig.config.colors,
+        },
+        spacing: {
+          ...normalizedBrandingConfig.spacing,
+          ...(currentConfig.config.spacing ?? {}),
+        },
       };
       await updateTenantConfig(tenantId, {
-        ...(currentConfig.config ?? {}),
-        ...currentBranding,
+        ...currentBrandingConfig,
         electronicBillingEnabled: generateMode !== "DISABLED",
         electronicBillingMode:
           generateMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
