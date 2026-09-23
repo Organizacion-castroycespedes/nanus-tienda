@@ -12,10 +12,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, hint, className, ...props }, ref) => {
     return (
       <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
-        <span className="font-medium">
-          {label}
-          {props.required ? <span className="text-red-600"> *</span> : null}
-        </span>
+        {label ? (
+          <span className="font-medium">
+            {label}
+            {props.required ? <span className="text-red-600"> *</span> : null}
+          </span>
+        ) : null}
         <input
           ref={ref}
           {...props}

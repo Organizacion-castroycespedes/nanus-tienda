@@ -207,7 +207,14 @@ export class CashMovementsService {
 
     await this.assertBranchScope(actor, tenantId, session.branch_id);
 
-    if (!this.canAdminCash(actor) && session.opened_by_user_id !== actor.userId) {
+    if (
+      !this.canAdminCash(actor) &&
+      session.opened_by_user_id !== actor.userId &&
+      !(await this.sessionsRepository.hasActiveAssignment(
+        session.cash_register_id,
+        actor.userId
+      ))
+    ) {
       throw new ForbiddenException("Solo puedes registrar movimientos en tu caja");
     }
 
@@ -279,7 +286,14 @@ export class CashMovementsService {
       if (!session) {
         throw new NotFoundException("Sesion de caja no encontrada");
       }
-      if (!this.canAdminCash(actor) && session.opened_by_user_id !== actor.userId) {
+      if (
+        !this.canAdminCash(actor) &&
+        session.opened_by_user_id !== actor.userId &&
+        !(await this.sessionsRepository.hasActiveAssignment(
+          session.cash_register_id,
+          actor.userId
+        ))
+      ) {
         throw new ForbiddenException("No autorizado para esta sesion");
       }
     }

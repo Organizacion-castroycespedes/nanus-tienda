@@ -74,6 +74,7 @@ import {
   resolveElectronicBillingPolicy,
   type ElectronicBillingPolicy,
 } from "../../integration-outbox/contracts/electronic-billing-mode";
+import { ParametersService } from "../../parameters/parameters.service";
 import { StockMovementService } from "./stock-movement.service";
 import {
   normalizeVatResponsibility,
@@ -184,6 +185,7 @@ type SaleContext = {
   branchId?: string;
   terminalId?: string;
   posSessionId?: string;
+  cashSessionId?: string;
   sessionId?: string;
   roles?: string[];
 };
@@ -356,7 +358,10 @@ export class SaleService {
     private readonly taxRepository?: TaxRepository,
     @Optional()
     @Inject(ElectronicInvoicingCustomersRepository)
-    private readonly electronicInvoicingCustomersRepository?: ElectronicInvoicingCustomersRepository
+    private readonly electronicInvoicingCustomersRepository?: ElectronicInvoicingCustomersRepository,
+    @Optional()
+    @Inject(ParametersService)
+    private readonly parametersService?: ParametersService
   ) {}
 
   private toNumber(value: string | number) {
@@ -472,6 +477,7 @@ export class SaleService {
         branchId: context.branchId,
         terminalId: context.terminalId,
         posSessionId: context.posSessionId,
+        cashSessionId: context.cashSessionId,
         sessionId: context.sessionId,
         roles: Array.isArray(context.roles) ? context.roles : [],
       };
@@ -492,6 +498,7 @@ export class SaleService {
       branchId: currentPosContext.branch_id,
       terminalId: currentPosContext.terminal_id,
       posSessionId: currentPosContext.pos_session_id,
+      cashSessionId: context.cashSessionId,
       sessionId: context.sessionId,
       roles: Array.isArray(context.roles) ? context.roles : [],
     };
@@ -1392,7 +1399,22 @@ export class SaleService {
   private async getTenantElectronicBillingPolicy(
     tenantId: string,
     client: PoolClient,
+    branchId?: string | null,
+    terminalId?: string | null,
   ): Promise<ElectronicBillingPolicy> {
+    if (this.parametersService) {
+      const fromSettings = await this.parametersService.resolveElectronicBillingPolicy(
+        tenantId,
+        branchId,
+        terminalId,
+        client,
+      );
+      return {
+        enabled: fromSettings.enabled,
+        mode: fromSettings.mode,
+      };
+    }
+
     const result = await client.query<{ config: unknown }>(
       "SELECT config FROM tenants WHERE id = $1",
       [tenantId],
@@ -1425,6 +1447,8 @@ export class SaleService {
     const policy = await this.getTenantElectronicBillingPolicy(
       saleContext.tenantId!,
       client,
+      saleContext.branchId,
+      saleContext.terminalId,
     );
     if (!policy.enabled) {
       throw new BadRequestException("electronic billing is disabled for this tenant");
@@ -2619,6 +2643,21 @@ export class SaleService {
         throw new BadRequestException("sale could not be created");
       }
 
+      const saleCashSessionId =
+        saleContext.cashSessionId ??
+        payments.find((payment) => payment.cashSessionId)?.cashSessionId ??
+        null;
+      if (saleCashSessionId) {
+        await client.query(
+          `UPDATE sales
+           SET cash_session_id = $1
+           WHERE id = $2
+             AND tenant_id = $3
+             AND cash_session_id IS NULL`,
+          [saleCashSessionId, saleRow.id, saleContext.tenantId]
+        );
+      }
+
       for (const payment of payments) {
         const payload = Object.assign(new CreatePaymentDto(), {
           branchId: saleContext.branchId,
@@ -2657,6 +2696,8 @@ export class SaleService {
       const billingPolicy = await this.getTenantElectronicBillingPolicy(
         saleContext.tenantId,
         client,
+        saleContext.branchId,
+        saleContext.terminalId,
       );
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
@@ -2767,6 +2808,21 @@ export class SaleService {
         throw new BadRequestException("sale could not be created");
       }
 
+      const saleCashSessionId =
+        saleContext.cashSessionId ??
+        payments.find((payment) => payment.cashSessionId)?.cashSessionId ??
+        null;
+      if (saleCashSessionId) {
+        await client.query(
+          `UPDATE sales
+           SET cash_session_id = $1
+           WHERE id = $2
+             AND tenant_id = $3
+             AND cash_session_id IS NULL`,
+          [saleCashSessionId, saleRow.id, saleContext.tenantId],
+        );
+      }
+
       const selectedInstitutionCount = payments.filter(
         (payment) => Boolean(payment.financialInstitutionId),
       ).length;
@@ -2798,6 +2854,8 @@ export class SaleService {
       const billingPolicy = await this.getTenantElectronicBillingPolicy(
         saleContext.tenantId,
         client,
+        saleContext.branchId,
+        saleContext.terminalId,
       );
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(

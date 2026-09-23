@@ -101,8 +101,9 @@ export const CartSaleModal = ({
     <Modal
       size="full"
       responsive
+      fullScreen
       onClose={onClose}
-      className="max-w-6xl dark:bg-slate-950"
+      className="dark:bg-slate-950"
       bodyClassName="!overflow-hidden !pr-0 flex min-h-0 flex-1 flex-col"
       footerClassName="!mt-0 w-full flex-col gap-2 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
       header={
@@ -131,12 +132,12 @@ export const CartSaleModal = ({
             Cancelar venta
           </button>
           <Button
-            className="min-h-12 w-full rounded-xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:min-w-[16rem] sm:flex-1 md:flex-none md:min-w-[20rem]"
+            className="min-h-12 rounded-xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:min-w-[16rem] sm:flex-1 md:flex-none md:min-w-[20rem]"
             size="lg"
             onClick={onCharge}
             disabled={!canCharge}
           >
-            <Wallet className="h-5 w-5" />
+            <Wallet className="h-4 w-4" />
             COBRAR {formatCurrency(summary.total)}
             <kbd className="ml-1 hidden rounded-md border border-white/30 bg-white/15 px-1.5 py-0.5 text-[10px] font-bold text-white sm:inline">
               F12

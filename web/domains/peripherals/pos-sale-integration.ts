@@ -6,6 +6,7 @@ import {
 } from "./contracts";
 import { canonicalPosSourceToSaleTicketInput } from "../../modules/reporteria/canonical-printable-document";
 import { isCashPaymentMethod } from "../../modules/shared/payments/payment-allocation.helper";
+import { resolveTenantSettings } from "../parameters/api";
 import type {
   PeripheralOperationError,
   PeripheralTicketPayment,
@@ -140,27 +141,42 @@ export const runSalePeripheralOperations = async (
   const ticketInput = buildSaleTicketInputFromPos(context);
 
   if (flags.printSaleEnabled) {
-    // Build explicitly here so sale integration keeps the same payload contract
-    // that admin diagnostics uses through /printer/print-ticket.
-    buildSaleTicketPayload(ticketInput);
-    const printResult = await printSaleTicket(ticketInput);
+    let printTicketMode = "ON_DEMAND";
+    if (context.tenantId) {
+      try {
+        const resolved = await resolveTenantSettings({
+          tenantId: context.tenantId,
+          branchId: context.branchId ?? undefined,
+          terminalId: context.terminalId ?? undefined,
+          code: "PRINT_TICKET",
+        });
+        printTicketMode = resolved.value ?? "ON_DEMAND";
+      } catch {
+        printTicketMode = "ON_DEMAND";
+      }
+    }
 
-    if (printResult.success) {
-      feedback.push({
-        variant: "success",
-        message: "Ticket enviado a impresion",
-        operation: "print",
-      });
-    } else if (
-      printResult.error.code !== "PERIPHERALS_DISABLED" &&
-      printResult.error.code !== "OPERATION_DISABLED"
-    ) {
-      feedback.push({
-        variant: "warning",
-        message: printWarningMessage(printResult.error),
-        operation: "print",
-        error: printResult.error,
-      });
+    if (printTicketMode !== "DISABLED") {
+      buildSaleTicketPayload(ticketInput);
+      const printResult = await printSaleTicket(ticketInput);
+
+      if (printResult.success) {
+        feedback.push({
+          variant: "success",
+          message: "Ticket enviado a impresion",
+          operation: "print",
+        });
+      } else if (
+        printResult.error.code !== "PERIPHERALS_DISABLED" &&
+        printResult.error.code !== "OPERATION_DISABLED"
+      ) {
+        feedback.push({
+          variant: "warning",
+          message: printWarningMessage(printResult.error),
+          operation: "print",
+          error: printResult.error,
+        });
+      }
     }
   }
 

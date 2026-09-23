@@ -88,6 +88,22 @@ export class CashSessionsService {
     return this.canAdminCash(actor) || actor.roles.includes("USER");
   }
 
+  private async canOperateCashSession(
+    actor: FinanceActor,
+    session: { opened_by_user_id: string; cash_register_id: string }
+  ) {
+    if (this.canAdminCash(actor)) {
+      return true;
+    }
+    if (session.opened_by_user_id === actor.userId) {
+      return true;
+    }
+    return this.repository.hasActiveAssignment(
+      session.cash_register_id,
+      actor.userId
+    );
+  }
+
   private resolveTenantId(actor: FinanceActor, tenantId?: string) {
     if (this.isSuperAdmin(actor)) {
       return tenantId?.trim() || actor.tenantId;
@@ -1041,7 +1057,7 @@ export class CashSessionsService {
       if (!current) {
         return null;
       }
-      if (!this.canAdminCash(actor) && current.opened_by_user_id !== actor.userId) {
+      if (!(await this.canOperateCashSession(actor, current))) {
         throw new ForbiddenException("No autorizado para esta caja");
       }
       return this.mapResponse(current);
@@ -1081,7 +1097,7 @@ export class CashSessionsService {
       branchIds: await this.resolveAllowedBranchIds(actor, tenantId),
       cashRegisterId: query.cashRegisterId,
       status: query.status,
-      openedByUserId: this.canAdminCash(actor) ? undefined : actor.userId,
+      operatorUserId: this.canAdminCash(actor) ? undefined : actor.userId,
       limit: query.limit ?? 100,
       offset: query.offset ?? 0,
     });
@@ -1118,7 +1134,7 @@ export class CashSessionsService {
     await this.assertActiveUser(actor, tenantId);
     await this.assertBranchScope(actor, tenantId, current.branch_id);
 
-    if (!this.canAdminCash(actor) && current.opened_by_user_id !== actor.userId) {
+    if (!(await this.canOperateCashSession(actor, current))) {
       throw new ForbiddenException("Solo puedes consultar tu propia caja");
     }
 
@@ -1156,7 +1172,7 @@ export class CashSessionsService {
     await this.assertActiveUser(actor, tenantId);
     await this.assertBranchScope(actor, tenantId, current.branch_id);
 
-    if (!this.canAdminCash(actor) && current.opened_by_user_id !== actor.userId) {
+    if (!(await this.canOperateCashSession(actor, current))) {
       throw new ForbiddenException("Solo puedes arquear tu propia caja");
     }
     if (!(await this.hasCashCountAuditSchema())) {
@@ -1254,7 +1270,7 @@ export class CashSessionsService {
     await this.assertActiveUser(actor, tenantId);
     await this.assertBranchScope(actor, tenantId, current.branch_id);
 
-    if (!this.canAdminCash(actor) && current.opened_by_user_id !== actor.userId) {
+    if (!(await this.canOperateCashSession(actor, current))) {
       throw new ForbiddenException("Solo puedes consultar tu propia caja");
     }
 

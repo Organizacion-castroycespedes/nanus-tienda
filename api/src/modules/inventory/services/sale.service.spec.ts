@@ -204,6 +204,10 @@ class FakeCreateSaleClient {
       return { rows: [] as T[] };
     }
 
+    if (sql.startsWith("UPDATE sales")) {
+      return { rows: [] as T[] };
+    }
+
     if (sql.includes("SELECT total_paid FROM sales")) {
       return { rows: [{ total_paid: 360 }] as T[] };
     }
