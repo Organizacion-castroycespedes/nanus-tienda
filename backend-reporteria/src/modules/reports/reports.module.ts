@@ -29,6 +29,10 @@ import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import { DocumentExportService } from "./document-export.service";
 import { InventoryBiValuationReportsController } from "./inventory-bi-valuation-reports.controller";
 import { InventoryBiValuationReportsService } from "./inventory-bi-valuation-reports.service";
+import { OperationalSalesReportsController } from "./operational-sales-reports.controller";
+import { OperationalSalesReportsService } from "./operational-sales-reports.service";
+import { OperationalSalesReportScopeService } from "./operational-sales-report-scope.service";
+import { OperationalSalesReportAdapter } from "./sql-adapters/operational-sales-report.adapter";
 
 @Module({
   imports: [AuthModule, DatabaseModule, PdfModule],
@@ -43,6 +47,7 @@ import { InventoryBiValuationReportsService } from "./inventory-bi-valuation-rep
     CurrentShiftReportsController,
     ProductInventoryReportsController,
     InventoryBiValuationReportsController,
+    OperationalSalesReportsController,
   ],
   providers: [
     ReportsService,
@@ -62,6 +67,9 @@ import { InventoryBiValuationReportsService } from "./inventory-bi-valuation-rep
     CustomersReportAdapter,
     DocumentExportService,
     InventoryBiValuationReportsService,
+    OperationalSalesReportsService,
+    OperationalSalesReportScopeService,
+    OperationalSalesReportAdapter,
   ],
 })
 export class ReportsModule {}

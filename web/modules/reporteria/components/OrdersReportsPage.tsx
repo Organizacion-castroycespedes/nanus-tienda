@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Eye } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Input } from "../../../components/design-system/Input";
 import { Pagination } from "../../../components/design-system/Pagination";
 import { ReportFilters } from "../../../components/design-system/ReportFilters";
@@ -27,7 +28,7 @@ const OrdersReportsPage = () => {
   const [customerDocument, setCustomerDocument] = useState("");
   const [page, setPage] = useState(1);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
   const scope = useReportingScope();
   const reports = useOrdersReports();
 
@@ -49,7 +50,7 @@ const OrdersReportsPage = () => {
     { key: "paid", header: "Pagado", render: (row) => formatCurrency(row.paid) },
     { key: "balance", header: "Saldo", render: (row) => formatCurrency(row.balance) },
     { key: "status", header: "Estado", render: (row) => <div><ReportStatusBadge value={row.status} /><p className="text-sm">{row.paymentStatus}</p><p className="text-xs text-slate-500">{row.generatedSaleId ? `Venta ${row.generatedSaleId.slice(0, 8)}` : "Sin venta generada"}</p></div> },
-    { key: "actions", header: "Acciones", cellClassName: "min-w-[200px]", render: (row) => <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de pedido ${row.orderId.slice(0, 8)}`, fileName: `ticket-pedido-${row.orderId}.pdf`, getPdf: () => getOrderSaleTicket(row.orderId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getOrderSaleTicket(row.orderId), `ticket-pedido-${row.orderId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></div> },
+    { key: "actions", actionFirst: true, header: "Acciones", cellClassName: "w-14", render: (row) => <RowActionsMenu><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de pedido ${row.orderId.slice(0, 8)}`, fileName: `ticket-pedido-${row.orderId}.pdf`, getPdf: () => getOrderSaleTicket(row.orderId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getOrderSaleTicket(row.orderId), `ticket-pedido-${row.orderId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></RowActionsMenu> },
   ], []);
 
   const filters = useMemo(() => createReportScopeFilters({ dateRange, initialRange, setDateRange, showTenantSelector: scope.showTenantSelector, showBranchSelector: scope.showBranchSelector, tenantId: scope.tenantId, branchId: scope.branchId, setTenantId: scope.setTenantId, setBranchId: scope.setBranchId, tenantOptions: scope.tenantOptions, branchOptions: scope.branchOptions, loadingTenants: scope.loadingTenants, loadingBranches: scope.loadingBranches, tenantLabel: scope.resolvedTenantLabel, branchLabel: scope.resolvedBranchLabel, extra: [{ key: "customerDocument", label: "Número de identificación", priority: "secondary", active: Boolean(customerDocument), activeLabel: customerDocument, render: () => <Input label="Número de identificación" placeholder="Buscar identificación" value={customerDocument} onChange={(event) => setCustomerDocument(event.target.value)} />, clear: () => setCustomerDocument("") }] }), [customerDocument, dateRange, initialRange, scope]);
@@ -70,7 +71,7 @@ const OrdersReportsPage = () => {
         <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange, customerDocument)} isLoading={reports.loading} disabled={!dateRange.from || !dateRange.to}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId || !dateRange.from || !dateRange.to}><Eye className="h-4 w-4" /> Reporte</Button></>} />
         <ReportSummary items={[{ label: "Pedidos", value: reports.dataset ? reports.dataset.summary.count : reports.searched ? 0 : "--" }, { label: "Completados", value: reports.dataset ? reports.dataset.summary.completed : reports.searched ? 0 : "--" }, { label: "Parciales", value: reports.dataset ? reports.dataset.summary.partial : reports.searched ? 0 : "--" }, { label: "Pendientes", value: reports.dataset ? reports.dataset.summary.pending : reports.searched ? 0 : "--" }]} />
         <DataTable columns={columns} rows={reports.dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? []} getRowKey={(row) => row.orderId} loading={reports.loading} error={reports.error} emptyState={reports.searched ? "No hay pedidos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />
-        {reports.dataset ? <Pagination page={page} pageSize={pageSize} totalItems={reports.dataset.rows.length} onPageChange={setPage} /> : null}
+        {reports.dataset ? <Pagination page={page} pageSize={pageSize} totalItems={reports.dataset.rows.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /> : null}
       </div>
       {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onDownloadExcel={pdfConfig.onDownloadExcel} allowPrint onClose={() => setPdfConfig(null)} /> : null}
     </ReportLayout>

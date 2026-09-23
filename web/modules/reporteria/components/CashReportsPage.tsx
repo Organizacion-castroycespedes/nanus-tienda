@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Download, Eye } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Pagination } from "../../../components/design-system/Pagination";
 import { ReportFilters } from "../../../components/design-system/ReportFilters";
 import { ReportLayout } from "../../../components/design-system/ReportLayout";
@@ -38,7 +39,7 @@ const CashReportsPage = () => {
   const [page, setPage] = useState(1);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const [reportPreviewOpen, setReportPreviewOpen] = useState(false);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
   const scope = useReportingScope();
   const reports = useCashReports();
 
@@ -64,7 +65,7 @@ const CashReportsPage = () => {
     { key: "totalOut", header: "Egresos", render: (row) => formatCurrency(row.totalOut) },
     { key: "expectedAmount", header: "Esperado", render: (row) => formatCurrency(row.expectedAmount) },
     { key: "difference", header: "Diferencia", render: (row) => <div><p className="font-medium">{formatCurrency(row.difference)}</p><ReportStatusBadge value={row.status} /></div> },
-    { key: "actions", header: "Acciones", cellClassName: "min-w-[180px]", render: (row) => <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de cierre ${row.cashSessionId.slice(0, 8)}`, fileName: `ticket-cierre-${row.cashSessionId}.pdf`, getPdf: () => getCashClosingTicket(row.cashSessionId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashClosingTicket(row.cashSessionId), `ticket-cierre-${row.cashSessionId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></div> },
+    { key: "actions", actionFirst: true, header: "Acciones", cellClassName: "w-14", render: (row) => <RowActionsMenu><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de cierre ${row.cashSessionId.slice(0, 8)}`, fileName: `ticket-cierre-${row.cashSessionId}.pdf`, getPdf: () => getCashClosingTicket(row.cashSessionId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashClosingTicket(row.cashSessionId), `ticket-cierre-${row.cashSessionId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></RowActionsMenu> },
   ], []);
 
   const auditsColumns = useMemo<DataTableColumn<CashAuditListRow>[]>(() => [
@@ -73,7 +74,7 @@ const CashReportsPage = () => {
     { key: "counted", header: "Contado", render: (row) => formatCurrency(row.countedAmount) },
     { key: "expected", header: "Esperado", render: (row) => formatCurrency(row.expectedAmount) },
     { key: "difference", header: "Diferencia", render: (row) => <div><p className="font-medium">{formatCurrency(row.difference)}</p><ReportStatusBadge value={row.sessionStatus} /></div> },
-    { key: "actions", header: "Acciones", cellClassName: "min-w-[180px]", render: (row) => <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de arqueo ${row.cashCountId.slice(0, 8)}`, fileName: `ticket-arqueo-${row.cashCountId}.pdf`, getPdf: () => getCashAuditTicket(row.cashCountId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashAuditTicket(row.cashCountId), `ticket-arqueo-${row.cashCountId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></div> },
+    { key: "actions", actionFirst: true, header: "Acciones", cellClassName: "w-14", render: (row) => <RowActionsMenu><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de arqueo ${row.cashCountId.slice(0, 8)}`, fileName: `ticket-arqueo-${row.cashCountId}.pdf`, getPdf: () => getCashAuditTicket(row.cashCountId) })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashAuditTicket(row.cashCountId), `ticket-arqueo-${row.cashCountId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></RowActionsMenu> },
   ], []);
 
   if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar cierres y arqueos de caja." />;
@@ -104,7 +105,7 @@ const CashReportsPage = () => {
         <ReportSummary items={summaryItems} />
         <Tabs items={[{ value: "closings", label: "Cierres", helper: `${reports.closingsDataset?.summary.count ?? 0} registros` }, { value: "audits", label: "Arqueos", helper: `${reports.auditsDataset?.summary.count ?? 0} registros` }]} value={activeTab} onChange={(value) => { setActiveTab(value as ActiveTab); setPage(1); }} />
         {activeTab === "closings" ? <DataTable columns={closingsColumns} rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashClosingListRow[]} getRowKey={(row) => row.cashSessionId} loading={reports.loadingClosings} error={reports.closingsError} emptyState={reports.searched ? "No hay cierres para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} /> : <DataTable columns={auditsColumns} rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashAuditListRow[]} getRowKey={(row) => row.cashCountId} loading={reports.loadingAudits} error={reports.auditsError} emptyState={reports.searched ? "No hay arqueos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />}
-        {activeDataset ? <Pagination page={page} pageSize={pageSize} totalItems={activeRows.length} onPageChange={setPage} /> : null}
+        {activeDataset ? <Pagination page={page} pageSize={pageSize} totalItems={activeRows.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /> : null}
       </div>
       {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onClose={() => setPdfConfig(null)} /> : null}
       {reportPreviewOpen ? <PdfPreviewModal
