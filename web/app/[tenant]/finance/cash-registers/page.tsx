@@ -62,7 +62,7 @@ const CashRegistersPage = () => {
 
   const { canViewFinance, canManageCashRegisters, isSuperRole } =
     getFinancePermissions(role);
-  const canManageCashRegisterAssignments = role === "SUPER_ADMIN" || role === "ADMIN";
+  const canManageCashRegisterAssignments = isSuperRole || role === "ADMIN";
   const defaultTenantId = isSuperRole ? undefined : authUser?.tenantId ?? undefined;
   const {
     cashRegisters,
@@ -463,7 +463,7 @@ const CashRegistersPage = () => {
       {assignmentItem ? (
         <Modal
           title={`Usuarios de ${assignmentItem.nombre}`}
-          description="SUPER_ADMIN y ADMIN pueden administrar los cajeros asignados a esta caja."
+          description="SUPER_ADMIN, SUPER_USER y ADMIN pueden administrar los cajeros asignados a esta caja."
           onClose={closeAssignments}
           size="lg"
           responsive
