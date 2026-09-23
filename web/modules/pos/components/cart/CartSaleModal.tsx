@@ -129,9 +129,6 @@ export const CartSaleModal = ({
           >
             <X className="h-4 w-4" />
             Cancelar venta
-            <kbd className="ml-1 hidden rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400 sm:inline">
-              ESC
-            </kbd>
           </button>
           <Button
             className="min-h-12 w-full rounded-xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98] sm:min-w-[16rem] sm:flex-1 md:flex-none md:min-w-[20rem]"
