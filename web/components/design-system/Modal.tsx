@@ -8,6 +8,7 @@ type ModalProps = {
   contentClassName?: string;
   bodyClassName?: string;
   responsive?: boolean;
+  fullScreen?: boolean;
   description?: string;
   header?: ReactNode;
   footer?: ReactNode;
@@ -30,6 +31,7 @@ export const Modal = ({
   contentClassName,
   bodyClassName,
   responsive = false,
+  fullScreen = false,
   description,
   header,
   footer,
@@ -43,7 +45,7 @@ export const Modal = ({
       aria-modal="true"
       className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 ${
         responsive ? "overflow-hidden p-2 sm:p-4" : "p-6"
-      }`}
+      } ${fullScreen ? "cart-sale-modal-overlay" : ""}`}
     >
       {onClose ? (
         <button
@@ -58,7 +60,7 @@ export const Modal = ({
           responsive
             ? "flex min-h-0 max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-4 sm:max-h-[calc(100dvh-2rem)] sm:p-6"
             : "p-6"
-        } ${sizeStyles[size]} rounded-2xl bg-white shadow-xl ${className ?? ""} ${
+        } ${sizeStyles[size]} rounded-2xl bg-white shadow-xl ${fullScreen ? "cart-sale-modal-content" : ""} ${className ?? ""} ${
           contentClassName ?? ""
         } dark:bg-slate-800`}
       >
