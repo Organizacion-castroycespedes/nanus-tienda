@@ -31,13 +31,13 @@ export class OperationalSalesController {
   ) {}
 
   @Get()
-  @RequirePermission({ menuKey: "POS", level: "READ" })
+  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "READ" })
   list(@Query() query: OperationalSalesQueryDto, @Req() request: OperationalRequest) {
     return this.service.list(this.actor(request), query);
   }
 
   @Get(":saleId")
-  @RequirePermission({ menuKey: "POS", level: "READ" })
+  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "READ" })
   detail(@Param("saleId") saleId: string, @Req() request: OperationalRequest) {
     return this.service.detail(this.actor(request), saleId);
   }

@@ -32,6 +32,7 @@ import { useCashSessions } from "../../../../modules/finance/hooks/use-cash-sess
 import { getFinancePermissions } from "../../../../modules/finance/permissions";
 import type {
   CashSession,
+  CashSessionCloseResult,
   CashSessionSummary,
   CloseCashSessionPayload,
   CreateCashSessionAuditPayload,
@@ -40,6 +41,7 @@ import { formatCurrency, formatDateTime } from "../../../../modules/finance/util
 import { createCashSessionAudit } from "../../../../modules/finance/services/finance.service";
 import { PdfPreviewModal } from "../../../../modules/reporteria/components/PdfPreviewModal";
 import { getCashClosingTicket } from "../../../../modules/reporteria/services/reporting.service";
+import { getCashAuditTicket } from "../../../../modules/reporteria/services/reporting.service";
 import {
   downloadBlob,
   getApiErrorMessage,
@@ -270,6 +272,15 @@ const CashSessionsPage = () => {
     }
   };
 
+  const handleDownloadIndividualTicket = async (cashCountId: string) => {
+    try {
+      const blob = await getCashAuditTicket(cashCountId);
+      downloadBlob(blob, `tirilla-cajero-${cashCountId}.pdf`);
+    } catch (error) {
+      showTicketActionError(error, "No se pudo descargar la tirilla individual.");
+    }
+  };
+
   const handlePrintTicket = async (
     cashSessionId: string,
     options: { automatic?: boolean } = {}
@@ -313,15 +324,21 @@ const CashSessionsPage = () => {
     const realSnapshot = closeForm.closingAmount;
 
     try {
-      const closed = await closeSession(currentSession.id, closeForm);
+      const closed: CashSessionCloseResult = await closeSession(
+        currentSession.id,
+        closeForm
+      );
+      const isComplete = closed.closureProgress?.isComplete !== false;
       setCloseModal(false);
       setCloseForm(closeFormInitial);
       await loadCurrentSession();
       await loadHistory({ limit: 50 });
       setCloseNotice({
         variant: "success",
-        title: "Caja cerrada",
-        message: "Caja cerrada correctamente",
+        title: isComplete ? "Caja cerrada" : "Entrega registrada",
+        message: isComplete
+          ? "Caja cerrada correctamente"
+          : `Tu cierre fue registrado. Faltan ${closed.closureProgress?.pendingUserIds.length ?? 0} cajero(s).`,
         session: closed,
         summary: summarySnapshot,
         expectedAmount: expectedSnapshot,
@@ -329,7 +346,11 @@ const CashSessionsPage = () => {
         differenceAmount: closed.differenceAmount ?? realSnapshot - expectedSnapshot,
       });
       window.dispatchEvent(new Event("manus:cash-session-changed"));
-      void handlePrintTicket(closed.id, { automatic: true });
+      if (isComplete) {
+        void handlePrintTicket(closed.id, { automatic: true });
+      } else if (closed.closureCount?.id) {
+        void handleDownloadIndividualTicket(closed.closureCount.id);
+      }
     } catch (error) {
       setCloseNotice({
         variant: "error",
@@ -519,7 +540,7 @@ const CashSessionsPage = () => {
                         </Button>
                         <Button variant="warning" onClick={() => setCloseModal(true)}>
                           <Receipt className="h-4 w-4" />
-                          Cerrar caja
+                          Entregar mi cierre
                         </Button>
                       </div>
                     ) : (
@@ -571,6 +592,64 @@ const CashSessionsPage = () => {
                     accent="slate"
                   />
                 </div>
+              ) : null}
+
+              {sessionSummary?.closureProgress ? (
+                <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                        Entregas por cajero
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                        {sessionSummary.closureProgress.completedCount} de {sessionSummary.closureProgress.requiredCount} entregas registradas
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      {sessionSummary.closureProgress.isComplete ? "Caja completa" : "Pendiente"}
+                    </span>
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700">
+                        <tr>
+                          <th className="px-3 py-2">Cajero</th>
+                          <th className="px-3 py-2">Esperado</th>
+                          <th className="px-3 py-2">Contado</th>
+                          <th className="px-3 py-2">Diferencia</th>
+                          <th className="px-3 py-2">Estado</th>
+                          <th className="px-3 py-2">Tirilla</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sessionSummary.closureRecords.map((record) => (
+                          <tr key={record.id} className="border-b border-slate-100 dark:border-slate-700">
+                            <td className="px-3 py-2 font-medium">{record.countedByUserEmail ?? record.countedByUserId}</td>
+                            <td className="px-3 py-2">{formatCurrency(record.expectedAmount)}</td>
+                            <td className="px-3 py-2">{formatCurrency(record.countedCashAmount)}</td>
+                            <td className="px-3 py-2">{formatCurrency(record.differenceAmount)}</td>
+                            <td className="px-3 py-2 text-emerald-700">Entregado</td>
+                            <td className="px-3 py-2">
+                              <Button variant="ghost" size="sm" onClick={() => void handleDownloadIndividualTicket(record.id)}>
+                                <Download className="h-4 w-4" /> PDF
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {sessionSummary.closureProgress.pendingUserIds.map((userId) => (
+                          <tr key={userId} className="border-b border-slate-100 text-slate-500 dark:border-slate-700">
+                            <td className="px-3 py-2">Cajero asignado</td>
+                            <td className="px-3 py-2">-</td>
+                            <td className="px-3 py-2">-</td>
+                            <td className="px-3 py-2">-</td>
+                            <td className="px-3 py-2">Pendiente</td>
+                            <td className="px-3 py-2">-</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               ) : null}
 
               {sessionSummary ? (
@@ -811,7 +890,7 @@ const CashSessionsPage = () => {
 
       {closeModal && currentSession ? (
         <Modal
-          title="Cerrar caja"
+          title="Entregar cierre de mi turno"
           className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
           size="xl"
         >

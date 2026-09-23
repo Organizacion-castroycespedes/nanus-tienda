@@ -91,3 +91,22 @@ test("CashReportsService XLSX no ejecuta renderer PDF", async () => {
   const auditXlsx = await auditService.getCashAuditsExcel({ tenantId: "tenant-1" }, user as never);
   assert.ok(auditXlsx.length > 100);
 });
+
+test("CashReportsService USER keeps only own cash audits and recalculates totals", async () => {
+  const adapter = {
+    getCashAuditList: async () => ({
+      filters: { tenantId: "tenant-1", branchId: "branch-1", dateFrom: null, dateTo: null, actorRole: "USER" },
+      rows: [auditRows[0], { ...auditRows[0], cashCountId: "count-2", countedByUserId: "other-user", countedAmount: 900, expectedAmount: 800, difference: 100 }],
+      summary: { count: 2, countedAmount: 1000, expectedAmount: 890, difference: 110 },
+    }),
+  };
+  const service = new CashReportsService(adapter as never, {} as never, {} as never);
+
+  const result = await service.getCashAudits(
+    { tenantId: "tenant-1" },
+    { id: "user-1", tenantId: "tenant-1", branchId: "branch-1", roles: ["USER"] } as never,
+  );
+
+  assert.deepEqual(result.rows.map((row) => row.cashCountId), ["count-1"]);
+  assert.deepEqual(result.summary, { count: 1, countedAmount: 100, expectedAmount: 90, difference: 10 });
+});

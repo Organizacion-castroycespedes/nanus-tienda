@@ -179,6 +179,22 @@ export class CashSessionsRepository {
     return Boolean(result.rows[0]?.exists);
   }
 
+  async listActiveAssignmentUserIds(
+    cashRegisterId: string,
+    client?: PoolClient
+  ) {
+    const result = await this.query<{ user_id: string }>(
+      `SELECT assignment.user_id
+       FROM cash_register_user_assignments AS assignment
+       WHERE assignment.cash_register_id = $1
+         AND assignment.unassigned_at IS NULL
+       ORDER BY assignment.assigned_at ASC`,
+      [cashRegisterId],
+      client
+    );
+    return result.rows.map((row) => row.user_id);
+  }
+
   async findCurrentByUser(
     userId: string,
     tenantId: string,
@@ -329,7 +345,8 @@ export class CashSessionsRepository {
   async listCashCounts(
     cashSessionId: string,
     tenantId: string,
-    countType?: CashCountType
+    countType?: CashCountType,
+    client?: PoolClient
   ) {
     const params: unknown[] = [cashSessionId, tenantId];
     const where = [
@@ -363,7 +380,8 @@ export class CashSessionsRepository {
        AND counter.tenant_id = count_data.tenant_id
       WHERE ${where.join(" AND ")}
       ORDER BY count_data.counted_at DESC, count_data.id DESC`,
-      params
+      params,
+      client
     );
 
     return result.rows ?? [];

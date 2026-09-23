@@ -877,14 +877,6 @@ export class CashReportAdapter {
          AND (
            NOT resolved.restrict_to_user
            OR count_data.counted_by_user_id = $1::uuid
-           OR session.opened_by_user_id = $1::uuid
-           OR EXISTS (
-             SELECT 1
-               FROM public.cash_register_user_assignments AS assignment
-              WHERE assignment.cash_register_id = session.cash_register_id
-                AND assignment.user_id = $1::uuid
-                AND assignment.unassigned_at IS NULL
-           )
          )`,
       this.exportScopeParams(actor, filters),
     );
@@ -934,14 +926,6 @@ export class CashReportAdapter {
           AND (
             NOT resolved.restrict_to_user
             OR count_data.counted_by_user_id = $1::uuid
-            OR session.opened_by_user_id = $1::uuid
-            OR EXISTS (
-              SELECT 1
-                FROM public.cash_register_user_assignments AS assignment
-               WHERE assignment.cash_register_id = session.cash_register_id
-                 AND assignment.user_id = $1::uuid
-                 AND assignment.unassigned_at IS NULL
-            )
           )
         ORDER BY count_data.counted_at DESC, count_data.id DESC
         LIMIT $9::integer OFFSET $10::integer`,
@@ -1008,6 +992,136 @@ export class CashReportAdapter {
     actor: ReportActorContext,
     cashCountId: string
   ): Promise<CashAuditTicketDataset | null> {
+    const result = await this.db.query<{
+      cash_count_id: string;
+      cash_session_id: string;
+      tenant_name: string | null;
+      branch_id: string;
+      branch_name: string | null;
+      cash_register_id: string;
+      cash_register_name: string | null;
+      cash_register_code: string | null;
+      terminal_id: string | null;
+      terminal_name: string | null;
+      session_status: string;
+      opened_at: string;
+      closed_at: string | null;
+      opened_by_user_id: string;
+      opened_by: string | null;
+      closed_by_user_id: string | null;
+      closed_by: string | null;
+      counted_at: string;
+      counted_by_user_id: string;
+      counted_by: string | null;
+      counted_amount: string | number;
+      expected_amount: string | number;
+      difference: string | number;
+      notes: string | null;
+      breakdown_json: {
+        sourceBreakdown?: CashClosingTicketDataset["sourceBreakdown"];
+        paymentMethodDetails?: CashClosingTicketDataset["paymentMethodDetails"];
+        cashControl?: CashClosingTicketDataset["cashControl"];
+      } | null;
+    }>(
+      `SELECT count_data.id AS cash_count_id,
+              count_data.cash_session_id,
+              tenant.nombre AS tenant_name,
+              count_data.branch_id,
+              branch.nombre AS branch_name,
+              register.id AS cash_register_id,
+              register.nombre AS cash_register_name,
+              register.codigo AS cash_register_code,
+              terminal.id AS terminal_id,
+              terminal.name AS terminal_name,
+              session.status AS session_status,
+              session.opened_at,
+              session.closed_at,
+              session.opened_by_user_id,
+              opened_user.email AS opened_by,
+              session.closed_by_user_id,
+              closed_user.email AS closed_by,
+              count_data.counted_at,
+              count_data.counted_by_user_id,
+              counter_user.email AS counted_by,
+              count_data.counted_cash_amount AS counted_amount,
+              count_data.expected_amount,
+              count_data.difference_amount AS difference,
+              count_data.notes,
+              count_data.breakdown_json
+         FROM public.cash_counts AS count_data
+         INNER JOIN public.cash_sessions AS session
+           ON session.id = count_data.cash_session_id
+          AND session.tenant_id = count_data.tenant_id
+         INNER JOIN public.tenants AS tenant ON tenant.id = count_data.tenant_id
+         LEFT JOIN public.tenant_branches AS branch
+           ON branch.id = count_data.branch_id AND branch.tenant_id = count_data.tenant_id
+         LEFT JOIN public.cash_registers AS register
+           ON register.id = session.cash_register_id AND register.tenant_id = session.tenant_id
+         LEFT JOIN public.terminals AS terminal
+           ON terminal.id = register.terminal_id AND terminal.tenant_id = register.tenant_id
+         LEFT JOIN public.users AS opened_user
+           ON opened_user.id = session.opened_by_user_id AND opened_user.tenant_id = session.tenant_id
+         LEFT JOIN public.users AS closed_user
+           ON closed_user.id = session.closed_by_user_id AND closed_user.tenant_id = session.tenant_id
+         LEFT JOIN public.users AS counter_user
+           ON counter_user.id = count_data.counted_by_user_id AND counter_user.tenant_id = count_data.tenant_id
+        WHERE count_data.id = $1
+          AND count_data.tenant_id = $2
+          AND ($3::uuid IS NULL OR count_data.branch_id = $3::uuid)
+          AND (
+            UPPER($4) IN ('SUPER_ADMIN', 'SUPER_USER', 'ADMIN')
+            OR count_data.counted_by_user_id = $5::uuid
+          )
+        LIMIT 1`,
+      [cashCountId, actor.tenantId, actor.branchId ?? null, actor.role, actor.userId]
+    );
+    const row = result.rows[0];
+    if (row) {
+      const breakdown = row.breakdown_json ?? {};
+      const source = breakdown.sourceBreakdown;
+      const control = breakdown.cashControl;
+      return {
+        header: {
+          cashCountId: row.cash_count_id,
+          cashSessionId: row.cash_session_id,
+          tenantName: row.tenant_name,
+          branchId: row.branch_id,
+          branchName: row.branch_name,
+          cashRegisterId: row.cash_register_id,
+          cashRegister: row.cash_register_name,
+          cashRegisterCode: row.cash_register_code,
+          terminalId: row.terminal_id,
+          terminal: row.terminal_name,
+          sessionStatus: row.session_status,
+          openedAt: row.opened_at,
+          closedAt: row.closed_at,
+          openedByUserId: row.opened_by_user_id,
+          openedBy: row.opened_by,
+          closedByUserId: row.closed_by_user_id,
+          closedBy: row.closed_by,
+          countedAt: row.counted_at,
+          countedByUserId: row.counted_by_user_id,
+          countedBy: row.counted_by,
+        },
+        audit: {
+          countedAmount: Number(row.counted_amount),
+          expectedAmount: Number(row.expected_amount),
+          difference: Number(row.difference),
+          notes: row.notes,
+        },
+        sessionTotals: {
+          openingAmount: Number(source?.opening ?? 0),
+          posSalesPayments: Number(source?.posSales ?? 0),
+          orderSalesPayments: Number(source?.orders ?? 0),
+          refundPayments: Number(source?.refunds ?? 0),
+          expectedAmount: Number(control?.expectedCashAmount ?? row.expected_amount),
+        },
+        breakdown: {
+          sourceBreakdown: source,
+          paymentMethodDetails: breakdown.paymentMethodDetails,
+        },
+      };
+    }
     return this.functionRunnerService.executeFunction<CashAuditTicketDataset | null>(
       "report_cash_audit_ticket",
       [actor.userId, actor.role, actor.tenantId, actor.branchId, cashCountId]

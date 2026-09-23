@@ -121,6 +121,7 @@ const buildHarness = (
       });
     },
     getSummary: async () => buildSummary(expectedAmount),
+    listActiveAssignmentUserIds: async () => [],
     listCashCounts: async () => [],
     close: async (
       _client: unknown,

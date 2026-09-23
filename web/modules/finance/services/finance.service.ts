@@ -6,6 +6,7 @@ import type {
   CashRegister,
   CashRegisterFilters,
   CashSession,
+  CashSessionCloseResult,
   CashSessionAuditRecord,
   CashSessionSummary,
   CashSessionHistoryFilters,
@@ -134,7 +135,7 @@ export const closeCashSession = (
   cashSessionId: string,
   payload: CloseCashSessionPayload
 ) =>
-  apiClient<CashSession>(`/finance/cash-sessions/${cashSessionId}/close`, {
+  apiClient<CashSessionCloseResult>(`/finance/cash-sessions/${cashSessionId}/close`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

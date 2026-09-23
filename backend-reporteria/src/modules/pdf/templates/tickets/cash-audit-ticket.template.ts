@@ -60,6 +60,25 @@ export const buildCashAuditTicketTemplate = (
           ]),
         ],
       },
+      ...(dataset.breakdown?.paymentMethodDetails?.length
+        ? [
+            {
+              stack: [
+                buildThermalSectionTitle("Detalle por medio"),
+                {
+                  table: {
+                    widths: ["*", "auto"],
+                    body: dataset.breakdown.paymentMethodDetails.map((item) => [
+                      { text: item.paymentMethodNombre, fontSize: 8 },
+                      { text: formatCurrency(item.net), alignment: "right", fontSize: 8 },
+                    ] as TableCell[]),
+                  },
+                  layout: "lightHorizontalLines",
+                },
+              ],
+            } as Content,
+          ]
+        : []),
       {
         stack: [
           buildThermalSectionTitle("Contexto de sesion"),

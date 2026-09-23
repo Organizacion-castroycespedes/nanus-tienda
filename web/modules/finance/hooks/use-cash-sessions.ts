@@ -92,8 +92,10 @@ export const useCashSessions = () => {
       setSaving(true);
       try {
         const closed = await closeCashSession(cashSessionId, payload);
-        setCurrentSession((prev) => (prev?.id === cashSessionId ? null : prev));
-        setSessionSummary((prev) => (prev?.sessionId === cashSessionId ? null : prev));
+        if (closed.closureProgress?.isComplete !== false) {
+          setCurrentSession((prev) => (prev?.id === cashSessionId ? null : prev));
+          setSessionSummary((prev) => (prev?.sessionId === cashSessionId ? null : prev));
+        }
         setHistory((prev) =>
           prev.map((item) => (item.id === cashSessionId ? closed : item))
         );

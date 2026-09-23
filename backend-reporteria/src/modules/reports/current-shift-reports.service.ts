@@ -376,6 +376,10 @@ export class CurrentShiftReportsService {
       throw new ForbiddenException("No autorizado para otro tenant");
     }
 
+    if (actor.role === "USER" && session.userId !== actor.userId) {
+      throw new ForbiddenException("No autorizado para otra caja");
+    }
+
     if (query.branchId && query.branchId !== session.branchId) {
       throw new ForbiddenException("No autorizado para otra sucursal");
     }
@@ -476,10 +480,10 @@ export class CurrentShiftReportsService {
     }
 
     const requireOwnSession =
-      !effectiveBranchId &&
-      (actor.role === "USER" ||
-        actor.role === "ADMIN" ||
-        (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
+      actor.role === "USER" ||
+      (!effectiveBranchId &&
+        (actor.role === "ADMIN" ||
+          (!this.isSuperAdmin(actor) && !this.isSuperUser(actor))));
 
     if (requireOwnSession) {
       params.push(actor.userId);
@@ -566,10 +570,10 @@ export class CurrentShiftReportsService {
     params.push(actor.userId);
     const actorUserParamIndex = params.length;
     const requireOwnSession =
-      !effectiveBranchId &&
-      (actor.role === "USER" ||
-        actor.role === "ADMIN" ||
-        (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
+      actor.role === "USER" ||
+      (!effectiveBranchId &&
+        (actor.role === "ADMIN" ||
+          (!this.isSuperAdmin(actor) && !this.isSuperUser(actor))));
 
     if (requireOwnSession) {
       where.push(`(
