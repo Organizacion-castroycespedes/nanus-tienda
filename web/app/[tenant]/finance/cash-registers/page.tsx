@@ -48,6 +48,7 @@ const CashRegistersPage = () => {
 
   const { canViewFinance, canManageCashRegisters, isSuperRole } =
     getFinancePermissions(role);
+  const defaultTenantId = isSuperRole ? undefined : authUser?.tenantId ?? undefined;
   const {
     cashRegisters,
     loading,
@@ -77,8 +78,8 @@ const CashRegistersPage = () => {
     }
 
     void loadCashRegisters();
-    void loadBranches(authUser?.tenantId ?? undefined);
-    void loadTerminals({ tenantId: authUser?.tenantId ?? undefined });
+    void loadBranches(defaultTenantId);
+    void loadTerminals({ tenantId: defaultTenantId });
 
     if (isSuperRole) {
       void loadTenants();
@@ -86,6 +87,7 @@ const CashRegistersPage = () => {
   }, [
     authUser?.tenantId,
     canViewFinance,
+    defaultTenantId,
     isSuperRole,
     loadBranches,
     loadCashRegisters,
@@ -121,7 +123,7 @@ const CashRegistersPage = () => {
   const openCreateModal = () => {
     setEditingItem(null);
     setForm(emptyForm);
-    void loadTerminals({ tenantId: authUser?.tenantId ?? undefined });
+    void loadTerminals({ tenantId: defaultTenantId });
     setModalOpen(true);
   };
 
