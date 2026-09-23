@@ -58,6 +58,7 @@ import { MENU_KEYS } from "../../domains/menu/constants";
 import { getRoutePermissionRequirement } from "../../lib/route-permissions";
 import { getAllowedMenuItems, hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
+import { resolveTenantSettings } from "../../domains/parameters/api";
 import { setBranding } from "../../store/brandingSlice";
 import { setCompanyDetails } from "../../store/companySlice";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
@@ -224,7 +225,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
   const desktopSidebarWidthClass = sidebarCollapsed ? "xl:w-20 xl:px-3" : "xl:w-72 xl:px-4";
-  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
+  const isSidebarCompact = sidebarCollapsed;
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -947,9 +948,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         if (!tenantId) {
           return;
         }
-        const [configResult, detailsResult] = await Promise.allSettled([
+        const [configResult, detailsResult, settingsResult] = await Promise.allSettled([
           getTenantConfig(tenantId),
           getTenantDetails(tenantId),
+          resolveTenantSettings({ tenantId }),
         ]);
         if (detailsResult.status === "fulfilled" && detailsResult?.value) {
           const detailsResponse = detailsResult?.value;
@@ -1011,6 +1013,27 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 md: configResponse.config.spacing?.md ?? "16px",
                 lg: configResponse.config.spacing?.lg ?? "24px",
               },
+              electronicBillingEnabled:
+                configResponse.config.electronicBillingEnabled !== false,
+              electronicBillingMode:
+                configResponse.config.electronicBillingMode === "ON_DEMAND"
+                  ? "ON_DEMAND"
+                  : "AUTOMATIC",
+              electronicBillingConfigured: false,
+            })
+          );
+        }
+        if (settingsResult.status === "fulfilled" && settingsResult.value.values) {
+          const values = settingsResult.value.values;
+          const enabled =
+            values.SEND_INVOICE !== "DISABLED" &&
+            values.GENERATE_INVOICE !== "DISABLED";
+          dispatch(
+            setBranding({
+              electronicBillingEnabled: enabled,
+              electronicBillingMode:
+                values.GENERATE_INVOICE === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
+              electronicBillingConfigured: true,
             })
           );
         }
@@ -1110,13 +1133,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm xl:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
         aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 xl:sticky xl:top-0 xl:z-30 xl:translate-x-0 xl:px-4 ${desktopSidebarWidthClass} ${
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 ${desktopSidebarWidthClass} ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1206,13 +1229,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   color: tenantTheme.header.iconButtonText,
                 }}
                 onClick={() => {
-                  if (window.matchMedia("(min-width: 1280px)").matches) {
-                    setSidebarCollapsed((previous) => !previous);
-                    return;
-                  }
-                  setSidebarOpen(true);
+                  setSidebarOpen((previous) => !previous);
                 }}
-                aria-label={sidebarCollapsed ? "Expandir menu lateral" : "Abrir menu lateral"}
+                aria-label={sidebarOpen ? "Cerrar menu lateral" : "Abrir menu lateral"}
               >
                 <Menu className="h-5 w-5" />
               </button>

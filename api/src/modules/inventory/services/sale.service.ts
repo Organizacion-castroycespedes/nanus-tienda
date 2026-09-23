@@ -1451,7 +1451,9 @@ export class SaleService {
       saleContext.terminalId,
     );
     if (!policy.enabled) {
-      throw new BadRequestException("electronic billing is disabled for this tenant");
+      throw new BadRequestException(
+        "La facturación electrónica no está habilitada para este tenant."
+      );
     }
 
     const deterministicEventId = buildSaleCompletedForElectronicBillingEventId(

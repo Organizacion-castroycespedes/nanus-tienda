@@ -41,6 +41,7 @@ class FakeDb {
   queries: Array<{ text: string; params: unknown[] }> = [];
   availableSessionRows: unknown[] = [buildSession()];
   sessionRows: unknown[] = [buildSession()];
+  assignmentExists = false;
   hasDeliverySchema = false;
   summary = {
     totals: {
@@ -94,6 +95,9 @@ class FakeDb {
     if (text.includes("current-shift: current-session")) {
       return { rows: this.sessionRows };
     }
+    if (text.includes("cash_register_user_assignments")) {
+      return { rows: [{ exists: this.assignmentExists }] };
+    }
     if (text.includes("current-shift: summary")) {
       return { rows: [{ summary: this.summary }] };
     }
@@ -143,6 +147,25 @@ test("CurrentShiftReportsService: USER no consulta caja abierta por otro usuario
       ),
     ForbiddenException
   );
+});
+
+test("CurrentShiftReportsService: USER consulta caja asignada aunque la abrio otro usuario", async () => {
+  const db = new FakeDb();
+  db.availableSessionRows = [buildSession({ opened_by_user_id: ids.otherUser })];
+  db.assignmentExists = true;
+
+  const response = await buildService(db).getCurrentShift(
+    { tenantId: ids.tenant, pageSize: 50 },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["USER"],
+    }
+  );
+
+  assert.equal(response.hasOpenCashSession, true);
+  assert.equal(response.cashSession?.userId, ids.otherUser);
 });
 
 test("CurrentShiftReportsService: suma domicilios entregados al resumen vivo", async () => {

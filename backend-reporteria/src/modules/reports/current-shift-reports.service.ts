@@ -366,7 +366,7 @@ export class CurrentShiftReportsService {
     };
   }
 
-  private assertSessionScope(
+  private async assertSessionScope(
     actor: CurrentShiftActorContext,
     tenantId: string,
     session: CurrentShiftCashSession,
@@ -377,7 +377,19 @@ export class CurrentShiftReportsService {
     }
 
     if (actor.role === "USER" && session.userId !== actor.userId) {
-      throw new ForbiddenException("No autorizado para otra caja");
+      const assignment = await this.db.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM public.cash_register_user_assignments AS assignment
+           WHERE assignment.cash_register_id = $1
+             AND assignment.user_id = $2
+             AND assignment.unassigned_at IS NULL
+         ) AS exists`,
+        [session.cashRegisterId, actor.userId]
+      );
+      if (!assignment.rows[0]?.exists) {
+        throw new ForbiddenException("No autorizado para otra caja");
+      }
     }
 
     if (query.branchId && query.branchId !== session.branchId) {
@@ -1052,7 +1064,7 @@ export class CurrentShiftReportsService {
       };
     }
 
-    this.assertSessionScope(actor, tenantId, session, {
+    await this.assertSessionScope(actor, tenantId, session, {
       ...query,
       branchId,
       terminalId,

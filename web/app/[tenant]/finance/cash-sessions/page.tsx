@@ -68,7 +68,7 @@ type CloseNoticeState = {
   variant: NoticeDialogVariant;
   title: string;
   message: string;
-  session?: CashSession;
+  session?: CashSessionCloseResult;
   summary?: CashSessionSummary | null;
   expectedAmount?: number;
   realAmount?: number;
@@ -80,6 +80,12 @@ const buildCashClosingTicketFileName = (cashSessionId: string) =>
 
 const buildCashClosingTicketTitle = (cashSessionId: string) =>
   `Ticket de cierre ${cashSessionId.slice(0, 8)}`;
+
+const buildCashAuditTicketFileName = (cashCountId: string) =>
+  `tirilla-cajero-${cashCountId}.pdf`;
+
+const buildCashAuditTicketTitle = (cashCountId: string) =>
+  `Tirilla de cierre ${cashCountId.slice(0, 8)}`;
 
 const buildCloseNoticeRows = (notice: CloseNoticeState) => {
   if (!notice.session) {
@@ -272,12 +278,51 @@ const CashSessionsPage = () => {
     }
   };
 
+  const openIndividualTicketPreview = (cashCountId: string) => {
+    setCloseNotice(null);
+    setPdfConfig({
+      title: buildCashAuditTicketTitle(cashCountId),
+      fileName: buildCashAuditTicketFileName(cashCountId),
+      getPdf: () => getCashAuditTicket(cashCountId),
+    });
+  };
+
   const handleDownloadIndividualTicket = async (cashCountId: string) => {
     try {
       const blob = await getCashAuditTicket(cashCountId);
-      downloadBlob(blob, `tirilla-cajero-${cashCountId}.pdf`);
+      downloadBlob(blob, buildCashAuditTicketFileName(cashCountId));
     } catch (error) {
       showTicketActionError(error, "No se pudo descargar la tirilla individual.");
+    }
+  };
+
+  const handlePrintIndividualTicket = async (cashCountId: string) => {
+    try {
+      const blob = await getCashAuditTicket(cashCountId);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = objectUrl;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          setToastMessage("No se pudo imprimir automaticamente. Usa Ver tirilla.");
+          setToastVariant("warning");
+        }
+      };
+
+      window.setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
+    } catch (error) {
+      showTicketActionError(error, "No se pudo imprimir la tirilla individual.");
     }
   };
 
@@ -346,10 +391,10 @@ const CashSessionsPage = () => {
         differenceAmount: closed.differenceAmount ?? realSnapshot - expectedSnapshot,
       });
       window.dispatchEvent(new Event("manus:cash-session-changed"));
-      if (isComplete) {
+      if (closed.closureCount?.id) {
+        void handlePrintIndividualTicket(closed.closureCount.id);
+      } else if (isComplete) {
         void handlePrintTicket(closed.id, { automatic: true });
-      } else if (closed.closureCount?.id) {
-        void handleDownloadIndividualTicket(closed.closureCount.id);
       }
     } catch (error) {
       setCloseNotice({
@@ -952,18 +997,35 @@ const CashSessionsPage = () => {
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openTicketPreview(closeNotice.session!.id)}
-                >
-                  <Eye className="h-4 w-4" />
-                  Ver ticket
-                </Button>
+                {closeNotice.session.closureCount?.id ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      openIndividualTicketPreview(closeNotice.session!.closureCount!.id)
+                    }
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver tirilla
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openTicketPreview(closeNotice.session!.id)}
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver ticket
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void handleDownloadTicket(closeNotice.session!.id)}
+                  onClick={() =>
+                    closeNotice.session!.closureCount?.id
+                      ? void handleDownloadIndividualTicket(closeNotice.session!.closureCount!.id)
+                      : void handleDownloadTicket(closeNotice.session!.id)
+                  }
                 >
                   <Download className="h-4 w-4" />
                   Descargar PDF
@@ -971,7 +1033,11 @@ const CashSessionsPage = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void handlePrintTicket(closeNotice.session!.id)}
+                  onClick={() =>
+                    closeNotice.session!.closureCount?.id
+                      ? void handlePrintIndividualTicket(closeNotice.session!.closureCount!.id)
+                      : void handlePrintTicket(closeNotice.session!.id)
+                  }
                 >
                   <Printer className="h-4 w-4" />
                   Imprimir

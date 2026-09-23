@@ -33,6 +33,7 @@ import { ReportStatusBadge } from "./ReportStatusBadge";
 import { ReportLayout } from "../../../components/design-system/ReportLayout";
 import { Pagination } from "../../../components/design-system/Pagination";
 import { ReportSummary } from "../../../components/design-system/ReportSummary";
+import { useAppSelector } from "../../../store/hooks";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
 import { Select } from "../../../components/design-system/Select";
 import { Input } from "../../../components/design-system/Input";
@@ -75,6 +76,10 @@ const PosReportsPage = () => {
     useState<DirectPrintFeedback | null>(null);
   const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
   const [billingRequestBusy, setBillingRequestBusy] = useState(false);
+  const branding = useAppSelector((state) => state.branding.config);
+  const showElectronicBilling =
+    branding.electronicBillingConfigured === true &&
+    branding.electronicBillingEnabled === true;
   const posContext = usePosContext();
   const {
     canViewReports,
@@ -260,39 +265,41 @@ const PosReportsPage = () => {
           </div>
         ),
       },
-      {
-        key: "billingStatus",
-        header: "Facturación electrónica",
-        render: (row) => (
-          <div>
-            <p className="text-sm font-medium text-slate-700">
-              {row.billingStatus === "ACCEPTED"
-                ? "Aceptada DIAN"
-                : row.billingStatus === "NO_DOCUMENT"
-                  ? "Sin factura electrónica"
-                  : row.billingStatus === "REJECTED"
-                    ? "Rechazada"
-                      : row.billingStatus === "PROCESSING"
-                        ? "Procesando"
-                        : row.billingStatus === "ELIGIBLE_ON_DEMAND"
-                          ? "Disponible para facturar"
-                      : row.billingStatus === "PENDING" || row.billingStatus === "REQUESTED"
-                        ? "Pendiente"
-                        : row.billingStatus}
-            </p>
-            {row.billingStatus === "ACCEPTED" && row.billingDocumentNumber ? (
-              <p className="text-xs text-slate-500">{row.billingDocumentNumber}</p>
-            ) : null}
-          </div>
-        ),
-      },
+      ...(showElectronicBilling
+        ? [{
+            key: "billingStatus",
+            header: "Facturación electrónica",
+            render: (row: PosSalesListRow) => (
+              <div>
+                <p className="text-sm font-medium text-slate-700">
+                  {row.billingStatus === "ACCEPTED"
+                    ? "Aceptada DIAN"
+                    : row.billingStatus === "NO_DOCUMENT"
+                      ? "Sin factura electrónica"
+                      : row.billingStatus === "REJECTED"
+                        ? "Rechazada"
+                        : row.billingStatus === "PROCESSING"
+                          ? "Procesando"
+                          : row.billingStatus === "ELIGIBLE_ON_DEMAND"
+                            ? "Disponible para facturar"
+                            : row.billingStatus === "PENDING" || row.billingStatus === "REQUESTED"
+                              ? "Pendiente"
+                              : row.billingStatus}
+                </p>
+                {row.billingStatus === "ACCEPTED" && row.billingDocumentNumber ? (
+                  <p className="text-xs text-slate-500">{row.billingDocumentNumber}</p>
+                ) : null}
+              </div>
+            ),
+          }]
+        : []),
       {
         key: "actions",
         header: "Acciones",
         cellClassName: "min-w-[350px]",
         render: (row) => (
           <div className="flex flex-wrap gap-2">
-            {row.billingStatus !== "ACCEPTED" &&
+            {showElectronicBilling && row.billingStatus !== "ACCEPTED" &&
             row.billingStatus !== "PENDING" &&
             row.billingStatus !== "PROCESSING" &&
             row.billingStatus !== "REJECTED" &&
@@ -322,7 +329,7 @@ const PosReportsPage = () => {
               <Eye className="h-4 w-4" />
               Ver ticket
               </Button>
-            {canViewElectronicDocument(row.billingStatus) ? <Button
+            {showElectronicBilling && canViewElectronicDocument(row.billingStatus) ? <Button
               variant="outline"
               size="sm"
               onClick={() =>
@@ -375,7 +382,7 @@ const PosReportsPage = () => {
         ),
       },
     ],
-    [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, tenantId]
+    [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, showElectronicBilling, tenantId]
   );
 
   const canExport = Boolean(dataset);
@@ -513,7 +520,7 @@ const PosReportsPage = () => {
         />
       ) : null}
 
-      {selectedSaleIds.length > 0 ? (
+      {showElectronicBilling && selectedSaleIds.length > 0 ? (
         <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
           <span className="text-sm text-blue-900">{selectedSaleIds.length} venta(s) seleccionada(s)</span>
           <Button

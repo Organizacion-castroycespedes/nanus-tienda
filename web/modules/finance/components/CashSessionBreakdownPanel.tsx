@@ -122,45 +122,65 @@ export const CashSessionBreakdownPanel = ({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="min-w-[780px] divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800" aria-label="Resumen por medio de pago">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/40">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-white">
+              Resumen por medio de pago
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Ventas, pedidos y egresos registrados en el turno.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {methods.length} {methods.length === 1 ? "medio" : "medios"}
+          </span>
+        </div>
+        <p className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500 sm:hidden dark:border-slate-700 dark:text-slate-400">
+          Desliza horizontalmente para ver todos los valores.
+        </p>
+        <div className="max-h-72 overflow-auto">
+          <table className="min-w-[780px] w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+          <caption className="sr-only">Detalle de valores agrupados por medio de pago</caption>
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
             <tr>
-              <th className="px-3 py-2 font-medium">Medio</th>
-              <th className="px-3 py-2 font-medium">Tipo</th>
-              <th className="px-3 py-2 text-right font-medium">Ventas</th>
-              <th className="px-3 py-2 text-right font-medium">Pedidos</th>
-              <th className="px-3 py-2 text-right font-medium">Domicilios</th>
-              <th className="px-3 py-2 text-right font-medium">Compras/Egresos</th>
-              <th className="px-3 py-2 text-right font-medium">Neto</th>
+              <th scope="col" className="sticky left-0 z-20 bg-slate-50 px-3 py-2 font-medium dark:bg-slate-900">Medio</th>
+              <th scope="col" className="px-3 py-2 font-medium">Tipo</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Ventas</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Pedidos</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Domicilios</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Compras / egresos</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Neto</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
+          <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-700 dark:bg-slate-800">
             {methods.length === 0 ? (
               <tr>
-                <td className="px-3 py-4 text-slate-500 dark:text-slate-400" colSpan={7}>
-                  Sin pagos agrupados por metodo.
+                <td className="px-3 py-8 text-center text-slate-500 dark:text-slate-400" colSpan={7}>
+                  No hay pagos agrupados por método en este turno.
                 </td>
               </tr>
             ) : (
               methods.map((method) => (
-                <tr key={`${method.paymentMethodId ?? "cash"}-${method.category}`}>
-                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">
+                <tr key={`${method.paymentMethodId ?? "cash"}-${method.category}`} className="group transition-colors hover:bg-blue-50/60 dark:hover:bg-slate-700/50">
+                  <td className="sticky left-0 bg-white px-3 py-3 font-medium text-slate-900 group-hover:bg-blue-50/60 dark:bg-slate-800 dark:text-white dark:group-hover:bg-slate-700/50">
                     {method.paymentMethodNombre}
                   </td>
-                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
-                    {labelByCategory[method.category] ?? method.category}
+                  <td className="px-3 py-3 text-slate-600 dark:text-slate-300">
+                    <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-1 text-xs dark:bg-slate-700">
+                      {labelByCategory[method.category] ?? method.category}
+                    </span>
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
                     {formatCurrency(method.sales)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
                     {formatCurrency(method.orders)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
                     {formatCurrency(method.deliveries)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
                     {formatCurrency(
                       method.purchases +
                         method.refunds +
@@ -168,15 +188,16 @@ export const CashSessionBreakdownPanel = ({
                         method.otherOut
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900 dark:text-white">
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums text-slate-900 dark:text-white">
                     {formatCurrency(method.net)}
                   </td>
                 </tr>
               ))
             )}
           </tbody>
-        </table>
-      </div>
+          </table>
+        </div>
+      </section>
     </div>
   );
 };
