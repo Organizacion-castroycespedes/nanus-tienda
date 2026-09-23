@@ -87,7 +87,7 @@ export class PaymentMethodEntity {
     const electronicPaymentMeansId = props.electronicPaymentMeansId?.trim() || null;
 
     if (electronicBillingEnabled &&
-      (!electronicPaymentMeansCode || !["10", "47", "49"].includes(electronicPaymentMeansCode) || electronicPaymentMeansId !== "1")) {
+      (!electronicPaymentMeansCode || !["10", "45", "47", "49"].includes(electronicPaymentMeansCode) || electronicPaymentMeansId !== "1")) {
       throw new Error("electronic billing fiscal mapping is invalid");
     }
 
