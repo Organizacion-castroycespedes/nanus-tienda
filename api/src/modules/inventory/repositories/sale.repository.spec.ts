@@ -17,6 +17,8 @@ const ids = {
   product: "00000000-0000-0000-0000-000000000008",
   orderItem: "00000000-0000-0000-0000-000000000009",
   sale: "00000000-0000-0000-0000-000000000010",
+  paymentMethod: "00000000-0000-0000-0000-000000000011",
+  financialInstitution: "00000000-0000-0000-0000-000000000012",
 };
 
 type RecordedCall = {
@@ -198,6 +200,85 @@ test("SaleRepository keeps create sale payload unchanged for v2", async () => {
 
   assert.equal(calls.length, 1);
   assertCreateSaleCall(calls, "inventory_create_sale_v2");
+});
+
+test("SaleRepository sends the selected financial institution to invoice_order", async () => {
+  const repository = new SaleRepository({} as never);
+  const { calls, client } = buildClient();
+
+  await repository.invoiceOrderWithFunction(
+    {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      terminalId: ids.terminal,
+      userId: ids.user,
+      posSessionId: ids.posSession,
+      orderId: ids.order,
+      type: "CASH",
+      payments: [
+        {
+          paymentMethodId: ids.paymentMethod,
+          amount: 2500,
+          cashSessionId: ids.posSession,
+          financialInstitutionId: ids.financialInstitution,
+          referenceNumber: "QR-BREB-ORDER",
+        },
+      ],
+    },
+    client,
+  );
+
+  const call = calls.find((item) => item.text.includes("inventory_invoice_order"));
+  assert.ok(call);
+  assert.deepEqual(JSON.parse(call.params[7] as string), [
+    {
+      payment_method_id: ids.paymentMethod,
+      amount: 2500,
+      cash_session_id: ids.posSession,
+      financial_institution_id: ids.financialInstitution,
+      reference_number: "QR-BREB-ORDER",
+      notes: null,
+    },
+  ]);
+});
+
+test("SaleRepository assigns the selected institution to the created sale payment", async () => {
+  const calls: RecordedCall[] = [];
+  const client = {
+    query: async <T>(text: string, params: unknown[]) => {
+      calls.push({ text, params });
+      return { rows: [{ id: ids.sale }] as T[] };
+    },
+  } as unknown as PoolClient;
+  const repository = new SaleRepository({} as never);
+
+  const assigned = await repository.assignFinancialInstitutionsToSalePayments(
+    ids.tenant,
+    ids.sale,
+    [
+      {
+        paymentMethodId: ids.paymentMethod,
+        amount: 2500,
+        cashSessionId: ids.posSession,
+        financialInstitutionId: ids.financialInstitution,
+        referenceNumber: "QR-BREB-ORDER",
+      },
+    ],
+    client,
+  );
+
+  assert.equal(assigned, 1);
+  assert.match(calls[0].text, /SET financial_institution_id = \$4/);
+  assert.match(calls[0].text, /institution\.tenant_id = \$1 OR institution\.tenant_id IS NULL/);
+  assert.deepEqual(calls[0].params, [
+    ids.tenant,
+    ids.sale,
+    ids.paymentMethod,
+    ids.financialInstitution,
+    2500,
+    ids.posSession,
+    "QR-BREB-ORDER",
+  ]);
 });
 
 test("SaleRepository reserves sale idempotency per tenant and returns committed sale", async () => {
