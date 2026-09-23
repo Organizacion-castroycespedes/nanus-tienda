@@ -60,7 +60,7 @@ const normalizeNullableString = (value: unknown) => {
 };
 
 type NormalizedFactuCorePaymentMeans = {
-  paymentMeansCode: "10" | "47" | "49";
+  paymentMeansCode: "10" | "45" | "47" | "49";
   paymentMeansId: "1";
 };
 
@@ -94,7 +94,7 @@ const normalizePaymentMeans = (
     );
   }
   if (normalizeString(explicitCode) || normalizeString(explicitId)) {
-    if (!["10", "47", "49"].includes(normalizeString(explicitCode)) || normalizeString(explicitId) !== "1") {
+    if (!["10", "45", "47", "49"].includes(normalizeString(explicitCode)) || normalizeString(explicitId) !== "1") {
       throw new FactuCoreConfigurationError(
         "payment_normalization",
         "Payment method fiscal configuration is invalid",
@@ -111,6 +111,7 @@ const normalizePaymentMeans = (
     "001": { paymentMeansCode: "10", paymentMeansId: "1" },
     "002": { paymentMeansCode: "47", paymentMeansId: "1" },
     "003": { paymentMeansCode: "49", paymentMeansId: "1" },
+    "QR_BREB": { paymentMeansCode: "45", paymentMeansId: "1" },
   };
   const mapped = catalogMapping[normalizedMethodCode];
   if (mapped) {
