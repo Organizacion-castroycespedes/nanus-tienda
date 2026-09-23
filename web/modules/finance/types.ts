@@ -47,11 +47,31 @@ export type PaymentMethod = {
   nombre: string;
   tipo: PaymentMethodType;
   requiresReference: boolean;
+  requiresFinancialInstitution?: boolean;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
   allowsChange: boolean;
   active: boolean;
   electronicBillingEnabled: boolean;
-  electronicPaymentMeansCode: "10" | "47" | "49" | null;
+  electronicPaymentMeansCode: "10" | "45" | "47" | "49" | null;
   electronicPaymentMeansId: "1" | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FinancialInstitutionType = "BANK" | "WALLET" | "PAYMENT_NETWORK" | "OTHER";
+
+export type FinancialInstitution = {
+  id: string;
+  tenantId: string | null;
+  codigo: string;
+  nombre: string;
+  nombreCorto: string | null;
+  tipo: FinancialInstitutionType;
+  logoUrl: string | null;
+  active: boolean;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -333,6 +353,7 @@ export type Payment = {
   paymentMethodNombre: string | null;
   paymentMethodTipo: PaymentMethodType | null;
   cashSessionId: string | null;
+  financialInstitutionId: string | null;
   cashRegisterId: string | null;
   cashRegisterNombre: string | null;
   referenceType: PaymentReferenceType;
@@ -403,10 +424,14 @@ export type CreatePaymentMethodPayload = {
   nombre: string;
   tipo: PaymentMethodType;
   requiresReference?: boolean;
+  requiresFinancialInstitution?: boolean;
+  icon?: string;
+  color?: string;
+  sortOrder?: number;
   allowsChange?: boolean;
   active?: boolean;
   electronicBillingEnabled?: boolean;
-  electronicPaymentMeansCode?: "10" | "47" | "49";
+  electronicPaymentMeansCode?: "10" | "45" | "47" | "49";
   electronicPaymentMeansId?: "1";
 };
 
@@ -468,6 +493,7 @@ export type CreatePaymentPayload = {
   branchId: string;
   paymentMethodId: string;
   cashSessionId?: string;
+  financialInstitutionId?: string;
   referenceType: PaymentReferenceType;
   referenceId: string;
   direction: PaymentDirection;

@@ -294,6 +294,38 @@ const resolveBeverageCategory = (
   return null;
 };
 
+const roundElectronicBillingMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+/**
+ * Rebuilds percentage-tax snapshots from the invoice line total. Pricing stores
+ * the line tax snapshot, but old sale rows can contain a per-unit base after a
+ * quantity change. FactuCore deliberately rejects that payload because its
+ * DIAN base is quantity * unit price. Keep special liquor bases (ICL/ADV) as
+ * calculated by the pricing service and repair only deterministic percentage
+ * taxes here.
+ */
+export const normalizeElectronicBillingTaxForQuantity = (input: {
+  quantity: number;
+  lineBase: number;
+  tax: {
+    dianCode?: string | null;
+    taxRate: number;
+    taxBase: number;
+    taxAmount: number;
+  };
+}) => {
+  if (input.quantity <= 1 || !["01", "03", "04"].includes(input.tax.dianCode ?? "")) {
+    return { taxableBase: input.tax.taxBase, amount: input.tax.taxAmount };
+  }
+
+  const rate = input.tax.taxRate > 1 ? input.tax.taxRate / 100 : input.tax.taxRate;
+  const taxableBase = roundElectronicBillingMoney(input.lineBase);
+  return {
+    taxableBase,
+    amount: roundElectronicBillingMoney(taxableBase * rate),
+  };
+};
+
 @Injectable()
 export class SaleService {
   constructor(
@@ -492,6 +524,7 @@ export class SaleService {
         paymentMethodId: payment.paymentMethodId,
         amount,
         cashSessionId: payment.cashSessionId ?? null,
+        financialInstitutionId: payment.financialInstitutionId ?? null,
         referenceNumber: payment.referenceNumber ?? null,
         notes: payment.notes ?? null,
       };
@@ -965,14 +998,25 @@ export class SaleService {
                 : null;
             const dianCode = snapshotTax.dianCode ?? tax?.taxTypeDianCode ?? null;
 
+            const normalizedTax = normalizeElectronicBillingTaxForQuantity({
+              quantity: item.quantity,
+              lineBase: subtotalAmount,
+              tax: {
+                dianCode,
+                taxRate: Number(snapshotTax.taxRate ?? tax?.rate ?? 0),
+                taxBase: Number(snapshotTax.taxBase ?? subtotalAmount),
+                taxAmount: Number(snapshotTax.taxAmount ?? 0),
+              },
+            });
+
             return {
               type: snapshotTax.taxTypeCode ?? snapshotTax.taxName ?? tax?.name ?? "TAX",
               code: dianCode,
               schemeId: dianCode,
               schemeName: snapshotTax.taxName ?? tax?.name ?? null,
               rate: this.toDecimalWireValue(snapshotTax.taxRate ?? tax?.rate ?? 0),
-              taxableBase: this.toDecimalWireValue(snapshotTax.taxBase ?? subtotalAmount),
-              amount: this.toDecimalWireValue(snapshotTax.taxAmount ?? 0),
+              taxableBase: this.toDecimalWireValue(normalizedTax.taxableBase),
+              amount: this.toDecimalWireValue(normalizedTax.amount),
               metadata: {
                 productId: product.id,
                 taxId: snapshotTax.taxId ?? null,
@@ -2442,6 +2486,7 @@ export class SaleService {
         branchId: saleContext.branchId,
         paymentMethodId: payment.paymentMethodId,
         cashSessionId: payment.cashSessionId,
+        financialInstitutionId: payment.financialInstitutionId,
         referenceType: "SALE",
         referenceId: saleId,
         direction: "IN",
@@ -2579,6 +2624,7 @@ export class SaleService {
           branchId: saleContext.branchId,
           paymentMethodId: payment.paymentMethodId,
           cashSessionId: payment.cashSessionId,
+          financialInstitutionId: payment.financialInstitutionId,
           referenceType: "SALE",
           referenceId: saleRow.id,
           direction: "IN",
@@ -2720,6 +2766,23 @@ export class SaleService {
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
       }
+
+      const selectedInstitutionCount = payments.filter(
+        (payment) => Boolean(payment.financialInstitutionId),
+      ).length;
+      const assignedInstitutionCount =
+        await this.repository.assignFinancialInstitutionsToSalePayments(
+          saleContext.tenantId,
+          saleRow.id,
+          payments,
+          client,
+        );
+      if (assignedInstitutionCount !== selectedInstitutionCount) {
+        throw new BadRequestException(
+          "Entidad financiera invalida o pago de la venta no encontrado",
+        );
+      }
+
       await this.syncOrderSaleItemTaxesFromSnapshot(
         saleRow.id,
         saleContext.tenantId,

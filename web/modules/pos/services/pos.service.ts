@@ -30,6 +30,7 @@ export type PosSalePayload = {
     paymentMethodId: string;
     amount: number;
     cashSessionId?: string | null;
+    financialInstitutionId?: string | null;
     referenceNumber?: string | null;
     notes?: string | null;
   }>;

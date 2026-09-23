@@ -65,6 +65,40 @@ export const deactivatePaymentMethod = (paymentMethodId: string) =>
     method: "DELETE",
   });
 
+export const listFinancialInstitutions = (
+  paymentMethodId?: string,
+  active: boolean | "all" = true
+) =>
+  apiClient<import("../types").FinancialInstitution[]>(
+    `/finance/financial-institutions${buildQuery({
+      paymentMethodId,
+      active: String(active),
+    })}`
+  );
+
+export const createFinancialInstitution = (payload: Partial<import("../types").FinancialInstitution>) =>
+  apiClient<import("../types").FinancialInstitution>("/finance/financial-institutions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateFinancialInstitution = (id: string, payload: Partial<import("../types").FinancialInstitution>) =>
+  apiClient<import("../types").FinancialInstitution>(`/finance/financial-institutions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+export const deactivateFinancialInstitution = (id: string) =>
+  apiClient<import("../types").FinancialInstitution>(`/finance/financial-institutions/${id}`, {
+    method: "DELETE",
+  });
+
+export const savePaymentMethodFinancialInstitutions = (paymentMethodId: string, financialInstitutionIds: string[]) =>
+  apiClient<{ success: boolean }>(`/finance/financial-institutions/mappings/${paymentMethodId}`, {
+    method: "PUT",
+    body: JSON.stringify({ financialInstitutionIds }),
+  });
+
 export const listCashRegisters = (filters: CashRegisterFilters = {}) =>
   apiClient<CashRegister[]>(
     `/finance/cash-registers${buildQuery({

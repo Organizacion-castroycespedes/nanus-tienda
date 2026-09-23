@@ -190,7 +190,7 @@ const UsuariosPage = () => {
     setRolesLoading(true);
     try {
       const result = await listRoles(buildAuthHeaders());
-      setRoles(result);
+      setRoles(result.filter((role) => role.nombre !== "SUPER_ADMIN"));
     } catch {
       showToast("No se pudieron cargar los roles.", "error");
     } finally {

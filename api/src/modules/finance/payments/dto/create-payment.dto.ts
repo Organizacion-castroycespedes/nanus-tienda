@@ -33,6 +33,10 @@ export class CreatePaymentDto {
   @IsUUID()
   cashSessionId?: string;
 
+  @IsOptional()
+  @IsUUID()
+  financialInstitutionId?: string;
+
   @IsIn(PAYMENT_REFERENCE_TYPES)
   referenceType!: (typeof PAYMENT_REFERENCE_TYPES)[number];
 

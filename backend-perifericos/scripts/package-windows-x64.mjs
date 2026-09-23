@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { getEnvironment } from "../../desktop/electron/scripts/environments.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
@@ -11,6 +12,7 @@ const artifactName = `ManusPeripheralAgent-win-x64-${packageJson.version}`;
 const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactName);
 const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const environment = getEnvironment(process.env.MANUS_ENVIRONMENT ?? "qa");
 
 const clearReadonlyWindows = (path) => {
   if (process.platform !== "win32") {
@@ -337,8 +339,7 @@ try {
     bind: "127.0.0.1",
     mode: "REAL",
     allowedOrigins: [
-      "https://apptiendamanus.space",
-      "http://localhost:3000",
+      environment.origin,
     ],
     logLevel: "INFO",
     enableRealAdapters: true,
@@ -355,8 +356,7 @@ try {
     bind: "127.0.0.1",
     mode: "REAL",
     allowedOrigins: [
-      "https://apptiendamanus.space",
-      "http://localhost:3000",
+      environment.origin,
     ],
     logLevel: "INFO",
     enableRealAdapters: true,

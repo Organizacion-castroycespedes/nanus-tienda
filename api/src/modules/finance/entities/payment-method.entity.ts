@@ -21,6 +21,10 @@ export type PaymentMethodProps = {
   nombre: string;
   tipo: PaymentMethodType;
   requiresReference?: boolean;
+  requiresFinancialInstitution?: boolean;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
   allowsChange?: boolean;
   active?: boolean;
   electronicBillingEnabled?: boolean;
@@ -37,6 +41,10 @@ export class PaymentMethodEntity {
   readonly nombre: string;
   readonly tipo: PaymentMethodType;
   readonly requiresReference: boolean;
+  readonly requiresFinancialInstitution: boolean;
+  readonly icon: string | null;
+  readonly color: string | null;
+  readonly sortOrder: number;
   readonly allowsChange: boolean;
   readonly active: boolean;
   readonly electronicBillingEnabled: boolean;
@@ -69,13 +77,17 @@ export class PaymentMethodEntity {
     }
 
     const requiresReference = props.requiresReference ?? false;
+    const requiresFinancialInstitution = props.requiresFinancialInstitution ?? false;
+    const icon = props.icon?.trim() || null;
+    const color = props.color?.trim() || null;
+    const sortOrder = props.sortOrder ?? 0;
     const allowsChange = props.allowsChange ?? false;
     const electronicBillingEnabled = props.electronicBillingEnabled ?? false;
     const electronicPaymentMeansCode = props.electronicPaymentMeansCode?.trim() || null;
     const electronicPaymentMeansId = props.electronicPaymentMeansId?.trim() || null;
 
     if (electronicBillingEnabled &&
-      (!electronicPaymentMeansCode || !["10", "47", "49"].includes(electronicPaymentMeansCode) || electronicPaymentMeansId !== "1")) {
+      (!electronicPaymentMeansCode || !["10", "45", "47", "49"].includes(electronicPaymentMeansCode) || electronicPaymentMeansId !== "1")) {
       throw new Error("electronic billing fiscal mapping is invalid");
     }
 
@@ -89,6 +101,10 @@ export class PaymentMethodEntity {
     this.nombre = nombre;
     this.tipo = props.tipo;
     this.requiresReference = requiresReference;
+    this.requiresFinancialInstitution = requiresFinancialInstitution;
+    this.icon = icon;
+    this.color = color;
+    this.sortOrder = sortOrder;
     this.allowsChange = allowsChange;
     this.active = props.active ?? true;
     this.electronicBillingEnabled = electronicBillingEnabled;

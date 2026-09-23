@@ -19,7 +19,8 @@ WITH role_targets AS (
         AND mi.key IN (
           'FINANCE',
           'FINANCE_CASH_SESSIONS',
-          'FINANCE_CASH_MOVEMENTS'
+          'FINANCE_CASH_MOVEMENTS',
+          'FINANCE_PAYMENT_METHODS'
         )
         THEN 'WRITE'
       WHEN r.nombre = 'ADMIN'

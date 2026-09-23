@@ -143,6 +143,15 @@ const buildService = (
     listProductCategories: async () => [],
   };
 
+  const pricingService = {
+    previewProposedConfiguration: async (input: {
+      finalUnitPrice: number;
+    }) => ({
+      lineTotal: input.finalUnitPrice,
+      lineSubtotal: input.finalUnitPrice,
+    }),
+  };
+
   const db = {
     getClient: async () => ({
       query: async () => ({ rows: [] }),
@@ -157,13 +166,28 @@ const buildService = (
     productCategoryRepository as any,
     productSubcategoryRepository as any,
     taxRepository as any,
+    pricingService as any,
     db as any
   );
 };
 
 const buildPriceChangeService = (
   currentProduct = buildProduct(),
-  options: { findByIdForUpdateReturns?: ProductEntity | null } = {}
+  options: {
+    findByIdForUpdateReturns?: ProductEntity | null;
+    productTaxes?: Array<{
+      id: string;
+      taxId: string;
+      calculationOrder: number;
+      isActive: boolean;
+      taxName: string | null;
+      taxRate: number | null;
+      isIncluded: boolean | null;
+      calculationMethodCode: string | null;
+      taxTypeCode: string | null;
+      taxTypeDianCode: string | null;
+    }>;
+  } = {}
 ) => {
   const calls: string[] = [];
   const historyRows: any[] = [];
@@ -210,6 +234,8 @@ const buildPriceChangeService = (
       });
     },
     findPriceHistoryByProduct: async () => historyRows,
+    findProductTaxes: async () => options.productTaxes ?? [],
+    findProductTaxProfile: async () => null,
   };
   const stockMovementService = {
     getStockByProduct: async () => ({ stock: 0 }),
@@ -226,6 +252,31 @@ const buildPriceChangeService = (
   const taxRepository = {
     findByIds: async () => [],
     listProductCategories: async () => [],
+  };
+  const pricingService = {
+    previewProposedConfiguration: async (input: {
+      finalUnitPrice: number;
+      taxes: Array<{ isIncluded: boolean }>;
+    }) => {
+      const included = input.taxes.some((tax) => tax.isIncluded);
+      const rate = input.taxes.length > 0 ? 0.19 : 0;
+      if (included && rate > 0) {
+        return {
+          lineTotal: input.finalUnitPrice,
+          lineSubtotal: Math.round((input.finalUnitPrice / (1 + rate)) * 100) / 100,
+        };
+      }
+      if (rate > 0) {
+        return {
+          lineTotal: Math.round(input.finalUnitPrice * (1 + rate) * 100) / 100,
+          lineSubtotal: input.finalUnitPrice,
+        };
+      }
+      return {
+        lineTotal: input.finalUnitPrice,
+        lineSubtotal: input.finalUnitPrice,
+      };
+    },
   };
   const client = {
     query: async (sql: string) => {
@@ -246,6 +297,7 @@ const buildPriceChangeService = (
       productCategoryRepository as any,
       productSubcategoryRepository as any,
       taxRepository as any,
+      pricingService as any,
       db as any
     ),
     calls,
@@ -774,9 +826,45 @@ describe("ProductService enriched product rules", () => {
     assert.equal(historyRows.length, 1);
     assert.equal(historyRows[0].status, "APPLIED");
     assert.equal(updatedProducts[0].price, 12000);
+    assert.equal(updatedProducts[0].priceWithTax, 12000);
+    assert.equal(updatedProducts[0].priceWithoutTax, 12000);
     assert.ok(calls.includes("BEGIN"));
     assert.ok(calls.includes("COMMIT"));
     assert.ok(!calls.includes("ROLLBACK"));
+  });
+
+  it("recalculates stored fiscal prices when changing price with included IVA", async () => {
+    const taxId = randomUUID();
+    const current = buildProduct({
+      price: 8092,
+      priceWithTax: 8092,
+      priceWithoutTax: 6800,
+    });
+    const { service, updatedProducts } = buildPriceChangeService(current, {
+      productTaxes: [
+        {
+          id: randomUUID(),
+          taxId,
+          calculationOrder: 100,
+          isActive: true,
+          taxName: "IVA 19%",
+          taxRate: 0.19,
+          isIncluded: true,
+          calculationMethodCode: "PERCENTAGE",
+          taxTypeCode: null,
+          taxTypeDianCode: null,
+        },
+      ],
+    });
+
+    await service.changePrice(current.id, tenantId, randomUUID(), {
+      newPrice: 6800,
+      reason: "Ajuste a precio con IVA incluido",
+    });
+
+    assert.equal(updatedProducts[0].price, 6800);
+    assert.equal(updatedProducts[0].priceWithTax, 6800);
+    assert.equal(updatedProducts[0].priceWithoutTax, 5714.29);
   });
 
   it("rejects empty or short price change reason", async () => {

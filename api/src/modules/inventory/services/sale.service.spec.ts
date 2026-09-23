@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import type { PoolClient } from "pg";
-import { SaleService, resolveElectronicBillingTaxTreatment } from "./sale.service";
+import {
+  SaleService,
+  normalizeElectronicBillingTaxForQuantity,
+  resolveElectronicBillingTaxTreatment,
+} from "./sale.service";
 import { buildSaleCompletedForElectronicBillingEventId } from "../mappers/sale-completed-for-electronic-billing-event-id";
 import type { CreateSaleInput } from "../repositories/sale.repository";
 import type {
@@ -32,6 +36,7 @@ const ids = {
   order: "10000000-0000-0000-0000-000000000020",
   delivery: "10000000-0000-0000-0000-000000000021",
   orderItem: "10000000-0000-0000-0000-000000000022",
+  financialInstitution: "10000000-0000-0000-0000-000000000023",
 };
 
 test("electronic billing maps authoritative Exento tax to EXEMPT", () => {
@@ -50,6 +55,21 @@ test("electronic billing maps authoritative Exento tax to EXEMPT", () => {
     ),
     "TAXED",
   );
+});
+
+test("electronic billing normalizes IVA base and amount for three units", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 3,
+    lineBase: 300000,
+    tax: {
+      dianCode: "01",
+      taxRate: 0.05,
+      taxBase: 100000,
+      taxAmount: 5000,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 300000, amount: 15000 });
 });
 
 type Scenario = {
@@ -333,6 +353,7 @@ class FakeCreateSaleRepository {
     }>;
   }> = [];
   readonly invoiceOrderCalls: unknown[] = [];
+  readonly assignedPaymentInstitutions: unknown[] = [];
   readonly statusUpdates: unknown[] = [];
   readonly idempotencyCompletions: unknown[] = [];
   readonly idempotencyReservations = new Map<
@@ -400,6 +421,15 @@ class FakeCreateSaleRepository {
       balance: 0,
       created_at: new Date("2026-06-02T00:00:00.000Z"),
     };
+  }
+
+  async assignFinancialInstitutionsToSalePayments(
+    tenantId: string,
+    saleId: string,
+    payments: Array<{ financialInstitutionId?: string | null }>,
+  ) {
+    this.assignedPaymentInstitutions.push({ tenantId, saleId, payments });
+    return payments.filter((payment) => payment.financialInstitutionId).length;
   }
 
   async updateSaleStatus(...args: unknown[]) {
@@ -1303,6 +1333,33 @@ test("SaleService.createSale skips sale billing outbox event when outbox service
   assert.equal(outboxEvents.length, 0);
 });
 
+test("SaleService.createSale persists the selected financial institution", async () => {
+  const { service, createdPayments } = buildCreateSaleService([makePreview()]);
+
+  await service.createSale(
+    createSalePayload({
+      payments: [
+        {
+          paymentMethodId: ids.paymentMethod,
+          amount: 360,
+          cashSessionId: ids.posSession,
+          financialInstitutionId: ids.financialInstitution,
+          referenceNumber: "QR-BREB-TEST",
+        },
+      ],
+    }),
+    posContext,
+  );
+
+  const persistedPayment = createdPayments[0] as {
+    financialInstitutionId?: string | null;
+  };
+  assert.equal(
+    persistedPayment.financialInstitutionId,
+    ids.financialInstitution,
+  );
+});
+
 test("SaleService.createSaleFromOrderDelivery links existing order delivery to sale", async () => {
   const { service, client, repository } = buildCreateSaleService([]);
 
@@ -1310,7 +1367,15 @@ test("SaleService.createSaleFromOrderDelivery links existing order delivery to s
     {
       orderId: ids.order,
       type: "CASH",
-      payments: [],
+      payments: [
+        {
+          paymentMethodId: ids.paymentMethod,
+          amount: 3000,
+          cashSessionId: ids.posSession,
+          financialInstitutionId: ids.financialInstitution,
+          referenceNumber: "QR-BREB-ORDER",
+        },
+      ],
     },
     posContext
   );
@@ -1333,7 +1398,22 @@ test("SaleService.createSaleFromOrderDelivery links existing order delivery to s
   assert.equal(invoiceCall.posSessionId, ids.posSession);
   assert.equal(invoiceCall.orderId, ids.order);
   assert.equal(invoiceCall.type, "CASH");
-  assert.deepEqual(invoiceCall.payments, []);
+  assert.deepEqual(invoiceCall.payments, [
+    {
+      paymentMethodId: ids.paymentMethod,
+      amount: 3000,
+      cashSessionId: ids.posSession,
+      financialInstitutionId: ids.financialInstitution,
+      referenceNumber: "QR-BREB-ORDER",
+      notes: null,
+    },
+  ]);
+  assert.equal(repository.assignedPaymentInstitutions.length, 1);
+  assert.deepEqual(repository.assignedPaymentInstitutions[0], {
+    tenantId: ids.tenant,
+    saleId: ids.sale,
+    payments: invoiceCall.payments,
+  });
   const deliveryUpdate = client.queries.find((query) =>
     query.text.includes("UPDATE public.deliveries")
   );
@@ -1764,4 +1844,3 @@ test("SaleService classifies a draft electronic-billing snapshot as stale after 
     false,
   );
 });
-
