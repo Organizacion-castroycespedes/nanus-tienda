@@ -62,6 +62,7 @@ const CashRegistersPage = () => {
 
   const { canViewFinance, canManageCashRegisters, isSuperRole } =
     getFinancePermissions(role);
+  const canManageCashRegisterAssignments = role === "SUPER_ADMIN" || role === "ADMIN";
   const defaultTenantId = isSuperRole ? undefined : authUser?.tenantId ?? undefined;
   const {
     cashRegisters,
@@ -421,7 +422,7 @@ const CashRegistersPage = () => {
                             Editar
                           </Button>
                         ) : null}
-                        {role === "SUPER_ADMIN" ? (
+                        {canManageCashRegisterAssignments ? (
                           <Button variant="outline" size="sm" onClick={() => openAssignments(item)}>
                             <UserPlus className="h-4 w-4" />
                             Usuarios
@@ -462,7 +463,7 @@ const CashRegistersPage = () => {
       {assignmentItem ? (
         <Modal
           title={`Usuarios de ${assignmentItem.nombre}`}
-          description="Solo SUPER_ADMIN puede administrar los cajeros asignados a esta caja."
+          description="SUPER_ADMIN y ADMIN pueden administrar los cajeros asignados a esta caja."
           onClose={closeAssignments}
           size="lg"
           responsive
