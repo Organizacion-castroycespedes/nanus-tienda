@@ -2,14 +2,16 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 type ModalProps = {
-  title: string;
+  title?: string;
   children: ReactNode;
   className?: string;
   contentClassName?: string;
   bodyClassName?: string;
   responsive?: boolean;
   description?: string;
+  header?: ReactNode;
   footer?: ReactNode;
+  footerClassName?: string;
   onClose?: () => void;
   size?: "md" | "lg" | "xl" | "full";
 };
@@ -29,12 +31,20 @@ export const Modal = ({
   bodyClassName,
   responsive = false,
   description,
+  header,
   footer,
+  footerClassName,
   onClose,
   size = "md",
 }: ModalProps) => {
   return (
-    <div role="dialog" aria-modal="true" className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 ${responsive ? "overflow-hidden p-2 sm:p-4" : "p-6"}`}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 ${
+        responsive ? "overflow-hidden p-2 sm:p-4" : "p-6"
+      }`}
+    >
       {onClose ? (
         <button
           type="button"
@@ -44,15 +54,27 @@ export const Modal = ({
         />
       ) : null}
       <div
-        className={`relative w-full ${responsive ? "flex min-h-0 max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-4 sm:max-h-[calc(100dvh-2rem)] sm:p-6" : "p-6"} ${sizeStyles[size]} rounded-2xl bg-white shadow-xl ${className ?? ""} ${contentClassName ?? ""} dark:bg-slate-800`}
+        className={`relative w-full ${
+          responsive
+            ? "flex min-h-0 max-h-[calc(100dvh-1rem)] flex-col overflow-hidden p-4 sm:max-h-[calc(100dvh-2rem)] sm:p-6"
+            : "p-6"
+        } ${sizeStyles[size]} rounded-2xl bg-white shadow-xl ${className ?? ""} ${
+          contentClassName ?? ""
+        } dark:bg-slate-800`}
       >
         <div className={`flex items-start justify-between gap-4 ${responsive ? "shrink-0" : ""}`}>
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
-            {description ? (
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
-            ) : null}
-          </div>
+          {header ? (
+            <div className="min-w-0 flex-1">{header}</div>
+          ) : (
+            <div className="min-w-0">
+              {title ? (
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
+              ) : null}
+              {description ? (
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>
+              ) : null}
+            </div>
+          )}
           {onClose ? (
             <button
               type="button"
@@ -64,8 +86,22 @@ export const Modal = ({
             </button>
           ) : null}
         </div>
-        <div className={`mt-4 ${responsive ? "min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" : ""} ${bodyClassName ?? ""}`}>{children}</div>
-        {footer ? <div className={`${responsive ? "mt-4 shrink-0" : "mt-6"} flex justify-end gap-3`}>{footer}</div> : null}
+        <div
+          className={`mt-4 ${
+            responsive ? "min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" : ""
+          } ${bodyClassName ?? ""}`}
+        >
+          {children}
+        </div>
+        {footer ? (
+          <div
+            className={`${responsive ? "mt-4 shrink-0" : "mt-6"} flex justify-end gap-3 ${
+              footerClassName ?? ""
+            }`}
+          >
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );
