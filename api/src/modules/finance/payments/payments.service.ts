@@ -240,6 +240,7 @@ export class PaymentsService {
         paymentMethodNombre: record.payment_method_nombre,
         paymentMethodTipo: record.payment_method_tipo,
         cashSessionId: record.cash_session_id,
+        financialInstitutionId: record.financial_institution_id,
         cashRegisterId: record.cash_register_id,
         cashRegisterNombre: record.cash_register_nombre,
         referenceType: record.reference_type,
@@ -447,6 +448,28 @@ export class PaymentsService {
       throw new BadRequestException("Metodo de pago inactivo");
     }
 
+    if (paymentMethod.requires_financial_institution && !payload.financialInstitutionId) {
+      throw new BadRequestException("Entidad financiera requerida para este metodo de pago");
+    }
+    if (payload.financialInstitutionId) {
+      const institutionResult = existingClient
+        ? await existingClient.query<{ id: string }>(
+            `SELECT id FROM financial_institutions
+             WHERE id = $1 AND active = TRUE AND (tenant_id = $2 OR tenant_id IS NULL)
+             LIMIT 1`,
+            [payload.financialInstitutionId, tenantId]
+          )
+        : await this.db.query<{ id: string }>(
+            `SELECT id FROM financial_institutions
+             WHERE id = $1 AND active = TRUE AND (tenant_id = $2 OR tenant_id IS NULL)
+             LIMIT 1`,
+            [payload.financialInstitutionId, tenantId]
+          );
+      if (!institutionResult.rows[0]) {
+        throw new BadRequestException("Entidad financiera invalida para el tenant");
+      }
+    }
+
     const status = payload.status ?? "COMPLETED";
 
     let cashSession: Awaited<ReturnType<CashSessionsRepository["findById"]>> | null = null;
@@ -569,6 +592,7 @@ export class PaymentsService {
         branchId: payload.branchId,
         paymentMethodId: payload.paymentMethodId,
         cashSessionId: resolvedCashSessionId,
+        financialInstitutionId: payload.financialInstitutionId ?? null,
         referenceType: payload.referenceType,
         referenceId: payload.referenceId,
         direction: payload.direction,

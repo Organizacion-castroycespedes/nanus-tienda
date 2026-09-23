@@ -134,32 +134,20 @@ export const rebalanceCashPayment = <TPayment extends PaymentDraftLike>(
     (payment) => payment.paymentMethodId === cashMethod.id
   );
   
-  const nonCashPayments = payments.filter(
-    (payment) => payment.paymentMethodId !== cashMethod.id
-  );
   const nonCashTotal = round(
-    nonCashPayments.reduce(
-      (sum, payment) => sum + parsePaymentAmount(payment.amount),
-      0
-    )
+    payments
+      .filter((payment) => payment.paymentMethodId !== cashMethod.id)
+      .reduce((sum, payment) => sum + parsePaymentAmount(payment.amount), 0)
   );
-  const remaining = round(Math.max(total - nonCashTotal, 0));
 
-  const result = [...nonCashPayments];
-
-  if (remaining > 0 || result.length === 0) {
-    if (cashIndex >= 0) {
-      const cashPayment = payments[cashIndex];
-      const updatedCashPayment = {
-        ...cashPayment,
-        paymentMethodId: cashMethod.id,
-        amount: formatPaymentAmount(remaining),
-      };
-      result.splice(Math.min(cashIndex, result.length), 0, updatedCashPayment);
-    } else {
-      const cashPayment = createPayment(cashMethod.id, formatPaymentAmount(remaining));
-      result.unshift(cashPayment);
-    }
+  let result = payments;
+  if (cashIndex >= 0) {
+    const remaining = round(Math.max(total - nonCashTotal, 0));
+    result = payments.map((payment, index) =>
+      index === cashIndex
+        ? { ...payment, amount: formatPaymentAmount(remaining) }
+        : payment
+    );
   }
 
   return {

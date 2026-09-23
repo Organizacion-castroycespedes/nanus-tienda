@@ -490,6 +490,7 @@ schema_files=(
   "finance/patches/20260502_1840_finance_cash_movements_reference_text.sql"
   "finance/migrations/20260503_2030_finance_cash_payment_traceability.sql"
   "finance/migrations/20260914_1200_document_payment_idempotency.sql"
+  "finance/migrations/20260922_payment_methods_financial_institutions.sql"
 )
 
 function_files=(
