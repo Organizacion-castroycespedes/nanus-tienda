@@ -208,8 +208,25 @@ export class SalesReportAdapter {
                COALESCE((scope->>'restrictToUser')::boolean, FALSE) AS restrict_to_user
           FROM public.report_resolve_pos_scope($2::text, $3::uuid, $4::uuid, $5::uuid, $6::uuid) AS scope
       ), sale_rows AS (
-        SELECT sale.*, customer.name AS customer_name, branch.nombre AS branch_name,
-               payment_context.cash_session_id
+        SELECT sale.id,
+               sale.tenant_id,
+               sale.branch_id,
+               sale.terminal_id,
+               sale.user_id,
+               sale.pos_session_id,
+               sale.customer_id,
+               sale.order_id,
+               sale.type,
+               sale.status,
+               sale.total,
+               sale.balance,
+               sale.payment_status,
+               sale.total_paid,
+               sale.balance_due,
+               sale.created_at,
+               COALESCE(sale.cash_session_id, payment_context.cash_session_id) AS cash_session_id,
+               customer.name AS customer_name,
+               branch.nombre AS branch_name
           FROM public.sales AS sale
           LEFT JOIN public.customers AS customer
             ON customer.id = sale.customer_id AND customer.tenant_id = sale.tenant_id
@@ -258,13 +275,13 @@ export class SalesReportAdapter {
                    ON assignment.cash_register_id = shared_register.id
                   AND assignment.user_id = $1::uuid
                   AND assignment.unassigned_at IS NULL
-                WHERE shared_session.id = sale.cash_session_id
+                WHERE shared_session.id = COALESCE(sale.cash_session_id, payment_context.cash_session_id)
                   AND shared_session.tenant_id = sale.tenant_id
              )
              OR EXISTS (
                SELECT 1
                  FROM public.cash_sessions AS opened_session
-                WHERE opened_session.id = sale.cash_session_id
+                WHERE opened_session.id = COALESCE(sale.cash_session_id, payment_context.cash_session_id)
                   AND opened_session.tenant_id = sale.tenant_id
                   AND opened_session.opened_by_user_id = $1::uuid
              )

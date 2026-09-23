@@ -102,7 +102,7 @@ export const CartSaleModal = ({
       size="full"
       responsive
       onClose={onClose}
-      className="max-w-6xl dark:bg-slate-950"
+      className="!max-h-[calc(100svh-2rem)] max-w-6xl dark:bg-slate-950"
       bodyClassName="!overflow-hidden !pr-0 flex min-h-0 flex-1 flex-col"
       footerClassName="!mt-0 w-full flex-col gap-2 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between"
       header={
