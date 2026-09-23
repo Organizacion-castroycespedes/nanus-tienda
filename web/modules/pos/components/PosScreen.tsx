@@ -2770,16 +2770,17 @@ export const PosScreen = () => {
       <div className="grid gap-5">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-700 dark:bg-slate-950/80">
-            <div className="flex flex-col gap-4">
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
+            <div className="flex flex-col gap-3 2xl:gap-4">
+              <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   <Search className="h-4 w-4" />
                   Buscar productos
                 </div>
                 <Input
                   ref={searchInputRef}
-                  label="Buscador POS principal"
+                  label=""
+                  aria-label="Buscar productos"
                   placeholder="Buscar productos por nombre, SKU o codigo"
                   autoFocus
                   value={query}
