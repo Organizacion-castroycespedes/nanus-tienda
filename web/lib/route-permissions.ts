@@ -42,6 +42,10 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.INVENTORY, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/inventory\/valuation\/?$/i,
+    requirement: { module: MENU_KEYS.INVENTORY, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/inventory\/products\/?$/i,
     requirement: { module: MENU_KEYS.INVENTORY_PRODUCTS, action: "read" },
   },
