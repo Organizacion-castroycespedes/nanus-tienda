@@ -2,19 +2,16 @@
 
 import {
   CheckCircle2,
-  ChevronDown,
   CreditCard,
   Grid3X3,
   List,
   Loader2,
-  Minus,
   Package,
   Plus,
   Scale,
   Search,
   SlidersHorizontal,
   ShoppingCart,
-  Trash2,
   UserRound,
   UserPlus,
   Wallet,
@@ -52,6 +49,10 @@ import type {
   FinancialInstitution,
 } from "../../finance/types";
 import { PaymentDialog, type PosPaymentRow } from "./payment/PaymentDialog";
+import {
+  CartSaleModal,
+  type CartSaleItemPresentation,
+} from "./cart/CartSaleModal";
 import {
   createSale,
   getPosCustomers,
@@ -113,7 +114,6 @@ import {
   createPosScannerHidLogger,
   describePosScannerWedgeIgnoredSequence,
 } from "../utils/pos-scanner-hid";
-import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
 import {
   listProductCategories,
@@ -528,6 +528,7 @@ export const PosScreen = () => {
     markSaleSubmissionUnknown,
     allowSaleSubmissionRetry,
     allowUnknownSaleRetry,
+    resetPosCartSale,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
@@ -557,6 +558,7 @@ export const PosScreen = () => {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
+  const [summaryTaxesExpanded, setSummaryTaxesExpanded] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
@@ -583,7 +585,6 @@ export const PosScreen = () => {
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
 
-  const [isMobile, setIsMobile] = useState(false);
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
   const scannerHidEnabled =
@@ -674,29 +675,11 @@ export const PosScreen = () => {
     });
   }, [productToolsOpen]);
 
-  // Detect mobile/tablet viewport
   useEffect(() => {
-    const checkViewport = () => {
-      const mobile = window.innerWidth < 1280;
-    setIsMobile(mobile);
-    // On mobile, cart is closed by default
-    if (mobile) {
-      setCartSheetOpen(false);
-    } else {
-      setCartSheetOpen(true);
-    }
-  };
-
-    checkViewport();
-    window.addEventListener("resize", checkViewport);
-    return () => window.removeEventListener("resize", checkViewport);
-  }, []);
-
-  useEffect(() => {
-    if (isMobile && cart.length === 0 && cartSheetOpen) {
+    if (cart.length === 0 && cartSheetOpen) {
       setCartSheetOpen(false);
     }
-  }, [cart.length, cartSheetOpen, isMobile, setCartSheetOpen]);
+  }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
   useEffect(() => {
     if (paymentModalOpen || quickFiscalCustomerOpen) {
@@ -2070,16 +2053,46 @@ export const PosScreen = () => {
     setPaymentWarning(result.error);
     setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
     setPaymentModalOpen(true);
+    setCartSheetOpen(false);
   }, [
     createPaymentDraft,
     customers,
     finalConsumerCustomer,
     paymentMethodsCatalog,
     selectedCustomerId,
+    setCartSheetOpen,
     setPayments,
     setSelectedCustomerId,
     summary.total,
   ]);
+
+  const cancelCurrentSale = useCallback(() => {
+    if (cartRef.current.length > 0) {
+      const confirmed = window.confirm(
+        "¿Cancelar la venta actual? Se vaciará el carrito."
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    resetPosCartSale();
+    setCartItemsAndRef([]);
+    setExpandedTaxItems({});
+    setSummaryTaxesExpanded(true);
+    setSubmitError(null);
+    setCartSheetOpen(false);
+    setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+  }, [
+    finalConsumerCustomer?.id,
+    resetPosCartSale,
+    setCartItemsAndRef,
+    setCartSheetOpen,
+    setSelectedCustomerId,
+  ]);
+
+  const closeCartSheet = useCallback(() => {
+    setCartSheetOpen(false);
+  }, [setCartSheetOpen]);
 
   const closeChargeModal = () => {
     if (processingSale) {
@@ -2108,9 +2121,9 @@ export const PosScreen = () => {
           setProductToolsOpen(false);
           return;
         }
-        if (cartSheetOpen && isMobile) {
+        if (cartSheetOpen) {
           event.preventDefault();
-          setCartSheetOpen(false);
+          closeCartSheet();
           return;
         }
         if (query.trim()) {
@@ -2135,7 +2148,7 @@ export const PosScreen = () => {
         return;
       }
 
-      if (event.key === "F4" && canCharge) {
+      if ((event.key === "F4" || event.key === "F12") && canCharge) {
         event.preventDefault();
         openChargeModal();
       }
@@ -2145,15 +2158,15 @@ export const PosScreen = () => {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [
     canCharge,
+    closeCartSheet,
     focusProductSearch,
     cartSheetOpen,
-    isMobile,
     openChargeModal,
     openProductTools,
     paymentModalOpen,
     query,
-    productToolsOpen,
     quickFiscalCustomerOpen,
+    productToolsOpen,
   ]);
 
   const firstPaymentId = payments[0]?.id;
@@ -2574,332 +2587,31 @@ export const PosScreen = () => {
     );
   }
 
-  // Cart Panel Component (internal)
-  const CartPanel = () => (
-    <div className="flex flex-1 min-h-0 flex-col">
-      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-700">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-            Carrito
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-            Venta actual
-          </h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-            {cartWithDerivedValues.length} items
-          </div>
-          <button
-            type="button"
-            onClick={() => setCartSheetOpen(false)}
-            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden dark:text-slate-200"
-            aria-label="Cerrar carrito"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
+  const resolveCartItemPresentation = (item: (typeof cartWithDerivedValues)[number]): CartSaleItemPresentation => {
+    const product = productById[item.productId];
+    const productSaleType = product ? getProductSaleType(product) : "UNIT";
+    const unitLabel = product?.measurementUnit ?? (productSaleType === "WEIGHT" ? "KG" : "UND");
+    const effectiveImage = product
+      ? resolveEffectivePosProductImage(product, {
+          categoryById: productCategoryById,
+          subcategoryById: productSubcategoryById,
+        })
+      : null;
 
-      <div className="mt-3 flex flex-1 min-h-0 flex-col overflow-hidden">
-        {cartWithDerivedValues.length === 0 ? (
-          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4">
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <ShoppingCart className="h-8 w-8 text-slate-300 dark:text-slate-500" />
-              <p className="mt-3 text-base font-semibold text-slate-700 dark:text-slate-100">
-                Tu carrito esta vacio
-              </p>
-              <p className="mt-2 max-w-[18rem] text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                Agrega productos para iniciar una venta.
-              </p>
-            </div>
+    return {
+      imageUrl: effectiveImage?.imageUrl ?? null,
+      imageAlt: effectiveImage?.altText ?? item.name,
+      imageLabel: buildImageLabel(item.name),
+      saleTypeLabel: productSaleTypeLabels[productSaleType],
+      unitLabel,
+      isWeighable: Boolean(product && isWeighableProduct(product)),
+    };
+  };
 
-            <div className="shrink-0 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Subtotal</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Impuestos</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Descuentos</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-700 dark:text-white">
-                <span>TOTAL</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-            </div>
-
-            <Button
-              className="min-h-12 w-full shrink-0 rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
-              size="lg"
-              onClick={openChargeModal}
-              disabled={!canCharge}
-            >
-              <Wallet className="h-5 w-5" />
-              COBRAR {formatCurrency(0)}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <div className="space-y-0 divide-y divide-slate-200/80 dark:divide-slate-800">
-                {cartWithDerivedValues.map((item) => {
-                  const product = productById[item.productId];
-                  const isCartItemWeighable = Boolean(product && isWeighableProduct(product));
-                  const productSaleType = product ? getProductSaleType(product) : "UNIT";
-                  const unitLabel = product?.measurementUnit ?? (productSaleType === "WEIGHT" ? "KG" : "UND");
-                  const quantityIsPlural = Number(item.quantity) > 1;
-                  const discountDisplay = buildPosCartDiscountDisplay({
-                    baseUnitPrice: item.baseUnitPrice,
-                    finalUnitPrice: item.finalUnitPrice,
-                    unitPrice: item.unitPrice,
-                    quantity: item.quantity,
-                    discountAmount: item.discountAmount,
-                    discountTotal: item.discountTotal,
-                    discountPercent: item.discountPercent,
-                    isWeighable: isCartItemWeighable,
-                  });
-                  const effectiveImage = product
-                    ? resolveEffectivePosProductImage(product, {
-                        categoryById: productCategoryById,
-                        subcategoryById: productSubcategoryById,
-                      })
-                    : null;
-
-                  return (
-                    <article key={item.productId} className="py-3 first:pt-0 last:pb-0">
-                      <div className="flex items-start gap-3">
-                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                          <InventoryImagePreview
-                            imageUrl={effectiveImage?.imageUrl ?? null}
-                            altText={effectiveImage?.altText ?? item.name}
-                            lazy
-                            className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-1.5 text-[10px] font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                            fallback={<span>{buildImageLabel(item.name)}</span>}
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-slate-950 dark:text-white">
-                                {item.name}
-                              </h3>
-                              <p className="mt-0.5 truncate text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                {item.sku} {product ? `• ${productSaleTypeLabels[productSaleType]} / ${unitLabel}` : ""}
-                              </p>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => removeCartItem(item.productId)}
-                              className="rounded-full p-1.5 text-slate-400 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-800"
-                              aria-label={`Eliminar ${item.name}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
-                              >
-                                <Minus className="h-4 w-4" />
-                              </button>
-                              <input
-                                value={item.quantity}
-                                onChange={(event) =>
-                                  updateQuantity(
-                                    item.productId,
-                                    parseQuantityInput(event.target.value)
-                                  )
-                                }
-                                className="w-12 border-x border-slate-200 bg-transparent px-1 py-1.5 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                                inputMode={isCartItemWeighable ? "decimal" : "numeric"}
-                                aria-label={`Cantidad de ${item.name}`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </button>
-                            </div>
-
-                            {isCartItemWeighable && product ? (
-                              <button
-                                type="button"
-                                onClick={() => void handleReadScaleForProduct(product)}
-                                disabled={!scaleMockEnabled || scaleReading}
-                                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
-                              >
-                                {scaleReading ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Scale className="h-3.5 w-3.5" />
-                                )}
-                                Leer balanza
-                              </button>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
-                            {item.pricingStatus === "PENDING" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-semibold text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                {item.pricingError === "Precio pendiente de actualización" ? "Precio pendiente de actualización" : "Calculando precio"}
-                              </span>
-                            ) : null}
-
-                            {item.pricingStatus === "ERROR" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                                Error: {item.pricingError}
-                              </span>
-                            ) : null}
-
-                            {item.appliedPromotionName ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-                                Promo: {item.appliedPromotionName}
-                              </span>
-                            ) : null}
-
-                            {discountDisplay ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                                Ahorro {formatCurrency(discountDisplay.totalDiscount)}
-                              </span>
-                            ) : null}
-
-                            <span className="text-slate-500 dark:text-slate-400">Stock {item.stock}</span>
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <button
-                              type="button"
-                              onClick={() => toggleTaxBreakdown(item.productId)}
-                              className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
-                            >
-                              <span>Impuestos</span>
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {formatCurrency(item.taxTotal)}
-                              </span>
-                              <ChevronDown
-                                className={`h-3.5 w-3.5 transition-transform duration-200 ${
-                                  expandedTaxItems[item.productId] ? "rotate-180" : ""
-                                }`}
-                              />
-                            </button>
-
-                            <div className="shrink-0 text-right">
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                                {quantityIsPlural ? "Total" : "Precio"}
-                              </p>
-                              <p className="mt-0.5 text-base font-semibold text-slate-950 dark:text-white">
-                                {formatCurrency(item.subtotal)}
-                              </p>
-                              {quantityIsPlural ? (
-                                <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                                  {formatCurrency(item.unitPrice)} c/u
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          {expandedTaxItems[item.productId] ? (
-                            <div className="mt-2 space-y-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-950/80">
-                              {item.taxes.length === 0 ? (
-                                <p className="text-slate-500 dark:text-slate-400">
-                                  Este producto no tiene impuestos asociados.
-                                </p>
-                              ) : (
-                                item.taxes.map((tax) => (
-                                  <div
-                                    key={tax.taxId}
-                                    className="flex items-center justify-between gap-3"
-                                  >
-                                    <span className="truncate text-slate-700 dark:text-slate-200">
-                                      {tax.taxName}
-                                    </span>
-                                    <span className="shrink-0 text-slate-600 dark:text-slate-300">
-                                      {formatCurrency(tax.taxAmount)}
-                                    </span>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mt-3 flex shrink-0 flex-col gap-3">
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
-                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <span>Impuestos</span>
-                  <span>{formatCurrency(summary.taxesTotal)}</span>
-                </div>
-                {summary.taxBreakdown.map(([taxName, amount]) => (
-                  <div
-                    key={taxName}
-                    className="flex items-center justify-between pl-3 text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    <span>{taxName}</span>
-                    <span>{formatCurrency(amount)}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <span>Descuentos</span>
-                  <span>{formatCurrency(summary.discountTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-700 dark:text-white">
-                  <span>TOTAL</span>
-                  <span>{formatCurrency(summary.total)}</span>
-                </div>
-              </div>
-
-              {hasPricingPending ? (
-                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
-                  Calculando precio/promocion antes de cobrar.
-                </div>
-              ) : null}
-
-              {pricingErrorItem ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                  {pricingErrorItem.pricingError ??
-                    `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
-                </div>
-              ) : null}
-
-              <Button
-                className="min-h-12 w-full shrink-0 rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
-                size="lg"
-                onClick={openChargeModal}
-                disabled={!canCharge}
-              >
-                <Wallet className="h-5 w-5" />
-                COBRAR {formatCurrency(summary.total)}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const pricingErrorMessage = pricingErrorItem
+    ? pricingErrorItem.pricingError ??
+      `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`
+    : null;
 
   return (
     <div className="relative min-h-screen">
@@ -3055,7 +2767,7 @@ export const PosScreen = () => {
       ) : null}
 
       {/* Main Layout - Sale-first workspace */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid gap-5">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
           <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-700 dark:bg-slate-950/80">
@@ -3334,7 +3046,7 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                      ? "grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
                       : "grid gap-2.5"
                   }
                 >
@@ -3563,32 +3275,36 @@ export const PosScreen = () => {
             </div>
           </div>
         </div>
-
-        {/* Cart Panel - Desktop: sticky sidebar, Mobile: centered modal */}
-        {/* Desktop Cart */}
-        <aside
-          className="sticky top-3 hidden max-h-[calc(100vh-8.5rem)] min-h-0 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] backdrop-blur-sm dark:border-slate-700 dark:bg-slate-950/95 xl:block"
-        >
-          <div className="flex max-h-full flex-col overflow-hidden pt-2">
-            <CartPanel />
-          </div>
-        </aside>
-
-        {/* Mobile Cart Modal */}
-        {isMobile && cartSheetOpen ? (
-          <Modal
-            title="Carrito de venta"
-            description="Revisa productos, totales y cobro sin perder contexto."
-            size="xl"
-            onClose={() => setCartSheetOpen(false)}
-            className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
-          >
-            <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
-              <CartPanel />
-            </div>
-          </Modal>
-        ) : null}
       </div>
+
+      <CartSaleModal
+        open={cartSheetOpen}
+        items={cartWithDerivedValues}
+        summary={summary}
+        expandedTaxItems={expandedTaxItems}
+        canCharge={canCharge}
+        hasPricingPending={hasPricingPending}
+        pricingErrorMessage={pricingErrorMessage}
+        scaleMockEnabled={scaleMockEnabled}
+        scaleReading={scaleReading}
+        resolvePresentation={resolveCartItemPresentation}
+        formatCurrency={formatCurrency}
+        parseQuantityInput={parseQuantityInput}
+        onClose={closeCartSheet}
+        onCancelSale={cancelCurrentSale}
+        onCharge={openChargeModal}
+        onUpdateQuantity={updateQuantity}
+        onRemoveItem={removeCartItem}
+        onToggleTaxBreakdown={toggleTaxBreakdown}
+        onToggleSummaryTaxes={() => setSummaryTaxesExpanded((current) => !current)}
+        summaryTaxesExpanded={summaryTaxesExpanded}
+        onReadScale={(productId) => {
+          const product = productById[productId];
+          if (product) {
+            void handleReadScaleForProduct(product);
+          }
+        }}
+      />
 
       {/* Floating Cart Button - visible when cart is closed and has items */}
       {!cartSheetOpen && cartItemCount > 0 ? (
@@ -3600,9 +3316,7 @@ export const PosScreen = () => {
           onPointerUp={cartFloatingControl.buttonProps.onPointerUp}
           onPointerCancel={cartFloatingControl.buttonProps.onPointerCancel}
           onClick={cartFloatingControl.buttonProps.onClick}
-          style={{
-            ...cartFloatingControl.buttonStyle,
-          }}
+          style={cartFloatingControl.buttonStyle}
           className={`fixed z-30 flex cursor-grab select-none items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-white shadow-2xl transition hover:scale-105 hover:bg-slate-800 active:cursor-grabbing active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 sm:px-6 sm:py-4 ${cartFloatingControl.isDragging ? "scale-[1.02] shadow-[0_24px_60px_-24px_rgba(15,23,42,0.65)]" : ""}`}
           aria-label={`Abrir carrito con ${cartItemCount} productos`}
           title="Abrir carrito. Arrastra para mover."
@@ -3611,6 +3325,33 @@ export const PosScreen = () => {
           <span className="font-semibold">
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
+          {canCharge ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openChargeModal();
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openChargeModal();
+                }
+              }}
+              className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-blue-400"
+              aria-label={`Cobrar ${formatCurrency(summary.total)}`}
+              title="Cobrar (F4 / F12)"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              Cobrar
+            </span>
+          ) : null}
         </button>
       ) : null}
 
