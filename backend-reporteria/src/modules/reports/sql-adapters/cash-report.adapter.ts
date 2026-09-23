@@ -735,6 +735,13 @@ export class CashReportAdapter {
            NOT resolved.restrict_to_user
            OR session.opened_by_user_id = $1::uuid
            OR session.closed_by_user_id = $1::uuid
+           OR EXISTS (
+             SELECT 1
+               FROM public.cash_register_user_assignments AS assignment
+              WHERE assignment.cash_register_id = session.cash_register_id
+                AND assignment.user_id = $1::uuid
+                AND assignment.unassigned_at IS NULL
+           )
          )`,
       this.exportScopeParams(actor, filters),
     );
@@ -790,6 +797,13 @@ export class CashReportAdapter {
               NOT resolved.restrict_to_user
               OR session.opened_by_user_id = $1::uuid
               OR session.closed_by_user_id = $1::uuid
+              OR EXISTS (
+                SELECT 1
+                  FROM public.cash_register_user_assignments AS assignment
+                 WHERE assignment.cash_register_id = session.cash_register_id
+                   AND assignment.user_id = $1::uuid
+                   AND assignment.unassigned_at IS NULL
+              )
             )
        )
        SELECT session.id AS "cashSessionId", session.opened_at AS "openedAt",
@@ -864,6 +878,13 @@ export class CashReportAdapter {
            NOT resolved.restrict_to_user
            OR count_data.counted_by_user_id = $1::uuid
            OR session.opened_by_user_id = $1::uuid
+           OR EXISTS (
+             SELECT 1
+               FROM public.cash_register_user_assignments AS assignment
+              WHERE assignment.cash_register_id = session.cash_register_id
+                AND assignment.user_id = $1::uuid
+                AND assignment.unassigned_at IS NULL
+           )
          )`,
       this.exportScopeParams(actor, filters),
     );
@@ -914,6 +935,13 @@ export class CashReportAdapter {
             NOT resolved.restrict_to_user
             OR count_data.counted_by_user_id = $1::uuid
             OR session.opened_by_user_id = $1::uuid
+            OR EXISTS (
+              SELECT 1
+                FROM public.cash_register_user_assignments AS assignment
+               WHERE assignment.cash_register_id = session.cash_register_id
+                 AND assignment.user_id = $1::uuid
+                 AND assignment.unassigned_at IS NULL
+            )
           )
         ORDER BY count_data.counted_at DESC, count_data.id DESC
         LIMIT $9::integer OFFSET $10::integer`,

@@ -160,6 +160,25 @@ export class CashSessionsRepository {
     return result.rows[0] ?? null;
   }
 
+  async hasActiveAssignment(
+    cashRegisterId: string,
+    userId: string,
+    client?: PoolClient
+  ): Promise<boolean> {
+    const result = await this.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1
+        FROM cash_register_user_assignments AS assignment
+        WHERE assignment.cash_register_id = $1
+          AND assignment.user_id = $2
+          AND assignment.unassigned_at IS NULL
+      ) AS exists`,
+      [cashRegisterId, userId],
+      client
+    );
+    return Boolean(result.rows[0]?.exists);
+  }
+
   async findCurrentByUser(
     userId: string,
     tenantId: string,
@@ -167,9 +186,18 @@ export class CashSessionsRepository {
   ): Promise<CashSessionRecord | null> {
     const params: unknown[] = [userId, tenantId];
     let whereClause = `
-      WHERE session.opened_by_user_id = $1
-        AND session.tenant_id = $2
+      WHERE session.tenant_id = $2
         AND session.status = 'OPEN'
+        AND (
+          session.opened_by_user_id = $1
+          OR EXISTS (
+            SELECT 1
+            FROM cash_register_user_assignments AS assignment
+            WHERE assignment.cash_register_id = session.cash_register_id
+              AND assignment.user_id = $1
+              AND assignment.unassigned_at IS NULL
+          )
+        )
     `;
 
     if (cashRegisterId) {
@@ -362,6 +390,7 @@ export class CashSessionsRepository {
     cashRegisterId?: string;
     status?: string;
     openedByUserId?: string;
+    operatorUserId?: string;
     limit: number;
     offset: number;
   }) {
@@ -386,7 +415,19 @@ export class CashSessionsRepository {
       where.push(`session.status = $${params.length}`);
     }
 
-    if (filters.openedByUserId) {
+    if (filters.operatorUserId) {
+      params.push(filters.operatorUserId);
+      where.push(`(
+        session.opened_by_user_id = $${params.length}
+        OR EXISTS (
+          SELECT 1
+          FROM cash_register_user_assignments AS assignment
+          WHERE assignment.cash_register_id = session.cash_register_id
+            AND assignment.user_id = $${params.length}
+            AND assignment.unassigned_at IS NULL
+        )
+      )`);
+    } else if (filters.openedByUserId) {
       params.push(filters.openedByUserId);
       where.push(`session.opened_by_user_id = $${params.length}`);
     }

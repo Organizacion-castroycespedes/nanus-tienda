@@ -8,6 +8,7 @@ import { DeliveriesModule } from "../deliveries/deliveries.module";
 import { FinanceModule } from "../finance/finance.module";
 import { FinanceAccessRepository } from "../finance/common/repositories/finance-access.repository";
 import { PricingModule } from "../pricing/pricing.module";
+import { ParametersModule } from "../parameters/parameters.module";
 import { CustomerController } from "./controllers/customer.controller";
 import { InventoryFefoController } from "./controllers/inventory-fefo.controller";
 import { InventoryController } from "./controllers/inventory.controller";
@@ -76,6 +77,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     FinanceModule,
     IntegrationOutboxModule,
     PricingModule,
+    ParametersModule,
   ],
   controllers: [
     InventoryFefoController,

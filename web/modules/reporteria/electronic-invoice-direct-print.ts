@@ -2,6 +2,7 @@ import { printTicket } from "../../domains/peripherals/api";
 import type { DirectPrintTerminalContext } from "../../domains/peripherals/contracts";
 import type { PeripheralTicketPayload } from "../../domains/peripherals/types";
 import { resolvePeripheralTerminalConfig } from "../../domains/peripherals/terminal-config";
+import { resolveTenantSettings } from "../../domains/parameters/api";
 import type { ElectronicInvoicePrintDataset, PosSaleTicketPrintDataset } from "./types";
 import {
   buildCanonicalElectronicInvoiceDocument,
@@ -31,6 +32,18 @@ export const printElectronicInvoiceTicket = async (
   sale: PosSaleTicketPrintDataset,
   terminal: DirectPrintTerminalContext,
 ) => {
+  if (terminal.tenantId) {
+    const resolved = await resolveTenantSettings({
+      tenantId: terminal.tenantId,
+      branchId: terminal.branchId ?? undefined,
+      terminalId: terminal.terminalId ?? undefined,
+      code: "PRINT_INVOICE",
+    });
+    if ((resolved.value ?? "ON_DEMAND") === "DISABLED") {
+      throw new Error("La impresión de factura electrónica está deshabilitada para esta terminal.");
+    }
+  }
+
   const config = await resolvePeripheralTerminalConfig(terminal);
   if (config.source !== "CONFIGURED" || !config.active || !config.printerDeviceId) {
     throw new Error("La terminal POS actual no tiene una impresora configurada.");

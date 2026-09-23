@@ -508,7 +508,15 @@ export class PaymentsService {
       if (cashSession.branch_id !== payload.branchId) {
         throw new BadRequestException("La sesion de caja no pertenece a la sucursal");
       }
-      if (!this.canAdminPayments(actor) && cashSession.opened_by_user_id !== actor.userId) {
+      if (
+        !this.canAdminPayments(actor) &&
+        cashSession.opened_by_user_id !== actor.userId &&
+        !(await this.cashSessionsRepository.hasActiveAssignment(
+          cashSession.cash_register_id,
+          actor.userId,
+          existingClient
+        ))
+      ) {
         throw new ForbiddenException("Solo puedes registrar pagos sobre tu caja");
       }
     }

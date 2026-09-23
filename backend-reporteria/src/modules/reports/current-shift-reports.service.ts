@@ -483,7 +483,16 @@ export class CurrentShiftReportsService {
 
     if (requireOwnSession) {
       params.push(actor.userId);
-      where.push(`session.opened_by_user_id = $${params.length}`);
+      where.push(`(
+        session.opened_by_user_id = $${params.length}
+        OR EXISTS (
+          SELECT 1
+          FROM cash_register_user_assignments AS assignment
+          WHERE assignment.cash_register_id = session.cash_register_id
+            AND assignment.user_id = $${params.length}
+            AND assignment.unassigned_at IS NULL
+        )
+      )`);
     }
 
     params.push(actor.userId);
@@ -563,7 +572,16 @@ export class CurrentShiftReportsService {
         (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
 
     if (requireOwnSession) {
-      where.push(`session.opened_by_user_id = $${actorUserParamIndex}`);
+      where.push(`(
+        session.opened_by_user_id = $${actorUserParamIndex}
+        OR EXISTS (
+          SELECT 1
+          FROM cash_register_user_assignments AS assignment
+          WHERE assignment.cash_register_id = session.cash_register_id
+            AND assignment.user_id = $${actorUserParamIndex}
+            AND assignment.unassigned_at IS NULL
+        )
+      )`);
     }
 
     const result = await this.db.query<SessionRow>(

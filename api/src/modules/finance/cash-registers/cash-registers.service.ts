@@ -324,4 +324,121 @@ export class CashRegistersService {
       client.release();
     }
   }
+
+  async listAssignments(cashRegisterId: string, actor: FinanceActor) {
+    if (!this.canRead(actor)) {
+      throw new ForbiddenException("No autorizado");
+    }
+    const current = await this.repository.findById(cashRegisterId);
+    if (!current) {
+      throw new NotFoundException("Caja no encontrada");
+    }
+    this.resolveTenantId(actor, current.tenant_id);
+    await this.assertBranchAccess(actor, current.tenant_id, current.branch_id);
+    const rows = await this.repository.listActiveAssignments(cashRegisterId);
+    return rows.map((row) => ({
+      id: row.id,
+      cashRegisterId: row.cash_register_id,
+      userId: row.user_id,
+      userEmail: row.user_email,
+      assignedByUserId: row.assigned_by_user_id,
+      assignedAt: row.assigned_at,
+    }));
+  }
+
+  async assignUser(
+    cashRegisterId: string,
+    userId: string,
+    actor: FinanceActor
+  ) {
+    if (!this.canManage(actor) && !actor.roles.includes("ADMIN")) {
+      throw new ForbiddenException("No autorizado");
+    }
+    const current = await this.repository.findById(cashRegisterId);
+    if (!current) {
+      throw new NotFoundException("Caja no encontrada");
+    }
+    this.resolveTenantId(actor, current.tenant_id);
+    await this.assertBranchAccess(actor, current.tenant_id, current.branch_id);
+    if (!actor.userId) {
+      throw new BadRequestException("Usuario autenticado requerido");
+    }
+
+    try {
+      const created = await this.repository.assignUser({
+        cashRegisterId,
+        userId,
+        assignedByUserId: actor.userId,
+      });
+      if (!created) {
+        throw new BadRequestException("No se pudo asignar el usuario");
+      }
+      this.auditService.logEvent({
+        tenantId: current.tenant_id,
+        userId: actor.userId,
+        module: "finance",
+        entity: "cash_register_user_assignments",
+        entityId: created.id,
+        action: "CASH_REGISTER_USER_ASSIGNED",
+        after: created,
+      });
+      return {
+        id: created.id,
+        cashRegisterId: created.cash_register_id,
+        userId: created.user_id,
+        assignedByUserId: created.assigned_by_user_id,
+        assignedAt: created.assigned_at,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("duplicate key") || message.includes("uq_cash_register_user_assignments_active")) {
+        throw new BadRequestException("El usuario ya está asignado a esta caja");
+      }
+      throw error;
+    }
+  }
+
+  async unassignUser(
+    cashRegisterId: string,
+    userId: string,
+    actor: FinanceActor
+  ) {
+    if (!this.canManage(actor) && !actor.roles.includes("ADMIN")) {
+      throw new ForbiddenException("No autorizado");
+    }
+    const current = await this.repository.findById(cashRegisterId);
+    if (!current) {
+      throw new NotFoundException("Caja no encontrada");
+    }
+    this.resolveTenantId(actor, current.tenant_id);
+    await this.assertBranchAccess(actor, current.tenant_id, current.branch_id);
+    if (!actor.userId) {
+      throw new BadRequestException("Usuario autenticado requerido");
+    }
+
+    const updated = await this.repository.unassignUser({
+      cashRegisterId,
+      userId,
+      unassignedByUserId: actor.userId,
+    });
+    if (!updated) {
+      throw new NotFoundException("Asignación activa no encontrada");
+    }
+    this.auditService.logEvent({
+      tenantId: current.tenant_id,
+      userId: actor.userId,
+      module: "finance",
+      entity: "cash_register_user_assignments",
+      entityId: updated.id,
+      action: "CASH_REGISTER_USER_UNASSIGNED",
+      after: updated,
+    });
+    return {
+      id: updated.id,
+      cashRegisterId: updated.cash_register_id,
+      userId: updated.user_id,
+      unassignedByUserId: updated.unassigned_by_user_id,
+      unassignedAt: updated.unassigned_at,
+    };
+  }
 }

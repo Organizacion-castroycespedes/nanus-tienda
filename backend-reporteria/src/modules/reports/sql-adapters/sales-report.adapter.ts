@@ -90,19 +90,35 @@ export class SalesReportAdapter {
       paymentStatus: string;
       requestExists: boolean;
       documentCount: number;
-      tenantConfig: unknown;
+      generateInvoiceMode: string | null;
     }>(
       `SELECT sale_id AS "saleId", status AS "billingStatus",
               document_number AS "billingDocumentNumber", cufe AS "billingCufe",
               accepted_at AS "billingAcceptedAt", sale_status AS "saleStatus",
               payment_status AS "paymentStatus", request_exists AS "requestExists",
-              document_count AS "documentCount"
+              document_count AS "documentCount",
+              generate_invoice_mode AS "generateInvoiceMode"
          FROM (
            SELECT s.id AS sale_id, s.status AS sale_status, s.payment_status,
                   document.status,
                   COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) AS document_number,
                   document.cufe, document.accepted_at,
-                  (SELECT config FROM tenants WHERE id = s.tenant_id) AS "tenantConfig",
+                  CASE
+                    WHEN to_regprocedure('public.resolve_parameter_value(text, uuid, uuid, uuid)') IS NOT NULL
+                    THEN public.resolve_parameter_value(
+                      'GENERATE_INVOICE',
+                      s.tenant_id,
+                      s.branch_id,
+                      s.terminal_id
+                    )
+                    ELSE CASE
+                      WHEN COALESCE((SELECT config->>'electronicBillingEnabled' FROM tenants WHERE id = s.tenant_id), 'true') = 'false'
+                        THEN 'DISABLED'
+                      WHEN (SELECT config->>'electronicBillingMode' FROM tenants WHERE id = s.tenant_id) = 'ON_DEMAND'
+                        THEN 'ON_DEMAND'
+                      ELSE 'AUTOMATIC'
+                    END
+                  END AS generate_invoice_mode,
                   EXISTS (
                     SELECT 1 FROM integration_outbox_events event
                     WHERE event.tenant_id = s.tenant_id
@@ -142,11 +158,9 @@ export class SalesReportAdapter {
       },
       rows: rows.map((row) => {
         const document = billingBySale.get(row.saleId);
-        const tenantConfig = document?.tenantConfig && typeof document.tenantConfig === "object"
-          ? document.tenantConfig as Record<string, unknown>
-          : {};
-        const mode = tenantConfig.electronicBillingMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC";
-        const enabled = tenantConfig.electronicBillingEnabled !== false;
+        const generateMode = document?.generateInvoiceMode ?? "AUTOMATIC";
+        const mode = generateMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC";
+        const enabled = generateMode !== "DISABLED";
         const isEligibleOnDemand =
           enabled && mode === "ON_DEMAND" &&
           document &&
@@ -233,6 +247,26 @@ export class SalesReportAdapter {
                   AND actor_session.tenant_id = sale.tenant_id
                   AND actor_session.user_id = $1::uuid
                   AND actor_session.is_active = TRUE
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM public.cash_sessions AS shared_session
+                INNER JOIN public.cash_registers AS shared_register
+                   ON shared_register.id = shared_session.cash_register_id
+                  AND shared_register.tenant_id = shared_session.tenant_id
+                INNER JOIN public.cash_register_user_assignments AS assignment
+                   ON assignment.cash_register_id = shared_register.id
+                  AND assignment.user_id = $1::uuid
+                  AND assignment.unassigned_at IS NULL
+                WHERE shared_session.id = sale.cash_session_id
+                  AND shared_session.tenant_id = sale.tenant_id
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM public.cash_sessions AS opened_session
+                WHERE opened_session.id = sale.cash_session_id
+                  AND opened_session.tenant_id = sale.tenant_id
+                  AND opened_session.opened_by_user_id = $1::uuid
              )
            )
       )`;

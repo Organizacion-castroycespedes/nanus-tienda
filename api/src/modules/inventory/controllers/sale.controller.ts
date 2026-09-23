@@ -41,6 +41,7 @@ type AuthRequest = Request & {
     branchId?: string;
     terminalId?: string;
     posSessionId?: string;
+    cashSessionId?: string;
     sessionId?: string;
     roles?: string[];
   };
@@ -119,6 +120,7 @@ export class SaleController {
       branchId: context.branchId,
       terminalId: context.terminalId,
       posSessionId: context.posSessionId,
+      cashSessionId: context.cashSessionId,
     };
   }
 
