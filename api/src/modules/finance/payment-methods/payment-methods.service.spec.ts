@@ -3,14 +3,17 @@ import test from "node:test";
 import { ForbiddenException } from "@nestjs/common";
 import { PaymentMethodsService } from "./payment-methods.service";
 
-test("USER cannot list payment methods", async () => {
+test("USER can list payment methods for POS operation", async () => {
+  const repository = {
+    list: async () => [],
+  };
   const service = new PaymentMethodsService(
-    {} as never,
+    repository as never,
     {} as never,
     {} as never
   );
 
-  await assert.rejects(
+  await assert.doesNotReject(
     service.list(
       {} as never,
       {
@@ -18,7 +21,23 @@ test("USER cannot list payment methods", async () => {
         tenantId: "tenant-1",
         roles: ["USER"],
       }
-    ),
+    )
+  );
+});
+
+test("USER cannot create payment methods", async () => {
+  const service = new PaymentMethodsService(
+    {} as never,
+    {} as never,
+    {} as never
+  );
+
+  await assert.rejects(
+    service.create({} as never, {
+      userId: "user-1",
+      tenantId: "tenant-1",
+      roles: ["USER"],
+    }),
     (error: unknown) =>
       error instanceof ForbiddenException && error.message === "No autorizado"
   );

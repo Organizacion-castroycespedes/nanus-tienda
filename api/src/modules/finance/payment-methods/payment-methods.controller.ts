@@ -26,7 +26,6 @@ import { PaymentMethodsService } from "./payment-methods.service";
 
 @Controller("finance/payment-methods")
 @UseGuards(JwtAuthGuard, RolesGuard, FinanceAuthzGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
 @UsePipes(financeValidationPipe)
 export class PaymentMethodsController {
   constructor(
@@ -39,6 +38,7 @@ export class PaymentMethodsController {
   }
 
   @Get()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   list(
     @Query() query: ListPaymentMethodsDto,
     @Req() request: Request
@@ -47,6 +47,7 @@ export class PaymentMethodsController {
   }
 
   @Post()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   create(
     @Body() payload: CreatePaymentMethodDto,
     @Req() request: Request
@@ -55,6 +56,7 @@ export class PaymentMethodsController {
   }
 
   @Patch(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   update(
     @Param("id") paymentMethodId: string,
     @Body() payload: UpdatePaymentMethodDto,
@@ -68,6 +70,7 @@ export class PaymentMethodsController {
   }
 
   @Delete(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   remove(@Param("id") paymentMethodId: string, @Req() request: Request) {
     return this.paymentMethodsService.remove(
       paymentMethodId,

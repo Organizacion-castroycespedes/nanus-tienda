@@ -193,6 +193,26 @@ test("CurrentShiftReportsService: USER consulta caja asignada aunque la abrio ot
   assert.equal(response.cashSession?.userId, ids.otherUser);
 });
 
+test("CurrentShiftReportsService: USER filtra ventas por su usuario", async () => {
+  const db = new FakeDb();
+
+  await buildService(db).getCurrentShift(
+    { tenantId: ids.tenant },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["USER"],
+    }
+  );
+
+  const salesQuery = db.queries.find(({ text }) =>
+    text.includes("current-shift: sales")
+  );
+  assert.match(salesQuery?.text ?? "", /sale\.user_id = \$6::uuid/);
+  assert.equal(salesQuery?.params.at(-1), ids.user);
+});
+
 test("CurrentShiftReportsService: suma domicilios entregados al resumen vivo", async () => {
   const db = new FakeDb();
   db.hasDeliverySchema = true;
