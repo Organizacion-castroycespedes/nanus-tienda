@@ -7,9 +7,25 @@ import { emptyOperationalSalesFilters, type OperationalSalesFilters, type Operat
 
 const emptyResponse: OperationalSalesResponse = { items: [], page: 1, limit: 25, total: 0, sortBy: "createdAt", sortDirection: "DESC" };
 const friendlyError = (error: unknown) => {
-  if (error instanceof ApiError && error.status === 403) return error.message.toLowerCase().includes("turno") ? "No tienes un turno de caja abierto para consultar ventas operativas." : "No tienes permisos para consultar ventas operativas.";
-  if (error instanceof ApiError && error.status === 401) return "Tu sesión terminó. Inicia sesión nuevamente.";
-  if (error instanceof ApiError && error.status === 400) return "Revisa los filtros seleccionados.";
+  if (error instanceof ApiError && error.status === 403) {
+    const message = error.message.toLowerCase();
+    if (message.includes("sucursal")) {
+      return "Selecciona una sucursal y una terminal POS antes de consultar ventas operativas.";
+    }
+    if (message.includes("sesion pos") || message.includes("pos session")) {
+      return "Selecciona una terminal POS antes de consultar ventas operativas.";
+    }
+    if (message.includes("turno")) {
+      return "No tienes un turno de caja abierto para consultar ventas operativas.";
+    }
+    return "No tienes permisos para consultar ventas operativas.";
+  }
+  if (error instanceof ApiError && error.status === 401) {
+    return "Tu sesión terminó. Inicia sesión nuevamente.";
+  }
+  if (error instanceof ApiError && error.status === 400) {
+    return "Revisa los filtros seleccionados.";
+  }
   return "No se pudieron cargar las ventas operativas.";
 };
 
@@ -68,5 +84,5 @@ export const useOperationalSales = () => {
     void load(1, pageSize, field, nextDirection, appliedFilters);
   };
 
-  return { data, filters, appliedFilters, loading, error, page, pageSize, setPage: changePage, setPageSize: changePageSize, search, resetFilters, updateFilter, toggleSort };
+  return { data, filters, appliedFilters, loading, error, page, pageSize, setPage: changePage, setPageSize: changePageSize, search, resetFilters, updateFilter, toggleSort, reload: ()=> load(1, pageSize, sortBy, sortDirection, filters), };
 };

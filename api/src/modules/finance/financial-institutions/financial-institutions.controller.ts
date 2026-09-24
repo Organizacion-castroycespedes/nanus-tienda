@@ -26,7 +26,6 @@ import { FinancialInstitutionsService } from "./financial-institutions.service";
 
 @Controller("finance/financial-institutions")
 @UseGuards(JwtAuthGuard, RolesGuard, FinanceAuthzGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 @UsePipes(financeValidationPipe)
 export class FinancialInstitutionsController {
   constructor(
@@ -39,6 +38,7 @@ export class FinancialInstitutionsController {
   }
 
   @Get()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   list(
     @Query("paymentMethodId") paymentMethodId: string | undefined,
     @Query("active") active: string | undefined,
@@ -52,6 +52,7 @@ export class FinancialInstitutionsController {
   }
 
   @Post()
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   create(
     @Body() payload: CreateFinancialInstitutionDto,
     @Req() request: Request
@@ -60,6 +61,7 @@ export class FinancialInstitutionsController {
   }
 
   @Patch(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   update(
     @Param("id") id: string,
     @Body() payload: UpdateFinancialInstitutionDto,
@@ -69,11 +71,13 @@ export class FinancialInstitutionsController {
   }
 
   @Delete(":id")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
   remove(@Param("id") id: string, @Req() request: Request) {
     return this.financialInstitutionsService.remove(id, this.buildActor(request));
   }
 
   @Put("mappings/:paymentMethodId")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
   setPaymentMethodMappings(
     @Param("paymentMethodId") paymentMethodId: string,
     @Body("financialInstitutionIds") financialInstitutionIds: string[],

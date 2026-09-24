@@ -19,6 +19,7 @@ type DataTableProps<T> = {
   loadingState?: ReactNode;
   className?: string;
   actionColumnFirst?: boolean;
+  disableHeaderUppercase?: boolean;
 };
 
 export const orderDataTableColumns = <T,>(columns: DataTableColumn<T>[], actionColumnFirst = false) =>
@@ -36,9 +37,13 @@ export const DataTable = <T,>({
   loadingState,
   className,
   actionColumnFirst = false,
+  disableHeaderUppercase = false,
 }: DataTableProps<T>) => {
   const orderedColumns = orderDataTableColumns(columns, actionColumnFirst);
   const colSpan = orderedColumns.length;
+  const headerCaseClassName = disableHeaderUppercase
+    ? "normal-case tracking-normal"
+    : "uppercase tracking-[0.2em]";
 
   return (
     <div className={`overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm ${className ?? ""} dark:bg-slate-800 dark:border-slate-700`}>
@@ -49,7 +54,7 @@ export const DataTable = <T,>({
               {orderedColumns.map((column) => (
                 <th
                   key={column.key}
-                  className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 ${column.className ?? ""} dark:text-slate-400`}
+                  className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold ${headerCaseClassName} text-slate-500 ${column.className ?? ""} dark:text-slate-400`}
                 >
                   {column.header}
                 </th>

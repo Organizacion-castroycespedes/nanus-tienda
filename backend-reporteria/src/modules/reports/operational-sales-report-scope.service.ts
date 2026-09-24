@@ -18,23 +18,80 @@ export class OperationalSalesReportScopeService {
     const roles = new Set(user.roles.map((role) => role.toUpperCase()));
     if (roles.has("USER")) {
       if (!posSessionId) throw new ForbiddenException("POS session is required");
-      const pos = await this.db.query<{ branch_id: string }>(
-        `SELECT session.branch_id FROM pos_user_sessions session JOIN terminals terminal ON terminal.id = session.terminal_id AND terminal.tenant_id = session.tenant_id AND terminal.branch_id = session.branch_id AND terminal.is_active = TRUE
-         JOIN tenant_branches branch ON branch.id = session.branch_id AND branch.tenant_id = session.tenant_id AND branch.estado = 'ACTIVE'
-         WHERE session.id = $1 AND session.user_id = $2 AND session.tenant_id = $3 AND session.is_active = TRUE LIMIT 1`,
+      const pos = await this.db.query<{ branch_id: string; terminal_id: string | null }>(
+        `SELECT session.branch_id, session.terminal_id
+         FROM pos_user_sessions session
+         JOIN terminals terminal
+           ON terminal.id = session.terminal_id
+          AND terminal.tenant_id = session.tenant_id
+          AND terminal.branch_id = session.branch_id
+          AND terminal.is_active = TRUE
+         JOIN tenant_branches branch
+           ON branch.id = session.branch_id
+          AND branch.tenant_id = session.tenant_id
+          AND branch.estado = 'ACTIVE'
+         WHERE session.id = $1
+           AND session.user_id = $2
+           AND session.tenant_id = $3
+           AND session.is_active = TRUE
+         LIMIT 1`,
         [posSessionId, user.id, user.tenantId],
       );
       const branchId = pos.rows[0]?.branch_id;
+      const terminalId = pos.rows[0]?.terminal_id ?? null;
       if (!branchId) throw new ForbiddenException("Active POS session is required");
       if (query.branchId && query.branchId !== branchId) return { tenantId: user.tenantId, branchIds: [], requiresCurrentShift: true };
       if (query.userId && query.userId !== user.id) return { tenantId: user.tenantId, branchIds: [], requiresCurrentShift: true };
+      // Opener OR active assignment (same multi-cashier rule as cash-sessions / turno).
       const cash = await this.db.query<{ id: string }>(
-        `SELECT id FROM cash_sessions WHERE tenant_id = $1 AND branch_id = $2 AND opened_by_user_id = $3 AND status = 'OPEN' ORDER BY opened_at DESC LIMIT 2`,
-        [user.tenantId, branchId, user.id],
+        `SELECT session.id
+         FROM cash_sessions AS session
+         INNER JOIN cash_registers AS cash_register
+           ON cash_register.id = session.cash_register_id
+          AND cash_register.tenant_id = session.tenant_id
+         WHERE session.tenant_id = $1
+           AND session.branch_id = $2
+           AND session.status = 'OPEN'
+           AND (
+             $4::uuid IS NULL
+             OR cash_register.terminal_id IS NULL
+             OR cash_register.terminal_id = $4
+           )
+           AND (
+             session.opened_by_user_id = $3
+             OR EXISTS (
+               SELECT 1
+               FROM cash_register_user_assignments AS assignment
+               WHERE assignment.cash_register_id = session.cash_register_id
+                 AND assignment.user_id = $3
+                 AND assignment.unassigned_at IS NULL
+             )
+           )
+         ORDER BY
+           CASE
+             WHEN $4::uuid IS NOT NULL AND cash_register.terminal_id = $4 THEN 0
+             ELSE 1
+           END,
+           CASE WHEN session.opened_by_user_id = $3 THEN 0 ELSE 1 END,
+           session.opened_at DESC
+         LIMIT 1`,
+        [user.tenantId, branchId, user.id, terminalId],
       );
-      if (cash.rows.length !== 1) throw new ForbiddenException("Exactly one current open cash session is required");
-      if (query.cashSessionId && query.cashSessionId !== cash.rows[0].id) return { tenantId: user.tenantId, branchIds: [], requiresCurrentShift: true };
-      return { tenantId: user.tenantId, branchIds: [branchId], userId: user.id, cashSessionId: cash.rows[0].id, requiresCurrentShift: true };
+      if (cash.rows.length === 0) {
+        throw new ForbiddenException(
+          "No hay una caja abierta para tu contexto POS (apertura o asignacion activa)"
+        );
+      }
+      if (query.cashSessionId && query.cashSessionId !== cash.rows[0].id) {
+        return { tenantId: user.tenantId, branchIds: [], requiresCurrentShift: true };
+      }
+      return {
+        tenantId: user.tenantId,
+        branchIds: [branchId],
+        userId: user.id,
+        cashSessionId: cash.rows[0].id,
+        requiresCurrentShift: true,
+      };
     }
     const branches = await this.db.query<{ id: string }>(
       `SELECT tb.id FROM tenant_branches tb WHERE tb.tenant_id = $1 AND tb.estado = 'ACTIVE' AND EXISTS (

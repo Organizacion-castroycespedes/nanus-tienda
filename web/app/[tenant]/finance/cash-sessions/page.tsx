@@ -32,6 +32,7 @@ import { useCashSessions } from "../../../../modules/finance/hooks/use-cash-sess
 import { getFinancePermissions } from "../../../../modules/finance/permissions";
 import type {
   CashSession,
+  CashSessionCloseResult,
   CashSessionSummary,
   CloseCashSessionPayload,
   CreateCashSessionAuditPayload,
@@ -40,6 +41,7 @@ import { formatCurrency, formatDateTime } from "../../../../modules/finance/util
 import { createCashSessionAudit } from "../../../../modules/finance/services/finance.service";
 import { PdfPreviewModal } from "../../../../modules/reporteria/components/PdfPreviewModal";
 import { getCashClosingTicket } from "../../../../modules/reporteria/services/reporting.service";
+import { getCashAuditTicket } from "../../../../modules/reporteria/services/reporting.service";
 import {
   downloadBlob,
   getApiErrorMessage,
@@ -66,7 +68,7 @@ type CloseNoticeState = {
   variant: NoticeDialogVariant;
   title: string;
   message: string;
-  session?: CashSession;
+  session?: CashSessionCloseResult;
   summary?: CashSessionSummary | null;
   expectedAmount?: number;
   realAmount?: number;
@@ -78,6 +80,12 @@ const buildCashClosingTicketFileName = (cashSessionId: string) =>
 
 const buildCashClosingTicketTitle = (cashSessionId: string) =>
   `Ticket de cierre ${cashSessionId.slice(0, 8)}`;
+
+const buildCashAuditTicketFileName = (cashCountId: string) =>
+  `tirilla-cajero-${cashCountId}.pdf`;
+
+const buildCashAuditTicketTitle = (cashCountId: string) =>
+  `Tirilla de cierre ${cashCountId.slice(0, 8)}`;
 
 const buildCloseNoticeRows = (notice: CloseNoticeState) => {
   if (!notice.session) {
@@ -179,7 +187,8 @@ const CashSessionsPage = () => {
   const [closeNotice, setCloseNotice] = useState<CloseNoticeState | null>(null);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
 
-  const { canViewFinance, canOperateCashSessions } = getFinancePermissions(role);
+  const { canViewFinance, canViewPaymentMethods, canOperateCashSessions } =
+    getFinancePermissions(role);
   const {
     currentSession,
     history,
@@ -240,12 +249,24 @@ const CashSessionsPage = () => {
     });
   }, [history, registerFilter, statusFilter]);
 
-  const expectedCurrent = currentSession
-    ? sessionSummary?.cashControl?.expectedCashAmount ??
-      sessionSummary?.totals.expectedAmount ??
-      currentSession.expectedAmount ??
-      currentSession.openingAmount
-    : 0;
+  const expectedCurrent =
+    currentSession && sessionSummary?.sessionId === currentSession.id
+      ? sessionSummary.cashControl?.expectedCashAmount ??
+        sessionSummary.totals.expectedAmount ??
+        currentSession.expectedAmount ??
+        0
+      : null;
+  const currentSummaryReady =
+    !currentSession || sessionSummary?.sessionId === currentSession.id;
+  const ownClosureDelivered = Boolean(
+    role === "USER" &&
+      currentSession &&
+      sessionSummary?.sessionId === currentSession.id &&
+      authUser?.id &&
+      sessionSummary.closureProgress.completedUserIds.includes(authUser.id)
+  );
+  const canActOnCurrentSession =
+    canOperateCashSessions && currentSummaryReady && !ownClosureDelivered;
 
   const showTicketActionError = (error: unknown, fallbackMessage: string) => {
     setToastMessage(getApiErrorMessage(error, fallbackMessage));
@@ -267,6 +288,54 @@ const CashSessionsPage = () => {
       downloadBlob(blob, buildCashClosingTicketFileName(cashSessionId));
     } catch (error) {
       showTicketActionError(error, "No se pudo descargar el ticket de cierre.");
+    }
+  };
+
+  const openIndividualTicketPreview = (cashCountId: string) => {
+    setCloseNotice(null);
+    setPdfConfig({
+      title: buildCashAuditTicketTitle(cashCountId),
+      fileName: buildCashAuditTicketFileName(cashCountId),
+      getPdf: () => getCashAuditTicket(cashCountId),
+    });
+  };
+
+  const handleDownloadIndividualTicket = async (cashCountId: string) => {
+    try {
+      const blob = await getCashAuditTicket(cashCountId);
+      downloadBlob(blob, buildCashAuditTicketFileName(cashCountId));
+    } catch (error) {
+      showTicketActionError(error, "No se pudo descargar la tirilla individual.");
+    }
+  };
+
+  const handlePrintIndividualTicket = async (cashCountId: string) => {
+    try {
+      const blob = await getCashAuditTicket(cashCountId);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = objectUrl;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          setToastMessage("No se pudo imprimir automaticamente. Usa Ver tirilla.");
+          setToastVariant("warning");
+        }
+      };
+
+      window.setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
+    } catch (error) {
+      showTicketActionError(error, "No se pudo imprimir la tirilla individual.");
     }
   };
 
@@ -304,24 +373,30 @@ const CashSessionsPage = () => {
   };
 
   const handleCloseSession = async () => {
-    if (!currentSession) {
+    if (!currentSession || !canActOnCurrentSession) {
       return;
     }
 
     const summarySnapshot = sessionSummary;
-    const expectedSnapshot = expectedCurrent;
+    const expectedSnapshot = expectedCurrent ?? 0;
     const realSnapshot = closeForm.closingAmount;
 
     try {
-      const closed = await closeSession(currentSession.id, closeForm);
+      const closed: CashSessionCloseResult = await closeSession(
+        currentSession.id,
+        closeForm
+      );
+      const isComplete = closed.closureProgress?.isComplete !== false;
       setCloseModal(false);
       setCloseForm(closeFormInitial);
       await loadCurrentSession();
       await loadHistory({ limit: 50 });
       setCloseNotice({
         variant: "success",
-        title: "Caja cerrada",
-        message: "Caja cerrada correctamente",
+        title: isComplete ? "Caja cerrada" : "Entrega registrada",
+        message: isComplete
+          ? "Caja cerrada correctamente"
+          : `Tu cierre fue registrado. Faltan ${closed.closureProgress?.pendingUserIds.length ?? 0} cajero(s).`,
         session: closed,
         summary: summarySnapshot,
         expectedAmount: expectedSnapshot,
@@ -329,7 +404,11 @@ const CashSessionsPage = () => {
         differenceAmount: closed.differenceAmount ?? realSnapshot - expectedSnapshot,
       });
       window.dispatchEvent(new Event("manus:cash-session-changed"));
-      void handlePrintTicket(closed.id, { automatic: true });
+      if (closed.closureCount?.id) {
+        void handlePrintIndividualTicket(closed.closureCount.id);
+      } else if (isComplete) {
+        void handlePrintTicket(closed.id, { automatic: true });
+      }
     } catch (error) {
       setCloseNotice({
         variant: "error",
@@ -340,7 +419,7 @@ const CashSessionsPage = () => {
   };
 
   const handleOpenAuditModal = async () => {
-    if (!currentSession) {
+    if (!currentSession || !canActOnCurrentSession) {
       return;
     }
     const summary = sessionSummary ?? (await loadSessionSummary(currentSession.id));
@@ -353,7 +432,8 @@ const CashSessionsPage = () => {
       countedCashAmount:
         summary.cashControl?.countedCashAmount ??
         summary.lastCount?.countedCashAmount ??
-        expectedCurrent,
+        expectedCurrent ??
+        0,
       notes: "",
     });
     setAuditModal(true);
@@ -429,17 +509,20 @@ const CashSessionsPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         <FinanceMetricCard
           label="Caja actual"
-          value={currentSession ? currentSession.cashRegisterNombre ?? "Abierta" : "Sin sesion"}
-          accent={currentSession ? "amber" : "slate"}
+          value={ownClosureDelivered ? "Cierre entregado" : currentSession ? currentSession.cashRegisterNombre ?? "Abierta" : "Sin sesion"}
+          accent={ownClosureDelivered ? "slate" : currentSession ? "amber" : "slate"}
         />
         <FinanceMetricCard
           label="Monto de apertura"
-          value={currentSession ? formatCurrency(currentSession.openingAmount) : formatCurrency(0)}
+          value={!ownClosureDelivered && currentSession ? formatCurrency(currentSession.openingAmount) : formatCurrency(0)}
           accent="blue"
         />
         <FinanceMetricCard label="Sesiones abiertas" value={openCount} accent="emerald" />
@@ -457,15 +540,17 @@ const CashSessionsPage = () => {
                 Tu caja en este momento
               </h2>
             </div>
-            {currentSession ? (
+            {currentSession && !ownClosureDelivered ? (
               <FinanceStatusBadge value={currentSession.status} kind="session" />
             ) : null}
           </div>
           {loadingCurrent ? (
             <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">Consultando sesion actual...</p>
-          ) : !currentSession ? (
+          ) : !currentSession || ownClosureDelivered ? (
             <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-5 text-sm text-slate-500 dark:text-slate-400">
-              No tienes una sesion abierta en este momento.
+              {ownClosureDelivered
+                ? "Ya entregaste tu cierre. No hay acciones ni datos operativos pendientes para ti."
+                : "No tienes una sesion abierta en este momento."}
             </div>
           ) : (
             <div className="mt-6 space-y-4">
@@ -499,7 +584,7 @@ const CashSessionsPage = () => {
                 <FinanceMetricCard
                   label="Esperado"
                   value={
-                    loadingSummary && !sessionSummary
+                    expectedCurrent === null || (loadingSummary && !sessionSummary)
                       ? "Calculando..."
                       : formatCurrency(expectedCurrent)
                   }
@@ -508,7 +593,7 @@ const CashSessionsPage = () => {
                 <FinanceMetricCard
                   label="Accion"
                   value={
-                    canOperateCashSessions ? (
+                    canActOnCurrentSession ? (
                       <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
@@ -519,7 +604,7 @@ const CashSessionsPage = () => {
                         </Button>
                         <Button variant="warning" onClick={() => setCloseModal(true)}>
                           <Receipt className="h-4 w-4" />
-                          Cerrar caja
+                          Entregar mi cierre
                         </Button>
                       </div>
                     ) : (
@@ -571,6 +656,64 @@ const CashSessionsPage = () => {
                     accent="slate"
                   />
                 </div>
+              ) : null}
+
+              {sessionSummary?.closureProgress ? (
+                <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                        Entregas por cajero
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                        {sessionSummary.closureProgress.completedCount} de {sessionSummary.closureProgress.requiredCount} entregas registradas
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                      {sessionSummary.closureProgress.isComplete ? "Caja completa" : "Pendiente"}
+                    </span>
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700">
+                        <tr>
+                          <th className="px-3 py-2">Cajero</th>
+                          <th className="px-3 py-2">Esperado</th>
+                          <th className="px-3 py-2">Contado</th>
+                          <th className="px-3 py-2">Diferencia</th>
+                          <th className="px-3 py-2">Estado</th>
+                          <th className="px-3 py-2">Tirilla</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sessionSummary.closureRecords.map((record) => (
+                          <tr key={record.id} className="border-b border-slate-100 dark:border-slate-700">
+                            <td className="px-3 py-2 font-medium">{record.countedByUserEmail ?? record.countedByUserId}</td>
+                            <td className="px-3 py-2">{formatCurrency(record.expectedAmount)}</td>
+                            <td className="px-3 py-2">{formatCurrency(record.countedCashAmount)}</td>
+                            <td className="px-3 py-2">{formatCurrency(record.differenceAmount)}</td>
+                            <td className="px-3 py-2 text-emerald-700">Entregado</td>
+                            <td className="px-3 py-2">
+                              <Button variant="ghost" size="sm" onClick={() => void handleDownloadIndividualTicket(record.id)}>
+                                <Download className="h-4 w-4" /> PDF
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {sessionSummary.closureProgress.pendingUserIds.map((userId) => (
+                          <tr key={userId} className="border-b border-slate-100 text-slate-500 dark:border-slate-700">
+                            <td className="px-3 py-2">Cajero asignado</td>
+                            <td className="px-3 py-2">-</td>
+                            <td className="px-3 py-2">-</td>
+                            <td className="px-3 py-2">-</td>
+                            <td className="px-3 py-2">Pendiente</td>
+                            <td className="px-3 py-2">-</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               ) : null}
 
               {sessionSummary ? (
@@ -809,15 +952,15 @@ const CashSessionsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      {closeModal && currentSession ? (
+      {closeModal && currentSession && canActOnCurrentSession ? (
         <Modal
-          title="Cerrar caja"
+          title="Entregar cierre de mi turno"
           className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
           size="xl"
         >
           <CloseCashSessionForm
             value={closeForm}
-            expectedAmount={expectedCurrent}
+            expectedAmount={expectedCurrent ?? 0}
             summary={sessionSummary}
             onChange={setCloseForm}
             onCancel={() => setCloseModal(false)}
@@ -827,7 +970,7 @@ const CashSessionsPage = () => {
         </Modal>
       ) : null}
 
-      {auditModal && currentSession && sessionSummary ? (
+      {auditModal && currentSession && sessionSummary && canActOnCurrentSession ? (
         <Modal
           title="Arqueo de caja"
           description="Revision preliminar. No cierra la caja."
@@ -873,18 +1016,35 @@ const CashSessionsPage = () => {
                 ))}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openTicketPreview(closeNotice.session!.id)}
-                >
-                  <Eye className="h-4 w-4" />
-                  Ver ticket
-                </Button>
+                {closeNotice.session.closureCount?.id ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      openIndividualTicketPreview(closeNotice.session!.closureCount!.id)
+                    }
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver tirilla
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openTicketPreview(closeNotice.session!.id)}
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver ticket
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void handleDownloadTicket(closeNotice.session!.id)}
+                  onClick={() =>
+                    closeNotice.session!.closureCount?.id
+                      ? void handleDownloadIndividualTicket(closeNotice.session!.closureCount!.id)
+                      : void handleDownloadTicket(closeNotice.session!.id)
+                  }
                 >
                   <Download className="h-4 w-4" />
                   Descargar PDF
@@ -892,7 +1052,11 @@ const CashSessionsPage = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void handlePrintTicket(closeNotice.session!.id)}
+                  onClick={() =>
+                    closeNotice.session!.closureCount?.id
+                      ? void handlePrintIndividualTicket(closeNotice.session!.closureCount!.id)
+                      : void handlePrintTicket(closeNotice.session!.id)
+                  }
                 >
                   <Printer className="h-4 w-4" />
                   Imprimir

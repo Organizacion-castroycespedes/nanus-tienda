@@ -242,8 +242,17 @@ export class OperationalSaleScopeService {
       FROM cash_sessions AS session
       WHERE session.tenant_id = $1
         AND session.branch_id = $2
-        AND session.opened_by_user_id = $3
         AND session.status = 'OPEN'
+        AND (
+          session.opened_by_user_id = $3
+          OR EXISTS (
+            SELECT 1
+            FROM cash_register_user_assignments AS assignment
+            WHERE assignment.cash_register_id = session.cash_register_id
+              AND assignment.user_id = $3
+              AND assignment.unassigned_at IS NULL
+          )
+        )
       ORDER BY session.opened_at DESC
       LIMIT 2
       `,

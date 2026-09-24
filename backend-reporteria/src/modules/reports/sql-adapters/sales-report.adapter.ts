@@ -77,6 +77,7 @@ export class SalesReportAdapter {
         },
         summary: { count: 0, total: 0, paid: 0, balance: 0, cancelled: 0, refunded: 0 },
         rows: [],
+        electronicBillingEnabled: false,
       };
     }
     const saleIds = rows.map((row) => row.saleId);
@@ -105,12 +106,14 @@ export class SalesReportAdapter {
                   document.cufe, document.accepted_at,
                   CASE
                     WHEN to_regprocedure('public.resolve_parameter_value(text, uuid, uuid, uuid)') IS NOT NULL
-                    THEN public.resolve_parameter_value(
-                      'GENERATE_INVOICE',
-                      s.tenant_id,
-                      s.branch_id,
-                      s.terminal_id
-                    )
+                    THEN CASE
+                      WHEN public.resolve_parameter_value(
+                        'SEND_INVOICE', s.tenant_id, s.branch_id, s.terminal_id
+                      ) = 'DISABLED' THEN 'DISABLED'
+                      ELSE COALESCE(public.resolve_parameter_value(
+                        'GENERATE_INVOICE', s.tenant_id, s.branch_id, s.terminal_id
+                      ), 'AUTOMATIC')
+                    END
                     ELSE CASE
                       WHEN COALESCE((SELECT config->>'electronicBillingEnabled' FROM tenants WHERE id = s.tenant_id), 'true') = 'false'
                         THEN 'DISABLED'
@@ -156,6 +159,9 @@ export class SalesReportAdapter {
         cancelled: rows.filter((row) => row.status === "CANCELLED").length,
         refunded: rows.filter((row) => row.status === "REFUNDED").length,
       },
+      electronicBillingEnabled: billing.rows.some(
+        (row) => row.generateInvoiceMode !== "DISABLED",
+      ),
       rows: rows.map((row) => {
         const document = billingBySale.get(row.saleId);
         const generateMode = document?.generateInvoiceMode ?? "AUTOMATIC";

@@ -280,6 +280,8 @@ export type CashSessionSummary = {
   recentMovements: CashSessionRecentMovement[];
   lastCount: CashSessionLastCount;
   auditRecords: CashSessionAuditRecord[];
+  closureRecords: CashSessionAuditRecord[];
+  closureProgress: CashSessionClosureProgress;
   deliverySummary: CashSessionDeliverySummary;
 };
 
@@ -464,6 +466,20 @@ export type OpenCashSessionPayload = {
 export type CloseCashSessionPayload = {
   closingAmount: number;
   description?: string;
+};
+
+export type CashSessionClosureProgress = {
+  requiredUserIds: string[];
+  completedUserIds: string[];
+  pendingUserIds: string[];
+  requiredCount: number;
+  completedCount: number;
+  isComplete: boolean;
+};
+
+export type CashSessionCloseResult = CashSession & {
+  closureProgress?: CashSessionClosureProgress;
+  closureCount?: CashSessionAuditRecord | null;
 };
 
 export type CreateCashSessionAuditPayload = {

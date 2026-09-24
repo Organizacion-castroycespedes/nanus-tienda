@@ -128,7 +128,7 @@ export const CloseCashSessionForm = ({
           Cancelar
         </Button>
         <Button variant="warning" onClick={onSubmit} isLoading={isSaving}>
-          Cerrar caja
+          Entregar mi cierre
         </Button>
       </div>
     </div>

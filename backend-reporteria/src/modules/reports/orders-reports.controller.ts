@@ -28,6 +28,7 @@ export class OrdersReportsController {
   ) {}
 
   @Get()
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getOrderSales(
     @Query()
     query: {

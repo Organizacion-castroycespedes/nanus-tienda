@@ -38,6 +38,7 @@ import { DateRangePicker } from "../../../components/design-system/DateRangePick
 import { Select } from "../../../components/design-system/Select";
 import { Input } from "../../../components/design-system/Input";
 import { ReportFilters, type ReportFilterDefinition } from "../../../components/design-system/ReportFilters";
+import { resolveTenantSettings } from "../../../domains/parameters/api";
 import { canViewElectronicDocument } from "../utils/electronic-document-action";
 import {
   requestElectronicBilling,
@@ -77,6 +78,8 @@ const PosReportsPage = () => {
   const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
   const [billingRequestBusy, setBillingRequestBusy] = useState(false);
   const posContext = usePosContext();
+  const [resolvedElectronicBillingEnabled, setResolvedElectronicBillingEnabled] =
+    useState<boolean | null>(null);
   const {
     canViewReports,
     showTenantSelector,
@@ -93,6 +96,8 @@ const PosReportsPage = () => {
     resolvedBranchLabel,
   } = useReportingScope();
   const { dataset, loading, searched, error, loadReports } = usePosReports();
+  const showElectronicBilling =
+    resolvedElectronicBillingEnabled ?? dataset?.electronicBillingEnabled === true;
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -161,7 +166,9 @@ const PosReportsPage = () => {
       setDirectPrintFeedback({
         saleId: saleIds[0],
         variant: "success",
-        message: `${requested} solicitud(es) de facturacion electronica creada(s).`,
+        message: requested === 1
+          ? "Se creó una solicitud de facturación electrónica."
+          : `Se crearon ${requested} solicitudes de facturación electrónica.`,
       });
       setSelectedSaleIds([]);
       await handleSearch();
@@ -169,7 +176,10 @@ const PosReportsPage = () => {
       setDirectPrintFeedback({
         saleId: saleIds[0] ?? "billing",
         variant: "error",
-        message: getApiErrorMessage(error, "No se pudo solicitar la facturacion electronica."),
+        message: getApiErrorMessage(
+          error,
+          "No se pudo solicitar la facturación electrónica.",
+        ),
       });
     } finally {
       setBillingRequestBusy(false);
@@ -190,6 +200,47 @@ const PosReportsPage = () => {
     });
     setPage(1);
   }, [branchId, canViewReports, initialRange, loadReports, tenantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!tenantId) {
+      setResolvedElectronicBillingEnabled(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void Promise.all([
+      resolveTenantSettings({
+        tenantId,
+        branchId: posContext.branchId ?? branchId ?? undefined,
+        terminalId: posContext.terminalId ?? undefined,
+        code: "SEND_INVOICE",
+      }),
+      resolveTenantSettings({
+        tenantId,
+        branchId: posContext.branchId ?? branchId ?? undefined,
+        terminalId: posContext.terminalId ?? undefined,
+        code: "GENERATE_INVOICE",
+      }),
+    ])
+      .then(([sendInvoice, generateInvoice]) => {
+        if (!cancelled) {
+          setResolvedElectronicBillingEnabled(
+            sendInvoice.value !== "DISABLED" && generateInvoice.value !== "DISABLED",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedElectronicBillingEnabled(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId, posContext.branchId, posContext.terminalId, tenantId]);
 
   const columns = useMemo<DataTableColumn<PosSalesListRow>[]>(
     () => [
@@ -261,39 +312,41 @@ const PosReportsPage = () => {
           </div>
         ),
       },
-      {
-        key: "billingStatus",
-        header: "Facturación electrónica",
-        render: (row) => (
-          <div>
-            <p className="text-sm font-medium text-slate-700">
-              {row.billingStatus === "ACCEPTED"
-                ? "Aceptada DIAN"
-                : row.billingStatus === "NO_DOCUMENT"
-                  ? "Sin factura electrónica"
-                  : row.billingStatus === "REJECTED"
-                    ? "Rechazada"
-                      : row.billingStatus === "PROCESSING"
-                        ? "Procesando"
-                        : row.billingStatus === "ELIGIBLE_ON_DEMAND"
-                          ? "Disponible para facturar"
-                      : row.billingStatus === "PENDING" || row.billingStatus === "REQUESTED"
-                        ? "Pendiente"
-                        : row.billingStatus}
-            </p>
-            {row.billingStatus === "ACCEPTED" && row.billingDocumentNumber ? (
-              <p className="text-xs text-slate-500">{row.billingDocumentNumber}</p>
-            ) : null}
-          </div>
-        ),
-      },
+      ...(showElectronicBilling
+        ? [{
+            key: "billingStatus",
+            header: "Facturación electrónica",
+            render: (row: PosSalesListRow) => (
+              <div>
+                <p className="text-sm font-medium text-slate-700">
+                  {row.billingStatus === "ACCEPTED"
+                    ? "Aceptada DIAN"
+                    : row.billingStatus === "NO_DOCUMENT"
+                      ? "Sin factura electrónica"
+                      : row.billingStatus === "REJECTED"
+                        ? "Rechazada"
+                        : row.billingStatus === "PROCESSING"
+                          ? "Procesando"
+                          : row.billingStatus === "ELIGIBLE_ON_DEMAND"
+                            ? "Disponible para facturar"
+                            : row.billingStatus === "PENDING" || row.billingStatus === "REQUESTED"
+                              ? "Pendiente"
+                              : row.billingStatus}
+                </p>
+                {row.billingStatus === "ACCEPTED" && row.billingDocumentNumber ? (
+                  <p className="text-xs text-slate-500">{row.billingDocumentNumber}</p>
+                ) : null}
+              </div>
+            ),
+          }]
+        : []),
       {
         key: "actions",
         header: "Acciones",
         cellClassName: "w-14",
         render: (row) => (
-          <RowActionsMenu>
-            {row.billingStatus !== "ACCEPTED" &&
+          <div className="flex flex-wrap gap-2">
+            {showElectronicBilling && row.billingStatus !== "ACCEPTED" &&
             row.billingStatus !== "PENDING" &&
             row.billingStatus !== "PROCESSING" &&
             row.billingStatus !== "REJECTED" &&
@@ -323,7 +376,7 @@ const PosReportsPage = () => {
               <Eye className="h-4 w-4" />
               Ver ticket
               </Button>
-            {canViewElectronicDocument(row.billingStatus) ? <Button
+            {showElectronicBilling && canViewElectronicDocument(row.billingStatus) ? <Button
               variant="outline"
               size="sm"
               onClick={() =>
@@ -372,11 +425,11 @@ const PosReportsPage = () => {
               <Truck className="h-4 w-4" />
               Domicilio
             </Button>
-          </RowActionsMenu>
+          </div>
         ),
       },
     ],
-    [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, tenantId]
+    [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, showElectronicBilling, tenantId]
   );
 
   const canExport = Boolean(dataset);
@@ -516,7 +569,7 @@ const PosReportsPage = () => {
         />
       ) : null}
 
-      {selectedSaleIds.length > 0 ? (
+      {showElectronicBilling && selectedSaleIds.length > 0 ? (
         <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
           <span className="text-sm text-blue-900">{selectedSaleIds.length} venta(s) seleccionada(s)</span>
           <Button

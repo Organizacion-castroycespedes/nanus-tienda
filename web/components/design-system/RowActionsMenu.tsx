@@ -1,7 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
-import { Children, cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export type RowActionItem = {
@@ -53,10 +53,10 @@ export const RowActionsMenu = ({ items = [], children, label = "Más acciones" }
     const childProps = child.props as {
       children?: ReactNode;
       disabled?: boolean;
-      onClick?: (event: MouseEvent<HTMLElement>) => void;
+      onClick?: (event: ReactMouseEvent<HTMLElement>) => void;
     };
     const nextChildren = childProps.children ? closeFirstChildren(childProps.children) : childProps.children;
-    const nextProps: { children?: ReactNode; onClick?: (event: MouseEvent<HTMLElement>) => void } = {};
+    const nextProps: { children?: ReactNode; onClick?: (event: ReactMouseEvent<HTMLElement>) => void } = {};
 
     if (childProps.onClick) {
       nextProps.onClick = (event) => {
@@ -85,7 +85,7 @@ export const RowActionsMenu = ({ items = [], children, label = "Más acciones" }
   useEffect(() => {
     if (!open) return;
 
-    const closeFromOutside = (event: MouseEvent) => {
+    const closeFromOutside = (event: globalThis.MouseEvent) => {
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };

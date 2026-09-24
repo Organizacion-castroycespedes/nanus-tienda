@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { FileText, RotateCcw, Search } from "lucide-react";
+import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
 import { Input } from "../../../components/design-system/Input";
@@ -11,14 +13,44 @@ import { ReportFilters, type ReportFilterDefinition } from "../../../components/
 import { ReportLayout } from "../../../components/design-system/ReportLayout";
 import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
+import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
+import {
+  getElectronicInvoicePrintData,
+  getPosSaleTicket,
+  getPosSaleTicketPrintData,
+} from "../../reporteria/services/reporting.service";
+import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
+import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
+import {
+  isEligibleForElectronicBillingRequest,
+  requestOperationalSaleElectronicBilling,
+} from "../services/operational-sales.service";
+import {
+  ELECTRONIC_BILLING_STATUSES,
+  PAYMENT_STATUSES,
+  SALE_STATUSES,
+  type OperationalSaleListItem,
+} from "../types";
+
+const labels: Record<string, string> = {
+  DRAFT: "Borrador",
+  CONFIRMED: "Confirmada",
+  CANCELLED: "Cancelada",
+  REFUNDED: "Devuelta",
+  PENDING: "Pendiente",
+  PAID: "Pagada",
+  PARTIAL: "Parcial",
+  PROCESSING: "Procesando",
+  ACCEPTED: "Aceptada",
+  REJECTED: "Rechazada",
+  TECHNICAL_ERROR: "Error técnico",
+};
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { downloadBlob } from "../../reporteria/utils";
 import { getOperationalSalesReportExcel, getOperationalSalesReportPdf } from "../services/operational-sales-report.service";
 import { useAppSelector } from "../../../store/hooks";
 import { useOperationalSales } from "../hooks/use-operational-sales";
-import { ELECTRONIC_BILLING_STATUSES, PAYMENT_STATUSES, SALE_STATUSES, type OperationalSaleListItem } from "../types";
 
-const labels: Record<string, string> = { DRAFT: "Borrador", CONFIRMED: "Confirmada", CANCELLED: "Cancelada", REFUNDED: "Devuelta", PENDING: "Pendiente", PAID: "Pagada", PARTIAL: "Parcial", PROCESSING: "Procesando", ACCEPTED: "Aceptada", REJECTED: "Rechazada", TECHNICAL_ERROR: "Error técnico" };
 const statusLabel = (value: string) => labels[value.toUpperCase()] ?? value;
 const StatusBadge = ({ value }: { value: string }) => <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{statusLabel(value)}</span>;
 const formatDate = (value: string) => new Intl.DateTimeFormat("es-CO", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
@@ -27,26 +59,176 @@ const scopeCopy: Record<string, string> = { USER: "Ventas de mi turno actual", A
 
 export const OperationalSalesPage = () => {
   const params = useParams<{ tenant: string }>();
+  const posContext = usePosContext();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
-  const { data, filters, appliedFilters, loading, error, page, pageSize, setPage, setPageSize, search, resetFilters, updateFilter, toggleSort } = useOperationalSales();
+  const { data, filters, appliedFilters, loading, error, page, pageSize, setPage, setPageSize, search, resetFilters, updateFilter, toggleSort, reload } = useOperationalSales();
+
+  const [actionSaleId, setActionSaleId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const appliedReportFilters = useMemo(() => appliedFilters ? { dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo, status: appliedFilters.status, paymentStatus: appliedFilters.paymentStatus, paymentMethod: appliedFilters.paymentMethod, customerId: appliedFilters.customerId, documentNumber: appliedFilters.documentNumber, electronicBillingStatus: appliedFilters.electronicBillingStatus } : null, [appliedFilters]);
   const getReportPdf = useCallback(() => appliedReportFilters ? getOperationalSalesReportPdf(appliedReportFilters, data.sortBy, data.sortDirection) : Promise.reject(new Error("Primero ejecuta una búsqueda.")), [appliedReportFilters, data.sortBy, data.sortDirection]);
   const hasFilters = Object.values(filters).some(Boolean);
   const emptyState = !appliedFilters ? "Usa Buscar para consultar ventas operativas." : hasFilters ? "No encontramos ventas con los filtros seleccionados." : "No hay ventas en el alcance operativo actual.";
 
-  const columns = useMemo<DataTableColumn<OperationalSaleListItem>[]>(() => [
-    { key: "createdAt", header: <button type="button" onClick={() => toggleSort("createdAt")}>Fecha / hora</button>, render: (sale) => <span className="whitespace-nowrap">{formatDate(sale.createdAt)}</span> },
-    { key: "sale", header: "Venta", render: (sale) => <Link className="font-semibold text-blue-700 hover:underline" href={`/${params.tenant}/operations/sales/${sale.id}`}>{sale.id.slice(0, 8)}</Link> },
-    { key: "customer", header: "Cliente", render: (sale) => sale.customer.name ?? "Sin cliente" },
-    { key: "status", header: <button type="button" onClick={() => toggleSort("status")}>Estado</button>, render: (sale) => <StatusBadge value={sale.status} /> },
-    { key: "payment", header: "Pago", render: (sale) => statusLabel(sale.paymentStatus) },
-    { key: "branch", header: "Sucursal", render: (sale) => sale.branch.name ?? "Sin sucursal" },
-    { key: "operator", header: "Operador", render: (sale) => sale.operator.email ?? "Sin operador" },
-    { key: "electronicBilling", header: "Facturación electrónica", render: (sale) => sale.electronicBilling ? <div className="space-y-1"><StatusBadge value={sale.electronicBilling.status} />{sale.electronicBilling.documentNumber ? <p className="text-xs text-slate-500">{sale.electronicBilling.documentNumber}</p> : null}</div> : <span className="text-slate-500">Sin solicitar</span> },
-    { key: "total", header: <button type="button" onClick={() => toggleSort("total")}>Total</button>, className: "text-right", cellClassName: "text-right font-semibold", render: (sale) => formatMoney(sale.total) },
-    { key: "actions", header: "Acciones", cellClassName: "w-14", render: (sale) => <RowActionsMenu items={[{ label: "Ver detalle", onSelect: () => { window.location.href = `/${params.tenant}/operations/sales/${sale.id}`; } }]} /> },
-  ], [params.tenant, toggleSort]);
+  const getTerminalContext = useCallback(
+    (branchId: string) => ({
+      tenantId: posContext.tenantId ?? undefined,
+      branchId: posContext.branchId ?? branchId,
+      terminalId: posContext.terminalId ?? undefined,
+    }),
+    [posContext.branchId, posContext.terminalId, posContext.tenantId],
+  );
+
+  const handleBillingRequest = useCallback(async (saleId: string) => {
+    setActionSaleId(saleId);
+    setActionMessage(null);
+    try {
+      const response = await requestOperationalSaleElectronicBilling(saleId);
+      setActionMessage(response.message ?? "Se creó la solicitud de facturación electrónica.");
+      await reload();
+    } catch (requestError) {
+      setActionMessage(
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudo solicitar la factura electrónica.",
+      );
+    } finally {
+      setActionSaleId(null);
+    }
+  }, [reload]);
+
+  const handlePrint = useCallback(async (sale: OperationalSaleListItem) => {
+    setActionSaleId(sale.id);
+    setActionMessage(null);
+    try {
+      const ticket = await getPosSaleTicketPrintData(sale.id);
+      const terminal = getTerminalContext(sale.branch.id);
+      const result = sale.electronicBilling?.status === "ACCEPTED"
+        ? await printElectronicInvoiceTicket(
+            await getElectronicInvoicePrintData(sale.id),
+            ticket,
+            terminal,
+          )
+        : await printReporteriaSaleTicket(ticket, terminal);
+      if (!result.success) {
+        throw result.error;
+      }
+      setActionMessage("Documento enviado a la impresora.");
+    } catch (printError) {
+      setActionMessage(
+        printError instanceof Error
+          ? printError.message
+          : "No se pudo imprimir el documento.",
+      );
+    } finally {
+      setActionSaleId(null);
+    }
+  }, [getTerminalContext]);
+
+  const columns = useMemo<DataTableColumn<OperationalSaleListItem>[]>(
+    () => [
+      {
+        key: "createdAt",
+        header: <button type="button" onClick={() => toggleSort("createdAt")}>Fecha / hora</button>,
+        render: (sale) => <span className="whitespace-nowrap">{formatDate(sale.createdAt)}</span>,
+      },
+      {
+        key: "sale",
+        header: "Venta",
+        render: (sale) => (
+          <Link className="font-semibold text-blue-700 hover:underline" href={`/${params.tenant}/operations/sales/${sale.id}`}>
+            {(sale.id.slice(0, 8)+'').toLowerCase()}
+          </Link>
+        ),
+      },
+      {
+        key: "customer",
+        header: "Cliente",
+        render: (sale) => sale.customer.name ?? "Sin cliente",
+      },
+      {
+        key: "status",
+        header: <button type="button" onClick={() => toggleSort("status")}>Estado</button>,
+        render: (sale) => <StatusBadge value={sale.status} />,
+      },
+      {
+        key: "payment",
+        header: "Pago",
+        render: (sale) => statusLabel(sale.paymentStatus),
+      },
+      {
+        key: "branch",
+        header: "Sucursal",
+        render: (sale) => sale.branch.name ?? "Sin sucursal",
+      },
+      {
+        key: "electronicBilling",
+        header: "Facturación",
+        render: (sale) =>
+          sale.electronicBilling ? (
+            <div className="space-y-1">
+              <StatusBadge value={sale.electronicBilling.status} />
+              {sale.electronicBilling.documentNumber ? (
+                <p className="text-xs text-slate-500">{sale.electronicBilling.documentNumber}</p>
+              ) : null}
+            </div>
+          ) : (
+            <span className="text-slate-500">Sin solicitar</span>
+          ),
+      },
+      {
+        key: "total",
+        header: <button type="button" onClick={() => toggleSort("total")}>Total</button>,
+        className: "text-right",
+        cellClassName: "text-right font-semibold",
+        render: (sale) => formatMoney(sale.total),
+      },
+      {
+        key: "actions",
+        header: "Acciones",
+        cellClassName: "min-w-[320px]",
+        render: (sale) => (
+          <div className="flex flex-wrap gap-2">
+            {sale.electronicBillingEnabled &&
+            !sale.electronicBilling &&
+            isEligibleForElectronicBillingRequest(sale) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleBillingRequest(sale.id)}
+                disabled={actionSaleId === sale.id}
+              >
+                {actionSaleId === sale.id ? "Solicitando..." : "Facturar electrónicamente"}
+              </Button>
+            ) : null}
+            <Link
+              className="inline-flex min-h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+              href={`/${params.tenant}/operations/sales/${sale.id}`}
+            >
+              Ver ticket
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handlePrint(sale)}
+              disabled={actionSaleId === sale.id}
+            >
+              {actionSaleId === sale.id ? "Imprimiendo..." : "Imprimir"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void getPosSaleTicket(sale.id).then((blob) => downloadBlob(blob, `ticket-venta-${sale.id}.pdf`))}
+            >
+              Descargar
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [actionSaleId, handleBillingRequest, handlePrint, params.tenant, toggleSort]
+  );
 
   const reportFilters = useMemo<ReportFilterDefinition[]>(() => [
     { key: "date", label: "Fecha", priority: "primary", active: Boolean(filters.dateFrom || filters.dateTo), render: () => <DateRangePicker compact value={{ from: filters.dateFrom, to: filters.dateTo }} onChange={(value) => { updateFilter("dateFrom", value.from); updateFilter("dateTo", value.to); }} />, clear: () => { updateFilter("dateFrom", ""); updateFilter("dateTo", ""); } },
@@ -59,8 +241,53 @@ export const OperationalSalesPage = () => {
 
   return <ReportLayout title="Ventas" description={scopeCopy[role.toUpperCase()] ?? "Ventas del alcance autorizado"}>
     <div className="space-y-3">
-      <ReportFilters filters={reportFilters} actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={search} disabled={loading} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Buscar</button><button type="button" onClick={() => setReportOpen(true)} disabled={!appliedFilters || loading} title={!appliedFilters ? "Primero ejecuta una búsqueda" : "Generar reporte de la última búsqueda"} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reporte</button><button type="button" onClick={resetFilters} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Limpiar filtros</button></div>} />
-      <DataTable columns={columns} actionColumnFirst rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
+      <ReportFilters
+        filters={reportFilters}
+        actions={(
+          <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={search}
+              isLoading={loading}
+              className="min-w-[96px]"
+            >
+              <Search className="h-4 w-4" aria-hidden="true" />
+              Buscar
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReportOpen(true)}
+              disabled={!appliedFilters || loading}
+              title={!appliedFilters ? "Primero ejecuta una búsqueda" : "Generar reporte de la última búsqueda"}
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Reporte
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={resetFilters}
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Limpiar filtros
+            </Button>
+          </div>
+        )}
+      />
+      {actionMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800"
+        >
+          {actionMessage}
+        </div>
+      ) : null}
+      <DataTable columns={columns} actionColumnFirst disableHeaderUppercase rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
       {appliedFilters ? <Pagination page={page} pageSize={pageSize} totalItems={data.total} onPageChange={setPage} onPageSizeChange={setPageSize} loading={loading} /> : null}
       <PdfPreviewModal isOpen={reportOpen} title="Reporte de ventas operativas" fileName="reporte-ventas-operativas.pdf" description="Vista previa de ventas operativas" onClose={() => setReportOpen(false)} getPdf={getReportPdf} onDownloadExcel={() => { if (appliedReportFilters) void getOperationalSalesReportExcel(appliedReportFilters, data.sortBy, data.sortDirection).then((blob) => downloadBlob(blob, "reporte-ventas-operativas.xlsx")); }} />
     </div>

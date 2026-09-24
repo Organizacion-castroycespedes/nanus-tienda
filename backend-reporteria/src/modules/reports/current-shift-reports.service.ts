@@ -19,6 +19,7 @@ import type {
   CurrentShiftSaleRow,
   CurrentShiftSummary,
   CurrentShiftTicketRow,
+  CurrentShiftUserOption,
 } from "./types/current-shift-report.types";
 
 const ROLE_PRIORITY = ["SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER"];
@@ -213,6 +214,155 @@ export class CurrentShiftReportsService {
     };
   }
 
+  private noOpenSessionResponse(
+    tenantId: string,
+    branchId: string | null,
+    terminalId: string | null,
+    cashRegisterId: string | null,
+    cashSessionId: string | null,
+    userId: string | null,
+    actorRole: string,
+    page: PageOptions,
+    availableCashSessions: CurrentShiftCashSession[],
+    availableUsers: CurrentShiftUserOption[],
+    message: string
+  ): CurrentShiftResponse {
+    return {
+      hasOpenCashSession: false,
+      message,
+      filters: {
+        tenantId,
+        userId,
+        branchId,
+        terminalId,
+        cashRegisterId,
+        cashSessionId,
+        actorRole,
+        page: page.page,
+        pageSize: page.pageSize,
+        search: page.search,
+      },
+      availableCashSessions,
+      availableUsers,
+      tabs: this.emptyTabs(),
+    };
+  }
+
+  private buildAvailableUsers(
+    sessions: CurrentShiftCashSession[]
+  ): CurrentShiftUserOption[] {
+    const users = new Map<string, CurrentShiftUserOption>();
+    for (const session of sessions) {
+      if (!users.has(session.userId)) {
+        users.set(session.userId, { id: session.userId, name: session.userName });
+      }
+    }
+    return [...users.values()].sort((left, right) =>
+      (left.name ?? left.id).localeCompare(right.name ?? right.id)
+    );
+  }
+
+  private async listSessionOperatorUsers(
+    tenantId: string,
+    sessions: CurrentShiftCashSession[]
+  ): Promise<CurrentShiftUserOption[]> {
+    const users = new Map<string, CurrentShiftUserOption>();
+    for (const session of sessions) {
+      if (!users.has(session.userId)) {
+        users.set(session.userId, { id: session.userId, name: session.userName });
+      }
+    }
+
+    if (sessions.length === 0) {
+      return [];
+    }
+
+    const registerIds = [...new Set(sessions.map((session) => session.cashRegisterId))];
+    const sessionIds = sessions.map((session) => session.id);
+
+    const assigneeResult = await this.db.query<{
+      user_id: string;
+      user_email: string | null;
+    }>(
+      `/* current-shift: session-assignees */
+       SELECT DISTINCT
+         assignment.user_id::text AS user_id,
+         assigned_user.email AS user_email
+       FROM public.cash_register_user_assignments AS assignment
+       LEFT JOIN public.users AS assigned_user
+         ON assigned_user.id = assignment.user_id
+        AND assigned_user.tenant_id = $1
+       WHERE assignment.cash_register_id = ANY($2::uuid[])
+         AND assignment.unassigned_at IS NULL`,
+      [tenantId, registerIds]
+    );
+
+    for (const row of assigneeResult.rows ?? []) {
+      if (!users.has(row.user_id)) {
+        users.set(row.user_id, {
+          id: row.user_id,
+          name: row.user_email,
+        });
+      }
+    }
+
+    const sellerResult = await this.db.query<{
+      user_id: string;
+      user_email: string | null;
+    }>(
+      `/* current-shift: session-sellers */
+       SELECT DISTINCT
+         sale.user_id::text AS user_id,
+         seller.email AS user_email
+       FROM public.payments AS payment
+       INNER JOIN public.sales AS sale
+         ON sale.id::text = payment.reference_id
+        AND sale.tenant_id = payment.tenant_id
+       LEFT JOIN public.users AS seller
+         ON seller.id = sale.user_id
+        AND seller.tenant_id = payment.tenant_id
+       WHERE payment.tenant_id = $1
+         AND payment.cash_session_id = ANY($2::uuid[])
+         AND payment.reference_type = 'SALE'
+         AND payment.status IN ('PENDING', 'COMPLETED')
+         AND sale.user_id IS NOT NULL`,
+      [tenantId, sessionIds]
+    );
+
+    for (const row of sellerResult.rows ?? []) {
+      if (!users.has(row.user_id)) {
+        users.set(row.user_id, {
+          id: row.user_id,
+          name: row.user_email,
+        });
+      }
+    }
+
+    return [...users.values()].sort((left, right) =>
+      (left.name ?? left.id).localeCompare(right.name ?? right.id)
+    );
+  }
+
+  private async hasUserCompletedClosure(
+    tenantId: string,
+    cashSessionId: string,
+    userId: string
+  ) {
+    const result = await this.db.query<{ completed: boolean }>(
+      `/* current-shift: user-closure */
+       SELECT EXISTS (
+         SELECT 1
+         FROM public.cash_counts AS count_data
+         WHERE count_data.tenant_id = $1
+           AND count_data.cash_session_id = $2
+           AND count_data.counted_by_user_id = $3
+           AND count_data.count_type = 'CLOSING'
+       ) AS completed`,
+      [tenantId, cashSessionId, userId]
+    );
+    return Boolean(result.rows[0]?.completed);
+  }
+
   private emptyDeliverySummary(): CurrentShiftSummary["deliverySummary"] {
     return {
       deliveredCount: 0,
@@ -366,7 +516,7 @@ export class CurrentShiftReportsService {
     };
   }
 
-  private assertSessionScope(
+  private async assertSessionScope(
     actor: CurrentShiftActorContext,
     tenantId: string,
     session: CurrentShiftCashSession,
@@ -374,6 +524,22 @@ export class CurrentShiftReportsService {
   ) {
     if (session.tenantId !== tenantId) {
       throw new ForbiddenException("No autorizado para otro tenant");
+    }
+
+    if (actor.role === "USER" && session.userId !== actor.userId) {
+      const assignment = await this.db.query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM public.cash_register_user_assignments AS assignment
+           WHERE assignment.cash_register_id = $1
+             AND assignment.user_id = $2
+             AND assignment.unassigned_at IS NULL
+         ) AS exists`,
+        [session.cashRegisterId, actor.userId]
+      );
+      if (!assignment.rows[0]?.exists) {
+        throw new ForbiddenException("No autorizado para otra caja");
+      }
     }
 
     if (query.branchId && query.branchId !== session.branchId) {
@@ -476,10 +642,10 @@ export class CurrentShiftReportsService {
     }
 
     const requireOwnSession =
-      !effectiveBranchId &&
-      (actor.role === "USER" ||
-        actor.role === "ADMIN" ||
-        (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
+      actor.role === "USER" ||
+      (!effectiveBranchId &&
+        (actor.role === "ADMIN" ||
+          (!this.isSuperAdmin(actor) && !this.isSuperUser(actor))));
 
     if (requireOwnSession) {
       params.push(actor.userId);
@@ -494,6 +660,9 @@ export class CurrentShiftReportsService {
         )
       )`);
     }
+
+    // Do NOT hide OPEN sessions after USER delivered closing: turno/POS still need
+    // the live session and the user's sales while the caja remains open.
 
     params.push(actor.userId);
     const actorUserParamIndex = params.length;
@@ -566,10 +735,10 @@ export class CurrentShiftReportsService {
     params.push(actor.userId);
     const actorUserParamIndex = params.length;
     const requireOwnSession =
-      !effectiveBranchId &&
-      (actor.role === "USER" ||
-        actor.role === "ADMIN" ||
-        (!this.isSuperAdmin(actor) && !this.isSuperUser(actor)));
+      actor.role === "USER" ||
+      (!effectiveBranchId &&
+        (actor.role === "ADMIN" ||
+          (!this.isSuperAdmin(actor) && !this.isSuperUser(actor))));
 
     if (requireOwnSession) {
       where.push(`(
@@ -659,6 +828,7 @@ export class CurrentShiftReportsService {
   private async listSales(
     tenantId: string,
     cashSessionId: string,
+    userId: string | undefined,
     page: PageOptions
   ): Promise<CurrentShiftSaleRow[]> {
     const result = await this.db.query<SaleRow>(
@@ -680,6 +850,7 @@ export class CurrentShiftReportsService {
         ON customer.id = sale.customer_id
        AND customer.tenant_id = sale.tenant_id
       WHERE linked_payment.reference_type = 'SALE'
+        AND ($6::uuid IS NULL OR sale.user_id = $6::uuid)
         AND (
           $3::text IS NULL
           OR customer.name ILIKE '%' || $3::text || '%'
@@ -689,7 +860,7 @@ export class CurrentShiftReportsService {
       ORDER BY MIN(linked_payment.created_at) DESC
       LIMIT $4
       OFFSET $5`,
-      [tenantId, cashSessionId, page.search, page.pageSize, page.offset]
+      [tenantId, cashSessionId, page.search, page.pageSize, page.offset, userId ?? null]
     );
 
     return result.rows.map((row) => ({
@@ -844,8 +1015,14 @@ export class CurrentShiftReportsService {
   private async listCashCounts(
     tenantId: string,
     cashSessionId: string,
-    page: PageOptions
+    page: PageOptions,
+    countedByUserId?: string
   ): Promise<CurrentShiftCashCountRow[]> {
+    const params: unknown[] = [tenantId, cashSessionId, page.search];
+    const userFilter = countedByUserId
+      ? `AND count_data.counted_by_user_id = $${params.push(countedByUserId)}`
+      : "";
+    params.push(page.pageSize, page.offset);
     const result = await this.db.query<CashCountRow>(
       `/* current-shift: cash-count */
       SELECT
@@ -858,6 +1035,7 @@ export class CurrentShiftReportsService {
       FROM cash_counts AS count_data
       WHERE count_data.tenant_id = $1
         AND count_data.cash_session_id = $2
+        ${userFilter}
         AND (
           $3::text IS NULL
           OR count_data.notes ILIKE '%' || $3::text || '%'
@@ -866,7 +1044,7 @@ export class CurrentShiftReportsService {
       ORDER BY count_data.counted_at DESC
       LIMIT $4
       OFFSET $5`,
-      [tenantId, cashSessionId, page.search, page.pageSize, page.offset]
+      params
     );
 
     return result.rows.map((row) => ({
@@ -1005,6 +1183,8 @@ export class CurrentShiftReportsService {
   ): Promise<CurrentShiftResponse> {
     const actor = this.resolveActor(user);
     const tenantId = this.resolveTenant(actor, query);
+    const requestedUserId = this.normalizeUuid(query.userId, "userId");
+    const salesUserId = actor.role === "USER" ? actor.userId : requestedUserId;
     const branchId = this.normalizeUuid(query.branchId, "branchId") ?? actor.branchId ?? undefined;
     const terminalId = this.normalizeUuid(query.terminalId, "terminalId");
     const cashRegisterId = this.normalizeUuid(
@@ -1023,38 +1203,52 @@ export class CurrentShiftReportsService {
       tenantId,
       sessionFilters
     );
+    const availableUsers =
+      actor.role === "USER"
+        ? this.buildAvailableUsers(availableCashSessions)
+        : await this.listSessionOperatorUsers(tenantId, availableCashSessions);
+    // Keep all open sessions in scope; salesUserId filters sales rows, not session list.
+    const sessionsForSelection = availableCashSessions;
 
     const session = cashSessionId
       ? await this.findSessionById(cashSessionId)
-      : availableCashSessions[0] ?? null;
+      : sessionsForSelection[0] ?? null;
 
     if (!session) {
-      return {
-        hasOpenCashSession: false,
-        message: "No hay caja abierta para el contexto operativo actual.",
-        filters: {
-          tenantId,
-          branchId: branchId ?? null,
-          terminalId: terminalId ?? null,
-          cashRegisterId: cashRegisterId ?? null,
-          cashSessionId: cashSessionId ?? null,
-          actorRole: actor.role,
-          page: page.page,
-          pageSize: page.pageSize,
-          search: page.search,
-        },
+      return this.noOpenSessionResponse(
+        tenantId,
+        branchId ?? null,
+        terminalId ?? null,
+        cashRegisterId ?? null,
+        cashSessionId ?? null,
+        salesUserId ?? null,
+        actor.role,
+        page,
         availableCashSessions,
-        tabs: this.emptyTabs(),
-      };
+        availableUsers,
+        "No hay caja abierta para el contexto operativo actual."
+      );
     }
 
-    this.assertSessionScope(actor, tenantId, session, {
+    await this.assertSessionScope(actor, tenantId, session, {
       ...query,
       branchId,
       terminalId,
       cashRegisterId,
       cashSessionId,
     });
+
+    if (
+      actor.role !== "USER" &&
+      salesUserId &&
+      !availableUsers.some((user) => user.id === salesUserId)
+    ) {
+      throw new ForbiddenException("El usuario seleccionado no opera esta caja");
+    }
+
+    const ownClosureDelivered =
+      actor.role === "USER" &&
+      (await this.hasUserCompletedClosure(tenantId, session.id, actor.userId));
 
     if (session.status !== "OPEN") {
       return {
@@ -1063,6 +1257,7 @@ export class CurrentShiftReportsService {
         cashSession: session,
         filters: {
           tenantId,
+          userId: salesUserId ?? null,
           branchId: session.branchId,
           terminalId: session.terminalId,
           cashRegisterId: session.cashRegisterId,
@@ -1073,6 +1268,7 @@ export class CurrentShiftReportsService {
           search: page.search,
         },
         availableCashSessions,
+        availableUsers,
         tabs: this.emptyTabs(),
       };
     }
@@ -1080,18 +1276,25 @@ export class CurrentShiftReportsService {
     const [rawSummary, sales, orders, purchases, movements, cashCount, deliverySummary] =
       await Promise.all([
         this.getRawSummary(session.tenantId, session.id),
-        this.listSales(session.tenantId, session.id, page),
+        this.listSales(session.tenantId, session.id, salesUserId, page),
         this.listOrders(session.tenantId, session.id, page),
         this.listPurchases(session.tenantId, session.id, page),
         this.listMovements(session.tenantId, session.id, page),
-        this.listCashCounts(session.tenantId, session.id, page),
+        this.listCashCounts(
+          session.tenantId,
+          session.id,
+          page,
+          actor.role === "USER" ? actor.userId : undefined
+        ),
         this.getDeliveryCashSummary(session.tenantId, session.id),
       ]);
     const tickets = this.buildTickets({ sales, orders, purchases, cashCount });
 
     return {
       hasOpenCashSession: true,
-      message: null,
+      message: ownClosureDelivered
+        ? "Ya entregaste tu cierre. Puedes consultar tus ventas del turno en solo lectura."
+        : null,
       cashSession: session,
       summary: this.buildSummary(
         session,
@@ -1105,6 +1308,7 @@ export class CurrentShiftReportsService {
       ),
       filters: {
         tenantId: session.tenantId,
+        userId: salesUserId ?? null,
         branchId: session.branchId,
         terminalId: session.terminalId,
         cashRegisterId: session.cashRegisterId,
@@ -1115,6 +1319,7 @@ export class CurrentShiftReportsService {
         search: page.search,
       },
       availableCashSessions,
+      availableUsers,
       tabs: {
         sales: { total: sales.length, rows: sales },
         orders: { total: orders.length, rows: orders },

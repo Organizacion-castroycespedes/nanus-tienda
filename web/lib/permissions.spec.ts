@@ -6,6 +6,7 @@ import { store } from "../store";
 import { clearAuth, setAuthPermissions, setUser } from "../store/authSlice";
 import { getAllowedMenuItems, hasMenuAccess, hasPermission } from "./permissions";
 import { getRoutePermissionRequirement } from "./route-permissions";
+import { getFinancePermissions } from "../modules/finance/permissions";
 
 const permissionFor = (key: string): PermissionSummary => ({
   key,
@@ -33,6 +34,12 @@ const setRole = (role: string, permissions: PermissionSummary[] = []) => {
   );
   store.dispatch(setAuthPermissions(permissions));
 };
+
+test("USER cannot view the finance payment-method catalog", () => {
+  assert.equal(getFinancePermissions("USER").canViewPaymentMethods, false);
+  assert.equal(getFinancePermissions("ADMIN").canViewPaymentMethods, true);
+  assert.equal(getFinancePermissions("SUPER_ADMIN").canViewPaymentMethods, true);
+});
 
 test("menu permissions expose DB-granted inventory modules to admin roles", () => {
   const inventoryPermissions = [

@@ -9,6 +9,7 @@ import { Select } from "../../../components/design-system/Select";
 import { getAuthContext, createPosSession as createPosSessionRequest } from "../api";
 import { usePosContext } from "../hooks/usePosContext";
 import { useAppSelector } from "../../../store/hooks";
+import { getApiErrorMessage } from "../../../modules/reporteria/utils";
 import {
   getCurrentCashSession,
   listCashRegisters,
@@ -366,8 +367,10 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
       });
 
       router.push(`/${tenantSlug}/pos`);
-    } catch {
-      setError("No se pudo abrir caja o iniciar la sesion POS.");
+    } catch (error) {
+      setError(
+        getApiErrorMessage(error, "No se pudo abrir caja o iniciar la sesion POS.")
+      );
     } finally {
       setSubmitting(false);
       setLoading(false);

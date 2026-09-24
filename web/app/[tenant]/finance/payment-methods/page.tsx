@@ -68,7 +68,11 @@ const PaymentMethodsPage = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
 
-  const { canViewFinance, canManagePaymentMethods, isSuperRole } = getFinancePermissions(role);
+  const {
+    canViewPaymentMethods,
+    canManagePaymentMethods,
+    isSuperRole,
+  } = getFinancePermissions(role);
   
   const {
     paymentMethods,
@@ -102,13 +106,19 @@ const PaymentMethodsPage = () => {
   useAutoClearState(toastMessage, setToastMessage);
 
   useEffect(() => {
-    if (!canViewFinance) return;
+    if (!canViewPaymentMethods) return;
     void loadPaymentMethods();
     void loadFinancialInstitutions();
     if (isSuperRole) {
       void loadTenants();
     }
-  }, [canViewFinance, isSuperRole, loadPaymentMethods, loadFinancialInstitutions, loadTenants]);
+  }, [
+    canViewPaymentMethods,
+    isSuperRole,
+    loadPaymentMethods,
+    loadFinancialInstitutions,
+    loadTenants,
+  ]);
 
   const filteredMethods = useMemo(() => {
     const normalized = normalizeSearch(query);
@@ -233,7 +243,7 @@ const PaymentMethodsPage = () => {
     }
   };
 
-  if (!canViewFinance) {
+  if (!canViewPaymentMethods) {
     return <FinanceAccessNotice description="No tienes acceso a métodos de pago." />;
   }
 
@@ -276,7 +286,10 @@ const PaymentMethodsPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       {/* Tabs bar */}
       <div className="flex border-b border-slate-200 dark:border-slate-800">

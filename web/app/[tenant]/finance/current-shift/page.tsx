@@ -120,7 +120,7 @@ const CurrentShiftPage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
-  const { canViewFinance } = getFinancePermissions(role);
+  const { canViewFinance, canViewPaymentMethods } = getFinancePermissions(role);
   const [activeTab, setActiveTab] = useState<ShiftTab>("sales");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -128,6 +128,7 @@ const CurrentShiftPage = () => {
   const [selectedCashSessionId, setSelectedCashSessionId] = useState<string | null>(
     null
   );
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [shift, setShift] = useState<CurrentShiftResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -144,6 +145,7 @@ const CurrentShiftPage = () => {
     try {
       const result = await getCurrentShiftReport({
         tenantId: authUser.tenantId,
+        userId: selectedUserId ?? undefined,
         cashSessionId: selectedCashSessionId ?? undefined,
         pageSize: 50,
         search: appliedSearch || undefined,
@@ -166,10 +168,17 @@ const CurrentShiftPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [appliedSearch, authUser?.tenantId, canViewFinance, selectedCashSessionId]);
+  }, [
+    appliedSearch,
+    authUser?.tenantId,
+    canViewFinance,
+    selectedCashSessionId,
+    selectedUserId,
+  ]);
 
   useEffect(() => {
     setSelectedCashSessionId(null);
+    setSelectedUserId(null);
     setSessionFilter("");
   }, [authUser?.tenantId]);
 
@@ -317,6 +326,11 @@ const CurrentShiftPage = () => {
     () => shift?.availableCashSessions ?? [],
     [shift?.availableCashSessions]
   );
+  const availableUsers = useMemo(
+    () => shift?.availableUsers ?? [],
+    [shift?.availableUsers]
+  );
+  const canSelectUser = ["ADMIN", "SUPER_USER", "SUPER_ADMIN"].includes(role);
   const currentCashSessionId = selectedCashSessionId ?? shift?.cashSession?.id ?? "";
   const filteredCashSessions = useMemo(
     () => filterCurrentShiftSessions(availableCashSessions, sessionFilter),
@@ -373,7 +387,10 @@ const CurrentShiftPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       {!shift?.hasOpenCashSession ? (
         <section className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm dark:bg-slate-800 dark:border-slate-700">
@@ -392,6 +409,11 @@ const CurrentShiftPage = () => {
         </section>
       ) : (
         <>
+          {shift.message ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+              {shift.message}
+            </section>
+          ) : null}
           {availableCashSessions.length > 0 ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -411,8 +433,30 @@ const CurrentShiftPage = () => {
                   </p>
                 </div>
 
-                {availableCashSessions.length > 1 ? (
-                  <div className="grid w-full gap-2 lg:max-w-3xl lg:grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,1.6fr)]">
+                {canSelectUser || availableCashSessions.length > 1 ? (
+                  <div className="grid w-full gap-2 lg:max-w-5xl lg:grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,1.2fr)_minmax(18rem,1.6fr)]">
+                    {canSelectUser ? (
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          Usuario
+                        </span>
+                        <select
+                          className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                          value={selectedUserId ?? ""}
+                          onChange={(event) => {
+                            setSelectedUserId(event.target.value || null);
+                            setSelectedCashSessionId(null);
+                          }}
+                        >
+                          <option value="">Todos los usuarios</option>
+                          {availableUsers.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name ?? option.id}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <label className="block">
                       <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                         Buscar

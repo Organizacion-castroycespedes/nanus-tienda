@@ -20,6 +20,7 @@ export type OperationalSaleListItem = {
   branch: { id: string; name: string | null };
   operator: { id: string | null; email: string | null };
   cashSessionId: string | null;
+  electronicBillingEnabled: boolean;
   electronicBilling: {
     status: string;
     electronicDocumentId: string | null;

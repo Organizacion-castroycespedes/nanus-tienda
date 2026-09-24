@@ -45,7 +45,8 @@ const CashMovementsPage = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
 
-  const { canViewFinance, canCreateCashMovements } = getFinancePermissions(role);
+  const { canViewFinance, canViewPaymentMethods, canCreateCashMovements } =
+    getFinancePermissions(role);
   const {
     movements,
     summary,
@@ -222,7 +223,10 @@ const CashMovementsPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <FinanceMetricCard
