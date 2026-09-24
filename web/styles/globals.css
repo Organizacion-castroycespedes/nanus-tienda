@@ -201,3 +201,13 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.login-background {
+  background-position: 26% center;
+}
+
+@media (min-width: 1024px) {
+  .login-background {
+    background-position: center;
+  }
+}

@@ -3,16 +3,22 @@
 import { Suspense, useCallback, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Headphones,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+} from "lucide-react";
 import { Button } from "../../components/design-system/Button";
 import { Modal } from "../../components/design-system/Modal";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { login, replaceActiveSession } from "../../domains/auth/api";
 import { decodeTokenPayload } from "../../domains/auth/jwt";
 import { isQaLoginEnabled } from "../../domains/auth/login-qa";
-import {
-  startSessionFromLogin,
-} from "../../domains/auth/session-manager";
+import { startSessionFromLogin } from "../../domains/auth/session-manager";
 import { resolveTenantSlug } from "../../domains/auth/tenant-path";
 import { hasRefreshTokenStorage } from "../../domains/auth/session";
 import { ApiError } from "../../lib/request";
@@ -187,40 +193,21 @@ const LoginPageContent = () => {
   }, [setStatusWarning]);
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
-      {/* Left panel — branding (hidden on mobile) */}
+    <div className="relative min-h-screen overflow-x-hidden bg-slate-950">
       <div
-        className="relative hidden flex-col justify-between p-10 lg:flex lg:w-[55%]"
+        aria-hidden="true"
+        className="login-background absolute inset-0 bg-slate-950 lg:right-auto lg:w-[56%]"
         style={{
-          backgroundImage: `
-              linear-gradient(0deg, rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.62)),
-              url('/login-bg.jpg'),
-              linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.06) 50%, rgba(30, 27, 75, 0.08) 100%),
-              repeating-linear-gradient(
-                45deg,
-                transparent,
-                transparent 80px,
-              rgba(59, 130, 246, 0.04) 80px,
-              rgba(59, 130, 246, 0.04) 160px
-            ),
-              radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.08) 0%, transparent 50%)
-            `,
-          backgroundColor: '#0f172a',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          backgroundSize: 'cover',
+          backgroundImage: "url('/logo-login.png')",
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "cover",
         }}
       >
-        {/* Dark overlay */}
-        <div className="absolute inset-0 bg-slate-900/45" />
-
+        <div className="absolute inset-0 bg-slate-950/25" />
       </div>
-      {/* Right panel — form */}
-      <main className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-lg">
 
-
+      <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:ml-[56%] lg:bg-white lg:px-10 lg:py-12 dark:lg:bg-slate-950">
+        <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:max-w-lg lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:backdrop-blur-none dark:border-slate-700/70 dark:bg-slate-900/95 dark:lg:bg-transparent">
           {showSessionConflict ? (
             <Modal title="Sesion activa detectada">
               <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -239,12 +226,24 @@ const LoginPageContent = () => {
           ) : null}
 
           <div className="mb-8">
-            <div className="flex items-end justify-between gap-4">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">Manus POS</p>
-                <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">Bienvenido</h1>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-700 dark:text-cyan-300">
+                  EMAUS POS
+                </p>
+                <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Centro de Soluciones
+                </p>
+                <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+                  Bienvenido
+                </h1>
+                <p className="mt-2 text-base text-slate-600 dark:text-slate-300">
+                  Ingresa a tu cuenta para continuar.
+                </p>
               </div>
-              <span className="text-xs text-slate-400">v{appVersion.replace(/^v/, "")}</span>
+              <span className="pt-1 text-xs font-medium text-slate-400">
+                v{appVersion.replace(/^v/, "")}
+              </span>
             </div>
           </div>
 
@@ -258,61 +257,61 @@ const LoginPageContent = () => {
             </div>
           ) : null}
 
-          <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+          <form className="space-y-5" onSubmit={handleSubmit} noValidate>
             {/* Email */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            <div className="flex flex-col gap-2">
+              <label htmlFor="email" className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                 Email
               </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoFocus
-                ref={emailInputRef}
-                tabIndex={1}
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuario@empresa.com"
-                required
-                  className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
-              />
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoFocus
+                  ref={emailInputRef}
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="usuario@tuempresa.com"
+                  required
+                  className="min-h-14 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-600/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
+                />
+              </div>
             </div>
 
             {/* Password */}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <label htmlFor="password" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                <label htmlFor="password" className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                   Contraseña
                 </label>
                 <Link
                   href="/forgot-password"
-                  tabIndex={3}
-                  className="text-xs text-blue-600 transition hover:text-blue-700 hover:underline"
+                  className="text-xs font-semibold text-blue-700 transition hover:text-blue-800 hover:underline dark:text-cyan-300 dark:hover:text-cyan-200"
                 >
-                  Olvidaste tu Contraseña?
+                  ¿Olvidaste tu contraseña?
                 </Link>
               </div>
               <div className="relative">
+                <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                 <input
                   id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
-                  tabIndex={2}
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="min-h-12 w-full rounded-xl border border-slate-200 bg-white pl-4 pr-12 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
+                  className="min-h-14 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-12 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-600/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:[&:-webkit-autofill]:bg-slate-800 dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white] dark:[&:-webkit-autofill]:[box-shadow:0_0_0px_1000px_#1e293b_inset]"
                 />
                 <button
                   type="button"
-                  tabIndex={4}
                   aria-label={showPassword ? "Ocultar Contraseña" : "Mostrar Contraseña"}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 dark:text-slate-300"
+                  className="absolute right-3 top-1/2 min-h-10 min-w-10 -translate-y-1/2 rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -328,10 +327,9 @@ const LoginPageContent = () => {
               <label className="flex cursor-pointer items-center gap-2 text-slate-600 dark:text-slate-300">
                 <input
                   type="checkbox"
-                  tabIndex={5}
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                  className="h-5 w-5 rounded border-slate-300 accent-blue-600"
                 />
                 Recordarme
               </label>
@@ -341,20 +339,27 @@ const LoginPageContent = () => {
             {/* Submit */}
             <Button
               type="submit"
-              tabIndex={7}
               disabled={isSubmitting}
-              className="min-h-[52px] w-full justify-center rounded-xl text-base"
+              className="min-h-14 w-full justify-center rounded-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-500 text-base shadow-lg shadow-blue-600/20 hover:from-blue-800 hover:via-blue-700 hover:to-cyan-600 focus-visible:ring-4 focus-visible:ring-blue-600/25"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                   Ingresando...
                 </>
               ) : (
-                "Ingresar"
+                <>
+                  Ingresar
+                  <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </>
               )}
             </Button>
           </form>
+
+          <div className="mt-8 flex items-center justify-center gap-4 border-t border-slate-200 pt-5 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-blue-600" aria-hidden="true" /> Acceso seguro</span>
+            <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+            <span className="flex items-center gap-1.5"><Headphones className="h-4 w-4 text-blue-600" aria-hidden="true" /> Soporte disponible</span>
+          </div>
         </div>
       </main>
     </div>
