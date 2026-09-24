@@ -944,6 +944,7 @@ export class SaleService {
         tenantId: customer.tenantId,
         isFinalConsumer: customer.isFinalConsumer,
         documentNumber: customer.documentNumber ?? null,
+        taxRegime: resolvedCustomer?.taxRegime ?? null,
       },
     };
   }

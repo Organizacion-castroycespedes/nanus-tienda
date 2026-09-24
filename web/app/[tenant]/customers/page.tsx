@@ -9,8 +9,8 @@ import { ConfirmDialog } from "../../../components/design-system/confirm-dialog"
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { Modal } from "../../../components/design-system/Modal";
 import { CustomerForm } from "../../../modules/inventory/components/CustomerForm";
-import { FocusActionLayout } from "../../../modules/inventory/components/FocusActionLayout";
 import {
   listElectronicInvoicingCustomers,
   type ElectronicInvoicingCustomer,
@@ -150,7 +150,7 @@ const CustomersPage = () => {
       } else {
         setCustomers(baseResult.value);
         setFiscalWarning(
-          "No se pudieron cargar datos fiscales. Se muestra catalogo basico."
+          "No se pudieron cargar datos fiscales. Se muestra catálogo básico."
         );
       }
       setHasSearched(true);
@@ -233,7 +233,7 @@ const CustomersPage = () => {
           : "Cliente actualizado correctamente",
       description:
         mode === "create"
-          ? "El cliente quedo registrado y el listado puede actualizarse."
+          ? "El cliente quedó registrado y el listado puede actualizarse."
           : "Los cambios del cliente fueron guardados correctamente.",
       variant: "success",
     });
@@ -269,27 +269,16 @@ const CustomersPage = () => {
     }
   }, [canEdit, customers, formMode, hasSearched, requestedCustomerId]);
 
-  const isActionMode = formMode !== null;
-  const actionTitle = formMode === "edit" ? "Editar cliente" : "Crear cliente";
-  const actionDescription =
-    formMode === "edit"
-      ? "Actualiza los datos comerciales y fiscales del cliente seleccionado."
-      : "Registra un cliente nuevo sin mezclar el formulario con el listado.";
-  const actionContextLabel =
-    formMode === "edit" && selectedCustomer
-      ? `${selectedCustomer.name} · ${getCustomerDocument(selectedCustomer)}`
-      : undefined;
-
   const handleDelete = async (customer: CustomerResponse) => {
     if (customer.isFinalConsumer) {
-      showToast("Consumidor Final esta protegido.", "warning");
+      showToast("Consumidor Final está protegido.", "warning");
       return;
     }
 
     try {
       await confirm({
-        title: "Confirmar eliminacion",
-        description: `Se inactivara el cliente ${customer.name}.`,
+        title: "Confirmar eliminación",
+        description: `Se inactivará el cliente ${customer.name}.`,
         confirmText: "Eliminar cliente",
         variant: "danger",
       });
@@ -324,20 +313,20 @@ const CustomersPage = () => {
         onConfirm={() => setActionFeedback(null)}
       />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      {/* Main Header */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Customers</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Clientes</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              {isActionMode
-                ? "Completa la accion activa y vuelve al listado cuando termines."
-                : "Administra clientes, contactos y ubicacion comercial."}
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Customers</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Clientes</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              Administra clientes, contactos y ubicación comercial.
             </p>
           </div>
-          {!isActionMode ? (
           <div className="flex flex-wrap gap-3">
-            <Link href="fiscal-review"><Button variant="secondary">Revisión fiscal</Button></Link>
+            <Link href="fiscal-review">
+              <Button variant="secondary">Revisión fiscal</Button>
+            </Link>
             <Button variant="ghost" onClick={() => void loadCustomers()} isLoading={loading}>
               <RefreshCw className="h-4 w-4" />
               Actualizar
@@ -349,17 +338,17 @@ const CustomersPage = () => {
               </Button>
             ) : null}
           </div>
-          ) : null}
         </div>
       </section>
 
+      {/* Create / Edit Modal Dialog */}
       {formMode ? (
-        <FocusActionLayout
-          title={actionTitle}
-          description={actionDescription}
-          contextLabel={actionContextLabel}
-          onBack={closeForm}
-          onCancel={closeForm}
+        <Modal
+          size="full"
+          responsive
+          onClose={closeForm}
+          contentClassName="!max-w-5xl !p-0 overflow-hidden"
+          bodyClassName="!mt-0 min-h-0 flex-1 overflow-y-auto"
         >
           <CustomerForm
             mode={formMode}
@@ -367,11 +356,11 @@ const CustomersPage = () => {
             onCancel={closeForm}
             onSuccess={handleFormSuccess}
           />
-        </FocusActionLayout>
+        </Modal>
       ) : null}
 
-      {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      {/* Search Filters */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-4 md:grid-cols-[1fr_auto_auto]">
           <Input
             label="Buscar"
@@ -391,7 +380,7 @@ const CustomersPage = () => {
             </Button>
           </div>
           <Select
-            label="Filas por pagina"
+            label="Filas por página"
             value={String(pageSize)}
             onChange={(event) => {
               setPageSize(Number(event.target.value));
@@ -406,53 +395,52 @@ const CustomersPage = () => {
           </Select>
         </div>
       </section>
-      ) : null}
 
-      {!isActionMode && errorMessage ? (
-        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">
+      {errorMessage ? (
+        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 shadow-sm dark:border-rose-950 dark:bg-rose-950/40 dark:text-rose-300">
           {errorMessage}
         </section>
       ) : null}
 
-      {!isActionMode && fiscalWarning ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
+      {fiscalWarning ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm dark:border-amber-950 dark:bg-amber-950/40 dark:text-amber-300">
           {fiscalWarning}
         </section>
       ) : null}
 
-      {!isActionMode && toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      {!isActionMode ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      {/* Customers Table */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+          <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+            <thead className="bg-slate-50 text-left text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
                 <th className="px-4 py-3 font-medium">Documento</th>
                 <th className="px-4 py-3 font-medium">Estado fiscal</th>
-                <th className="px-4 py-3 font-medium">Telefono</th>
+                <th className="px-4 py-3 font-medium">Teléfono</th>
                 <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Ubicacion</th>
+                <th className="px-4 py-3 font-medium">Ubicación</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando clientes...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
-                    Usa el boton Buscar para consultar clientes.
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    Usa el botón Buscar para consultar clientes.
                   </td>
                 </tr>
               ) : paginatedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay clientes para mostrar.
                   </td>
                 </tr>
@@ -460,14 +448,14 @@ const CustomersPage = () => {
                 paginatedCustomers.map((customer) => {
                   const fiscalBadge = resolveFiscalBadge(customer);
                   return (
-                    <tr key={customer.id}>
-                      <td className="px-4 py-3 text-slate-900">
+                    <tr key={customer.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="px-4 py-3 text-slate-900 dark:text-white">
                         <div className="font-medium">{customer.name}</div>
                         {customer.legalName && customer.legalName !== customer.name ? (
-                          <div className="text-xs text-slate-500">{customer.legalName}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{customer.legalName}</div>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {getCustomerDocument(customer)}
                       </td>
                       <td className="px-4 py-3">
@@ -477,13 +465,13 @@ const CustomersPage = () => {
                           {fiscalBadge.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {customer.phone || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {customer.invoiceEmail || customer.fiscalEmail || customer.email || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                         {[customer.ciudad, customer.departamento].filter(Boolean).join(", ") ||
                           [customer.municipalityCode, customer.departmentCode]
                             .filter(Boolean)
@@ -528,9 +516,9 @@ const CustomersPage = () => {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-400">
           <span>
-            Pagina {Math.min(page + 1, totalPages)} de {totalPages}
+            Página {Math.min(page + 1, totalPages)} de {totalPages}
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -550,7 +538,6 @@ const CustomersPage = () => {
           </div>
         </div>
       </section>
-      ) : null}
     </div>
   );
 };

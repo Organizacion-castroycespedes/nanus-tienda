@@ -157,17 +157,32 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mb-3" />
             <p>Cargando información de la venta y contexto de caja...</p>
           </div>
-        ) : error ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
-            {error}
-          </div>
         ) : sale ? (
-          <>
+          <div className="space-y-4">
+            {error ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200 flex items-center justify-between gap-3">
+                <span>{error}</span>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  className="text-xs font-semibold underline text-rose-700 dark:text-rose-300 shrink-0"
+                >
+                  Descartar
+                </button>
+              </div>
+            ) : null}
+
             {step === "CUSTOMER" && (
               <PreInvoiceCustomerStep
                 sale={sale}
-                onCustomerUpdated={(updated) => setSale(updated)}
-                onNext={() => setStep("PAYMENTS")}
+                onCustomerUpdated={(updated) => {
+                  setSale(updated);
+                  setError(null);
+                }}
+                onNext={() => {
+                  setError(null);
+                  setStep("PAYMENTS");
+                }}
                 onSaveCustomer={(customerId) =>
                   updateOperationalSaleCustomer(sale.id, customerId)
                 }
@@ -178,8 +193,14 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
               <PreInvoicePaymentStep
                 sale={sale}
                 activeCashSession={activeCashSession}
-                onPaymentsUpdated={(updated) => setSale(updated)}
-                onNext={() => setStep("CONFIRMATION")}
+                onPaymentsUpdated={(updated) => {
+                  setSale(updated);
+                  setError(null);
+                }}
+                onNext={() => {
+                  setError(null);
+                  setStep("CONFIRMATION");
+                }}
                 onBack={() => setStep("CUSTOMER")}
                 onSavePayments={(payload) =>
                   correctOperationalSalePayments(sale.id, payload)
@@ -192,13 +213,37 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
                 sale={sale}
                 onBack={() => setStep("PAYMENTS")}
                 onEmitInvoice={async () => {
+                  setError(null);
                   const result = await requestOperationalSaleElectronicBilling(sale.id);
-                  onSuccess(result.message ?? "Solicitud de facturación electrónica enviada exitosamente.");
+                  if (!result.requestCreated || !result.electronicDocumentId) {
+                    const errorMsg =
+                      result.message ||
+                      "Seleccione o complete un cliente fiscalmente elegible para una factura IVA.";
+
+                    if (
+                      result.eligibility === "INCOMPLETE_CUSTOMER_FISCAL_DATA" ||
+                      result.result === "INCOMPLETE_CUSTOMER_FISCAL_DATA"
+                    ) {
+                      setError(errorMsg);
+                      setStep("CUSTOMER");
+                    } else {
+                      setError(errorMsg);
+                    }
+                    throw new Error(errorMsg);
+                  }
+
+                  onSuccess(
+                    result.message ?? "Solicitud de facturación electrónica enviada exitosamente."
+                  );
                   onClose();
                 }}
               />
             )}
-          </>
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+            {error}
+          </div>
         ) : null}
       </div>
     </Modal>
