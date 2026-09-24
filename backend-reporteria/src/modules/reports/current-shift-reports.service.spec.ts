@@ -44,6 +44,8 @@ class FakeDb {
   assignmentExists = false;
   hasDeliverySchema = false;
   userClosureCompleted = false;
+  assigneeRows: unknown[] = [];
+  sellerRows: unknown[] = [];
   summary = {
     totals: {
       openingAmount: 10000,
@@ -98,6 +100,12 @@ class FakeDb {
     }
     if (text.includes("current-shift: current-session")) {
       return { rows: this.sessionRows };
+    }
+    if (text.includes("current-shift: session-assignees")) {
+      return { rows: this.assigneeRows };
+    }
+    if (text.includes("current-shift: session-sellers")) {
+      return { rows: this.sellerRows };
     }
     if (text.includes("cash_register_user_assignments")) {
       return { rows: [{ exists: this.assignmentExists }] };
@@ -293,6 +301,59 @@ test("CurrentShiftReportsService: ADMIN consulta caja de su sucursal aunque la a
 
   assert.equal(response.hasOpenCashSession, true);
   assert.equal(response.cashSession?.userId, ids.otherUser);
+});
+
+test("CurrentShiftReportsService: ADMIN lista asignados y vendedores en availableUsers", async () => {
+  const db = new FakeDb();
+  db.availableSessionRows = [buildSession({ opened_by_user_id: ids.user })];
+  db.assigneeRows = [
+    { user_id: ids.otherUser, user_email: "pos.user@example.test" },
+  ];
+  db.sellerRows = [
+    { user_id: "10000000-0000-0000-0000-000000000099", user_email: "seller@example.test" },
+  ];
+
+  const response = await buildService(db).getCurrentShift(
+    { tenantId: ids.tenant },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["ADMIN"],
+    }
+  );
+
+  assert.equal(response.availableUsers.length, 3);
+  assert.ok(response.availableUsers.some((user) => user.id === ids.user));
+  assert.ok(response.availableUsers.some((user) => user.id === ids.otherUser));
+  assert.ok(
+    response.availableUsers.some(
+      (user) => user.id === "10000000-0000-0000-0000-000000000099"
+    )
+  );
+});
+
+test("CurrentShiftReportsService: ADMIN filtra ventas por usuario seleccionado sin exigir opener", async () => {
+  const db = new FakeDb();
+  db.availableSessionRows = [buildSession({ opened_by_user_id: ids.user })];
+  db.assigneeRows = [
+    { user_id: ids.otherUser, user_email: "pos.user@example.test" },
+  ];
+
+  await buildService(db).getCurrentShift(
+    { tenantId: ids.tenant, userId: ids.otherUser },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["ADMIN"],
+    }
+  );
+
+  const salesQuery = db.queries.find(({ text }) =>
+    text.includes("current-shift: sales")
+  );
+  assert.equal(salesQuery?.params.at(-1), ids.otherUser);
 });
 
 test("CurrentShiftReportsService: USER no consulta otro tenant", async () => {

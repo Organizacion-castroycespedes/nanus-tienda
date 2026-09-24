@@ -262,6 +262,87 @@ export class CurrentShiftReportsService {
     );
   }
 
+  private async listSessionOperatorUsers(
+    tenantId: string,
+    sessions: CurrentShiftCashSession[]
+  ): Promise<CurrentShiftUserOption[]> {
+    const users = new Map<string, CurrentShiftUserOption>();
+    for (const session of sessions) {
+      if (!users.has(session.userId)) {
+        users.set(session.userId, { id: session.userId, name: session.userName });
+      }
+    }
+
+    if (sessions.length === 0) {
+      return [];
+    }
+
+    const registerIds = [...new Set(sessions.map((session) => session.cashRegisterId))];
+    const sessionIds = sessions.map((session) => session.id);
+
+    const assigneeResult = await this.db.query<{
+      user_id: string;
+      user_email: string | null;
+    }>(
+      `/* current-shift: session-assignees */
+       SELECT DISTINCT
+         assignment.user_id::text AS user_id,
+         assigned_user.email AS user_email
+       FROM public.cash_register_user_assignments AS assignment
+       LEFT JOIN public.users AS assigned_user
+         ON assigned_user.id = assignment.user_id
+        AND assigned_user.tenant_id = $1
+       WHERE assignment.cash_register_id = ANY($2::uuid[])
+         AND assignment.unassigned_at IS NULL`,
+      [tenantId, registerIds]
+    );
+
+    for (const row of assigneeResult.rows ?? []) {
+      if (!users.has(row.user_id)) {
+        users.set(row.user_id, {
+          id: row.user_id,
+          name: row.user_email,
+        });
+      }
+    }
+
+    const sellerResult = await this.db.query<{
+      user_id: string;
+      user_email: string | null;
+    }>(
+      `/* current-shift: session-sellers */
+       SELECT DISTINCT
+         sale.user_id::text AS user_id,
+         seller.email AS user_email
+       FROM public.payments AS payment
+       INNER JOIN public.sales AS sale
+         ON sale.id::text = payment.reference_id
+        AND sale.tenant_id = payment.tenant_id
+       LEFT JOIN public.users AS seller
+         ON seller.id = sale.user_id
+        AND seller.tenant_id = payment.tenant_id
+       WHERE payment.tenant_id = $1
+         AND payment.cash_session_id = ANY($2::uuid[])
+         AND payment.reference_type = 'SALE'
+         AND payment.status IN ('PENDING', 'COMPLETED')
+         AND sale.user_id IS NOT NULL`,
+      [tenantId, sessionIds]
+    );
+
+    for (const row of sellerResult.rows ?? []) {
+      if (!users.has(row.user_id)) {
+        users.set(row.user_id, {
+          id: row.user_id,
+          name: row.user_email,
+        });
+      }
+    }
+
+    return [...users.values()].sort((left, right) =>
+      (left.name ?? left.id).localeCompare(right.name ?? right.id)
+    );
+  }
+
   private async hasUserCompletedClosure(
     tenantId: string,
     cashSessionId: string,
@@ -1131,11 +1212,12 @@ export class CurrentShiftReportsService {
       tenantId,
       sessionFilters
     );
-    const availableUsers = this.buildAvailableUsers(availableCashSessions);
-    const sessionsForSelection =
-      actor.role === "USER" || !salesUserId
-        ? availableCashSessions
-        : availableCashSessions.filter((item) => item.userId === salesUserId);
+    const availableUsers =
+      actor.role === "USER"
+        ? this.buildAvailableUsers(availableCashSessions)
+        : await this.listSessionOperatorUsers(tenantId, availableCashSessions);
+    // Keep all open sessions in scope; salesUserId filters sales rows, not session list.
+    const sessionsForSelection = availableCashSessions;
 
     const session = cashSessionId
       ? await this.findSessionById(cashSessionId)
@@ -1165,8 +1247,12 @@ export class CurrentShiftReportsService {
       cashSessionId,
     });
 
-    if (actor.role !== "USER" && salesUserId && session.userId !== salesUserId) {
-      throw new ForbiddenException("La sesión no pertenece al usuario seleccionado");
+    if (
+      actor.role !== "USER" &&
+      salesUserId &&
+      !availableUsers.some((user) => user.id === salesUserId)
+    ) {
+      throw new ForbiddenException("El usuario seleccionado no opera esta caja");
     }
 
     if (

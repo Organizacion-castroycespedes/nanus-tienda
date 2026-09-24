@@ -249,12 +249,13 @@ const CashSessionsPage = () => {
     });
   }, [history, registerFilter, statusFilter]);
 
-  const expectedCurrent = currentSession
-    ? sessionSummary?.cashControl?.expectedCashAmount ??
-      sessionSummary?.totals.expectedAmount ??
-      currentSession.expectedAmount ??
-      currentSession.openingAmount
-    : 0;
+  const expectedCurrent =
+    currentSession && sessionSummary?.sessionId === currentSession.id
+      ? sessionSummary.cashControl?.expectedCashAmount ??
+        sessionSummary.totals.expectedAmount ??
+        currentSession.expectedAmount ??
+        0
+      : null;
   const currentSummaryReady =
     !currentSession || sessionSummary?.sessionId === currentSession.id;
   const ownClosureDelivered = Boolean(
@@ -377,7 +378,7 @@ const CashSessionsPage = () => {
     }
 
     const summarySnapshot = sessionSummary;
-    const expectedSnapshot = expectedCurrent;
+    const expectedSnapshot = expectedCurrent ?? 0;
     const realSnapshot = closeForm.closingAmount;
 
     try {
@@ -431,7 +432,8 @@ const CashSessionsPage = () => {
       countedCashAmount:
         summary.cashControl?.countedCashAmount ??
         summary.lastCount?.countedCashAmount ??
-        expectedCurrent,
+        expectedCurrent ??
+        0,
       notes: "",
     });
     setAuditModal(true);
@@ -582,7 +584,7 @@ const CashSessionsPage = () => {
                 <FinanceMetricCard
                   label="Esperado"
                   value={
-                    loadingSummary && !sessionSummary
+                    expectedCurrent === null || (loadingSummary && !sessionSummary)
                       ? "Calculando..."
                       : formatCurrency(expectedCurrent)
                   }
@@ -958,7 +960,7 @@ const CashSessionsPage = () => {
         >
           <CloseCashSessionForm
             value={closeForm}
-            expectedAmount={expectedCurrent}
+            expectedAmount={expectedCurrent ?? 0}
             summary={sessionSummary}
             onChange={setCloseForm}
             onCancel={() => setCloseModal(false)}

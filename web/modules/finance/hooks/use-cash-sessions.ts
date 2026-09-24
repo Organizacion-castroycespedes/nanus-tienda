@@ -15,6 +15,7 @@ import type {
   CloseCashSessionPayload,
   OpenCashSessionPayload,
 } from "../types";
+import { getApiErrorMessage } from "../../reporteria/utils";
 
 export const useCashSessions = () => {
   const [currentSession, setCurrentSession] = useState<CashSession | null>(null);
@@ -34,8 +35,8 @@ export const useCashSessions = () => {
       const session = await getCurrentCashSession(cashRegisterId);
       setCurrentSession(session);
       return session;
-    } catch {
-      setErrorMessage("No se pudo consultar la caja actual.");
+    } catch (error) {
+      setErrorMessage(getApiErrorMessage(error, "No se pudo consultar la caja actual."));
       return null;
     } finally {
       setLoadingCurrent(false);
@@ -49,8 +50,10 @@ export const useCashSessions = () => {
       const summary = await getCashSessionSummary(cashSessionId);
       setSessionSummary(summary);
       return summary;
-    } catch {
-      setErrorMessage("No se pudo cargar el resumen de la caja.");
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(error, "No se pudo cargar el resumen de la caja.")
+      );
       return null;
     } finally {
       setLoadingSummary(false);
@@ -65,8 +68,10 @@ export const useCashSessions = () => {
       setHistory(items);
       setHistoryLoaded(true);
       return items;
-    } catch {
-      setErrorMessage("No se pudo cargar el historial de sesiones.");
+    } catch (error) {
+      setErrorMessage(
+        getApiErrorMessage(error, "No se pudo cargar el historial de sesiones.")
+      );
       setHistoryLoaded(true);
       return [];
     } finally {

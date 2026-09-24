@@ -91,6 +91,14 @@ const buildHarness = (
     closingCounts?: Array<Record<string, unknown>>;
     existingOpen?: Record<string, unknown> | null;
     assignedToOpen?: boolean;
+    cashCountAuditSchema?: boolean;
+    findCurrentByUserResult?: ReturnType<typeof buildRecord> | null;
+    onFindCurrentByUser?: (
+      userId: string,
+      tenantId: string,
+      cashRegisterId: string | undefined,
+      excludeCompletedClosure: boolean
+    ) => void;
   } = {}
 ) => {
   const queries: string[] = [];
@@ -113,7 +121,20 @@ const buildHarness = (
   const repository = {
     findOpenByRegister: async () =>
       options.existingOpen ? buildRecord(options.existingOpen) : null,
-    findCurrentByUser: async () => null,
+    findCurrentByUser: async (
+      currentUserId: string,
+      currentTenantId: string,
+      cashRegisterId?: string,
+      excludeCompletedClosure = false
+    ) => {
+      options.onFindCurrentByUser?.(
+        currentUserId,
+        currentTenantId,
+        cashRegisterId,
+        excludeCompletedClosure
+      );
+      return options.findCurrentByUserResult ?? null;
+    },
     hasActiveAssignment: async () => options.assignedToOpen ?? false,
     findById: async () => buildRecord(),
     create: async (
@@ -188,6 +209,9 @@ const buildHarness = (
     getClient: async () => client,
     query: async (query: string) => {
       if (query.includes("information_schema.columns")) {
+        if (query.includes("count_type") && query.includes("breakdown_json")) {
+          return { rows: [{ has_schema: options.cashCountAuditSchema ?? false }] };
+        }
         return { rows: [{ has_schema: false }] };
       }
       if (
@@ -399,4 +423,70 @@ test("close rejects USER when cash session branch is outside scope", async () =>
 
   assert.equal(harness.getCloseInput(), null);
   assert.deepEqual(harness.getQueries(), []);
+});
+
+test("getSummary returns read-only summary after USER delivered closing", async () => {
+  const closingCount = {
+    id: "count-001",
+    tenant_id: tenantId,
+    branch_id: branchId,
+    cash_session_id: cashSessionId,
+    counted_by_user_id: userId,
+    counted_by_user_email: "user@example.com",
+    counted_at: "2026-06-11T21:00:00.000Z",
+    counted_cash_amount: "100000",
+    expected_amount: "100000",
+    difference_amount: "0",
+    notes: null,
+    count_type: "CLOSING",
+    breakdown_json: null,
+  };
+  const harness = buildHarness(100000, {
+    closingCounts: [closingCount],
+    cashCountAuditSchema: true,
+  });
+
+  const summary = await harness.service.getSummary(cashSessionId, {
+    userId,
+    tenantId,
+    roles: ["USER"],
+  });
+
+  assert.equal(summary.sessionId, cashSessionId);
+  assert.equal(summary.status, "OPEN");
+  assert.deepEqual(summary.closureProgress.completedUserIds, [userId]);
+  assert.equal(summary.closureProgress.isComplete, true);
+});
+
+test("getCurrent keeps OPEN session for USER even after delivered closing", async () => {
+  let excludeCompletedClosure: boolean | undefined;
+  const harness = buildHarness(100000, {
+    findCurrentByUserResult: buildRecord(),
+    onFindCurrentByUser: (_userId, _tenantId, _registerId, exclude) => {
+      excludeCompletedClosure = exclude;
+    },
+  });
+
+  const current = await harness.service.getCurrent(
+    {},
+    { userId, tenantId, roles: ["USER"] }
+  );
+
+  assert.equal(excludeCompletedClosure, false);
+  assert.equal(current?.id, cashSessionId);
+});
+
+test("getCurrent keeps OPEN session for ADMIN after closing counts exist", async () => {
+  let excludeCompletedClosure: boolean | undefined;
+  const harness = buildHarness(100000, {
+    findCurrentByUserResult: buildRecord(),
+    onFindCurrentByUser: (_userId, _tenantId, _registerId, exclude) => {
+      excludeCompletedClosure = exclude;
+    },
+  });
+
+  const current = await harness.service.getCurrent({}, actor);
+
+  assert.equal(excludeCompletedClosure, false);
+  assert.equal(current?.id, cashSessionId);
 });

@@ -554,8 +554,24 @@ export class CashSessionsService {
     operatorUserId?: string
   ) {
     const params: unknown[] = [tenantId, cashSessionId];
+    // SALE: match Turno actual (sale.user_id). Other refs: payment.created_by.
     const operatorFilter = operatorUserId
-      ? `AND payment.created_by = $${params.push(operatorUserId)}`
+      ? `AND (
+          (
+            payment.reference_type = 'SALE'
+            AND EXISTS (
+              SELECT 1
+              FROM public.sales AS sale
+              WHERE sale.tenant_id = payment.tenant_id
+                AND sale.id::text = payment.reference_id
+                AND sale.user_id = $${params.push(operatorUserId)}
+            )
+          )
+          OR (
+            payment.reference_type <> 'SALE'
+            AND payment.created_by = $${params.length}
+          )
+        )`
       : "";
     const result = await this.db.query<PaymentBreakdownRow>(
       `
@@ -1371,6 +1387,8 @@ export class CashSessionsService {
       return this.mapResponse(current);
     }
 
+    // Never exclude completed closures here: POS and context selection need the
+    // OPEN session while it remains open (even after USER delivered their close).
     const current = await this.repository.findCurrentByUser(
       actor.userId,
       tenantId,
@@ -1602,21 +1620,11 @@ export class CashSessionsService {
       throw new NotFoundException("No se pudo resumir la sesion de caja");
     }
 
-    const summary = await this.withDeliverySummary(
+    return this.withDeliverySummary(
       rawSummary,
       tenantId,
       cashSessionId,
       this.canAdminCash(actor) ? undefined : actor.userId
     );
-    if (
-      !this.canAdminCash(actor) &&
-      summary.status === "OPEN" &&
-      summary.closureProgress.completedUserIds.includes(actor.userId)
-    ) {
-      throw new BadRequestException(
-        "Ya entregaste tu cierre. El resumen operativo ya no esta disponible"
-      );
-    }
-    return summary;
   }
 }
