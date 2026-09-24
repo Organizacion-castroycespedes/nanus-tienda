@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { validatePosManifest } from "../scripts/validate-pos-manifest.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -56,6 +57,56 @@ test("manifest validation rejects a post-generation byte mutation", () => {
       sizeMatches: false,
       hashMatches: false,
     }]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("strict validation rejects a missing payload", () => {
+  const root = mkdtempSync(join(tmpdir(), "manus-pos-manifest-strict-"));
+  try {
+    assert.throws(
+      () => validatePosManifest({ payloadRoot: join(root, "missing-payload"), manifestPath: join(root, "pos-manifest.json") }),
+      /missing payload directory/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("strict validation rejects a missing manifest", () => {
+  const root = mkdtempSync(join(tmpdir(), "manus-pos-manifest-strict-"));
+  try {
+    mkdirSync(join(root, "payload"), { recursive: true });
+    assert.throws(
+      () => validatePosManifest({ payloadRoot: join(root, "payload"), manifestPath: join(root, "missing.json") }),
+      /missing manifest/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("strict validation rejects missing, altered, and unsafe manifest entries", () => {
+  const root = mkdtempSync(join(tmpdir(), "manus-pos-manifest-strict-"));
+  try {
+    const payloadRoot = join(root, "payload");
+    const manifestPath = join(root, "pos-manifest.json");
+    mkdirSync(join(payloadRoot, "resources"), { recursive: true });
+    const bytes = Buffer.from("payload\n");
+    writeFileSync(join(payloadRoot, "resources", "file.bin"), bytes);
+    const validEntry = { path: "resources/file.bin", size: bytes.length, sha256: sha256(bytes) };
+    writeFileSync(manifestPath, JSON.stringify({ files: [validEntry] }));
+    assert.equal(validatePosManifest({ payloadRoot, manifestPath }).count, 1);
+
+    writeFileSync(join(payloadRoot, "resources", "file.bin"), Buffer.from("altered\n"));
+    assert.throws(() => validatePosManifest({ payloadRoot, manifestPath }), /size mismatch|SHA-256 mismatch/);
+
+    writeFileSync(manifestPath, JSON.stringify({ files: [{ ...validEntry, path: "resources/missing.bin" }] }));
+    assert.throws(() => validatePosManifest({ payloadRoot, manifestPath }), /missing payload file/);
+
+    writeFileSync(manifestPath, JSON.stringify({ files: [{ ...validEntry, path: "../outside.bin" }] }));
+    assert.throws(() => validatePosManifest({ payloadRoot, manifestPath }), /unsafe manifest path/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
