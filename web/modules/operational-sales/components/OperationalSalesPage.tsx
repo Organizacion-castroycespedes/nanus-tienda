@@ -5,10 +5,14 @@ import { useCallback, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
+import { Input } from "../../../components/design-system/Input";
+import { Pagination } from "../../../components/design-system/Pagination";
+import { ReportFilters, type ReportFilterDefinition } from "../../../components/design-system/ReportFilters";
+import { ReportLayout } from "../../../components/design-system/ReportLayout";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
-import { useAppSelector } from "../../../store/hooks";
-import { useOperationalSales } from "../hooks/use-operational-sales";
 import {
   getElectronicInvoicePrintData,
   getPosSaleTicket,
@@ -16,7 +20,6 @@ import {
 } from "../../reporteria/services/reporting.service";
 import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
 import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
-import { downloadBlob } from "../../reporteria/utils";
 import {
   isEligibleForElectronicBillingRequest,
   requestOperationalSaleElectronicBilling,
@@ -41,53 +44,32 @@ const labels: Record<string, string> = {
   REJECTED: "Rechazada",
   TECHNICAL_ERROR: "Error técnico",
 };
+import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { downloadBlob } from "../../reporteria/utils";
+import { getOperationalSalesReportExcel, getOperationalSalesReportPdf } from "../services/operational-sales-report.service";
+import { useAppSelector } from "../../../store/hooks";
+import { useOperationalSales } from "../hooks/use-operational-sales";
 
 const statusLabel = (value: string) => labels[value.toUpperCase()] ?? value;
-
-const StatusBadge = ({ value }: { value: string }) => (
-  <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-    {statusLabel(value)}
-  </span>
-);
-
-const formatDate = (value: string) =>
-  new Intl.DateTimeFormat("es-CO", { dateStyle: "short", timeStyle: "short" }).format(
-    new Date(value)
-  );
-
-const formatMoney = (value: number) =>
-  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(value);
-
-const scopeCopy: Record<string, string> = {
-  USER: "Ventas de mi turno actual",
-  ADMIN: "Ventas de la sucursal",
-  SUPER_USER: "Ventas del tenant",
-  SUPER_ADMIN: "Ventas del contexto global autorizado",
-};
+const StatusBadge = ({ value }: { value: string }) => <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{statusLabel(value)}</span>;
+const formatDate = (value: string) => new Intl.DateTimeFormat("es-CO", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+const formatMoney = (value: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(value);
+const scopeCopy: Record<string, string> = { USER: "Ventas de mi turno actual", ADMIN: "Ventas de la sucursal", SUPER_USER: "Ventas del tenant", SUPER_ADMIN: "Ventas del contexto global autorizado" };
 
 export const OperationalSalesPage = () => {
   const params = useParams<{ tenant: string }>();
   const posContext = usePosContext();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
-  const {
-    data,
-    filters,
-    loading,
-    error,
-    page,
-    setPage,
-    resetFilters,
-    updateFilter,
-    toggleSort,
-    reload,
-  } = useOperationalSales();
+  const { data, filters, appliedFilters, loading, error, page, pageSize, setPage, setPageSize, search, resetFilters, updateFilter, toggleSort, reload } = useOperationalSales();
+
   const [actionSaleId, setActionSaleId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
+  const [reportOpen, setReportOpen] = useState(false);
+  const appliedReportFilters = useMemo(() => appliedFilters ? { dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo, status: appliedFilters.status, paymentStatus: appliedFilters.paymentStatus, paymentMethod: appliedFilters.paymentMethod, customerId: appliedFilters.customerId, documentNumber: appliedFilters.documentNumber, electronicBillingStatus: appliedFilters.electronicBillingStatus } : null, [appliedFilters]);
+  const getReportPdf = useCallback(() => appliedReportFilters ? getOperationalSalesReportPdf(appliedReportFilters, data.sortBy, data.sortDirection) : Promise.reject(new Error("Primero ejecuta una búsqueda.")), [appliedReportFilters, data.sortBy, data.sortDirection]);
   const hasFilters = Object.values(filters).some(Boolean);
-  const emptyState = hasFilters
-    ? "No encontramos ventas con los filtros seleccionados."
-    : "No hay ventas en el alcance operativo actual.";
+  const emptyState = !appliedFilters ? "Usa Buscar para consultar ventas operativas." : hasFilters ? "No encontramos ventas con los filtros seleccionados." : "No hay ventas en el alcance operativo actual.";
 
   const getTerminalContext = useCallback(
     (branchId: string) => ({
@@ -104,7 +86,7 @@ export const OperationalSalesPage = () => {
     try {
       const response = await requestOperationalSaleElectronicBilling(saleId);
       setActionMessage(response.message ?? "Se creó la solicitud de facturación electrónica.");
-      await reload();
+      reload();
     } catch (requestError) {
       setActionMessage(
         requestError instanceof Error
@@ -248,43 +230,21 @@ export const OperationalSalesPage = () => {
     [actionSaleId, handleBillingRequest, handlePrint, params.tenant, toggleSort]
   );
 
-  return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6">
-      <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Gestión Operativa</p>
-        <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-950">Ventas</h1>
-            <p className="mt-1 text-sm text-slate-500">{scopeCopy[role.toUpperCase()] ?? "Ventas del alcance autorizado"}</p>
-          </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Solo lectura</span>
-        </div>
-      </header>
+  const reportFilters = useMemo<ReportFilterDefinition[]>(() => [
+    { key: "date", label: "Fecha", priority: "primary", active: Boolean(filters.dateFrom || filters.dateTo), render: () => <DateRangePicker compact value={{ from: filters.dateFrom, to: filters.dateTo }} onChange={(value) => { updateFilter("dateFrom", value.from); updateFilter("dateTo", value.to); }} />, clear: () => { updateFilter("dateFrom", ""); updateFilter("dateTo", ""); } },
+    { key: "status", label: "Estado de venta", priority: "secondary", active: Boolean(filters.status), activeLabel: statusLabel(filters.status), render: () => <Select label="Estado de venta" value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}><option value="">Todos</option>{SALE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select>, clear: () => updateFilter("status", "") },
+    { key: "paymentStatus", label: "Estado de pago", priority: "secondary", active: Boolean(filters.paymentStatus), activeLabel: statusLabel(filters.paymentStatus), render: () => <Select label="Estado de pago" value={filters.paymentStatus} onChange={(event) => updateFilter("paymentStatus", event.target.value)}><option value="">Todos</option>{PAYMENT_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select>, clear: () => updateFilter("paymentStatus", "") },
+    { key: "electronicBillingStatus", label: "Facturación electrónica", priority: "secondary", active: Boolean(filters.electronicBillingStatus), activeLabel: statusLabel(filters.electronicBillingStatus), render: () => <Select label="Facturación electrónica" value={filters.electronicBillingStatus} onChange={(event) => updateFilter("electronicBillingStatus", event.target.value)}><option value="">Todos</option>{ELECTRONIC_BILLING_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select>, clear: () => updateFilter("electronicBillingStatus", "") },
+    { key: "documentNumber", label: "Número fiscal", priority: "secondary", active: Boolean(filters.documentNumber), activeLabel: filters.documentNumber, render: () => <Input label="Número fiscal" value={filters.documentNumber} onChange={(event) => updateFilter("documentNumber", event.target.value)} placeholder="Buscar número" />, clear: () => updateFilter("documentNumber", "") },
+    { key: "paymentMethod", label: "Método de pago", priority: "secondary", active: Boolean(filters.paymentMethod), activeLabel: filters.paymentMethod, render: () => <Input label="Método de pago" value={filters.paymentMethod} onChange={(event) => updateFilter("paymentMethod", event.target.value)} placeholder="Ej. CASH" />, clear: () => updateFilter("paymentMethod", "") },
+  ], [filters, updateFilter]);
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:p-6" aria-label="Filtros de ventas">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <label className="flex flex-col gap-2 text-sm text-slate-700"><span className="font-medium">Desde</span><input aria-label="Desde" type="date" value={filters.dateFrom} onChange={(event) => updateFilter("dateFrom", event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2" /></label>
-          <label className="flex flex-col gap-2 text-sm text-slate-700"><span className="font-medium">Hasta</span><input aria-label="Hasta" type="date" value={filters.dateTo} onChange={(event) => updateFilter("dateTo", event.target.value)} className="rounded-lg border border-slate-200 px-3 py-2" /></label>
-          <Select label="Estado de venta" value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}><option value="">Todos</option>{SALE_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select>
-          <Select label="Estado de pago" value={filters.paymentStatus} onChange={(event) => updateFilter("paymentStatus", event.target.value)}><option value="">Todos</option>{PAYMENT_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select>
-          <Select label="Facturación electrónica" value={filters.electronicBillingStatus} onChange={(event) => updateFilter("electronicBillingStatus", event.target.value)}><option value="">Todos</option>{ELECTRONIC_BILLING_STATUSES.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}</Select>
-          <label className="flex flex-col gap-2 text-sm text-slate-700"><span className="font-medium">Número fiscal</span><input aria-label="Número fiscal" value={filters.documentNumber} onChange={(event) => updateFilter("documentNumber", event.target.value)} placeholder="Buscar número" className="rounded-lg border border-slate-200 px-3 py-2" /></label>
-          <label className="flex flex-col gap-2 text-sm text-slate-700"><span className="font-medium">Método de pago</span><input aria-label="Método de pago" value={filters.paymentMethod} onChange={(event) => updateFilter("paymentMethod", event.target.value)} placeholder="Ej. CASH" className="rounded-lg border border-slate-200 px-3 py-2" /></label>
-          <div className="flex items-end"><button type="button" onClick={resetFilters} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Limpiar filtros</button></div>
-        </div>
-      </section>
-
-      <DataTable columns={columns} rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
-      {actionMessage ? (
-        <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-          {actionMessage}
-        </p>
-      ) : null}
-
-      <footer className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-        <span>{data.total} ventas · Página {page} de {totalPages}</span>
-        <div className="flex gap-2"><button type="button" disabled={page <= 1 || loading} onClick={() => setPage((current) => current - 1)} className="rounded-lg border border-slate-200 px-3 py-2 disabled:opacity-50">Anterior</button><button type="button" disabled={page >= totalPages || loading} onClick={() => setPage((current) => current + 1)} className="rounded-lg border border-slate-200 px-3 py-2 disabled:opacity-50">Siguiente</button></div>
-      </footer>
-    </main>
-  );
+  return <ReportLayout title="Ventas" description={scopeCopy[role.toUpperCase()] ?? "Ventas del alcance autorizado"}>
+    <div className="space-y-3">
+      <ReportFilters filters={reportFilters} actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={search} disabled={loading} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Buscar</button><button type="button" onClick={() => setReportOpen(true)} disabled={!appliedFilters || loading} title={!appliedFilters ? "Primero ejecuta una búsqueda" : "Generar reporte de la última búsqueda"} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reporte</button><button type="button" onClick={resetFilters} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Limpiar filtros</button></div>} />
+      <DataTable columns={columns} actionColumnFirst rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
+      {appliedFilters ? <Pagination page={page} pageSize={pageSize} totalItems={data.total} onPageChange={setPage} onPageSizeChange={setPageSize} loading={loading} /> : null}
+      <PdfPreviewModal isOpen={reportOpen} title="Reporte de ventas operativas" fileName="reporte-ventas-operativas.pdf" description="Vista previa de ventas operativas" onClose={() => setReportOpen(false)} getPdf={getReportPdf} onDownloadExcel={() => { if (appliedReportFilters) void getOperationalSalesReportExcel(appliedReportFilters, data.sortBy, data.sortDirection).then((blob) => downloadBlob(blob, "reporte-ventas-operativas.xlsx")); }} />
+    </div>
+  </ReportLayout>;
 };
