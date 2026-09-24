@@ -38,11 +38,14 @@ type PreInvoicePaymentStepProps = {
   sale: OperationalSaleDetail;
   activeCashSession: CashSession | null;
   onPaymentsUpdated: (sale: OperationalSaleDetail) => void;
-  onNext: () => void;
-  onBack: () => void;
+  onNext?: () => void;
+  onBack?: () => void;
   onSavePayments: (
     payload: CorrectOperationalSalePaymentsPayload
   ) => Promise<OperationalSaleDetail>;
+  standalone?: boolean;
+  onClose?: () => void;
+  autoStartEditing?: boolean;
 };
 
 type PaymentRowState = {
@@ -96,6 +99,9 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
   onNext,
   onBack,
   onSavePayments,
+  standalone = false,
+  onClose,
+  autoStartEditing = false,
 }) => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [institutions, setInstitutions] = useState<FinancialInstitution[]>([]);
@@ -144,10 +150,12 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
   );
 
   const hasOpenCashSession = Boolean(activeCashSession && activeCashSession.status === "OPEN");
+  const isSameShift = !sale.cashSessionId || !activeCashSession || sale.cashSessionId === activeCashSession.id;
+  const canEditPayments = hasOpenCashSession && isSameShift;
 
   // Initialize edit rows from sale payments
   const handleStartEditing = () => {
-    if (!hasOpenCashSession) return;
+    if (!canEditPayments) return;
     setError(null);
     let initialRows: PaymentRowState[] = [];
     if (sale.payments && sale.payments.length > 0) {
@@ -186,6 +194,12 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
     setReason("");
     setIsEditing(true);
   };
+
+  useEffect(() => {
+    if (autoStartEditing && canEditPayments && paymentMethods.length > 0 && !isEditing) {
+      handleStartEditing();
+    }
+  }, [autoStartEditing, canEditPayments, paymentMethods.length]);
 
   const handleCancelEditing = () => {
     setIsEditing(false);
@@ -283,6 +297,9 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
       const updated = await onSavePayments(payload);
       onPaymentsUpdated(updated);
       setIsEditing(false);
+      if (standalone && onClose) {
+        onClose();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al guardar la corrección de pagos");
     } finally {
@@ -310,7 +327,7 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
                 Total de la venta: <strong className="font-bold text-slate-900 dark:text-white">{formatCurrency(sale.total)}</strong>
               </span>
             </div>
-            {hasOpenCashSession ? (
+            {canEditPayments ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -321,12 +338,22 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
                 <Edit3 className="h-3.5 w-3.5" />
                 Modificar medios de pago
               </Button>
-            ) : (
+            ) : !hasOpenCashSession ? (
               <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
                 Caja cerrada (solo lectura)
               </span>
+            ) : (
+              <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
+                Turno cerrado (solo lectura)
+              </span>
             )}
           </div>
+
+          {hasOpenCashSession && !isSameShift ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+              Esta venta pertenece a un turno anterior. Solo se pueden modificar los medios de pago de ventas realizadas en el turno actual con caja abierta.
+            </div>
+          ) : null}
 
           {sale.payments && sale.payments.length > 0 ? (
             <div className="grid gap-2">
@@ -612,29 +639,44 @@ export const PreInvoicePaymentStep: React.FC<PreInvoicePaymentStepProps> = ({
       )}
 
       {/* Navigation */}
-      <div className="flex justify-between pt-2.5 border-t border-slate-200 dark:border-slate-800">
-        <Button
-          variant="outline"
-          size="sm"
-          type="button"
-          onClick={onBack}
-          disabled={saving || isEditing}
-          className="flex items-center gap-1.5 text-xs font-semibold"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Volver a Cliente
-        </Button>
-        <Button
-          size="sm"
-          type="button"
-          onClick={onNext}
-          disabled={saving || isEditing}
-          className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          Continuar a Confirmación
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+      {standalone ? (
+        <div className="flex justify-end pt-2.5 border-t border-slate-200 dark:border-slate-800">
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="flex items-center gap-1.5 text-xs font-semibold"
+          >
+            Cerrar
+          </Button>
+        </div>
+      ) : (
+        <div className="flex justify-between pt-2.5 border-t border-slate-200 dark:border-slate-800">
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={onBack}
+            disabled={saving || isEditing}
+            className="flex items-center gap-1.5 text-xs font-semibold"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Volver a Cliente
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            onClick={onNext}
+            disabled={saving || isEditing}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            Continuar a Confirmación
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

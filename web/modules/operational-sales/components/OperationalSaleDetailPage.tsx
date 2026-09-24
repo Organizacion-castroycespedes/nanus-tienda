@@ -6,12 +6,14 @@ import { useCallback, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  CreditCard,
   Eye,
   FileText,
   Printer,
   Receipt,
   RefreshCw,
   RotateCcw,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
@@ -29,6 +31,7 @@ import {
   shouldShowProviderCreateIntentRecovery,
 } from "../services/operational-sales.service";
 import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
+import { EditSalePaymentsModal } from "./EditSalePaymentsModal";
 import type { OperationalSaleDetail } from "../types";
 
 const saleTypeLabels: Record<string, string> = {
@@ -69,9 +72,20 @@ const date = (value: string | null | undefined) =>
 const safeMessage = (value: string | null | undefined) =>
   value ? value.replace(/\s+/g, " ").trim().slice(0, 300) : null;
 
-const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
+const Card = ({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) => (
   <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-    <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">{title}</h2>
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-500">{title}</h2>
+      {action}
+    </div>
     <div className="mt-4">{children}</div>
   </section>
 );
@@ -129,6 +143,7 @@ const ActionCard = ({
   printLoading,
   ticketLoading,
   actionMessage,
+  onEditPayments,
 }: {
   sale: OperationalSaleDetail;
   onReload: () => void;
@@ -142,6 +157,7 @@ const ActionCard = ({
   printLoading: boolean;
   ticketLoading: boolean;
   actionMessage: string | null;
+  onEditPayments?: () => void;
 }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
@@ -253,6 +269,21 @@ const ActionCard = ({
             {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
           </Button>
 
+          {sale.status !== "CANCELLED" &&
+          sale.status !== "REFUNDED" &&
+          sale.electronicBilling?.status !== "ACCEPTED" &&
+          onEditPayments ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onEditPayments}
+              className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
+            >
+              <CreditCard className="h-4 w-4 text-slate-600 shrink-0" />
+              Editar medios de pago
+            </Button>
+          ) : null}
+
           {showElectronicBilling && billing && billing.status !== "CANCELLED" && billing.status !== "ACCEPTED" ? (
             <Button
               type="button"
@@ -346,6 +377,7 @@ export const OperationalSaleDetailPage = () => {
   const posContext = usePosContext();
   const [printLoading, setPrintLoading] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const {
     data: sale,
     loading,
@@ -394,15 +426,32 @@ export const OperationalSaleDetailPage = () => {
   }
 
   if (error || !sale) {
-    return <main className="mx-auto max-w-6xl space-y-4 p-6"><Link className="text-sm font-semibold text-blue-700 hover:underline" href={backHref}>← Volver a ventas</Link><p className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">{error ?? "No se encontró la venta."}</p></main>;
+    return (
+      <main className="mx-auto max-w-6xl space-y-4 p-6">
+        <Link
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-2xs hover:bg-slate-50 min-h-[44px]"
+          href={backHref}
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0 text-slate-600" />
+          Volver a ventas
+        </Link>
+        <p className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">
+          {error ?? "No se encontró la venta."}
+        </p>
+      </main>
+    );
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline" href={backHref}>
-            <ArrowLeft className="h-4 w-4" /> Volver a ventas
+          <Link
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-800 shadow-2xs hover:bg-slate-50 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 min-h-[44px]"
+            href={backHref}
+          >
+            <ArrowLeft className="h-4 w-4 shrink-0 text-slate-600" />
+            Volver a ventas
           </Link>
           <p className="mt-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Gestión Operativa · Venta POS</p>
           <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -437,6 +486,7 @@ export const OperationalSaleDetailPage = () => {
         printLoading={printLoading}
         ticketLoading={ticketLoading}
         actionMessage={actionMessage}
+        onEditPayments={() => setPaymentModalOpen(true)}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -459,7 +509,15 @@ export const OperationalSaleDetailPage = () => {
               value={sale.customer.documentNumber ?? "Sin documento"}
             />
           </dl>
-          <Link className="mt-5 inline-flex text-sm font-semibold text-blue-700 hover:underline" href={`/${tenant}/customers?editCustomerId=${encodeURIComponent(sale.customer.id)}`}>Revisar o completar datos del cliente →</Link>
+          <div className="mt-5 pt-3 border-t border-slate-100">
+            <Link
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-800 hover:bg-blue-100 transition shadow-2xs min-h-[44px]"
+              href={`/${tenant}/customers?editCustomerId=${encodeURIComponent(sale.customer.id)}&fromSaleId=${encodeURIComponent(sale.id)}`}
+            >
+              <UserCheck className="h-4 w-4 shrink-0 text-blue-600" />
+              Revisar o editar datos del cliente
+            </Link>
+          </div>
         </Card>
         <Card title="Sucursal y operación">
           <dl className="grid gap-4 sm:grid-cols-2">
@@ -506,7 +564,25 @@ export const OperationalSaleDetailPage = () => {
         </div>
       </Card>
 
-      <Card title="Pagos">
+      <Card
+        title="Pagos"
+        action={
+          sale.status !== "CANCELLED" &&
+          sale.status !== "REFUNDED" &&
+          sale.electronicBilling?.status !== "ACCEPTED" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPaymentModalOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 border-blue-200 hover:bg-blue-50"
+            >
+              <CreditCard className="h-3.5 w-3.5" />
+              Editar medios de pago
+            </Button>
+          ) : null
+        }
+      >
         <div className="grid gap-3 md:grid-cols-2">
           {sale.payments.length ? (
             sale.payments.map((payment) => (
@@ -536,6 +612,15 @@ export const OperationalSaleDetailPage = () => {
           )}
         </div>
       </Card>
+
+      <EditSalePaymentsModal
+        open={paymentModalOpen}
+        saleId={sale.id}
+        onClose={() => setPaymentModalOpen(false)}
+        onSuccess={() => {
+          void reload();
+        }}
+      />
     </main>
   );
 };

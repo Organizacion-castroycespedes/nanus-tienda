@@ -2,7 +2,7 @@
 
 import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
@@ -100,8 +100,11 @@ const getCustomerDocument = (customer: CustomerResponse) =>
 
 const CustomersPage = () => {
   const confirm = useConfirm();
+  const params = useParams<{ tenant: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCustomerId = searchParams.get("editCustomerId");
+  const fromSaleId = searchParams.get("fromSaleId");
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [draftFilters, setDraftFilters] = useState<CustomerFilters>(defaultFilters);
@@ -206,10 +209,23 @@ const CustomersPage = () => {
   const closeForm = () => {
     setFormMode(null);
     setSelectedCustomer(null);
+    if (fromSaleId) {
+      router.push(`/${params.tenant}/operations/sales/${fromSaleId}`);
+    } else if (requestedCustomerId) {
+      router.replace(`/${params.tenant}/customers`);
+    }
   };
 
   const handleFormSuccess = (mode: "create" | "edit") => {
-    closeForm();
+    setFormMode(null);
+    setSelectedCustomer(null);
+    if (fromSaleId) {
+      router.push(`/${params.tenant}/operations/sales/${fromSaleId}`);
+      return;
+    }
+    if (requestedCustomerId) {
+      router.replace(`/${params.tenant}/customers`);
+    }
     setActionFeedback({
       title:
         mode === "create"

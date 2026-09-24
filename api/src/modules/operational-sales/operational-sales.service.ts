@@ -456,6 +456,16 @@ export class OperationalSalesService {
       );
       const prevPayments = prevPaymentsResult.rows;
 
+      if (
+        prevPayments.some(
+          (p) => p.cash_session_id && p.cash_session_id !== currentCashSession.id
+        )
+      ) {
+        throw new BadRequestException(
+          "Solo se pueden modificar los medios de pago de ventas realizadas en el turno de caja actual."
+        );
+      }
+
       for (const prev of prevPayments) {
         await client.query(
           `UPDATE payments

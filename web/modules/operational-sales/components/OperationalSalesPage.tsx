@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, Eye, FileText, Printer, Receipt, RotateCcw, Search } from "lucide-react";
+import { CreditCard, Download, Eye, FileText, Printer, Receipt, RotateCcw, Search } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
@@ -27,6 +27,7 @@ import {
   requestOperationalSaleElectronicBilling,
 } from "../services/operational-sales.service";
 import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
+import { EditSalePaymentsModal } from "./EditSalePaymentsModal";
 import {
   ELECTRONIC_BILLING_STATUSES,
   PAYMENT_STATUSES,
@@ -69,6 +70,7 @@ export const OperationalSalesPage = () => {
   const [actionSaleId, setActionSaleId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [wizardSaleId, setWizardSaleId] = useState<string | null>(null);
+  const [paymentEditSaleId, setPaymentEditSaleId] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const appliedReportFilters = useMemo(() => appliedFilters ? { dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo, status: appliedFilters.status, paymentStatus: appliedFilters.paymentStatus, paymentMethod: appliedFilters.paymentMethod, customerId: appliedFilters.customerId, documentNumber: appliedFilters.documentNumber, electronicBillingStatus: appliedFilters.electronicBillingStatus } : null, [appliedFilters]);
   const getReportPdf = useCallback(() => appliedReportFilters ? getOperationalSalesReportPdf(appliedReportFilters, data.sortBy, data.sortDirection) : Promise.reject(new Error("Primero ejecuta una búsqueda.")), [appliedReportFilters, data.sortBy, data.sortDirection]);
@@ -220,6 +222,18 @@ export const OperationalSalesPage = () => {
                       },
                     ]
                   : []),
+                ...(sale.status !== "CANCELLED" &&
+                sale.status !== "REFUNDED" &&
+                sale.electronicBilling?.status !== "ACCEPTED"
+                  ? [
+                      {
+                        label: "Editar medios de pago",
+                        icon: <CreditCard className="h-4 w-4 text-slate-500" />,
+                        onSelect: () => setPaymentEditSaleId(sale.id),
+                        disabled: actionSaleId === sale.id,
+                      },
+                    ]
+                  : []),
                 {
                   label: "Ver detalle / ticket",
                   icon: <Eye className="h-4 w-4 text-slate-500" />,
@@ -330,6 +344,15 @@ export const OperationalSalesPage = () => {
         open={Boolean(wizardSaleId)}
         saleId={wizardSaleId}
         onClose={() => setWizardSaleId(null)}
+        onSuccess={(msg) => {
+          setActionMessage(msg);
+          void reload();
+        }}
+      />
+      <EditSalePaymentsModal
+        open={Boolean(paymentEditSaleId)}
+        saleId={paymentEditSaleId}
+        onClose={() => setPaymentEditSaleId(null)}
         onSuccess={(msg) => {
           setActionMessage(msg);
           void reload();

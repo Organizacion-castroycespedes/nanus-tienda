@@ -170,7 +170,7 @@ export class OperationalSalesRepository {
       }>(
         `SELECT si.id,
                 si.product_id,
-                COALESCE(p.name, si.product_id) AS product_name,
+                COALESCE(p.name, si.product_id::text) AS product_name,
                 p.sku AS product_sku,
                 si.quantity::text,
                 si.price::text,
