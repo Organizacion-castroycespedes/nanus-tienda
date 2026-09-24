@@ -15,6 +15,8 @@ import {
   Bell,
   Building,
   Building2,
+  CircleCheck,
+  CircleX,
   Calculator,
   Calendar,
   ClipboardList,
@@ -75,6 +77,7 @@ import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
 import type { CashSession } from "../../modules/finance/types";
+import { subscribePeripheralEvents, type PeripheralSocketStatus } from "../../domains/peripherals/contracts";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -181,6 +184,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
+  const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
   const [posClock, setPosClock] = useState(() => new Date());
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
@@ -255,6 +259,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
 
     window.addEventListener("manus:connectivity-state", handleConnectivityState);
     return () => window.removeEventListener("manus:connectivity-state", handleConnectivityState);
+  }, []);
+
+  useEffect(() => {
+    return subscribePeripheralEvents(() => undefined, {
+      onStatus: setPrinterSocketStatus,
+    });
   }, []);
 
   useEffect(() => {
@@ -1383,6 +1393,52 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       : connectivityState === "RECONNECTING"
                         ? "bg-amber-400"
                         : "bg-emerald-500"
+                  }`}
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                className="relative rounded-lg border p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color:
+                    printerSocketStatus === "CONNECTED"
+                      ? "#059669"
+                      : printerSocketStatus === "CONNECTING"
+                        ? "#d97706"
+                        : "#e11d48",
+                }}
+                aria-label={
+                  printerSocketStatus === "CONNECTED"
+                    ? "Impresora conectada"
+                    : printerSocketStatus === "CONNECTING"
+                      ? "Conectando impresora"
+                      : "Impresora desconectada"
+                }
+                title={
+                  printerSocketStatus === "CONNECTED"
+                    ? "Impresora conectada · WSS disponible"
+                    : printerSocketStatus === "CONNECTING"
+                      ? "Conectando con el servicio de impresión"
+                      : "Impresora desconectada · revise el Peripheral Agent"
+                }
+              >
+                {printerSocketStatus === "CONNECTED" ? (
+                  <CircleCheck className="h-5 w-5" aria-hidden="true" />
+                ) : printerSocketStatus === "CONNECTING" ? (
+                  <Printer className="h-5 w-5 animate-pulse" aria-hidden="true" />
+                ) : (
+                  <CircleX className="h-5 w-5" aria-hidden="true" />
+                )}
+                <span
+                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                    printerSocketStatus === "CONNECTED"
+                      ? "bg-emerald-500"
+                      : printerSocketStatus === "CONNECTING"
+                        ? "bg-amber-400"
+                        : "bg-rose-500"
                   }`}
                   aria-hidden="true"
                 />

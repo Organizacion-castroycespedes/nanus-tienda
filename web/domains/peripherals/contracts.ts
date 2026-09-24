@@ -480,12 +480,20 @@ const emitSubscriptionError = (
   });
 };
 
+export type PeripheralSocketStatus = "CONNECTING" | "CONNECTED" | "DISCONNECTED";
+
+export type PeripheralSocketSubscriptionOptions = {
+  onStatus?: (status: PeripheralSocketStatus) => void;
+};
+
 export const subscribePeripheralEvents = (
-  callback: (event: PeripheralSocketEvent) => void
+  callback: (event: PeripheralSocketEvent) => void,
+  options: PeripheralSocketSubscriptionOptions = {}
 ) => {
   const flags = getPeripheralFeatureFlags();
 
   if (!flags.peripheralsEnabled) {
+    options.onStatus?.("DISCONNECTED");
     emitSubscriptionError(
       callback,
       "subscribePeripheralEvents",
@@ -499,10 +507,12 @@ export const subscribePeripheralEvents = (
   // browser WebSocket is intentionally unavailable in that runtime; HID
   // scanner capture remains focus-scoped in the POS search input.
   if (isElectronTerminal()) {
+    options.onStatus?.("DISCONNECTED");
     return () => undefined;
   }
 
   if (typeof window === "undefined" || typeof WebSocket === "undefined") {
+    options.onStatus?.("DISCONNECTED");
     emitSubscriptionError(
       callback,
       "subscribePeripheralEvents",
@@ -516,6 +526,7 @@ export const subscribePeripheralEvents = (
     const config = getPeripheralAgentConfig();
 
     if (!config.isConfigured) {
+      options.onStatus?.("DISCONNECTED");
       emitSubscriptionError(
         callback,
         "subscribePeripheralEvents",
@@ -525,13 +536,19 @@ export const subscribePeripheralEvents = (
       return () => undefined;
     }
 
+    options.onStatus?.("CONNECTING");
     const socket = new WebSocket(config.wsUrl);
+
+    socket.onopen = () => {
+      options.onStatus?.("CONNECTED");
+    };
 
     socket.onmessage = (event) => {
       callback(parseSocketEvent(event));
     };
 
     socket.onerror = () => {
+      options.onStatus?.("DISCONNECTED");
       emitSubscriptionError(
         callback,
         "subscribePeripheralEvents",
@@ -540,10 +557,16 @@ export const subscribePeripheralEvents = (
       );
     };
 
+    socket.onclose = () => {
+      options.onStatus?.("DISCONNECTED");
+    };
+
     return () => {
+      options.onStatus?.("DISCONNECTED");
       socket.close();
     };
   } catch (error) {
+    options.onStatus?.("DISCONNECTED");
     emitSubscriptionError(
       callback,
       "subscribePeripheralEvents",

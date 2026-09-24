@@ -120,7 +120,7 @@ const CurrentShiftPage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
-  const { canViewFinance } = getFinancePermissions(role);
+  const { canViewFinance, canViewPaymentMethods } = getFinancePermissions(role);
   const [activeTab, setActiveTab] = useState<ShiftTab>("sales");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -373,7 +373,10 @@ const CurrentShiftPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       {!shift?.hasOpenCashSession ? (
         <section className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm dark:bg-slate-800 dark:border-slate-700">

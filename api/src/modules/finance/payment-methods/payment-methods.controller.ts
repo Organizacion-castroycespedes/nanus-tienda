@@ -26,7 +26,7 @@ import { PaymentMethodsService } from "./payment-methods.service";
 
 @Controller("finance/payment-methods")
 @UseGuards(JwtAuthGuard, RolesGuard, FinanceAuthzGuard)
-@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+@Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
 @UsePipes(financeValidationPipe)
 export class PaymentMethodsController {
   constructor(

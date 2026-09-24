@@ -60,7 +60,7 @@ const CashRegistersPage = () => {
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [assignmentSaving, setAssignmentSaving] = useState(false);
 
-  const { canViewFinance, canManageCashRegisters, isSuperRole } =
+  const { canViewFinance, canViewPaymentMethods, canManageCashRegisters, isSuperRole } =
     getFinancePermissions(role);
   const canManageCashRegisterAssignments = isSuperRole || role === "ADMIN";
   const defaultTenantId = isSuperRole ? undefined : authUser?.tenantId ?? undefined;
@@ -319,7 +319,10 @@ const CashRegistersPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <FinanceMetricCard label="Total cajas" value={cashRegisters.length} accent="slate" />

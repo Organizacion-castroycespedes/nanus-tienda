@@ -187,7 +187,8 @@ const CashSessionsPage = () => {
   const [closeNotice, setCloseNotice] = useState<CloseNoticeState | null>(null);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
 
-  const { canViewFinance, canOperateCashSessions } = getFinancePermissions(role);
+  const { canViewFinance, canViewPaymentMethods, canOperateCashSessions } =
+    getFinancePermissions(role);
   const {
     currentSession,
     history,
@@ -495,7 +496,10 @@ const CashSessionsPage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         <FinanceMetricCard
