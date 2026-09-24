@@ -134,7 +134,7 @@ export class SalesReportAdapter {
              LEFT JOIN electronic_documents AS document
                ON document.tenant_id = s.tenant_id
               AND document.source_type = 'SALE'
-              AND document.source_id = s.id::TEXT
+              AND document.source_id = s.id
             WHERE s.tenant_id = $1 AND s.id = ANY($2::UUID[])
               AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR s.branch_id = $4::UUID)
          ) AS documents
@@ -537,7 +537,7 @@ export class SalesReportAdapter {
          INNER JOIN electronic_documents AS document
            ON document.tenant_id = s.tenant_id
           AND document.source_type = 'SALE'
-          AND document.source_id = s.id::TEXT
+          AND document.source_id = s.id
         WHERE s.id = $1 AND s.tenant_id = $2
           AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR s.branch_id = $4::UUID)
         ORDER BY document.created_at DESC

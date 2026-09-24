@@ -15,6 +15,7 @@ import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu
 import { Select } from "../../../components/design-system/Select";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import {
+  getElectronicInvoice,
   getElectronicInvoicePrintData,
   getPosSaleTicket,
   getPosSaleTicketPrintData,
@@ -188,43 +189,66 @@ export const OperationalSalesPage = () => {
         key: "actions",
         header: "Acciones",
         cellClassName: "min-w-[320px]",
-        render: (sale) => (
-          <div className="flex flex-wrap gap-2">
-            {sale.electronicBillingEnabled &&
-            !sale.electronicBilling &&
-            isEligibleForElectronicBillingRequest(sale) ? (
+        render: (sale) => {
+          const hasAcceptedBilling =
+            sale.electronicBillingEnabled &&
+            sale.electronicBilling?.status === "ACCEPTED";
+
+          return (
+            <div className="flex flex-wrap gap-2">
+              {sale.electronicBillingEnabled &&
+              !sale.electronicBilling &&
+              isEligibleForElectronicBillingRequest(sale) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleBillingRequest(sale.id)}
+                  disabled={actionSaleId === sale.id}
+                >
+                  {actionSaleId === sale.id ? "Solicitando..." : "Facturar"}
+                </Button>
+              ) : null}
+              <Link
+                className="inline-flex min-h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+                href={`/${params.tenant}/operations/sales/${sale.id}`}
+              >
+                Ver ticket
+              </Link>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => void handleBillingRequest(sale.id)}
+                onClick={() => void handlePrint(sale)}
                 disabled={actionSaleId === sale.id}
               >
-                {actionSaleId === sale.id ? "Solicitando..." : "Facturar"}
+                {actionSaleId === sale.id
+                  ? "Imprimiendo..."
+                  : hasAcceptedBilling
+                    ? "Imprimir factura"
+                    : "Imprimir"}
               </Button>
-            ) : null}
-            <Link
-              className="inline-flex min-h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
-              href={`/${params.tenant}/operations/sales/${sale.id}`}
-            >
-              Ver ticket
-            </Link>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handlePrint(sale)}
-              disabled={actionSaleId === sale.id}
-            >
-              {actionSaleId === sale.id ? "Imprimiendo..." : "Imprimir"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void getPosSaleTicket(sale.id).then((blob) => downloadBlob(blob, `ticket-venta-${sale.id}.pdf`))}
-            >
-              Descargar
-            </Button>
-          </div>
-        ),
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (hasAcceptedBilling) {
+                    void getElectronicInvoice(sale.id).then((blob) =>
+                      downloadBlob(
+                        blob,
+                        `factura-electronica-${sale.electronicBilling?.documentNumber || sale.id}.pdf`
+                      )
+                    );
+                  } else {
+                    void getPosSaleTicket(sale.id).then((blob) =>
+                      downloadBlob(blob, `ticket-venta-${sale.id}.pdf`)
+                    );
+                  }
+                }}
+              >
+                {hasAcceptedBilling ? "Descargar factura" : "Descargar"}
+              </Button>
+            </div>
+          );
+        },
       },
     ],
     [actionSaleId, handleBillingRequest, handlePrint, params.tenant, toggleSort]
