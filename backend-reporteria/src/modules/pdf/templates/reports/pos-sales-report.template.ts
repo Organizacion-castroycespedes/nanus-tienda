@@ -4,6 +4,7 @@ import type {
   TDocumentDefinitions,
 } from "pdfmake/interfaces";
 import type { PosSalesListDataset } from "../../../reports/types/sales-report.types";
+import { formatTicketStatus } from "../base/status-label";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -105,7 +106,7 @@ const buildRowsTable = (dataset: PosSalesListDataset): Content => ({
             formatSaleIdentifier(row.saleId),
             formatDate(row.date),
             row.customerName,
-            `${row.status} / ${row.paymentStatus}`,
+            `${formatTicketStatus(row.status)} / ${formatTicketStatus(row.paymentStatus)}`,
             { text: formatCurrency(row.total), alignment: "right" },
             { text: formatCurrency(row.paid), alignment: "right" },
             { text: formatCurrency(row.balance), alignment: "right" },

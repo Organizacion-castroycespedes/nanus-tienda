@@ -25,5 +25,9 @@ export const formatTicketStatus = (value?: string | null) => {
     return "No disponible";
   }
 
+  if (normalized === "UNKNOWN") {
+    return "No disponible";
+  }
+
   return STATUS_LABELS[normalized] ?? value!.trim();
 };

@@ -1,3 +1,5 @@
+import { formatReportStatus } from "../utils";
+
 type ReportStatusBadgeProps = {
   value: string;
 };
@@ -26,6 +28,6 @@ export const ReportStatusBadge = ({ value }: ReportStatusBadgeProps) => (
       value
     )}`}
   >
-    {value}
+    {formatReportStatus(value)}
   </span>
 );

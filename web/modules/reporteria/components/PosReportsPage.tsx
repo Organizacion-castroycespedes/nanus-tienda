@@ -26,6 +26,7 @@ import {
   downloadBlob,
   formatCurrency,
   formatDateTime,
+  formatReportStatus,
   getApiErrorMessage,
   getTodayRange,
 } from "../utils";
@@ -307,7 +308,7 @@ const PosReportsPage = () => {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                 Pago
               </p>
-              <p className="text-sm text-slate-700 dark:text-slate-200">{row.paymentStatus}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-200">{formatReportStatus(row.paymentStatus)}</p>
             </div>
           </div>
         ),
@@ -359,7 +360,7 @@ const PosReportsPage = () => {
                 onClick={() => void handleBillingRequest([row.saleId])}
                 disabled={billingRequestBusy}
               >
-                Facturar electrónicamente
+                Facturar
               </Button>
             ) : null}
             <Button

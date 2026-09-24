@@ -134,7 +134,7 @@ export class SalesReportAdapter {
              LEFT JOIN electronic_documents AS document
                ON document.tenant_id = s.tenant_id
               AND document.source_type = 'SALE'
-              AND document.source_id = s.id
+              AND document.source_id = s.id::TEXT
             WHERE s.tenant_id = $1 AND s.id = ANY($2::UUID[])
               AND ($3 = 'SUPER_ADMIN' OR $4::UUID IS NULL OR s.branch_id = $4::UUID)
          ) AS documents

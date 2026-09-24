@@ -199,7 +199,7 @@ export const OperationalSalesPage = () => {
                 onClick={() => void handleBillingRequest(sale.id)}
                 disabled={actionSaleId === sale.id}
               >
-                {actionSaleId === sale.id ? "Solicitando..." : "Facturar electrónicamente"}
+                {actionSaleId === sale.id ? "Solicitando..." : "Facturar"}
               </Button>
             ) : null}
             <Link

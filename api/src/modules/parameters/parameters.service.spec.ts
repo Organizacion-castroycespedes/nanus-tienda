@@ -71,3 +71,21 @@ test("ParametersService resolves a tenant slug before checking USER tenant scope
 
   assert.equal(tenantId, "00000000-0000-0000-0000-000000000001");
 });
+
+test("ParametersService accepts the platform zero-version UUID format", async () => {
+  const service = new ParametersService({
+    findTenantIdBySlug: async () => {
+      throw new Error("UUID must not be resolved as a slug");
+    },
+  } as never);
+
+  const tenantId = await service.resolveTenantIdForActor(
+    {
+      roles: ["SUPER_ADMIN"],
+      tenantId: "00000000-0000-0000-0000-000000000001",
+    },
+    "00000000-0000-0000-0000-000000000001"
+  );
+
+  assert.equal(tenantId, "00000000-0000-0000-0000-000000000001");
+});
