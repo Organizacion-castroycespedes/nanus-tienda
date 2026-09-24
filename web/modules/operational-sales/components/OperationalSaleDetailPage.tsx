@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Eye,
+  FileText,
+  Printer,
+  Receipt,
+  RefreshCw,
+  RotateCcw,
+} from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../components/design-system/confirm-dialog";
 import { getElectronicInvoice, getElectronicInvoicePrintData, getPosSaleTicket, getPosSaleTicketPrintData } from "../../reporteria/services/reporting.service";
@@ -18,7 +28,15 @@ import {
   PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
   shouldShowProviderCreateIntentRecovery,
 } from "../services/operational-sales.service";
+import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
 import type { OperationalSaleDetail } from "../types";
+
+const saleTypeLabels: Record<string, string> = {
+  CASH: "Venta contado / caja",
+  POS: "Venta POS",
+  STANDARD: "Venta estándar",
+  CREDIT: "Venta a crédito",
+};
 
 const labels: Record<string, string> = {
   DRAFT: "Borrador",
@@ -32,6 +50,7 @@ const labels: Record<string, string> = {
   ACCEPTED: "Aceptada",
   REJECTED: "Rechazada",
   TECHNICAL_ERROR: "Error técnico",
+  COMPLETED: "Completado",
 };
 
 const label = (value: string | null | undefined) =>
@@ -127,6 +146,8 @@ const ActionCard = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [localActionMessage, setLocalActionMessage] = useState<string | null>(null);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
   const showElectronicBilling = sale.electronicBillingEnabled;
@@ -154,43 +175,100 @@ const ActionCard = ({
 
   return (
     <>
-      <Card title="Acciones operativas">
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline" onClick={onReload}>
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Acciones operativas</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Comprobantes y facturación electrónica DIAN</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onReload}
+            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
             Actualizar datos
           </Button>
-          {showElectronicBilling && billing && billing.status !== "CANCELLED" ? (
-            <Button variant="outline" onClick={() => void onRefreshStatus()} disabled={refreshLoading}>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {canRequestBilling ? (
+            <Button
+              type="button"
+              onClick={() => {
+                setLocalActionMessage(null);
+                setWizardOpen(true);
+              }}
+              disabled={refreshLoading}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 text-sm shadow-sm min-h-[44px] rounded-xl"
+            >
+              <Receipt className="h-5 w-5 shrink-0" />
+              Facturar electrónicamente (DIAN)
+            </Button>
+          ) : null}
+
+          {showElectronicBilling && accepted ? (
+            <>
+              <Button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 text-sm shadow-sm min-h-[44px] rounded-xl"
+              >
+                <FileText className="h-5 w-5 shrink-0" />
+                Ver factura electrónica
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void onPrintInvoice()}
+                disabled={printLoading}
+                className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
+              >
+                <Printer className="h-4 w-4 text-slate-600 shrink-0" />
+                {printLoading ? "Imprimiendo FE..." : "Imprimir factura FE"}
+              </Button>
+            </>
+          ) : null}
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setTicketPreviewOpen(true)}
+            className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
+          >
+            <Eye className="h-4 w-4 text-slate-600 shrink-0" />
+            Ver ticket
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void onPrintTicket()}
+            disabled={ticketLoading}
+            className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
+          >
+            <Printer className="h-4 w-4 text-slate-600 shrink-0" />
+            {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
+          </Button>
+
+          {showElectronicBilling && billing && billing.status !== "CANCELLED" && billing.status !== "ACCEPTED" ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void onRefreshStatus()}
+              disabled={refreshLoading}
+              className="flex items-center gap-1.5 border-slate-300 text-xs font-semibold min-h-[44px] rounded-xl"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshLoading ? "animate-spin" : ""}`} />
               {refreshLoading ? "Consultando FE..." : "Actualizar estado FE"}
             </Button>
           ) : null}
-          {canRequestBilling ? (
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (window.confirm(
-                  `¿Facturar electrónicamente esta venta usando el cliente ${sale.customer.name ?? sale.customer.id}? Se validarán sus datos fiscales antes de crear la solicitud.`
-                )) {
-                  void onRequestBilling();
-                }
-              }}
-              disabled={refreshLoading}
-            >
-              {refreshLoading ? "Solicitando FE..." : "Facturar electrónicamente"}
-            </Button>
-          ) : null}
-          {showElectronicBilling && accepted ? (
-            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
-              Ver / reimprimir factura electrónica
-            </Button>
-          ) : null}
-          {showElectronicBilling && accepted ? (
-            <Button variant="outline" onClick={() => void onPrintInvoice()} disabled={printLoading}>
-              {printLoading ? "Imprimiendo FE..." : "Imprimir factura electrónica"}
-            </Button>
-          ) : null}
+
           {showElectronicBilling && canRetry ? (
             <Button
+              type="button"
               variant="outline"
               onClick={() => {
                 if (window.confirm("¿Reintentar el procesamiento seguro de esta factura electrónica?")) {
@@ -198,31 +276,32 @@ const ActionCard = ({
                 }
               }}
               disabled={refreshLoading}
+              className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
-              {refreshLoading ? "Reintentando FE..." : "Reintentar procesamiento"}
+              Reintentar procesamiento
             </Button>
           ) : null}
+
           {showElectronicBilling && canRecoverProviderCreateIntent ? (
             <Button
+              type="button"
               variant="outline"
               onClick={() => setRecoveryConfirmOpen(true)}
               disabled={refreshLoading}
+              className="flex items-center gap-1.5 border-purple-300 text-purple-800 bg-purple-50 hover:bg-purple-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
-              {refreshLoading ? "Recuperando procesamiento..." : "Recuperar procesamiento"}
+              Recuperar procesamiento
             </Button>
           ) : null}
-          <Button variant="outline" onClick={() => setTicketPreviewOpen(true)}>
-            Ver ticket
-          </Button>
-          <Button variant="outline" onClick={() => void onPrintTicket()} disabled={ticketLoading}>
-            {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
-          </Button>
         </div>
-        <p className="mt-3 text-xs text-slate-500">
-          La actualización solo recarga datos persistidos. No consulta ni retransmite al proveedor.
-        </p>
-        {actionMessage ? <p className="mt-3 text-sm text-slate-700">{actionMessage}</p> : null}
-      </Card>
+
+        {(localActionMessage || actionMessage) ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            {localActionMessage || actionMessage}
+          </div>
+        ) : null}
+      </div>
       <ConfirmDialog
         open={recoveryConfirmOpen}
         onOpenChange={setRecoveryConfirmOpen}
@@ -247,6 +326,15 @@ const ActionCard = ({
         fileName={`ticket-venta-${sale.id}.pdf`}
         onClose={() => setTicketPreviewOpen(false)}
         getPdf={() => getPosSaleTicket(sale.id)}
+      />
+      <PreInvoiceWizardModal
+        open={wizardOpen}
+        saleId={sale.id}
+        onClose={() => setWizardOpen(false)}
+        onSuccess={(msg) => {
+          if (msg) setLocalActionMessage(msg);
+          void onReload();
+        }}
       />
     </>
   );
@@ -313,43 +401,29 @@ export const OperationalSaleDetailPage = () => {
     <main className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link className="text-sm font-semibold text-blue-700 hover:underline" href={backHref}>← Volver a ventas</Link>
-          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">Gestión Operativa · Ventas</p>
-          <h1 className="mt-2 break-all text-2xl font-bold text-slate-950">Detalle {sale.id}</h1>
+          <Link className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline" href={backHref}>
+            <ArrowLeft className="h-4 w-4" /> Volver a ventas
+          </Link>
+          <p className="mt-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Gestión Operativa · Venta POS</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-950">
+              Venta <span className="text-blue-700">#{(sale.id.slice(0, 8)).toLowerCase()}</span>
+            </h1>
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+              {label(sale.status)}
+            </span>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+              {label(sale.paymentStatus)}
+            </span>
+          </div>
         </div>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">Operación segura</span>
+        <div className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-right shadow-2xs">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Total Venta</p>
+          <p className="text-2xl md:text-3xl font-black text-slate-950">{money(sale.total)}</p>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="Resumen">
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <DetailValue name="Estado de venta" value={label(sale.status)} />
-            <DetailValue name="Tipo" value={sale.saleType} />
-            <DetailValue name="Fecha" value={date(sale.createdAt)} />
-            <DetailValue name="Pago" value={label(sale.paymentStatus)} />
-            <DetailValue name="Total" value={money(sale.total)} />
-            <DetailValue name="Pagado" value={money(sale.totalPaid)} />
-            <DetailValue name="Saldo" value={money(sale.balanceDue)} />
-          </dl>
-        </Card>
-        <Card title="Cliente">
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <DetailValue name="Nombre" value={sale.customer.name ?? "Sin cliente"} />
-            <DetailValue name="Identificador" value={sale.customer.id} />
-          </dl>
-          <Link className="mt-5 inline-flex text-sm font-semibold text-blue-700 hover:underline" href={`/${tenant}/customers?editCustomerId=${encodeURIComponent(sale.customer.id)}`}>Revisar o completar datos del cliente →</Link>
-        </Card>
-        <Card title="Sucursal y operación">
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <DetailValue name="Sucursal" value={sale.branch.name ?? "Sin sucursal"} />
-            <DetailValue name="Operador" value={sale.operator.email ?? "Sin operador"} />
-            <DetailValue name="Turno" value={sale.cashSessionId ?? "No disponible"} />
-            <DetailValue name="Terminal" value={sale.terminalId ?? "No disponible"} />
-          </dl>
-        </Card>
-        <BillingCard sale={sale} />
-      </div>
-
+      {/* Action Toolbar placed at the TOP for maximum operator UX */}
       <ActionCard
         sale={sale}
         onReload={reload}
@@ -365,12 +439,102 @@ export const OperationalSaleDetailPage = () => {
         actionMessage={actionMessage}
       />
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card title="Resumen">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <DetailValue name="Estado de venta" value={label(sale.status)} />
+            <DetailValue name="Tipo" value={saleTypeLabels[sale.saleType?.toUpperCase()] ?? sale.saleType} />
+            <DetailValue name="Fecha" value={date(sale.createdAt)} />
+            <DetailValue name="Pago" value={label(sale.paymentStatus)} />
+            <DetailValue name="Total" value={money(sale.total)} />
+            <DetailValue name="Pagado" value={money(sale.totalPaid)} />
+            <DetailValue name="Saldo" value={money(sale.balanceDue)} />
+          </dl>
+        </Card>
+        <Card title="Cliente">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <DetailValue name="Nombre" value={sale.customer.name ?? "Sin cliente"} />
+            <DetailValue
+              name="Documento / NIT"
+              value={sale.customer.documentNumber ?? "Sin documento"}
+            />
+          </dl>
+          <Link className="mt-5 inline-flex text-sm font-semibold text-blue-700 hover:underline" href={`/${tenant}/customers?editCustomerId=${encodeURIComponent(sale.customer.id)}`}>Revisar o completar datos del cliente →</Link>
+        </Card>
+        <Card title="Sucursal y operación">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <DetailValue name="Sucursal" value={sale.branch.name ?? "Sin sucursal"} />
+            <DetailValue name="Operador" value={sale.operator.email ?? "Sin operador"} />
+            <DetailValue name="Turno de caja" value={sale.cashSessionId ? `#${sale.cashSessionId.slice(0, 8)}` : "No disponible"} />
+            <DetailValue name="Terminal" value={sale.terminalId ? `#${sale.terminalId.slice(0, 8)}` : "Terminal activa"} />
+          </dl>
+        </Card>
+        <BillingCard sale={sale} />
+      </div>
+
       <Card title="Productos">
-        <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400"><th className="px-2 py-2">Producto</th><th className="px-2 py-2">Cantidad</th><th className="px-2 py-2">Unitario</th><th className="px-2 py-2">Impuestos</th><th className="px-2 py-2 text-right">Total</th></tr></thead><tbody>{sale.items.map((item) => <tr key={item.id} className="border-b border-slate-100"><td className="px-2 py-3">{item.productId}</td><td className="px-2 py-3">{item.quantity}</td><td className="px-2 py-3">{money(item.unitPrice)}</td><td className="px-2 py-3">{money(item.taxTotal)}</td><td className="px-2 py-3 text-right font-semibold">{money(item.total)}</td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400">
+                <th className="px-2 py-2">Producto</th>
+                <th className="px-2 py-2">Cantidad</th>
+                <th className="px-2 py-2">Unitario</th>
+                <th className="px-2 py-2">Impuestos</th>
+                <th className="px-2 py-2 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sale.items.map((item) => (
+                <tr key={item.id} className="border-b border-slate-100">
+                  <td className="px-2 py-3">
+                    <p className="font-medium text-slate-900">
+                      {item.productName || item.productSku || (item.productId ? `Item ${item.productId.slice(0, 8)}` : "Producto")}
+                    </p>
+                    {item.productSku && item.productName && item.productSku !== item.productName ? (
+                      <p className="text-xs text-slate-500">SKU: {item.productSku}</p>
+                    ) : null}
+                  </td>
+                  <td className="px-2 py-3">{item.quantity}</td>
+                  <td className="px-2 py-3">{money(item.unitPrice)}</td>
+                  <td className="px-2 py-3">{money(item.taxTotal)}</td>
+                  <td className="px-2 py-3 text-right font-semibold">{money(item.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card title="Pagos">
-        <div className="grid gap-3 md:grid-cols-2">{sale.payments.length ? sale.payments.map((payment) => <div key={payment.id} className="rounded-xl border border-slate-200 p-4"><p className="font-semibold text-slate-800">{payment.paymentMethod ?? "Método no disponible"}</p><p className="mt-1 text-sm text-slate-600">{money(payment.amount)} · {label(payment.status)}</p><p className="mt-1 text-xs text-slate-500">{date(payment.createdAt)}</p></div>) : <p className="text-sm text-slate-600">No hay pagos asociados.</p>}</div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {sale.payments.length ? (
+            sale.payments.map((payment) => (
+              <div key={payment.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-bold text-slate-900">{payment.paymentMethod ?? "Método no disponible"}</p>
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                    {label(payment.status)}
+                  </span>
+                </div>
+                {payment.financialInstitutionNombre ? (
+                  <p className="mt-1 text-xs font-semibold text-blue-600">
+                    🏦 {payment.financialInstitutionNombre}
+                  </p>
+                ) : null}
+                {payment.referenceNumber ? (
+                  <p className="mt-0.5 text-xs text-slate-500">Ref: {payment.referenceNumber}</p>
+                ) : null}
+                <div className="mt-3 flex items-baseline justify-between border-t border-slate-200/80 pt-2">
+                  <span className="text-base font-extrabold text-slate-900">{money(payment.amount)}</span>
+                  <span className="text-xs text-slate-400">{date(payment.createdAt)}</span>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-600">No hay pagos asociados.</p>
+          )}
+        </div>
       </Card>
     </main>
   );

@@ -100,15 +100,73 @@ const createService = () => {
       auditEvents.push(event);
     },
   };
+  const executedQueries: Array<{ text: string; params?: unknown[] }> = [];
+  const db = {
+    getClient: async () => ({
+      query: async (text: string, params?: unknown[]) => {
+        executedQueries.push({ text, params });
+        if (text.includes("FROM sales") && text.includes("FOR UPDATE")) {
+          const saleId = params?.[0];
+          if (saleId === "sale-cancelled") {
+            return { rows: [{ id: saleId, tenant_id: "tenant-a", branch_id: "branch-a", customer_id: "cust-1", total: "100.00", status: "CANCELLED" }] };
+          }
+          if (saleId === "sale-not-found") {
+            return { rows: [] };
+          }
+          return { rows: [{ id: saleId, tenant_id: "tenant-a", branch_id: "branch-a", customer_id: "cust-1", total: "100.00", status: "CONFIRMED", payment_status: "PAID" }] };
+        }
+        if (text.includes("FROM electronic_documents")) {
+          const saleId = params?.[1];
+          if (saleId === "sale-accepted-fe") {
+            return { rows: [{ id: "doc-1", status: "ACCEPTED" }] };
+          }
+          return { rows: [] };
+        }
+        if (text.includes("FROM customers")) {
+          const custId = params?.[0];
+          if (custId === "cust-valid") {
+            return { rows: [{ id: "cust-valid", name: "Valid Customer" }] };
+          }
+          return { rows: [] };
+        }
+        if (text.includes("FROM cash_sessions")) {
+          return { rows: [{ id: "session-open-1", branch_id: "branch-a", cash_register_id: "reg-1", status: "OPEN" }] };
+        }
+        if (text.includes("FROM payment_methods")) {
+          return {
+            rows: [
+              { id: "pm-cash", codigo: "CASH", nombre: "Efectivo", tipo: "CASH", requires_reference: false },
+              { id: "pm-transfer", codigo: "TRANSFER", nombre: "Transferencia", tipo: "TRANSFER", requires_reference: true },
+            ],
+          };
+        }
+        if (text.includes("FROM payments") && text.includes("FOR UPDATE")) {
+          return {
+            rows: [
+              { id: "pay-1", payment_method_id: "pm-cash", amount: "100.00", reference_number: null, cash_session_id: "session-open-1", status: "COMPLETED" },
+            ],
+          };
+        }
+        if (text.includes("INSERT INTO payments")) {
+          return { rows: [{ id: "pay-new-1" }] };
+        }
+        return { rows: [] };
+      },
+      release: () => {},
+    }),
+  };
   return {
     service: new OperationalSalesService(
       scopeService as any,
       repository as any,
       billingClient as any,
       auditService as any,
+      undefined,
+      db as any,
     ),
     calls,
     auditEvents,
+    executedQueries,
   };
 };
 
@@ -205,3 +263,79 @@ test("operational detail exposes backend-owned provider-create recovery capabili
 
   assert.equal(result.electronicBilling.retryability.canRecoverProviderCreateIntent, true);
 });
+
+test("updateCustomer rejects missing customerId or cancelled sale", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.updateCustomer(actor, "sale-a", { customerId: "" }),
+    /customerId es requerido/
+  );
+
+  await assert.rejects(
+    () => service.updateCustomer(actor, "sale-cancelled", { customerId: "cust-valid" }),
+    /No se puede modificar el cliente de una venta cancelada o reembolsada/
+  );
+});
+
+test("updateCustomer rejects sale with already ACCEPTED electronic document", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.updateCustomer(actor, "sale-accepted-fe", { customerId: "cust-valid" }),
+    /ya tiene factura electrónica aceptada/
+  );
+});
+
+test("updateCustomer updates customer and records audit event", async () => {
+  const { service, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.updateCustomer(actor, "sale-a", { customerId: "cust-valid" });
+
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "UPDATE_SALE_CUSTOMER");
+  assert.equal(auditEvents[0].entityId, "sale-a");
+  assert.equal((auditEvents[0].after as any).customerId, "cust-valid");
+  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales SET customer_id = $1")));
+});
+
+test("correctPayments rejects missing reason or unmatched total", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.correctPayments(actor, "sale-a", {
+      reason: "abc",
+      payments: [{ paymentMethodId: "pm-cash", amount: 100 }],
+    }),
+    /Motivo de corrección obligatorio/
+  );
+
+  await assert.rejects(
+    () => service.correctPayments(actor, "sale-a", {
+      reason: "Corrección por error de digitación",
+      payments: [{ paymentMethodId: "pm-cash", amount: 50 }],
+    }),
+    /no coincide con el total de la venta/
+  );
+});
+
+test("correctPayments cancels previous payments, inserts new payments and audits", async () => {
+  const { service, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.correctPayments(actor, "sale-a", {
+    reason: "Cambio de efectivo a transferencia",
+    payments: [{ paymentMethodId: "pm-transfer", amount: 100, reference: "TRX-9988" }],
+  });
+
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "CORRECT_SALE_PAYMENTS");
+  assert.equal((auditEvents[0].after as any).reason, "Cambio de efectivo a transferencia");
+  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE payments")));
+  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO payments")));
+});
+

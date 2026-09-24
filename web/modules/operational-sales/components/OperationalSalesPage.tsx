@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { FileText, RotateCcw, Search } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Download, Eye, FileText, Printer, Receipt, RotateCcw, Search } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
@@ -26,6 +26,7 @@ import {
   isEligibleForElectronicBillingRequest,
   requestOperationalSaleElectronicBilling,
 } from "../services/operational-sales.service";
+import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
 import {
   ELECTRONIC_BILLING_STATUSES,
   PAYMENT_STATUSES,
@@ -60,12 +61,14 @@ const scopeCopy: Record<string, string> = { USER: "Ventas de mi turno actual", A
 
 export const OperationalSalesPage = () => {
   const params = useParams<{ tenant: string }>();
+  const router = useRouter();
   const posContext = usePosContext();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const { data, filters, appliedFilters, loading, error, page, pageSize, setPage, setPageSize, search, resetFilters, updateFilter, toggleSort, reload } = useOperationalSales();
 
   const [actionSaleId, setActionSaleId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [wizardSaleId, setWizardSaleId] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const appliedReportFilters = useMemo(() => appliedFilters ? { dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo, status: appliedFilters.status, paymentStatus: appliedFilters.paymentStatus, paymentMethod: appliedFilters.paymentMethod, customerId: appliedFilters.customerId, documentNumber: appliedFilters.documentNumber, electronicBillingStatus: appliedFilters.electronicBillingStatus } : null, [appliedFilters]);
   const getReportPdf = useCallback(() => appliedReportFilters ? getOperationalSalesReportPdf(appliedReportFilters, data.sortBy, data.sortDirection) : Promise.reject(new Error("Primero ejecuta una búsqueda.")), [appliedReportFilters, data.sortBy, data.sortDirection]);
@@ -182,76 +185,85 @@ export const OperationalSalesPage = () => {
         key: "total",
         header: <button type="button" onClick={() => toggleSort("total")}>Total</button>,
         className: "text-right",
-        cellClassName: "text-right font-semibold",
+        cellClassName: "text-right font-semibold whitespace-nowrap",
         render: (sale) => formatMoney(sale.total),
       },
       {
         key: "actions",
         header: "Acciones",
-        cellClassName: "min-w-[320px]",
+        className: "w-14 text-center",
+        cellClassName: "w-14",
         render: (sale) => {
           const hasAcceptedBilling =
             sale.electronicBillingEnabled &&
             sale.electronicBilling?.status === "ACCEPTED";
+          const canRequestBilling =
+            sale.electronicBillingEnabled &&
+            !sale.electronicBilling &&
+            isEligibleForElectronicBillingRequest(sale);
 
           return (
-            <div className="flex flex-wrap gap-2">
-              {sale.electronicBillingEnabled &&
-              !sale.electronicBilling &&
-              isEligibleForElectronicBillingRequest(sale) ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleBillingRequest(sale.id)}
-                  disabled={actionSaleId === sale.id}
-                >
-                  {actionSaleId === sale.id ? "Solicitando..." : "Facturar"}
-                </Button>
-              ) : null}
-              <Link
-                className="inline-flex min-h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
-                href={`/${params.tenant}/operations/sales/${sale.id}`}
-              >
-                Ver ticket
-              </Link>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handlePrint(sale)}
-                disabled={actionSaleId === sale.id}
-              >
-                {actionSaleId === sale.id
-                  ? "Imprimiendo..."
-                  : hasAcceptedBilling
-                    ? "Imprimir factura"
-                    : "Imprimir"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (hasAcceptedBilling) {
-                    void getElectronicInvoice(sale.id).then((blob) =>
-                      downloadBlob(
-                        blob,
-                        `factura-electronica-${sale.electronicBilling?.documentNumber || sale.id}.pdf`
-                      )
-                    );
-                  } else {
-                    void getPosSaleTicket(sale.id).then((blob) =>
-                      downloadBlob(blob, `ticket-venta-${sale.id}.pdf`)
-                    );
-                  }
-                }}
-              >
-                {hasAcceptedBilling ? "Descargar factura" : "Descargar"}
-              </Button>
-            </div>
+            <RowActionsMenu
+              label={`Acciones de venta ${sale.id.slice(0, 8)}`}
+              items={[
+                ...(canRequestBilling
+                  ? [
+                      {
+                        label: (
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            Facturar electrónicamente
+                          </span>
+                        ),
+                        icon: <Receipt className="h-4 w-4 text-emerald-600" />,
+                        onSelect: () => setWizardSaleId(sale.id),
+                        disabled: actionSaleId === sale.id,
+                      },
+                    ]
+                  : []),
+                {
+                  label: "Ver detalle / ticket",
+                  icon: <Eye className="h-4 w-4 text-slate-500" />,
+                  onSelect: () =>
+                    router.push(`/${params.tenant}/operations/sales/${sale.id}`),
+                },
+                {
+                  label:
+                    actionSaleId === sale.id
+                      ? "Imprimiendo..."
+                      : hasAcceptedBilling
+                        ? "Imprimir factura"
+                        : "Imprimir ticket",
+                  icon: <Printer className="h-4 w-4 text-slate-500" />,
+                  onSelect: () => void handlePrint(sale),
+                  disabled: actionSaleId === sale.id,
+                },
+                {
+                  label: hasAcceptedBilling
+                    ? "Descargar factura PDF"
+                    : "Descargar ticket PDF",
+                  icon: <Download className="h-4 w-4 text-slate-500" />,
+                  onSelect: () => {
+                    if (hasAcceptedBilling) {
+                      void getElectronicInvoice(sale.id).then((blob) =>
+                        downloadBlob(
+                          blob,
+                          `factura-electronica-${sale.electronicBilling?.documentNumber || sale.id}.pdf`
+                        )
+                      );
+                    } else {
+                      void getPosSaleTicket(sale.id).then((blob) =>
+                        downloadBlob(blob, `ticket-venta-${sale.id}.pdf`)
+                      );
+                    }
+                  },
+                },
+              ]}
+            />
           );
         },
       },
     ],
-    [actionSaleId, handleBillingRequest, handlePrint, params.tenant, toggleSort]
+    [actionSaleId, handlePrint, params.tenant, router, toggleSort]
   );
 
   const reportFilters = useMemo<ReportFilterDefinition[]>(() => [
@@ -314,6 +326,15 @@ export const OperationalSalesPage = () => {
       <DataTable columns={columns} actionColumnFirst disableHeaderUppercase rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
       {appliedFilters ? <Pagination page={page} pageSize={pageSize} totalItems={data.total} onPageChange={setPage} onPageSizeChange={setPageSize} loading={loading} /> : null}
       <PdfPreviewModal isOpen={reportOpen} title="Reporte de ventas operativas" fileName="reporte-ventas-operativas.pdf" description="Vista previa de ventas operativas" onClose={() => setReportOpen(false)} getPdf={getReportPdf} onDownloadExcel={() => { if (appliedReportFilters) void getOperationalSalesReportExcel(appliedReportFilters, data.sortBy, data.sortDirection).then((blob) => downloadBlob(blob, "reporte-ventas-operativas.xlsx")); }} />
+      <PreInvoiceWizardModal
+        open={Boolean(wizardSaleId)}
+        saleId={wizardSaleId}
+        onClose={() => setWizardSaleId(null)}
+        onSuccess={(msg) => {
+          setActionMessage(msg);
+          void reload();
+        }}
+      />
     </div>
   </ReportLayout>;
 };

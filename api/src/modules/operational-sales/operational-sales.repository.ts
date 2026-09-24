@@ -22,6 +22,7 @@ type SaleQueryRow = QueryResultRow & {
   created_at: string;
   customer_id: string;
   customer_name: string | null;
+  customer_document_number: string | null;
   branch_name: string | null;
   operator_email: string | null;
   billing_status: string | null;
@@ -45,7 +46,7 @@ export type OperationalSaleListItem = {
   saleType: string;
   paymentStatus: string;
   total: number;
-  customer: { id: string; name: string | null };
+  customer: { id: string; name: string | null; documentNumber?: string | null };
   branch: { id: string; name: string | null };
   operator: { id: string | null; email: string | null };
   cashSessionId: string | null;
@@ -88,6 +89,8 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
   items: Array<{
     id: string;
     productId: string;
+    productName: string | null;
+    productSku: string | null;
     quantity: number;
     unitPrice: number;
     subtotal: number;
@@ -97,6 +100,11 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
   payments: Array<{
     id: string;
     paymentMethod: string | null;
+    paymentMethodId?: string | null;
+    paymentMethodCode?: string | null;
+    referenceNumber?: string | null;
+    financialInstitutionId?: string | null;
+    financialInstitutionNombre?: string | null;
     amount: number;
     cashSessionId: string | null;
     status: string;
@@ -152,37 +160,65 @@ export class OperationalSalesRepository {
       this.db.query<{
         id: string;
         product_id: string;
+        product_name: string | null;
+        product_sku: string | null;
         quantity: string;
         price: string;
         subtotal: string;
         tax_total: string;
         line_total: string | null;
       }>(
-        `SELECT id, product_id, quantity::text, price::text, subtotal::text,
-                tax_total::text, line_total::text
-           FROM sale_items
-          WHERE tenant_id = $1 AND sale_id = $2
-          ORDER BY created_at ASC, id ASC`,
+        `SELECT si.id,
+                si.product_id,
+                COALESCE(p.name, si.product_id) AS product_name,
+                p.sku AS product_sku,
+                si.quantity::text,
+                si.price::text,
+                si.subtotal::text,
+                si.tax_total::text,
+                si.line_total::text
+           FROM sale_items AS si
+           LEFT JOIN products AS p
+             ON p.id = si.product_id
+            AND p.tenant_id = si.tenant_id
+          WHERE si.tenant_id = $1 AND si.sale_id = $2
+          ORDER BY si.created_at ASC, si.id ASC`,
         [row.tenant_id, saleId]
       ),
       this.db.query<{
         id: string;
+        payment_method_id: string | null;
         payment_method_nombre: string | null;
+        payment_method_codigo: string | null;
         amount: string;
+        reference_number: string | null;
+        financial_institution_id: string | null;
+        financial_institution_nombre: string | null;
         cash_session_id: string | null;
         status: string;
         created_at: string;
       }>(
-        `SELECT payment.id, method.nombre AS payment_method_nombre,
-                payment.amount::text, payment.cash_session_id,
-                payment.status, payment.created_at
+        `SELECT payment.id,
+                payment.payment_method_id,
+                method.nombre AS payment_method_nombre,
+                method.codigo AS payment_method_codigo,
+                payment.amount::text,
+                payment.reference_number,
+                payment.financial_institution_id,
+                fi.nombre AS financial_institution_nombre,
+                payment.cash_session_id,
+                payment.status,
+                payment.created_at
            FROM payments AS payment
            LEFT JOIN payment_methods AS method
              ON method.id = payment.payment_method_id
             AND method.tenant_id = payment.tenant_id
+           LEFT JOIN financial_institutions AS fi
+             ON fi.id = payment.financial_institution_id
           WHERE payment.tenant_id = $1
             AND payment.reference_type = 'SALE'
             AND payment.reference_id = $2
+            AND payment.status IN ('PENDING', 'COMPLETED')
           ORDER BY payment.created_at ASC, payment.id ASC`,
         [row.tenant_id, saleId]
       ),
@@ -196,7 +232,7 @@ export class OperationalSalesRepository {
       s.type AS sale_type, s.total::text, s.balance::text,
       COALESCE(s.payment_status, 'PENDING') AS payment_status,
       s.total_paid::text, s.balance_due::text, s.created_at,
-      c.name AS customer_name, branch.nombre AS branch_name,
+      c.name AS customer_name, c.document_number AS customer_document_number, branch.nombre AS branch_name,
       operator.email AS operator_email,
       payment_context.cash_session_id,
       document.id AS billing_document_id, document.status AS billing_status,
@@ -332,7 +368,11 @@ export class OperationalSalesRepository {
       saleType: row.sale_type,
       paymentStatus: row.payment_status,
       total: Number(row.total),
-      customer: { id: row.customer_id, name: row.customer_name },
+      customer: {
+        id: row.customer_id,
+        name: row.customer_name,
+        documentNumber: row.customer_document_number,
+      },
       branch: { id: row.branch_id, name: row.branch_name },
       operator: { id: row.user_id, email: row.operator_email },
       cashSessionId: row.cash_session_id,
@@ -355,6 +395,8 @@ export class OperationalSalesRepository {
     itemRows: Array<{
       id: string;
       product_id: string;
+      product_name?: string | null;
+      product_sku?: string | null;
       quantity: string;
       price: string;
       subtotal: string;
@@ -363,8 +405,13 @@ export class OperationalSalesRepository {
     }>,
     paymentRows: Array<{
       id: string;
+      payment_method_id: string | null;
       payment_method_nombre: string | null;
+      payment_method_codigo: string | null;
       amount: string;
+      reference_number: string | null;
+      financial_institution_id: string | null;
+      financial_institution_nombre: string | null;
       cash_session_id: string | null;
       status: string;
       created_at: string;
@@ -391,6 +438,8 @@ export class OperationalSalesRepository {
       items: itemRows.map((item) => ({
         id: item.id,
         productId: item.product_id,
+        productName: item.product_name ?? null,
+        productSku: item.product_sku ?? null,
         quantity: Number(item.quantity),
         unitPrice: Number(item.price),
         subtotal: Number(item.subtotal),
@@ -400,6 +449,11 @@ export class OperationalSalesRepository {
       payments: paymentRows.map((payment) => ({
         id: payment.id,
         paymentMethod: payment.payment_method_nombre,
+        paymentMethodId: payment.payment_method_id,
+        paymentMethodCode: payment.payment_method_codigo,
+        referenceNumber: payment.reference_number,
+        financialInstitutionId: payment.financial_institution_id,
+        financialInstitutionNombre: payment.financial_institution_nombre,
         amount: Number(payment.amount),
         cashSessionId: payment.cash_session_id,
         status: payment.status,

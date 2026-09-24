@@ -116,3 +116,39 @@ export const createSinglePostGuard = () => {
     },
   };
 };
+
+export const updateOperationalSaleCustomer = (saleId: string, customerId: string) =>
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}/customer`,
+    {
+      method: "PATCH",
+      includePosSession: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId }),
+    },
+  );
+
+export type CorrectOperationalSalePaymentsPayload = {
+  reason: string;
+  payments: Array<{
+    paymentMethodId: string;
+    amount: number;
+    reference?: string | null;
+    financialInstitutionId?: string | null;
+  }>;
+};
+
+export const correctOperationalSalePayments = (
+  saleId: string,
+  payload: CorrectOperationalSalePaymentsPayload,
+) =>
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}/payment-correction`,
+    {
+      method: "POST",
+      includePosSession: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+
