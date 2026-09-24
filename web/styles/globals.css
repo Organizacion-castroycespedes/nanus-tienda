@@ -203,18 +203,15 @@
 }
 
 .login-background {
-  background-position: 26% center;
+  background-image: url("/logo-login.png");
+  background-position: center;
+  background-repeat: no-repeat;
   background-size: contain;
-}
-
-@media (min-width: 1024px) {
-  .login-background {
-    background-position: center;
-  }
 }
 
 @media (min-width: 1024px) and (max-width: 1279px) {
   .login-background {
-    background-size: 100% auto;
+    background-image: url("/logo-login-tablet.png");
+    background-size: cover;
   }
 }

@@ -195,13 +195,7 @@ const LoginPageContent = () => {
       <div
         aria-hidden="true"
         className="login-background absolute inset-0 bg-slate-950"
-        style={{
-          backgroundImage: "url('/logo-login.png')",
-          backgroundRepeat: "no-repeat",
-        }}
-      >
-        <div className="absolute inset-0 bg-slate-950/10" />
-      </div>
+      />
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">
         <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:mr-0 lg:w-[30vw] lg:max-w-[31rem] lg:p-11 dark:border-slate-700/70 dark:bg-slate-900/95">
