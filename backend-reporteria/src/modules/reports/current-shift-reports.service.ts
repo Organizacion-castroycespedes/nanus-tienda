@@ -661,17 +661,8 @@ export class CurrentShiftReportsService {
       )`);
     }
 
-    if (actor.role === "USER") {
-      params.push(actor.userId);
-      where.push(`NOT EXISTS (
-        SELECT 1
-        FROM cash_counts AS own_closing
-        WHERE own_closing.tenant_id = session.tenant_id
-          AND own_closing.cash_session_id = session.id
-          AND own_closing.counted_by_user_id = $${params.length}
-          AND own_closing.count_type = 'CLOSING'
-      )`);
-    }
+    // Do NOT hide OPEN sessions after USER delivered closing: turno/POS still need
+    // the live session and the user's sales while the caja remains open.
 
     params.push(actor.userId);
     const actorUserParamIndex = params.length;
@@ -1255,24 +1246,9 @@ export class CurrentShiftReportsService {
       throw new ForbiddenException("El usuario seleccionado no opera esta caja");
     }
 
-    if (
+    const ownClosureDelivered =
       actor.role === "USER" &&
-      (await this.hasUserCompletedClosure(tenantId, session.id, actor.userId))
-    ) {
-      return this.noOpenSessionResponse(
-        tenantId,
-        session.branchId,
-        session.terminalId,
-        session.cashRegisterId,
-        session.id,
-        salesUserId ?? null,
-        actor.role,
-        page,
-        availableCashSessions,
-        availableUsers,
-        "Ya entregaste tu cierre. No tienes acciones pendientes en esta caja."
-      );
-    }
+      (await this.hasUserCompletedClosure(tenantId, session.id, actor.userId));
 
     if (session.status !== "OPEN") {
       return {
@@ -1316,7 +1292,9 @@ export class CurrentShiftReportsService {
 
     return {
       hasOpenCashSession: true,
-      message: null,
+      message: ownClosureDelivered
+        ? "Ya entregaste tu cierre. Puedes consultar tus ventas del turno en solo lectura."
+        : null,
       cashSession: session,
       summary: this.buildSummary(
         session,

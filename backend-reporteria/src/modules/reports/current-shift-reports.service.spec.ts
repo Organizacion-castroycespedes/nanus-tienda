@@ -161,7 +161,7 @@ test("CurrentShiftReportsService: USER no consulta caja abierta por otro usuario
   );
 });
 
-test("CurrentShiftReportsService: USER no ve datos tras entregar su cierre", async () => {
+test("CurrentShiftReportsService: USER consulta ventas aunque ya entrego su cierre", async () => {
   const db = new FakeDb();
   db.userClosureCompleted = true;
   const service = buildService(db);
@@ -176,10 +176,11 @@ test("CurrentShiftReportsService: USER no ve datos tras entregar su cierre", asy
     }
   );
 
-  assert.equal(response.hasOpenCashSession, false);
+  assert.equal(response.hasOpenCashSession, true);
   assert.equal(response.availableCashSessions.length, 1);
-  assert.match(response.message ?? "", /Ya entregaste tu cierre/);
-  assert.equal(response.tabs.sales.total, 0);
+  assert.match(response.message ?? "", /solo lectura/);
+  assert.equal(response.tabs.sales.total, 1);
+  assert.equal(response.tabs.sales.rows[0]?.id, ids.sale);
 });
 
 test("CurrentShiftReportsService: USER consulta caja asignada aunque la abrio otro usuario", async () => {

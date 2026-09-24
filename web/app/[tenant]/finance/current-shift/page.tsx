@@ -409,6 +409,11 @@ const CurrentShiftPage = () => {
         </section>
       ) : (
         <>
+          {shift.message ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+              {shift.message}
+            </section>
+          ) : null}
           {availableCashSessions.length > 0 ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
