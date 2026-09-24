@@ -52,7 +52,11 @@ export class OperationalSalesReportScopeService {
          WHERE session.tenant_id = $1
            AND session.branch_id = $2
            AND session.status = 'OPEN'
-           AND ($4::uuid IS NULL OR cash_register.terminal_id = $4)
+           AND (
+             $4::uuid IS NULL
+             OR cash_register.terminal_id IS NULL
+             OR cash_register.terminal_id = $4
+           )
            AND (
              session.opened_by_user_id = $3
              OR EXISTS (
@@ -63,8 +67,14 @@ export class OperationalSalesReportScopeService {
                  AND assignment.unassigned_at IS NULL
              )
            )
-         ORDER BY session.opened_at DESC
-         LIMIT 2`,
+         ORDER BY
+           CASE
+             WHEN $4::uuid IS NOT NULL AND cash_register.terminal_id = $4 THEN 0
+             ELSE 1
+           END,
+           CASE WHEN session.opened_by_user_id = $3 THEN 0 ELSE 1 END,
+           session.opened_at DESC
+         LIMIT 1`,
         [user.tenantId, branchId, user.id, terminalId],
       );
       if (cash.rows.length === 0) {
@@ -72,11 +82,16 @@ export class OperationalSalesReportScopeService {
           "No hay una caja abierta para tu contexto POS (apertura o asignacion activa)"
         );
       }
-      if (cash.rows.length !== 1) {
-        throw new ForbiddenException("Exactly one current open cash session is required");
+      if (query.cashSessionId && query.cashSessionId !== cash.rows[0].id) {
+        return { tenantId: user.tenantId, branchIds: [], requiresCurrentShift: true };
       }
-      if (query.cashSessionId && query.cashSessionId !== cash.rows[0].id) return { tenantId: user.tenantId, branchIds: [], requiresCurrentShift: true };
-      return { tenantId: user.tenantId, branchIds: [branchId], userId: user.id, cashSessionId: cash.rows[0].id, requiresCurrentShift: true };
+      return {
+        tenantId: user.tenantId,
+        branchIds: [branchId],
+        userId: user.id,
+        cashSessionId: cash.rows[0].id,
+        requiresCurrentShift: true,
+      };
     }
     const branches = await this.db.query<{ id: string }>(
       `SELECT tb.id FROM tenant_branches tb WHERE tb.tenant_id = $1 AND tb.estado = 'ACTIVE' AND EXISTS (
