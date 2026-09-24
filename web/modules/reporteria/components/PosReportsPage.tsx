@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, Download, Printer, Truck } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Modal } from "../../../components/design-system/Modal";
 import { DeliveryRelationCard } from "../../deliveries/components/DeliveryRelationCard";
 import { FinanceAccessNotice } from "../../finance/components/FinanceAccessNotice";
@@ -93,7 +94,7 @@ const PosReportsPage = () => {
   } = useReportingScope();
   const { dataset, loading, searched, error, loadReports } = usePosReports();
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
 
   const handleDirectPrint = useCallback(
     async (saleId: string, billingStatus?: PosSalesListRow["billingStatus"]) => {
@@ -289,9 +290,9 @@ const PosReportsPage = () => {
       {
         key: "actions",
         header: "Acciones",
-        cellClassName: "min-w-[350px]",
+        cellClassName: "w-14",
         render: (row) => (
-          <div className="flex flex-wrap gap-2">
+          <RowActionsMenu>
             {row.billingStatus !== "ACCEPTED" &&
             row.billingStatus !== "PENDING" &&
             row.billingStatus !== "PROCESSING" &&
@@ -371,7 +372,7 @@ const PosReportsPage = () => {
               <Truck className="h-4 w-4" />
               Domicilio
             </Button>
-          </div>
+          </RowActionsMenu>
         ),
       },
     ],
@@ -492,6 +493,7 @@ const PosReportsPage = () => {
       />
 
       <DataTable
+        actionColumnFirst
         columns={columns}
         rows={visibleRows}
         getRowKey={(row) => row.saleId}
@@ -510,6 +512,7 @@ const PosReportsPage = () => {
           pageSize={pageSize}
           totalItems={dataset.rows.length}
           onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
         />
       ) : null}
 
