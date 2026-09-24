@@ -12,12 +12,27 @@ import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
+import {
+  listCountries,
+  listDepartments,
+  listMunicipalities,
+} from "../../../domains/locations/api";
+import type {
+  CountryResponse,
+  DepartmentResponse,
+  MunicipalityResponse,
+} from "../../../domains/locations/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import {
   createElectronicInvoicingCustomer,
   updateElectronicInvoicingCustomer,
   type ElectronicInvoicingCustomer,
 } from "../../electronic-invoicing/services/customer.service";
+import {
+  FISCAL_PERSON_TYPE_OPTIONS,
+  FISCAL_RESPONSIBILITY_OPTIONS,
+  FISCAL_TAX_REGIME_OPTIONS,
+} from "../../electronic-invoicing/fiscal-profile-options";
 
 type QuickFiscalCustomerModalProps = {
   customers: CustomerResponse[];
@@ -34,6 +49,15 @@ type FiscalForm = {
   fiscalEmail: string;
   phone: string;
   address: string;
+  countryId: string;
+  departamentoId: string;
+  municipioId: string;
+  countryCode: string;
+  departmentCode: string;
+  municipalityCode: string;
+  personType: "" | "NATURAL" | "JURIDICA";
+  taxRegime: string;
+  taxResponsibilities: string[];
 };
 
 const EMPTY_FORM: FiscalForm = {
@@ -43,6 +67,15 @@ const EMPTY_FORM: FiscalForm = {
   fiscalEmail: "",
   phone: "",
   address: "",
+  countryId: "",
+  departamentoId: "",
+  municipioId: "",
+  countryCode: "",
+  departmentCode: "",
+  municipalityCode: "",
+  personType: "",
+  taxRegime: "",
+  taxResponsibilities: [],
 };
 
 
@@ -65,6 +98,18 @@ const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm =>
   fiscalEmail: customer?.fiscalEmail ?? customer?.email ?? "",
   phone: customer?.phone ?? "",
   address: customer?.address ?? "",
+  countryId: "",
+  departamentoId: customer?.departamentoId ?? "",
+  municipioId: customer?.municipioId ?? "",
+  countryCode: customer?.countryCode ?? "",
+  departmentCode: customer?.departmentCode ?? "",
+  municipalityCode: customer?.municipalityCode ?? "",
+  personType:
+    customer?.personType === "NATURAL" || customer?.personType === "JURIDICA"
+      ? customer.personType
+      : "",
+  taxRegime: customer?.taxRegime ?? "",
+  taxResponsibilities: customer?.taxResponsibilities ?? [],
 });
 
 export const QuickFiscalCustomerModal = ({
@@ -81,6 +126,10 @@ export const QuickFiscalCustomerModal = ({
   const [form, setForm] = useState<FiscalForm>(EMPTY_FORM);
   const [saveLoading, setSaveLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [countries, setCountries] = useState<CountryResponse[]>([]);
+  const [departments, setDepartments] = useState<DepartmentResponse[]>([]);
+  const [municipalities, setMunicipalities] = useState<MunicipalityResponse[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(false);
 
   const targetCustomer = useMemo(
     () => customers.find((customer) => customer.id === targetCustomerId) ?? null,
@@ -114,6 +163,87 @@ export const QuickFiscalCustomerModal = ({
     setForm(buildFormFromCustomer(initialCustomer));
     setError(null);
   }, [customers, selectedCustomerId]);
+
+  useEffect(() => {
+    let active = true;
+    setLocationsLoading(true);
+    listCountries()
+      .then((items) => {
+        if (!active) return;
+        setCountries(items);
+        const selected = items.find((item) => item.codigo_iso2 === form.countryCode);
+        if (selected && selected.id !== form.countryId) {
+          setForm((current) => ({ ...current, countryId: selected.id }));
+        }
+      })
+      .catch(() => {
+        if (active) setCountries([]);
+      })
+      .finally(() => {
+        if (active) setLocationsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.countryCode, form.countryId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!form.countryId) {
+      setDepartments([]);
+      return;
+    }
+    listDepartments(form.countryId)
+      .then((items) => {
+        if (!active) return;
+        setDepartments(items);
+        const selected =
+          items.find((item) => item.id === form.departamentoId) ??
+          items.find((item) => item.codigo_dane === form.departmentCode);
+        if (selected) {
+          setForm((current) => ({
+            ...current,
+            departamentoId: selected.id,
+            departmentCode: selected.codigo_dane,
+          }));
+        }
+      })
+      .catch(() => {
+        if (active) setDepartments([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.countryId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!form.departamentoId) {
+      setMunicipalities([]);
+      return;
+    }
+    listMunicipalities(form.departamentoId)
+      .then((items) => {
+        if (!active) return;
+        setMunicipalities(items);
+        const selected =
+          items.find((item) => item.id === form.municipioId) ??
+          items.find((item) => item.codigo_dane === form.municipalityCode);
+        if (selected) {
+          setForm((current) => ({
+            ...current,
+            municipioId: selected.id,
+            municipalityCode: selected.codigo_dane,
+          }));
+        }
+      })
+      .catch(() => {
+        if (active) setMunicipalities([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [form.departamentoId]);
 
   const updateForm = (field: keyof FiscalForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -149,6 +279,16 @@ export const QuickFiscalCustomerModal = ({
       invoiceEmail: fiscalEmail,
       phone: trimToNull(form.phone),
       address: trimToNull(form.address),
+      countryId: trimToNull(form.countryId),
+      departamentoId: trimToNull(form.departamentoId),
+      municipioId: trimToNull(form.municipioId),
+      countryCode: trimToNull(form.countryCode),
+      departmentCode: trimToNull(form.departmentCode),
+      municipalityCode: trimToNull(form.municipalityCode),
+      personType: form.personType || null,
+      taxRegime: trimToNull(form.taxRegime),
+      taxResponsibilities: form.taxResponsibilities,
+      isFinalConsumer: false,
       fiscalDataSource: "MANUAL" as const,
       fiscalStatus: "PENDING" as const,
       isActive: true,
@@ -192,6 +332,15 @@ export const QuickFiscalCustomerModal = ({
         if (payload.address !== (targetCustomer.address ?? null)) {
           updatePayload.address = payload.address;
         }
+        updatePayload.countryId = payload.countryId;
+        updatePayload.departamentoId = payload.departamentoId;
+        updatePayload.municipioId = payload.municipioId;
+        updatePayload.countryCode = payload.countryCode;
+        updatePayload.departmentCode = payload.departmentCode;
+        updatePayload.municipalityCode = payload.municipalityCode;
+        updatePayload.personType = payload.personType;
+        updatePayload.taxRegime = payload.taxRegime;
+        updatePayload.taxResponsibilities = payload.taxResponsibilities;
 
         if (Object.keys(updatePayload).length === 0) {
           savedCustomer = targetCustomer as unknown as ElectronicInvoicingCustomer;
@@ -370,6 +519,129 @@ export const QuickFiscalCustomerModal = ({
                     onChange={(event) => updateForm("address", event.target.value)}
                   />
                 </div>
+                <Select
+                  label="Tipo de persona"
+                  value={form.personType}
+                  onChange={(event) =>
+                    updateForm("personType", event.target.value as FiscalForm["personType"])
+                  }
+                >
+                  <option value="">Selecciona tipo de persona</option>
+                  {FISCAL_PERSON_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Régimen tributario"
+                  value={form.taxRegime}
+                  onChange={(event) => updateForm("taxRegime", event.target.value)}
+                >
+                  <option value="">Selecciona un régimen</option>
+                  {FISCAL_TAX_REGIME_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+                <div className="sm:col-span-2">
+                  <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Responsabilidades fiscales
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {FISCAL_RESPONSIBILITY_OPTIONS.map((option) => {
+                      const selected = form.taxResponsibilities.includes(option.value);
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setForm((current) => ({
+                              ...current,
+                              taxResponsibilities: selected
+                                ? current.taxResponsibilities.filter((value) => value !== option.value)
+                                : [...current.taxResponsibilities, option.value],
+                            }))
+                          }
+                          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                            selected
+                              ? "border-blue-600 bg-blue-600 text-white"
+                              : "border-slate-300 bg-white text-slate-600 hover:border-blue-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <Select
+                  label="País"
+                  value={form.countryId}
+                  disabled={locationsLoading || countries.length === 0}
+                  onChange={(event) => {
+                    const selected = countries.find((item) => item.id === event.target.value);
+                    setForm((current) => ({
+                      ...current,
+                      countryId: event.target.value,
+                      countryCode: selected?.codigo_iso2 ?? "",
+                      departamentoId: "",
+                      municipioId: "",
+                      departmentCode: "",
+                      municipalityCode: "",
+                    }));
+                  }}
+                >
+                  <option value="">Selecciona un país</option>
+                  {countries.map((country) => (
+                    <option key={country.id} value={country.id}>
+                      {country.nombre}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Departamento"
+                  value={form.departamentoId}
+                  disabled={departments.length === 0}
+                  onChange={(event) => {
+                    const selected = departments.find((item) => item.id === event.target.value);
+                    setForm((current) => ({
+                      ...current,
+                      departamentoId: event.target.value,
+                      departmentCode: selected?.codigo_dane ?? "",
+                      municipioId: "",
+                      municipalityCode: "",
+                    }));
+                  }}
+                >
+                  <option value="">Selecciona un departamento</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.nombre}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Municipio / Ciudad"
+                  value={form.municipioId}
+                  disabled={municipalities.length === 0}
+                  onChange={(event) => {
+                    const selected = municipalities.find((item) => item.id === event.target.value);
+                    setForm((current) => ({
+                      ...current,
+                      municipioId: event.target.value,
+                      municipalityCode: selected?.codigo_dane ?? "",
+                    }));
+                  }}
+                >
+                  <option value="">Selecciona un municipio</option>
+                  {municipalities.map((municipality) => (
+                    <option key={municipality.id} value={municipality.id}>
+                      {municipality.nombre}
+                    </option>
+                  ))}
+                </Select>
               </div>
             </div>
           </div>

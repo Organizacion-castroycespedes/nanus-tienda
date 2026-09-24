@@ -33,6 +33,8 @@ import type {
   ElectronicInvoicingCustomer,
 } from "./electronic-invoicing-customer.types";
 import {
+  formatFiscalProfileIncompleteMessage,
+  formatUnsupportedFiscalValueMessage,
   isSupportedFiscalResponsibility,
   isSupportedTaxRegime,
 } from "../fiscal-profile-options";
@@ -158,7 +160,7 @@ export class ElectronicInvoicingCustomersService {
     if (!input.taxResponsibilities?.length) missing.push("taxResponsibilities");
     if (missing.length) {
       throw new BadRequestException(
-        `fiscal profile is incomplete: ${missing.join(", ")}`
+        formatFiscalProfileIncompleteMessage(missing)
       );
     }
   }
@@ -251,7 +253,9 @@ export class ElectronicInvoicingCustomersService {
         throw new BadRequestException("taxResponsibilities must not contain empty values");
       }
       if (!isSupportedFiscalResponsibility(normalized)) {
-        throw new BadRequestException(`unsupported tax responsibility: ${normalized}`);
+        throw new BadRequestException(
+          formatUnsupportedFiscalValueMessage("responsibility", normalized),
+        );
       }
       return normalized;
     });
@@ -578,7 +582,9 @@ export class ElectronicInvoicingCustomersService {
     const personType = this.normalizePersonType(dto.personType) ?? null;
     const taxRegime = this.normalizeText(dto.taxRegime);
     if (taxRegime && !isSupportedTaxRegime(taxRegime)) {
-      throw new BadRequestException(`unsupported tax regime: ${taxRegime}`);
+      throw new BadRequestException(
+        formatUnsupportedFiscalValueMessage("regime", taxRegime),
+      );
     }
     const taxResponsibilities = this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
     this.validateRequiredFiscalProfile({
@@ -756,7 +762,9 @@ export class ElectronicInvoicingCustomersService {
     if (hasOwn(dto, "taxRegime")) {
       update.taxRegime = this.normalizeText(dto.taxRegime);
       if (update.taxRegime && !isSupportedTaxRegime(update.taxRegime)) {
-        throw new BadRequestException(`unsupported tax regime: ${update.taxRegime}`);
+        throw new BadRequestException(
+          formatUnsupportedFiscalValueMessage("regime", update.taxRegime),
+        );
       }
     }
     if (hasOwn(dto, "taxResponsibilities")) {

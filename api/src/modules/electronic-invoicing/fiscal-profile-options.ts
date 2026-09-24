@@ -24,3 +24,23 @@ export const isSupportedTaxRegime = (value: string) =>
 
 export const isSupportedFiscalResponsibility = (value: string) =>
   (FISCAL_RESPONSIBILITY_OPTIONS as readonly string[]).includes(value);
+
+const FISCAL_PROFILE_FIELD_LABELS: Record<string, string> = {
+  personType: "tipo de persona",
+  taxRegime: "régimen tributario",
+  taxResponsibilities: "responsabilidad fiscal",
+  location: "ubicación",
+};
+
+export const formatFiscalProfileIncompleteMessage = (fields: string[]) => {
+  const labels = fields.map((field) => FISCAL_PROFILE_FIELD_LABELS[field] ?? field);
+  return `Completa los datos fiscales requeridos: ${labels.join(", ")}.`;
+};
+
+export const formatUnsupportedFiscalValueMessage = (
+  kind: "regime" | "responsibility",
+  value: string,
+) => {
+  const label = kind === "regime" ? "régimen tributario" : "responsabilidad fiscal";
+  return `El valor "${value}" no es válido para ${label}. Selecciona una opción disponible.`;
+};
