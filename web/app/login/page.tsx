@@ -7,10 +7,8 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  Headphones,
   LockKeyhole,
   Mail,
-  ShieldCheck,
 } from "lucide-react";
 import { Button } from "../../components/design-system/Button";
 import { Modal } from "../../components/design-system/Modal";
@@ -206,7 +204,7 @@ const LoginPageContent = () => {
       </div>
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">
-        <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:mr-0 lg:min-h-[74vh] lg:w-[30vw] lg:max-w-[31rem] lg:p-11 dark:border-slate-700/70 dark:bg-slate-900/95">
+        <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:mr-0 lg:w-[30vw] lg:max-w-[31rem] lg:p-11 dark:border-slate-700/70 dark:bg-slate-900/95">
           {showSessionConflict ? (
             <Modal title="Sesion activa detectada">
               <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -354,11 +352,6 @@ const LoginPageContent = () => {
             </Button>
           </form>
 
-          <div className="mt-8 flex items-center justify-center gap-4 border-t border-slate-200 pt-5 text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-blue-600" aria-hidden="true" /> Acceso seguro</span>
-            <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
-            <span className="flex items-center gap-1.5"><Headphones className="h-4 w-4 text-blue-600" aria-hidden="true" /> Soporte disponible</span>
-          </div>
         </div>
       </main>
     </div>
