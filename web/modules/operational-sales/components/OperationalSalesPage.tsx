@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { FileText, RotateCcw, Search } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { DateRangePicker } from "../../../components/design-system/DateRangePicker";
@@ -64,7 +65,6 @@ export const OperationalSalesPage = () => {
 
   const [actionSaleId, setActionSaleId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
   const [reportOpen, setReportOpen] = useState(false);
   const appliedReportFilters = useMemo(() => appliedFilters ? { dateFrom: appliedFilters.dateFrom, dateTo: appliedFilters.dateTo, status: appliedFilters.status, paymentStatus: appliedFilters.paymentStatus, paymentMethod: appliedFilters.paymentMethod, customerId: appliedFilters.customerId, documentNumber: appliedFilters.documentNumber, electronicBillingStatus: appliedFilters.electronicBillingStatus } : null, [appliedFilters]);
   const getReportPdf = useCallback(() => appliedReportFilters ? getOperationalSalesReportPdf(appliedReportFilters, data.sortBy, data.sortDirection) : Promise.reject(new Error("Primero ejecuta una búsqueda.")), [appliedReportFilters, data.sortBy, data.sortDirection]);
@@ -86,7 +86,7 @@ export const OperationalSalesPage = () => {
     try {
       const response = await requestOperationalSaleElectronicBilling(saleId);
       setActionMessage(response.message ?? "Se creó la solicitud de facturación electrónica.");
-      reload();
+      await reload();
     } catch (requestError) {
       setActionMessage(
         requestError instanceof Error
@@ -138,7 +138,7 @@ export const OperationalSalesPage = () => {
         header: "Venta",
         render: (sale) => (
           <Link className="font-semibold text-blue-700 hover:underline" href={`/${params.tenant}/operations/sales/${sale.id}`}>
-            {sale.id.slice(0, 8)}
+            {(sale.id.slice(0, 8)+'').toLowerCase()}
           </Link>
         ),
       },
@@ -164,7 +164,7 @@ export const OperationalSalesPage = () => {
       },
       {
         key: "electronicBilling",
-        header: "Facturación electrónica",
+        header: "Facturación",
         render: (sale) =>
           sale.electronicBilling ? (
             <div className="space-y-1">
@@ -241,8 +241,53 @@ export const OperationalSalesPage = () => {
 
   return <ReportLayout title="Ventas" description={scopeCopy[role.toUpperCase()] ?? "Ventas del alcance autorizado"}>
     <div className="space-y-3">
-      <ReportFilters filters={reportFilters} actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={search} disabled={loading} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">Buscar</button><button type="button" onClick={() => setReportOpen(true)} disabled={!appliedFilters || loading} title={!appliedFilters ? "Primero ejecuta una búsqueda" : "Generar reporte de la última búsqueda"} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Reporte</button><button type="button" onClick={resetFilters} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Limpiar filtros</button></div>} />
-      <DataTable columns={columns} actionColumnFirst rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
+      <ReportFilters
+        filters={reportFilters}
+        actions={(
+          <div className="flex flex-1 flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={search}
+              isLoading={loading}
+              className="min-w-[96px]"
+            >
+              <Search className="h-4 w-4" aria-hidden="true" />
+              Buscar
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReportOpen(true)}
+              disabled={!appliedFilters || loading}
+              title={!appliedFilters ? "Primero ejecuta una búsqueda" : "Generar reporte de la última búsqueda"}
+            >
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              Reporte
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={resetFilters}
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              Limpiar filtros
+            </Button>
+          </div>
+        )}
+      />
+      {actionMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-800"
+        >
+          {actionMessage}
+        </div>
+      ) : null}
+      <DataTable columns={columns} actionColumnFirst disableHeaderUppercase rows={data.items} getRowKey={(sale) => sale.id} loading={loading} error={error} emptyState={emptyState} loadingState="Cargando ventas operativas..." />
       {appliedFilters ? <Pagination page={page} pageSize={pageSize} totalItems={data.total} onPageChange={setPage} onPageSizeChange={setPageSize} loading={loading} /> : null}
       <PdfPreviewModal isOpen={reportOpen} title="Reporte de ventas operativas" fileName="reporte-ventas-operativas.pdf" description="Vista previa de ventas operativas" onClose={() => setReportOpen(false)} getPdf={getReportPdf} onDownloadExcel={() => { if (appliedReportFilters) void getOperationalSalesReportExcel(appliedReportFilters, data.sortBy, data.sortDirection).then((blob) => downloadBlob(blob, "reporte-ventas-operativas.xlsx")); }} />
     </div>
