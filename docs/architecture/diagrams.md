@@ -714,3 +714,248 @@ sequenceDiagram
 
 No existe una transacción PostgreSQL alrededor de esta apertura ni una garantía
 de idempotencia del comando demostrada por código.
+## B5.3.1: fronteras de compras, pedidos y ventas operativas
+
+Este diagrama separa la creación transaccional de la consulta operativa. No
+representa atomicidad compartida entre los tres dominios.
+
+```mermaid
+flowchart LR
+  WebPurchase["Web compras"] --> PurchaseAPI["POST /purchases\nPurchaseService"]
+  WebOrder["Web pedidos"] --> OrderAPI["POST /orders\nOrderService"]
+  WebOps["Web ventas operativas"] --> OpsAPI["GET /operations/sales\nOperationalSalesService"]
+  PurchaseAPI --> Purchases[("purchases / purchase_items")]
+  OrderAPI --> Orders[("orders / order_items")]
+  PurchaseAPI --> Stock[("stock_movements / inventory_lots")]
+  OrderAPI --> Stock
+  OrderAPI --> Payments[("payments / cash_sessions")]
+  OpsAPI --> Sales[("sales / electronic_documents")]
+  OpsAPI -. "refresh / retry / recovery" .-> Fiscal["Backend fiscal"]
+```
+
+Clasificación: rutas y persistencia confirmadas por código; ambiente y
+operación fiscal externa no verificados.
+
+## B5.3.1: ciclo de recepción de compra
+
+```mermaid
+sequenceDiagram
+  participant W as Web
+  participant C as PurchaseController
+  participant S as PurchaseService
+  participant DB as PostgreSQL
+  participant I as Inventario
+  W->>C: POST /purchases/:id/receive
+  C->>C: JWT, permiso, caja abierta
+  C->>S: receivePurchase(id, items, context)
+  S->>DB: BEGIN
+  S->>DB: SELECT purchase FOR UPDATE
+  S->>DB: validar cantidades, lotes y ubicación
+  S->>I: insertar stock movement y lotes
+  I-->>DB: persistencia en la misma operación
+  S->>DB: actualizar recibido y estado
+  S->>DB: COMMIT
+  DB-->>W: compra actualizada
+  S-->>DB: ROLLBACK si falla antes de COMMIT
+```
+
+La misma transacción se afirma solo para la ruta observada en
+`PurchaseService`; no se extiende a reportes ni a dispositivos.
+
+## B5.3.1: pedido hacia entrega y facturación
+
+```mermaid
+stateDiagram-v2
+  [*] --> DRAFT: POST /orders
+  DRAFT --> DRAFT: PUT /orders/:id
+  DRAFT --> CONFIRMED: POST /orders/:id/confirm
+  CONFIRMED --> PARTIAL: POST /orders/:id/deliver
+  PARTIAL --> COMPLETED: entrega restante
+  CONFIRMED --> COMPLETED: entrega completa
+  DRAFT --> CANCELLED: POST /orders/:id/cancel
+  PARTIAL --> PARTIAL: POST /orders/:id/invoice\nbilling_status=INVOICED
+  COMPLETED --> COMPLETED: POST /orders/:id/invoice\nbilling_status=INVOICED
+```
+
+Las etiquetas `billing_status=INVOICED` representan el estado de facturación
+observado en el modelo y servicio; no cambian el estado operativo del pedido
+en este diagrama. No implica aceptación fiscal DIAN.
+## B5.3.2: caja, pagos y domicilios
+
+Este diagrama muestra fronteras de servicio. La sesión POS no es sinónimo de
+`cash_sessions` y la entrega no es parte de la venta.
+
+```mermaid
+flowchart LR
+  Web["Web"] --> Cash["CashSessionsService"]
+  Web --> Pay["PaymentsService"]
+  Web --> Del["DeliveriesService"]
+  Cash --> CashDB[("cash_sessions")]
+  Pay --> PayDB[("payments / allocations")]
+  Pay --> CashDB
+  Del --> DelDB[("deliveries / status_history")]
+  Del -. "contexto e impacto" .-> CashDB
+  POS["POS sale transaction"] -. "same PoolClient when used" .-> Pay
+```
+
+Rutas, servicios y persistencia están confirmados por código; ambiente y
+conciliación externa no están verificados.
+
+## B5.3.2: apertura y cierre de caja
+
+```mermaid
+sequenceDiagram
+  participant W as Web
+  participant C as CashSessionsController
+  participant S as CashSessionsService
+  participant DB as PostgreSQL
+  W->>C: POST /finance/cash-sessions/open
+  C->>S: open(context)
+  S->>DB: comprobar sesión OPEN
+  S->>DB: BEGIN
+  S->>DB: INSERT cash session OPEN
+  S->>DB: COMMIT
+  DB-->>W: sesión abierta
+  W->>C: POST /finance/cash-sessions/:id/close
+  C->>S: close(counted amount)
+  S->>DB: calcular esperado y diferencia
+  S->>DB: BEGIN
+  S->>DB: actualizar cierre
+  alt éxito
+    S->>DB: COMMIT
+    DB-->>W: sesión cerrada
+  else error
+    S->>DB: ROLLBACK
+    DB-->>W: error
+  end
+```
+
+La auditoría posterior y la ejecución real por ambiente no están verificadas.
+
+## B5.3.2: pago documental
+
+```mermaid
+sequenceDiagram
+  participant W as Web
+  participant C as PaymentsController
+  participant S as PaymentsService
+  participant DB as PostgreSQL
+  W->>C: POST /finance/payments/document
+  C->>S: createDocument(dto, context)
+  S->>DB: bloquear documento FOR UPDATE
+  S->>DB: validar saldo, método y caja
+  S->>DB: BEGIN
+  S->>DB: crear payment y allocations
+  alt efectivo
+    S->>DB: crear movimiento de caja
+  end
+  alt éxito
+    S->>DB: COMMIT
+    DB-->>W: pago completado
+  else error
+    S->>DB: ROLLBACK
+    DB-->>W: error
+  end
+```
+
+Este flujo es independiente del pago incluido dentro de `createSale`, salvo
+cuando el código de venta reutiliza un `PoolClient` explícito.
+
+## B5.3.2: ciclo de domicilio
+
+```mermaid
+stateDiagram-v2
+  [*] --> CREADO: POST /deliveries
+  CREADO --> EN_PREPARACION: prepare
+  CREADO --> DESPACHADO: dispatch
+  EN_PREPARACION --> DESPACHADO: dispatch
+  DESPACHADO --> ENTREGADO: mark-delivered
+  DESPACHADO --> NO_ENTREGADO: mark-not-delivered
+  NO_ENTREGADO --> DESPACHADO: dispatch + retryAllowed
+  CREADO --> CANCELADO: cancel
+  EN_PREPARACION --> CANCELADO: cancel
+  ENTREGADO --> ENTREGADO: final
+  CANCELADO --> CANCELADO: final
+```
+
+La máquina de estados y las transiciones vienen de
+`delivery-state-machine.service.ts`; no se representa tracking en tiempo real.
+## B5.3.3: catálogo, inventario y pricing
+
+Las fronteras siguientes separan consulta de catálogo, cálculo de precios y
+persistencia de inventario. No implican que cada consumidor use todos los
+servicios.
+
+```mermaid
+flowchart LR
+  Web["Web catálogo/POS"] --> Product["ProductService"]
+  Web --> Pricing["PricingService"]
+  Web --> Inventory["Inventory services"]
+  Product --> Products[("products / barcodes")]
+  Pricing --> Tax[("taxes / product_taxes")]
+  Pricing --> Promo[("promotions / targets")]
+  Inventory --> Lots[("inventory_lots / balances")]
+  Inventory --> Movements[("stock_movements")]
+  Sale["SaleService"] --> Pricing
+  Sale --> Inventory
+  Purchase["PurchaseService"] --> Inventory
+  Order["OrderService"] --> Pricing
+```
+
+Servicios y tablas están confirmados por código y DDL; ejecución por ambiente
+no está verificada.
+
+## B5.3.3: selección FEFO
+
+```mermaid
+sequenceDiagram
+  participant C as Consumer
+  participant F as InventoryFefoService
+  participant R as InventoryFefoRepository
+  participant DB as PostgreSQL
+  C->>F: selectLotsForConsumption(tenant, branch, product, quantity)
+  F->>F: validar lote, sucursal y ubicación
+  F->>R: buscar balances elegibles
+  R->>DB: balances por lote y ubicación
+  F->>F: excluir vencidos, bloqueados y sin disponibilidad
+  F->>F: ordenar expiration, receivedAt, lotCode, lotId
+  F-->>C: selecciones parciales y canFulfill
+  Note over F,C: Preview no crea movimiento por sí solo
+```
+
+## B5.3.3: cálculo de precio, impuestos y promoción
+
+```mermaid
+sequenceDiagram
+  participant C as POS u Order
+  participant P as PricingService
+  participant R as PricingRepository
+  participant DB as PostgreSQL
+  C->>P: preview-line(tenant, branch, product, quantity, channel)
+  P->>R: snapshot de producto e impuestos por fecha
+  R->>DB: producto, funciones fiscales y perfil
+  P->>R: promociones aplicables
+  R->>DB: producto, sucursal, vigencia y prioridad
+  P->>P: seleccionar candidato y redondear
+  P->>P: calcular base, impuestos y total
+  P-->>C: lineTotal, taxes, discount y explicación
+```
+
+La respuesta es preview; los snapshots de documentos comerciales dependen de
+la ruta de venta, pedido o factura que los persista.
+
+## B5.3.3: movimiento y recuperación
+
+```mermaid
+flowchart TD
+  A["Recepción, venta, ajuste o entrega"] --> T["Servicio transaccional"]
+  T --> B["Validar cantidad, lote, ubicación"]
+  B -->|válido| M["stock_movement + lot links + balance"]
+  B -->|inválido| E["rechazo"]
+  M -->|commit| S["saldo/documento actualizado"]
+  M -->|error antes de commit| R["rollback"]
+  S -. "timeout posterior: reconciliación no universal" .-> Q["pendiente QA"]
+```
+
+Los límites de cada operación deben leerse junto con B4.1 y B5.3.1; no se
+presentan como una transacción global entre compra, pedido y venta.
