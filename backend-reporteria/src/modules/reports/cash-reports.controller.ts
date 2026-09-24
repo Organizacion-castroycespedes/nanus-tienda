@@ -28,6 +28,7 @@ export class CashReportsController {
   ) {}
 
   @Get("cash-closings")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getCashClosings(
     @Query()
     query: {
@@ -85,6 +86,7 @@ export class CashReportsController {
   }
 
   @Get("cash-audits")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getCashAudits(
     @Query()
     query: {
@@ -121,6 +123,7 @@ export class CashReportsController {
   }
 
   @Get("cash-audits/:cashCountId/ticket")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getCashAuditTicket(
     @Param("cashCountId") cashCountId: string,
     @Req() request: AuthenticatedRequest,

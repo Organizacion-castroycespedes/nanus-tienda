@@ -110,3 +110,49 @@ test("CashReportsService USER keeps only own cash audits and recalculates totals
   assert.deepEqual(result.rows.map((row) => row.cashCountId), ["count-1"]);
   assert.deepEqual(result.summary, { count: 1, countedAmount: 100, expectedAmount: 90, difference: 10 });
 });
+
+test("CashReportsService USER can build PDF for own cash audit ticket", async () => {
+  const ticket = {
+    header: {
+      cashCountId: "count-1", cashSessionId: "session-1", tenantName: "Tenant Real",
+      branchId: "branch-1", branchName: "Sucursal Centro", cashRegisterId: "register-1",
+      cashRegister: "Caja 1", cashRegisterCode: "C1", terminalId: "terminal-1",
+      terminal: "Terminal 1", sessionStatus: "CLOSED", openedAt: "2026-09-20T08:00:00Z",
+      closedAt: "2026-09-20T12:00:00Z", openedByUserId: "user-1", openedBy: "user@real.co",
+      closedByUserId: "user-1", closedBy: "user@real.co", countedAt: "2026-09-20T10:00:00Z",
+      countedByUserId: "user-1", countedBy: "user@real.co",
+    },
+    audit: { countedAmount: "100", expectedAmount: "90", difference: "10", notes: null },
+    sessionTotals: { openingAmount: "10", posSalesPayments: "80", orderSalesPayments: "0", refundPayments: "0", expectedAmount: "90" },
+  };
+  const calls: unknown[] = [];
+  const service = new CashReportsService(
+    { getCashAuditTicket: async () => ticket } as never,
+    { generatePdf: async (definition: unknown) => { calls.push(definition); return Buffer.from("pdf"); } } as never,
+    {} as never,
+  );
+
+  const pdf = await service.getCashAuditTicketPdf(
+    "count-1",
+    { id: "user-1", tenantId: "tenant-1", branchId: "branch-1", roles: ["USER"] } as never,
+  );
+
+  assert.deepEqual(pdf, Buffer.from("pdf"));
+  assert.equal(calls.length, 1);
+});
+
+test("CashReportsService USER blocks PDF for another user's cash audit ticket", async () => {
+  const service = new CashReportsService(
+    { getCashAuditTicket: async () => ({ header: { countedByUserId: "other-user" } }) } as never,
+    { generatePdf: async () => { throw new Error("PDF renderer must not run"); } } as never,
+    {} as never,
+  );
+
+  await assert.rejects(
+    () => service.getCashAuditTicketPdf(
+      "count-1",
+      { id: "user-1", tenantId: "tenant-1", branchId: "branch-1", roles: ["USER"] } as never,
+    ),
+    /No autorizado para este arqueo/,
+  );
+});

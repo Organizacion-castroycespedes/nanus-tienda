@@ -13,4 +13,6 @@ test("CashReportsPage selects the active tab document and keeps legacy actions",
   assert.match(source, /\bReporte\b/);
   assert.match(source, /getCashClosingTicket/);
   assert.match(source, /getCashAuditTicket/);
+  assert.match(source, /allowPrint: true/);
+  assert.match(source, /allowPrint=\{pdfConfig.allowPrint\}/);
 });
