@@ -255,6 +255,17 @@ const CashSessionsPage = () => {
       currentSession.expectedAmount ??
       currentSession.openingAmount
     : 0;
+  const currentSummaryReady =
+    !currentSession || sessionSummary?.sessionId === currentSession.id;
+  const ownClosureDelivered = Boolean(
+    role === "USER" &&
+      currentSession &&
+      sessionSummary?.sessionId === currentSession.id &&
+      authUser?.id &&
+      sessionSummary.closureProgress.completedUserIds.includes(authUser.id)
+  );
+  const canActOnCurrentSession =
+    canOperateCashSessions && currentSummaryReady && !ownClosureDelivered;
 
   const showTicketActionError = (error: unknown, fallbackMessage: string) => {
     setToastMessage(getApiErrorMessage(error, fallbackMessage));
@@ -361,7 +372,7 @@ const CashSessionsPage = () => {
   };
 
   const handleCloseSession = async () => {
-    if (!currentSession) {
+    if (!currentSession || !canActOnCurrentSession) {
       return;
     }
 
@@ -407,7 +418,7 @@ const CashSessionsPage = () => {
   };
 
   const handleOpenAuditModal = async () => {
-    if (!currentSession) {
+    if (!currentSession || !canActOnCurrentSession) {
       return;
     }
     const summary = sessionSummary ?? (await loadSessionSummary(currentSession.id));
@@ -504,12 +515,12 @@ const CashSessionsPage = () => {
       <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         <FinanceMetricCard
           label="Caja actual"
-          value={currentSession ? currentSession.cashRegisterNombre ?? "Abierta" : "Sin sesion"}
-          accent={currentSession ? "amber" : "slate"}
+          value={ownClosureDelivered ? "Cierre entregado" : currentSession ? currentSession.cashRegisterNombre ?? "Abierta" : "Sin sesion"}
+          accent={ownClosureDelivered ? "slate" : currentSession ? "amber" : "slate"}
         />
         <FinanceMetricCard
           label="Monto de apertura"
-          value={currentSession ? formatCurrency(currentSession.openingAmount) : formatCurrency(0)}
+          value={!ownClosureDelivered && currentSession ? formatCurrency(currentSession.openingAmount) : formatCurrency(0)}
           accent="blue"
         />
         <FinanceMetricCard label="Sesiones abiertas" value={openCount} accent="emerald" />
@@ -527,15 +538,17 @@ const CashSessionsPage = () => {
                 Tu caja en este momento
               </h2>
             </div>
-            {currentSession ? (
+            {currentSession && !ownClosureDelivered ? (
               <FinanceStatusBadge value={currentSession.status} kind="session" />
             ) : null}
           </div>
           {loadingCurrent ? (
             <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">Consultando sesion actual...</p>
-          ) : !currentSession ? (
+          ) : !currentSession || ownClosureDelivered ? (
             <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-5 text-sm text-slate-500 dark:text-slate-400">
-              No tienes una sesion abierta en este momento.
+              {ownClosureDelivered
+                ? "Ya entregaste tu cierre. No hay acciones ni datos operativos pendientes para ti."
+                : "No tienes una sesion abierta en este momento."}
             </div>
           ) : (
             <div className="mt-6 space-y-4">
@@ -578,7 +591,7 @@ const CashSessionsPage = () => {
                 <FinanceMetricCard
                   label="Accion"
                   value={
-                    canOperateCashSessions ? (
+                    canActOnCurrentSession ? (
                       <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
@@ -937,7 +950,7 @@ const CashSessionsPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      {closeModal && currentSession ? (
+      {closeModal && currentSession && canActOnCurrentSession ? (
         <Modal
           title="Entregar cierre de mi turno"
           className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-h-[calc(100dvh-3rem)]"
@@ -955,7 +968,7 @@ const CashSessionsPage = () => {
         </Modal>
       ) : null}
 
-      {auditModal && currentSession && sessionSummary ? (
+      {auditModal && currentSession && sessionSummary && canActOnCurrentSession ? (
         <Modal
           title="Arqueo de caja"
           description="Revision preliminar. No cierra la caja."

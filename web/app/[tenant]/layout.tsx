@@ -15,8 +15,6 @@ import {
   Bell,
   Building,
   Building2,
-  CircleCheck,
-  CircleX,
   Calculator,
   Calendar,
   ClipboardList,
@@ -77,7 +75,13 @@ import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
 import type { CashSession } from "../../modules/finance/types";
-import { subscribePeripheralEvents, type PeripheralSocketStatus } from "../../domains/peripherals/contracts";
+import {
+  getPeripheralDevices,
+  subscribePeripheralEvents,
+  type PeripheralSocketStatus,
+} from "../../domains/peripherals/contracts";
+import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
+import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -185,6 +189,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
   const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
+  const [printerName, setPrinterName] = useState<string | null>(null);
   const [posClock, setPosClock] = useState(() => new Date());
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
@@ -266,6 +271,45 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       onStatus: setPrinterSocketStatus,
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPrinterName = async () => {
+      if (!authUser?.tenantId) {
+        setPrinterName(null);
+        return;
+      }
+
+      try {
+        const [configResult, devicesResult] = await Promise.all([
+          resolveCurrentPosTerminalConfig({
+            tenantId: authUser.tenantId,
+            branchId: authUser.branchId,
+          }),
+          getPeripheralDevices(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setPrinterName(
+          resolvePrinterDisplayName(configResult, devicesResult.data ?? [])
+        );
+      } catch {
+        if (!cancelled) {
+          setPrinterName(null);
+        }
+      }
+    };
+
+    void loadPrinterName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.branchId, authUser?.tenantId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -1412,26 +1456,29 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }}
                 aria-label={
                   printerSocketStatus === "CONNECTED"
-                    ? "Impresora conectada"
+                    ? printerName
+                      ? `Impresora conectada: ${printerName}`
+                      : "Impresora conectada, nombre no disponible"
                     : printerSocketStatus === "CONNECTING"
                       ? "Conectando impresora"
                       : "Impresora desconectada"
                 }
                 title={
                   printerSocketStatus === "CONNECTED"
-                    ? "Impresora conectada · WSS disponible"
+                    ? printerName
+                      ? `Impresora: ${printerName}`
+                      : "Impresora conectada · nombre no disponible"
                     : printerSocketStatus === "CONNECTING"
                       ? "Conectando con el servicio de impresión"
                       : "Impresora desconectada · revise el Peripheral Agent"
                 }
               >
-                {printerSocketStatus === "CONNECTED" ? (
-                  <CircleCheck className="h-5 w-5" aria-hidden="true" />
-                ) : printerSocketStatus === "CONNECTING" ? (
-                  <Printer className="h-5 w-5 animate-pulse" aria-hidden="true" />
-                ) : (
-                  <CircleX className="h-5 w-5" aria-hidden="true" />
-                )}
+                <Printer
+                  className={`h-5 w-5 ${
+                    printerSocketStatus === "CONNECTING" ? "animate-pulse" : ""
+                  }`}
+                  aria-hidden="true"
+                />
                 <span
                   className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
                     printerSocketStatus === "CONNECTED"

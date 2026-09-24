@@ -43,6 +43,7 @@ class FakeDb {
   sessionRows: unknown[] = [buildSession()];
   assignmentExists = false;
   hasDeliverySchema = false;
+  userClosureCompleted = false;
   summary = {
     totals: {
       openingAmount: 10000,
@@ -91,6 +92,9 @@ class FakeDb {
     }
     if (text.includes("current-shift: session-by-id")) {
       return { rows: this.sessionRows };
+    }
+    if (text.includes("current-shift: user-closure")) {
+      return { rows: [{ completed: this.userClosureCompleted }] };
     }
     if (text.includes("current-shift: current-session")) {
       return { rows: this.sessionRows };
@@ -147,6 +151,27 @@ test("CurrentShiftReportsService: USER no consulta caja abierta por otro usuario
       ),
     ForbiddenException
   );
+});
+
+test("CurrentShiftReportsService: USER no ve datos tras entregar su cierre", async () => {
+  const db = new FakeDb();
+  db.userClosureCompleted = true;
+  const service = buildService(db);
+
+  const response = await service.getCurrentShift(
+    { tenantId: ids.tenant },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["USER"],
+    }
+  );
+
+  assert.equal(response.hasOpenCashSession, false);
+  assert.equal(response.availableCashSessions.length, 1);
+  assert.match(response.message ?? "", /Ya entregaste tu cierre/);
+  assert.equal(response.tabs.sales.total, 0);
 });
 
 test("CurrentShiftReportsService: USER consulta caja asignada aunque la abrio otro usuario", async () => {

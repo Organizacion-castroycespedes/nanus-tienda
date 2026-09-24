@@ -86,7 +86,10 @@ const buildSummary = (expectedAmount: number) => ({
 
 const buildHarness = (
   expectedAmount: number,
-  options: { branchAccess?: boolean } = {}
+  options: {
+    branchAccess?: boolean;
+    closingCounts?: Array<Record<string, unknown>>;
+  } = {}
 ) => {
   const queries: string[] = [];
   let released = false;
@@ -122,7 +125,7 @@ const buildHarness = (
     },
     getSummary: async () => buildSummary(expectedAmount),
     listActiveAssignmentUserIds: async () => [],
-    listCashCounts: async () => [],
+    listCashCounts: async () => options.closingCounts ?? [],
     close: async (
       _client: unknown,
       _cashSessionId: string,
@@ -286,6 +289,43 @@ test("close with zero amount skips invalid closing cash movement insert", async 
   assert.equal(response.closingAmount, 0);
   assert.equal(response.expectedAmount, 100000);
   assert.equal(response.differenceAmount, -100000);
+});
+
+test("close rejects a second USER delivery after the closing count exists", async () => {
+  const existingCount = {
+    id: "count-001",
+    tenant_id: tenantId,
+    branch_id: branchId,
+    cash_session_id: cashSessionId,
+    counted_by_user_id: userId,
+    counted_by_user_email: "user@example.com",
+    counted_at: "2026-06-11T21:00:00.000Z",
+    counted_cash_amount: "100000",
+    expected_amount: "100000",
+    difference_amount: "0",
+    notes: null,
+    count_type: "CLOSING",
+    breakdown_json: null,
+  };
+  const harness = buildHarness(100000, { closingCounts: [existingCount] });
+
+  await assert.rejects(
+    () =>
+      harness.service.close(
+        cashSessionId,
+        { closingAmount: 100000, description: "Reintento" },
+        { userId, tenantId, roles: ["USER"] }
+      ),
+    /Ya entregaste tu cierre/
+  );
+
+  assert.equal(harness.getCashCountInput(), null);
+  assert.equal(harness.getCloseInput(), null);
+  assert.deepEqual(harness.getQueries(), [
+    "BEGIN",
+    "SELECT pg_advisory_xact_lock(hashtext($1))",
+    "ROLLBACK",
+  ]);
 });
 
 test("open with zero amount skips invalid opening cash movement insert", async () => {

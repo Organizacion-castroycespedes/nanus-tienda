@@ -536,34 +536,81 @@ export const subscribePeripheralEvents = (
       return () => undefined;
     }
 
-    options.onStatus?.("CONNECTING");
-    const socket = new WebSocket(config.wsUrl);
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    let reconnectAttempt = 0;
 
-    socket.onopen = () => {
-      options.onStatus?.("CONNECTED");
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer) {
+        return;
+      }
+
+      const delayMs = Math.min(1000 * 2 ** reconnectAttempt, 10_000);
+      reconnectAttempt += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delayMs);
     };
 
-    socket.onmessage = (event) => {
-      callback(parseSocketEvent(event));
+    const connect = () => {
+      if (stopped) {
+        return;
+      }
+
+      options.onStatus?.("CONNECTING");
+
+      try {
+        socket = new WebSocket(config.wsUrl);
+
+        socket.onopen = () => {
+          reconnectAttempt = 0;
+          options.onStatus?.("CONNECTED");
+        };
+
+        socket.onmessage = (event) => {
+          callback(parseSocketEvent(event));
+        };
+
+        socket.onerror = () => {
+          options.onStatus?.("DISCONNECTED");
+          emitSubscriptionError(
+            callback,
+            "subscribePeripheralEvents",
+            "NETWORK_ERROR",
+            "No se pudo conectar al WebSocket de perifericos. Verifique disponibilidad, CORS y URL WS."
+          );
+        };
+
+        socket.onclose = () => {
+          socket = null;
+          options.onStatus?.("DISCONNECTED");
+          scheduleReconnect();
+        };
+      } catch (error) {
+        options.onStatus?.("DISCONNECTED");
+        emitSubscriptionError(
+          callback,
+          "subscribePeripheralEvents",
+          "AGENT_ERROR",
+          getErrorMessage(error)
+        );
+        scheduleReconnect();
+      }
     };
 
-    socket.onerror = () => {
-      options.onStatus?.("DISCONNECTED");
-      emitSubscriptionError(
-        callback,
-        "subscribePeripheralEvents",
-        "NETWORK_ERROR",
-        "No se pudo conectar al WebSocket de perifericos. Verifique disponibilidad, CORS y URL WS."
-      );
-    };
-
-    socket.onclose = () => {
-      options.onStatus?.("DISCONNECTED");
-    };
+    connect();
 
     return () => {
+      stopped = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
       options.onStatus?.("DISCONNECTED");
-      socket.close();
+      socket?.close();
+      socket = null;
     };
   } catch (error) {
     options.onStatus?.("DISCONNECTED");

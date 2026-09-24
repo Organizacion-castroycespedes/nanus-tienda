@@ -213,6 +213,56 @@ export class CurrentShiftReportsService {
     };
   }
 
+  private noOpenSessionResponse(
+    tenantId: string,
+    branchId: string | null,
+    terminalId: string | null,
+    cashRegisterId: string | null,
+    cashSessionId: string | null,
+    actorRole: string,
+    page: PageOptions,
+    availableCashSessions: CurrentShiftCashSession[],
+    message: string
+  ): CurrentShiftResponse {
+    return {
+      hasOpenCashSession: false,
+      message,
+      filters: {
+        tenantId,
+        branchId,
+        terminalId,
+        cashRegisterId,
+        cashSessionId,
+        actorRole,
+        page: page.page,
+        pageSize: page.pageSize,
+        search: page.search,
+      },
+      availableCashSessions,
+      tabs: this.emptyTabs(),
+    };
+  }
+
+  private async hasUserCompletedClosure(
+    tenantId: string,
+    cashSessionId: string,
+    userId: string
+  ) {
+    const result = await this.db.query<{ completed: boolean }>(
+      `/* current-shift: user-closure */
+       SELECT EXISTS (
+         SELECT 1
+         FROM public.cash_counts AS count_data
+         WHERE count_data.tenant_id = $1
+           AND count_data.cash_session_id = $2
+           AND count_data.counted_by_user_id = $3
+           AND count_data.count_type = 'CLOSING'
+       ) AS completed`,
+      [tenantId, cashSessionId, userId]
+    );
+    return Boolean(result.rows[0]?.completed);
+  }
+
   private emptyDeliverySummary(): CurrentShiftSummary["deliverySummary"] {
     return {
       deliveredCount: 0,
@@ -508,6 +558,18 @@ export class CurrentShiftReportsService {
             AND assignment.user_id = $${params.length}
             AND assignment.unassigned_at IS NULL
         )
+      )`);
+    }
+
+    if (actor.role === "USER") {
+      params.push(actor.userId);
+      where.push(`NOT EXISTS (
+        SELECT 1
+        FROM cash_counts AS own_closing
+        WHERE own_closing.tenant_id = session.tenant_id
+          AND own_closing.cash_session_id = session.id
+          AND own_closing.counted_by_user_id = $${params.length}
+          AND own_closing.count_type = 'CLOSING'
       )`);
     }
 
@@ -860,8 +922,14 @@ export class CurrentShiftReportsService {
   private async listCashCounts(
     tenantId: string,
     cashSessionId: string,
-    page: PageOptions
+    page: PageOptions,
+    countedByUserId?: string
   ): Promise<CurrentShiftCashCountRow[]> {
+    const params: unknown[] = [tenantId, cashSessionId, page.search];
+    const userFilter = countedByUserId
+      ? `AND count_data.counted_by_user_id = $${params.push(countedByUserId)}`
+      : "";
+    params.push(page.pageSize, page.offset);
     const result = await this.db.query<CashCountRow>(
       `/* current-shift: cash-count */
       SELECT
@@ -874,6 +942,7 @@ export class CurrentShiftReportsService {
       FROM cash_counts AS count_data
       WHERE count_data.tenant_id = $1
         AND count_data.cash_session_id = $2
+        ${userFilter}
         AND (
           $3::text IS NULL
           OR count_data.notes ILIKE '%' || $3::text || '%'
@@ -882,7 +951,7 @@ export class CurrentShiftReportsService {
       ORDER BY count_data.counted_at DESC
       LIMIT $4
       OFFSET $5`,
-      [tenantId, cashSessionId, page.search, page.pageSize, page.offset]
+      params
     );
 
     return result.rows.map((row) => ({
@@ -1045,23 +1114,17 @@ export class CurrentShiftReportsService {
       : availableCashSessions[0] ?? null;
 
     if (!session) {
-      return {
-        hasOpenCashSession: false,
-        message: "No hay caja abierta para el contexto operativo actual.",
-        filters: {
-          tenantId,
-          branchId: branchId ?? null,
-          terminalId: terminalId ?? null,
-          cashRegisterId: cashRegisterId ?? null,
-          cashSessionId: cashSessionId ?? null,
-          actorRole: actor.role,
-          page: page.page,
-          pageSize: page.pageSize,
-          search: page.search,
-        },
+      return this.noOpenSessionResponse(
+        tenantId,
+        branchId ?? null,
+        terminalId ?? null,
+        cashRegisterId ?? null,
+        cashSessionId ?? null,
+        actor.role,
+        page,
         availableCashSessions,
-        tabs: this.emptyTabs(),
-      };
+        "No hay caja abierta para el contexto operativo actual."
+      );
     }
 
     await this.assertSessionScope(actor, tenantId, session, {
@@ -1071,6 +1134,23 @@ export class CurrentShiftReportsService {
       cashRegisterId,
       cashSessionId,
     });
+
+    if (
+      actor.role === "USER" &&
+      (await this.hasUserCompletedClosure(tenantId, session.id, actor.userId))
+    ) {
+      return this.noOpenSessionResponse(
+        tenantId,
+        session.branchId,
+        session.terminalId,
+        session.cashRegisterId,
+        session.id,
+        actor.role,
+        page,
+        availableCashSessions,
+        "Ya entregaste tu cierre. No tienes acciones pendientes en esta caja."
+      );
+    }
 
     if (session.status !== "OPEN") {
       return {
@@ -1100,7 +1180,12 @@ export class CurrentShiftReportsService {
         this.listOrders(session.tenantId, session.id, page),
         this.listPurchases(session.tenantId, session.id, page),
         this.listMovements(session.tenantId, session.id, page),
-        this.listCashCounts(session.tenantId, session.id, page),
+        this.listCashCounts(
+          session.tenantId,
+          session.id,
+          page,
+          actor.role === "USER" ? actor.userId : undefined
+        ),
         this.getDeliveryCashSummary(session.tenantId, session.id),
       ]);
     const tickets = this.buildTickets({ sales, orders, purchases, cashCount });

@@ -198,7 +198,8 @@ export class CashSessionsRepository {
   async findCurrentByUser(
     userId: string,
     tenantId: string,
-    cashRegisterId?: string
+    cashRegisterId?: string,
+    excludeCompletedClosure = false
   ): Promise<CashSessionRecord | null> {
     const params: unknown[] = [userId, tenantId];
     let whereClause = `
@@ -215,6 +216,19 @@ export class CashSessionsRepository {
           )
         )
     `;
+
+    if (excludeCompletedClosure) {
+      whereClause += `
+        AND NOT EXISTS (
+          SELECT 1
+          FROM cash_counts AS own_closing
+          WHERE own_closing.tenant_id = session.tenant_id
+            AND own_closing.cash_session_id = session.id
+            AND own_closing.counted_by_user_id = $1
+            AND own_closing.count_type = 'CLOSING'
+        )
+      `;
+    }
 
     if (cashRegisterId) {
       params.push(cashRegisterId);

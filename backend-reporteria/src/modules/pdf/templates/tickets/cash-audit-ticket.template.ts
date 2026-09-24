@@ -3,6 +3,7 @@ import {
   buildThermalDocument,
   buildThermalSectionTitle,
 } from "../base/thermal-layout";
+import { formatTicketStatus } from "../base/status-label";
 import type { CashAuditTicketDataset } from "../../../reports/types/cash-report.types";
 
 const formatCurrency = (value: number) =>
@@ -47,7 +48,7 @@ export const buildCashAuditTicketTemplate = (
       { label: "Arqueo", value: dataset.header.cashCountId },
       { label: "Responsable", value: dataset.header.countedBy ?? dataset.header.countedByUserId },
       { label: "Fecha", value: formatDateTime(dataset.header.countedAt) },
-      { label: "Estado sesion", value: dataset.header.sessionStatus },
+      { label: "Estado sesión", value: formatTicketStatus(dataset.header.sessionStatus) },
     ],
     sections: [
       {

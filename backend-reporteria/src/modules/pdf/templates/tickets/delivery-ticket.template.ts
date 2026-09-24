@@ -4,6 +4,7 @@ import {
   buildThermalDocument,
   buildThermalSectionTitle,
 } from "../base/thermal-layout";
+import { formatTicketStatus } from "../base/status-label";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -36,16 +37,16 @@ const sourceSection = (dataset: DeliveryTicketDataset): Content => ({
     buildThermalSectionTitle("Referencias"),
     {
       text: `Pedido: ${shortId(dataset.source.orderId)}${
-        dataset.source.orderStatus ? ` / ${dataset.source.orderStatus}` : ""
+        dataset.source.orderStatus ? ` / ${formatTicketStatus(dataset.source.orderStatus)}` : ""
       }`,
     },
     {
       text: `Venta/factura: ${shortId(dataset.source.saleId)}${
-        dataset.source.saleStatus ? ` / ${dataset.source.saleStatus}` : ""
+        dataset.source.saleStatus ? ` / ${formatTicketStatus(dataset.source.saleStatus)}` : ""
       }`,
     },
     ...(dataset.source.salePaymentStatus
-      ? [{ text: `Estado pago venta: ${dataset.source.salePaymentStatus}` }]
+      ? [{ text: `Estado pago venta: ${formatTicketStatus(dataset.source.salePaymentStatus)}` }]
       : []),
   ],
 });
@@ -64,7 +65,7 @@ export const buildDeliveryTicketTemplate = (dataset: DeliveryTicketDataset) =>
     metadata: [
       { label: "Documento", value: "Ticket domicilio no fiscal" },
       { label: "Domicilio", value: dataset.header.deliveryNumber || shortId(dataset.header.deliveryId) },
-      { label: "Estado", value: dataset.header.status },
+      { label: "Estado", value: formatTicketStatus(dataset.header.status) },
       { label: "Creado", value: formatDate(dataset.header.createdAt) },
       { label: "Despachado", value: formatDate(dataset.header.dispatchedAt) },
       { label: "Entregado", value: formatDate(dataset.header.deliveredAt) },
