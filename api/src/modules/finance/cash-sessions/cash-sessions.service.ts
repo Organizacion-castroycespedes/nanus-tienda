@@ -1008,7 +1008,12 @@ export class CashSessionsService {
       tenantId
     );
     if (existingOpen) {
-      throw new BadRequestException("La caja ya tiene una sesion abierta");
+      if (!(await this.canOperateCashSession(actor, existingOpen))) {
+        throw new BadRequestException(
+          "La caja ya tiene una sesion abierta y no tienes asignacion activa"
+        );
+      }
+      return this.mapResponse(existingOpen);
     }
 
     const currentUserSession = await this.repository.findCurrentByUser(
@@ -1363,16 +1368,6 @@ export class CashSessionsService {
       if (!(await this.canOperateCashSession(actor, current))) {
         throw new ForbiddenException("No autorizado para esta caja");
       }
-      if (!this.canAdminCash(actor)) {
-        const progress = await this.getClosureProgress(
-          current.id,
-          current,
-          tenantId
-        );
-        if (progress.completedUserIds.includes(actor.userId)) {
-          return null;
-        }
-      }
       return this.mapResponse(current);
     }
 
@@ -1380,7 +1375,7 @@ export class CashSessionsService {
       actor.userId,
       tenantId,
       undefined,
-      !this.canAdminCash(actor)
+      false
     );
     if (!current) {
       return null;

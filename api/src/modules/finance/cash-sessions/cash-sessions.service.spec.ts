@@ -89,6 +89,8 @@ const buildHarness = (
   options: {
     branchAccess?: boolean;
     closingCounts?: Array<Record<string, unknown>>;
+    existingOpen?: Record<string, unknown> | null;
+    assignedToOpen?: boolean;
   } = {}
 ) => {
   const queries: string[] = [];
@@ -109,8 +111,10 @@ const buildHarness = (
   };
 
   const repository = {
-    findOpenByRegister: async () => null,
+    findOpenByRegister: async () =>
+      options.existingOpen ? buildRecord(options.existingOpen) : null,
     findCurrentByUser: async () => null,
+    hasActiveAssignment: async () => options.assignedToOpen ?? false,
     findById: async () => buildRecord(),
     create: async (
       _client: unknown,
@@ -345,6 +349,32 @@ test("open with zero amount skips invalid opening cash movement insert", async (
   assert.deepEqual(harness.getQueries(), ["BEGIN", "COMMIT"]);
   assert.equal(harness.wasReleased(), true);
   assert.equal(response.openingAmount, 0);
+});
+
+test("USER asignado se une a la sesion abierta de la caja", async () => {
+  const harness = buildHarness(0, {
+    existingOpen: { opened_by_user_id: "other-user" },
+    assignedToOpen: true,
+    closingCounts: [
+      {
+        counted_by_user_id: userId,
+        count_type: "CLOSING",
+      },
+    ],
+  });
+
+  const response = await harness.service.open(
+    {
+      branchId,
+      cashRegisterId: "register-001",
+      openingAmount: 0,
+    },
+    { userId, tenantId, roles: ["USER"] }
+  );
+
+  assert.equal(response.id, cashSessionId);
+  assert.equal(response.openedByUserId, "other-user");
+  assert.equal(harness.getOpenInput(), null);
 });
 
 test("close rejects USER when cash session branch is outside scope", async () => {
