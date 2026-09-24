@@ -52,13 +52,16 @@ export class ParametersService {
     );
   }
 
-  resolveTenantIdForActor(actor: ParameterActor, tenantId?: string) {
+  async resolveTenantIdForActor(actor: ParameterActor, tenantId?: string) {
     return this.resolveTenantId(actor, tenantId);
   }
 
-  private resolveTenantId(actor: ParameterActor, tenantId?: string) {
+  private async resolveTenantId(actor: ParameterActor, tenantId?: string) {
     if (this.isSuperAdmin(actor)) {
-      const resolved = tenantId?.trim() || actor.tenantId;
+      const requestedTenantId = tenantId?.trim();
+      const resolved = requestedTenantId
+        ? await this.resolveTenantReference(requestedTenantId)
+        : actor.tenantId;
       if (!resolved) {
         throw new BadRequestException("tenantId is required");
       }
@@ -67,10 +70,22 @@ export class ParametersService {
     if (!actor.tenantId) {
       throw new ForbiddenException("Tenant requerido");
     }
-    if (tenantId && tenantId.trim() !== actor.tenantId) {
+    const requestedTenantId = tenantId?.trim();
+    const resolvedTenantId = await this.resolveTenantReference(requestedTenantId);
+    if (requestedTenantId && resolvedTenantId !== actor.tenantId) {
       throw new ForbiddenException("No autorizado para otro tenant");
     }
     return actor.tenantId;
+  }
+
+  private async resolveTenantReference(tenantId?: string) {
+    if (!tenantId) {
+      return null;
+    }
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId)) {
+      return tenantId;
+    }
+    return this.repository.findTenantIdBySlug(tenantId);
   }
 
   private assertModeValue(value: string) {
@@ -175,7 +190,7 @@ export class ParametersService {
     if (!this.canManageTenantSettings(actor) && !actor.roles.includes("USER")) {
       throw new ForbiddenException("No autorizado");
     }
-    const tenantId = this.resolveTenantId(actor, query.tenantId);
+    const tenantId = await this.resolveTenantId(actor, query.tenantId);
     const scope = query.scope;
     return this.repository.listTenantSettings({
       tenantId,
@@ -204,7 +219,7 @@ export class ParametersService {
     if (!this.canManageTenantSettings(actor)) {
       throw new ForbiddenException("No autorizado para editar configuración");
     }
-    const tenantId = this.resolveTenantId(actor, payload.tenantId);
+    const tenantId = await this.resolveTenantId(actor, payload.tenantId);
     const parameter = payload.parameterId
       ? await this.repository.findParameterById(payload.parameterId)
       : payload.parameterCode

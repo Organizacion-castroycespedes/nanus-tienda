@@ -59,6 +59,11 @@ class FakeDb {
       expectedAmount: 30000,
     },
   };
+  todayTotals = {
+    sales_total: "20000",
+    orders_total: "0",
+    purchases_total: "0",
+  };
   salesRows: unknown[] = [
     {
       id: ids.sale,
@@ -109,6 +114,9 @@ class FakeDb {
     }
     if (text.includes("cash_register_user_assignments")) {
       return { rows: [{ exists: this.assignmentExists }] };
+    }
+    if (text.includes("current-shift: today-totals")) {
+      return { rows: [this.todayTotals] };
     }
     if (text.includes("current-shift: summary")) {
       return { rows: [{ summary: this.summary }] };
@@ -219,7 +227,39 @@ test("CurrentShiftReportsService: USER filtra ventas por su usuario", async () =
     text.includes("current-shift: sales")
   );
   assert.match(salesQuery?.text ?? "", /sale\.user_id = \$6::uuid/);
+  assert.match(
+    salesQuery?.text ?? "",
+    /AT TIME ZONE 'America\/Bogota'\)::date = \(now\(\) AT TIME ZONE 'America\/Bogota'\)::date/
+  );
   assert.equal(salesQuery?.params.at(-1), ids.user);
+});
+
+test("CurrentShiftReportsService: resumen usa totales de hoy no finance_cash_session_summary", async () => {
+  const db = new FakeDb();
+  db.todayTotals = {
+    sales_total: "15000",
+    orders_total: "0",
+    purchases_total: "0",
+  };
+
+  const response = await buildService(db).getCurrentShift(
+    { tenantId: ids.tenant },
+    {
+      id: ids.user,
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      roles: ["USER"],
+    }
+  );
+
+  assert.equal(response.summary?.posSalesTotal, 15000);
+  assert.equal(response.summary?.expectedAmount, 25000);
+  assert.ok(
+    db.queries.some(({ text }) => text.includes("current-shift: today-totals"))
+  );
+  assert.ok(
+    !db.queries.some(({ text }) => text.includes("finance_cash_session_summary"))
+  );
 });
 
 test("CurrentShiftReportsService: suma domicilios entregados al resumen vivo", async () => {

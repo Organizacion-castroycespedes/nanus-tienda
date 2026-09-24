@@ -50,3 +50,24 @@ test("ParametersService treats DISABLED GENERATE_INVOICE as disabled billing", a
   assert.equal(policy.enabled, false);
   assert.equal(policy.rawMode, "DISABLED");
 });
+
+test("ParametersService resolves a tenant slug before checking USER tenant scope", async () => {
+  const repository = {
+    findTenantIdBySlug: async (slug: string) =>
+      slug === "manustienda-platform-s-a-s"
+        ? "00000000-0000-0000-0000-000000000001"
+        : null,
+  };
+  const service = new ParametersService(repository as never);
+
+  const tenantId = await service.resolveTenantIdForActor(
+    {
+      roles: ["USER"],
+      userId: "user-1",
+      tenantId: "00000000-0000-0000-0000-000000000001",
+    },
+    "manustienda-platform-s-a-s"
+  );
+
+  assert.equal(tenantId, "00000000-0000-0000-0000-000000000001");
+});

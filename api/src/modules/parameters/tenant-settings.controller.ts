@@ -73,7 +73,7 @@ export class TenantSettingsController {
     @Req() request: AuthRequest
   ) {
     const actor = this.buildActor(request);
-    const effectiveTenantId = this.parametersService.resolveTenantIdForActor(
+    const effectiveTenantId = await this.parametersService.resolveTenantIdForActor(
       actor,
       tenantId?.trim() || request.context?.tenantId
     );

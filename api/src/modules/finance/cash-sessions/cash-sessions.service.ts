@@ -417,10 +417,19 @@ export class CashSessionsService {
     return Boolean(result.rows[0]?.has_schema);
   }
 
-  private async getDeliveryCashSummary(tenantId: string, cashSessionId: string) {
+  private async getDeliveryCashSummary(
+    tenantId: string,
+    cashSessionId: string,
+    operatorUserId?: string
+  ) {
     if (!(await this.hasDeliveryCashSchema())) {
       return this.emptyDeliverySummary();
     }
+
+    const params: unknown[] = [tenantId, cashSessionId];
+    const operatorFilter = operatorUserId
+      ? `AND d.created_by_user_id = $${params.push(operatorUserId)}`
+      : "";
 
     const result = await this.db.query<{
       delivered_count: string | number;
@@ -449,6 +458,7 @@ export class CashSessionsService {
             AND method.tenant_id = d.tenant_id
           WHERE d.tenant_id = $1
             AND d.cash_session_id = $2
+            ${operatorFilter}
         ),
         payment_breakdown AS (
           SELECT COALESCE(
@@ -509,7 +519,7 @@ export class CashSessionsService {
         FROM summary
         CROSS JOIN payment_breakdown
       `,
-      [tenantId, cashSessionId]
+      params
     );
 
     const row = result.rows[0];
@@ -563,7 +573,7 @@ export class CashSessionsService {
               SELECT 1
               FROM public.sales AS sale
               WHERE sale.tenant_id = payment.tenant_id
-                AND sale.id::text = payment.reference_id
+                AND sale.id = payment.reference_id
                 AND sale.user_id = $${params.push(operatorUserId)}
             )
           )
@@ -850,31 +860,18 @@ export class CashSessionsService {
   ): Promise<CashSessionSummaryResponseDto> {
     const deliverySummary = await this.getDeliveryCashSummary(
       tenantId,
-      cashSessionId
+      cashSessionId,
+      operatorUserId
     );
     const deliveryFees = this.normalizeExpectedAmount(
       deliverySummary.deliveredFeeTotal
     );
-    const breakdown = await this.buildCashBreakdown(
-      {
-        ...summary,
-        totals: {
-          ...summary.totals,
-          ...(operatorUserId
-            ? {
-                openingAmount:
-                  summary.openedByUserId === operatorUserId
-                    ? summary.totals.openingAmount
-                    : 0,
-              }
-            : {}),
-        },
-        deliverySummary,
-      },
-      tenantId,
-      cashSessionId,
-      operatorUserId
-    );
+    const openingAmount = operatorUserId
+      ? summary.openedByUserId === operatorUserId
+        ? summary.totals.openingAmount
+        : 0
+      : summary.totals.openingAmount;
+
     const auditRecords = (await this.hasCashCountAuditSchema())
       ? (
           await this.repository.listCashCounts(cashSessionId, tenantId, "AUDIT")
@@ -887,40 +884,105 @@ export class CashSessionsService {
           .filter((record) => !operatorUserId || record.counted_by_user_id === operatorUserId)
           .map((record) => this.mapCashCountRecord(record))
       : [];
+    const lastCount = operatorUserId
+      ? auditRecords[0]
+        ? {
+            id: auditRecords[0].id,
+            countType: auditRecords[0].countType,
+            countedCashAmount: auditRecords[0].countedCashAmount,
+            expectedAmount: auditRecords[0].expectedAmount,
+            differenceAmount: auditRecords[0].differenceAmount,
+            notes: auditRecords[0].notes,
+            countedByUserId: auditRecords[0].countedByUserId,
+            countedByUserEmail: auditRecords[0].countedByUserEmail,
+            countedAt: auditRecords[0].countedAt,
+          }
+        : null
+      : summary.lastCount;
+
+    const breakdown = await this.buildCashBreakdown(
+      {
+        ...summary,
+        lastCount,
+        totals: {
+          ...summary.totals,
+          openingAmount,
+          deliveryFees,
+        },
+        deliverySummary,
+      },
+      tenantId,
+      cashSessionId,
+      operatorUserId
+    );
     const closureProgress = await this.getClosureProgress(
       cashSessionId,
       await this.repository.findById(cashSessionId, tenantId) as CashSessionRecord,
       tenantId
     );
 
+    const source = breakdown.sourceBreakdown;
+    const scopedTotals = operatorUserId
+      ? {
+          openingAmount,
+          paymentsIn: this.roundAmount(
+            source.posSales + source.orders + source.otherIn
+          ),
+          paymentsOut: this.roundAmount(
+            source.purchases + source.refunds + source.otherOut
+          ),
+          expenses: 0,
+          withdrawals: 0,
+          adjustmentsIn: source.manualIn,
+          adjustmentsOut: source.manualOut,
+          closingRecorded: closureRecords.reduce(
+            (sum, record) => sum + record.countedCashAmount,
+            0
+          ),
+          salesPayments: source.posSales,
+          purchasePayments: source.purchases,
+          refundPayments: source.refunds,
+          deliveryFees: source.deliveries,
+          expectedAmount: breakdown.cashControl.expectedCashAmount,
+          netAmount: source.net,
+          movementCount: breakdown.paymentMethodDetails.reduce(
+            (total, detail) => total + detail.count,
+            0
+          ),
+          paymentCount: breakdown.paymentMethodDetails.reduce(
+            (total, detail) => total + detail.count,
+            0
+          ),
+        }
+      : {
+          ...summary.totals,
+          deliveryFees,
+          expectedAmount: breakdown.cashControl.expectedCashAmount,
+          netAmount: this.normalizeExpectedAmount(
+            Number(summary.totals.netAmount ?? 0) + deliveryFees
+          ),
+        };
+
     return {
       ...summary,
-      totals: {
-        ...summary.totals,
-        ...(operatorUserId
-          ? {
-              openingAmount:
-                summary.openedByUserId === operatorUserId
-                  ? summary.totals.openingAmount
-                  : 0,
-              salesPayments: breakdown.sourceBreakdown.posSales,
-              purchasePayments: breakdown.sourceBreakdown.purchases,
-              refundPayments: breakdown.sourceBreakdown.refunds,
-              deliveryFees,
-              expectedAmount: breakdown.cashControl.expectedCashAmount,
-              netAmount: breakdown.sourceBreakdown.net,
-              movementCount: breakdown.paymentMethodDetails.reduce(
-                (total, detail) => total + detail.count,
-                0
-              ),
-            }
-          : {}),
-        deliveryFees,
-        expectedAmount: breakdown.cashControl.expectedCashAmount,
-        netAmount: this.normalizeExpectedAmount(
-          Number(summary.totals.netAmount ?? 0) + deliveryFees
-        ),
-      },
+      totals: scopedTotals,
+      paymentBreakdown: operatorUserId
+        ? breakdown.paymentMethodDetails.map((detail) => ({
+            paymentMethodId: detail.paymentMethodId ?? "",
+            paymentMethodNombre: detail.paymentMethodNombre,
+            paymentMethodTipo: detail.paymentMethodTipo ?? detail.category,
+            direction: "IN" as const,
+            count: detail.count,
+            total: detail.totalIn,
+          }))
+        : summary.paymentBreakdown,
+      movementBreakdown: operatorUserId ? [] : summary.movementBreakdown,
+      recentMovements: operatorUserId
+        ? summary.recentMovements.filter(
+            (movement) => movement.createdBy === operatorUserId
+          )
+        : summary.recentMovements,
+      lastCount,
       paymentMethodDetails: breakdown.paymentMethodDetails,
       sourceBreakdown: breakdown.sourceBreakdown,
       cashControl: breakdown.cashControl,
@@ -961,6 +1023,18 @@ export class CashSessionsService {
     };
   }
 
+  private resolveRequiredCloserUserIds(
+    openedByUserId: string,
+    assignedUserIds: string[]
+  ) {
+    // Multi-cashier: only active assignees must deliver closing. Do NOT require the
+    // opener when they only opened the caja and are not assigned (admin/super opener).
+    if (assignedUserIds.length > 0) {
+      return [...new Set(assignedUserIds)];
+    }
+    return [openedByUserId];
+  }
+
   private async getClosureProgress(
     cashSessionId: string,
     current: CashSessionRecord,
@@ -971,7 +1045,10 @@ export class CashSessionsService {
       current.cash_register_id,
       client
     );
-    const requiredUserIds = [...new Set([current.opened_by_user_id, ...assignedUserIds])];
+    const requiredUserIds = this.resolveRequiredCloserUserIds(
+      current.opened_by_user_id,
+      assignedUserIds
+    );
     const closingCounts = await this.repository.listCashCounts(
       cashSessionId,
       tenantId,
@@ -979,7 +1056,9 @@ export class CashSessionsService {
       client
     );
     const completedUserIds = [...new Set(
-      closingCounts.map((count) => count.counted_by_user_id)
+      closingCounts
+        .map((count) => count.counted_by_user_id)
+        .filter((userId) => requiredUserIds.includes(userId))
     )];
     const pendingUserIds = requiredUserIds.filter(
       (userId) => !completedUserIds.includes(userId)
@@ -994,6 +1073,114 @@ export class CashSessionsService {
       isComplete: pendingUserIds.length === 0,
       closingCounts,
     };
+  }
+
+  private async finalizeOpenSessionFromProgress(
+    client: PoolClient,
+    current: CashSessionRecord,
+    cashSessionId: string,
+    tenantId: string,
+    closedByUserId: string,
+    progress: Awaited<ReturnType<CashSessionsService["getClosureProgress"]>>
+  ) {
+    const totalClosingAmount = progress.closingCounts
+      .filter((item) => progress.requiredUserIds.includes(item.counted_by_user_id))
+      .reduce((total, item) => total + Number(item.counted_cash_amount), 0);
+    const totalExpectedAmount = progress.closingCounts
+      .filter((item) => progress.requiredUserIds.includes(item.counted_by_user_id))
+      .reduce((total, item) => total + Number(item.expected_amount), 0);
+    const totalDifferenceAmount = Number(
+      (totalClosingAmount - totalExpectedAmount).toFixed(2)
+    );
+    const closedAt = new Date().toISOString();
+    const updated = await this.repository.close(client, cashSessionId, {
+      closedByUserId,
+      closedAt,
+      closingAmount: Number(totalClosingAmount.toFixed(2)),
+      expectedAmount: Number(totalExpectedAmount.toFixed(2)),
+      differenceAmount: totalDifferenceAmount,
+      status: "CLOSED",
+    });
+    if (!updated) {
+      throw new NotFoundException("Sesion de caja no encontrada");
+    }
+    if (totalClosingAmount > 0) {
+      await this.cashMovementsRepository.create(client, {
+        tenantId,
+        branchId: current.branch_id,
+        cashSessionId,
+        movementType: "CLOSING",
+        direction: "OUT",
+        amount: Number(totalClosingAmount.toFixed(2)),
+        description: "Cierre completo de caja",
+        createdBy: closedByUserId,
+      });
+    }
+    return updated;
+  }
+
+  /** Recover sessions stuck OPEN after all required cashiers already delivered close. */
+  private async reconcileCompleteOpenSession(
+    current: CashSessionRecord,
+    actorUserId: string
+  ): Promise<CashSessionRecord> {
+    if (current.status !== "OPEN") {
+      return current;
+    }
+
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        current.id,
+      ]);
+      const locked = await this.repository.findById(
+        current.id,
+        current.tenant_id,
+        client
+      );
+      if (!locked || locked.status !== "OPEN") {
+        await client.query("COMMIT");
+        return locked ?? current;
+      }
+
+      const progress = await this.getClosureProgress(
+        locked.id,
+        locked,
+        locked.tenant_id,
+        client
+      );
+      if (!progress.isComplete) {
+        await client.query("COMMIT");
+        return locked;
+      }
+
+      const updated = await this.finalizeOpenSessionFromProgress(
+        client,
+        locked,
+        locked.id,
+        locked.tenant_id,
+        actorUserId,
+        progress
+      );
+      await client.query("COMMIT");
+      this.auditService.logEvent({
+        tenantId: locked.tenant_id,
+        userId: actorUserId,
+        module: "finance",
+        entity: "cash_sessions",
+        entityId: updated.id,
+        action: "CASH_SESSION_RECONCILED_AFTER_ALL_CASHIERS",
+        before: this.mapResponse(locked),
+        after: this.mapResponse(updated),
+      });
+      return updated;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async open(payload: OpenCashSessionDto, actor: FinanceActor) {
@@ -1204,41 +1391,14 @@ export class CashSessionsService {
           };
         }
 
-        const totalClosingAmount = progress.closingCounts.reduce(
-          (total, item) => total + Number(item.counted_cash_amount),
-          0
+        const updated = await this.finalizeOpenSessionFromProgress(
+          client,
+          current,
+          cashSessionId,
+          tenantId,
+          actor.userId,
+          progress
         );
-        const totalExpectedAmount = progress.closingCounts.reduce(
-          (total, item) => total + Number(item.expected_amount),
-          0
-        );
-        const totalDifferenceAmount = Number(
-          (totalClosingAmount - totalExpectedAmount).toFixed(2)
-        );
-        const closedAt = new Date().toISOString();
-        const updated = await this.repository.close(client, cashSessionId, {
-          closedByUserId: actor.userId,
-          closedAt,
-          closingAmount: Number(totalClosingAmount.toFixed(2)),
-          expectedAmount: Number(totalExpectedAmount.toFixed(2)),
-          differenceAmount: totalDifferenceAmount,
-          status: "CLOSED",
-        });
-        if (!updated) {
-          throw new NotFoundException("Sesion de caja no encontrada");
-        }
-        if (totalClosingAmount > 0) {
-          await this.cashMovementsRepository.create(client, {
-            tenantId,
-            branchId: current.branch_id,
-            cashSessionId,
-            movementType: "CLOSING",
-            direction: "OUT",
-            amount: Number(totalClosingAmount.toFixed(2)),
-            description: "Cierre completo de caja",
-            createdBy: actor.userId,
-          });
-        }
         await client.query("COMMIT");
         this.auditService.logEvent({
           tenantId,
@@ -1384,7 +1544,14 @@ export class CashSessionsService {
       if (!(await this.canOperateCashSession(actor, current))) {
         throw new ForbiddenException("No autorizado para esta caja");
       }
-      return this.mapResponse(current);
+      const reconciled = await this.reconcileCompleteOpenSession(
+        current,
+        actor.userId
+      );
+      if (reconciled.status !== "OPEN") {
+        return null;
+      }
+      return this.mapResponse(reconciled);
     }
 
     // Never exclude completed closures here: POS and context selection need the
@@ -1399,7 +1566,15 @@ export class CashSessionsService {
       return null;
     }
 
-    return this.mapResponse(current);
+    const reconciled = await this.reconcileCompleteOpenSession(
+      current,
+      actor.userId
+    );
+    if (reconciled.status !== "OPEN") {
+      return null;
+    }
+
+    return this.mapResponse(reconciled);
   }
 
   async getHistory(query: ListCashSessionHistoryDto, actor: FinanceActor) {
@@ -1522,7 +1697,8 @@ export class CashSessionsService {
     const summary = await this.withDeliverySummary(
       rawSummary,
       tenantId,
-      cashSessionId
+      cashSessionId,
+      this.canAdminCash(actor) ? undefined : actor.userId
     );
     if (summary.closureProgress.completedUserIds.includes(actor.userId)) {
       throw new BadRequestException(
@@ -1615,7 +1791,12 @@ export class CashSessionsService {
       throw new ForbiddenException("Solo puedes consultar tu propia caja");
     }
 
-    const rawSummary = await this.repository.getSummary(cashSessionId, tenantId);
+    const reconciled = await this.reconcileCompleteOpenSession(
+      current,
+      actor.userId
+    );
+
+    const rawSummary = await this.repository.getSummary(reconciled.id, tenantId);
     if (!rawSummary) {
       throw new NotFoundException("No se pudo resumir la sesion de caja");
     }
@@ -1623,7 +1804,7 @@ export class CashSessionsService {
     return this.withDeliverySummary(
       rawSummary,
       tenantId,
-      cashSessionId,
+      reconciled.id,
       this.canAdminCash(actor) ? undefined : actor.userId
     );
   }

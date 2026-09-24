@@ -522,7 +522,15 @@ const CashSessionsPage = () => {
         />
         <FinanceMetricCard
           label="Monto de apertura"
-          value={!ownClosureDelivered && currentSession ? formatCurrency(currentSession.openingAmount) : formatCurrency(0)}
+          value={
+            !ownClosureDelivered && currentSession
+              ? formatCurrency(
+                  sessionSummary?.cashControl?.openingCash ??
+                    sessionSummary?.totals.openingAmount ??
+                    currentSession.openingAmount
+                )
+              : formatCurrency(0)
+          }
           accent="blue"
         />
         <FinanceMetricCard label="Sesiones abiertas" value={openCount} accent="emerald" />
@@ -578,7 +586,11 @@ const CashSessionsPage = () => {
               <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
                 <FinanceMetricCard
                   label="Apertura"
-                  value={formatCurrency(currentSession.openingAmount)}
+                  value={formatCurrency(
+                    sessionSummary?.cashControl?.openingCash ??
+                      sessionSummary?.totals.openingAmount ??
+                      currentSession.openingAmount
+                  )}
                   accent="blue"
                 />
                 <FinanceMetricCard
@@ -620,38 +632,49 @@ const CashSessionsPage = () => {
                   <FinanceMetricCard
                     label="Ingresos"
                     value={formatCurrency(
-                      sessionSummary.totals.paymentsIn +
-                        sessionSummary.totals.adjustmentsIn +
-                        (sessionSummary.totals.deliveryFees ?? 0)
+                      sessionSummary.sourceBreakdown?.totalIn ??
+                        sessionSummary.totals.paymentsIn +
+                          sessionSummary.totals.adjustmentsIn +
+                          (sessionSummary.totals.deliveryFees ?? 0)
                     )}
                     accent="emerald"
                   />
                   <FinanceMetricCard
                     label="Egresos"
                     value={formatCurrency(
-                      sessionSummary.totals.paymentsOut +
-                        sessionSummary.totals.expenses +
-                        sessionSummary.totals.withdrawals +
-                        sessionSummary.totals.adjustmentsOut
+                      sessionSummary.sourceBreakdown?.totalOut ??
+                        sessionSummary.totals.paymentsOut +
+                          sessionSummary.totals.expenses +
+                          sessionSummary.totals.withdrawals +
+                          sessionSummary.totals.adjustmentsOut
                     )}
                     accent="rose"
                   />
                   <FinanceMetricCard
                     label="Ventas cobradas"
-                    value={formatCurrency(sessionSummary.totals.salesPayments)}
+                    value={formatCurrency(
+                      sessionSummary.sourceBreakdown?.posSales ??
+                        sessionSummary.totals.salesPayments
+                    )}
                     accent="blue"
                   />
                   <FinanceMetricCard
                     label="Domicilios"
-                    value={formatCurrency(sessionSummary.totals.deliveryFees ?? 0)}
+                    value={formatCurrency(
+                      sessionSummary.sourceBreakdown?.deliveries ??
+                        sessionSummary.totals.deliveryFees ??
+                        0
+                    )}
                     accent="emerald"
                   />
                   <FinanceMetricCard
                     label="Ultimo arqueo"
                     value={
-                      sessionSummary.lastCount
-                        ? formatCurrency(sessionSummary.lastCount.countedCashAmount)
-                        : "Sin arqueo"
+                      sessionSummary.cashControl?.countedCashAmount != null
+                        ? formatCurrency(sessionSummary.cashControl.countedCashAmount)
+                        : sessionSummary.lastCount
+                          ? formatCurrency(sessionSummary.lastCount.countedCashAmount)
+                          : "Sin arqueo"
                     }
                     accent="slate"
                   />
@@ -753,27 +776,37 @@ const CashSessionsPage = () => {
                   <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
                     <FinanceMetricCard
                       label="Ventas POS"
-                      value={formatCurrency(sessionSummary.totals.salesPayments)}
+                      value={formatCurrency(
+                        sessionSummary.sourceBreakdown?.posSales ??
+                          sessionSummary.totals.salesPayments
+                      )}
                       accent="blue"
                     />
                     <FinanceMetricCard
                       label="Pedidos"
                       value={
-                        recentOrderCount > 0
-                          ? formatCurrency(recentOrderAmount)
+                        (sessionSummary.sourceBreakdown?.orders ?? recentOrderAmount) > 0
+                          ? formatCurrency(
+                              sessionSummary.sourceBreakdown?.orders ?? recentOrderAmount
+                            )
                           : "Sin pedidos"
                       }
                       accent="emerald"
                     />
                     <FinanceMetricCard
                       label="Compras"
-                      value={formatCurrency(sessionSummary.totals.purchasePayments)}
+                      value={formatCurrency(
+                        sessionSummary.sourceBreakdown?.purchases ??
+                          sessionSummary.totals.purchasePayments
+                      )}
                       accent="rose"
                     />
                     <FinanceMetricCard
                       label="Domicilios"
                       value={`${sessionSummary.deliverySummary?.deliveredCount ?? 0} / ${formatCurrency(
-                        sessionSummary.deliverySummary?.deliveredFeeTotal ?? 0
+                        sessionSummary.sourceBreakdown?.deliveries ??
+                          sessionSummary.deliverySummary?.deliveredFeeTotal ??
+                          0
                       )}`}
                       accent="emerald"
                     />
@@ -785,9 +818,11 @@ const CashSessionsPage = () => {
                     <FinanceMetricCard
                       label="Arqueo"
                       value={
-                        sessionSummary.lastCount
-                          ? formatCurrency(sessionSummary.lastCount.countedCashAmount)
-                          : "Sin arqueo"
+                        sessionSummary.cashControl?.countedCashAmount != null
+                          ? formatCurrency(sessionSummary.cashControl.countedCashAmount)
+                          : sessionSummary.lastCount
+                            ? formatCurrency(sessionSummary.lastCount.countedCashAmount)
+                            : "Sin arqueo"
                       }
                       accent="slate"
                     />

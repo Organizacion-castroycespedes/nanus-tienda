@@ -43,6 +43,17 @@ export class ParametersRepository {
     return this.db.query<T>(text, params);
   }
 
+  async findTenantIdBySlug(slug: string): Promise<string | null> {
+    const result = await this.query<{ id: string }>(
+      `SELECT id
+       FROM tenants
+       WHERE slug = $1 AND activo = TRUE
+       LIMIT 1`,
+      [slug]
+    );
+    return result.rows[0]?.id ?? null;
+  }
+
   async listParameters(includeInactive = false): Promise<ParameterRecord[]> {
     const result = await this.query<ParameterRecord>(
       `SELECT
