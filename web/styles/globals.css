@@ -212,6 +212,5 @@
 @media (min-width: 1024px) and (max-width: 1279px) {
   .login-background {
     background-image: url("/logo-login-tablet.png");
-    background-size: cover;
   }
 }
