@@ -200,7 +200,6 @@ const LoginPageContent = () => {
         style={{
           backgroundImage: "url('/logo-login.png')",
           backgroundRepeat: "no-repeat",
-          backgroundSize: "contain",
         }}
       >
         <div className="absolute inset-0 bg-slate-950/10" />
