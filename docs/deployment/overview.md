@@ -27,8 +27,10 @@ No hay Terraform, CloudFormation ni CDK en el repositorio. El backend es compati
 ## PostgreSQL
 
 - conexion por variables `DB_*`
-- sin ORM ni migrador automatizado
-- scripts SQL manuales en `api/database/`
+- sin ORM
+- existen runners versionados: `scripts/database/run_migrations.sh` y `scripts/database/migrate_prd.sh`
+- `migrations_history` registra versión, checksum, resultado y, en el runner productivo, tiempo de ejecución
+- scripts SQL heredados/manuales siguen existiendo; no deben confundirse con el flujo efectivo de cada ambiente
 
 ## CORS y dominios
 
@@ -41,7 +43,7 @@ No existe config Nginx en el repo. Se recomienda solo como capa de despliegue ex
 
 ## CI/CD y GitHub
 
-No se detectaron workflows de GitHub Actions ni pipelines CI/CD en el repositorio actual.
+Existen workflows versionados para Electron, QA backends y producción master bajo `.github/workflows/`. Los workflows declaran builds, artefactos, despliegue SSH, PM2 y smoke checks. Su existencia no prueba que hayan corrido exitosamente ni que los secretos de CI estén configurados.
 
 ## Docker
 
@@ -53,3 +55,10 @@ Desarrollo local versionado:
 - Plantilla de env: `.env.docker.example` → `.env` en la raíz del repo
 
 No hay compose de producción ni Postgres en contenedor en este flujo.
+
+## Referencias B2.4
+
+- [Arquitectura operativa AS-IS](../architecture/operations-as-is.md)
+- [Matriz de configuración por ambiente](../architecture/environment-configuration-matrix.md)
+- [Observabilidad y recuperación](../architecture/observability-recovery-as-is.md)
+- [Evidencia QA](../architecture/qa-evidence-matrix.md)

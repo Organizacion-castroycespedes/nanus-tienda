@@ -1,5 +1,9 @@
 # 🏗️ PKG PACKAGING ARCHITECTURE
 
+> Este documento describe una estrategia de empaquetado y topologías declaradas para el API.
+> No es evidencia suficiente de que PM2, Nginx, clustering, AWS o la topología altamente disponible estén desplegados.
+> Para la línea base AS-IS verificable consulte `docs/architecture/as-is-baseline.md` y `docs/architecture/service-contracts.md`.
+
 ## System Overview
 
 ```

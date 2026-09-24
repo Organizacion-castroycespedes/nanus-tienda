@@ -1,12 +1,15 @@
 # Manus POS/ERP Multi-tenant
 
+> Línea base documental AS-IS: commit `3dd5098f428e23daf31c750d638c0adb2fa8676a`.
+> Ver [índice de arquitectura y trazabilidad](docs/architecture.md).
+
 Plataforma SaaS multi-tenant para POS y operaciones ERP ligeras, con frontend en Next.js/React/TypeScript, backend NestJS y PostgreSQL. El estado actual del sistema cubre autenticacion con JWT + refresh tokens + sesiones activas, RBAC dinamico por menu, configuracion por tenant, sucursales, terminales POS, usuarios, roles, catalogos de inventario, compras, pedidos, ventas y flujo de POS con seleccion obligatoria de sucursal/terminal.
 
 ## Estado actual
 
 - Frontend: `web/` con App Router de Next.js 14, Redux Toolkit y flujos POS responsive.
 - Backend: `api/` con NestJS modular, guards JWT/roles/permisos y acceso PostgreSQL por consultas SQL directas.
-- Base de datos: PostgreSQL multi-tenant con esquema versionado parcial en `api/database/`.
+- Base de datos: PostgreSQL multi-tenant con SQL histórico en `api/database/` y un pipeline versionado en `scripts/database/`.
 - Documentacion: `docs/` reconstruida a partir del codigo fuente actual.
 
 ## Stack
@@ -53,23 +56,27 @@ flowchart LR
 - Ventas
 - Ajustes de inventario
 - Pantalla POS y carrito
+- Caja, sesiones de caja, movimientos y arqueos
+- Métodos de pago, pagos y asignaciones
+- Precios, promociones y reportería
+- Domicilios, conductores y estados de despacho
+- Facturación electrónica como bounded context separado y con integración por outbox
+- Peripheral Agent y shell Electron online
 
-## Modulos no codificados de forma completa
+## Capacidades parciales o no certificadas
 
-Las siguientes capacidades aparecen como objetivo de negocio, pero no tienen implementacion completa o dedicada en el codigo actual:
+Las siguientes capacidades tienen código, configuración o especificaciones, pero su completitud o despliegue no queda certificado solo con el repositorio:
 
-- Facturacion electronica
-- Caja y cierre diario
-- Reportes y analytics
-- Dashboard transaccional con KPIs reales
+- Facturación electrónica productiva con DIAN/proveedor real
+- Reportes y analytics en infraestructura desplegada
+- Dashboard transaccional completo con KPIs de producción
 - Devoluciones
-- Promociones
-- Pagos aplicados a cartera
+- Pagos aplicados a cartera externa
 - E-commerce
 - Offline sync
 - PWA
-- Impresion termica integrada
-- Infraestructura Docker o IaC
+- Hardware físico y todos los perfiles de impresión
+- Firma y distribución productiva de instaladores
 
 ## Estructura del repositorio
 
@@ -81,6 +88,11 @@ Las siguientes capacidades aparecen como objetivo de negocio, pero no tienen imp
 |   |   |-- common/
 |   |   `-- modules/
 |   `-- ecosystem.config.js
+|-- backend-facturacion-electronica/
+|-- backend-perifericos/
+|-- backend-reporteria/
+|-- desktop/electron/
+|-- scripts/database/
 |-- web/
 |   |-- app/
 |   |-- components/
@@ -129,14 +141,15 @@ npm run dev
 Variable base real documentada en `web/.env.example`:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000/api
 ```
 
 Nota importante del estado actual:
 
 - `api/.env.example` usa `PORT=4020`.
-- `web/.env.example` apunta a `http://localhost:3001/api`.
-- Esa diferencia existe hoy en el repositorio y debe alinearse manualmente por ambiente.
+- `web/.env.example` usa `http://localhost:3000/api`, el origen local por defecto de Next.js.
+- `web/next.config.mjs` reescribe `/api/*` hacia `API_PROXY_TARGET`, cuyo valor local por defecto es `http://localhost:4020`.
+- El puerto `3000` es el puerto del frontend local; el puerto `4020` es el destino local del API.
 
 ## Base de datos
 
@@ -151,12 +164,14 @@ El repositorio incluye SQL versionado para tenants, usuarios, roles, menu, audit
 
 Importante:
 
-- El DDL de inventario, ventas, compras, pedidos, clientes, proveedores, impuestos, unidades, terminales y `pos_user_sessions` no esta versionado como `CREATE TABLE` en `api/database/`.
-- Esa parte de la documentacion fue inferida desde entidades, repositorios y consultas activas del backend.
+- `api/database/` conserva SQL histórico y parte del esquema base.
+- El pipeline reproducible actual está en `scripts/database/`, con `migrate.sh`, `run_migrations.sh`, `migrate_prd.sh`, `migrations_history` y migraciones versionadas `V046` a `V093`.
+- `scripts/database/migrations/V087__report_product_inventory.sql` sí existe en esta rama.
+- `database/manus_tienda_qa.sql` es un dump QA. Sirve como evidencia de estado, pero no es el runner de migraciones.
 
 ## Migraciones y seeds
 
-No existe un runner de migraciones automatizado en el codigo actual. El repositorio trabaja con scripts SQL manuales bajo `api/database/`.
+El repositorio tiene dos capas históricas de SQL. `scripts/database/migrate_prd.sh` es el flujo que selecciona las migraciones incrementales `*.sql` de `scripts/database/migrations/`. `scripts/database/run_migrations.sh` usa un patrón más restrictivo para archivos `YYYYMMDD_*.sql`. Los archivos bajo `api/database/` se conservan como SQL histórico y compatibilidad documental.
 
 Seeds detectados:
 
@@ -167,7 +182,7 @@ Seeds detectados:
 
 ## Docker
 
-No se encontraron `Dockerfile`, `docker-compose.yml` ni manifiestos Docker en el repo actual. La documentacion de despliegue cubre el estado real: Vercel para web y backend Linux/PM2 compatible con AWS EC2 o servidores equivalentes.
+El repositorio contiene `docker-compose.yml` y Dockerfiles para API, reportería y facturación electrónica. El compose es un entorno local declarado; no demuestra por sí solo el despliegue productivo real.
 
 ## Despliegue
 
@@ -190,11 +205,11 @@ No se encontraron `Dockerfile`, `docker-compose.yml` ni manifiestos Docker en el
 ## Roadmap resumido
 
 - Facturacion y resoluciones fiscales
-- Caja, arqueo y cierre diario
-- Reportes y dashboard operativo
+- Evolución de caja, arqueo y cierre diario
+- Evolución de reportes y dashboard operativo
 - Devoluciones y promociones
 - PWA y modo offline
-- Integracion con impresoras termicas
+- Certificación de integración con impresoras térmicas
 - Pagos y cartera
 - E-commerce
 

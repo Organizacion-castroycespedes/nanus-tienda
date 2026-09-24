@@ -1,5 +1,7 @@
 # API Overview
 
+Para el detalle AS-IS de módulos internos, guards, DTO, transacciones, contratos y evidencias consulte [Arquitectura interna de la API](architecture-as-is.md).
+
 ## Base path
 
 Todas las rutas del backend usan prefijo global:

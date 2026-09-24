@@ -1,5 +1,40 @@
 # Arquitectura General
 
+## Índice de la línea base AS-IS
+
+Esta documentación se reconstruye desde el commit `3dd5098f428e23daf31c750d638c0adb2fa8676a`.
+La etiqueta **confirmado** significa evidencia en código, configuración o SQL versionado.
+La etiqueta **declarado** significa configuración o documentación que aún requiere validación de despliegue.
+La etiqueta **pendiente** significa que falta prueba funcional, infraestructura o hardware.
+
+- [Línea base y ficha del commit](architecture/as-is-baseline.md)
+- [Inventario de componentes](architecture/component-inventory.md)
+- [Relaciones y contratos entre servicios](architecture/service-contracts.md)
+- [Diagramas Mermaid y fuentes](architecture/diagrams.md)
+- [Modelo de datos y migraciones](database/overview.md)
+- [Arquitectura interna de la API](api/architecture-as-is.md)
+- [Persistencia PostgreSQL AS-IS](database/persistence-as-is.md)
+- [Backend Reportería AS-IS](architecture/backend-reporteria-as-is.md)
+- [Backend Facturación Electrónica AS-IS](architecture/electronic-billing-as-is.md)
+- [Integration Outbox AS-IS](architecture/integration-outbox-as-is.md)
+- [Matriz de contratos B2.3](architecture/service-contract-matrix-b23.md)
+- [Matriz de eventos y estados B2.3](architecture/event-state-matrix-b23.md)
+- [Arquitectura operativa AS-IS](architecture/operations-as-is.md)
+- [Matriz de configuración por ambiente](architecture/environment-configuration-matrix.md)
+- [Observabilidad y recuperación AS-IS](architecture/observability-recovery-as-is.md)
+- [Matriz de evidencia QA](architecture/qa-evidence-matrix.md)
+- [Arquitectura Web AS-IS](architecture/web-as-is.md)
+- [Inventario de modulos Web](architecture/web-module-inventory.md)
+- [Matriz de contratos frontend-backend](architecture/frontend-contract-matrix.md)
+- [Autenticación](architecture/authentication.md)
+- [Multi-tenancy](architecture/multi-tenancy.md)
+- [POS](architecture/pos-flow.md)
+- [Inventario](architecture/inventory-flow.md)
+- [Electron y periféricos](architecture/electron-online-windows-implementation.md)
+
+La URL heredada `https://portal.emaus.centrivosoft.com/login` aparece como fallback/configuración de Electron.
+Su vigencia operativa no se certifica en esta fase y no se modifica desde documentación.
+
 ## Resumen
 
 ManusTienda Platform es un SaaS POS/ERP multi-tenant construido sobre:

@@ -1,5 +1,12 @@
 # Clientes Web/Electron para Manus POS
 
+> **Documento histórico.** Este texto corresponde al análisis y propuesta
+> registrados el 2026-06-20, antes de la implementación posterior del shell
+> Electron y del Agent local. No debe leerse como la arquitectura AS-IS actual.
+> Para el estado vigente consulte [la arquitectura general](../architecture.md),
+> [la línea base AS-IS](as-is-baseline.md), [la arquitectura Web AS-IS](web-as-is.md)
+> y [la ficha actual de Electron](electron-online-windows-implementation.md).
+
 Fecha: 2026-06-20  
 OpenSpec change: `definir-clientes-web-electron`  
 Alcance: documental y arquitectonico. No implementa Electron, offline, PWA, Capacitor, frontend, backend, SQL, permisos ni logica de negocio.
