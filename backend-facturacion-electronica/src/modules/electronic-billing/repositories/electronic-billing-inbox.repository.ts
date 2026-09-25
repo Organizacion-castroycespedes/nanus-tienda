@@ -256,6 +256,44 @@ export class ElectronicBillingInboxRepository {
     );
   }
 
+  async markSuperseded(
+    eventId: string,
+    replacementEventId: string,
+    client?: PoolClient,
+  ) {
+    return this.queryOne<ElectronicBillingInboxEventRecord>(
+      `UPDATE electronic_billing_inbox_events
+      SET status = 'FAILED',
+          external_reference = external_reference || ':SUPERSEDED:' || $2,
+          last_error_code = 'ELECTRONIC_BILLING_SUPERSEDED_BY_RECOVERY',
+          last_error_message = 'Superseded by corrected event ' || $2,
+          updated_at = NOW()
+      WHERE event_id = $1
+      RETURNING
+        id,
+        event_id,
+        event_type,
+        schema_version,
+        tenant_id,
+        correlation_id,
+        source_type,
+        source_id,
+        external_reference,
+        payload_hash,
+        payload,
+        status,
+        electronic_document_id,
+        received_at,
+        processed_at,
+        last_error_code,
+        last_error_message,
+        created_at,
+        updated_at`,
+      [eventId, replacementEventId],
+      client,
+    );
+  }
+
   private async queryOne<T extends Record<string, unknown>>(
     text: string,
     params: unknown[] = [],

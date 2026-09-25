@@ -1847,4 +1847,46 @@ test("SaleService classifies a draft electronic-billing snapshot as stale after 
     ),
     false,
   );
+  assert.equal(
+    isStale.call(
+      service,
+      { payload: { ...event.payload, sale: { saleStatus: "CONFIRMED" }, customer: { ...customer, verificationDigit: "9" } } },
+      { status: "CONFIRMED", total: "119.00" },
+      { ...customer, verificationDigit: "3" },
+      currentLines,
+    ),
+    true,
+  );
 });
+
+test("SaleService validates verification digit presence for NIT customer fiscal data", () => {
+  const { service } = buildService();
+  const isComplete = (service as unknown as {
+    isElectronicBillingCustomerFiscalDataComplete: (customer: unknown) => boolean;
+  }).isElectronicBillingCustomerFiscalDataComplete;
+
+  const validNitCustomer = {
+    customerType: "COMPANY",
+    isFinalConsumer: false,
+    identificationNumber: "900123456",
+    identificationTypeCode: "31",
+    verificationDigit: "9",
+    legalName: "Empresa SAS",
+    countryCode: "CO",
+    countryName: "Colombia",
+    departmentCode: "05",
+    departmentName: "Antioquia",
+    municipalityCode: "05001",
+    cityName: "Medellin",
+    addressLine1: "Calle 10 # 20-30",
+    email: "factura@empresa.com",
+    taxLevelCode: "JURIDICA",
+    taxSchemeId: "ORDINARIO",
+    fiscalResponsibilityCodes: ["O-13"],
+  };
+
+  assert.equal(isComplete.call(service, validNitCustomer), true);
+  assert.equal(isComplete.call(service, { ...validNitCustomer, verificationDigit: "" }), false);
+  assert.equal(isComplete.call(service, { ...validNitCustomer, verificationDigit: null }), false);
+});
+

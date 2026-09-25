@@ -62,6 +62,7 @@ type PaymentDialogProps = {
     branchName?: string;
   } | null;
   isSubmitting?: boolean;
+  serverError?: string | null;
 };
 
 const isCashMethod = (m: PaymentMethod) => {
@@ -107,6 +108,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   finalConsumerCustomer,
   activeSessionInfo,
   isSubmitting = false,
+  serverError,
 }) => {
   const [payments, setPayments] = useState<PosPaymentRow[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -448,9 +450,12 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 </p>
               </div>
 
-              {validationError && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
-                  {validationError}
+              {(serverError || validationError) && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 shadow-sm dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                    <span>{serverError || validationError}</span>
+                  </div>
                 </div>
               )}
 
