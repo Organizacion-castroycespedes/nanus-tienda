@@ -210,11 +210,21 @@ export class JwtAuthGuard implements CanActivate {
             cashSessionId?: string;
           }
         | undefined;
-      const params: unknown[] = [payload.sub, payload.tenant_id];
+      const actorUserId = requestContext?.userId ?? payload.sub;
+      const params: unknown[] = [actorUserId, payload.tenant_id];
       const conditions = [
-        "session.opened_by_user_id = $1",
         "session.tenant_id = $2",
         "session.status = 'OPEN'",
+        `(
+          session.opened_by_user_id = $1
+          OR EXISTS (
+            SELECT 1
+            FROM cash_register_user_assignments AS assignment
+            WHERE assignment.cash_register_id = register.id
+              AND assignment.user_id = $1
+              AND assignment.unassigned_at IS NULL
+          )
+        )`,
       ];
 
       if (requestContext?.branchId) {
@@ -260,7 +270,7 @@ export class JwtAuthGuard implements CanActivate {
         tenantId: cashContext.tenant_id,
         branchId: cashContext.branch_id,
         terminalId: cashContext.terminal_id ?? requestContext?.terminalId,
-        userId: cashContext.opened_by_user_id,
+        userId: actorUserId,
         cashSessionId: cashContext.id,
       };
     }

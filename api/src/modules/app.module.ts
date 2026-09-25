@@ -18,12 +18,14 @@ import { PricingModule } from "./pricing/pricing.module";
 import { PosTerminalsModule } from "./pos-terminals/pos-terminals.module";
 import { DeliveriesModule } from "./deliveries/deliveries.module";
 import { OperationalSalesModule } from "./operational-sales/operational-sales.module";
+import { ParametersModule } from "./parameters/parameters.module";
 
 @Module({
   imports: [
     AuthModule,
     UsersModule,
     TenantsModule,
+    ParametersModule,
     PermissionsModule,
     BranchesModule,
     LocationsModule,

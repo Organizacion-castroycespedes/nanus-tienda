@@ -28,6 +28,12 @@ test("electronic billing action is eligible only for paid confirmed sales withou
     ),
     false
   );
+  assert.equal(
+    isEligibleForElectronicBillingRequest(
+      sale({ electronicBilling: { status: "ERROR", electronicDocumentId: null } })
+    ),
+    true
+  );
 });
 
 test("electronic billing action requires a persisted customer reference", () => {

@@ -10,6 +10,13 @@ test("CashReportsController: cash closing ticket permite USER con scope SQL", ()
   );
 });
 
+test("CashReportsController: cash audit ticket permite USER con scope SQL", () => {
+  assert.deepEqual(
+    getReportRoles(CashReportsController.prototype.getCashAuditTicket),
+    ["SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER"]
+  );
+});
+
 test("CashReportsController: Caja selecciona PDF/XLSX por tab endpoint", async () => {
   const calls: string[] = [];
   const headers = new Map<string, string | number>();

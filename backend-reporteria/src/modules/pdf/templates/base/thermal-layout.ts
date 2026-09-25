@@ -43,7 +43,7 @@ export const THERMAL_80MM_LAYOUT = {
   safeVerticalMarginPt: 4 * pointsPerMillimeter,
   itemAmountColumnWidthPt: 60,
   totalsAmountColumnWidthPt: 64,
-  metadataLabelColumnWidthPt: 48,
+  metadataLabelColumnWidthPt: 60,
 } as const;
 
 export const THERMAL_QR_MAX_WIDTH_PT = 40 * pointsPerMillimeter;
@@ -107,7 +107,7 @@ export const buildThermalMetadata = (rows: MetadataRow[] = []): Content => ({
     body: rows.map(
       (row) =>
         [
-          { text: `${row.label}:`, style: "metadataLabel" },
+          { text: `${row.label}:`, style: "metadataLabel", noWrap: true },
           { text: addPdfSoftBreaks(row.value), style: "metadataValue" },
         ] as TableCell[]
     ),

@@ -123,6 +123,15 @@ export type CashSessionAuditRecordDto = {
   countedAt: string;
 };
 
+export type CashSessionClosureProgressDto = {
+  requiredUserIds: string[];
+  completedUserIds: string[];
+  pendingUserIds: string[];
+  requiredCount: number;
+  completedCount: number;
+  isComplete: boolean;
+};
+
 export type CashSessionSummaryResponseDto = {
   sessionId: string;
   tenantId: string;
@@ -165,5 +174,7 @@ export type CashSessionSummaryResponseDto = {
   recentMovements: CashSessionRecentMovementDto[];
   lastCount: CashSessionLastCountDto;
   auditRecords: CashSessionAuditRecordDto[];
+  closureRecords: CashSessionAuditRecordDto[];
+  closureProgress: CashSessionClosureProgressDto;
   deliverySummary: CashSessionDeliverySummaryDto;
 };

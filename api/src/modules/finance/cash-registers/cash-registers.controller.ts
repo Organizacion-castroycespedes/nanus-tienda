@@ -59,4 +59,38 @@ export class CashRegistersController {
       this.buildActor(request)
     );
   }
+
+  @Get(":id/assignments")
+  listAssignments(@Param("id") cashRegisterId: string, @Req() request: Request) {
+    return this.cashRegistersService.listAssignments(
+      cashRegisterId,
+      this.buildActor(request)
+    );
+  }
+
+  @Post(":id/assignments")
+  assignUser(
+    @Param("id") cashRegisterId: string,
+    @Body() payload: { userId?: string },
+    @Req() request: Request
+  ) {
+    return this.cashRegistersService.assignUser(
+      cashRegisterId,
+      String(payload.userId ?? ""),
+      this.buildActor(request)
+    );
+  }
+
+  @Patch(":id/assignments/:userId/unassign")
+  unassignUser(
+    @Param("id") cashRegisterId: string,
+    @Param("userId") userId: string,
+    @Req() request: Request
+  ) {
+    return this.cashRegistersService.unassignUser(
+      cashRegisterId,
+      userId,
+      this.buildActor(request)
+    );
+  }
 }

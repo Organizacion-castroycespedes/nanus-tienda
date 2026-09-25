@@ -133,6 +133,11 @@ try {
     sha256: sha256File(join(electronPayloadRoot, relativePath)),
   }));
   writeFileSync(posManifestPath, `${JSON.stringify({ schemaVersion: 1, posVersion: posPackage.version, executable: "Manus POS.exe", shellConfig: "resources/manus-shell.config.json", payloadSize: files.reduce((sum, file) => sum + file.size, 0), files }, null, 2)}\n`, "utf8");
+  execFileSync(process.execPath, [join(projectRoot, "scripts", "validate-pos-manifest.mjs")], {
+    cwd: projectRoot,
+    stdio: "inherit",
+    windowsHide: true,
+  });
   mkdirSync(embeddedUiRoot, { recursive: true });
   for (const fileName of ["index.html", "styles.css", "app.js"]) {
     cpSync(join(installerUiRoot, fileName), join(embeddedUiRoot, fileName));

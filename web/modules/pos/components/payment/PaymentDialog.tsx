@@ -563,7 +563,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
 
                             <label className="flex flex-col gap-1.5 text-sm text-slate-700 dark:text-slate-200">
                               <span className="text-xs font-medium">
-                                Número de referencia <span className="text-red-600">*</span>
+                                Número de referencia
                               </span>
                               <div className="relative">
                                 <input

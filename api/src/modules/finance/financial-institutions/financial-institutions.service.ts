@@ -35,7 +35,11 @@ export class FinancialInstitutionsService {
   }
 
   private canRead(actor: FinanceActor) {
-    return this.canManageTenant(actor) || actor.roles.includes("ADMIN") || actor.roles.includes("USER");
+    return (
+      this.canManageTenant(actor) ||
+      actor.roles.includes("ADMIN") ||
+      actor.roles.includes("USER")
+    );
   }
 
   private resolveTenantId(actor: FinanceActor, tenantId?: string) {

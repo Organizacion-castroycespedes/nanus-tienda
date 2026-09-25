@@ -228,7 +228,22 @@ const resolveCustomerPartyTaxScheme = (customer: ElectronicCustomer) => {
     return canonical;
   }
 
-  if (!raw || raw === "ORDINARIO" || raw === "NATURAL" || raw === "JURIDICA" || raw === "R-99-PN") {
+  // Manus tax-regime labels are not DIAN PartyTaxScheme codes. Keep the
+  // explicit non-VAT case as ZZ; the remaining supported regimes use the
+  // existing customer-type fallback and are never sent as raw scheme codes.
+  if (raw === "NO_RESPONSABLE") {
+    return { taxSchemeId: "ZZ", taxSchemeName: "No aplica" };
+  }
+
+  if (
+    !raw ||
+    raw === "ORDINARIO" ||
+    raw === "SIMPLE" ||
+    raw === "ESPECIAL" ||
+    raw === "NATURAL" ||
+    raw === "JURIDICA" ||
+    raw === "R-99-PN"
+  ) {
     return resolveCustomerType(customer) === "PERSON"
       ? { taxSchemeId: "ZZ", taxSchemeName: "No aplica" }
       : { taxSchemeId: "01", taxSchemeName: "IVA" };

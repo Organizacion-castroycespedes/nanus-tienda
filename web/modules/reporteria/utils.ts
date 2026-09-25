@@ -38,6 +38,15 @@ export const formatDateTime = (value?: string | null) => {
   }).format(date);
 };
 
+export const formatReportStatus = (value?: string | null) => {
+  const normalized = value?.trim().toUpperCase();
+  if (!normalized || normalized === "UNKNOWN") {
+    return "No disponible";
+  }
+
+  return value!.trim();
+};
+
 export const getTodayRange = () => {
   const today = new Date();
   const month = `${today.getMonth() + 1}`.padStart(2, "0");

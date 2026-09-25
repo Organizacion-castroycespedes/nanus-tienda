@@ -14,6 +14,7 @@ import {
 
 type FinanceSectionNavProps = {
   tenantSlug: string;
+  canViewPaymentMethods: boolean;
 };
 
 const items: Array<{
@@ -60,12 +61,22 @@ const items: Array<{
   },
 ];
 
-export const FinanceSectionNav = ({ tenantSlug }: FinanceSectionNavProps) => {
+export const FinanceSectionNav = ({
+  tenantSlug,
+  canViewPaymentMethods,
+}: FinanceSectionNavProps) => {
   const pathname = usePathname();
+  const visibleItems = canViewPaymentMethods
+    ? items
+    : items.filter((item) => !item.href(tenantSlug).endsWith("/payment-methods"));
 
   return (
-    <div className="grid gap-3 lg:grid-cols-6">
-      {items.map((item) => {
+    <div
+      className={`grid gap-3 ${
+        canViewPaymentMethods ? "lg:grid-cols-6" : "lg:grid-cols-5"
+      }`}
+    >
+      {visibleItems.map((item) => {
         const href = item.href(tenantSlug);
         const isActive = pathname === href;
         const Icon = item.icon;
