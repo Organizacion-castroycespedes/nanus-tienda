@@ -2562,7 +2562,8 @@ export const PosScreen = () => {
         error instanceof ApiError && error.status >= 400 && error.status < 500;
       if (isDefinitiveRejection) {
         allowSaleSubmissionRetry();
-        setSubmitError("La venta fue rechazada. Revisa stock, pagos y permisos.");
+        const msg = (error instanceof Error && error.message?.trim()) ? error.message.trim() : 'La venta fue rechazada. Revisa stock, pagos y permisos.';
+        setSubmitError(msg);
         showToast("La venta fue rechazada.", "error");
       } else {
         markSaleSubmissionUnknown();
@@ -3382,6 +3383,7 @@ export const PosScreen = () => {
             : null
         }
         isSubmitting={processingSale}
+        serverError={submitError}
         onConfirm={(paymentRows, customerId) => {
           if (customerId) {
             setSelectedCustomerId(customerId);
