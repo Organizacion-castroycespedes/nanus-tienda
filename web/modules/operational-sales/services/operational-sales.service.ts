@@ -1,6 +1,7 @@
 import { apiClient } from "../../../lib/http";
 import type {
   OperationalSaleDetail,
+  OperationalSaleListItem,
   OperationalSalesFilters,
   OperationalSalesResponse,
 } from "../types";
@@ -14,12 +15,13 @@ export type OperationalSalesRequest = {
 };
 
 export const isEligibleForElectronicBillingRequest = (
-  sale: Pick<OperationalSaleDetail, "status" | "paymentStatus" | "electronicBilling" | "customer">
+  sale: Pick<OperationalSaleListItem, "status" | "paymentStatus" | "electronicBilling" | "customer">
 ) =>
-  !sale.electronicBilling &&
+  (!sale.electronicBilling ||
+    !["PENDING", "PROCESSING", "ACCEPTED"].includes(sale.electronicBilling.status)) &&
   sale.status === "CONFIRMED" &&
   ["PAID", "OVERPAID"].includes(sale.paymentStatus) &&
-  Boolean(sale.customer.id);
+  Boolean(sale.customer?.id);
 
 export const fetchOperationalSales = (request: OperationalSalesRequest) => {
   const params = new URLSearchParams({
@@ -35,16 +37,22 @@ export const fetchOperationalSales = (request: OperationalSalesRequest) => {
     }
   });
 
-  return apiClient<OperationalSalesResponse>(`/operations/sales?${params.toString()}`);
+  return apiClient<OperationalSalesResponse>(
+    `/operations/sales?${params.toString()}`,
+    { includePosSession: true },
+  );
 };
 
 export const fetchOperationalSaleDetail = (saleId: string) =>
-  apiClient<OperationalSaleDetail>(`/operations/sales/${encodeURIComponent(saleId)}`);
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}`,
+    { includePosSession: true },
+  );
 
 export const refreshOperationalSaleBillingStatus = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/refresh`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export type ElectronicBillingRequestResult = {
@@ -59,19 +67,19 @@ export type ElectronicBillingRequestResult = {
 export const requestOperationalSaleElectronicBilling = (saleId: string) =>
   apiClient<ElectronicBillingRequestResult>(
     `/sales/${encodeURIComponent(saleId)}/electronic-billing`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export const retryOperationalSaleBilling = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/retry`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export const recoverOperationalSaleProviderCreateIntent = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/recover-provider-create-intent`,
-    { method: "POST" },
+    { method: "POST", includePosSession: true },
   );
 
 export const shouldShowProviderCreateIntentRecovery = (
@@ -109,3 +117,39 @@ export const createSinglePostGuard = () => {
     },
   };
 };
+
+export const updateOperationalSaleCustomer = (saleId: string, customerId: string) =>
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}/customer`,
+    {
+      method: "PATCH",
+      includePosSession: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId }),
+    },
+  );
+
+export type CorrectOperationalSalePaymentsPayload = {
+  reason: string;
+  payments: Array<{
+    paymentMethodId: string;
+    amount: number;
+    reference?: string | null;
+    financialInstitutionId?: string | null;
+  }>;
+};
+
+export const correctOperationalSalePayments = (
+  saleId: string,
+  payload: CorrectOperationalSalePaymentsPayload,
+) =>
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}/payment-correction`,
+    {
+      method: "POST",
+      includePosSession: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+

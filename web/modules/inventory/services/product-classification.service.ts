@@ -24,6 +24,7 @@ export type ProductSubcategoryResponse = ProductCategoryResponse & {
 };
 
 export type ListProductCategoriesParams = {
+  tenantId?: string;
   isActive?: boolean;
   search?: string;
 };
@@ -55,6 +56,10 @@ const buildQuery = (
 ) => {
   const query = new URLSearchParams();
   const withCategory = params as ListProductSubcategoriesParams;
+
+  if (params.tenantId?.trim()) {
+    query.set("tenantId", params.tenantId.trim());
+  }
 
   if (withCategory.categoryId?.trim()) {
     query.set("categoryId", withCategory.categoryId.trim());

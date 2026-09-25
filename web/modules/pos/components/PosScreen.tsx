@@ -2,19 +2,16 @@
 
 import {
   CheckCircle2,
-  ChevronDown,
   CreditCard,
   Grid3X3,
   List,
   Loader2,
-  Minus,
   Package,
   Plus,
   Scale,
   Search,
   SlidersHorizontal,
   ShoppingCart,
-  Trash2,
   UserRound,
   UserPlus,
   Wallet,
@@ -44,11 +41,18 @@ import { fetchSystemVersion } from "../../../domains/system/api";
 import {
   getCurrentCashSession,
   listPaymentMethods,
+  listFinancialInstitutions,
 } from "../../finance/services/finance.service";
 import type {
   CashSession,
   PaymentMethod as FinancePaymentMethod,
+  FinancialInstitution,
 } from "../../finance/types";
+import { PaymentDialog, type PosPaymentRow } from "./payment/PaymentDialog";
+import {
+  CartSaleModal,
+  type CartSaleItemPresentation,
+} from "./cart/CartSaleModal";
 import {
   createSale,
   getPosCustomers,
@@ -75,6 +79,7 @@ import type { ElectronicInvoicingCustomer } from "../../electronic-invoicing/ser
 import {
   createDefaultCashPayment,
   findCashPaymentMethod,
+  formatPaymentAmount,
   isCashPaymentMethod,
   parsePaymentAmount,
   rebalanceCashPayment,
@@ -109,7 +114,6 @@ import {
   createPosScannerHidLogger,
   describePosScannerWedgeIgnoredSequence,
 } from "../utils/pos-scanner-hid";
-import { buildPosCartDiscountDisplay } from "./pos-discount-display";
 import { InventoryImagePreview } from "../../inventory/components/InventoryImagePreview";
 import {
   listProductCategories,
@@ -343,7 +347,8 @@ const arePaymentsEqual = (
       payment.id === other.id &&
       payment.paymentMethodId === other.paymentMethodId &&
       payment.amount === other.amount &&
-      payment.reference === other.reference
+      payment.reference === other.reference &&
+      (payment.financialInstitutionId ?? null) === (other.financialInstitutionId ?? null)
     );
   });
 
@@ -523,6 +528,7 @@ export const PosScreen = () => {
     markSaleSubmissionUnknown,
     allowSaleSubmissionRetry,
     allowUnknownSaleRetry,
+    resetPosCartSale,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const canRead = hasMenuAccess("POS", "READ");
@@ -552,10 +558,12 @@ export const PosScreen = () => {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [expandedTaxItems, setExpandedTaxItems] = useState<Record<string, boolean>>({});
+  const [summaryTaxesExpanded, setSummaryTaxesExpanded] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogWarnings, setCatalogWarnings] = useState<string[]>([]);
   const [paymentMethodsCatalog, setPaymentMethodsCatalog] = useState<FinancePaymentMethod[]>([]);
+  const [financialInstitutionsCatalog, setFinancialInstitutionsCatalog] = useState<FinancialInstitution[]>([]);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [processingSale, setProcessingSale] = useState(false);
@@ -577,7 +585,6 @@ export const PosScreen = () => {
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
 
-  const [isMobile, setIsMobile] = useState(false);
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
   const scannerHidEnabled =
@@ -668,29 +675,11 @@ export const PosScreen = () => {
     });
   }, [productToolsOpen]);
 
-  // Detect mobile/tablet viewport
   useEffect(() => {
-    const checkViewport = () => {
-      const mobile = window.innerWidth < 1280;
-    setIsMobile(mobile);
-    // On mobile, cart is closed by default
-    if (mobile) {
-      setCartSheetOpen(false);
-    } else {
-      setCartSheetOpen(true);
-    }
-  };
-
-    checkViewport();
-    window.addEventListener("resize", checkViewport);
-    return () => window.removeEventListener("resize", checkViewport);
-  }, []);
-
-  useEffect(() => {
-    if (isMobile && cart.length === 0 && cartSheetOpen) {
+    if (cart.length === 0 && cartSheetOpen) {
       setCartSheetOpen(false);
     }
-  }, [cart.length, cartSheetOpen, isMobile, setCartSheetOpen]);
+  }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
   useEffect(() => {
     if (paymentModalOpen || quickFiscalCustomerOpen) {
@@ -850,9 +839,10 @@ export const PosScreen = () => {
 
     const loadFinanceCatalog = async () => {
       try {
-        const [methods, session] = await Promise.all([
+        const [methods, session, banks] = await Promise.all([
           listPaymentMethods({ active: true }),
           getCurrentCashSession(),
+          listFinancialInstitutions().catch(() => []),
         ]);
 
         if (!active) {
@@ -861,6 +851,7 @@ export const PosScreen = () => {
 
         setPaymentMethodsCatalog(methods.filter((method) => method.active));
         setCurrentCashSession(session);
+        setFinancialInstitutionsCatalog(banks.filter((b) => b.active));
       } catch {
         if (!active) {
           return;
@@ -1112,6 +1103,7 @@ export const PosScreen = () => {
       paymentMethodId,
       amount,
       reference: "",
+      financialInstitutionId: null,
     }),
     []
   );
@@ -2061,16 +2053,46 @@ export const PosScreen = () => {
     setPaymentWarning(result.error);
     setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
     setPaymentModalOpen(true);
+    setCartSheetOpen(false);
   }, [
     createPaymentDraft,
     customers,
     finalConsumerCustomer,
     paymentMethodsCatalog,
     selectedCustomerId,
+    setCartSheetOpen,
     setPayments,
     setSelectedCustomerId,
     summary.total,
   ]);
+
+  const cancelCurrentSale = useCallback(() => {
+    if (cartRef.current.length > 0) {
+      const confirmed = window.confirm(
+        "¿Cancelar la venta actual? Se vaciará el carrito."
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    resetPosCartSale();
+    setCartItemsAndRef([]);
+    setExpandedTaxItems({});
+    setSummaryTaxesExpanded(true);
+    setSubmitError(null);
+    setCartSheetOpen(false);
+    setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+  }, [
+    finalConsumerCustomer?.id,
+    resetPosCartSale,
+    setCartItemsAndRef,
+    setCartSheetOpen,
+    setSelectedCustomerId,
+  ]);
+
+  const closeCartSheet = useCallback(() => {
+    setCartSheetOpen(false);
+  }, [setCartSheetOpen]);
 
   const closeChargeModal = () => {
     if (processingSale) {
@@ -2099,9 +2121,9 @@ export const PosScreen = () => {
           setProductToolsOpen(false);
           return;
         }
-        if (cartSheetOpen && isMobile) {
+        if (cartSheetOpen) {
           event.preventDefault();
-          setCartSheetOpen(false);
+          closeCartSheet();
           return;
         }
         if (query.trim()) {
@@ -2126,7 +2148,7 @@ export const PosScreen = () => {
         return;
       }
 
-      if (event.key === "F4" && canCharge) {
+      if ((event.key === "F4" || event.key === "F12") && canCharge) {
         event.preventDefault();
         openChargeModal();
       }
@@ -2136,15 +2158,15 @@ export const PosScreen = () => {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [
     canCharge,
+    closeCartSheet,
     focusProductSearch,
     cartSheetOpen,
-    isMobile,
     openChargeModal,
     openProductTools,
     paymentModalOpen,
     query,
-    productToolsOpen,
     quickFiscalCustomerOpen,
+    productToolsOpen,
   ]);
 
   const firstPaymentId = payments[0]?.id;
@@ -2182,7 +2204,11 @@ export const PosScreen = () => {
       paymentMethodsCatalog[0] ??
       null;
     setSubmitError(null);
-    const newDraft = createPaymentDraft(firstNonCashMethod?.id ?? "", "");
+    const remaining = round(Math.max(summary.total - totalPaid, 0));
+    const newDraft = createPaymentDraft(
+      firstNonCashMethod?.id ?? "",
+      remaining > 0 ? formatPaymentAmount(remaining) : ""
+    );
     setPayments(
       rebalancePaymentsForTotal([
         ...payments,
@@ -2217,20 +2243,64 @@ export const PosScreen = () => {
     );
   };
 
-  const buildEffectivePayments = () => {
-    const basePayments = parsedPayments.filter((payment) => payment.numericAmount > 0);
+  type ParsedPosPayment = PaymentDraft & {
+    numericAmount: number;
+    method: (typeof paymentMethodsCatalog)[number] | null;
+  };
 
-    if (paymentDerivedState.overpayment <= 0) {
+  const parsePaymentDrafts = (drafts: PaymentDraft[]): ParsedPosPayment[] =>
+    drafts.map((payment) => ({
+      ...payment,
+      numericAmount: parsePaymentAmount(payment.amount),
+      method: paymentMethodById[payment.paymentMethodId] ?? null,
+    }));
+
+  const derivePaymentState = (localParsed: ParsedPosPayment[]) => {
+    const localTotalPaid = round(
+      localParsed.reduce((sum, payment) => sum + payment.numericAmount, 0)
+    );
+    const localCashEntered = round(
+      localParsed
+        .filter((payment) => payment.method && isCashPaymentMethod(payment.method))
+        .reduce((sum, payment) => sum + payment.numericAmount, 0)
+    );
+    const localNonCashPaid = round(
+      localParsed
+        .filter((payment) => !payment.method || !isCashPaymentMethod(payment.method))
+        .reduce((sum, payment) => sum + payment.numericAmount, 0)
+    );
+    const pending = round(Math.max(summary.total - localTotalPaid, 0));
+    const overpayment = round(Math.max(localTotalPaid - summary.total, 0));
+    const change = localCashEntered > 0 ? overpayment : 0;
+
+    return {
+      totalPaid: localTotalPaid,
+      totalCashEntered: localCashEntered,
+      totalNonCashPaid: localNonCashPaid,
+      pending,
+      overpayment,
+      change,
+    };
+  };
+
+  const buildEffectivePayments = (
+    localParsed: ParsedPosPayment[],
+    overpayment: number
+  ) => {
+    const basePayments = localParsed.filter((payment) => payment.numericAmount > 0);
+
+    if (overpayment <= 0) {
       return basePayments.map((payment) => ({
         paymentMethodId: payment.paymentMethodId,
         amount: payment.numericAmount,
         cashSessionId: currentCashSession?.id ?? null,
+        financialInstitutionId: payment.financialInstitutionId ?? null,
         referenceNumber: payment.reference.trim() || null,
         notes: null,
       }));
     }
 
-    let remainingChange = paymentDerivedState.overpayment;
+    let remainingChange = overpayment;
 
     return basePayments
       .map((payment) => {
@@ -2239,6 +2309,7 @@ export const PosScreen = () => {
             paymentMethodId: payment.paymentMethodId,
             amount: payment.numericAmount,
             cashSessionId: currentCashSession?.id ?? null,
+            financialInstitutionId: payment.financialInstitutionId ?? null,
             referenceNumber: payment.reference.trim() || null,
             notes: null,
           };
@@ -2251,6 +2322,7 @@ export const PosScreen = () => {
           paymentMethodId: payment.paymentMethodId,
           amount: adjustedAmount,
           cashSessionId: currentCashSession?.id ?? null,
+          financialInstitutionId: payment.financialInstitutionId ?? null,
           referenceNumber: payment.reference.trim() || null,
           notes: null,
         };
@@ -2258,8 +2330,12 @@ export const PosScreen = () => {
       .filter((payment) => payment.amount > 0);
   };
 
-  const validateBeforeSubmit = () => {
-    if (!selectedCustomerId) {
+  const validateBeforeSubmit = (
+    customerId: string | null,
+    localParsed: ParsedPosPayment[],
+    derived: ReturnType<typeof derivePaymentState>
+  ) => {
+    if (!customerId) {
       return "Selecciona un cliente para continuar.";
     }
 
@@ -2289,29 +2365,29 @@ export const PosScreen = () => {
       return paymentWarning;
     }
 
-    if (paymentDerivedState.overpayment > 0 && totalNonCashPaid > summary.total) {
+    if (derived.overpayment > 0 && derived.totalNonCashPaid > summary.total) {
       return "Los pagos no en efectivo no pueden exceder el total de la venta.";
     }
 
-    if (paymentDerivedState.overpayment > 0 && totalCashEntered <= 0) {
+    if (derived.overpayment > 0 && derived.totalCashEntered <= 0) {
       return "El cambio solo puede calcularse cuando existe un pago en efectivo.";
     }
 
-    const hasInvalidPayments = parsedPayments.some(
+    const hasInvalidPayments = localParsed.some(
       (payment) => payment.amount.trim() !== "" && payment.numericAmount <= 0
     );
     if (hasInvalidPayments) {
       return "Los metodos de pago deben tener montos mayores a cero.";
     }
 
-    const hasMissingPaymentMethod = parsedPayments.some(
+    const hasMissingPaymentMethod = localParsed.some(
       (payment) => payment.amount.trim() !== "" && !payment.method
     );
     if (hasMissingPaymentMethod) {
       return "Selecciona un metodo de pago valido en cada linea.";
     }
 
-    const hasMissingReference = parsedPayments.some(
+    const hasMissingReference = localParsed.some(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method?.requiresReference &&
@@ -2321,14 +2397,14 @@ export const PosScreen = () => {
       return "Los metodos que exigen referencia deben incluirla.";
     }
 
-    const duplicateMethods = parsedPayments
+    const duplicateMethods = localParsed
       .filter((payment) => payment.numericAmount > 0 && payment.paymentMethodId)
       .map((payment) => payment.paymentMethodId);
     if (new Set(duplicateMethods).size !== duplicateMethods.length) {
       return "No repitas el mismo metodo de pago en varias lineas.";
     }
 
-    const hasCashWithoutSession = parsedPayments.some(
+    const hasCashWithoutSession = localParsed.some(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method &&
@@ -2339,18 +2415,21 @@ export const PosScreen = () => {
       return "Abre una caja antes de registrar efectivo en el POS.";
     }
 
-    if (paymentDerivedState.pending === 0 && totalPaid === 0) {
+    if (derived.pending === 0 && derived.totalPaid === 0) {
       return "Registra al menos un metodo de pago para una venta al contado.";
     }
 
-    if (paymentDerivedState.pending > 0) {
+    if (derived.pending > 0) {
       return "El total pagado debe ser igual al total de la venta.";
     }
 
     return null;
   };
 
-  const submitSale = async () => {
+  const submitSale = async (options?: {
+    paymentsOverride?: PaymentDraft[];
+    customerIdOverride?: string | null;
+  }) => {
     if (saleStatus === "UNKNOWN") {
       setSubmitError(
         "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
@@ -2358,16 +2437,27 @@ export const PosScreen = () => {
       return;
     }
 
-    const validationError = validateBeforeSubmit();
+    // Always prefer explicit drafts from PaymentDialog — never rely on async setPayments.
+    const draftsForSubmit = options?.paymentsOverride ?? payments;
+    const customerIdForSubmit = options?.customerIdOverride ?? selectedCustomerId;
+    const localParsed = parsePaymentDrafts(draftsForSubmit);
+    const derived = derivePaymentState(localParsed);
+
+    const validationError = validateBeforeSubmit(
+      customerIdForSubmit,
+      localParsed,
+      derived
+    );
     if (validationError) {
       setSubmitError(validationError);
       return;
     }
 
-    const effectivePayments = buildEffectivePayments();
+    const effectivePayments = buildEffectivePayments(localParsed, derived.overpayment);
     const paymentTotal = round(
       effectivePayments.reduce((sum, payment) => sum + payment.amount, 0)
     );
+    // CASH = venta al contado (pagada completa). No indica medio "Efectivo".
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
@@ -2382,7 +2472,7 @@ export const PosScreen = () => {
     try {
       const sale = await createSale(
         {
-          customerId: selectedCustomerId!,
+          customerId: customerIdForSubmit!,
           type: saleType,
           items: cartWithDerivedValues.map((item) => ({
             productId: item.productId,
@@ -2404,6 +2494,7 @@ export const PosScreen = () => {
             paymentMethodId: payment.paymentMethodId,
             amount: payment.amount,
             cashSessionId: payment.cashSessionId ?? undefined,
+            financialInstitutionId: payment.financialInstitutionId ?? undefined,
             referenceNumber: payment.referenceNumber,
             notes: payment.notes,
           })),
@@ -2471,7 +2562,8 @@ export const PosScreen = () => {
         error instanceof ApiError && error.status >= 400 && error.status < 500;
       if (isDefinitiveRejection) {
         allowSaleSubmissionRetry();
-        setSubmitError("La venta fue rechazada. Revisa stock, pagos y permisos.");
+        const msg = (error instanceof Error && error.message?.trim()) ? error.message.trim() : 'La venta fue rechazada. Revisa stock, pagos y permisos.';
+        setSubmitError(msg);
         showToast("La venta fue rechazada.", "error");
       } else {
         markSaleSubmissionUnknown();
@@ -2496,332 +2588,31 @@ export const PosScreen = () => {
     );
   }
 
-  // Cart Panel Component (internal)
-  const CartPanel = () => (
-    <div className="flex flex-1 min-h-0 flex-col">
-      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-700">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-            Carrito
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-950 dark:text-white">
-            Venta actual
-          </h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-            {cartWithDerivedValues.length} items
-          </div>
-          <button
-            type="button"
-            onClick={() => setCartSheetOpen(false)}
-            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 xl:hidden dark:text-slate-200"
-            aria-label="Cerrar carrito"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
+  const resolveCartItemPresentation = (item: (typeof cartWithDerivedValues)[number]): CartSaleItemPresentation => {
+    const product = productById[item.productId];
+    const productSaleType = product ? getProductSaleType(product) : "UNIT";
+    const unitLabel = product?.measurementUnit ?? (productSaleType === "WEIGHT" ? "KG" : "UND");
+    const effectiveImage = product
+      ? resolveEffectivePosProductImage(product, {
+          categoryById: productCategoryById,
+          subcategoryById: productSubcategoryById,
+        })
+      : null;
 
-      <div className="mt-3 flex flex-1 min-h-0 flex-col overflow-hidden">
-        {cartWithDerivedValues.length === 0 ? (
-          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4">
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              <ShoppingCart className="h-8 w-8 text-slate-300 dark:text-slate-500" />
-              <p className="mt-3 text-base font-semibold text-slate-700 dark:text-slate-100">
-                Tu carrito esta vacio
-              </p>
-              <p className="mt-2 max-w-[18rem] text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                Agrega productos para iniciar una venta.
-              </p>
-            </div>
+    return {
+      imageUrl: effectiveImage?.imageUrl ?? null,
+      imageAlt: effectiveImage?.altText ?? item.name,
+      imageLabel: buildImageLabel(item.name),
+      saleTypeLabel: productSaleTypeLabels[productSaleType],
+      unitLabel,
+      isWeighable: Boolean(product && isWeighableProduct(product)),
+    };
+  };
 
-            <div className="shrink-0 space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Subtotal</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Impuestos</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                <span>Descuentos</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-700 dark:text-white">
-                <span>TOTAL</span>
-                <span>{formatCurrency(0)}</span>
-              </div>
-            </div>
-
-            <Button
-              className="min-h-12 w-full shrink-0 rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
-              size="lg"
-              onClick={openChargeModal}
-              disabled={!canCharge}
-            >
-              <Wallet className="h-5 w-5" />
-              COBRAR {formatCurrency(0)}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <div className="space-y-0 divide-y divide-slate-200/80 dark:divide-slate-800">
-                {cartWithDerivedValues.map((item) => {
-                  const product = productById[item.productId];
-                  const isCartItemWeighable = Boolean(product && isWeighableProduct(product));
-                  const productSaleType = product ? getProductSaleType(product) : "UNIT";
-                  const unitLabel = product?.measurementUnit ?? (productSaleType === "WEIGHT" ? "KG" : "UND");
-                  const quantityIsPlural = Number(item.quantity) > 1;
-                  const discountDisplay = buildPosCartDiscountDisplay({
-                    baseUnitPrice: item.baseUnitPrice,
-                    finalUnitPrice: item.finalUnitPrice,
-                    unitPrice: item.unitPrice,
-                    quantity: item.quantity,
-                    discountAmount: item.discountAmount,
-                    discountTotal: item.discountTotal,
-                    discountPercent: item.discountPercent,
-                    isWeighable: isCartItemWeighable,
-                  });
-                  const effectiveImage = product
-                    ? resolveEffectivePosProductImage(product, {
-                        categoryById: productCategoryById,
-                        subcategoryById: productSubcategoryById,
-                      })
-                    : null;
-
-                  return (
-                    <article key={item.productId} className="py-3 first:pt-0 last:pb-0">
-                      <div className="flex items-start gap-3">
-                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                          <InventoryImagePreview
-                            imageUrl={effectiveImage?.imageUrl ?? null}
-                            altText={effectiveImage?.altText ?? item.name}
-                            lazy
-                            className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-1.5 text-[10px] font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                            fallback={<span>{buildImageLabel(item.name)}</span>}
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-slate-950 dark:text-white">
-                                {item.name}
-                              </h3>
-                              <p className="mt-0.5 truncate text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                {item.sku} {product ? `• ${productSaleTypeLabels[productSaleType]} / ${unitLabel}` : ""}
-                              </p>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => removeCartItem(item.productId)}
-                              className="rounded-full p-1.5 text-slate-400 transition hover:bg-white hover:text-rose-600 dark:hover:bg-slate-800"
-                              aria-label={`Eliminar ${item.name}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
-                              >
-                                <Minus className="h-4 w-4" />
-                              </button>
-                              <input
-                                value={item.quantity}
-                                onChange={(event) =>
-                                  updateQuantity(
-                                    item.productId,
-                                    parseQuantityInput(event.target.value)
-                                  )
-                                }
-                                className="w-12 border-x border-slate-200 bg-transparent px-1 py-1.5 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                                inputMode={isCartItemWeighable ? "decimal" : "numeric"}
-                                aria-label={`Cantidad de ${item.name}`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-900"
-                              >
-                                <Plus className="h-4 w-4" />
-                              </button>
-                            </div>
-
-                            {isCartItemWeighable && product ? (
-                              <button
-                                type="button"
-                                onClick={() => void handleReadScaleForProduct(product)}
-                                disabled={!scaleMockEnabled || scaleReading}
-                                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
-                              >
-                                {scaleReading ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Scale className="h-3.5 w-3.5" />
-                                )}
-                                Leer balanza
-                              </button>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px]">
-                            {item.pricingStatus === "PENDING" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-semibold text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                {item.pricingError === "Precio pendiente de actualización" ? "Precio pendiente de actualización" : "Calculando precio"}
-                              </span>
-                            ) : null}
-
-                            {item.pricingStatus === "ERROR" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                                Error: {item.pricingError}
-                              </span>
-                            ) : null}
-
-                            {item.appliedPromotionName ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-                                Promo: {item.appliedPromotionName}
-                              </span>
-                            ) : null}
-
-                            {discountDisplay ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                                Ahorro {formatCurrency(discountDisplay.totalDiscount)}
-                              </span>
-                            ) : null}
-
-                            <span className="text-slate-500 dark:text-slate-400">Stock {item.stock}</span>
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <button
-                              type="button"
-                              onClick={() => toggleTaxBreakdown(item.productId)}
-                              className="inline-flex items-center gap-2 text-[11px] font-semibold text-slate-700 transition hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
-                            >
-                              <span>Impuestos</span>
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {formatCurrency(item.taxTotal)}
-                              </span>
-                              <ChevronDown
-                                className={`h-3.5 w-3.5 transition-transform duration-200 ${
-                                  expandedTaxItems[item.productId] ? "rotate-180" : ""
-                                }`}
-                              />
-                            </button>
-
-                            <div className="shrink-0 text-right">
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                                {quantityIsPlural ? "Total" : "Precio"}
-                              </p>
-                              <p className="mt-0.5 text-base font-semibold text-slate-950 dark:text-white">
-                                {formatCurrency(item.subtotal)}
-                              </p>
-                              {quantityIsPlural ? (
-                                <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                                  {formatCurrency(item.unitPrice)} c/u
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          {expandedTaxItems[item.productId] ? (
-                            <div className="mt-2 space-y-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-950/80">
-                              {item.taxes.length === 0 ? (
-                                <p className="text-slate-500 dark:text-slate-400">
-                                  Este producto no tiene impuestos asociados.
-                                </p>
-                              ) : (
-                                item.taxes.map((tax) => (
-                                  <div
-                                    key={tax.taxId}
-                                    className="flex items-center justify-between gap-3"
-                                  >
-                                    <span className="truncate text-slate-700 dark:text-slate-200">
-                                      {tax.taxName}
-                                    </span>
-                                    <span className="shrink-0 text-slate-600 dark:text-slate-300">
-                                      {formatCurrency(tax.taxAmount)}
-                                    </span>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mt-3 flex shrink-0 flex-col gap-3">
-              <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
-                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(summary.subtotal - summary.taxesTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <span>Impuestos</span>
-                  <span>{formatCurrency(summary.taxesTotal)}</span>
-                </div>
-                {summary.taxBreakdown.map(([taxName, amount]) => (
-                  <div
-                    key={taxName}
-                    className="flex items-center justify-between pl-3 text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    <span>{taxName}</span>
-                    <span>{formatCurrency(amount)}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
-                  <span>Descuentos</span>
-                  <span>{formatCurrency(summary.discountTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-semibold text-slate-950 dark:border-slate-700 dark:text-white">
-                  <span>TOTAL</span>
-                  <span>{formatCurrency(summary.total)}</span>
-                </div>
-              </div>
-
-              {hasPricingPending ? (
-                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
-                  Calculando precio/promocion antes de cobrar.
-                </div>
-              ) : null}
-
-              {pricingErrorItem ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                  {pricingErrorItem.pricingError ??
-                    `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`}
-                </div>
-              ) : null}
-
-              <Button
-                className="min-h-12 w-full shrink-0 rounded-2xl text-base font-bold shadow-lg transition-all hover:shadow-xl active:scale-[0.98]"
-                size="lg"
-                onClick={openChargeModal}
-                disabled={!canCharge}
-              >
-                <Wallet className="h-5 w-5" />
-                COBRAR {formatCurrency(summary.total)}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const pricingErrorMessage = pricingErrorItem
+    ? pricingErrorItem.pricingError ??
+      `No se pudo calcular precio/promocion para ${pricingErrorItem.name}.`
+    : null;
 
   return (
     <div className="relative min-h-screen">
@@ -2977,19 +2768,20 @@ export const PosScreen = () => {
       ) : null}
 
       {/* Main Layout - Sale-first workspace */}
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid gap-5">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-700 dark:bg-slate-950/80">
-            <div className="flex flex-col gap-4">
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
+            <div className="flex flex-col gap-3 2xl:gap-4">
+              <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   <Search className="h-4 w-4" />
                   Buscar productos
                 </div>
                 <Input
                   ref={searchInputRef}
-                  label="Buscador POS principal"
+                  label=""
+                  aria-label="Buscar productos"
                   placeholder="Buscar productos por nombre, SKU o codigo"
                   autoFocus
                   value={query}
@@ -3256,7 +3048,7 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3"
+                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
                       : "grid gap-2.5"
                   }
                 >
@@ -3394,7 +3186,7 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => handleProductCardAction(product)}
                           disabled={isProductActionDisabled}
-                          className={`group min-h-[220px] overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
+                          className={`group min-h-[200px] overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
                             hasProductInCart
                               ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
                               : "border-slate-200 dark:border-slate-700"
@@ -3402,7 +3194,7 @@ export const PosScreen = () => {
                       >
                         <div className="flex h-full flex-col">
                           <div className="relative">
-                            <div className="relative aspect-[4/3] w-full overflow-hidden bg-white">
+                            <div className="relative aspect-[4/3] max-h-52 w-full overflow-hidden bg-white xl:max-h-44">
                               <InventoryImagePreview
                                 imageUrl={effectiveImage.imageUrl}
                                 altText={effectiveImage.altText}
@@ -3411,14 +3203,14 @@ export const PosScreen = () => {
                                 fallback={<span>{buildImageLabel(product.name)}</span>}
                               />
                             </div>
-                            <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-2">
+                            <div className="absolute left-2.5 top-2.5 flex max-w-[calc(100%-1.25rem)] flex-wrap gap-1.5">
                               {hasProductInCart ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
                                   En carrito {quantityInCart}
                                 </span>
                               ) : null}
                             </div>
-                            <div className="absolute right-3 top-3">
+                            <div className="absolute right-2.5 top-2.5">
                               <span
                                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
                                   stock
@@ -3433,7 +3225,7 @@ export const PosScreen = () => {
                             </div>
                           </div>
 
-                          <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+                          <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-3">
                             <div className="min-w-0">
                               <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-tight text-slate-950 dark:text-white">
                                 {product.name}
@@ -3485,32 +3277,36 @@ export const PosScreen = () => {
             </div>
           </div>
         </div>
-
-        {/* Cart Panel - Desktop: sticky sidebar, Mobile: centered modal */}
-        {/* Desktop Cart */}
-        <aside
-          className="sticky top-3 hidden max-h-[calc(100vh-8.5rem)] min-h-0 rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] backdrop-blur-sm dark:border-slate-700 dark:bg-slate-950/95 xl:block"
-        >
-          <div className="flex max-h-full flex-col overflow-hidden pt-2">
-            <CartPanel />
-          </div>
-        </aside>
-
-        {/* Mobile Cart Modal */}
-        {isMobile && cartSheetOpen ? (
-          <Modal
-            title="Carrito de venta"
-            description="Revisa productos, totales y cobro sin perder contexto."
-            size="xl"
-            onClose={() => setCartSheetOpen(false)}
-            className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
-          >
-            <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
-              <CartPanel />
-            </div>
-          </Modal>
-        ) : null}
       </div>
+
+      <CartSaleModal
+        open={cartSheetOpen}
+        items={cartWithDerivedValues}
+        summary={summary}
+        expandedTaxItems={expandedTaxItems}
+        canCharge={canCharge}
+        hasPricingPending={hasPricingPending}
+        pricingErrorMessage={pricingErrorMessage}
+        scaleMockEnabled={scaleMockEnabled}
+        scaleReading={scaleReading}
+        resolvePresentation={resolveCartItemPresentation}
+        formatCurrency={formatCurrency}
+        parseQuantityInput={parseQuantityInput}
+        onClose={closeCartSheet}
+        onCancelSale={cancelCurrentSale}
+        onCharge={openChargeModal}
+        onUpdateQuantity={updateQuantity}
+        onRemoveItem={removeCartItem}
+        onToggleTaxBreakdown={toggleTaxBreakdown}
+        onToggleSummaryTaxes={() => setSummaryTaxesExpanded((current) => !current)}
+        summaryTaxesExpanded={summaryTaxesExpanded}
+        onReadScale={(productId) => {
+          const product = productById[productId];
+          if (product) {
+            void handleReadScaleForProduct(product);
+          }
+        }}
+      />
 
       {/* Floating Cart Button - visible when cart is closed and has items */}
       {!cartSheetOpen && cartItemCount > 0 ? (
@@ -3522,9 +3318,7 @@ export const PosScreen = () => {
           onPointerUp={cartFloatingControl.buttonProps.onPointerUp}
           onPointerCancel={cartFloatingControl.buttonProps.onPointerCancel}
           onClick={cartFloatingControl.buttonProps.onClick}
-          style={{
-            ...cartFloatingControl.buttonStyle,
-          }}
+          style={cartFloatingControl.buttonStyle}
           className={`fixed z-30 flex cursor-grab select-none items-center gap-3 rounded-full bg-slate-900 px-5 py-3 text-white shadow-2xl transition hover:scale-105 hover:bg-slate-800 active:cursor-grabbing active:scale-95 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 sm:px-6 sm:py-4 ${cartFloatingControl.isDragging ? "scale-[1.02] shadow-[0_24px_60px_-24px_rgba(15,23,42,0.65)]" : ""}`}
           aria-label={`Abrir carrito con ${cartItemCount} productos`}
           title="Abrir carrito. Arrastra para mover."
@@ -3533,332 +3327,83 @@ export const PosScreen = () => {
           <span className="font-semibold">
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
+          {canCharge ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openChargeModal();
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openChargeModal();
+                }
+              }}
+              className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-blue-500 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white transition hover:bg-blue-400"
+              aria-label={`Cobrar ${formatCurrency(summary.total)}`}
+              title="Cobrar (F4 / F12)"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              Cobrar
+            </span>
+          ) : null}
         </button>
       ) : null}
 
 
       {/* Payment Modal */}
-      {paymentModalOpen ? (
-        <Modal
-          title="Cobrar venta"
-          size="xl"
-          onClose={closeChargeModal}
-          className="dark:bg-slate-950"
-        >
-          <div className="flex max-h-[calc(90vh-120px)] flex-col">
-            <div className="mb-5 flex-shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    <UserRound className="h-4 w-4" />
-                    Cliente de la venta
-                  </div>
-                  <div className="relative z-50">
-                    <div className="relative flex items-center">
-                      <input
-                        placeholder="Buscar por nombre o doc..."
-                        value={customerSearchQuery}
-                        onChange={(e) => {
-                          setCustomerSearchQuery(e.target.value);
-                          setCustomerDropdownOpen(true);
-                        }}
-                        onFocus={() => {
-                          setCustomerSearchQuery("");
-                          setCustomerDropdownOpen(true);
-                        }}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            setCustomerDropdownOpen(false);
-                          }, 200);
-                        }}
-                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                      />
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                        <Search className="h-4 w-4" />
-                      </div>
-                      {customerSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomerSearchQuery("");
-                            setCustomerDropdownOpen(true);
-                          }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-
-                    {customerDropdownOpen && (
-                      <div className="absolute left-0 top-full mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-800">
-                        {filteredCustomers.length === 0 ? (
-                          <div className="px-3 py-4 text-center text-sm text-slate-500">
-                            No hay clientes encontrados
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            {filteredCustomers.map((customer) => {
-                              const isSelected = selectedCustomerId === customer.id;
-                              return (
-                                <button
-                                  key={customer.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedCustomerId(customer.id);
-                                    setCustomerDropdownOpen(false);
-                                  }}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                                    isSelected
-                                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300 font-medium"
-                                      : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700/50"
-                                  }`}
-                                >
-                                  <span className="truncate">
-                                    {customer.name}
-                                    {customer.documentNumber && (
-                                      <span className="ml-1 text-xs opacity-70">
-                                        ({customer.documentNumber})
-                                      </span>
-                                    )}
-                                  </span>
-                                  {isSelected && <CheckCircle2 className="h-4 w-4 flex-shrink-0" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setQuickFiscalCustomerOpen(true)}
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      Cliente fiscal
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleUseFinalConsumer}
-                      disabled={!finalConsumerCustomer}
-                    >
-                      <UserRound className="h-4 w-4" />
-                      Consumidor Final
-                    </Button>
-                  </div>
-                </div>
-                <div className="text-right border-t border-slate-200 pt-3 dark:border-slate-700 md:border-t-0 md:pt-0">
-                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Total
-                  </p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
-                    {formatCurrency(summary.total)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto pr-2">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <div className="space-y-4">
-                  {payments.map((payment, index) => (
-                    <div
-                      key={payment.id}
-                      className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700"
-                    >
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-                          <CreditCard className="h-4 w-4" />
-                          Metodo #{index + 1}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removePaymentRow(payment.id)}
-                          className="rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200 dark:text-slate-200"
-                          disabled={payments.length === 1}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <div
-                            className="grid gap-2"
-                            style={{ gridTemplateColumns: `repeat(${Math.min(paymentMethodOptions.length, 4)}, minmax(0, 1fr))` }}
-                          >
-                            {paymentMethodOptions.map((option) => {
-                              const labelLower = option.label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                              let icon = "💲";
-                              if (labelLower.includes("efectivo") || labelLower.includes("cash")) icon = "💵";
-                              else if (labelLower.includes("debito") || labelLower.includes("debit")) icon = "💳";
-                              else if (labelLower.includes("credito") || labelLower.includes("credit")) icon = "💳";
-                              else if (labelLower.includes("transferencia") || labelLower.includes("transfer")) icon = "🏦";
-                              else if (labelLower.includes("nequi") || labelLower.includes("daviplata") || labelLower.includes("app")) icon = "📱";
-
-                              const isSelected = payment.paymentMethodId === option.value;
-
-                              return (
-                                <button
-                                  key={option.value}
-                                  type="button"
-                                  onClick={() =>
-                                    handlePaymentMethodSelect(payment.id, option.value)
-                                  }
-                                  className={`flex min-h-[48px] flex-row items-center justify-center gap-2 rounded-xl border px-2 py-2 text-center transition-all ${
-                                    isSelected
-                                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-600 dark:border-blue-500 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500"
-                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
-                                  }`}
-                                  title={option.label}
-                                >
-                                  <span className="text-xl flex-shrink-0">{icon}</span>
-                                  <span className="truncate text-sm font-medium leading-tight">
-                                    {option.label}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <Input
-                            id={`payment-amount-${payment.id}`}
-                            label="Monto"
-                            inputMode="decimal"
-                            value={payment.amount}
-                            onChange={(event) =>
-                              updatePayment(payment.id, "amount", event.target.value)
-                            }
-                            placeholder="0"
-                          />
-
-                          <Input
-                            label={
-                              paymentMethodById[payment.paymentMethodId]?.requiresReference
-                                ? "Referencia obligatoria"
-                                : "Referencia"
-                            }
-                            value={payment.reference}
-                            onChange={(event) =>
-                              updatePayment(payment.id, "reference", event.target.value)
-                            }
-                            placeholder="Opcional"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  <Button variant="outline" onClick={addPaymentRow} className="w-full">
-                    <Plus className="h-4 w-4" />
-                    Agregar metodo de pago
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="sticky top-0 space-y-4">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-slate-600 dark:text-slate-300">Total pagado</span>
-                        <span className="font-semibold text-slate-950 dark:text-white">
-                          {formatCurrency(totalPaid)}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <span className="text-slate-600 dark:text-slate-300">Cambio</span>
-                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
-                          {formatCurrency(paymentDerivedState.change)}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <span className="text-slate-600 dark:text-slate-300">Saldo pendiente</span>
-                        <span className="font-semibold text-amber-700 dark:text-amber-300">
-                          {formatCurrency(paymentDerivedState.pending)}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                        Si el total pagado no cubre la venta completa, se registrara como venta a credito.
-                      </p>
-                      {currentCashSession ? (
-                        <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                          Caja activa: {currentCashSession.cashRegisterNombre ?? "Caja actual"}
-                        </p>
-                      ) : (
-                        <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                          No hay caja abierta para este usuario. El efectivo quedara bloqueado.
-                        </p>
-                      )}
-                    </div>
-
-                    {paymentWarning ? (
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                        {paymentWarning}
-                      </div>
-                    ) : null}
-
-                    {submitError ? (
-                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                        {submitError}
-                      </div>
-                    ) : null}
-
-                    {saleStatus === "UNKNOWN" ? (
-                      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-                        <p className="font-semibold">Venta pendiente de verificacion</p>
-                        <p className="mt-1">
-                          Este equipo no puede confirmar si el API alcanzo a registrar la venta. Revisa la lista de ventas antes de permitir otro intento.
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void reconcileUnknownSale()}
-                            isLoading={processingSale}
-                          >
-                            Verificar venta
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              allowUnknownSaleRetry();
-                              setSubmitError(null);
-                            }}
-                            disabled={processingSale}
-                          >
-                            Reintentar con la misma clave
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex-shrink-0 border-t border-slate-200 pt-5 dark:border-slate-800">
-              <div className="flex flex-wrap justify-end gap-3">
-                <Button variant="ghost" onClick={closeChargeModal} disabled={processingSale}>
-                  Cancelar
-                </Button>
-                <Button
-                  isLoading={processingSale}
-                  disabled={saleStatus === "UNKNOWN"}
-                  onClick={() => void submitSale()}
-                >
-                  Confirmar venta
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
+      <PaymentDialog
+        open={paymentModalOpen}
+        onClose={closeChargeModal}
+        totalAmount={summary.total}
+        paymentMethods={paymentMethodsCatalog}
+        financialInstitutions={financialInstitutionsCatalog}
+        customers={customers}
+        selectedCustomerId={selectedCustomerId}
+        onSelectCustomer={(customerId) => {
+          const customer = customers.find((item) => item.id === customerId);
+          if (customer) handleSelectPosCustomer(customer);
+        }}
+        onUseFinalConsumer={handleUseFinalConsumer}
+        onOpenQuickFiscalCustomer={() => setQuickFiscalCustomerOpen(true)}
+        finalConsumerCustomer={finalConsumerCustomer}
+        activeSessionInfo={
+          currentCashSession
+            ? {
+                cashRegisterName: currentCashSession.cashRegisterNombre || undefined,
+                branchName: authUser?.branchName || undefined,
+              }
+            : null
+        }
+        isSubmitting={processingSale}
+        serverError={submitError}
+        onConfirm={(paymentRows, customerId) => {
+          if (customerId) {
+            setSelectedCustomerId(customerId);
+          }
+          const formattedPayments: PaymentDraft[] = paymentRows.map((r) => ({
+            id: buildPaymentId(),
+            paymentMethodId: r.paymentMethodId,
+            amount: r.amount,
+            reference: r.reference,
+            financialInstitutionId: r.financialInstitutionId,
+          }));
+          setPayments(formattedPayments);
+          // Pass drafts explicitly — setPayments is async and the old setTimeout
+          // submitted the previous default (Efectivo) without bank/reference.
+          void submitSale({
+            paymentsOverride: formattedPayments,
+            customerIdOverride: customerId ?? selectedCustomerId,
+          });
+        }}
+      />
 
       {quickFiscalCustomerOpen ? (
         <QuickFiscalCustomerModal

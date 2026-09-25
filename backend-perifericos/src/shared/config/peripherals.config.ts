@@ -25,6 +25,7 @@ export type PeripheralsConfig = {
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "https://apptiendamanus.space",
+  "https://portal.emaus.centrivosoft.com",
 ];
 
 const STARTED_AT = Date.now();

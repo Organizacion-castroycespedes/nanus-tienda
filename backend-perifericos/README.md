@@ -219,6 +219,264 @@ No contiene secrets. Logs y estado, incluido `agentInstallationId`, viven en:
 %LOCALAPPDATA%\\Manus\\PeripheralAgent\\state
 ```
 
+## Instalador Windows x64 por ambiente
+
+El flujo usa la misma base de código y cambia solo la configuración de URL y
+CORS del shell Electron y del agente local:
+
+| Ambiente | URL inicial | Origin permitido |
+| --- | --- | --- |
+| Desarrollo | `http://localhost:3000/login` | `http://localhost:3000` |
+| QA | `https://www.apptiendamanus.space/login` | `https://www.apptiendamanus.space` |
+| Production | `https://portal.emaus.centrivosoft.com/login` | `https://portal.emaus.centrivosoft.com` |
+
+### Requisitos del equipo que compila
+
+- Windows x64.
+- Node.js `>=24.21.0` para `backend-perifericos`.
+- Node.js `>=22.12.0` para `desktop/electron`.
+- npm disponible en `PATH`.
+- Go `1.24.x` disponible en `PATH` para compilar el instalador Windows.
+- Microsoft Edge WebView2 Runtime para ejecutar la interfaz del instalador.
+- PowerShell como administrador para instalar en `C:\Program Files`.
+- El equipo POS debe tener acceso a la URL del ambiente y, si se usa USB,
+  tener instalada la impresora o cola de Windows correspondiente.
+
+El Node detectado durante la compilación fue `v24.20.0`. Compiló, pero npm
+mostró un warning porque el requisito es `>=24.21.0`; conviene actualizar a
+`24.21.0` o superior.
+
+El equipo que recibe el instalador no necesita npm, Git, Node.js ni Go: el
+agente lleva su runtime Node embebido. Sí necesita Windows x64 y WebView2.
+
+### Preparar dependencias
+
+Desde la raíz del proyecto:
+
+```powershell
+cd desktop\electron
+npm ci
+
+cd ..\..\backend-perifericos
+npm ci
+```
+
+### Generar instalador QA
+
+`main` no debe generar QA. Usa una rama de QA, por ejemplo `develop`:
+
+```powershell
+cd backend-perifericos
+$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-qa.11-win-x64.exe"
+npm run installer:windows-x64:qa
+```
+
+### Generar instalador production
+
+Ejecuta desde `main`:
+
+```powershell
+cd backend-perifericos
+$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-prd-win-x64.exe"
+npm run installer:windows-x64:production
+```
+
+Comandos completos desde la ruta del proyecto:
+
+QA:
+
+```powershell
+cd C:\Users\icast\Documents\Proyectos\nanus-tienda\backend-perifericos
+
+$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-qa.11-win-x64.exe"
+
+npm run installer:windows-x64:qa
+```
+
+Production:
+
+```powershell
+cd C:\Users\icast\Documents\Proyectos\nanus-tienda\backend-perifericos
+
+$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-prd-win-x64.exe"
+
+npm run installer:windows-x64:production
+```
+
+Los comandos anteriores hacen todo el flujo: configuran el ambiente, generan
+`desktop\electron\release\win-unpacked`, empaquetan el agente Windows x64,
+crean el instalador y ejecutan la validación.
+
+Salida final:
+
+```text
+backend-perifericos\dist-installer\windows-x64\ManusTerminalSetup-<nombre>.exe
+```
+
+Para validar que existe:
+
+```powershell
+Test-Path .\dist-installer\windows-x64\ManusTerminalSetup-0.1.1-prd-win-x64.exe
+```
+
+### Instalar en una máquina local
+
+1. Cerrar Manus POS y cualquier ventana del instalador anterior.
+2. Ejecutar el `.exe` con `Run as administrator`.
+3. Aceptar el aviso UAC.
+4. Esperar que el servicio `ManusPeripheralAgent` quede iniciado.
+5. Verificar en PowerShell:
+
+```powershell
+Get-Service ManusPeripheralAgent
+Invoke-WebRequest http://127.0.0.1:4050/health
+```
+
+Si se instala nuevamente la misma versión, el instalador entra en modo
+`repair`. El servicio puede estar detenido; eso es válido. El instalador
+detiene el servicio, reemplaza la versión y lo inicia al final. Si una versión
+anterior quedó bloqueada, cerrar Manus POS, detener el servicio y ejecutar el
+instalador como administrador:
+
+```powershell
+Stop-Service -Name ManusPeripheralAgent -Force -ErrorAction SilentlyContinue
+Start-Process .\ManusTerminalSetup-0.1.1-prd-win-x64.exe -Verb RunAs -Wait
+```
+
+No borrar manualmente `C:\Program Files\Manus\PeripheralAgent\versions`; esa
+carpeta contiene las versiones administradas y la usa el rollback del instalador.
+
+## Ejecutar Electron local por ambiente
+
+La ejecución manual se hace desde `desktop\electron`. Para `dev`, primero
+debe estar levantado el frontend local en otra terminal. QA y production usan
+la web remota; no requieren levantar `web` local.
+
+### Desarrollo (`dev`)
+
+Terminal 1:
+
+```powershell
+cd C:\Users\icast\Documents\Proyectos\nanus-tienda\web
+npm run dev
+```
+
+Terminal 2:
+
+```powershell
+cd C:\Users\icast\Documents\Proyectos\nanus-tienda\desktop\electron
+
+$env:MANUS_WEB_URL="http://localhost:3000/login"
+$env:MANUS_START_PATH="/login"
+
+npm run dev
+```
+
+### QA
+
+```powershell
+cd C:\Users\icast\Documents\Proyectos\nanus-tienda\desktop\electron
+
+$env:MANUS_WEB_URL="https://www.apptiendamanus.space/login"
+$env:MANUS_START_PATH="/login"
+
+npm run dev
+```
+
+### Production
+
+```powershell
+cd C:\Users\icast\Documents\Proyectos\nanus-tienda\desktop\electron
+
+$env:MANUS_WEB_URL="https://portal.emaus.centrivosoft.com/login"
+$env:MANUS_START_PATH="/login"
+
+npm run dev
+```
+
+### Limpiar variables antes de cambiar de ambiente
+
+```powershell
+Remove-Item Env:MANUS_WEB_URL -ErrorAction SilentlyContinue
+Remove-Item Env:MANUS_START_PATH -ErrorAction SilentlyContinue
+```
+
+`npm run dev` prueba Electron y la web. Para probar periféricos reales se debe
+usar el instalador Windows, porque Electron local no carga el agente del shell
+empaquetado.
+
+## Cambiar de QA a production en la misma máquina
+
+Si la máquina tiene instalado `ManusTerminalSetup-0.1.1-qa.11-win-x64.exe` y se
+quiere instalar `ManusTerminalSetup-0.1.1-prd-win-x64-rerun.exe`, hacer el
+cambio con PowerShell como administrador.
+
+### Opción recomendada: desinstalar QA y luego instalar production
+
+1. Cerrar Manus POS.
+2. Cerrar cualquier ventana de `ManusTerminalSetup.exe`.
+3. Abrir PowerShell con `Run as administrator`.
+4. Detener el servicio:
+
+```powershell
+Stop-Service -Name ManusPeripheralAgent -Force -ErrorAction SilentlyContinue
+```
+
+5. Desinstalar la instalación actual sin borrar datos locales:
+
+```powershell
+$installedSetup = "C:\Program Files\Manus\PeripheralAgent\current\ManusTerminalSetup.exe"
+& $installedSetup uninstall
+```
+
+También se puede usar `Configuración de Windows > Aplicaciones > Aplicaciones
+instaladas > Manus Peripheral Agent > Desinstalar`.
+
+6. Verificar que el servicio ya no exista o esté detenido:
+
+```powershell
+Get-Service ManusPeripheralAgent -ErrorAction SilentlyContinue
+```
+
+7. Instalar production con elevación:
+
+```powershell
+$productionInstaller = "C:\Users\icast\Documents\Proyectos\nanus-tienda\backend-perifericos\dist-installer\windows-x64\ManusTerminalSetup-0.1.1-prd-win-x64-rerun.exe"
+Start-Process -FilePath $productionInstaller -Verb RunAs -Wait
+```
+
+No escribir la línea `Resultado:...` en PowerShell. Esa línea solo describe la
+ruta del archivo; no es un comando.
+
+### Validar la instalación production
+
+```powershell
+Get-Service ManusPeripheralAgent
+Invoke-WebRequest http://127.0.0.1:4050/health
+```
+
+El servicio debe estar `Running` y `/health` debe responder HTTP 200. Después
+abrir el acceso directo de `Manus POS` y verificar que cargue:
+
+```text
+https://portal.emaus.centrivosoft.com/login
+```
+
+### Reparar sin desinstalar
+
+Si el instalador nuevo tiene una versión interna distinta, se puede ejecutar
+directamente y el instalador hará upgrade. Si tiene la misma versión interna
+`0.1.1-qa.11`, entra en modo `repair`; cerrar POS y ejecutar como administrador
+es obligatorio.
+
+```powershell
+Stop-Service -Name ManusPeripheralAgent -Force -ErrorAction SilentlyContinue
+Start-Process -FilePath $productionInstaller -Verb RunAs -Wait
+```
+
+La carpeta `C:\Program Files\Manus\PeripheralAgent\versions` es administrada
+por el instalador. No borrar sus carpetas manualmente.
+
 Para este P0, abrir `start-agent.cmd` con doble clic. Tray, autostart y MSI
 quedan fuera de alcance hasta el siguiente spike de lifecycle/packaging.
 

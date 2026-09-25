@@ -51,6 +51,9 @@ export class PaymentResponseDto {
   cashSessionId!: string | null;
 
   @Expose()
+  financialInstitutionId!: string | null;
+
+  @Expose()
   cashRegisterId!: string | null;
 
   @Expose()

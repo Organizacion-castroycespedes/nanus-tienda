@@ -9,6 +9,10 @@ export type PaymentMethodRecord = {
   nombre: string;
   tipo: string;
   requires_reference: boolean;
+  requires_financial_institution: boolean;
+  icon: string | null;
+  color: string | null;
+  sort_order: number;
   allows_change: boolean;
   active: boolean;
   electronic_billing_enabled: boolean;
@@ -24,6 +28,10 @@ type CreatePaymentMethodInput = {
   nombre: string;
   tipo: string;
   requiresReference: boolean;
+  requiresFinancialInstitution?: boolean;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
   allowsChange: boolean;
   active: boolean;
   electronicBillingEnabled: boolean;
@@ -69,6 +77,10 @@ export class PaymentMethodsRepository {
         nombre,
         tipo,
         requires_reference,
+        COALESCE(requires_financial_institution, false) AS requires_financial_institution,
+        icon,
+        color,
+        COALESCE(sort_order, 0) AS sort_order,
         allows_change,
         active,
         electronic_billing_enabled,
@@ -130,6 +142,10 @@ export class PaymentMethodsRepository {
         nombre,
         tipo,
         requires_reference,
+        COALESCE(requires_financial_institution, false) AS requires_financial_institution,
+        icon,
+        color,
+        COALESCE(sort_order, 0) AS sort_order,
         allows_change,
         active,
         electronic_billing_enabled,
@@ -139,7 +155,7 @@ export class PaymentMethodsRepository {
         updated_at
       FROM payment_methods
       ${whereClause}
-      ORDER BY nombre ASC, created_at DESC`,
+      ORDER BY COALESCE(sort_order, 0) ASC, nombre ASC, created_at DESC`,
       params
     );
     return result.rows ?? [];
@@ -156,13 +172,17 @@ export class PaymentMethodsRepository {
         nombre,
         tipo,
         requires_reference,
+        requires_financial_institution,
+        icon,
+        color,
+        sort_order,
         allows_change,
         active,
         electronic_billing_enabled,
         electronic_payment_means_code,
         electronic_payment_means_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id`,
       [
         data.tenantId,
@@ -170,6 +190,10 @@ export class PaymentMethodsRepository {
         data.nombre,
         data.tipo,
         data.requiresReference,
+        data.requiresFinancialInstitution ?? false,
+        data.icon ?? null,
+        data.color ?? null,
+        data.sortOrder ?? 0,
         data.allowsChange,
         data.active,
         data.electronicBillingEnabled,
@@ -210,6 +234,22 @@ export class PaymentMethodsRepository {
     if (data.requiresReference !== undefined) {
       params.push(data.requiresReference);
       updates.push(`requires_reference = $${params.length}`);
+    }
+    if (data.requiresFinancialInstitution !== undefined) {
+      params.push(data.requiresFinancialInstitution);
+      updates.push(`requires_financial_institution = $${params.length}`);
+    }
+    if (data.icon !== undefined) {
+      params.push(data.icon);
+      updates.push(`icon = $${params.length}`);
+    }
+    if (data.color !== undefined) {
+      params.push(data.color);
+      updates.push(`color = $${params.length}`);
+    }
+    if (data.sortOrder !== undefined) {
+      params.push(data.sortOrder);
+      updates.push(`sort_order = $${params.length}`);
     }
     if (data.allowsChange !== undefined) {
       params.push(data.allowsChange);

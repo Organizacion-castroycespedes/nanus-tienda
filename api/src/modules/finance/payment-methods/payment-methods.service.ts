@@ -36,7 +36,11 @@ export class PaymentMethodsService {
   }
 
   private canRead(actor: FinanceActor) {
-    return this.canManageTenant(actor) || actor.roles.includes("ADMIN") || actor.roles.includes("USER");
+    return (
+      this.canManageTenant(actor) ||
+      actor.roles.includes("ADMIN") ||
+      actor.roles.includes("USER")
+    );
   }
 
   private resolveTenantId(actor: FinanceActor, tenantId?: string) {
@@ -83,7 +87,7 @@ export class PaymentMethodsService {
     if (!input.enabled) {
       return;
     }
-    if (!input.code || !input.id || input.id !== "1" || !["10", "47", "49"].includes(input.code)) {
+    if (!input.code || !input.id || input.id !== "1" || !["10", "45", "47", "49"].includes(input.code)) {
       throw new BadRequestException("Configuracion fiscal FE invalida: seleccione un medio DIAN soportado");
     }
   }
@@ -98,6 +102,10 @@ export class PaymentMethodsService {
         nombre: record.nombre,
         tipo: record.tipo,
         requiresReference: record.requires_reference,
+        requiresFinancialInstitution: record.requires_financial_institution,
+        icon: record.icon,
+        color: record.color,
+        sortOrder: record.sort_order,
         allowsChange: record.allows_change,
         active: record.active,
         electronicBillingEnabled: record.electronic_billing_enabled,
@@ -147,6 +155,10 @@ export class PaymentMethodsService {
         nombre,
         tipo: payload.tipo,
         requiresReference: payload.requiresReference ?? false,
+        requiresFinancialInstitution: payload.requiresFinancialInstitution ?? false,
+        icon: payload.icon ?? null,
+        color: payload.color ?? null,
+        sortOrder: payload.sortOrder ?? 0,
         allowsChange: payload.allowsChange ?? false,
         active: payload.active ?? true,
         electronicBillingEnabled: payload.electronicBillingEnabled ?? false,
@@ -240,6 +252,10 @@ export class PaymentMethodsService {
         nombre: payload.nombre !== undefined ? nextNombre : undefined,
         tipo: payload.tipo,
         requiresReference: payload.requiresReference,
+        requiresFinancialInstitution: payload.requiresFinancialInstitution,
+        icon: payload.icon,
+        color: payload.color,
+        sortOrder: payload.sortOrder,
         allowsChange: payload.allowsChange,
         active: payload.active,
         electronicBillingEnabled: payload.electronicBillingEnabled,

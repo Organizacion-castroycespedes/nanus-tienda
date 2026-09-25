@@ -29,6 +29,7 @@ export class SalesReportsController {
   ) {}
 
   @Get()
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getSalesList(
     @Query()
     query: {
@@ -128,6 +129,7 @@ export class SalesReportsController {
   }
 
   @Get(":saleId/cancel-ticket")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getSaleCancelTicket(
     @Param("saleId") saleId: string,
     @Req() request: AuthenticatedRequest,

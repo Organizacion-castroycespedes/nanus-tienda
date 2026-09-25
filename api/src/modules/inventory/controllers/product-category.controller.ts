@@ -6,6 +6,7 @@ import {
   Get,
   Inject,
   NotFoundException,
+  ForbiddenException,
   Param,
   Patch,
   Post,
@@ -25,6 +26,7 @@ import { Roles } from "../../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../../common/guards/permissions.guard";
 import { RolesGuard } from "../../../common/guards/roles.guard";
+import { AccessControlService } from "../../../common/services/access-control.service";
 import type { ProductImageMimeType } from "../entities/product-category.entity";
 import type { UploadedInventoryImageFile } from "../services/local-image-storage.service";
 import { ProductCategoryService } from "../services/product-category.service";
@@ -70,7 +72,9 @@ export class ProductCategoryController {
     @Inject(ProductCategoryService)
     private readonly productCategoryService: ProductCategoryService,
     @Inject(ProductImageService)
-    private readonly productImageService: ProductImageService
+    private readonly productImageService: ProductImageService,
+    @Inject(AccessControlService)
+    private readonly accessControl?: AccessControlService
   ) {}
 
   private getTenantId(request: AuthRequest) {
@@ -78,6 +82,25 @@ export class ProductCategoryController {
     if (!tenantId) {
       throw new NotFoundException("tenant not found in request context");
     }
+    return tenantId;
+  }
+
+  private getCatalogTenantId(
+    request: AuthRequest,
+    requestedTenantId?: string
+  ) {
+    const actor = {
+      id: request.user?.id,
+      tenantId: request.user?.tenantId ?? request.context?.tenantId,
+      roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
+    };
+    const requested = requestedTenantId?.trim();
+    const tenantId = requested || this.getTenantId(request);
+
+    if (!this.accessControl || !this.accessControl.canAccessTenant(actor, tenantId)) {
+      throw new ForbiddenException("Tenant scope mismatch");
+    }
+
     return tenantId;
   }
 
@@ -119,12 +142,16 @@ export class ProductCategoryController {
   list(
     @Query("isActive") isActive: string | undefined,
     @Query("search") search: string | undefined,
+    @Query("tenantId") requestedTenantId: string | undefined,
     @Req() request: AuthRequest
   ) {
-    return this.productCategoryService.list(this.getTenantId(request), {
-      isActive: this.parseOptionalBoolean(isActive, "isActive"),
-      search,
-    });
+    return this.productCategoryService.list(
+      this.getCatalogTenantId(request, requestedTenantId),
+      {
+        isActive: this.parseOptionalBoolean(isActive, "isActive"),
+        search,
+      }
+    );
   }
 
   @Get(":categoryId")

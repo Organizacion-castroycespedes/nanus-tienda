@@ -3,6 +3,7 @@ import {
   buildThermalDocument,
   buildThermalSectionTitle,
 } from "../base/thermal-layout";
+import { formatTicketStatus } from "../base/status-label";
 import type { CashClosingTicketDataset } from "../../../reports/types/cash-report.types";
 
 const formatCurrency = (value: number) =>
@@ -50,7 +51,7 @@ export const buildCashClosingTicketTemplate = (
     { label: "Caja", value: dataset.header.cashRegister ?? dataset.header.cashSessionId },
     { label: "Sesion", value: dataset.header.cashSessionId },
     { label: "Terminal", value: dataset.header.terminal ?? "-" },
-    { label: "Estado", value: dataset.header.status },
+    { label: "Estado", value: formatTicketStatus(dataset.header.status) },
     { label: "Apertura", value: formatDateTime(dataset.header.openedAt) },
     { label: "Cierre", value: formatDateTime(dataset.header.closedAt) },
     { label: "Abierta por", value: dataset.header.openedBy ?? dataset.header.openedByUserId },

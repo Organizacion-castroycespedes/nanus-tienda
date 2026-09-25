@@ -60,7 +60,7 @@ const normalizeNullableString = (value: unknown) => {
 };
 
 type NormalizedFactuCorePaymentMeans = {
-  paymentMeansCode: "10" | "47" | "49";
+  paymentMeansCode: "10" | "45" | "47" | "49";
   paymentMeansId: "1";
 };
 
@@ -94,7 +94,7 @@ const normalizePaymentMeans = (
     );
   }
   if (normalizeString(explicitCode) || normalizeString(explicitId)) {
-    if (!["10", "47", "49"].includes(normalizeString(explicitCode)) || normalizeString(explicitId) !== "1") {
+    if (!["10", "45", "47", "49"].includes(normalizeString(explicitCode)) || normalizeString(explicitId) !== "1") {
       throw new FactuCoreConfigurationError(
         "payment_normalization",
         "Payment method fiscal configuration is invalid",
@@ -111,6 +111,7 @@ const normalizePaymentMeans = (
     "001": { paymentMeansCode: "10", paymentMeansId: "1" },
     "002": { paymentMeansCode: "47", paymentMeansId: "1" },
     "003": { paymentMeansCode: "49", paymentMeansId: "1" },
+    "QR_BREB": { paymentMeansCode: "45", paymentMeansId: "1" },
   };
   const mapped = catalogMapping[normalizedMethodCode];
   if (mapped) {
@@ -227,7 +228,22 @@ const resolveCustomerPartyTaxScheme = (customer: ElectronicCustomer) => {
     return canonical;
   }
 
-  if (!raw || raw === "ORDINARIO" || raw === "NATURAL" || raw === "JURIDICA" || raw === "R-99-PN") {
+  // Manus tax-regime labels are not DIAN PartyTaxScheme codes. Keep the
+  // explicit non-VAT case as ZZ; the remaining supported regimes use the
+  // existing customer-type fallback and are never sent as raw scheme codes.
+  if (raw === "NO_RESPONSABLE") {
+    return { taxSchemeId: "ZZ", taxSchemeName: "No aplica" };
+  }
+
+  if (
+    !raw ||
+    raw === "ORDINARIO" ||
+    raw === "SIMPLE" ||
+    raw === "ESPECIAL" ||
+    raw === "NATURAL" ||
+    raw === "JURIDICA" ||
+    raw === "R-99-PN"
+  ) {
     return resolveCustomerType(customer) === "PERSON"
       ? { taxSchemeId: "ZZ", taxSchemeName: "No aplica" }
       : { taxSchemeId: "01", taxSchemeName: "IVA" };

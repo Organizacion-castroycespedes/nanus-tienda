@@ -17,8 +17,8 @@ import {
 
 const config = {
   environment: "qa" as const,
-  frontendUrl: "https://www.apptiendamanus.space/login",
-  allowedOrigins: ["https://www.apptiendamanus.space"],
+  frontendUrl: "https://portal.emaus.centrivosoft.com/login",
+  allowedOrigins: ["https://portal.emaus.centrivosoft.com"],
   agentLoopbackOrigin: "http://127.0.0.1:4050",
 };
 

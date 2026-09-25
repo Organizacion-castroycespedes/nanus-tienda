@@ -6,6 +6,8 @@ export type TenantConfigResponse = {
     logo?: string;
     logoUrl?: string;
     spacing?: Record<string, string>;
+    electronicBillingEnabled?: boolean;
+    electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
   };
 };
 

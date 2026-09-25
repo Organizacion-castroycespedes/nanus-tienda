@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { getEnvironment } from "../../desktop/electron/scripts/environments.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
@@ -17,6 +18,7 @@ const artifactRoot = join(
 const runtime = join(artifactRoot, "runtime", "node.exe");
 const main = join(artifactRoot, "app", "main.js");
 const isolatedRuntimeRoot = mkdtempSync(join(tmpdir(), "manus-package-validation-"));
+const environment = getEnvironment(process.env.MANUS_ENVIRONMENT ?? "qa");
 
 const wait = (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
 
@@ -76,11 +78,10 @@ assert.equal(localConfig.logLimit, 500);
 assert.equal(localConfig.printerWidthChars, 48);
 assert.ok(Array.isArray(localConfig.allowedOrigins));
 assert.deepEqual(localConfig.allowedOrigins, [
-  "https://apptiendamanus.space",
-  "http://localhost:3000",
+  environment.origin,
 ]);
 
-const allowedOrigin = "https://apptiendamanus.space";
+const allowedOrigin = environment.origin;
 
 const readArtifactText = (relativePath) => readFileSync(join(artifactRoot, relativePath), "utf8");
 const assertContains = (relativePath, patterns) => {

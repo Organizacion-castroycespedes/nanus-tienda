@@ -33,9 +33,12 @@ import type {
   ElectronicInvoicingCustomer,
 } from "./electronic-invoicing-customer.types";
 import {
+  formatFiscalProfileIncompleteMessage,
+  formatUnsupportedFiscalValueMessage,
   isSupportedFiscalResponsibility,
   isSupportedTaxRegime,
 } from "../fiscal-profile-options";
+import { calculateDianDv, isDvApplicable } from "../dian-dv";
 
 type PgErrorLike = {
   code?: string;
@@ -158,7 +161,7 @@ export class ElectronicInvoicingCustomersService {
     if (!input.taxResponsibilities?.length) missing.push("taxResponsibilities");
     if (missing.length) {
       throw new BadRequestException(
-        `fiscal profile is incomplete: ${missing.join(", ")}`
+        formatFiscalProfileIncompleteMessage(missing)
       );
     }
   }
@@ -251,7 +254,9 @@ export class ElectronicInvoicingCustomersService {
         throw new BadRequestException("taxResponsibilities must not contain empty values");
       }
       if (!isSupportedFiscalResponsibility(normalized)) {
-        throw new BadRequestException(`unsupported tax responsibility: ${normalized}`);
+        throw new BadRequestException(
+          formatUnsupportedFiscalValueMessage("responsibility", normalized),
+        );
       }
       return normalized;
     });
@@ -578,7 +583,9 @@ export class ElectronicInvoicingCustomersService {
     const personType = this.normalizePersonType(dto.personType) ?? null;
     const taxRegime = this.normalizeText(dto.taxRegime);
     if (taxRegime && !isSupportedTaxRegime(taxRegime)) {
-      throw new BadRequestException(`unsupported tax regime: ${taxRegime}`);
+      throw new BadRequestException(
+        formatUnsupportedFiscalValueMessage("regime", taxRegime),
+      );
     }
     const taxResponsibilities = this.normalizeTaxResponsibilities(dto.taxResponsibilities) ?? [];
     this.validateRequiredFiscalProfile({
@@ -587,6 +594,11 @@ export class ElectronicInvoicingCustomersService {
       taxRegime,
       taxResponsibilities,
     });
+
+    const computedVerificationDigit =
+      this.normalizeText(dto.verificationDigit) ??
+      (isDvApplicable(documentTypeCode) ? calculateDianDv(identificationNumber) : null) ??
+      null;
 
     const input: CreateElectronicInvoicingCustomerInput = {
       id: crypto.randomUUID(),
@@ -597,7 +609,7 @@ export class ElectronicInvoicingCustomersService {
       documentNumberNormalized: identificationNumber,
       dianIdentificationType: documentTypeCode,
       identificationNumber,
-      verificationDigit: this.normalizeText(dto.verificationDigit),
+      verificationDigit: computedVerificationDigit,
       legalName: this.normalizeText(dto.legalName),
       tradeName: this.normalizeText(dto.tradeName) ?? name,
       fiscalEmail: invoiceEmail,
@@ -709,7 +721,21 @@ export class ElectronicInvoicingCustomersService {
     }
 
     if (hasOwn(dto, "verificationDigit")) {
-      update.verificationDigit = this.normalizeText(dto.verificationDigit);
+      const explicitDv = this.normalizeText(dto.verificationDigit);
+      update.verificationDigit =
+        explicitDv ??
+        (isDvApplicable(nextDocumentTypeCode)
+          ? calculateDianDv(nextIdentificationNumber)
+          : null) ??
+        null;
+    } else if (
+      (hasOwn(dto, "documentNumber") ||
+        hasOwn(dto, "identificationNumber") ||
+        hasOwn(dto, "documentTypeCode") ||
+        hasOwn(dto, "dianIdentificationType")) &&
+      isDvApplicable(nextDocumentTypeCode)
+    ) {
+      update.verificationDigit = calculateDianDv(nextIdentificationNumber) || null;
     }
     if (hasOwn(dto, "legalName")) {
       update.legalName = this.normalizeText(dto.legalName);
@@ -756,7 +782,9 @@ export class ElectronicInvoicingCustomersService {
     if (hasOwn(dto, "taxRegime")) {
       update.taxRegime = this.normalizeText(dto.taxRegime);
       if (update.taxRegime && !isSupportedTaxRegime(update.taxRegime)) {
-        throw new BadRequestException(`unsupported tax regime: ${update.taxRegime}`);
+        throw new BadRequestException(
+          formatUnsupportedFiscalValueMessage("regime", update.taxRegime),
+        );
       }
     }
     if (hasOwn(dto, "taxResponsibilities")) {

@@ -257,4 +257,8 @@ export type CashAuditTicketDataset = {
     refundPayments: number;
     expectedAmount: number;
   };
+  breakdown?: {
+    sourceBreakdown?: CashClosingTicketDataset["sourceBreakdown"];
+    paymentMethodDetails?: CashClosingTicketDataset["paymentMethodDetails"];
+  };
 };

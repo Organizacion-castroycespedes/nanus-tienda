@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Pagination } from "../../../components/design-system/Pagination";
@@ -74,7 +75,7 @@ const CustomersOrdersStatusPage = () => {
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<CustomerMasterRow | null>(null);
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(25);
 
   const load = useCallback(async (filters: { customerDocument?: string; customerName?: string } = {}) => {
     if (!scope.tenantId) return;
@@ -105,7 +106,7 @@ const CustomersOrdersStatusPage = () => {
     { key: "email", header: "Correo", render: (row) => display(row.email ?? row.fiscalEmail ?? row.invoiceEmail) },
     { key: "fiscalStatus", header: "Estado fiscal", render: (row) => <ReportStatusBadge value={row.fiscalStatus} /> },
     { key: "isActive", header: "Estado", render: (row) => row.isActive ? "Activo" : "Inactivo" },
-    { key: "actions", header: "Acción", render: (row) => <Button variant="ghost" size="sm" onClick={() => setDetail(row)}><Eye className="h-4 w-4" /> Ver detalle</Button> },
+    { key: "actions", actionFirst: true, header: "Acción", render: (row) => <RowActionsMenu><Button variant="ghost" size="sm" onClick={() => setDetail(row)}><Eye className="h-4 w-4" /> Ver detalle</Button></RowActionsMenu> },
   ], []);
 
   const filters = useMemo<ReportFilterDefinition[]>(() => [
@@ -125,7 +126,7 @@ const CustomersOrdersStatusPage = () => {
         <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(activeFilters)} isLoading={loading}>Buscar</Button><Button variant="outline" size="sm" onClick={openReport} disabled={!scope.tenantId}><Eye className="h-4 w-4" /> Reporte</Button></>} />
         <ReportSummary items={[{ label: "Clientes", value: dataset ? dataset.summary.count : searched ? 0 : "--" }]} />
         <DataTable columns={columns} rows={dataset?.rows.slice((page - 1) * pageSize, page * pageSize) ?? []} getRowKey={(row) => row.customerId} loading={loading} error={error} emptyState={searched ? "No hay clientes para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el maestro."} />
-        {dataset ? <Pagination page={page} pageSize={pageSize} totalItems={dataset.rows.length} onPageChange={setPage} /> : null}
+        {dataset ? <Pagination page={page} pageSize={pageSize} totalItems={dataset.rows.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /> : null}
       </div>
       {detail ? <Modal title={display(detail.legalName ?? detail.tradeName ?? detail.name)} description="Detalle comercial y fiscal" responsive size="xl" onClose={() => setDetail(null)} footer={<Button variant="ghost" onClick={() => setDetail(null)}>Cerrar</Button>}><CustomerDetail row={detail} /></Modal> : null}
       {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} onDownloadExcel={pdfConfig.onDownloadExcel} allowPrint onClose={() => setPdfConfig(null)} /> : null}

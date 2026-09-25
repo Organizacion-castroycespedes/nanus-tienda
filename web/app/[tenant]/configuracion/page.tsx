@@ -11,6 +11,7 @@ import {
   Paintbrush,
   Plus,
   Save,
+  Settings2,
   Star,
   Trash2,
   UploadCloud,
@@ -69,8 +70,31 @@ import {
   normalizeHexColor,
 } from "../../../src/lib/theme/colors";
 import { BrandingThemePreview } from "./components/BrandingThemePreview";
+import {
+  listParameters,
+  listTenantSettings,
+  resolveTenantSettings,
+  updateParameter,
+  upsertTenantSetting,
+  type ParameterMode,
+  type ParameterRecord,
+} from "../../../domains/parameters/api";
 
-type TabKey = "empresa" | "branding" | "sucursales";
+type TabKey = "empresa" | "branding" | "sucursales" | "parametros";
+
+const DOCUMENT_PARAMETER_CODES = [
+  "PRINT_TICKET",
+  "PRINT_INVOICE",
+  "SEND_INVOICE",
+  "GENERATE_INVOICE",
+  "CONVERT_REMISSION",
+] as const;
+
+const MODE_OPTIONS: Array<{ value: ParameterMode; label: string }> = [
+  { value: "DISABLED", label: "Deshabilitado" },
+  { value: "ON_DEMAND", label: "Bajo demanda" },
+  { value: "AUTOMATIC", label: "Automático" },
+];
 
 type TenantSummary = {
   id: string;
@@ -282,6 +306,18 @@ const ConfiguracionPage = () => {
     message: string;
     variant: ToastVariant;
   } | null>(null);
+  const [parameters, setParameters] = useState<ParameterRecord[]>([]);
+  const [parametersLoading, setParametersLoading] = useState(false);
+  const [tenantDocumentModes, setTenantDocumentModes] = useState<
+    Record<string, ParameterMode>
+  >({});
+  const [branchDocumentModes, setBranchDocumentModes] = useState<
+    Record<string, ParameterMode>
+  >({});
+  const [selectedSettingsBranchId, setSelectedSettingsBranchId] = useState("");
+  const [resolvedBranchModes, setResolvedBranchModes] = useState<
+    Record<string, string>
+  >({});
   const confirm = useConfirm();
   useAutoClearState(status, setStatus);
 
@@ -761,6 +797,11 @@ const ConfiguracionPage = () => {
   }, [activeTab, shouldScrollToCompanyForm, tenantFormsVisible]);
 
   const tabs = useMemo(() => {
+    const documentTab = {
+      key: "parametros" as const,
+      label: "Parámetros",
+      icon: Settings2,
+    };
     if (!isSuperAdmin) {
       return [
         {
@@ -778,6 +819,7 @@ const ConfiguracionPage = () => {
           label: "Sucursales",
           icon: MapPin,
         },
+        documentTab,
       ];
     }
     return [
@@ -796,8 +838,73 @@ const ConfiguracionPage = () => {
         label: "Sucursales",
         icon: MapPin,
       },
+      documentTab,
     ];
   }, [isSuperAdmin]);
+
+  const loadDocumentSettings = useCallback(async (tenantId: string, branchId?: string) => {
+    if (!tenantId) {
+      return;
+    }
+    try {
+      const [catalog, tenantResolved, tenantRows] = await Promise.all([
+        listParameters(isSuperAdmin),
+        resolveTenantSettings({ tenantId }),
+        listTenantSettings({ tenantId, scope: "tenant" }),
+      ]);
+      setParameters(catalog);
+      const defaults = Object.fromEntries(
+        catalog.map((item) => [item.code, item.default_value as ParameterMode])
+      ) as Record<string, ParameterMode>;
+      const resolved = {
+        ...defaults,
+        ...(tenantResolved.values as Record<string, ParameterMode> | undefined),
+      };
+      for (const row of tenantRows) {
+        resolved[row.parameter_code] = row.value as ParameterMode;
+      }
+      setTenantDocumentModes(resolved);
+
+      if (branchId) {
+        const [branchResolved, branchRows] = await Promise.all([
+          resolveTenantSettings({ tenantId, branchId }),
+          listTenantSettings({ tenantId, branchId, scope: "branch" }),
+        ]);
+        setResolvedBranchModes(branchResolved.values ?? {});
+        const branchValues = { ...resolved };
+        for (const row of branchRows) {
+          branchValues[row.parameter_code] = row.value as ParameterMode;
+        }
+        setBranchDocumentModes(branchValues);
+      }
+    } catch {
+      setStatus({
+        message: "No fue posible cargar los parámetros documentales.",
+        variant: "error",
+      });
+    }
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (activeTab !== "parametros" && activeTab !== "sucursales") {
+      return;
+    }
+    const tenantId = isSuperAdmin ? selectedTenantId : currentTenantId;
+    if (!tenantId) {
+      return;
+    }
+    setParametersLoading(true);
+    void loadDocumentSettings(tenantId, selectedSettingsBranchId || undefined).finally(() =>
+      setParametersLoading(false)
+    );
+  }, [
+    activeTab,
+    currentTenantId,
+    isSuperAdmin,
+    loadDocumentSettings,
+    selectedSettingsBranchId,
+    selectedTenantId,
+  ]);
 
   const handleCompanyChange = (field: string, value: string | boolean) => {
     setCompanyForm((prev) => ({
@@ -1392,28 +1499,6 @@ const ConfiguracionPage = () => {
             <p className="text-xs text-slate-500 dark:text-slate-400">Sin logo cargado.</p>
           )}
         </div>
-        <Select
-          label="Emisión de factura electrónica"
-          value={brandingForm.electronicBillingMode}
-          onChange={(event) => handleBrandingChange("electronicBillingMode", event.target.value)}
-          disabled={!brandingForm.electronicBillingEnabled}
-        >
-          <option value="AUTOMATIC">Automática</option>
-          <option value="ON_DEMAND">Bajo demanda</option>
-        </Select>
-        <label className="flex items-center gap-3 self-end pb-2 text-sm text-slate-700 dark:text-slate-200">
-          <input
-            type="checkbox"
-            checked={brandingForm.electronicBillingEnabled}
-            onChange={(event) =>
-              setBrandingForm((prev) => ({
-                ...prev,
-                electronicBillingEnabled: event.target.checked,
-              }))
-            }
-          />
-          Facturación electrónica habilitada
-        </label>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -1566,19 +1651,219 @@ const ConfiguracionPage = () => {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button
-                      variant="ghost"
-                      className="px-3 py-1.5 text-xs"
-                      onClick={() => openEditBranchModal(branch)}
-                    >
-                      Editar
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        className="px-3 py-1.5 text-xs"
+                        onClick={() => setSelectedSettingsBranchId(branch.id)}
+                      >
+                        Parámetros
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="px-3 py-1.5 text-xs"
+                        onClick={() => openEditBranchModal(branch)}
+                      >
+                        Editar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {selectedSettingsBranchId ? (
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:bg-slate-900/40 dark:border-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h4 className="font-semibold text-slate-900 dark:text-white">
+                Parámetros de sucursal
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Hereda del tenant. Remisión queda apagada hasta el dominio.
+              </p>
+            </div>
+            <Button variant="ghost" onClick={() => setSelectedSettingsBranchId("")}>
+              Cerrar
+            </Button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {DOCUMENT_PARAMETER_CODES.map((code) => {
+              const parameter = parameters.find((item) => item.code === code);
+              const inherited =
+                tenantDocumentModes[code] ?? parameter?.default_value ?? "DISABLED";
+              const current = branchDocumentModes[code] ?? inherited;
+              return (
+                <Select
+                  key={code}
+                  label={parameter?.label ?? code}
+                  value={current}
+                  onChange={(event) =>
+                    setBranchDocumentModes((prev) => ({
+                      ...prev,
+                      [code]: event.target.value as ParameterMode,
+                    }))
+                  }
+                >
+                  {MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                      {option.value === inherited ? " (heredado)" : ""}
+                    </option>
+                  ))}
+                </Select>
+              );
+            })}
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => void handleSaveBranchDocumentSettings()}
+          >
+            <Save className="h-4 w-4" />
+            Guardar parámetros de sucursal
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const ParametrosForm = () => (
+    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+          Parámetros documentales
+        </h3>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          Catálogo global y valores del tenant. La sucursal se edita en Sucursales.
+        </p>
+      </div>
+      {parametersLoading ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+          Cargando parámetros...
+        </div>
+      ) : (
+        <>
+          {isSuperAdmin ? (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Código</th>
+                    <th className="px-4 py-3">Etiqueta</th>
+                    <th className="px-4 py-3">Default</th>
+                    <th className="px-4 py-3">Activo</th>
+                    <th className="px-4 py-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parameters.map((parameter) => (
+                    <tr key={parameter.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono text-xs">{parameter.code}</td>
+                      <td className="px-4 py-3">
+                        <Input
+                          label="Etiqueta"
+                          value={parameter.label}
+                          onChange={(event) =>
+                            setParameters((prev) =>
+                              prev.map((item) =>
+                                item.id === parameter.id
+                                  ? { ...item, label: event.target.value }
+                                  : item
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Select
+                          label="Default"
+                          value={parameter.default_value}
+                          onChange={(event) =>
+                            setParameters((prev) =>
+                              prev.map((item) =>
+                                item.id === parameter.id
+                                  ? { ...item, default_value: event.target.value }
+                                  : item
+                              )
+                            )
+                          }
+                        >
+                          {MODE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={parameter.active}
+                          onChange={(event) =>
+                            setParameters((prev) =>
+                              prev.map((item) =>
+                                item.id === parameter.id
+                                  ? { ...item, active: event.target.checked }
+                                  : item
+                              )
+                            )
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="ghost"
+                          className="px-3 py-1.5 text-xs"
+                          onClick={() => void handleSaveParameterCatalog(parameter)}
+                        >
+                          Guardar
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          <div className="space-y-4">
+            <h4 className="font-semibold text-slate-900 dark:text-white">Valores del tenant</h4>
+            <div className="grid gap-4 md:grid-cols-2">
+              {DOCUMENT_PARAMETER_CODES.map((code) => {
+                const parameter = parameters.find((item) => item.code === code);
+                return (
+                  <Select
+                    key={code}
+                    label={parameter?.label ?? code}
+                    value={
+                      tenantDocumentModes[code] ??
+                      parameter?.default_value ??
+                      "DISABLED"
+                    }
+                    onChange={(event) =>
+                      setTenantDocumentModes((prev) => ({
+                        ...prev,
+                        [code]: event.target.value as ParameterMode,
+                      }))
+                    }
+                  >
+                    {MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                );
+              })}
+            </div>
+            <Button variant="secondary" onClick={() => void handleSaveTenantDocumentSettings()}>
+              <Save className="h-4 w-4" />
+              Guardar valores del tenant
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1642,6 +1927,109 @@ const ConfiguracionPage = () => {
       branchForm.nombre.trim().length > 0
     );
   }, [branchForm]);
+
+  const handleSaveParameterCatalog = async (parameter: ParameterRecord) => {
+    setStatus(null);
+    try {
+      const saved = await updateParameter(parameter.id, {
+        label: parameter.label,
+        defaultValue: parameter.default_value,
+        active: parameter.active,
+      });
+      setParameters((prev) =>
+        prev.map((item) => (item.id === saved.id ? saved : item))
+      );
+      setStatusSuccess(`Parámetro ${saved.code} actualizado.`);
+    } catch {
+      setStatusError("No fue posible guardar el parámetro.");
+    }
+  };
+
+  const handleSaveTenantDocumentSettings = async () => {
+    setStatus(null);
+    const tenantId = isSuperAdmin ? selectedTenantId : currentTenantId;
+    if (!tenantId) {
+      setStatusWarning("Selecciona un tenant para guardar.");
+      return;
+    }
+    try {
+      for (const code of DOCUMENT_PARAMETER_CODES) {
+        const value =
+          tenantDocumentModes[code] ??
+          parameters.find((item) => item.code === code)?.default_value ??
+          "DISABLED";
+        await upsertTenantSetting({
+          tenantId,
+          branchId: null,
+          terminalId: null,
+          parameterCode: code,
+          value,
+        });
+      }
+      const generateMode = tenantDocumentModes.GENERATE_INVOICE ?? "AUTOMATIC";
+      const currentConfig = await getTenantConfig(tenantId);
+      const currentBrandingConfig: BrandingConfig = {
+        ...normalizedBrandingConfig,
+        ...currentConfig.config,
+        colors: {
+          ...normalizedBrandingConfig.colors,
+          ...currentConfig.config.colors,
+        },
+        spacing: {
+          ...normalizedBrandingConfig.spacing,
+          ...(currentConfig.config.spacing ?? {}),
+        },
+      };
+      await updateTenantConfig(tenantId, {
+        ...currentBrandingConfig,
+        electronicBillingEnabled: generateMode !== "DISABLED",
+        electronicBillingMode:
+          generateMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
+      });
+      setBrandingForm((prev) => ({
+        ...prev,
+        electronicBillingEnabled: generateMode !== "DISABLED",
+        electronicBillingMode:
+          generateMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
+      }));
+      setStatusSuccess("Valores documentales del tenant guardados.");
+    } catch {
+      setStatusError("No fue posible guardar los valores del tenant.");
+    }
+  };
+
+  const handleSaveBranchDocumentSettings = async () => {
+    setStatus(null);
+    const tenantId = isSuperAdmin ? selectedTenantId : currentTenantId;
+    if (!tenantId || !selectedSettingsBranchId) {
+      setStatusWarning("Selecciona tenant y sucursal.");
+      return;
+    }
+    try {
+      for (const code of DOCUMENT_PARAMETER_CODES) {
+        const value =
+          branchDocumentModes[code] ??
+          tenantDocumentModes[code] ??
+          parameters.find((item) => item.code === code)?.default_value ??
+          "DISABLED";
+        await upsertTenantSetting({
+          tenantId,
+          branchId: selectedSettingsBranchId,
+          terminalId: null,
+          parameterCode: code,
+          value,
+        });
+      }
+      const resolved = await resolveTenantSettings({
+        tenantId,
+        branchId: selectedSettingsBranchId,
+      });
+      setResolvedBranchModes(resolved.values ?? {});
+      setStatusSuccess("Parámetros de sucursal guardados.");
+    } catch {
+      setStatusError("No fue posible guardar los parámetros de sucursal.");
+    }
+  };
 
   const handleSaveCompany = async () => {
     setStatus(null);
@@ -1727,7 +2115,17 @@ const ConfiguracionPage = () => {
       return;
     }
     try {
-      const response = await updateTenantConfig(selectedTenantId, normalizedBrandingConfig);
+      const brandingOnly: BrandingConfig = {
+        colors: normalizedBrandingConfig.colors,
+        font: normalizedBrandingConfig.font,
+        logo: normalizedBrandingConfig.logo,
+        spacing: normalizedBrandingConfig.spacing,
+      };
+      const response = await updateTenantConfig(selectedTenantId, {
+        ...brandingOnly,
+        electronicBillingEnabled: brandingForm.electronicBillingEnabled,
+        electronicBillingMode: brandingForm.electronicBillingMode,
+      });
       const savedConfig = buildBrandingForm(response?.config ?? normalizedBrandingConfig);
       const savedBranding: BrandingConfig = {
         colors: {
@@ -2282,11 +2680,13 @@ const ConfiguracionPage = () => {
 
 
       {status ? (
-        <Toast
-          message={status.message}
-          variant={status.variant}
-          onClose={() => setStatus(null)}
-        />
+        <div className="fixed bottom-6 right-6 z-50 max-w-md shadow-xl transition-all duration-300">
+          <Toast
+            message={status.message}
+            variant={status.variant}
+            onClose={() => setStatus(null)}
+          />
+        </div>
       ) : null}
 
       {isSuperAdmin ? (
@@ -2338,6 +2738,8 @@ const ConfiguracionPage = () => {
             <EmpresaForm />
           ) : activeTab === "branding" ? (
             <BrandingForm />
+          ) : activeTab === "parametros" ? (
+            <ParametrosForm />
           ) : (
             <SucursalesForm />
           )}
@@ -2598,4 +3000,3 @@ const ConfiguracionPage = () => {
 };
 
 export default ConfiguracionPage;
-

@@ -4,6 +4,7 @@ import {
   buildThermalDocument,
   buildThermalSectionTitle,
 } from "../base/thermal-layout";
+import { formatTicketStatus } from "../base/status-label";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -31,7 +32,7 @@ export const buildOrderSaleTicketTemplate = (dataset: OrderSaleTicketDataset) =>
       { label: "Cliente", value: dataset.header.customerName },
       {
         label: "Estado",
-        value: `${dataset.header.status} / ${dataset.header.paymentStatus}`,
+        value: `${formatTicketStatus(dataset.header.status)} / ${formatTicketStatus(dataset.header.paymentStatus)}`,
       },
     ],
     sections: [
@@ -47,7 +48,7 @@ export const buildOrderSaleTicketTemplate = (dataset: OrderSaleTicketDataset) =>
                       bold: true,
                     },
                     {
-                      text: `${sale.status} / ${sale.paymentStatus} · ${formatCurrency(
+                      text: `${formatTicketStatus(sale.status)} / ${formatTicketStatus(sale.paymentStatus)} · ${formatCurrency(
                         sale.total
                       )}`,
                       color: "#475569",

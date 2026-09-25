@@ -74,11 +74,13 @@ import {
   resolveElectronicBillingPolicy,
   type ElectronicBillingPolicy,
 } from "../../integration-outbox/contracts/electronic-billing-mode";
+import { ParametersService } from "../../parameters/parameters.service";
 import { StockMovementService } from "./stock-movement.service";
 import {
   normalizeVatResponsibility,
   type VatResponsibility,
 } from "../../tenants/vat-responsibility";
+import { calculateDianDv, isDvApplicable } from "../../electronic-invoicing/dian-dv";
 
 type SaleListRow = SaleRow & {
   branch_id: string;
@@ -184,6 +186,7 @@ type SaleContext = {
   branchId?: string;
   terminalId?: string;
   posSessionId?: string;
+  cashSessionId?: string;
   sessionId?: string;
   roles?: string[];
 };
@@ -356,7 +359,10 @@ export class SaleService {
     private readonly taxRepository?: TaxRepository,
     @Optional()
     @Inject(ElectronicInvoicingCustomersRepository)
-    private readonly electronicInvoicingCustomersRepository?: ElectronicInvoicingCustomersRepository
+    private readonly electronicInvoicingCustomersRepository?: ElectronicInvoicingCustomersRepository,
+    @Optional()
+    @Inject(ParametersService)
+    private readonly parametersService?: ParametersService
   ) {}
 
   private toNumber(value: string | number) {
@@ -472,6 +478,7 @@ export class SaleService {
         branchId: context.branchId,
         terminalId: context.terminalId,
         posSessionId: context.posSessionId,
+        cashSessionId: context.cashSessionId,
         sessionId: context.sessionId,
         roles: Array.isArray(context.roles) ? context.roles : [],
       };
@@ -492,6 +499,7 @@ export class SaleService {
       branchId: currentPosContext.branch_id,
       terminalId: currentPosContext.terminal_id,
       posSessionId: currentPosContext.pos_session_id,
+      cashSessionId: context.cashSessionId,
       sessionId: context.sessionId,
       roles: Array.isArray(context.roles) ? context.roles : [],
     };
@@ -524,6 +532,7 @@ export class SaleService {
         paymentMethodId: payment.paymentMethodId,
         amount,
         cashSessionId: payment.cashSessionId ?? null,
+        financialInstitutionId: payment.financialInstitutionId ?? null,
         referenceNumber: payment.referenceNumber ?? null,
         notes: payment.notes ?? null,
       };
@@ -911,7 +920,16 @@ export class SaleService {
         resolvedCustomer?.documentTypeCode ??
         null,
       identificationNumber,
-      verificationDigit: resolvedCustomer?.verificationDigit ?? null,
+      verificationDigit:
+        resolvedCustomer?.verificationDigit ??
+        (isDvApplicable(
+          resolvedCustomer?.dianIdentificationType ??
+            resolvedCustomer?.documentTypeCode ??
+            null
+        )
+          ? calculateDianDv(identificationNumber)
+          : null) ??
+        null,
       legalName,
       firstName,
       familyName,
@@ -936,6 +954,7 @@ export class SaleService {
         tenantId: customer.tenantId,
         isFinalConsumer: customer.isFinalConsumer,
         documentNumber: customer.documentNumber ?? null,
+        taxRegime: resolvedCustomer?.taxRegime ?? null,
       },
     };
   }
@@ -1161,9 +1180,14 @@ export class SaleService {
   ) {
     const requiresPersonNames =
       customer.customerType === "PERSON" && customer.isFinalConsumer !== true;
+    const isNit =
+      customer.identificationTypeCode?.trim().toUpperCase() === "31" ||
+      customer.identificationTypeCode?.trim().toUpperCase() === "NIT" ||
+      customer.identificationType?.trim().toUpperCase() === "NIT";
     return Boolean(
       customer.identificationNumber?.trim() &&
         customer.identificationTypeCode?.trim() &&
+        (!isNit || customer.verificationDigit?.trim()) &&
         customer.legalName?.trim() &&
         customer.countryCode?.trim() &&
         customer.countryName?.trim() &&
@@ -1229,6 +1253,7 @@ export class SaleService {
         payload.customer?.departmentCode !== currentCustomer.departmentCode ||
         payload.customer?.municipalityCode !== currentCustomer.municipalityCode ||
         payload.customer?.identificationNumber !== currentCustomer.identificationNumber ||
+        payload.customer?.verificationDigit !== currentCustomer.verificationDigit ||
         payload.customer?.legalName !== currentCustomer.legalName ||
         payload.customer?.email !== currentCustomer.email ||
         payload.customer?.addressLine1 !== currentCustomer.addressLine1,
@@ -1391,7 +1416,22 @@ export class SaleService {
   private async getTenantElectronicBillingPolicy(
     tenantId: string,
     client: PoolClient,
+    branchId?: string | null,
+    terminalId?: string | null,
   ): Promise<ElectronicBillingPolicy> {
+    if (this.parametersService) {
+      const fromSettings = await this.parametersService.resolveElectronicBillingPolicy(
+        tenantId,
+        branchId,
+        terminalId,
+        client,
+      );
+      return {
+        enabled: fromSettings.enabled,
+        mode: fromSettings.mode,
+      };
+    }
+
     const result = await client.query<{ config: unknown }>(
       "SELECT config FROM tenants WHERE id = $1",
       [tenantId],
@@ -1424,9 +1464,13 @@ export class SaleService {
     const policy = await this.getTenantElectronicBillingPolicy(
       saleContext.tenantId!,
       client,
+      saleContext.branchId,
+      saleContext.terminalId,
     );
     if (!policy.enabled) {
-      throw new BadRequestException("electronic billing is disabled for this tenant");
+      throw new BadRequestException(
+        "La facturación electrónica no está habilitada para este tenant."
+      );
     }
 
     const deterministicEventId = buildSaleCompletedForElectronicBillingEventId(
@@ -1508,7 +1552,11 @@ export class SaleService {
       }
     }
 
-    if (documentsResult.rows.length > 0) {
+    const hasAcceptedDocument = documentsResult.rows.some(
+      (doc) => doc.status === "ACCEPTED",
+    );
+
+    if (hasAcceptedDocument) {
       return {
         saleId,
         result: "DOCUMENT_EXISTS",
@@ -1553,8 +1601,8 @@ export class SaleService {
       saleStatus: saleRow.status,
       paymentStatus: saleRow.payment_status,
       customerId: saleRow.customer_id,
-      documentStatuses: [],
-      requestExists: Boolean(deterministicEvent) && !stalePendingEvent && !failedRecoveryEvent,
+      documentStatuses: hasAcceptedDocument ? ["ACCEPTED"] : [],
+      requestExists: false,
       hasTaxLines: hasPositiveTaxLines(currentLines),
       customerFiscalDataComplete: currentCustomerFiscalDataComplete,
       isFinalConsumer: currentCustomer.isFinalConsumer,
@@ -1585,26 +1633,54 @@ export class SaleService {
       throw new BadRequestException("electronic billing outbox is unavailable");
     }
 
-    const paymentResult = await client.query<{
-      payment_method_id: string;
-      amount: string | number;
-      reference_number: string | null;
-      notes: string | null;
-      cash_session_id: string | null;
-    }>(
-      `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
-              payment.reference_number, payment.notes, payment.cash_session_id
-       FROM payment_allocations allocation
-       INNER JOIN payments payment ON payment.id = allocation.payment_id
-       WHERE allocation.reference_type = 'SALE'
-         AND allocation.reference_id = $1
-         AND payment.tenant_id = $2
-         AND payment.status IN ('PENDING', 'COMPLETED')
-       ORDER BY allocation.created_at ASC, allocation.id ASC`,
-      [saleId, saleContext.tenantId],
-    );
+    let paymentRows = (
+      await client.query<{
+        payment_method_id: string;
+        amount: string | number;
+        reference_number: string | null;
+        notes: string | null;
+        cash_session_id: string | null;
+      }>(
+        `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
+                payment.reference_number, payment.notes, payment.cash_session_id
+         FROM payment_allocations allocation
+         INNER JOIN payments payment ON payment.id = allocation.payment_id
+         WHERE (
+           (allocation.reference_type = 'SALE' AND allocation.reference_id = $1)
+           OR ($3::uuid IS NOT NULL AND allocation.reference_type = 'SALES_ORDER' AND allocation.reference_id = $3)
+         )
+           AND payment.tenant_id = $2
+           AND payment.status IN ('PENDING', 'COMPLETED')
+         ORDER BY allocation.created_at ASC, allocation.id ASC`,
+        [saleId, saleContext.tenantId, saleRow.order_id ?? null],
+      )
+    ).rows;
+
+    if (paymentRows.length === 0) {
+      paymentRows = (
+        await client.query<{
+          payment_method_id: string;
+          amount: string | number;
+          reference_number: string | null;
+          notes: string | null;
+          cash_session_id: string | null;
+        }>(
+          `SELECT payment_method_id, amount, reference_number, notes, cash_session_id
+           FROM payments
+           WHERE tenant_id = $1
+             AND (
+               (reference_type = 'SALE' AND reference_id = $2)
+               OR ($3::uuid IS NOT NULL AND reference_type = 'SALES_ORDER' AND reference_id = $3)
+             )
+             AND status IN ('PENDING', 'COMPLETED')
+           ORDER BY created_at ASC, id ASC`,
+          [saleContext.tenantId, saleId, saleRow.order_id ?? null],
+        )
+      ).rows;
+    }
+
     const payments = this.normalizePayments(
-      paymentResult.rows.map((row) => ({
+      paymentRows.map((row) => ({
         paymentMethodId: row.payment_method_id,
         amount: this.toNumber(row.amount),
         cashSessionId: row.cash_session_id,
@@ -1617,7 +1693,12 @@ export class SaleService {
       payments,
       client,
     );
-    const replacementEventId = eventToReplace ? crypto.randomUUID() : undefined;
+    const replacementEventId =
+      eventToReplace ||
+      documentsResult.rows.length > 0 ||
+      deterministicEvent?.status === "FAILED"
+        ? crypto.randomUUID()
+        : undefined;
     if (eventToReplace) {
       if (
         !currentCustomer.taxSchemeId ||
@@ -1640,6 +1721,14 @@ export class SaleService {
           throw new BadRequestException("stale outbox event changed before recovery");
         }
       }
+    }
+    if (deterministicEvent && deterministicEvent.status === "PENDING" && replacementEventId && !stalePendingEvent) {
+      await this.integrationOutboxService.supersedePendingEvent(
+        deterministicEvent.event_id,
+        replacementEventId,
+        new Date(),
+        client,
+      );
     }
     const event = await this.enqueueSaleCompletedForElectronicBilling(
       saleContext,
@@ -2485,6 +2574,7 @@ export class SaleService {
         branchId: saleContext.branchId,
         paymentMethodId: payment.paymentMethodId,
         cashSessionId: payment.cashSessionId,
+        financialInstitutionId: payment.financialInstitutionId,
         referenceType: "SALE",
         referenceId: saleId,
         direction: "IN",
@@ -2617,11 +2707,27 @@ export class SaleService {
         throw new BadRequestException("sale could not be created");
       }
 
+      const saleCashSessionId =
+        saleContext.cashSessionId ??
+        payments.find((payment) => payment.cashSessionId)?.cashSessionId ??
+        null;
+      if (saleCashSessionId) {
+        await client.query(
+          `UPDATE sales
+           SET cash_session_id = $1
+           WHERE id = $2
+             AND tenant_id = $3
+             AND cash_session_id IS NULL`,
+          [saleCashSessionId, saleRow.id, saleContext.tenantId]
+        );
+      }
+
       for (const payment of payments) {
         const payload = Object.assign(new CreatePaymentDto(), {
           branchId: saleContext.branchId,
           paymentMethodId: payment.paymentMethodId,
           cashSessionId: payment.cashSessionId,
+          financialInstitutionId: payment.financialInstitutionId,
           referenceType: "SALE",
           referenceId: saleRow.id,
           direction: "IN",
@@ -2654,6 +2760,8 @@ export class SaleService {
       const billingPolicy = await this.getTenantElectronicBillingPolicy(
         saleContext.tenantId,
         client,
+        saleContext.branchId,
+        saleContext.terminalId,
       );
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(
@@ -2763,6 +2871,38 @@ export class SaleService {
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
       }
+
+      const saleCashSessionId =
+        saleContext.cashSessionId ??
+        payments.find((payment) => payment.cashSessionId)?.cashSessionId ??
+        null;
+      if (saleCashSessionId) {
+        await client.query(
+          `UPDATE sales
+           SET cash_session_id = $1
+           WHERE id = $2
+             AND tenant_id = $3
+             AND cash_session_id IS NULL`,
+          [saleCashSessionId, saleRow.id, saleContext.tenantId],
+        );
+      }
+
+      const selectedInstitutionCount = payments.filter(
+        (payment) => Boolean(payment.financialInstitutionId),
+      ).length;
+      const assignedInstitutionCount =
+        await this.repository.assignFinancialInstitutionsToSalePayments(
+          saleContext.tenantId,
+          saleRow.id,
+          payments,
+          client,
+        );
+      if (assignedInstitutionCount !== selectedInstitutionCount) {
+        throw new BadRequestException(
+          "Entidad financiera invalida o pago de la venta no encontrado",
+        );
+      }
+
       await this.syncOrderSaleItemTaxesFromSnapshot(
         saleRow.id,
         saleContext.tenantId,
@@ -2778,6 +2918,8 @@ export class SaleService {
       const billingPolicy = await this.getTenantElectronicBillingPolicy(
         saleContext.tenantId,
         client,
+        saleContext.branchId,
+        saleContext.terminalId,
       );
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
         await this.enqueueSaleCompletedForElectronicBilling(

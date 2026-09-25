@@ -31,6 +31,8 @@ sql_files=(
   "patches/20260502_1135_finance_menu_access.sql"
   "patches/20260502_1840_finance_cash_movements_reference_text.sql"
   "migrations/20260503_2030_finance_cash_payment_traceability.sql"
+  "migrations/20260914_1200_document_payment_idempotency.sql"
+  "migrations/20260922_payment_methods_financial_institutions.sql"
 )
 
 for sql_file in "${sql_files[@]}"; do

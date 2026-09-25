@@ -10,6 +10,17 @@ test("SalesReportsController: POS sale ticket permite roles operativos", () => {
   );
 });
 
+test("SalesReportsController: listado y cancelación permiten roles operativos", () => {
+  assert.deepEqual(
+    getReportRoles(SalesReportsController.prototype.getSalesList),
+    ["SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER"]
+  );
+  assert.deepEqual(
+    getReportRoles(SalesReportsController.prototype.getSaleCancelTicket),
+    ["SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER"]
+  );
+});
+
 test("SalesReportsController: xlsx uses the server document exporter", async () => {
   let excelCalls = 0;
   const body = Buffer.from("xlsx");

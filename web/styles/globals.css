@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *), .dark);
+
+/* The POS cart uses the viewport only on compact POS/mobile screens. */
+@media (max-width: 767px), (max-width: 1024px) and (max-height: 768px) {
+  .cart-sale-modal-overlay {
+    padding: 0;
+  }
+
+  .cart-sale-modal-content {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    padding: 1rem;
+  }
+}
 @layer utilities {
   .sidebar-scroll {
     scrollbar-width: thin;
@@ -50,5 +66,151 @@
     background: color-mix(in srgb, var(--brand-sidebar-text) 38%, transparent);
     border: 2px solid transparent;
     background-clip: padding-box;
+  }
+}
+
+/* Inventory BI wide layout follows usable main width, not viewport width. */
+.inventory-bi-main {
+  container-name: inventory-bi;
+  container-type: inline-size;
+  --inventory-bi-primary: #1a73e8;
+}
+
+.inventory-bi-filter-grid {
+  gap: 0.625rem;
+}
+
+.inventory-bi-filter-grid label {
+  gap: 0.25rem;
+}
+
+.inventory-bi-kpi-value {
+  max-width: 100%;
+}
+
+/* Currency keeps the complete formatted value visible inside narrow KPI cards.
+   cqw follows the real Inventory BI content container, not the viewport. */
+.inventory-bi-kpi-value--currency {
+  font-size: clamp(0.95rem, 1.2cqw, 1.35rem);
+}
+
+/* Operational detail follows usable BI content width, not viewport width. */
+.inventory-bi-operational-cards {
+  display: block;
+}
+
+.valuation-detail-cards {
+  display: block;
+}
+
+@container inventory-bi (min-width: 800px) {
+  .inventory-bi-operational-table {
+    display: block;
+  }
+
+  .inventory-bi-operational-cards {
+    display: none;
+  }
+
+  .valuation-detail-table {
+    display: block;
+  }
+
+  .valuation-detail-cards {
+    display: none;
+  }
+}
+
+@container inventory-bi (min-width: 800px) {
+  .valuation-analytics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .inventory-bi-kpi-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .inventory-bi-kpi-grid > * {
+    grid-column: span 2 / span 2;
+    min-width: 0;
+  }
+
+  .inventory-bi-kpi-grid > :nth-child(n + 4) {
+    grid-column: span 3 / span 3;
+  }
+}
+
+/* The KPI strip reaches its wide five-column mode at 1200px of usable content width.
+   Sidebar and page padding reduce the content width below the physical viewport. */
+@container inventory-bi (min-width: 1200px) {
+  .inventory-bi-kpi-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .inventory-bi-kpi-grid > * {
+    grid-column: auto;
+  }
+
+  /* Match the intermediate nth-child specificity so cards 4 and 5
+     leave their full-width spans when the sidebar changes the container width. */
+  .inventory-bi-kpi-grid > :nth-child(n + 4) {
+    grid-column: auto;
+  }
+}
+
+@container inventory-bi (min-width: 1280px) {
+  .inventory-bi-filter-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .inventory-bi-capital-grid,
+  .inventory-bi-health-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .inventory-bi-capital-branch,
+  .inventory-bi-capital-category,
+  .inventory-bi-capital-products {
+    grid-column: span 4 / span 4;
+    min-width: 0;
+  }
+
+  .inventory-bi-capital-products .inventory-bi-top-products-sku {
+    display: none;
+  }
+
+  .inventory-bi-health-cards,
+  .inventory-bi-health-status {
+    grid-column: span 6 / span 6;
+  }
+}
+
+.inventory-bi-filter-grid {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 480px) {
+  .inventory-bi-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .inventory-bi-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.login-background {
+  background-image: url("/logo-login.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .login-background {
+    background-image: url("/logo-login-tablet.png");
   }
 }

@@ -262,6 +262,35 @@ test("JwtAuthGuard: hydrates cash session context for operational mutation", asy
     userId: ids.user,
     cashSessionId: ids.cashSession,
   });
+  assert.match(String(queries[1]?.sql ?? ""), /cash_register_user_assignments/);
+});
+
+test("JwtAuthGuard: keeps authenticated user when cash session opened by another assigned operator", async () => {
+  const openerId = "user-opener-001";
+  const { db } = buildDb([], [
+    {
+      id: ids.cashSession,
+      tenant_id: ids.tenant,
+      branch_id: ids.branch,
+      terminal_id: ids.terminal,
+      opened_by_user_id: openerId,
+    },
+  ]);
+  const guard = new JwtAuthGuard(db as never);
+  const request: Record<string, unknown> = {
+    headers: {
+      authorization: `Bearer ${buildToken()}`,
+    },
+  };
+
+  const allowed = await guard.canActivate(buildContext(request, false, true));
+
+  assert.equal(allowed, true);
+  assert.deepEqual((request as { context?: { userId?: string } }).context?.userId, ids.user);
+  assert.notEqual(
+    (request as { context?: { userId?: string } }).context?.userId,
+    openerId
+  );
 });
 
 test("JwtAuthGuard: rejects POS context without matching open cash session", async () => {

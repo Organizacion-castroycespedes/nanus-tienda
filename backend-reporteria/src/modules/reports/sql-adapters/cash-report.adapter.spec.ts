@@ -71,3 +71,21 @@ test("CashReportAdapter branding omite datos no disponibles sin inventarlos", as
   assert.equal(branding.nit, null);
   assert.equal(branding.logo, null);
 });
+
+test("CashReportAdapter ticket de arqueo aplica tenant, sucursal y dueño para USER", async () => {
+  let captured: { sql: string; params: unknown[] } | null = null;
+  const adapter = new CashReportAdapter({ executeFunction: async () => null } as never, {
+    query: async (sql: string, params: unknown[]) => {
+      captured = { sql, params };
+      return { rows: [] };
+    },
+  } as never);
+
+  await adapter.getCashAuditTicket(actor, "count-1");
+
+  assert.ok(captured);
+  assert.match(captured.sql, /count_data\.tenant_id = \$2/);
+  assert.match(captured.sql, /count_data\.branch_id = \$3/);
+  assert.match(captured.sql, /count_data\.counted_by_user_id = \$5/);
+  assert.deepEqual(captured.params, ["count-1", "tenant-1", "branch-1", "USER", "user-1"]);
+});

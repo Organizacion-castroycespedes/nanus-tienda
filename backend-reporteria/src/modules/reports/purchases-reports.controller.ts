@@ -11,6 +11,7 @@ import {
 import type { Request, Response } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ReportAuthzGuard } from "../auth/report-authz.guard";
+import { ReportRoles } from "../auth/report-roles.decorator";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PurchasesReportsService } from "./purchases-reports.service";
 
@@ -27,6 +28,7 @@ export class PurchasesReportsController {
   ) {}
 
   @Get()
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getPurchases(
     @Query()
     query: {
@@ -57,6 +59,7 @@ export class PurchasesReportsController {
   }
 
   @Get(":purchaseId/ticket")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getPurchaseTicket(
     @Param("purchaseId") purchaseId: string,
     @Req() request: AuthenticatedRequest,

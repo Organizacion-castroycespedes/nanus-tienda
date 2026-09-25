@@ -1511,7 +1511,7 @@ func prepareSameVersionRepair(layout runtimeLayout, manifest installerManifest, 
 	if logger != nil {
 		logger.Printf("repair service stop requested")
 	}
-	if err := stopService(manifest); err != nil {
+	if err := stopService(manifest); err != nil && !isServiceAlreadyStoppedError(err) {
 		return "", "", fmt.Errorf("repair service stop: %w", err)
 	}
 	if err := waitForServiceStopped(manifest); err != nil {
@@ -1735,6 +1735,12 @@ func rollbackToPreviousVersion(
 			logger.Printf("rollback restored repair payload version=%s", expectedVersion)
 		}
 		return nil
+	}
+	if err := stopServiceIfRunning(manifest); err != nil && !isMissingServiceError(err) && !isServiceAlreadyStoppedError(err) {
+		return fmt.Errorf("rollback stop service: %w", err)
+	}
+	if err := waitForServiceStopped(manifest); err != nil {
+		return fmt.Errorf("rollback service stop confirmation: %w", err)
 	}
 	if err := restorePreviousVersion(manifest, layout, rollbackPath, logger); err != nil {
 		return err
@@ -1999,4 +2005,14 @@ func isMissingServiceError(err error) bool {
 		return false
 	}
 	return errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) || strings.Contains(strings.ToLower(err.Error()), "service does not exist")
+}
+
+func isServiceAlreadyStoppedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return errors.Is(err, windows.ERROR_SERVICE_NOT_ACTIVE) ||
+		strings.Contains(message, "service has not been started") ||
+		strings.Contains(message, "the service has not been started")
 }

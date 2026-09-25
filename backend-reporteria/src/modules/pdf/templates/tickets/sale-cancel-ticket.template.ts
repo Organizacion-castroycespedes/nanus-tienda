@@ -4,6 +4,7 @@ import {
   buildThermalDocument,
   buildThermalSectionTitle,
 } from "../base/thermal-layout";
+import { formatTicketStatus } from "../base/status-label";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -36,7 +37,7 @@ export const buildSaleCancelTicketTemplate = (
       },
       { label: "Cliente", value: dataset.header.customer },
       { label: "Usuario", value: dataset.header.cashier },
-      { label: "Estado final", value: dataset.cancellation.finalStatus },
+      { label: "Estado final", value: formatTicketStatus(dataset.cancellation.finalStatus) },
     ],
     sections: [
       {
@@ -51,7 +52,7 @@ export const buildSaleCancelTicketTemplate = (
                       stack: [
                         { text: payment.method, bold: true, fontSize: 8.5 },
                         {
-                          text: `${payment.status} | ${formatDate(payment.date)}`,
+                          text: `${formatTicketStatus(payment.status)} | ${formatDate(payment.date)}`,
                           fontSize: 8,
                           color: "#475569",
                         },

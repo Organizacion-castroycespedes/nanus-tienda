@@ -160,17 +160,75 @@ export class CashSessionsRepository {
     return result.rows[0] ?? null;
   }
 
+  async hasActiveAssignment(
+    cashRegisterId: string,
+    userId: string,
+    client?: PoolClient
+  ): Promise<boolean> {
+    const result = await this.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+        SELECT 1
+        FROM cash_register_user_assignments AS assignment
+        WHERE assignment.cash_register_id = $1
+          AND assignment.user_id = $2
+          AND assignment.unassigned_at IS NULL
+      ) AS exists`,
+      [cashRegisterId, userId],
+      client
+    );
+    return Boolean(result.rows[0]?.exists);
+  }
+
+  async listActiveAssignmentUserIds(
+    cashRegisterId: string,
+    client?: PoolClient
+  ) {
+    const result = await this.query<{ user_id: string }>(
+      `SELECT assignment.user_id
+       FROM cash_register_user_assignments AS assignment
+       WHERE assignment.cash_register_id = $1
+         AND assignment.unassigned_at IS NULL
+       ORDER BY assignment.assigned_at ASC`,
+      [cashRegisterId],
+      client
+    );
+    return result.rows.map((row) => row.user_id);
+  }
+
   async findCurrentByUser(
     userId: string,
     tenantId: string,
-    cashRegisterId?: string
+    cashRegisterId?: string,
+    excludeCompletedClosure = false
   ): Promise<CashSessionRecord | null> {
     const params: unknown[] = [userId, tenantId];
     let whereClause = `
-      WHERE session.opened_by_user_id = $1
-        AND session.tenant_id = $2
+      WHERE session.tenant_id = $2
         AND session.status = 'OPEN'
+        AND (
+          session.opened_by_user_id = $1
+          OR EXISTS (
+            SELECT 1
+            FROM cash_register_user_assignments AS assignment
+            WHERE assignment.cash_register_id = session.cash_register_id
+              AND assignment.user_id = $1
+              AND assignment.unassigned_at IS NULL
+          )
+        )
     `;
+
+    if (excludeCompletedClosure) {
+      whereClause += `
+        AND NOT EXISTS (
+          SELECT 1
+          FROM cash_counts AS own_closing
+          WHERE own_closing.tenant_id = session.tenant_id
+            AND own_closing.cash_session_id = session.id
+            AND own_closing.counted_by_user_id = $1
+            AND own_closing.count_type = 'CLOSING'
+        )
+      `;
+    }
 
     if (cashRegisterId) {
       params.push(cashRegisterId);
@@ -301,7 +359,8 @@ export class CashSessionsRepository {
   async listCashCounts(
     cashSessionId: string,
     tenantId: string,
-    countType?: CashCountType
+    countType?: CashCountType,
+    client?: PoolClient
   ) {
     const params: unknown[] = [cashSessionId, tenantId];
     const where = [
@@ -335,7 +394,8 @@ export class CashSessionsRepository {
        AND counter.tenant_id = count_data.tenant_id
       WHERE ${where.join(" AND ")}
       ORDER BY count_data.counted_at DESC, count_data.id DESC`,
-      params
+      params,
+      client
     );
 
     return result.rows ?? [];
@@ -362,6 +422,7 @@ export class CashSessionsRepository {
     cashRegisterId?: string;
     status?: string;
     openedByUserId?: string;
+    operatorUserId?: string;
     limit: number;
     offset: number;
   }) {
@@ -386,7 +447,19 @@ export class CashSessionsRepository {
       where.push(`session.status = $${params.length}`);
     }
 
-    if (filters.openedByUserId) {
+    if (filters.operatorUserId) {
+      params.push(filters.operatorUserId);
+      where.push(`(
+        session.opened_by_user_id = $${params.length}
+        OR EXISTS (
+          SELECT 1
+          FROM cash_register_user_assignments AS assignment
+          WHERE assignment.cash_register_id = session.cash_register_id
+            AND assignment.user_id = $${params.length}
+            AND assignment.unassigned_at IS NULL
+        )
+      )`);
+    } else if (filters.openedByUserId) {
       params.push(filters.openedByUserId);
       where.push(`session.opened_by_user_id = $${params.length}`);
     }

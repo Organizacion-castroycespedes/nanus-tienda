@@ -25,7 +25,7 @@ const FinanceHomePage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
-  const { canViewFinance } = getFinancePermissions(role);
+  const { canViewFinance, canViewPaymentMethods } = getFinancePermissions(role);
   const { paymentMethods, loadPaymentMethods } = usePaymentMethods();
   const { cashRegisters, loadCashRegisters } = useCashRegisters();
   const { currentSession, history, loadCurrentSession, loadHistory } = useCashSessions();
@@ -34,12 +34,15 @@ const FinanceHomePage = () => {
     if (!canViewFinance) {
       return;
     }
-    void loadPaymentMethods();
+    if (canViewPaymentMethods) {
+      void loadPaymentMethods();
+    }
     void loadCashRegisters();
     void loadCurrentSession();
     void loadHistory({ limit: 8 });
   }, [
     canViewFinance,
+    canViewPaymentMethods,
     loadCashRegisters,
     loadCurrentSession,
     loadHistory,
@@ -61,12 +64,16 @@ const FinanceHomePage = () => {
   );
 
   const shortcuts = [
-    {
-      label: "Metodos de pago",
-      href: `/${tenantSlug}/finance/payment-methods`,
-      description: "Define medios permitidos, referencias y cambio.",
-      icon: CreditCard,
-    },
+    ...(canViewPaymentMethods
+      ? [
+          {
+            label: "Metodos de pago",
+            href: `/${tenantSlug}/finance/payment-methods`,
+            description: "Define medios permitidos, referencias y cambio.",
+            icon: CreditCard,
+          },
+        ]
+      : []),
     {
       label: "Cajas",
       href: `/${tenantSlug}/finance/cash-registers`,
@@ -109,15 +116,20 @@ const FinanceHomePage = () => {
         }
       />
 
-      <FinanceSectionNav tenantSlug={tenantSlug} />
+      <FinanceSectionNav
+        tenantSlug={tenantSlug}
+        canViewPaymentMethods={canViewPaymentMethods}
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <FinanceMetricCard
-          label="Metodos activos"
-          value={activeMethods}
-          accent="blue"
-          helper="Catalogo listo para cobros y conciliacion."
-        />
+        {canViewPaymentMethods ? (
+          <FinanceMetricCard
+            label="Metodos activos"
+            value={activeMethods}
+            accent="blue"
+            helper="Catalogo listo para cobros y conciliacion."
+          />
+        ) : null}
         <FinanceMetricCard
           label="Cajas activas"
           value={activeRegisters}

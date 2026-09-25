@@ -5,6 +5,7 @@ import { CommonServicesModule } from "../../common/services/common-services.modu
 import { CashMovementsModule } from "./cash-movements/cash-movements.module";
 import { CashRegistersModule } from "./cash-registers/cash-registers.module";
 import { CashSessionsModule } from "./cash-sessions/cash-sessions.module";
+import { FinancialInstitutionsModule } from "./financial-institutions/financial-institutions.module";
 import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { FinanceAuthzGuard } from "./common/guards/finance-authz.guard";
@@ -15,6 +16,7 @@ import { FinanceAuthzGuard } from "./common/guards/finance-authz.guard";
     AccessControlModule,
     CommonServicesModule,
     PaymentMethodsModule,
+    FinancialInstitutionsModule,
     PaymentsModule,
     CashRegistersModule,
     CashSessionsModule,
@@ -23,6 +25,7 @@ import { FinanceAuthzGuard } from "./common/guards/finance-authz.guard";
   providers: [FinanceAuthzGuard],
   exports: [
     PaymentMethodsModule,
+    FinancialInstitutionsModule,
     PaymentsModule,
     CashRegistersModule,
     CashSessionsModule,
