@@ -17,6 +17,9 @@ import { InventoryLotBalanceController } from "./controllers/inventory-lot-balan
 import { InventoryLotController } from "./controllers/inventory-lot.controller";
 import { InventoryLocationController } from "./controllers/inventory-location.controller";
 import { OrderController } from "./controllers/order.controller";
+import { ProductImportController } from "./product-import/product-import.controller";
+import { ProductImportRepository } from "./product-import/product-import.repository";
+import { ProductImportService } from "./product-import/product-import.service";
 import { ProductBarcodeController } from "./controllers/product-barcode.controller";
 import { ProductCategoryController } from "./controllers/product-category.controller";
 import { ProductController } from "./controllers/product.controller";
@@ -86,6 +89,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotBalanceController,
     InventoryLotController,
     InventoryLocationController,
+    ProductImportController,
     ProductController,
     ProductBarcodeController,
     ProductCategoryController,
@@ -110,6 +114,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationService,
     OrderService,
     ProductService,
+    ProductImportService,
+    ProductImportRepository,
     ProductImageService,
     LocalImageStorageService,
     ProductBarcodeService,
