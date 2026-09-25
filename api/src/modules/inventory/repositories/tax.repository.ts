@@ -48,6 +48,11 @@ export type TaxCatalogItem = {
   isAlcoholicBeverage?: boolean;
 };
 
+export type TaxCategoryRateLink = {
+  taxId: string;
+  taxProductCategoryId: string;
+};
+
 export type TaxRateSeedData = {
   tenantId: string;
   taxId: string;
@@ -356,6 +361,38 @@ export class TaxRepository {
       baseTypes: (catalogs.baseTypes ?? []).map(mapItem),
       productCategories: (catalogs.productCategories ?? []).map(mapItem),
     };
+  }
+
+  async listActiveCategoryRateLinks(
+    tenantId: string,
+    asOf: string,
+    client?: PoolClient
+  ): Promise<TaxCategoryRateLink[]> {
+    const result = await this.query<{
+      tax_id: string;
+      tax_product_category_id: string;
+    }>(
+      `
+        SELECT DISTINCT tr.tax_id, tr.tax_product_category_id
+        FROM tax_rates tr
+        JOIN taxes t
+          ON t.id = tr.tax_id
+         AND t.tenant_id = tr.tenant_id
+        WHERE tr.tenant_id = $1
+          AND tr.tax_product_category_id IS NOT NULL
+          AND tr.is_active = TRUE
+          AND t.is_active = TRUE
+          AND tr.effective_from <= $2::date
+          AND (tr.effective_to IS NULL OR tr.effective_to >= $2::date)
+      `,
+      [tenantId, asOf],
+      client
+    );
+
+    return (result.rows ?? []).map((row) => ({
+      taxId: row.tax_id,
+      taxProductCategoryId: row.tax_product_category_id,
+    }));
   }
 
   async upsertTaxRate(
