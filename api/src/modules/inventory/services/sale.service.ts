@@ -1536,11 +1536,11 @@ export class SaleService {
       }
     }
 
-    const hasSuccessfulOrInFlightDocument = documentsResult.rows.some(
-      (doc) => ["ACCEPTED", "PROCESSING", "PENDING"].includes(doc.status),
+    const hasAcceptedDocument = documentsResult.rows.some(
+      (doc) => doc.status === "ACCEPTED",
     );
 
-    if (hasSuccessfulOrInFlightDocument) {
+    if (hasAcceptedDocument) {
       return {
         saleId,
         result: "DOCUMENT_EXISTS",
@@ -1585,12 +1585,8 @@ export class SaleService {
       saleStatus: saleRow.status,
       paymentStatus: saleRow.payment_status,
       customerId: saleRow.customer_id,
-      documentStatuses: [],
-      requestExists:
-        Boolean(deterministicEvent) &&
-        deterministicEvent.status !== "FAILED" &&
-        !stalePendingEvent &&
-        !failedRecoveryEvent,
+      documentStatuses: hasAcceptedDocument ? ["ACCEPTED"] : [],
+      requestExists: false,
       hasTaxLines: hasPositiveTaxLines(currentLines),
       customerFiscalDataComplete: currentCustomerFiscalDataComplete,
       isFinalConsumer: currentCustomer.isFinalConsumer,
@@ -1709,6 +1705,14 @@ export class SaleService {
           throw new BadRequestException("stale outbox event changed before recovery");
         }
       }
+    }
+    if (deterministicEvent && deterministicEvent.status === "PENDING" && replacementEventId && !stalePendingEvent) {
+      await this.integrationOutboxService.supersedePendingEvent(
+        deterministicEvent.event_id,
+        replacementEventId,
+        new Date(),
+        client,
+      );
     }
     const event = await this.enqueueSaleCompletedForElectronicBilling(
       saleContext,
