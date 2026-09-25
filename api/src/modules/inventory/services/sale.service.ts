@@ -80,6 +80,7 @@ import {
   normalizeVatResponsibility,
   type VatResponsibility,
 } from "../../tenants/vat-responsibility";
+import { calculateDianDv, isDvApplicable } from "../../electronic-invoicing/dian-dv";
 
 type SaleListRow = SaleRow & {
   branch_id: string;
@@ -919,7 +920,16 @@ export class SaleService {
         resolvedCustomer?.documentTypeCode ??
         null,
       identificationNumber,
-      verificationDigit: resolvedCustomer?.verificationDigit ?? null,
+      verificationDigit:
+        resolvedCustomer?.verificationDigit ??
+        (isDvApplicable(
+          resolvedCustomer?.dianIdentificationType ??
+            resolvedCustomer?.documentTypeCode ??
+            null
+        )
+          ? calculateDianDv(identificationNumber)
+          : null) ??
+        null,
       legalName,
       firstName,
       familyName,
@@ -1170,9 +1180,14 @@ export class SaleService {
   ) {
     const requiresPersonNames =
       customer.customerType === "PERSON" && customer.isFinalConsumer !== true;
+    const isNit =
+      customer.identificationTypeCode?.trim().toUpperCase() === "31" ||
+      customer.identificationTypeCode?.trim().toUpperCase() === "NIT" ||
+      customer.identificationType?.trim().toUpperCase() === "NIT";
     return Boolean(
       customer.identificationNumber?.trim() &&
         customer.identificationTypeCode?.trim() &&
+        (!isNit || customer.verificationDigit?.trim()) &&
         customer.legalName?.trim() &&
         customer.countryCode?.trim() &&
         customer.countryName?.trim() &&
@@ -1238,6 +1253,7 @@ export class SaleService {
         payload.customer?.departmentCode !== currentCustomer.departmentCode ||
         payload.customer?.municipalityCode !== currentCustomer.municipalityCode ||
         payload.customer?.identificationNumber !== currentCustomer.identificationNumber ||
+        payload.customer?.verificationDigit !== currentCustomer.verificationDigit ||
         payload.customer?.legalName !== currentCustomer.legalName ||
         payload.customer?.email !== currentCustomer.email ||
         payload.customer?.addressLine1 !== currentCustomer.addressLine1,

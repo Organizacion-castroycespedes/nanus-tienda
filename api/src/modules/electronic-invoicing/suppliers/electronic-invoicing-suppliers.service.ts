@@ -38,6 +38,7 @@ import {
   isSupportedFiscalResponsibility,
   isSupportedTaxRegime,
 } from "../fiscal-profile-options";
+import { calculateDianDv, isDvApplicable } from "../dian-dv";
 
 type PgErrorLike = {
   code?: string;
@@ -566,6 +567,11 @@ export class ElectronicInvoicingSuppliersService {
       identificationNumber
     );
 
+    const computedVerificationDigit =
+      this.normalizeText(dto.verificationDigit) ??
+      (isDvApplicable(documentTypeCode) ? calculateDianDv(identificationNumber) : null) ??
+      null;
+
     const input: CreateElectronicInvoicingSupplierInput = {
       id: crypto.randomUUID(),
       tenantId,
@@ -575,7 +581,7 @@ export class ElectronicInvoicingSuppliersService {
       documentNumberNormalized: identificationNumber,
       dianIdentificationType: documentTypeCode,
       identificationNumber,
-      verificationDigit: this.normalizeText(dto.verificationDigit),
+      verificationDigit: computedVerificationDigit,
       legalName: this.normalizeText(dto.legalName),
       tradeName: this.normalizeText(dto.tradeName) ?? name,
       fiscalEmail: invoiceEmail,
@@ -689,7 +695,21 @@ export class ElectronicInvoicingSuppliersService {
     }
 
     if (hasOwn(dto, "verificationDigit")) {
-      update.verificationDigit = this.normalizeText(dto.verificationDigit);
+      const explicitDv = this.normalizeText(dto.verificationDigit);
+      update.verificationDigit =
+        explicitDv ??
+        (isDvApplicable(nextDocumentTypeCode)
+          ? calculateDianDv(nextIdentificationNumber)
+          : null) ??
+        null;
+    } else if (
+      (hasOwn(dto, "documentNumber") ||
+        hasOwn(dto, "identificationNumber") ||
+        hasOwn(dto, "documentTypeCode") ||
+        hasOwn(dto, "dianIdentificationType")) &&
+      isDvApplicable(nextDocumentTypeCode)
+    ) {
+      update.verificationDigit = calculateDianDv(nextIdentificationNumber) || null;
     }
     if (hasOwn(dto, "legalName")) {
       update.legalName = this.normalizeText(dto.legalName);

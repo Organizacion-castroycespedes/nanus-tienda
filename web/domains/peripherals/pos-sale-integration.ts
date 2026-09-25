@@ -156,7 +156,7 @@ export const runSalePeripheralOperations = async (
       }
     }
 
-    if (printTicketMode !== "DISABLED") {
+    if (printTicketMode === "AUTOMATIC") {
       buildSaleTicketPayload(ticketInput);
       const printResult = await printSaleTicket(ticketInput);
 
