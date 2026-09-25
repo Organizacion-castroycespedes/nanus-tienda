@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { User, AlertTriangle, CheckCircle2, Search, UserPlus, ArrowRight, ShieldCheck } from "lucide-react";
+import { User, AlertTriangle, CheckCircle2, Search, UserPlus, ArrowRight, ShieldCheck, Check, Filter } from "lucide-react";
 import { Button } from "../../../../../components/design-system/Button";
 import { Input } from "../../../../../components/design-system/Input";
 import { QuickFiscalCustomerModal } from "../../../../pos/components/QuickFiscalCustomerModal";
@@ -34,6 +34,7 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fiscalModalOpen, setFiscalModalOpen] = useState(false);
+  const [onlyFiscallyValidated, setOnlyFiscallyValidated] = useState(true);
 
   // Load customer detail
   useEffect(() => {
@@ -96,12 +97,19 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
 
   const isSelectedDirty = selectedCustomerId !== sale.customer.id;
 
-  const isFiscalComplete = Boolean(
-    currentCustomer &&
-      !currentCustomer.isFinalConsumer &&
-      currentCustomer.documentNumber &&
-      (currentCustomer.fiscalEmail || currentCustomer.email)
-  );
+  const isCustomerFiscallyComplete = (c: CustomerResponse | null) =>
+    Boolean(
+      c &&
+        !c.isFinalConsumer &&
+        c.documentNumber?.trim() &&
+        (c.fiscalEmail?.trim() || c.email?.trim() || c.invoiceEmail?.trim())
+    );
+
+  const isFiscalComplete = isCustomerFiscallyComplete(currentCustomer);
+
+  const displayedCustomers = onlyFiscallyValidated
+    ? customers.filter(isCustomerFiscallyComplete)
+    : customers;
 
   const handleSelectCustomer = async (c: CustomerResponse) => {
     setSelectedCustomerId(c.id);
@@ -198,9 +206,23 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
 
       {/* Search and Replace Customer */}
       <div className="space-y-3">
-        <label className="text-sm font-medium text-slate-900 dark:text-white">
-          Cambiar cliente de la venta
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-slate-900 dark:text-white">
+            Cambiar cliente de la venta
+          </label>
+          <button
+            type="button"
+            onClick={() => setOnlyFiscallyValidated((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+              onlyFiscallyValidated
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800"
+                : "bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+            }`}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            {onlyFiscallyValidated ? "Mostrando solo validados DIAN" : "Filtrar solo validados DIAN"}
+          </button>
+        </div>
         <div className="relative">
           <Input
             label="Buscar cliente"
@@ -212,10 +234,11 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
           <Search className="absolute left-3 top-9 h-4 w-4 text-slate-400" />
         </div>
 
-        {customers.length > 0 ? (
+        {displayedCustomers.length > 0 ? (
           <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 divide-y divide-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:divide-slate-800">
-            {customers.map((c) => {
+            {displayedCustomers.map((c) => {
               const isSelected = c.id === selectedCustomerId;
+              const isComplete = isCustomerFiscallyComplete(c);
               return (
                 <button
                   key={c.id}
@@ -228,8 +251,19 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
                   }`}
                 >
                   <div>
-                    <p className="font-medium">{c.name}</p>
-                    <p className="text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{c.name}</p>
+                      {isComplete ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          <Check className="h-3 w-3" /> DIAN
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          Incompleto
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-500 dark:text-slate-400 mt-0.5">
                       {c.documentNumber ? `CC / NIT: ${c.documentNumber}` : "Sin documento"}
                       {c.email ? ` • ${c.email}` : ""}
                     </p>
@@ -239,11 +273,17 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
               );
             })}
           </div>
-        ) : searchQuery.trim() ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {isSearching ? "Buscando..." : "No se encontraron clientes con ese criterio."}
+        ) : (
+          <p className="text-xs text-slate-500 dark:text-slate-400 py-2">
+            {isSearching
+              ? "Buscando..."
+              : onlyFiscallyValidated
+                ? "No se encontraron clientes validados fiscalmente con ese criterio."
+                : searchQuery.trim()
+                  ? "No se encontraron clientes con ese criterio."
+                  : null}
           </p>
-        ) : null}
+        )}
       </div>
 
       {/* Quick Fiscal Customer Modal */}

@@ -215,10 +215,10 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
                 onEmitInvoice={async () => {
                   setError(null);
                   const result = await requestOperationalSaleElectronicBilling(sale.id);
-                  if (!result.requestCreated || !result.electronicDocumentId) {
+                  if (!result.requestCreated) {
                     const errorMsg =
                       result.message ||
-                      "Seleccione o complete un cliente fiscalmente elegible para una factura IVA.";
+                      "No se pudo crear la solicitud de facturación electrónica.";
 
                     if (
                       result.eligibility === "INCOMPLETE_CUSTOMER_FISCAL_DATA" ||

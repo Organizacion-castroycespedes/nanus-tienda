@@ -17,10 +17,11 @@ export type OperationalSalesRequest = {
 export const isEligibleForElectronicBillingRequest = (
   sale: Pick<OperationalSaleListItem, "status" | "paymentStatus" | "electronicBilling" | "customer">
 ) =>
-  !sale.electronicBilling &&
+  (!sale.electronicBilling ||
+    !["PENDING", "PROCESSING", "ACCEPTED"].includes(sale.electronicBilling.status)) &&
   sale.status === "CONFIRMED" &&
   ["PAID", "OVERPAID"].includes(sale.paymentStatus) &&
-  Boolean(sale.customer.id);
+  Boolean(sale.customer?.id);
 
 export const fetchOperationalSales = (request: OperationalSalesRequest) => {
   const params = new URLSearchParams({

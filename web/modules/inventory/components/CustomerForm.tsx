@@ -149,7 +149,7 @@ const createInitialValues = (customer?: CustomerResponse | null): CustomerFormVa
   countryId: "",
   departamentoId: customer?.departamentoId ?? "",
   municipioId: customer?.municipioId ?? "",
-  countryCode: customer?.countryCode ?? "",
+  countryCode: customer?.countryCode?.trim() || "CO",
   departmentCode: customer?.departmentCode ?? "",
   municipalityCode: customer?.municipalityCode ?? "",
   personType: customer?.personType ?? "",
@@ -423,8 +423,10 @@ export const CustomerForm = ({
         setCountries(items);
         setValues((prev) => {
           const selected =
-            items.find((country) => country.codigo_iso2 === prev.countryCode) ??
+            items.find((country) => country.codigo_iso2 === (prev.countryCode || "CO")) ??
             items.find((country) => country.id === prev.countryId) ??
+            items.find((country) => country.codigo_iso2 === "CO") ??
+            items.find((country) => country.nombre.toLowerCase().includes("colombia")) ??
             items[0];
           return {
             ...prev,

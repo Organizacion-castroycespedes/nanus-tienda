@@ -324,6 +324,22 @@ const ActionCard = ({
               Recuperar procesamiento
             </Button>
           ) : null}
+
+          {showElectronicBilling && billing && !accepted && !canRetry && !canRecoverProviderCreateIntent && !canRequestBilling && !["PENDING", "PROCESSING"].includes(billing.status) ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setLocalActionMessage(null);
+                setWizardOpen(true);
+              }}
+              disabled={refreshLoading}
+              className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reintentar facturación
+            </Button>
+          ) : null}
         </div>
 
         {(localActionMessage || actionMessage) ? (

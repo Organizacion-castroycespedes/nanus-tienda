@@ -70,7 +70,7 @@ const EMPTY_FORM: FiscalForm = {
   countryId: "",
   departamentoId: "",
   municipioId: "",
-  countryCode: "",
+  countryCode: "CO",
   departmentCode: "",
   municipalityCode: "",
   personType: "",
@@ -101,7 +101,7 @@ const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm =>
   countryId: "",
   departamentoId: customer?.departamentoId ?? "",
   municipioId: customer?.municipioId ?? "",
-  countryCode: customer?.countryCode ?? "",
+  countryCode: customer?.countryCode?.trim() || "CO",
   departmentCode: customer?.departmentCode ?? "",
   municipalityCode: customer?.municipalityCode ?? "",
   personType:
@@ -171,9 +171,17 @@ export const QuickFiscalCustomerModal = ({
       .then((items) => {
         if (!active) return;
         setCountries(items);
-        const selected = items.find((item) => item.codigo_iso2 === form.countryCode);
-        if (selected && selected.id !== form.countryId) {
-          setForm((current) => ({ ...current, countryId: selected.id }));
+        const selected =
+          items.find((item) => item.codigo_iso2 === (form.countryCode || "CO")) ??
+          items.find((item) => item.codigo_iso2 === "CO") ??
+          items.find((item) => item.nombre.toLowerCase().includes("colombia")) ??
+          items[0];
+        if (selected && (!form.countryId || selected.id !== form.countryId)) {
+          setForm((current) => ({
+            ...current,
+            countryId: selected.id,
+            countryCode: selected.codigo_iso2,
+          }));
         }
       })
       .catch(() => {
