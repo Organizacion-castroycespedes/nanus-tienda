@@ -982,11 +982,14 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
     id: string,
     updates: {
       status: ElectronicDocumentStatus;
-      subtotalAmount: string;
-      discountAmount: string;
-      taxAmount: string;
-      totalAmount: string;
+      subtotalAmount: number | string;
+      discountAmount: number | string;
+      taxAmount: number | string;
+      totalAmount: number | string;
       metadata: Record<string, unknown>;
+      lastErrorCode?: string | null;
+      lastErrorMessage?: string | null;
+      providerStatusDetail?: string | null;
     },
     client?: PoolClient,
   ) {
