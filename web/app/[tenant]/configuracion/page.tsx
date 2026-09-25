@@ -2680,11 +2680,13 @@ const ConfiguracionPage = () => {
 
 
       {status ? (
-        <Toast
-          message={status.message}
-          variant={status.variant}
-          onClose={() => setStatus(null)}
-        />
+        <div className="fixed bottom-6 right-6 z-50 max-w-md shadow-xl transition-all duration-300">
+          <Toast
+            message={status.message}
+            variant={status.variant}
+            onClose={() => setStatus(null)}
+          />
+        </div>
       ) : null}
 
       {isSuperAdmin ? (
