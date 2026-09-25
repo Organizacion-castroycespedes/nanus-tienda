@@ -203,7 +203,7 @@
 }
 
 .login-background {
-  background-image: url("/logo-login.png");
+  background-image: var(--login-bg-image, url("/login-bg.jpg"));
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -211,6 +211,6 @@
 
 @media (min-width: 1024px) and (max-width: 1279px) {
   .login-background {
-    background-image: url("/logo-login-tablet.png");
+    background-image: var(--login-bg-image, url("/login-bg.jpg"));
   }
 }

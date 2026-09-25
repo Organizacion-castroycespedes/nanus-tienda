@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useRef } from "react";
+import { Suspense, useCallback, useEffect, useState, useRef, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -23,6 +23,15 @@ import { ApiError } from "../../lib/request";
 import { useAutoClearState } from "../../lib/useAutoClearState";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthStatus } from "../../store/authSlice";
+
+const loginBackgroundImage =
+  process.env.LOGIN_BG_IMAGE ??
+  (process.env.NODE_ENV === "production"
+    ? "/logo-login-tablet.png"
+    : "/login-bg.jpg");
+const loginBrandName =
+  process.env.LOGIN_BRAND_NAME ??
+  (process.env.NODE_ENV === "production" ? "EMAUS POS" : "MANUS POS");
 
 const LoginPageContent = () => {
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
@@ -195,6 +204,7 @@ const LoginPageContent = () => {
       <div
         aria-hidden="true"
         className="login-background absolute inset-0 bg-slate-950"
+        style={{ "--login-bg-image": `url("${loginBackgroundImage}")` } as CSSProperties}
       />
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">
@@ -220,7 +230,7 @@ const LoginPageContent = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-700 dark:text-cyan-300">
-                  EMAUS POS
+                  {loginBrandName}
                 </p>
                 <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                   Centro de Soluciones
