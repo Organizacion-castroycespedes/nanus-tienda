@@ -16,7 +16,7 @@ export type OperationalSaleListItem = {
   saleType: string;
   paymentStatus: string;
   total: number;
-  customer: { id: string; name: string | null };
+  customer: { id: string; name: string | null; documentNumber?: string | null };
   branch: { id: string; name: string | null };
   operator: { id: string | null; email: string | null };
   cashSessionId: string | null;
@@ -87,6 +87,8 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
   items: Array<{
     id: string;
     productId: string;
+    productName?: string | null;
+    productSku?: string | null;
     quantity: number;
     unitPrice: number;
     subtotal: number;
@@ -96,6 +98,11 @@ export type OperationalSaleDetail = OperationalSaleListItem & {
   payments: Array<{
     id: string;
     paymentMethod: string | null;
+    paymentMethodId?: string | null;
+    paymentMethodCode?: string | null;
+    referenceNumber?: string | null;
+    financialInstitutionId?: string | null;
+    financialInstitutionNombre?: string | null;
     amount: number;
     cashSessionId: string | null;
     status: string;

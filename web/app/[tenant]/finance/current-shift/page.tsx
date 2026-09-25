@@ -370,7 +370,7 @@ const CurrentShiftPage = () => {
       <FinancePageHeader
         eyebrow="Finance / Turno"
         title="Gestion del turno"
-        description="Consulta operativa de la caja abierta actual, sin mezclar historico ni cajas ajenas."
+        description="Turno actual = operaciones de hoy (America/Bogota) en la caja abierta, sin mezclar dias previos ni cajas ajenas."
         actions={
           <>
             <Button variant="ghost" onClick={() => void loadShift()} isLoading={loading}>

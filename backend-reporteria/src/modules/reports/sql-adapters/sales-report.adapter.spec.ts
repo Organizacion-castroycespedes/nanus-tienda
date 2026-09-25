@@ -197,7 +197,7 @@ test("SalesReportAdapter.getElectronicInvoice: scopes lookup by tenant and branc
   assert.equal(result?.customerFiscalSnapshot?.name, "Cliente snapshot");
   assert.equal(result?.taxLines?.[0]?.amount, 19);
   assert.equal(result?.qrPayload, "https://qr.example/accepted");
-  assert.match(sql, /document\.source_id\s*=\s*s\.id::TEXT/i);
+  assert.match(sql, /document\.source_id\s*=\s*s\.id/i);
 });
 
 test("SalesReportAdapter.getElectronicInvoice: rejects ambiguous documents", async () => {

@@ -519,6 +519,49 @@ test("mapper does not send Manus tax regime as customer PartyTaxScheme", () => {
   assert.equal(request.customer.taxSchemeName, "No aplica");
 });
 
+test("mapper normalizes supported Manus tax regimes to FactuCore DIAN TaxSchemes", () => {
+  for (const taxRegime of ["NO_RESPONSABLE", "SIMPLE", "ESPECIAL"]) {
+    const command = makeInvoiceCommand();
+    command.customer = {
+      ...command.customer,
+      customerType: "COMPANY",
+      taxProfile: {
+        identificationTypeCode: "31",
+        taxScheme: taxRegime,
+        fiscalResponsibilityCodes: taxRegime === "NO_RESPONSABLE" ? ["R-99-PN"] : [],
+      },
+    };
+
+    const request = new FactuCoreMapper().buildInvoiceRequest(command);
+    assert.equal(request.customer.taxSchemeId, taxRegime === "NO_RESPONSABLE" ? "ZZ" : "01");
+    assert.equal(
+      request.customer.taxSchemeName,
+      taxRegime === "NO_RESPONSABLE" ? "No aplica" : "IVA",
+    );
+  }
+});
+
+test("mapper preserves supported DIAN fiscal responsibility codes", () => {
+  const command = makeInvoiceCommand();
+  command.customer = {
+    ...command.customer,
+    taxProfile: {
+      identificationTypeCode: "31",
+      taxScheme: "ORDINARIO",
+      fiscalResponsibilityCodes: ["R-99-PN", "O-13", "O-15", "O-23", "O-47"],
+    },
+  };
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+  assert.deepEqual(request.customer.fiscalResponsibilityCodes, [
+    "R-99-PN",
+    "O-13",
+    "O-15",
+    "O-23",
+    "O-47",
+  ]);
+});
+
 test("mapper rejects unknown customer PartyTaxScheme values", () => {
   const command = makeInvoiceCommand();
   command.customer = {

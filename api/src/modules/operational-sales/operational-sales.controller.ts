@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { RequirePermission } from "../../common/decorators/require-permission.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -7,6 +7,8 @@ import { RolesGuard } from "../../common/guards/roles.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { OperationalSalesService } from "./operational-sales.service";
 import type { OperationalSalesQueryDto } from "./dto/operational-sales-query.dto";
+import { UpdateSaleCustomerDto } from "./dto/update-sale-customer.dto";
+import { CorrectSalePaymentsDto } from "./dto/correct-sale-payments.dto";
 
 type OperationalRequest = Request & {
   user?: { id?: string; tenantId?: string; roles?: string[] };
@@ -66,6 +68,26 @@ export class OperationalSalesController {
   @RequirePermission({ menuKey: "POS", level: "WRITE" })
   recoverProviderCreateIntent(@Param("saleId") saleId: string, @Req() request: OperationalRequest) {
     return this.service.recoverProviderCreateIntent(this.actor(request), saleId);
+  }
+
+  @Patch(":saleId/customer")
+  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "WRITE", operationalRoles: ["USER"] })
+  updateCustomer(
+    @Param("saleId") saleId: string,
+    @Body() dto: UpdateSaleCustomerDto,
+    @Req() request: OperationalRequest
+  ) {
+    return this.service.updateCustomer(this.actor(request), saleId, dto);
+  }
+
+  @Post(":saleId/payment-correction")
+  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "WRITE", operationalRoles: ["USER"] })
+  correctPayments(
+    @Param("saleId") saleId: string,
+    @Body() dto: CorrectSalePaymentsDto,
+    @Req() request: OperationalRequest
+  ) {
+    return this.service.correctPayments(this.actor(request), saleId, dto);
   }
 
   private actor(request: OperationalRequest) {
