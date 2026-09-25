@@ -18,6 +18,7 @@ import { ProductCategoryService } from "../services/product-category.service";
 import { ProductService } from "../services/product.service";
 import { ProductSubcategoryService } from "../services/product-subcategory.service";
 import { StockAdjustmentService } from "../services/stock-adjustment.service";
+import { todayInBusinessTimeZone } from "../imports/business-date";
 import {
   PRODUCT_IMPORT_COLUMNS,
   PRODUCT_IMPORT_SHEET_NAME,
@@ -37,8 +38,6 @@ import {
 
 export const PRODUCT_IMPORT_REASON = "Carga inicial xlsx";
 const TEMPLATE_VALIDATION_ROWS = 500;
-const BUSINESS_TIME_ZONE = "America/Bogota";
-
 export type ProductImportValidation = {
   report: ProductImportReport;
   ignoredHeaders: string[];
@@ -63,15 +62,6 @@ export type ProductImportCommitResult = {
   };
   rows: ProductImportRowResult[];
 };
-
-function todayInBusinessTimeZone(now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: BUSINESS_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
 
 function errorMessage(error: unknown) {
   if (error instanceof HttpException) {

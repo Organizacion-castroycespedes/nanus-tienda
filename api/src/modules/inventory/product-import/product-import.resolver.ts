@@ -6,7 +6,10 @@ import {
   type ProductStandardIdentification,
   type ProductStandardIdentificationScheme,
 } from "../entities/product.entity";
+import { isValidIsoDate, parseImportNumber } from "../imports/xlsx-import.parser";
 import type { ProductImportRawRow } from "./product-import.parser";
+
+export { parseImportNumber };
 
 export type ProductImportCatalogs = {
   units: Array<{
@@ -219,34 +222,6 @@ function normalizeKey(value: string) {
     .replace(/^_+|_+$/g, "");
 }
 
-export function parseImportNumber(raw: string): number | null {
-  const cleaned = raw.replace(/[\s$%]/g, "");
-  if (!cleaned) {
-    return null;
-  }
-
-  let normalized = cleaned;
-  const hasDot = cleaned.includes(".");
-  const hasComma = cleaned.includes(",");
-  if (hasDot && hasComma) {
-    normalized =
-      cleaned.lastIndexOf(",") > cleaned.lastIndexOf(".")
-        ? cleaned.replace(/\./g, "").replace(",", ".")
-        : cleaned.replace(/,/g, "");
-  } else if (hasComma) {
-    normalized = /^-?[1-9]\d{0,2}(,\d{3})+$/.test(cleaned)
-      ? cleaned.replace(/,/g, "")
-      : cleaned.replace(",", ".");
-  } else if (hasDot && /^-?[1-9]\d{0,2}(\.\d{3})+$/.test(cleaned)) {
-    normalized = cleaned.replace(/\./g, "");
-  }
-
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
-    return Number.NaN;
-  }
-  return Number(normalized);
-}
-
 function normalizeRate(rate: number) {
   return rate > 1 ? rate / 100 : rate;
 }
@@ -257,14 +232,6 @@ function sameRate(left: number, right: number) {
 
 function formatPercent(rate: number) {
   return `${Number((normalizeRate(rate) * 100).toFixed(4))}%`;
-}
-
-function isValidIsoDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }
 
 class RowContext {

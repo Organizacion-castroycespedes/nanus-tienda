@@ -28,6 +28,9 @@ import { PurchaseController } from "./controllers/purchase.controller";
 import { SaleController } from "./controllers/sale.controller";
 import { SupplierController } from "./controllers/supplier.controller";
 import { StockAdjustmentController } from "./controllers/stock-adjustment.controller";
+import { StockImportController } from "./stock-import/stock-import.controller";
+import { StockImportRepository } from "./stock-import/stock-import.repository";
+import { StockImportService } from "./stock-import/stock-import.service";
 import { StockMovementLotController } from "./controllers/stock-movement-lot.controller";
 import { TaxController } from "./controllers/tax.controller";
 import { UnitController } from "./controllers/unit.controller";
@@ -98,6 +101,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     UnitController,
     TaxController,
     StockAdjustmentController,
+    StockImportController,
     PurchaseController,
     CustomerController,
     OrderController,
@@ -124,6 +128,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     PurchaseService,
     SaleService,
     StockAdjustmentService,
+    StockImportService,
+    StockImportRepository,
     StockMovementService,
     StockMovementLotService,
     SupplierService,
