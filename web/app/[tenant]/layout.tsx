@@ -58,6 +58,7 @@ import { MENU_KEYS } from "../../domains/menu/constants";
 import { getRoutePermissionRequirement } from "../../lib/route-permissions";
 import { getAllowedMenuItems, hasPermission } from "../../lib/permissions";
 import { getTenantConfig, getTenantDetails } from "../../domains/tenants/api";
+import { resolveTenantSettings } from "../../domains/parameters/api";
 import { setBranding } from "../../store/brandingSlice";
 import { setCompanyDetails } from "../../store/companySlice";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
@@ -74,6 +75,13 @@ import { useAutoClearState } from "../../lib/useAutoClearState";
 import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
 import type { CashSession } from "../../modules/finance/types";
+import {
+  getPeripheralDevices,
+  subscribePeripheralEvents,
+  type PeripheralSocketStatus,
+} from "../../domains/peripherals/contracts";
+import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
+import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -180,6 +188,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
+  const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
+  const [printerName, setPrinterName] = useState<string | null>(null);
   const [posClock, setPosClock] = useState(() => new Date());
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
@@ -224,7 +234,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
   const desktopSidebarWidthClass = sidebarCollapsed ? "xl:w-20 xl:px-3" : "xl:w-72 xl:px-4";
-  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
+  const isSidebarCompact = sidebarCollapsed;
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -255,6 +265,51 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     window.addEventListener("manus:connectivity-state", handleConnectivityState);
     return () => window.removeEventListener("manus:connectivity-state", handleConnectivityState);
   }, []);
+
+  useEffect(() => {
+    return subscribePeripheralEvents(() => undefined, {
+      onStatus: setPrinterSocketStatus,
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPrinterName = async () => {
+      if (!authUser?.tenantId) {
+        setPrinterName(null);
+        return;
+      }
+
+      try {
+        const [configResult, devicesResult] = await Promise.all([
+          resolveCurrentPosTerminalConfig({
+            tenantId: authUser.tenantId,
+            branchId: authUser.branchId,
+          }),
+          getPeripheralDevices(),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setPrinterName(
+          resolvePrinterDisplayName(configResult, devicesResult.data ?? [])
+        );
+      } catch {
+        if (!cancelled) {
+          setPrinterName(null);
+        }
+      }
+    };
+
+    void loadPrinterName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.branchId, authUser?.tenantId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -635,14 +690,17 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     >
       {items.map((item) => {
         const Icon = getMenuIcon(item.label, item.module, item.icon);
-        const isActive = pathname === item.route;
+        const menuRoute = item.route.includes("/crm/customers")
+          ? `/${tenantSlug}/customers`
+          : item.route;
+        const isActive = pathname === menuRoute;
         const hasChildren = Array.isArray(item.children) && item.children.length > 0;
         const isExpanded = openMenuItems[item.id] ?? false;
         const posRequiresCash =
           isPosMenuItem(item) && cashSessionChecked && !layoutCashSession;
         const effectiveRoute = posRequiresCash
           ? `/${tenantSlug}/pos/select-context`
-          : item.route;
+          : menuRoute;
         const activeChildChain = hasChildren
           ? getActiveMenuChain(item.children ?? [], pathname ?? "")
           : [];
@@ -944,9 +1002,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         if (!tenantId) {
           return;
         }
-        const [configResult, detailsResult] = await Promise.allSettled([
+        const [configResult, detailsResult, settingsResult] = await Promise.allSettled([
           getTenantConfig(tenantId),
           getTenantDetails(tenantId),
+          resolveTenantSettings({ tenantId }),
         ]);
         if (detailsResult.status === "fulfilled" && detailsResult?.value) {
           const detailsResponse = detailsResult?.value;
@@ -1008,6 +1067,27 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 md: configResponse.config.spacing?.md ?? "16px",
                 lg: configResponse.config.spacing?.lg ?? "24px",
               },
+              electronicBillingEnabled:
+                configResponse.config.electronicBillingEnabled !== false,
+              electronicBillingMode:
+                configResponse.config.electronicBillingMode === "ON_DEMAND"
+                  ? "ON_DEMAND"
+                  : "AUTOMATIC",
+              electronicBillingConfigured: false,
+            })
+          );
+        }
+        if (settingsResult.status === "fulfilled" && settingsResult.value.values) {
+          const values = settingsResult.value.values;
+          const enabled =
+            values.SEND_INVOICE !== "DISABLED" &&
+            values.GENERATE_INVOICE !== "DISABLED";
+          dispatch(
+            setBranding({
+              electronicBillingEnabled: enabled,
+              electronicBillingMode:
+                values.GENERATE_INVOICE === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
+              electronicBillingConfigured: true,
             })
           );
         }
@@ -1107,13 +1187,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm xl:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
         aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 xl:sticky xl:top-0 xl:z-30 xl:translate-x-0 xl:px-4 ${desktopSidebarWidthClass} ${
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 ${desktopSidebarWidthClass} ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1196,14 +1276,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] xl:hidden"
+                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
-                onClick={() => setSidebarOpen(true)}
-                aria-label="Abrir menu lateral"
+                onClick={() => {
+                  setSidebarOpen((previous) => !previous);
+                }}
+                aria-label={sidebarOpen ? "Cerrar menu lateral" : "Abrir menu lateral"}
               >
                 <Menu className="h-5 w-5" />
               </button>
@@ -1355,6 +1437,55 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                       : connectivityState === "RECONNECTING"
                         ? "bg-amber-400"
                         : "bg-emerald-500"
+                  }`}
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                className="relative rounded-lg border p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color:
+                    printerSocketStatus === "CONNECTED"
+                      ? "#059669"
+                      : printerSocketStatus === "CONNECTING"
+                        ? "#d97706"
+                        : "#e11d48",
+                }}
+                aria-label={
+                  printerSocketStatus === "CONNECTED"
+                    ? printerName
+                      ? `Impresora conectada: ${printerName}`
+                      : "Impresora conectada, nombre no disponible"
+                    : printerSocketStatus === "CONNECTING"
+                      ? "Conectando impresora"
+                      : "Impresora desconectada"
+                }
+                title={
+                  printerSocketStatus === "CONNECTED"
+                    ? printerName
+                      ? `Impresora: ${printerName}`
+                      : "Impresora conectada · nombre no disponible"
+                    : printerSocketStatus === "CONNECTING"
+                      ? "Conectando con el servicio de impresión"
+                      : "Impresora desconectada · revise el Peripheral Agent"
+                }
+              >
+                <Printer
+                  className={`h-5 w-5 ${
+                    printerSocketStatus === "CONNECTING" ? "animate-pulse" : ""
+                  }`}
+                  aria-hidden="true"
+                />
+                <span
+                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                    printerSocketStatus === "CONNECTED"
+                      ? "bg-emerald-500"
+                      : printerSocketStatus === "CONNECTING"
+                        ? "bg-amber-400"
+                        : "bg-rose-500"
                   }`}
                   aria-hidden="true"
                 />

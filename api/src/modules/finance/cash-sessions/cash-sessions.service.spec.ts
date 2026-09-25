@@ -86,7 +86,21 @@ const buildSummary = (expectedAmount: number) => ({
 
 const buildHarness = (
   expectedAmount: number,
-  options: { branchAccess?: boolean } = {}
+  options: {
+    branchAccess?: boolean;
+    closingCounts?: Array<Record<string, unknown>>;
+    assignedUserIds?: string[];
+    existingOpen?: Record<string, unknown> | null;
+    assignedToOpen?: boolean;
+    cashCountAuditSchema?: boolean;
+    findCurrentByUserResult?: ReturnType<typeof buildRecord> | null;
+    onFindCurrentByUser?: (
+      userId: string,
+      tenantId: string,
+      cashRegisterId: string | undefined,
+      excludeCompletedClosure: boolean
+    ) => void;
+  } = {}
 ) => {
   const queries: string[] = [];
   let released = false;
@@ -106,9 +120,34 @@ const buildHarness = (
   };
 
   const repository = {
-    findOpenByRegister: async () => null,
-    findCurrentByUser: async () => null,
-    findById: async () => buildRecord(),
+    findOpenByRegister: async () =>
+      options.existingOpen ? buildRecord(options.existingOpen) : null,
+    findCurrentByUser: async (
+      currentUserId: string,
+      currentTenantId: string,
+      cashRegisterId?: string,
+      excludeCompletedClosure = false
+    ) => {
+      options.onFindCurrentByUser?.(
+        currentUserId,
+        currentTenantId,
+        cashRegisterId,
+        excludeCompletedClosure
+      );
+      return options.findCurrentByUserResult ?? null;
+    },
+    hasActiveAssignment: async () => options.assignedToOpen ?? false,
+    findById: async () =>
+      closeInput
+        ? buildRecord({
+            closed_by_user_id: closeInput.closedByUserId,
+            closed_at: closeInput.closedAt,
+            closing_amount: String(closeInput.closingAmount),
+            expected_amount: String(closeInput.expectedAmount),
+            difference_amount: String(closeInput.differenceAmount),
+            status: closeInput.status,
+          })
+        : buildRecord(),
     create: async (
       _client: unknown,
       data: Record<string, unknown>
@@ -120,8 +159,19 @@ const buildHarness = (
         opening_amount: String(data.openingAmount),
       });
     },
-    getSummary: async () => buildSummary(expectedAmount),
-    listCashCounts: async () => [],
+    getSummary: async () => {
+      if (closeInput) {
+        return {
+          ...buildSummary(expectedAmount),
+          status: "CLOSED",
+          closedByUserId: closeInput.closedByUserId as string,
+          closedAt: closeInput.closedAt as string,
+        };
+      }
+      return buildSummary(expectedAmount);
+    },
+    listActiveAssignmentUserIds: async () => options.assignedUserIds ?? [],
+    listCashCounts: async () => options.closingCounts ?? [],
     close: async (
       _client: unknown,
       _cashSessionId: string,
@@ -139,6 +189,21 @@ const buildHarness = (
     },
     createCashCount: async (_client: unknown, data: Record<string, unknown>) => {
       cashCountInput = data;
+      return {
+        id: "count-created",
+        tenant_id: tenantId,
+        branch_id: branchId,
+        cash_session_id: cashSessionId,
+        counted_by_user_id: data.countedByUserId,
+        counted_by_user_email: "user@example.com",
+        counted_at: data.countedAt,
+        counted_cash_amount: String(data.countedCashAmount),
+        expected_amount: String(data.expectedAmount),
+        difference_amount: String(data.differenceAmount),
+        notes: data.notes ?? null,
+        count_type: data.countType,
+        breakdown_json: data.breakdownJson ?? null,
+      };
     },
   };
 
@@ -180,6 +245,9 @@ const buildHarness = (
     getClient: async () => client,
     query: async (query: string) => {
       if (query.includes("information_schema.columns")) {
+        if (query.includes("count_type") && query.includes("breakdown_json")) {
+          return { rows: [{ has_schema: options.cashCountAuditSchema ?? false }] };
+        }
         return { rows: [{ has_schema: false }] };
       }
       if (
@@ -287,6 +355,43 @@ test("close with zero amount skips invalid closing cash movement insert", async 
   assert.equal(response.differenceAmount, -100000);
 });
 
+test("close rejects a second USER delivery after the closing count exists", async () => {
+  const existingCount = {
+    id: "count-001",
+    tenant_id: tenantId,
+    branch_id: branchId,
+    cash_session_id: cashSessionId,
+    counted_by_user_id: userId,
+    counted_by_user_email: "user@example.com",
+    counted_at: "2026-06-11T21:00:00.000Z",
+    counted_cash_amount: "100000",
+    expected_amount: "100000",
+    difference_amount: "0",
+    notes: null,
+    count_type: "CLOSING",
+    breakdown_json: null,
+  };
+  const harness = buildHarness(100000, { closingCounts: [existingCount] });
+
+  await assert.rejects(
+    () =>
+      harness.service.close(
+        cashSessionId,
+        { closingAmount: 100000, description: "Reintento" },
+        { userId, tenantId, roles: ["USER"] }
+      ),
+    /Ya entregaste tu cierre/
+  );
+
+  assert.equal(harness.getCashCountInput(), null);
+  assert.equal(harness.getCloseInput(), null);
+  assert.deepEqual(harness.getQueries(), [
+    "BEGIN",
+    "SELECT pg_advisory_xact_lock(hashtext($1))",
+    "ROLLBACK",
+  ]);
+});
+
 test("open with zero amount skips invalid opening cash movement insert", async () => {
   const harness = buildHarness(0);
 
@@ -304,6 +409,32 @@ test("open with zero amount skips invalid opening cash movement insert", async (
   assert.deepEqual(harness.getQueries(), ["BEGIN", "COMMIT"]);
   assert.equal(harness.wasReleased(), true);
   assert.equal(response.openingAmount, 0);
+});
+
+test("USER asignado se une a la sesion abierta de la caja", async () => {
+  const harness = buildHarness(0, {
+    existingOpen: { opened_by_user_id: "other-user" },
+    assignedToOpen: true,
+    closingCounts: [
+      {
+        counted_by_user_id: userId,
+        count_type: "CLOSING",
+      },
+    ],
+  });
+
+  const response = await harness.service.open(
+    {
+      branchId,
+      cashRegisterId: "register-001",
+      openingAmount: 0,
+    },
+    { userId, tenantId, roles: ["USER"] }
+  );
+
+  assert.equal(response.id, cashSessionId);
+  assert.equal(response.openedByUserId, "other-user");
+  assert.equal(harness.getOpenInput(), null);
 });
 
 test("close rejects USER when cash session branch is outside scope", async () => {
@@ -328,4 +459,161 @@ test("close rejects USER when cash session branch is outside scope", async () =>
 
   assert.equal(harness.getCloseInput(), null);
   assert.deepEqual(harness.getQueries(), []);
+});
+
+test("getSummary finaliza sesion cuando el unico requerido ya entrego cierre", async () => {
+  const closingCount = {
+    id: "count-001",
+    tenant_id: tenantId,
+    branch_id: branchId,
+    cash_session_id: cashSessionId,
+    counted_by_user_id: userId,
+    counted_by_user_email: "user@example.com",
+    counted_at: "2026-06-11T21:00:00.000Z",
+    counted_cash_amount: "100000",
+    expected_amount: "100000",
+    difference_amount: "0",
+    notes: null,
+    count_type: "CLOSING",
+    breakdown_json: null,
+  };
+  const harness = buildHarness(100000, {
+    closingCounts: [closingCount],
+    cashCountAuditSchema: true,
+  });
+
+  const summary = await harness.service.getSummary(cashSessionId, {
+    userId,
+    tenantId,
+    roles: ["USER"],
+  });
+
+  assert.equal(summary.sessionId, cashSessionId);
+  assert.equal(summary.status, "CLOSED");
+  assert.deepEqual(summary.closureProgress.completedUserIds, [userId]);
+  assert.equal(summary.closureProgress.isComplete, true);
+  assert.ok(harness.getCloseInput());
+});
+
+test("getSummary cierra caja de 2 cajeros sin exigir al opener no asignado", async () => {
+  const cashierA = "cashier-a";
+  const cashierB = "cashier-b";
+  const harness = buildHarness(100000, {
+    assignedUserIds: [cashierA, cashierB],
+    assignedToOpen: true,
+    closingCounts: [
+      {
+        id: "c1",
+        tenant_id: tenantId,
+        branch_id: branchId,
+        cash_session_id: cashSessionId,
+        counted_by_user_id: cashierA,
+        counted_by_user_email: "a@test",
+        counted_at: "2026-06-11T21:00:00.000Z",
+        counted_cash_amount: "10",
+        expected_amount: "10",
+        difference_amount: "0",
+        notes: null,
+        count_type: "CLOSING",
+        breakdown_json: null,
+      },
+      {
+        id: "c2",
+        tenant_id: tenantId,
+        branch_id: branchId,
+        cash_session_id: cashSessionId,
+        counted_by_user_id: cashierB,
+        counted_by_user_email: "b@test",
+        counted_at: "2026-06-11T21:05:00.000Z",
+        counted_cash_amount: "20",
+        expected_amount: "20",
+        difference_amount: "0",
+        notes: null,
+        count_type: "CLOSING",
+        breakdown_json: null,
+      },
+    ],
+    cashCountAuditSchema: true,
+  });
+
+  const summary = await harness.service.getSummary(cashSessionId, {
+    userId: cashierA,
+    tenantId,
+    roles: ["USER"],
+  });
+
+  assert.equal(summary.status, "CLOSED");
+  assert.ok(harness.getCloseInput());
+  assert.equal(Number(harness.getCloseInput()?.closingAmount), 30);
+});
+
+test("getSummary deja OPEN si falta cierre de un asignado", async () => {
+  const cashierA = "cashier-a";
+  const cashierB = "cashier-b";
+  const harness = buildHarness(100000, {
+    assignedUserIds: [cashierA, cashierB],
+    assignedToOpen: true,
+    closingCounts: [
+      {
+        id: "c1",
+        tenant_id: tenantId,
+        branch_id: branchId,
+        cash_session_id: cashSessionId,
+        counted_by_user_id: cashierA,
+        counted_by_user_email: "a@test",
+        counted_at: "2026-06-11T21:00:00.000Z",
+        counted_cash_amount: "10",
+        expected_amount: "10",
+        difference_amount: "0",
+        notes: null,
+        count_type: "CLOSING",
+        breakdown_json: null,
+      },
+    ],
+    cashCountAuditSchema: true,
+  });
+
+  const summary = await harness.service.getSummary(cashSessionId, {
+    userId: cashierA,
+    tenantId,
+    roles: ["USER"],
+  });
+
+  assert.equal(summary.status, "OPEN");
+  assert.equal(harness.getCloseInput(), null);
+  assert.deepEqual(summary.closureProgress.completedUserIds, [cashierA]);
+  assert.equal(summary.closureProgress.isComplete, true);
+});
+
+test("getCurrent keeps OPEN session for USER even after delivered closing", async () => {
+  let excludeCompletedClosure: boolean | undefined;
+  const harness = buildHarness(100000, {
+    findCurrentByUserResult: buildRecord(),
+    onFindCurrentByUser: (_userId, _tenantId, _registerId, exclude) => {
+      excludeCompletedClosure = exclude;
+    },
+  });
+
+  const current = await harness.service.getCurrent(
+    {},
+    { userId, tenantId, roles: ["USER"] }
+  );
+
+  assert.equal(excludeCompletedClosure, false);
+  assert.equal(current?.id, cashSessionId);
+});
+
+test("getCurrent keeps OPEN session for ADMIN after closing counts exist", async () => {
+  let excludeCompletedClosure: boolean | undefined;
+  const harness = buildHarness(100000, {
+    findCurrentByUserResult: buildRecord(),
+    onFindCurrentByUser: (_userId, _tenantId, _registerId, exclude) => {
+      excludeCompletedClosure = exclude;
+    },
+  });
+
+  const current = await harness.service.getCurrent({}, actor);
+
+  assert.equal(excludeCompletedClosure, false);
+  assert.equal(current?.id, cashSessionId);
 });

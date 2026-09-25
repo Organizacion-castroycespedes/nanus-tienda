@@ -9,6 +9,12 @@ const sessionStyles: Record<string, string> = {
   CANCELLED: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
+const sessionLabels: Record<string, string> = {
+  OPEN: "Abierta",
+  CLOSED: "Cerrada",
+  CANCELLED: "Cancelada",
+};
+
 const movementStyles: Record<string, string> = {
   OPENING: "border-blue-200 bg-blue-50 text-blue-700",
   CLOSING: "border-slate-200 bg-slate-100 text-slate-700",
@@ -47,7 +53,13 @@ export const FinanceStatusBadge = ({
     <span
       className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-center text-xs font-semibold leading-tight whitespace-normal break-words ${className}`}
     >
-      {typeof value === "boolean" ? (value ? "Activo" : "Inactivo") : normalized}
+      {typeof value === "boolean"
+        ? value
+          ? "Activo"
+          : "Inactivo"
+        : kind === "session"
+          ? sessionLabels[String(normalized)] ?? normalized
+          : normalized}
     </span>
   );
 };

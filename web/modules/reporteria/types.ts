@@ -13,6 +13,7 @@ export type ReportFilters = {
 
 export type CurrentShiftFilters = {
   tenantId?: string;
+  userId?: string;
   branchId?: string;
   terminalId?: string;
   cashRegisterId?: string;
@@ -70,6 +71,7 @@ export type PosSalesListDataset = {
     refunded: number;
   };
   rows: PosSalesListRow[];
+  electronicBillingEnabled?: boolean;
 };
 
 export type PosSaleTicketPrintDataset = {
@@ -424,6 +426,11 @@ export type CurrentShiftCashSession = {
   status: string;
 };
 
+export type CurrentShiftUserOption = {
+  id: string;
+  name: string | null;
+};
+
 export type CurrentShiftSummary = {
   openingAmount: number;
   posSalesTotal: number;
@@ -531,6 +538,7 @@ export type CurrentShiftResponse = {
   summary?: CurrentShiftSummary;
   filters: {
     tenantId: string;
+    userId: string | null;
     branchId: string | null;
     terminalId: string | null;
     cashRegisterId: string | null;
@@ -541,6 +549,7 @@ export type CurrentShiftResponse = {
     search: string | null;
   };
   availableCashSessions: CurrentShiftCashSession[];
+  availableUsers: CurrentShiftUserOption[];
   tabs: {
     sales: CurrentShiftTab<CurrentShiftSaleRow>;
     orders: CurrentShiftTab<CurrentShiftOrderRow>;

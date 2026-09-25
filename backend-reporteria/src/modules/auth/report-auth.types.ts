@@ -4,4 +4,5 @@ export type ReportUser = {
   branchId: string | null;
   roles: string[];
   email?: string | null;
+  sessionId?: string | null;
 };

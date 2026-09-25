@@ -47,6 +47,7 @@ const buildCurrentShiftQuery = (filters: CurrentShiftFilters) => {
   const searchParams = new URLSearchParams();
   Object.entries({
     tenantId: filters.tenantId,
+    userId: filters.userId,
     branchId: filters.branchId,
     terminalId: filters.terminalId,
     cashRegisterId: filters.cashRegisterId,

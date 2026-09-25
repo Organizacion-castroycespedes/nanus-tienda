@@ -743,6 +743,7 @@ const UsuariosPage = () => {
                     updateForm("documentoTipo", event.target.value)
                   }
                 >
+                  <option value="">Selecciona un tipo de documento</option>
                   <option value="CC">CC</option>
                   <option value="CE">CE</option>
                   <option value="NIT">NIT</option>
@@ -937,4 +938,3 @@ const UsuariosPage = () => {
 };
 
 export default UsuariosPage;
-

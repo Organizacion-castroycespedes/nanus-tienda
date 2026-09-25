@@ -2770,16 +2770,17 @@ export const PosScreen = () => {
       <div className="grid gap-5">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] dark:border-slate-700 dark:bg-slate-950/80">
-            <div className="flex flex-col gap-4">
-              <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
+            <div className="flex flex-col gap-3 2xl:gap-4">
+              <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   <Search className="h-4 w-4" />
                   Buscar productos
                 </div>
                 <Input
                   ref={searchInputRef}
-                  label="Buscador POS principal"
+                  label=""
+                  aria-label="Buscar productos"
                   placeholder="Buscar productos por nombre, SKU o codigo"
                   autoFocus
                   value={query}
@@ -3046,7 +3047,7 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid grid-cols-1 gap-2.5 min-[520px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
                       : "grid gap-2.5"
                   }
                 >
@@ -3184,7 +3185,7 @@ export const PosScreen = () => {
                           type="button"
                           onClick={() => handleProductCardAction(product)}
                           disabled={isProductActionDisabled}
-                          className={`group min-h-[220px] overflow-hidden rounded-[24px] border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
+                          className={`group min-h-[200px] overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
                             hasProductInCart
                               ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
                               : "border-slate-200 dark:border-slate-700"
@@ -3192,7 +3193,7 @@ export const PosScreen = () => {
                       >
                         <div className="flex h-full flex-col">
                           <div className="relative">
-                            <div className="relative aspect-[4/3] w-full overflow-hidden bg-white">
+                            <div className="relative aspect-[4/3] max-h-52 w-full overflow-hidden bg-white xl:max-h-44">
                               <InventoryImagePreview
                                 imageUrl={effectiveImage.imageUrl}
                                 altText={effectiveImage.altText}
@@ -3201,14 +3202,14 @@ export const PosScreen = () => {
                                 fallback={<span>{buildImageLabel(product.name)}</span>}
                               />
                             </div>
-                            <div className="absolute left-3 top-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-2">
+                            <div className="absolute left-2.5 top-2.5 flex max-w-[calc(100%-1.25rem)] flex-wrap gap-1.5">
                               {hasProductInCart ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
                                   En carrito {quantityInCart}
                                 </span>
                               ) : null}
                             </div>
-                            <div className="absolute right-3 top-3">
+                            <div className="absolute right-2.5 top-2.5">
                               <span
                                 className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
                                   stock
@@ -3223,7 +3224,7 @@ export const PosScreen = () => {
                             </div>
                           </div>
 
-                          <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+                          <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-3">
                             <div className="min-w-0">
                               <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-tight text-slate-950 dark:text-white">
                                 {product.name}

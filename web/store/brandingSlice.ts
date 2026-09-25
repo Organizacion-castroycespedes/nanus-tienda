@@ -18,6 +18,7 @@ export type BrandingConfig = {
   };
   electronicBillingEnabled?: boolean;
   electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
+  electronicBillingConfigured?: boolean;
 };
 
 export type BrandingState = {

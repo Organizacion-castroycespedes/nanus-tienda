@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import type { ReportUser } from "../auth/report-auth.types";
 import { PdfmakeEngine } from "../pdf/pdfmake.engine";
@@ -220,20 +220,32 @@ export class CashReportsService {
     const rows = Array.isArray(payload?.rows)
       ? payload.rows.map((row) => this.normalizeCashAuditRow(row))
       : [];
+    const scopedRows = actor.role === "USER"
+      ? rows.filter((row) => row.countedByUserId === actor.userId)
+      : rows;
+    const summaryRows = actor.role === "USER" ? scopedRows : rows;
 
     return {
       filters,
-      rows,
+      rows: scopedRows,
       summary: {
-        count: this.toNumber(payload?.summary?.count ?? rows.length),
+        count: actor.role === "USER"
+          ? summaryRows.length
+          : this.toNumber(payload?.summary?.count ?? rows.length),
         countedAmount: this.toNumber(
-          payload?.summary?.countedAmount ?? rows.reduce((sum, row) => sum + row.countedAmount, 0)
+          actor.role === "USER"
+            ? summaryRows.reduce((sum, row) => sum + row.countedAmount, 0)
+            : payload?.summary?.countedAmount ?? rows.reduce((sum, row) => sum + row.countedAmount, 0)
         ),
         expectedAmount: this.toNumber(
-          payload?.summary?.expectedAmount ?? rows.reduce((sum, row) => sum + row.expectedAmount, 0)
+          actor.role === "USER"
+            ? summaryRows.reduce((sum, row) => sum + row.expectedAmount, 0)
+            : payload?.summary?.expectedAmount ?? rows.reduce((sum, row) => sum + row.expectedAmount, 0)
         ),
         difference: this.toNumber(
-          payload?.summary?.difference ?? rows.reduce((sum, row) => sum + row.difference, 0)
+          actor.role === "USER"
+            ? summaryRows.reduce((sum, row) => sum + row.difference, 0)
+            : payload?.summary?.difference ?? rows.reduce((sum, row) => sum + row.difference, 0)
         ),
       },
     };
@@ -553,6 +565,9 @@ export class CashReportsService {
   async getCashAuditTicket(cashCountId: string, user?: ReportUser) {
     const actor = this.resolveActor(user);
     const payload = await this.cashReportAdapter.getCashAuditTicket(actor, cashCountId);
+    if (actor.role === "USER" && payload?.header.countedByUserId !== actor.userId) {
+      throw new ForbiddenException("No autorizado para este arqueo");
+    }
     return this.normalizeCashAuditTicketDataset(payload);
   }
 

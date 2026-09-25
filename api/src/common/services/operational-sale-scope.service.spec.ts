@@ -46,6 +46,7 @@ test("USER resolves the unique current OPEN cash session", async () => {
   assert.equal(scope.cashSessionId, "cash-a");
   assert.equal(scope.requiresCurrentShift, true);
   assert.deepEqual(calls[0].params, ["tenant-a", "branch-a", "user-a"]);
+  assert.match(calls[0].text, /cash_register_user_assignments/);
 });
 
 test("USER fails closed when there is no current OPEN cash session", async () => {

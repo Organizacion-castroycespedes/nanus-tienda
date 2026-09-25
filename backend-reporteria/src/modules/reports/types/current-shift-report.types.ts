@@ -8,6 +8,7 @@ export type CurrentShiftActorContext = {
 
 export type CurrentShiftQuery = {
   tenantId?: string;
+  userId?: string;
   branchId?: string;
   terminalId?: string;
   cashRegisterId?: string;
@@ -33,6 +34,11 @@ export type CurrentShiftCashSession = {
   openedAt: string;
   openingAmount: number;
   status: "OPEN" | "CLOSED" | "CANCELLED" | string;
+};
+
+export type CurrentShiftUserOption = {
+  id: string;
+  name: string | null;
 };
 
 export type CurrentShiftSummary = {
@@ -142,6 +148,7 @@ export type CurrentShiftResponse = {
   summary?: CurrentShiftSummary;
   filters: {
     tenantId: string;
+    userId: string | null;
     branchId: string | null;
     terminalId: string | null;
     cashRegisterId: string | null;
@@ -152,6 +159,7 @@ export type CurrentShiftResponse = {
     search: string | null;
   };
   availableCashSessions: CurrentShiftCashSession[];
+  availableUsers: CurrentShiftUserOption[];
   tabs: {
     sales: CurrentShiftTab<CurrentShiftSaleRow>;
     orders: CurrentShiftTab<CurrentShiftOrderRow>;

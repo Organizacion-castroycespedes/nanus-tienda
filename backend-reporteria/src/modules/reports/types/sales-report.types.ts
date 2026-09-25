@@ -54,6 +54,7 @@ export type PosSalesListDataset = {
   };
   summary: PosSalesListSummary;
   rows: PosSalesListRow[];
+  electronicBillingEnabled?: boolean;
   branding?: PrintableCompanyHeader;
 };
 

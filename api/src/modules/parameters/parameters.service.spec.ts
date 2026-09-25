@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { ParametersService } from "./parameters.service";
+
+test("ParametersService maps GENERATE_INVOICE modes to billing policy when SEND_INVOICE allows it", async () => {
+  const repository = {
+    resolveValue: async (code: string) => {
+      if (code === "SEND_INVOICE") {
+        return "AUTOMATIC";
+      }
+      assert.equal(code, "GENERATE_INVOICE");
+      return "ON_DEMAND";
+    },
+  };
+  const service = new ParametersService(repository as never);
+  const policy = await service.resolveElectronicBillingPolicy("tenant-1");
+  assert.deepEqual(policy, {
+    enabled: true,
+    mode: "ON_DEMAND",
+    rawMode: "ON_DEMAND",
+  });
+});
+
+test("ParametersService treats DISABLED SEND_INVOICE as disabled billing", async () => {
+  const repository = {
+    resolveValue: async (code: string) => {
+      if (code === "SEND_INVOICE") {
+        return "DISABLED";
+      }
+      return "AUTOMATIC";
+    },
+  };
+  const service = new ParametersService(repository as never);
+  const policy = await service.resolveElectronicBillingPolicy("tenant-1");
+  assert.equal(policy.enabled, false);
+  assert.equal(policy.rawMode, "DISABLED");
+});
+
+test("ParametersService treats DISABLED GENERATE_INVOICE as disabled billing", async () => {
+  const repository = {
+    resolveValue: async (code: string) => {
+      if (code === "SEND_INVOICE") {
+        return "AUTOMATIC";
+      }
+      return "DISABLED";
+    },
+  };
+  const service = new ParametersService(repository as never);
+  const policy = await service.resolveElectronicBillingPolicy("tenant-1");
+  assert.equal(policy.enabled, false);
+  assert.equal(policy.rawMode, "DISABLED");
+});
+
+test("ParametersService resolves a tenant slug before checking USER tenant scope", async () => {
+  const repository = {
+    findTenantIdBySlug: async (slug: string) =>
+      slug === "manustienda-platform-s-a-s"
+        ? "00000000-0000-0000-0000-000000000001"
+        : null,
+  };
+  const service = new ParametersService(repository as never);
+
+  const tenantId = await service.resolveTenantIdForActor(
+    {
+      roles: ["USER"],
+      userId: "user-1",
+      tenantId: "00000000-0000-0000-0000-000000000001",
+    },
+    "manustienda-platform-s-a-s"
+  );
+
+  assert.equal(tenantId, "00000000-0000-0000-0000-000000000001");
+});
+
+test("ParametersService accepts the platform zero-version UUID format", async () => {
+  const service = new ParametersService({
+    findTenantIdBySlug: async () => {
+      throw new Error("UUID must not be resolved as a slug");
+    },
+  } as never);
+
+  const tenantId = await service.resolveTenantIdForActor(
+    {
+      roles: ["SUPER_ADMIN"],
+      tenantId: "00000000-0000-0000-0000-000000000001",
+    },
+    "00000000-0000-0000-0000-000000000001"
+  );
+
+  assert.equal(tenantId, "00000000-0000-0000-0000-000000000001");
+});

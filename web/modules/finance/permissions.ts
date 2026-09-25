@@ -7,6 +7,8 @@ const CASH_OPERATOR_ROLES = new Set(["SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER
 export const getFinancePermissions = (role?: FinanceRole | null) => {
   const normalizedRole = role ?? "";
   const isSuperRole = SUPER_ROLES.has(normalizedRole);
+  const canViewPaymentMethods =
+    isSuperRole || normalizedRole === "ADMIN";
   const canManagePaymentMethods = isSuperRole;
   const canManageCashRegisters = isSuperRole;
   const canManageCashSessions = CASH_ADMIN_ROLES.has(normalizedRole);
@@ -16,6 +18,7 @@ export const getFinancePermissions = (role?: FinanceRole | null) => {
 
   return {
     isSuperRole,
+    canViewPaymentMethods,
     canManagePaymentMethods,
     canManageCashRegisters,
     canManageCashSessions,

@@ -255,4 +255,90 @@ export class CashRegistersRepository {
     }
     return this.findById(updated.id, undefined, client);
   }
+
+  async listActiveAssignments(cashRegisterId: string) {
+    const result = await this.query<{
+      id: string;
+      cash_register_id: string;
+      user_id: string;
+      user_email: string | null;
+      assigned_by_user_id: string;
+      assigned_at: string;
+    }>(
+      `SELECT
+        assignment.id,
+        assignment.cash_register_id,
+        assignment.user_id,
+        usr.email AS user_email,
+        assignment.assigned_by_user_id,
+        assignment.assigned_at
+      FROM cash_register_user_assignments AS assignment
+      INNER JOIN users AS usr
+        ON usr.id = assignment.user_id
+      WHERE assignment.cash_register_id = $1
+        AND assignment.unassigned_at IS NULL
+      ORDER BY assignment.assigned_at ASC`,
+      [cashRegisterId]
+    );
+    return result.rows;
+  }
+
+  async assignUser(input: {
+    cashRegisterId: string;
+    userId: string;
+    assignedByUserId: string;
+  }) {
+    const result = await this.query<{
+      id: string;
+      cash_register_id: string;
+      user_id: string;
+      assigned_by_user_id: string;
+      assigned_at: string;
+    }>(
+      `INSERT INTO cash_register_user_assignments (
+        cash_register_id,
+        user_id,
+        assigned_by_user_id
+      )
+      VALUES ($1, $2, $3)
+      RETURNING
+        id,
+        cash_register_id,
+        user_id,
+        assigned_by_user_id,
+        assigned_at`,
+      [input.cashRegisterId, input.userId, input.assignedByUserId]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async unassignUser(input: {
+    cashRegisterId: string;
+    userId: string;
+    unassignedByUserId: string;
+  }) {
+    const result = await this.query<{
+      id: string;
+      cash_register_id: string;
+      user_id: string;
+      unassigned_by_user_id: string | null;
+      unassigned_at: string | null;
+    }>(
+      `UPDATE cash_register_user_assignments
+      SET
+        unassigned_by_user_id = $3,
+        unassigned_at = NOW()
+      WHERE cash_register_id = $1
+        AND user_id = $2
+        AND unassigned_at IS NULL
+      RETURNING
+        id,
+        cash_register_id,
+        user_id,
+        unassigned_by_user_id,
+        unassigned_at`,
+      [input.cashRegisterId, input.userId, input.unassignedByUserId]
+    );
+    return result.rows[0] ?? null;
+  }
 }
