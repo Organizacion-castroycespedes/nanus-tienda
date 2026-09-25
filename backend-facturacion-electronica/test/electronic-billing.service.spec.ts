@@ -156,6 +156,23 @@ const buildRepositories = (overrides: Record<string, any> = {}) => {
       };
     },
     findById: async () => state.document,
+    updateDocumentForRecovery: async (
+      tenantId: string,
+      id: string,
+      updates: any,
+    ) => {
+      state.document = {
+        ...(state.document ?? {}),
+        id,
+        tenant_id: tenantId,
+        ...updates,
+        subtotal_amount: updates.subtotalAmount,
+        discount_amount: updates.discountAmount,
+        tax_amount: updates.taxAmount,
+        total_amount: updates.totalAmount,
+      };
+      return state.document;
+    },
   };
 
   const lineRepository = {
@@ -290,7 +307,8 @@ test("create invoice aggregate returns existing document as idempotent", async (
   const existing = {
     id: ids.document,
     external_reference: "SALE-400",
-    status: "PENDING",
+    status: "ACCEPTED",
+    provider_document_id: "prov-1",
     provider_id: ids.provider,
     provider_config_id: ids.config,
     document_type: "INVOICE",
