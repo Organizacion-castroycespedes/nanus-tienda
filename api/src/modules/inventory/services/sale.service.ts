@@ -944,6 +944,7 @@ export class SaleService {
         tenantId: customer.tenantId,
         isFinalConsumer: customer.isFinalConsumer,
         documentNumber: customer.documentNumber ?? null,
+        taxRegime: resolvedCustomer?.taxRegime ?? null,
       },
     };
   }
@@ -1535,7 +1536,11 @@ export class SaleService {
       }
     }
 
-    if (documentsResult.rows.length > 0) {
+    const hasAcceptedDocument = documentsResult.rows.some(
+      (doc) => doc.status === "ACCEPTED",
+    );
+
+    if (hasAcceptedDocument) {
       return {
         saleId,
         result: "DOCUMENT_EXISTS",
@@ -1580,8 +1585,8 @@ export class SaleService {
       saleStatus: saleRow.status,
       paymentStatus: saleRow.payment_status,
       customerId: saleRow.customer_id,
-      documentStatuses: [],
-      requestExists: Boolean(deterministicEvent) && !stalePendingEvent && !failedRecoveryEvent,
+      documentStatuses: hasAcceptedDocument ? ["ACCEPTED"] : [],
+      requestExists: false,
       hasTaxLines: hasPositiveTaxLines(currentLines),
       customerFiscalDataComplete: currentCustomerFiscalDataComplete,
       isFinalConsumer: currentCustomer.isFinalConsumer,
@@ -1612,26 +1617,54 @@ export class SaleService {
       throw new BadRequestException("electronic billing outbox is unavailable");
     }
 
-    const paymentResult = await client.query<{
-      payment_method_id: string;
-      amount: string | number;
-      reference_number: string | null;
-      notes: string | null;
-      cash_session_id: string | null;
-    }>(
-      `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
-              payment.reference_number, payment.notes, payment.cash_session_id
-       FROM payment_allocations allocation
-       INNER JOIN payments payment ON payment.id = allocation.payment_id
-       WHERE allocation.reference_type = 'SALE'
-         AND allocation.reference_id = $1
-         AND payment.tenant_id = $2
-         AND payment.status IN ('PENDING', 'COMPLETED')
-       ORDER BY allocation.created_at ASC, allocation.id ASC`,
-      [saleId, saleContext.tenantId],
-    );
+    let paymentRows = (
+      await client.query<{
+        payment_method_id: string;
+        amount: string | number;
+        reference_number: string | null;
+        notes: string | null;
+        cash_session_id: string | null;
+      }>(
+        `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
+                payment.reference_number, payment.notes, payment.cash_session_id
+         FROM payment_allocations allocation
+         INNER JOIN payments payment ON payment.id = allocation.payment_id
+         WHERE (
+           (allocation.reference_type = 'SALE' AND allocation.reference_id = $1)
+           OR ($3::uuid IS NOT NULL AND allocation.reference_type = 'SALES_ORDER' AND allocation.reference_id = $3)
+         )
+           AND payment.tenant_id = $2
+           AND payment.status IN ('PENDING', 'COMPLETED')
+         ORDER BY allocation.created_at ASC, allocation.id ASC`,
+        [saleId, saleContext.tenantId, saleRow.order_id ?? null],
+      )
+    ).rows;
+
+    if (paymentRows.length === 0) {
+      paymentRows = (
+        await client.query<{
+          payment_method_id: string;
+          amount: string | number;
+          reference_number: string | null;
+          notes: string | null;
+          cash_session_id: string | null;
+        }>(
+          `SELECT payment_method_id, amount, reference_number, notes, cash_session_id
+           FROM payments
+           WHERE tenant_id = $1
+             AND (
+               (reference_type = 'SALE' AND reference_id = $2)
+               OR ($3::uuid IS NOT NULL AND reference_type = 'SALES_ORDER' AND reference_id = $3)
+             )
+             AND status IN ('PENDING', 'COMPLETED')
+           ORDER BY created_at ASC, id ASC`,
+          [saleContext.tenantId, saleId, saleRow.order_id ?? null],
+        )
+      ).rows;
+    }
+
     const payments = this.normalizePayments(
-      paymentResult.rows.map((row) => ({
+      paymentRows.map((row) => ({
         paymentMethodId: row.payment_method_id,
         amount: this.toNumber(row.amount),
         cashSessionId: row.cash_session_id,
@@ -1644,7 +1677,12 @@ export class SaleService {
       payments,
       client,
     );
-    const replacementEventId = eventToReplace ? crypto.randomUUID() : undefined;
+    const replacementEventId =
+      eventToReplace ||
+      documentsResult.rows.length > 0 ||
+      deterministicEvent?.status === "FAILED"
+        ? crypto.randomUUID()
+        : undefined;
     if (eventToReplace) {
       if (
         !currentCustomer.taxSchemeId ||
@@ -1667,6 +1705,14 @@ export class SaleService {
           throw new BadRequestException("stale outbox event changed before recovery");
         }
       }
+    }
+    if (deterministicEvent && deterministicEvent.status === "PENDING" && replacementEventId && !stalePendingEvent) {
+      await this.integrationOutboxService.supersedePendingEvent(
+        deterministicEvent.event_id,
+        replacementEventId,
+        new Date(),
+        client,
+      );
     }
     const event = await this.enqueueSaleCompletedForElectronicBilling(
       saleContext,

@@ -13,7 +13,7 @@
     height: 100dvh;
     max-width: none;
     max-height: none;
-    border-radius: 1rem;
+    border-radius: 0;
     padding: 1rem;
   }
 }
