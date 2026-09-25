@@ -37,7 +37,8 @@ export type StockImportCatalogs = {
     status: StockImportLotStatus;
     onHand: number;
     reserved: number;
-    hasLocationBalances: boolean;
+    balanceCount: number;
+    locationId: string | null;
   }>;
 };
 
@@ -47,6 +48,7 @@ export type StockImportLotPlan = {
   lotId: string | null;
   lotCode: string;
   isNew: boolean;
+  locationId: string | null;
   expirationDate: string | null;
   unitCost: number;
 };
@@ -283,6 +285,7 @@ export function resolveStockImport(
     .map((row): StockImportRowPlan => {
       const errors: string[] = [];
       const warnings: string[] = [];
+      let hasOtherLots = false;
       const product = resolveProduct(row, { byId, bySku, byBarcode }, errors);
       const branch = resolveBranch(row, catalogs, errors);
       const target = parseTarget(row, errors);
@@ -368,12 +371,10 @@ export function resolveStockImport(
             lotId: existing.id,
             lotCode,
             isNew: false,
+            locationId: existing.locationId,
             expirationDate: existing.expirationDate,
             unitCost: 0,
           };
-          if (existing.hasLocationBalances) {
-            errors.push(`El lote ${lotCode} tiene saldos por ubicación: ajústalo desde Lotes.`);
-          }
           if (expirationDate && existing.expirationDate !== expirationDate) {
             errors.push(
               existing.expirationDate
@@ -398,6 +399,7 @@ export function resolveStockImport(
             lotId: null,
             lotCode,
             isNew: true,
+            locationId: null,
             expirationDate,
             unitCost: unitCost ?? product.cost,
           };
@@ -406,16 +408,13 @@ export function resolveStockImport(
           }
         }
 
-        const lotHasOtherLots = catalogs.lots.some(
+        hasOtherLots = catalogs.lots.some(
           (lot) =>
             lot.productId === product.id &&
             lot.branchId === branch.id &&
             lot.lotCode.toUpperCase() !== lotCode &&
             lot.onHand > 0
         );
-        if (lotHasOtherLots) {
-          warnings.push("El producto tiene otros lotes con saldo en esta sucursal: no se modifican.");
-        }
       }
 
       plan.delta = roundQuantity(target - plan.before);
@@ -426,6 +425,11 @@ export function resolveStockImport(
           ? undefined
           : lotsByKey.get(lotKey(product.id, branch.id, plan.lot.lotCode));
         if (existing) {
+          if (existing.balanceCount > 1) {
+            errors.push(
+              `El lote ${plan.lot.lotCode} tiene saldo en varias ubicaciones: ajústalo desde Lotes.`
+            );
+          }
           if (["BLOCKED", "CANCELLED", "CONSUMED"].includes(existing.status)) {
             errors.push(`El lote ${plan.lot.lotCode} está ${existing.status} y no se puede ajustar.`);
           } else if (plan.action === "IN" && existing.status !== "ACTIVE") {
@@ -441,6 +445,9 @@ export function resolveStockImport(
         }
         if (plan.lot.isNew && plan.action === "IN") {
           warnings.push(`Se crea el lote nuevo ${plan.lot.lotCode}.`);
+        }
+        if (hasOtherLots) {
+          warnings.push("El producto tiene otros lotes con saldo en esta sucursal: no se modifican.");
         }
       }
 

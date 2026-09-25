@@ -34,6 +34,7 @@ export type StockImportBalanceUpsert = {
   productId: string;
   branchId: string;
   lotId: string;
+  locationId: string | null;
   quantityOnHand: number;
 };
 
@@ -41,6 +42,7 @@ export type StockImportMovementLotInsert = {
   stockMovementId: string;
   productId: string;
   lotId: string;
+  locationId: string | null;
   quantity: number;
 };
 
@@ -220,7 +222,8 @@ export class StockImportRepository {
       status: StockImportLotStatus;
       on_hand: string | number;
       reserved: string | number;
-      has_location_balances: boolean | null;
+      balance_count: string | number;
+      location_id: string | null;
     }>(
       client,
       `
@@ -231,9 +234,10 @@ export class StockImportRepository {
           l.lot_code,
           TO_CHAR(l.expiration_date, 'YYYY-MM-DD') AS expiration_date,
           l.status,
-          COALESCE(SUM(b.quantity_on_hand) FILTER (WHERE b.location_id IS NULL), 0) AS on_hand,
-          COALESCE(SUM(b.quantity_reserved) FILTER (WHERE b.location_id IS NULL), 0) AS reserved,
-          COALESCE(BOOL_OR(b.location_id IS NOT NULL), FALSE) AS has_location_balances
+          COALESCE(SUM(b.quantity_on_hand), 0) AS on_hand,
+          COALESCE(SUM(b.quantity_reserved), 0) AS reserved,
+          COUNT(b.id) AS balance_count,
+          (ARRAY_AGG(b.location_id))[1] AS location_id
         FROM inventory_lots l
         LEFT JOIN inventory_lot_balances b
           ON b.lot_id = l.id
@@ -253,7 +257,8 @@ export class StockImportRepository {
       status: row.status,
       onHand: Number(row.on_hand),
       reserved: Number(row.reserved),
-      hasLocationBalances: Boolean(row.has_location_balances),
+      balanceCount: Number(row.balance_count),
+      locationId: row.location_id,
     }));
   }
 
@@ -447,7 +452,10 @@ export class StockImportRepository {
     client: Queryable,
     input: { tenantId: string; movedAt: Date; balances: StockImportBalanceUpsert[] }
   ) {
-    for (const part of chunk(input.balances)) {
+    const withoutLocation = input.balances.filter((item) => !item.locationId);
+    const withLocation = input.balances.filter((item) => item.locationId);
+
+    for (const part of chunk(withoutLocation)) {
       await client.query(
         `
           INSERT INTO inventory_lot_balances (
@@ -473,6 +481,35 @@ export class StockImportRepository {
         ]
       );
     }
+
+    for (const part of chunk(withLocation)) {
+      await client.query(
+        `
+          INSERT INTO inventory_lot_balances (
+            tenant_id, branch_id, product_id, lot_id, location_id,
+            quantity_on_hand, quantity_reserved, last_movement_at, created_at, updated_at
+          )
+          SELECT $1, u.branch_id, u.product_id, u.lot_id, u.location_id, u.quantity, 0, $2, $2, $2
+          FROM UNNEST($3::uuid[], $4::uuid[], $5::uuid[], $6::uuid[], $7::numeric[])
+            AS u(branch_id, product_id, lot_id, location_id, quantity)
+          ON CONFLICT (tenant_id, branch_id, product_id, lot_id, location_id)
+            WHERE location_id IS NOT NULL
+          DO UPDATE SET
+            quantity_on_hand = EXCLUDED.quantity_on_hand,
+            last_movement_at = EXCLUDED.last_movement_at,
+            updated_at = EXCLUDED.updated_at
+        `,
+        [
+          input.tenantId,
+          input.movedAt,
+          part.map((item) => item.branchId),
+          part.map((item) => item.productId),
+          part.map((item) => item.lotId),
+          part.map((item) => item.locationId),
+          part.map((item) => item.quantityOnHand),
+        ]
+      );
+    }
   }
 
   async insertMovementLots(
@@ -485,9 +522,9 @@ export class StockImportRepository {
           INSERT INTO stock_movement_lots (
             tenant_id, stock_movement_id, product_id, lot_id, location_id, quantity, created_at
           )
-          SELECT $1, u.stock_movement_id, u.product_id, u.lot_id, NULL, u.quantity, $2
-          FROM UNNEST($3::uuid[], $4::uuid[], $5::uuid[], $6::numeric[])
-            AS u(stock_movement_id, product_id, lot_id, quantity)
+          SELECT $1, u.stock_movement_id, u.product_id, u.lot_id, u.location_id, u.quantity, $2
+          FROM UNNEST($3::uuid[], $4::uuid[], $5::uuid[], $6::uuid[], $7::numeric[])
+            AS u(stock_movement_id, product_id, lot_id, location_id, quantity)
         `,
         [
           input.tenantId,
@@ -495,6 +532,7 @@ export class StockImportRepository {
           part.map((item) => item.stockMovementId),
           part.map((item) => item.productId),
           part.map((item) => item.lotId),
+          part.map((item) => item.locationId),
           part.map((item) => item.quantity),
         ]
       );

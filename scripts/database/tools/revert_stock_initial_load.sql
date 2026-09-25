@@ -122,12 +122,13 @@ WITH lot_changes AS (
     sml.tenant_id,
     sml.product_id,
     sml.lot_id,
+    sml.location_id,
     p.branch_id,
     SUM(p.reverse_delta) AS delta
   FROM stock_movement_lots sml
   JOIN revert_stock_plan p ON p.original_id = sml.stock_movement_id
   WHERE sml.lot_id IS NOT NULL
-  GROUP BY sml.tenant_id, sml.product_id, sml.lot_id, p.branch_id
+  GROUP BY sml.tenant_id, sml.product_id, sml.lot_id, sml.location_id, p.branch_id
 )
 UPDATE inventory_lot_balances b
 SET quantity_on_hand = b.quantity_on_hand + lc.delta,
@@ -138,12 +139,12 @@ WHERE b.tenant_id = lc.tenant_id
   AND b.branch_id = lc.branch_id
   AND b.product_id = lc.product_id
   AND b.lot_id = lc.lot_id
-  AND b.location_id IS NULL;
+  AND b.location_id IS NOT DISTINCT FROM lc.location_id;
 
 INSERT INTO stock_movement_lots (
   tenant_id, stock_movement_id, product_id, lot_id, location_id, quantity, created_at
 )
-SELECT sml.tenant_id, p.new_id, sml.product_id, sml.lot_id, NULL, sml.quantity, now()
+SELECT sml.tenant_id, p.new_id, sml.product_id, sml.lot_id, sml.location_id, sml.quantity, now()
 FROM stock_movement_lots sml
 JOIN revert_stock_plan p ON p.original_id = sml.stock_movement_id;
 

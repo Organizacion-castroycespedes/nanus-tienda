@@ -175,6 +175,7 @@ describe("resolveStockImport", () => {
       lotId: null,
       lotCode: "L-1",
       isNew: true,
+      locationId: null,
       expirationDate: "2027-01-31",
       unitCost: 2300,
     });
@@ -193,7 +194,8 @@ describe("resolveStockImport", () => {
       status: "ACTIVE" as const,
       onHand: 8,
       reserved: 3,
-      hasLocationBalances: false,
+      balanceCount: 1,
+      locationId: null,
     };
     const overrides = {
       lots: [lot],
@@ -224,27 +226,61 @@ describe("resolveStockImport", () => {
     assert.equal(ok.canCommit, true);
   });
 
-  it("rejects blocked lots and lots with location balances", () => {
+  it("rejects blocked lots", () => {
+    const blocked = resolve([row(2, { sku: "LECHE-1", cantidad: "10", lote_codigo: "L-1" })], {
+      lots: [
+        {
+          id: "lot-1",
+          productId: "p-lot",
+          branchId: BRANCH.id,
+          lotCode: "L-1",
+          expirationDate: "2027-01-31",
+          onHand: 8,
+          reserved: 0,
+          balanceCount: 1,
+          locationId: null,
+          status: "BLOCKED",
+        },
+      ],
+      currentStock: [{ productId: "p-lot", branchId: BRANCH.id, quantity: 8 }],
+    });
+    assert.ok(blocked.rows[0].errors.some((message) => message.includes("BLOCKED")));
+  });
+
+  it("adjusts a lot kept in a single location and rejects changes split across locations", () => {
     const base = {
       id: "lot-1",
       productId: "p-lot",
       branchId: BRANCH.id,
       lotCode: "L-1",
       expirationDate: "2027-01-31",
+      status: "ACTIVE" as const,
       onHand: 8,
       reserved: 0,
     };
-    const blocked = resolve([row(2, { sku: "LECHE-1", cantidad: "10", lote_codigo: "L-1" })], {
-      lots: [{ ...base, status: "BLOCKED", hasLocationBalances: false }],
-      currentStock: [{ productId: "p-lot", branchId: BRANCH.id, quantity: 8 }],
-    });
-    assert.ok(blocked.rows[0].errors.some((message) => message.includes("BLOCKED")));
+    const currentStock = [{ productId: "p-lot", branchId: BRANCH.id, quantity: 8 }];
 
-    const located = resolve([row(2, { sku: "LECHE-1", cantidad: "10", lote_codigo: "L-1" })], {
-      lots: [{ ...base, status: "ACTIVE", hasLocationBalances: true }],
-      currentStock: [{ productId: "p-lot", branchId: BRANCH.id, quantity: 8 }],
+    const single = resolve([row(2, { sku: "LECHE-1", cantidad: "10", lote_codigo: "L-1" })], {
+      lots: [{ ...base, balanceCount: 1, locationId: "loc-1" }],
+      currentStock,
     });
-    assert.ok(located.rows[0].errors.some((message) => message.includes("ubicación")));
+    assert.equal(single.canCommit, true);
+    assert.equal(single.rows[0].before, 8);
+    assert.equal(single.rows[0].delta, 2);
+    assert.equal(single.rows[0].lot?.locationId, "loc-1");
+
+    const splitUnchanged = resolve([row(2, { sku: "LECHE-1", cantidad: "8", lote_codigo: "L-1" })], {
+      lots: [{ ...base, balanceCount: 2, locationId: "loc-1" }],
+      currentStock,
+    });
+    assert.equal(splitUnchanged.canCommit, true);
+    assert.equal(splitUnchanged.rows[0].action, "NONE");
+
+    const splitChanged = resolve([row(2, { sku: "LECHE-1", cantidad: "10", lote_codigo: "L-1" })], {
+      lots: [{ ...base, balanceCount: 2, locationId: "loc-1" }],
+      currentStock,
+    });
+    assert.ok(splitChanged.rows[0].errors.some((message) => message.includes("varias ubicaciones")));
   });
 
   it("rejects movements that leave the branch stock negative", () => {
@@ -259,7 +295,8 @@ describe("resolveStockImport", () => {
           status: "ACTIVE",
           onHand: 5,
           reserved: 0,
-          hasLocationBalances: false,
+          balanceCount: 1,
+          locationId: null,
         },
       ],
       currentStock: [{ productId: "p-lot", branchId: BRANCH.id, quantity: 2 }],

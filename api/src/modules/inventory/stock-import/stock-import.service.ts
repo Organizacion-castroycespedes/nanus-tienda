@@ -349,8 +349,9 @@ export class StockImportService {
             `No se pudo registrar el lote ${row.lot.lotCode} de la fila ${row.rowNumber}.`
           );
         }
-        balances.push({ productId, branchId, lotId, quantityOnHand: row.target });
-        links.push({ stockMovementId: movementId, productId, lotId, quantity });
+        const locationId = row.lot.locationId;
+        balances.push({ productId, branchId, lotId, locationId, quantityOnHand: row.target });
+        links.push({ stockMovementId: movementId, productId, lotId, locationId, quantity });
       }
     }
 

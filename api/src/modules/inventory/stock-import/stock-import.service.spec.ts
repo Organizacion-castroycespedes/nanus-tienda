@@ -102,6 +102,7 @@ function setup(options: {
 
   return {
     service: new StockImportService(repository, db, audit, access),
+    repository: repository as unknown as Record<string, unknown>,
     calls,
     clientQueries,
     audits,
@@ -186,7 +187,8 @@ describe("StockImportService", () => {
             status: "BLOCKED",
             onHand: 1,
             reserved: 0,
-            hasLocationBalances: false,
+            balanceCount: 1,
+            locationId: null,
           },
         ];
       };
@@ -218,8 +220,45 @@ describe("StockImportService", () => {
       lots.map((lot) => [lot.lotCode, lot.unitCost]),
       [["L-1", 2400]]
     );
-    const balances = (calls[3].args[1] as { balances: Array<{ quantityOnHand: number }> }).balances;
+    const balances = (calls[3].args[1] as { balances: Array<{ quantityOnHand: number; locationId: string | null }> }).balances;
     assert.equal(balances[0].quantityOnHand, 6);
+    assert.equal(balances[0].locationId, null);
+  });
+
+  it("adjusts an existing lot in the location that holds its balance", async () => {
+    const { service, calls, repository } = setup();
+    repository.listLots = async () => [
+      {
+        id: "lot-9",
+        productId: LOT_PRODUCT.id,
+        branchId: BRANCH.id,
+        lotCode: "L-9",
+        expirationDate: "2027-01-31",
+        status: "ACTIVE",
+        onHand: 10,
+        reserved: 0,
+        balanceCount: 1,
+        locationId: "loc-1",
+      },
+    ];
+    repository.currentStock = async () => [
+      { productId: LOT_PRODUCT.id, branchId: BRANCH.id, quantity: 10 },
+    ];
+    const buffer = await workbook([
+      ["sku", "cantidad", "lote_codigo"],
+      [LOT_PRODUCT.sku, 7, "L-9"],
+    ]);
+
+    await service.commit(TENANT, ACTOR, buffer);
+
+    assert.deepEqual(
+      calls.map((call) => call.method),
+      ["lockTenant", "insertMovements", "upsertLotBalances", "insertMovementLots"]
+    );
+    const balances = (calls[2].args[1] as { balances: Array<{ quantityOnHand: number; locationId: string | null }> }).balances;
+    assert.deepEqual(balances.map((item) => [item.quantityOnHand, item.locationId]), [[7, "loc-1"]]);
+    const links = (calls[3].args[1] as { links: Array<{ quantity: number; locationId: string | null }> }).links;
+    assert.deepEqual(links.map((item) => [item.quantity, item.locationId]), [[3, "loc-1"]]);
   });
 
   it("does not write or audit when nothing changes", async () => {
