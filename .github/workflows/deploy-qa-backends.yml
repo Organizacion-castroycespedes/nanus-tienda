@@ -26,20 +26,16 @@ jobs:
             api/package-lock.json
             backend-reporteria/package-lock.json
             backend-facturacion-electronica/package-lock.json
-            backend-perifericos/package-lock.json
 
       - name: Build pkg binaries
         shell: bash
         run: |
           set -euo pipefail
-          for service in api backend-reporteria backend-facturacion-electronica backend-perifericos; do
+          for service in api backend-reporteria backend-facturacion-electronica; do
             echo "Building ${service}"
             (
               cd "${service}"
               npm ci
-              if [ "${service}" = "backend-perifericos" ]; then
-                npm test
-              fi
               npm run build:bin
             )
           done
