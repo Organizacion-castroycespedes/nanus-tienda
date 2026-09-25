@@ -12,6 +12,7 @@ import {
 import { ElectronicBillingProviderResolver } from "../providers/electronic-billing-provider-resolver";
 import { ElectronicBillingService } from "../services/electronic-billing.service";
 import { ElectronicBillingInboxRepository } from "../repositories/electronic-billing-inbox.repository";
+import { ElectronicDocumentRepository } from "../repositories/electronic-billing.repositories";
 import type {
   ElectronicBillingConsumptionResult,
 } from "./electronic-billing-consumer.types";
@@ -103,6 +104,8 @@ export class SaleCompletedForElectronicBillingConsumerService {
     private readonly db: DatabaseService,
     @Inject(ElectronicBillingInboxRepository)
     private readonly inboxRepository: ElectronicBillingInboxRepository,
+    @Inject(ElectronicDocumentRepository)
+    private readonly documentRepository: ElectronicDocumentRepository,
     @Inject(ElectronicBillingService)
     private readonly billingService: ElectronicBillingService,
     @Inject(ElectronicBillingProviderResolver)
@@ -140,14 +143,23 @@ export class SaleCompletedForElectronicBillingConsumerService {
       envelope.source.id,
     );
     if (existingBySource) {
-      return this.buildResultFromInboxRecord(
-        envelope.eventId,
-        envelope.tenantId,
-        envelope.source.id,
-        externalReference,
-        existingBySource,
-        payloadHash,
-      );
+      const existingDoc = existingBySource.electronic_document_id
+        ? await this.documentRepository.findById(
+            envelope.tenantId,
+            existingBySource.electronic_document_id,
+          )
+        : null;
+
+      if (existingDoc && existingDoc.status === "ACCEPTED") {
+        return this.buildResultFromInboxRecord(
+          envelope.eventId,
+          envelope.tenantId,
+          envelope.source.id,
+          externalReference,
+          existingBySource,
+          payloadHash,
+        );
+      }
     }
 
     let resolved;
@@ -174,7 +186,7 @@ export class SaleCompletedForElectronicBillingConsumerService {
     }
 
     return this.db.transaction(async (client) => {
-      const inserted = await this.inboxRepository.insertReceived(
+      let inserted = await this.inboxRepository.insertReceived(
         {
           id: randomUUID(),
           eventId: envelope.eventId,
@@ -215,19 +227,58 @@ export class SaleCompletedForElectronicBillingConsumerService {
           client,
         );
         if (existingSource) {
-          return this.buildResultFromInboxRecord(
+          const existingDoc = existingSource.electronic_document_id
+            ? await this.documentRepository.findById(
+                envelope.tenantId,
+                existingSource.electronic_document_id,
+                client,
+              )
+            : null;
+
+          if (existingDoc && existingDoc.status === "ACCEPTED") {
+            return this.buildResultFromInboxRecord(
+              envelope.eventId,
+              envelope.tenantId,
+              envelope.source.id,
+              externalReference,
+              existingSource,
+              payloadHash,
+            );
+          }
+
+          await this.inboxRepository.markSuperseded(
+            existingSource.event_id,
             envelope.eventId,
-            envelope.tenantId,
-            envelope.source.id,
-            externalReference,
-            existingSource,
-            payloadHash,
+            client,
+          );
+
+          inserted = await this.inboxRepository.insertReceived(
+            {
+              id: randomUUID(),
+              eventId: envelope.eventId,
+              eventType: envelope.eventType,
+              schemaVersion: envelope.schemaVersion,
+              tenantId: envelope.tenantId,
+              correlationId: envelope.correlationId,
+              sourceType: envelope.source.type,
+              sourceId: envelope.source.id,
+              externalReference,
+              payloadHash,
+              payload: envelope.payload,
+              status: "RECEIVED",
+              receivedAt: new Date(envelope.occurredAt),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            client,
           );
         }
 
-        throw new ElectronicBillingSaleEventTemporaryFailureError(
-          "Inbox conflict detected but existing event record was not found",
-        );
+        if (!inserted) {
+          throw new ElectronicBillingSaleEventTemporaryFailureError(
+            "Inbox conflict detected but existing event record was not found",
+          );
+        }
       }
 
       let command;
