@@ -152,3 +152,109 @@ Still requiring technical inspection during implementation:
 - exact place to carry evidence through `/sales` while preserving current DTO validation and idempotency;
 - exact UI state source after terminal configuration resolution and Agent health response.
 
+## Fase 2A — identidad, registro y vinculación
+
+Esta sección es diseño documental. Los contratos descritos como propuestos no existen todavía y no deben ser consumidos por POS ni por ventas.
+
+### Hechos confirmados
+
+- La fuente administrativa de asignación es `api/src/modules/pos-terminals/pos-terminals.service.ts`, su repository y `pos_terminal_peripheral_settings`; la asignación actual usa `scale_device_id` y `enable_scale`.
+- `api/src/modules/pos-terminals/pos-terminals.service.ts` resuelve tenant, sucursal, terminal operativa y configuración, y `buildResolvedResponse()` expone `source`, IDs, modo y flags. No expone origen REAL/MOCK confiable, instalación Agent, PnP, COM, unidad verificada ni conexión física.
+- `api/src/modules/terminal-devices/terminal-devices.service.ts` y su repository registran instalaciones en `terminal_devices` y vínculos en `terminal_device_bindings`. La relación es de instalación cloud con terminal, no de balanza física con puerto serial.
+- `backend-perifericos/src/shared/types/peripheral.types.ts` define `DeviceType.SCALE`, `ConnectionType.MOCK|USB|SERIAL` y estados del dispositivo. `DevicesService` persiste un registro local JSON y siembra `mock-scale-001` como `SCALE`, `MOCK`, `CONNECTED`.
+- `backend-perifericos/src/modules/scale/scale.service.ts` y `scale.controller.ts` exponen la lectura MOCK actual. La respuesta tiene dispositivo, peso, unidad, `stable` y timestamp, pero no `source` y no invoca el driver ROCHI.
+- `backend-perifericos/src/modules/scale/rochi-a01e.serial.ts` es un driver separado, validado en Windows, con invalidación y reconexión explícita. Este cambio no lo modifica.
+- `web/domains/peripherals/types.ts` y `terminal-config.ts` consumen configuración; el frontend no recibe hoy la clasificación física confiable.
+
+### AS-IS
+
+```text
+tenant/sucursal -> pos_terminal -> pos_terminal_peripheral_settings
+                         |                 scaleDeviceId + enableScale
+                         v
+                  resolve-current -> POS
+
+terminal_devices -> terminal_device_bindings -> terminal comercial
+Agent local -> DevicesService -> SCALE MOCK/USB/SERIAL
+ScaleService -> lectura MOCK 1.25 kg
+ROCHI serial driver -> QA independiente, sin conexión comercial
+```
+
+La configuración administrativa, el registro de instalación Agent y el registro local SCALE no forman aún una cadena de confianza completa. `CONFIGURED` significa configuración resuelta, no dispositivo REAL conectado.
+
+### TO-BE propuesto, no implementado
+
+```text
+admin autorizado
+  -> asigna SCALE registrado al pos_terminal del mismo tenant/sucursal
+  -> vincula instalación Agent autorizada a la terminal
+  -> Agent prueba identidad local SCALE y hardware ROCHI
+  -> backend proyecta clasificación y estado al POS
+  -> autorización corta por operación
+  -> Agent abre, sincroniza, lee una vez y cierra
+  -> evidencia REAL expirable se consume una sola vez con la venta
+```
+
+La identidad de instalación Agent, la identidad lógica del dispositivo y la identidad física CH340/ROCHI deben ser campos distintos. COM3, PnP y parámetros seriales pertenecen al Agent local; no deben ser la asignación global obligatoria del negocio.
+
+### Matriz de identidad y estado
+
+| Elemento | Existe hoy | Fuente | Límite |
+|---|---|---|---|
+| tenant/sucursal/terminal comercial | Sí | `pos_terminals`, `terminals`, actor y servicios POS | No prueba hardware |
+| asignación SCALE | Sí | `pos_terminal_peripheral_settings.scale_device_id` | Puede apuntar al fixture MOCK |
+| habilitación | Sí | `enable_scale` y `features.scale` | No prueba conexión |
+| instalación Agent | Sí | `terminal_devices`, `terminal_device_bindings` | `installationId` no prueba posesión |
+| dispositivo local SCALE | Sí | `DevicesService` / `PeripheralDevice` | No hay vínculo comercial seguro ni tenant en el registro local |
+| origen MOCK/REAL | Parcial | `connectionType` local; `mock-scale-001` documentado | No llega en `resolve-current` |
+| identidad física | Parcial | `usb`/`descriptor` potenciales en tipo local; PnP del driver | No hay contrato comercial validado |
+| unidad KG verificada | No | procedimiento del driver/operador | No está en resolución administrativa |
+| estado conectado | Local | `DeviceStatus`/Agent | No es estado de `resolve-current` |
+
+### Extensión mínima propuesta para `resolve-current`
+
+Debe ser aditiva y compatible. No se define como contrato vigente. La respuesta podría incorporar un bloque `scale` separado de `settings`:
+
+```text
+scale: {
+  assignment: NONE | MOCK | REAL | DISABLED | REVOKED | PENDING,
+  deviceId: string | null,
+  agentInstallationId: string | null,
+  authorizationState: UNAUTHORIZED | AUTHORIZED | REVOKED | UNKNOWN,
+  physicalState: UNKNOWN | DISCONNECTED | AVAILABLE | ERROR,
+  unitState: UNKNOWN | KG_VERIFIED | NOT_VERIFIED,
+  source: CONFIGURATION | AGENT_VERIFIED | MOCK_FIXTURE
+}
+```
+
+Estos nombres son propuesta y requieren revisión de los DTO existentes. `REAL` significa dispositivo registrado y autorizado, no conectado ni metrológicamente apto. Solo `AGENT_VERIFIED` podría permitir el siguiente gate de lectura; `CONFIGURATION` nunca basta. Ante ausencia, revocación, tenant/sucursal incorrectos o error, POS debe fallar cerrado.
+
+### Registro y flujo administrativo propuesto
+
+1. Administrador autorizado registra o selecciona una instalación Agent existente dentro del tenant.
+2. El backend valida terminal activa, sucursal, tenant, estado no revocado y permisos existentes.
+3. Se asigna un dispositivo `SCALE` lógico; se rechaza otro tenant, sucursal incompatible o terminal distinta.
+4. La instalación Agent prueba localmente su dispositivo y comunica identidad física; el backend no guarda COM3 como requisito global.
+5. El operador configura y verifica KG en el Agent; la unidad no se infiere de la trama ROCHI.
+6. Deshabilitar, desvincular o revocar invalida autorizaciones pendientes y elimina disponibilidad comercial.
+
+La UI `/[tenant]/admin/peripherals` ya carga terminal, configuración y dispositivos locales, pero la inspección no demuestra que soporte todo este flujo REAL. No se debe presentar esa pantalla como completa hasta implementar y probar los gates.
+
+### Confianza, autorización y revocación
+
+Alternativas a resolver durante implementación:
+
+- consulta backend de autorización corta vinculada a la sesión POS;
+- token firmado por backend y validado por Agent;
+- combinación de consulta y credencial local de instalación.
+
+La decisión debe exigir autenticidad, audiencia, tenant, sucursal, terminal, instalación, dispositivo, producto, operación, expiración, nonce/uso único y revocación. `terminalId`, `deviceId`, `installationId`, `Idempotency-Key` o `stable=true` enviados por frontend no son prueba suficiente. La opción final debe reutilizar la autenticación local existente o documentar la extensión mínima; no se inventa aquí una clave ni un endpoint.
+
+### Estados y ciclo físico
+
+`NONE`, `DISABLED`, `MOCK`, `PENDING`, `REAL_DISCONNECTED`, `REAL_ERROR`, `UNIT_NOT_VERIFIED` y `REAL_AVAILABLE` deben ser distinguibles. Solo `REAL_AVAILABLE` respaldado por Agent puede abrir la operación. La lectura mantiene abrir--sincronizar--leer--cerrar, invalida inmediatamente en error/cierre/desconexión y no usa estabilidad metrológica inferida. Sin Agent, sin KG verificado o tras revocación: no hay captura.
+
+### Gates de implementación y QA
+
+Antes de código REAL deben aprobarse: contrato aditivo de resolución; relación Agent-terminal-SCALE; prueba de posesión local; autorización corta; revocación; evidencia única; concurrencia; y pruebas de tenant cruzado. QA debe cubrir terminal sin asignación, `mock-scale-001`, REAL registrado desconectado, REAL en otra terminal/tenant, instalación revocada, cambio de terminal/sesión, autorización expirada/replay, KG dudoso y desconexión durante lectura. Ninguno de estos casos se ejecuta ni se marca completado en esta fase documental.
+

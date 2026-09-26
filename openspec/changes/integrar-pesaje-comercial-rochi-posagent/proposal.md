@@ -37,3 +37,18 @@ Manus ya guarda el modelo de venta `UNIT`, `WEIGHT` y `BOTH`. El flujo de `/pos`
 - Configuración: uso de `enableScale`, `scaleDeviceId`, modo y origen de configuración por tenant, sucursal y terminal.
 - QA: simulador, pruebas de integración POS-Agent y QA físico posterior, sin declarar homologación metrológica.
 - Dependencia: `integrar-balanza-rochi-a01e` permanece independiente y conserva pendiente su tarea 4.6.
+
+## Fase 2A documental: identidad y vinculación REAL/MOCK
+
+Esta fase solo precisa el diseño. No implementa API, Agent, persistencia, UI administrativa ni lectura física.
+
+Hechos confirmados en el repositorio:
+
+- `pos_terminal_peripheral_settings` guarda `scale_device_id` y `enable_scale` por terminal.
+- `pos_terminals` relaciona la terminal comercial con tenant y sucursal y expone modo `MOCK|REAL|HYBRID`.
+- `terminal_devices` y `terminal_device_bindings` identifican instalaciones cloud del Peripheral Agent y sus vínculos con terminales; `installationId` no es credencial ni prueba de posesión.
+- El registro local del Agent distingue `DeviceType.SCALE`, `ConnectionType.MOCK`, `SERIAL` y `USB`, y documenta `mock-scale-001` como fixture MOCK.
+- `resolve-current` devuelve configuración, IDs y flags, pero no origen físico confiable, identidad de instalación Agent, PnP/COM, unidad verificada ni estado conectado.
+- `ScaleService` comercial aún devuelve una lectura simulada de `1.25 kg`; el driver ROCHI no está conectado a ese módulo.
+
+Brecha y propuesta: antes de habilitar peso REAL, debe existir una vinculación verificable tenant--sucursal--terminal--instalación Agent--dispositivo SCALE. La extensión de `resolve-current`, la autorización corta y la prueba de posesión del Agent quedan como contratos propuestos y tareas futuras. No se acepta un `scaleDeviceId` no vacío ni `source=CONFIGURED` como prueba REAL.

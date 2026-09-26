@@ -13,6 +13,8 @@
 - [ ] 2.3 Incorporar configuración explícita de unidad ROCHI y procedimiento de verificación KG sin inferencia desde la trama; verificar rechazo de unidad desconocida, cambio de unidad y configuración inconsistente.
 - [ ] 2.4 Definir TTL, cancelación, cierre, invalidación por error/desconexión y límite de concurrencia; verificar que no sobreviva una lectura usable después de cerrar o perder USB.
 - [x] 2.5 Hacer que la configuración fallida o ausente sea estado seguro sin escala operativa; verificar que no active `FALLBACK_MOCK` para ventas ponderadas. Evidencia: `PosScreen` exige `source=CONFIGURED`, `scaleDeviceId` y `features.scale`.
+- [ ] 2.6 Fase 2A documental: cerrar la matriz de identidad tenant--sucursal--terminal--instalación Agent--SCALE y sus restricciones de pertenencia. La relación propuesta está documentada; implementación y QA pendientes.
+- [ ] 2.7 Fase 2A documental: definir la extensión aditiva de `resolve-current` para clasificación MOCK/REAL, autorización, estado físico y unidad KG sin tratar `CONFIGURED` como conexión. DTO y endpoint aún no se modifican.
 
 ## 3. Peripheral Agent real
 
@@ -21,6 +23,8 @@
 - [ ] 3.3 Implementar la operación o sesión bajo demanda elegida, con apertura, sincronización, lectura fresca, normalización KG y cierre seguro; verificar puerto ocupado, timeout, error, desconexión y liberación.
 - [ ] 3.4 Impedir reconexión automática y doble dueño serial; verificar que una recuperación requiera una nueva acción explícita y que eventos tardíos no restauren lecturas.
 - [ ] 3.5 Mantener separadas respuestas MOCK y REAL, retirar cualquier interpretación comercial de `stable` para ROCHI y etiquetar el origen; verificar que una respuesta MOCK no pase el gate REAL.
+- [ ] 3.6 Fase 2A documental: definir vinculación de instalación Agent con terminal y SCALE, prueba de identidad física y separación de COM/PnP local frente a asignación administrativa. Implementación pendiente.
+- [ ] 3.7 Fase 2A documental: seleccionar mecanismo de autorización corta, revocación, replay y consumo único con los criterios de confianza existentes. No hay token ni consulta de captura implementados.
 
 ## 4. POS y modelo de venta existente
 

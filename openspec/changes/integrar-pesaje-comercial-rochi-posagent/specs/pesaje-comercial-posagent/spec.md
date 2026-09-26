@@ -224,3 +224,63 @@ The implementation SHALL support acceptance testing with an explicit fixture nam
 - **WHEN** the fixture receives stale, disconnected, doubtful-unit, duplicated or expired evidence
 - **THEN** POS/backend SHALL reject weight confirmation and SHALL clear or invalidate the unusable reading.
 
+### Requirement: SCALE identity is distinct from terminal configuration
+
+The system SHALL distinguish commercial tenant, branch, terminal, Agent installation, logical SCALE device and physical ROCHI identity. A non-empty `scaleDeviceId`, `source=CONFIGURED` or `features.scale=true` SHALL NOT prove REAL hardware or connection.
+
+#### Scenario: Configuration points to the documented MOCK fixture
+- **WHEN** `scaleDeviceId=mock-scale-001` is resolved for an otherwise configured terminal
+- **THEN** POS SHALL classify the assignment as MOCK for commercial visibility, hide permanent physical-scale UI and SHALL NOT permit REAL capture.
+
+#### Scenario: REAL device is registered but disconnected
+- **WHEN** a SCALE is registered and authorized for the terminal but the Agent reports no physical connection
+- **THEN** the system SHALL expose a distinct disconnected state and SHALL reject capture without reusing a previous reading.
+
+#### Scenario: Device belongs to another tenant, branch or terminal
+- **WHEN** a request references a SCALE or Agent installation outside the authorized ownership boundary
+- **THEN** backend and Agent SHALL reject it before opening a physical connection.
+
+#### Scenario: Installation is revoked
+- **WHEN** the Agent installation, binding or SCALE assignment is revoked
+- **THEN** pending authorizations and captures SHALL be invalidated and the POS SHALL fail closed.
+
+### Requirement: Current-terminal resolution is additive and fail-closed
+
+Any future extension of `/pos-terminals/resolve-current` SHALL preserve existing fields and SHALL distinguish administrative assignment from Agent-verified physical state. Proposed fields are not current contracts and SHALL require implementation and compatibility review.
+
+#### Scenario: Configuration is known but origin is unknown
+- **WHEN** resolution returns terminal configuration without reliable REAL/MOCK origin or Agent proof
+- **THEN** POS SHALL use a neutral or unavailable state and SHALL NOT show physical readiness or enable commercial capture.
+
+#### Scenario: Terminal or session changes
+- **WHEN** the active terminal or POS session changes while configuration or capture data is pending
+- **THEN** stale state and pending authorization SHALL be discarded and SHALL NOT be reused by the new context.
+
+### Requirement: Agent binding precedes REAL authorization
+
+The system SHALL require corroboration between the authorized terminal, Agent installation, logical SCALE and physical ROCHI identity before issuing or accepting a short-lived REAL capture authorization.
+
+#### Scenario: Frontend supplies identifiers only
+- **WHEN** a request contains only frontend-controlled `terminalId`, `deviceId` or `installationId`
+- **THEN** the request SHALL be rejected as insufficient proof of ownership.
+
+#### Scenario: Authorization expires or is replayed
+- **WHEN** a short-lived authorization is expired, revoked, consumed or replayed
+- **THEN** the Agent/backend SHALL reject it and SHALL not open the serial connection.
+
+#### Scenario: Local physical configuration is incomplete
+- **WHEN** PnP/port identity, Agent binding or KG verification is absent or inconsistent
+- **THEN** the system SHALL report a safe unavailable or `Unidad no verificada` state and SHALL block REAL capture.
+
+### Requirement: Registration separates administrative and local physical data
+
+The administrative record SHALL own tenant, branch, terminal, logical device, enablement, mode and revocation. The Agent SHALL own local COM/PnP discovery, serial parameters, connection lifecycle and physical KG verification; COM3 SHALL NOT be a mandatory global business identifier.
+
+#### Scenario: Administrative assignment is valid but local Agent is absent
+- **WHEN** a terminal has an enabled SCALE assignment but no corroborating Agent installation or physical device
+- **THEN** POS SHALL keep unit sales available, SHALL not show physical readiness and SHALL block weighted capture.
+
+#### Scenario: Local device is discovered for another terminal
+- **WHEN** the Agent discovers a physical SCALE whose authorized binding is for another terminal
+- **THEN** the Agent/backend SHALL reject the use and SHALL not expose its reading to the active POS.
+
