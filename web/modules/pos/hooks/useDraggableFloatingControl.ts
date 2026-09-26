@@ -59,6 +59,9 @@ export const useDraggableFloatingControl = ({
     positionRef.current = position;
   }, [position]);
 
+  const defaultSizeWidth = defaultSize.width;
+  const defaultSizeHeight = defaultSize.height;
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -72,8 +75,8 @@ export const useDraggableFloatingControl = ({
 
       const rect = element.getBoundingClientRect();
       const effectiveSize = {
-        width: rect.width > 0 ? rect.width : defaultSize.width,
-        height: rect.height > 0 ? rect.height : defaultSize.height,
+        width: rect.width > 0 ? rect.width : defaultSizeWidth,
+        height: rect.height > 0 ? rect.height : defaultSizeHeight,
       };
       const viewport = getViewport();
       const storedPosition = readFloatingControlPosition(window.localStorage, storageKey);
@@ -84,14 +87,23 @@ export const useDraggableFloatingControl = ({
           storedPosition ??
           resolveFloatingControlDefaultPosition(defaultAnchor, viewport, effectiveSize, minTop);
 
-        return clampFloatingControlPosition(basePosition, viewport, effectiveSize, minTop);
+        const nextPosition = clampFloatingControlPosition(basePosition, viewport, effectiveSize, minTop);
+        if (
+          currentPosition &&
+          currentPosition.x === nextPosition.x &&
+          currentPosition.y === nextPosition.y
+        ) {
+          return currentPosition;
+        }
+
+        return nextPosition;
       });
     };
 
     syncPosition();
     window.addEventListener("resize", syncPosition);
     return () => window.removeEventListener("resize", syncPosition);
-  }, [defaultAnchor, defaultSize, minTop, storageKey]);
+  }, [defaultAnchor, defaultSizeWidth, defaultSizeHeight, minTop, storageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !position || isDragging) {
@@ -125,8 +137,8 @@ export const useDraggableFloatingControl = ({
       const element = event.currentTarget;
       const rect = element.getBoundingClientRect();
       const effectiveSize = {
-        width: rect.width > 0 ? rect.width : defaultSize.width,
-        height: rect.height > 0 ? rect.height : defaultSize.height,
+        width: rect.width > 0 ? rect.width : defaultSizeWidth,
+        height: rect.height > 0 ? rect.height : defaultSizeHeight,
       };
       const currentPosition =
         positionRef.current ??
@@ -153,7 +165,7 @@ export const useDraggableFloatingControl = ({
         // Ignore capture failures. Drag still works with move events.
       }
     },
-    [defaultAnchor, defaultSize, minTop]
+    [defaultAnchor, defaultSizeWidth, defaultSizeHeight, minTop]
   );
 
   const handlePointerMove = useCallback(
