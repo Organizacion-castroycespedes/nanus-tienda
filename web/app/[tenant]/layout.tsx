@@ -13,6 +13,7 @@ import {
   ArrowUpDown,
   BarChart3,
   Bell,
+  Bike,
   Building,
   Building2,
   Calculator,
@@ -105,6 +106,9 @@ const iconByName: Record<string, LucideIcon> = {
   grid3x3: Grid3X3,
   tags: Tags,
   truck: Truck,
+  bike: Bike,
+  motorcycle: Bike,
+  moto: Bike,
   calculator: Calculator,
   clipboardlist: ClipboardList,
   receipttext: ReceiptText,
@@ -137,7 +141,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openMenuItems, setOpenMenuItems] = useState<Record<string, boolean>>({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -233,7 +237,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
-  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-60 xl:w-64 lg:px-3 xl:px-4";
+  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-64 xl:w-64 lg:px-3 xl:px-4";
   const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
   const applyTenantToMenu = useCallback(
@@ -318,9 +322,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    setSidebarCollapsed(
-      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true"
+    const storedCollapsed = window.localStorage.getItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY
     );
+    if (storedCollapsed !== null) {
+      setSidebarCollapsed(storedCollapsed === "true");
+    }
 
     const storedOpenMenuItems = window.localStorage.getItem(
       SIDEBAR_MENU_STATE_STORAGE_KEY
@@ -624,6 +631,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [isDashboardItem, menuItems]);
 
   const getMenuIcon = (label: string, module: string, iconName?: string | null) => {
+    const key = `${module} ${label}`.toLowerCase();
+    if (key.includes("pedido") || key.includes("order")) {
+      return Bike;
+    }
     if (iconName?.trim()) {
       const normalized = normalizeIconName(iconName);
       const explicitIcon = iconByName[normalized];
@@ -631,7 +642,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         return explicitIcon;
       }
     }
-    const key = `${module} ${label}`.toLowerCase();
     if (key.includes("dashboard") || key.includes("inicio")) {
       return LayoutDashboard;
     }
@@ -1260,13 +1270,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b bg-[var(--brand-header-bg)]/90 px-3 py-2.5 shadow-sm backdrop-blur-md md:px-5 lg:px-6"
+            className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-[var(--brand-header-bg)]/95 px-3 shadow-sm backdrop-blur-md md:px-4 lg:px-5"
             style={{ borderColor: tenantTheme.header.border }}
           >
-            <div className="flex min-w-0 items-center gap-2.5 lg:gap-3">
+            <div className="flex min-w-0 items-center gap-2 lg:gap-2.5">
               <button
                 type="button"
-                className="rounded-lg border p-1.5 xl:p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1282,115 +1292,114 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 aria-label={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
                 title={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
               >
-                <Menu className="h-4 w-4 xl:h-5 xl:w-5" />
+                <Menu className="h-4 w-4" />
               </button>
               <div className="min-w-0">
                 {hasPosOperationalContext ? (
-                  <div className="space-y-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      {posOperationalRole ? (
-                        <span
-                          className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                          title={posOperationalRole}
-                        >
-                          <span className="truncate">{posOperationalRole}</span>
-                        </span>
-                      ) : null}
-                      {posOperationalTerminal ? (
-                        <span
-                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                          title={posOperationalTerminal}
-                        >
-                          <span className="truncate">{posOperationalTerminal}</span>
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-muted)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                        >
-                          Terminal no disponible
-                        </span>
-                      )}
-                      {posOperationalBranch ? (
-                        <span
-                          className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                          title={posOperationalBranch}
-                        >
-                          <span className="truncate">{posOperationalBranch}</span>
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-header-muted)]">
+                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                    {posOperationalRole ? (
+                      <span
+                        className="inline-flex max-w-[6.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalRole}
+                      >
+                        <span className="truncate">{posOperationalRole}</span>
+                      </span>
+                    ) : null}
+                    {posOperationalTerminal ? (
+                      <span
+                        className="inline-flex max-w-[7.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalTerminal}
+                      >
+                        <span className="truncate">{posOperationalTerminal}</span>
+                      </span>
+                    ) : (
+                      <span
+                        className="hidden sm:inline-flex max-w-[8rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-header-muted)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                      >
+                        Terminal N/A
+                      </span>
+                    )}
+                    {posOperationalBranch ? (
+                      <span
+                        className="hidden md:inline-flex max-w-[9rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalBranch}
+                      >
+                        <span className="truncate">{posOperationalBranch}</span>
+                      </span>
+                    ) : null}
+                    <span className="hidden xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
                       {posOperationalDate} · {posOperationalTime}
-                    </p>
+                    </span>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)]">
-                      Sistema
-                    </p>
-                    <h1 className="text-lg font-semibold text-[var(--brand-header-text)]">
+                    <h1 className="truncate text-sm font-semibold text-[var(--brand-header-text)]">
                       Panel de control
                     </h1>
                   </div>
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <Link
                 href={`/${tenantSlug}/dashboard`}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-[var(--brand-sidebar-active-text)] shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
-                  backgroundColor: tenantTheme.header.actionBackground,
-                  color: tenantTheme.header.actionText,
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Ir al dashboard"
+                title="Ir al dashboard"
               >
                 <LayoutDashboard className="h-4 w-4" />
               </Link>
               <button
                 type="button"
-                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Ver notificaciones"
+                title="Notificaciones"
               >
-                <Bell className="h-5 w-5" />
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--brand-primary)]" />
+                <Bell className="h-4 w-4" />
+                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[var(--brand-primary)]" />
               </button>
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Mensajes"
+                title="Mensajes"
               >
-                <MessageCircle className="h-5 w-5" />
+                <MessageCircle className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1421,12 +1430,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }
               >
                 {connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE" ? (
-                  <WifiOff className="h-5 w-5" aria-hidden="true" />
+                  <WifiOff className="h-4 w-4" aria-hidden="true" />
                 ) : (
-                  <Wifi className="h-5 w-5" aria-hidden="true" />
+                  <Wifi className="h-4 w-4" aria-hidden="true" />
                 )}
                 <span
-                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${
                     connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE"
                       ? "bg-rose-500"
                       : connectivityState === "RECONNECTING"
@@ -1438,7 +1447,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="relative rounded-lg border p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1469,13 +1478,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }
               >
                 <Printer
-                  className={`h-5 w-5 ${
+                  className={`h-4 w-4 ${
                     printerSocketStatus === "CONNECTING" ? "animate-pulse" : ""
                   }`}
                   aria-hidden="true"
                 />
                 <span
-                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${
                     printerSocketStatus === "CONNECTED"
                       ? "bg-emerald-500"
                       : printerSocketStatus === "CONNECTING"
@@ -1489,25 +1498,25 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 isPosRoute ? (
                   <button
                     type="button"
-                    className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    className="relative grid h-8 w-8 place-items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
                     aria-label={`Abrir carrito con ${posCartItemCount} items pendientes`}
                     title={`Venta POS pendiente: ${posCartItemCount} items`}
                     onClick={() => openCartSheet()}
                   >
-                    <ShoppingCart className="h-5 w-5" />
-                    <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white">
                       {posCartItemCount}
                     </span>
                   </button>
                 ) : (
                   <Link
                     href={`/${tenantSlug}/pos`}
-                    className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    className="relative grid h-8 w-8 place-items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
                     aria-label={`Volver al POS con ${posCartItemCount} items pendientes`}
                     title={`Venta POS pendiente: ${posCartItemCount} items`}
                   >
-                    <ShoppingCart className="h-5 w-5" />
-                    <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white">
                       {posCartItemCount}
                     </span>
                   </Link>
@@ -1516,7 +1525,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <div className="relative">
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  className="flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                   style={{
                     borderColor: tenantTheme.header.iconButtonBorder,
                     backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1527,11 +1536,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   aria-expanded={userMenuOpen}
                   aria-label="Abrir menu de usuario"
                 >
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <span className="max-w-[160px] truncate">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="max-w-[90px] sm:max-w-[120px] truncate">
                     {authUser?.name || "Usuario"}
                   </span>
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
                 </button>
                 {userMenuOpen && (
                   <div
@@ -1566,16 +1575,17 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
               <button
                 type="button"
-                className="rounded-full border p-2 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Cerrar sesion"
+                title="Cerrar sesión"
                 onClick={() => logout()}
               >
-                <LogOut className="h-5 w-5" />
+                <LogOut className="h-4 w-4" />
               </button>
             </div>
           </header>

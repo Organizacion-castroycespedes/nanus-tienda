@@ -474,8 +474,8 @@ export const StockAdjustmentForm = ({
                 }));
               }}
             >
-              <option value="IN">IN</option>
-              <option value="OUT">OUT</option>
+              <option value="IN">Entrada</option>
+              <option value="OUT">Salida</option>
             </Select>
             {errors.type ? <p className="text-xs text-rose-600">{errors.type}</p> : null}
           </div>
