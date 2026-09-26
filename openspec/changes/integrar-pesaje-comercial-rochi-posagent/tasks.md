@@ -28,6 +28,16 @@
 - [ ] 3.6 Fase 2A documental: definir vinculación de instalación Agent con terminal y SCALE, prueba de identidad física y separación de COM/PnP local frente a asignación administrativa. Implementación pendiente.
 - [ ] 3.7 Fase 2A documental: seleccionar mecanismo de autorización corta, revocación, replay y consumo único con los criterios de confianza existentes. No hay token ni consulta de captura implementados.
 
+## 3A. Fase 2C.1 - Confianza y operacion Agent--terminal--SCALE
+
+- [ ] 3A.1 Confirmar mecanismo autenticado y revocable para la instalacion Agent; no aceptar `installationId`, `terminalId` o `deviceId` enviados por frontend como prueba.
+- [ ] 3A.2 Definir y persistir, sin duplicar relaciones, la asociacion tenant--sucursal--terminal--instalacion Agent--SCALE; rechazar doble asignacion y pertenencia cruzada.
+- [ ] 3A.3 Extender el flujo administrativo Detectar--Probar--Vincular--Habilitar--Revocar reutilizando `/admin/peripherals`, onboarding y `DevicesService`; registrar solo metadatos necesarios.
+- [ ] 3A.4 Disenar la prueba local ROCHI: deteccion, comunicacion, lectura de prueba y verificacion manual KG; mantener COM/PnP y parametros seriales en Agent local.
+- [ ] 3A.5 Definir contrato autenticado de disponibilidad con TTL, invalidacion por desconexion, revocacion, cambio de terminal, cambio de dispositivo y error; mantener UNKNOWN cuando falte evidencia.
+- [ ] 3A.6 Verificar compatibilidad de Electron y WEB; bloquear WEB si solo existe localhost/CORS sin autenticacion Agent suficiente.
+- [ ] 3A.7 Cubrir tenant/sucursal/terminal ajenos, Agent revocado, dispositivo falso, peticion local no autorizada, MOCK, duplicado, desconexion, expiracion y rollback. Ninguna tarea esta completada por esta documentacion.
+
 ## 4. POS y modelo de venta existente
 
 - [ ] 4.1 Adaptar `PosScreen` y `CartSaleModal` sin duplicar paneles, hooks o stores; verificar estados visibles `Sin balanza configurada`, `Balanza deshabilitada`, disponible, desconectada, error, unidad no verificada, pendiente, inválida y capturada.

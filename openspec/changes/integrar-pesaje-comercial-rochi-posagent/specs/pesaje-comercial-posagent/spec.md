@@ -288,3 +288,51 @@ The administrative record SHALL own tenant, branch, terminal, logical device, en
 - **WHEN** the Agent discovers a physical SCALE whose authorized binding is for another terminal
 - **THEN** the Agent/backend SHALL reject the use and SHALL not expose its reading to the active POS.
 
+### Requirement: Agent installation trust precedes SCALE binding
+
+The system SHALL distinguish the cloud Agent installation, the commercial terminal, the logical SCALE assignment and the physical ROCHI device. An identifier supplied by POS, WEB or Electron SHALL NOT authenticate any of them by itself.
+
+#### Scenario: Unauthenticated local request
+- **WHEN** a local HTTP, WebSocket or Electron request contains only `terminalId`, `deviceId`, `installationId`, COM, PnP, USB or SERIAL data
+- **THEN** the Agent/backend SHALL reject the request as insufficient proof and SHALL keep the scale state `UNKNOWN` or unavailable.
+
+#### Scenario: Authorized installation binding
+- **WHEN** an authenticated Agent installation is bound to an active terminal in the same tenant and branch and the logical SCALE assignment matches
+- **THEN** the backend MAY expose the binding as pending verification, but SHALL NOT expose physical availability until the Agent provides a recent corroborated observation.
+
+#### Scenario: Cross-tenant or cross-branch binding
+- **WHEN** an installation, terminal or SCALE belongs to another tenant, branch or terminal
+- **THEN** the backend SHALL reject the binding and SHALL not expose device data to POS.
+
+### Requirement: Administrative detection and revocation are explicit
+
+The administrative flow SHALL support the ordered states Detectar, Probar, Vincular, Habilitar and Revocar using authorized permissions and existing peripheral onboarding where possible.
+
+#### Scenario: Physical detection is requested
+- **WHEN** an authorized operator requests detection or test
+- **THEN** the Agent SHALL perform the local discovery and communication test, while COM/PnP and serial parameters remain local; a declaration alone SHALL not create REAL availability.
+
+#### Scenario: KG is not verified
+- **WHEN** the operator has not explicitly verified the ROCHI physical unit as KG
+- **THEN** the system SHALL report `UNIT_NOT_VERIFIED` and SHALL block REAL capture without inferring the unit from frames.
+
+#### Scenario: Binding is revoked or changes terminal
+- **WHEN** an Agent binding, SCALE assignment or terminal context is revoked or changed
+- **THEN** pending availability observations and future capture authorizations SHALL be invalidated immediately.
+
+### Requirement: Availability is authenticated and expiring
+
+The system SHALL expose physical availability only from an authenticated Agent observation bound to the authorized installation, terminal and logical SCALE, with timestamp and expiry.
+
+#### Scenario: Local channel has only CORS protection
+- **WHEN** the Agent can validate origin or loopback but cannot authenticate the installation and request binding
+- **THEN** the system SHALL keep the device `UNKNOWN` or unavailable and SHALL not issue `REAL_AVAILABLE`.
+
+#### Scenario: Observation expires or disconnects
+- **WHEN** the Agent observation exceeds its TTL, reports disconnect/error, or the local device changes
+- **THEN** the system SHALL invalidate availability and SHALL not reuse a previous observation or reading.
+
+#### Scenario: MOCK remains isolated
+- **WHEN** the assigned device is `mock-scale-001` or another explicitly classified MOCK fixture
+- **THEN** the system SHALL preserve MOCK classification and SHALL not use detection success or `stable=true` to authorize REAL weighing.
+

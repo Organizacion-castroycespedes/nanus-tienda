@@ -19,6 +19,19 @@ Manus ya guarda el modelo de venta `UNIT`, `WEIGHT` y `BOTH`. El flujo de `/pos`
 - Especificar aceptación funcional para el producto `Contra Muslo`, reportado por el operador como `BOTH` con unidad `KG`, sin alterar ni afirmar la verificación de sus datos persistidos.
 - Mantener fuera de alcance la homologación metrológica, Linux, empaquetado multiplataforma y la habilitación inmediata de ventas reales.
 
+## Fase 2C.1 documental: confianza Agent--terminal--SCALE
+
+Esta fase documenta la extension minima para detectar, probar, asociar, habilitar, revocar y consultar una ROCHI desde la instalacion de perifericos y la operacion POS. No implementa autenticacion, migraciones, canal nuevo, lectura comercial ni cambios de datos.
+
+Hechos confirmados:
+
+- `terminal_devices` registra una instalacion Agent por `installation_id` y `terminal_device_bindings` vincula esa instalacion con una terminal del mismo tenant.
+- `pos_terminal_peripheral_settings.scale_device_id` referencia el ID local del `PeripheralDevice`; hoy no existe una relacion persistente entre ese ID y `terminal_devices`.
+- `PeripheralDevice` y su registro JSON local exponen tipo, estado, `terminalId`, `connectionType` y descriptor opcional; esto no autentica mensajes ni demuestra posesion fisica.
+- El Agent escucha por loopback/CORS permitido y `ScaleController` acepta `terminalId` y `deviceId` del cliente; esos campos no son prueba suficiente de autorizacion cloud.
+
+Propuesta: reutilizar la identidad autenticada de la instalacion y el binding cloud existentes, pero agregar una relacion verificable y un mecanismo de desafio/respuesta o credencial revocable antes de aceptar una declaracion SCALE. La eleccion concreta de credencial requiere aprobacion de seguridad. Ningun `installationId`, `terminalId`, `deviceId`, COM, PnP, USB, SERIAL o VID/PID aislado prueba identidad o posesion.
+
 ## Capabilities
 
 ### New Capabilities

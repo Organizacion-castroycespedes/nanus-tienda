@@ -211,6 +211,72 @@ admin autorizado
 
 La identidad de instalación Agent, la identidad lógica del dispositivo y la identidad física CH340/ROCHI deben ser campos distintos. COM3, PnP y parámetros seriales pertenecen al Agent local; no deben ser la asignación global obligatoria del negocio.
 
+## Fase 2C.1 - Diseno documental de confianza y operacion
+
+### Estado AS-IS confirmado
+
+```text
+tenant/sucursal
+      |
+      v
+pos_terminals -- pos_terminal_peripheral_settings.scale_device_id --> ID local SCALE
+      |
+      +--> terminal_device_bindings --> terminal_devices --> installation_id Agent
+
+Agent local --> registro JSON PeripheralDevice --> deteccion USB/serial --> ROCHI
+```
+
+La cadena no esta cerrada: `terminal_device_bindings.device_id` identifica una instalacion cloud, mientras `scale_device_id` identifica un periferico local. No existe un vinculo persistente entre ambos. `installationId` se conserva como identidad administrativa, no como secreto. El canal HTTP/WebSocket local usa loopback y CORS, pero no autentica actualmente la instalacion frente al backend ni las peticiones de lectura frente al Agent.
+
+### Contrato propuesto, no implementado
+
+La futura resolucion de terminal debe poder devolver, de forma aditiva y fail-closed, una proyeccion similar a:
+
+```text
+scale:
+  assignment: NONE | ASSIGNED | REVOKED
+  classification: MOCK | UNKNOWN | REAL_REGISTERED
+  agentBinding: NONE | PENDING | AUTHORIZED | REVOKED
+  physicalState: UNKNOWN | DISCONNECTED | AVAILABLE | ERROR
+  unitState: UNKNOWN | KG_VERIFIED | NOT_VERIFIED
+  deviceId: string | null
+  installationId: string | null
+  observedAt: string | null
+```
+
+Estos nombres son propuesta. `REAL_REGISTERED` no significa conectado ni apto para venta. Solo una respuesta autenticada y reciente del Agent puede producir disponibilidad fisica; el POS no puede derivarla de `CONFIGURED`.
+
+### Flujo administrativo Detectar--Probar--Vincular--Habilitar--Revocar
+
+1. Administrador autorizado abre `/[tenant]/admin/peripherals` o el flujo de onboarding existente.
+2. El backend resuelve tenant, sucursal y terminal desde la sesion y permisos; no acepta pertenencia declarada solo por frontend.
+3. El Agent autenticado anuncia su instalacion y capacidades mediante el canal ya existente. Sin autenticacion verificable, el flujo queda `PENDING`.
+4. El Agent ejecuta `discover` local, filtra `DeviceType.SCALE` y prueba la comunicacion ROCHI. COM, PnP, velocidad y unidad quedan locales.
+5. El operador verifica KG de forma explicita. El protocolo ROCHI no permite inferir KG ni estabilidad metrologica.
+6. El backend crea o confirma la asociacion terminal--instalacion--SCALE dentro del mismo tenant y sucursal. Debe impedir doble asignacion.
+7. Habilitar solo publica estado administrativo. `REAL_AVAILABLE` requiere prueba Agent reciente.
+8. Deshabilitar, desvincular o revocar, cambiar terminal, perder comunicacion o cambiar el dispositivo invalida estado y autorizaciones pendientes.
+
+Electron puede usar el bridge tipado existente hacia el Agent local. WEB puede reutilizar el contrato HTTP/WebSocket permitido solo si el Agent autentica la solicitud y la vincula al backend; CORS o localhost solos no bastan. Si no existe esa autenticacion, WEB solo puede mostrar estado seguro y no probar ni habilitar pesaje REAL.
+
+### Alternativas de confianza
+
+| Alternativa | Cambios | Riesgo y despliegue | Decision |
+|---|---|---|---|
+| Credencial revocable de instalacion reutilizando `terminal_devices` y bindings | Extender registro/binding, Agent, API local y Electron/WEB; persistir referencia revocable, no secreto en frontend | Requiere provision segura, rotacion y revocacion; migracion probable | Preferida si seguridad aprueba provision |
+| Desafio/respuesta entre backend y Agent | Extender Agent, API y transporte existente; asociar respuesta a nonce, terminal e instalacion | Requiere canal backend--Agent o relay autenticado; mas superficie y pruebas | Alternativa si ya existe transporte autenticado reutilizable |
+| Nuevo mecanismo criptografico o nueva infraestructura | Nuevos secretos, endpoints, tablas o servicio | Cambio arquitectonico alto; no compatible con este alcance | Rechazada para implementacion inmediata |
+
+La alternativa final necesita aprobacion humana de seguridad. No se inventa una clave, token, endpoint ni migracion como si ya existiera.
+
+### Estados y expiracion
+
+La asignacion administrativa, la vinculacion Agent, la prueba fisica y la disponibilidad son estados distintos. Una observacion Agent debe tener timestamp y TTL. Desconexion, error, revocacion, cambio de terminal, cambio de USB o vencimiento deben pasar a estado seguro e invalidar cualquier autorizacion pendiente. `mock-scale-001` permanece MOCK y nunca cruza el gate REAL.
+
+### Gate para implementar
+
+No se autoriza codigo Fase 2C.1 hasta confirmar: mecanismo de autenticacion de instalacion, relacion persistente Agent--SCALE, pertenencia tenant/sucursal, canal autorizado WEB/Electron--Agent, revocacion, doble asignacion, prueba local ROCHI y rollback. La ausencia de cualquiera mantiene `UNKNOWN` y bloquea `REAL_AVAILABLE`.
+
 ### Matriz de identidad y estado
 
 | Elemento | Existe hoy | Fuente | Límite |
