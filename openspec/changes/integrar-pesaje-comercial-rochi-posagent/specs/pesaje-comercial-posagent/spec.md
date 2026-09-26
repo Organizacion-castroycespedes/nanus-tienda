@@ -18,7 +18,11 @@ The system SHALL reuse the existing product `saleType` and `measurementUnit` val
 
 #### Scenario: Unit-and-weight product chooses a mode
 - **WHEN** a product has `saleType=BOTH`
-- **THEN** POS SHALL require an explicit choice between unit sale and weight sale before applying quantity.
+- **THEN** POS SHALL show an explicit Unidad/Peso choice before applying quantity; Unidad SHALL reuse the existing unit add flow, while Peso SHALL enter the contextual weighing flow and SHALL NOT add a MOCK quantity.
+
+#### Scenario: BOTH mode selection is cancelled
+- **WHEN** the operator closes the Unidad/Peso choice without selecting a mode
+- **THEN** POS SHALL leave the cart and sale state unchanged.
 
 #### Scenario: Invalid product model
 - **WHEN** a product has an invalid sale type and measurement unit combination
@@ -30,19 +34,27 @@ The system SHALL resolve scale availability from the authorized tenant, branch a
 
 #### Scenario: Terminal has no scale assigned
 - **WHEN** the active terminal has no assigned scale device
-- **THEN** POS SHALL show `Sin balanza configurada`, disable or hide weight capture controls, and continue allowing unit sales.
+- **THEN** POS SHALL hide permanent scale indicators, connection status, live weight, scale panels and scale-only controls, and SHALL continue allowing unit sales.
+
+#### Scenario: Weight is attempted without a scale
+- **WHEN** the operator selects a `WEIGHT` sale or the weight mode of a `BOTH` product on a terminal without an assigned and enabled scale
+- **THEN** POS SHALL show only a contextual explanation, SHALL NOT show a permanent scale indicator, and SHALL block REAL capture.
 
 #### Scenario: Scale is disabled
 - **WHEN** the terminal has a scale assignment but scale use is disabled
-- **THEN** POS SHALL show `Balanza deshabilitada` and SHALL NOT request a reading.
+- **THEN** POS SHALL hide permanent scale indicators and controls, SHALL keep unit sales available, and SHALL show only a contextual explanation if a weighted operation is attempted.
 
 #### Scenario: Scale is configured and available
 - **WHEN** the terminal has an enabled authorized scale and the Agent reports it available
-- **THEN** POS SHALL show the scale as available and SHALL permit a single explicit capture request.
+- **THEN** POS SHALL show only the state supported by the effective configuration and Agent contract; a commercial capture remains blocked until the REAL Agent capture contract is implemented and verified.
 
 #### Scenario: Scale is disconnected or in error
 - **WHEN** the assigned device is disconnected, occupied, or reports a transport/parser error
 - **THEN** POS SHALL show a distinct unavailable state and SHALL NOT reuse a previous reading.
+
+#### Scenario: Configuration lookup fails
+- **WHEN** the terminal configuration cannot be resolved
+- **THEN** the commercial flow SHALL fail closed, SHALL hide operational scale controls, and SHALL NOT activate `FALLBACK_MOCK` for a weighted sale.
 
 #### Scenario: Configuration is revoked during capture
 - **WHEN** scale assignment or enablement is revoked before confirmation of a weight sale
@@ -68,9 +80,21 @@ The weighing flow SHALL return a normalized kilogram value together with explici
 - **WHEN** the response source is MOCK or fallback simulation
 - **THEN** it SHALL be visibly labeled as simulated and SHALL NOT satisfy a REAL commercial weighing requirement.
 
+#### Scenario: Configured terminal points to the documented MOCK fixture
+- **WHEN** terminal configuration resolves as `CONFIGURED` but `scaleDeviceId` is the documented `mock-scale-001` fixture
+- **THEN** POS SHALL hide permanent scale UI and SHALL NOT treat the assignment as evidence of a physical REAL scale.
+
 #### Scenario: No metrological stability flag
 - **WHEN** ROCHI provides a valid frame without a stability indicator
 - **THEN** the system SHALL NOT infer metrological stability from repeated values or from `stable=true` in the MOCK contract.
+
+#### Scenario: Capture unit is KG verified
+- **WHEN** the operator has verified the ROCHI physical unit as KG before the capture
+- **THEN** the flow SHALL permit the capture only with source `REAL` and SHALL normalize the result to kilograms.
+
+#### Scenario: Capture unit is doubtful
+- **WHEN** the physical unit is doubtful, changed, or cannot be verified as KG
+- **THEN** the flow SHALL show `Unidad no verificada` and SHALL block commercial capture without claiming automatic KG/LB detection.
 
 ### Requirement: Capture lifecycle is controlled
 
@@ -78,7 +102,7 @@ The system SHALL use one explicit on-demand capture or bounded weighing session 
 
 #### Scenario: Single capture succeeds
 - **WHEN** POS requests a reading for the active weighing operation
-- **THEN** the Agent SHALL open or use the authorized connection, obtain one fresh reading, return it, and release the connection according to the selected lifecycle.
+- **THEN** the Agent SHALL open the authorized connection, synchronize, obtain one fresh reading, return it, and close the connection for that operation.
 
 #### Scenario: Concurrent capture is attempted
 - **WHEN** a second capture starts while the same terminal/device capture is active
@@ -91,6 +115,10 @@ The system SHALL use one explicit on-demand capture or bounded weighing session 
 #### Scenario: USB or transport loss
 - **WHEN** the physical connection is lost during capture
 - **THEN** the Agent SHALL transition to a disconnected/error state, invalidate the current reading immediately, and SHALL require an explicit later recovery.
+
+#### Scenario: Temporary session is not first-phase behavior
+- **WHEN** a single commercial weight operation is executed in the first phase
+- **THEN** the Agent SHALL NOT keep a permanent or reusable scale connection after the capture; a temporary session SHALL require a later approved evolution.
 
 ### Requirement: Commercial sale reuses authoritative pricing and inventory
 
@@ -122,7 +150,43 @@ The system SHALL preserve existing manual quantity controls for approved unit op
 
 #### Scenario: Manual quantity for required weight sale
 - **WHEN** the operator enters a quantity manually for a `WEIGHT` sale without an approved override
-- **THEN** POS or backend SHALL reject the operation or require the approved override authorization, and SHALL NOT label it as a physical scale capture.
+- **THEN** POS and backend SHALL reject the operation, SHALL NOT fall back to MOCK, and SHALL NOT label it as a physical scale capture.
+
+#### Scenario: Manual quantity for unit mode of BOTH
+- **WHEN** the operator selects unit mode for a `BOTH` product
+- **THEN** the existing manual unit quantity behavior SHALL remain available without a scale.
+
+#### Scenario: Manual quantity for weight mode of BOTH
+- **WHEN** the operator selects weight mode for a `BOTH` product
+- **THEN** POS and backend SHALL require a REAL physical capture and SHALL reject manual quantity as a substitute.
+
+### Requirement: Short-lived authorization protects capture ownership
+
+The system SHALL require a backend-issued short-lived authorization bound to tenant, applicable branch, terminal, POS session, product, operation and configured device before a REAL capture.
+
+#### Scenario: Authorized capture
+- **WHEN** the backend issues a non-expired authorization for the active terminal and configured device
+- **THEN** the Agent SHALL corroborate that authorization with its local device and terminal configuration before returning a REAL reading.
+
+#### Scenario: Frontend identity alone
+- **WHEN** a request supplies only frontend-controlled `terminalId` or `deviceId`
+- **THEN** the Agent/backend SHALL reject the request as insufficient proof of ownership.
+
+#### Scenario: Authorization expires or is revoked
+- **WHEN** the authorization expires, is consumed, or terminal/device configuration is revoked
+- **THEN** the capture SHALL be rejected and SHALL NOT be recoverable by replaying the same authorization.
+
+### Requirement: Capture evidence is transient and single-use
+
+The system SHALL carry capture evidence transiently through the commercial operation with expiry, source `REAL`, verified unit `KG`, normalized value, capture time, device, terminal, product, operation and unique identity; backend SHALL consume it atomically with the sale.
+
+#### Scenario: Evidence matches operation
+- **WHEN** evidence matches the authenticated tenant, terminal, POS session, product and selected weight mode and is within its TTL
+- **THEN** backend SHALL consume it once and SHALL allow the existing pricing, tax, inventory and sale transaction to continue.
+
+#### Scenario: Evidence is duplicated or mismatched
+- **WHEN** evidence is duplicated, expired, consumed, MOCK, or belongs to another terminal, product, session or operation
+- **THEN** backend SHALL reject the weighted sale without partial commercial persistence.
 
 ### Requirement: Tenant and terminal isolation is enforced
 
@@ -139,4 +203,24 @@ The system SHALL bind configuration and capture evidence to the authorized tenan
 #### Scenario: Untrusted client-supplied identity
 - **WHEN** the only proof of device or capture ownership is an identifier supplied by the frontend
 - **THEN** the backend/Agent SHALL reject it unless it is corroborated by the existing authorized configuration and local trust mechanism.
+
+### Requirement: Contra Muslo acceptance fixture is explicit
+
+The implementation SHALL support acceptance testing with an explicit fixture named `Contra Muslo`, reported as `saleType=BOTH` and `measurementUnit=KG`, without changing or assuming its catalog price, stock or quantity.
+
+#### Scenario: Contra Muslo unit mode
+- **WHEN** the fixture is selected in unit mode on a terminal without a scale
+- **THEN** POS SHALL keep the existing unit cart, pricing, tax and inventory flow operational.
+
+#### Scenario: Contra Muslo weight mode with authorized ROCHI
+- **WHEN** the fixture is selected in weight mode on a terminal with an enabled authorized ROCHI and verified KG
+- **THEN** POS SHALL request one REAL capture and SHALL send its accepted normalized quantity through the existing pricing flow.
+
+#### Scenario: Contra Muslo weight mode without scale
+- **WHEN** the fixture is selected in weight mode on a terminal without an assigned and enabled scale
+- **THEN** POS SHALL show only a contextual warning, SHALL keep unit mode available, and SHALL block REAL capture.
+
+#### Scenario: Contra Muslo invalid capture
+- **WHEN** the fixture receives stale, disconnected, doubtful-unit, duplicated or expired evidence
+- **THEN** POS/backend SHALL reject weight confirmation and SHALL clear or invalidate the unusable reading.
 

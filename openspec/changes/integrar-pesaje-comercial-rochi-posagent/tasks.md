@@ -1,10 +1,10 @@
 ## 1. Baseline y decisiones de contrato
 
-- [ ] 1.1 Confirmar en código los contratos actuales de `saleType`, `measurementUnit`, terminal activa, `scaleDeviceId`, `enableScale`, modo y origen; verificar que no se creen entidades de producto nuevas.
-- [ ] 1.2 Resolver y documentar el mecanismo existente de confianza local POS/Electron-Agent que vincula una captura con tenant, sucursal, terminal y operación; verificar con una prueba de rechazo de identidad no autorizada.
-- [ ] 1.3 Resolver la política de override manual de peso y su permiso existente, o declarar que no está permitido; verificar que una entrada manual no se etiquete como captura REAL.
-- [ ] 1.4 Decidir si la evidencia de captura viaja transitoriamente por `/sales` o requiere persistencia auditada; verificar atomicidad de venta, impuestos, inventario y facturación en ambos casos antes de implementar.
-- [ ] 1.5 Elegir entre operación única abrir-leer-cerrar y sesión temporal acotada según latencia y UX; verificar que la opción elegida conserve timeout, dueño único, cancelación e invalidación.
+- [x] 1.1 Confirmar en código los contratos actuales de `saleType`, `measurementUnit`, terminal activa, `scaleDeviceId`, `enableScale`, modo y origen; verificar que no se creen entidades de producto nuevas. Evidencia: `/pos-terminals/resolve-current` y `web/domains/peripherals/scale-visibility.ts`.
+- [ ] 1.2 Implementar la autorización backend de corta duración vinculada a tenant, sucursal cuando aplique, terminal, sesión POS, producto, operación y dispositivo; verificar rechazo de identidad no autorizada y replay.
+- [ ] 1.3 Aplicar la política aprobada: sin override manual para `WEIGHT` ni para el modo peso de `BOTH`; verificar que cantidad manual solo aplique a operaciones por unidad y nunca se etiquete como REAL.
+- [ ] 1.4 Transportar evidencia transitoria con expiración y consumo único mediante el flujo comercial existente; verificar consumo atómico con venta, impuestos, inventario y facturación sin persistencia permanente inicial.
+- [ ] 1.5 Implementar una sola operación abrir-leer-cerrar por pesaje; verificar timeout, cierre, dueño único, cancelación e invalidación. Dejar sesión temporal como evolución posterior.
 
 ## 2. Contrato de captura y terminal
 
@@ -12,6 +12,7 @@
 - [ ] 2.2 Implementar la resolución fail-closed de terminal sin balanza, balanza deshabilitada, dispositivo no autorizado, dispositivo ocupado, desconectado y error; verificar aislamiento por tenant, sucursal y terminal.
 - [ ] 2.3 Incorporar configuración explícita de unidad ROCHI y procedimiento de verificación KG sin inferencia desde la trama; verificar rechazo de unidad desconocida, cambio de unidad y configuración inconsistente.
 - [ ] 2.4 Definir TTL, cancelación, cierre, invalidación por error/desconexión y límite de concurrencia; verificar que no sobreviva una lectura usable después de cerrar o perder USB.
+- [x] 2.5 Hacer que la configuración fallida o ausente sea estado seguro sin escala operativa; verificar que no active `FALLBACK_MOCK` para ventas ponderadas. Evidencia: `PosScreen` exige `source=CONFIGURED`, `scaleDeviceId` y `features.scale`.
 
 ## 3. Peripheral Agent real
 
@@ -24,10 +25,13 @@
 ## 4. POS y modelo de venta existente
 
 - [ ] 4.1 Adaptar `PosScreen` y `CartSaleModal` sin duplicar paneles, hooks o stores; verificar estados visibles `Sin balanza configurada`, `Balanza deshabilitada`, disponible, desconectada, error, unidad no verificada, pendiente, inválida y capturada.
-- [ ] 4.2 Mantener `UNIT` operativo sin balanza y bloquear solo los controles que requieran peso; verificar venta normal en terminal sin dispositivo asignado.
-- [ ] 4.3 Implementar elección explícita de unidad o peso para `BOTH`; verificar que cada elección use el flujo correcto y que cambiar de modo invalide una lectura previa.
+- [x] 4.2 Mantener `UNIT` operativo sin balanza y bloquear solo los controles que requieran peso; verificar venta normal en terminal sin dispositivo asignado. Evidencia: el guard solo afecta acciones de pesaje; el agregado por unidad no depende de balanza.
+- [x] 4.3 Implementar elección explícita de unidad o peso para `BOTH`; verificar que cada elección use el flujo correcto y que cancelar no modifique el carrito. Evidencia QA manual 6/6: modal visible, Unidad agrega una vez, Peso muestra aviso sin agregar ni leer MOCK, Cancelar conserva carrito, no aparece UI permanente MOCK y scanner también abre el selector. Fixture reportado: `Contra Muslo` `BOTH/KG`; registro DB no verificado.
 - [ ] 4.4 Mantener la cantidad manual conforme a la política resuelta en 1.3; verificar que nunca se presente como lectura física si no existe autorización.
 - [ ] 4.5 Reemplazar el uso comercial implícito de `mock-scale-001` por la configuración resuelta de terminal; verificar que el fallback MOCK solo aparezca en rutas autorizadas de desarrollo/QA.
+- [x] 4.6 Ocultar completamente en `/pos` todo indicador, panel, peso vivo y control de balanza cuando la terminal no tenga dispositivo asignado y habilitado; verificar que solo exista aviso contextual al intentar pesar. Evidencia: `scaleUiVisible` es falso durante carga, error, `FALLBACK_MOCK`, falta de dispositivo, `features.scale=false` o el fixture documentado `mock-scale-001`.
+- [ ] 4.7 Adaptar la UI para que `Balanza Lista/Listo` solo aparezca con configuración terminal REAL y estado Agent autorizado; verificar estados desconectada, error, unidad no verificada y lectura inválida. Pendiente: esta fase no conecta el Agent REAL ni implementa captura comercial.
+- [ ] 4.8 Ejecutar aceptación con fixture `Contra Muslo` reportado como `BOTH/KG`; verificar unidad sin balanza, peso con ROCHI autorizado y bloqueo contextual sin balanza, sin cambiar sus datos.
 
 ## 5. Backend comercial
 
@@ -43,6 +47,15 @@
 - [ ] 6.3 Cubrir KG verificado, unidad incorrecta, unidad ambigua, lectura stale, trama inválida, timeout, cierre, desconexión, reconexión explícita y eventos tardíos; verificar invalidación inmediata.
 - [ ] 6.4 Cubrir duplicación, concurrencia, cambio de producto, cambio de terminal, cruce de tenant y reutilización de captura; verificar aislamiento y uso único.
 - [ ] 6.5 Cubrir separación MOCK/REAL y compatibilidad del ScaleService existente; verificar que ninguna prueba de simulador habilite una venta REAL.
+- [ ] 6.6 Cubrir visibilidad terminal sin balanza: ningún indicador permanente, ventas `UNIT` operativas y aviso contextual únicamente al intentar `WEIGHT` o peso de `BOTH`. Evidencia manual registrada; cobertura automatizada de componentes sigue pendiente.
+
+### Evidencia QA Fase 1
+
+- Terminal 1: respuesta observada por el operador con `source=CONFIGURED`, `scaleDeviceId=mock-scale-001` y `features.scale=true`.
+- Fixture: `Contra Muslo` reportado como `saleType=BOTH` y `measurementUnit=KG`; no se modificó ni se verificó directamente en DB.
+- Resultado manual: 6/6 PASS para apertura del selector, Unidad una vez, Peso contextual sin MOCK, Cancelar sin cambios, ausencia de UI permanente MOCK y selección desde scanner.
+- Esta evidencia no cubre captura REAL, Agent, backend comercial, ventas productivas, hardware, Linux, empaquetado ni metrología.
+- [ ] 6.7 Cubrir autorización corta, expiración, revocación, replay, evidencia duplicada y consumo único atómico.
 
 ## 7. QA físico y controles de salida
 

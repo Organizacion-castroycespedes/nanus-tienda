@@ -35,7 +35,7 @@ Relevant existing areas:
 
 ### 1. Use an explicit capture operation, not a permanent connection
 
-The preferred lifecycle is one bounded request: resolve authorized configuration, open or acquire the device, synchronize, obtain one fresh reading, normalize to kilograms, return attribution, then close or release safely. A short session may be introduced only if repeated reads during one operator action require it and it preserves the same timeout, owner and invalidation rules.
+The first commercial lifecycle is one bounded request: resolve authorized configuration, open the device, synchronize, obtain one fresh reading, normalize to kilograms, return attribution, then close and invalidate safely. A temporary session is deferred until measured operator latency justifies it and a separate owner, TTL, cancellation and invalidation contract is approved.
 
 Permanent connection was rejected because it increases port contention, startup coupling, stale-reading risk and accidental activation of peripherals.
 
@@ -55,26 +55,66 @@ ROCHI frames do not carry unit or stability metadata. The Agent must use explici
 
 The existing MOCK service and fallback configuration remain useful for development and QA. They must be labeled and must not satisfy a REAL commercial capture. An unavailable configuration or Agent error must not silently resolve to `FALLBACK_MOCK` in a weighted sale.
 
-### 5. Reuse pricing and sale pipelines
+### 5. Use short-lived backend authorization
+
+Before a weighted capture, the authenticated backend creates a short-lived authorization bound to the current tenant, branch when applicable, terminal, POS session, product, operation and configured device. The exact cryptographic or lookup mechanism remains an implementation gate: inspection found JWT/session validation in the API and a typed Electron bridge, but no existing Agent credential or capture token.
+
+The Agent must corroborate the authorization with its local device registry and terminal binding. A frontend-supplied `terminalId` or `deviceId` alone is never proof. The authorization is single-use and expires on timeout, configuration revocation, terminal change, product change or connection loss.
+
+### 6. Use transient capture evidence
+
+Capture evidence travels with the pending commercial operation and contains source `REAL`, verified source unit `KG`, normalized kilograms, capture time, expiry, device, terminal, product, operation and a unique capture identity. Backend consumes it atomically with the existing sale transaction. No permanent scale-capture table is required for the first phase unless later audit or regulatory requirements demonstrate that need.
+
+The existing POS context and sale idempotency flow are reusable, but `Idempotency-Key` alone is not proof of physical origin. It prevents duplicate sale creation, not replay of a scale reading.
+
+### 7. Reuse pricing and sale pipelines
 
 The captured quantity enters the existing cart and `/pricing/preview-line` path. Backend sale validation remains authoritative and recalculates or verifies commercial totals using the existing sale service. Capture evidence is an additional gate, not a second pricing engine.
 
-### 6. Bind capture ownership at the trusted boundary
+### 8. Bind capture ownership at the trusted boundary
 
 Frontend identifiers are hints, not proof. The backend and local Agent must corroborate tenant, branch, active terminal, configured device and operation using existing authorization/configuration mechanisms. The final contract must include a unique capture identity, expiry, source, device, terminal, product/operation association and one-use semantics, without accepting a frontend-only token as authenticity.
 
-### 7. Prefer the existing local transport seam
+### 9. Prefer the existing local transport seam
 
 The implementation should extend the existing local Agent/Electron capability rather than create a remote endpoint or a parallel service. The exact HTTP/IPC shape remains an implementation detail to be selected after confirming the current runtime trust boundary and compatibility with other peripherals.
 
 ## AS-IS and gap
 
 - Product sale model is persisted and validated, but POS handling of `BOTH` is not an explicit mode-selection flow.
-- POS uses `scaleMockEnabled`, reads `mock-scale-001`, and checks MOCK `stable`.
+- POS now resolves the effective terminal configuration before rendering scale UI; the Fase 1 guard does not read `mock-scale-001` or treat MOCK `stable` as commercial evidence.
 - `ScaleService` returns a simulated `1.25 kg`; ROCHI is not wired into the commercial ScaleModule.
 - Terminal settings already expose `scaleDeviceId`, `enableScale`, modes and configuration sources.
 - Device registration/bindings are generic and do not yet prove ROCHI COM/PnP ownership.
 - Current sale payloads carry quantity and price, but no trusted capture evidence.
+- Before Fase 1, `/pos` derived visibility from public feature flags and could render a green `Balanza Lista/Listo` state without proving terminal assignment or REAL availability. Fase 1 removes that path and shows only neutral configured state until the REAL Agent contract exists.
+- Fase 1 also rejects the documented `mock-scale-001` assignment for commercial visibility, even when the API reports `source=CONFIGURED` and `features.scale=true`. This is a bounded compatibility guard, not a definitive REAL-device classification; the resolve contract still needs origin/connection metadata for the final solution.
+- The current cart quantity input does not expose a separate manual-weight permission or audit origin.
+- `Contra Muslo` was reported by the operator as `BOTH` with `KG`, but no matching record was found in accessible repository data; it is a fixture for acceptance, not verified database evidence.
+
+## Terminal visibility rule
+
+When the active terminal has no assigned and enabled scale, `/pos` must render no permanent scale indicator, connection badge, live weight, scale panel or scale-only control. Unit sales remain available. If the operator selects a product or mode that requires weight, POS may show a contextual explanation and stop the capture; that explanation must not become a permanent dashboard state.
+
+When configuration lookup fails, the commercial state is fail-closed: no operational scale controls and no `FALLBACK_MOCK` for a weighted sale. When a scale is configured, the UI may show only a state backed by resolved terminal configuration and Agent status: available REAL, disconnected, error, unit unverified, pending or invalid. `stable=true` from the MOCK service cannot produce `Balanza Lista` for REAL operation.
+
+## Contra Muslo acceptance fixture
+
+The operator-reported fixture is:
+
+- product: `Contra Muslo`;
+- sale model: `BOTH` / Unidad y peso;
+- measurement unit: `KG`.
+
+The fixture must be resolved from the real catalog during implementation if available. If it is absent, tests may use an explicit fixture with these values and must report that the database record was not verified. No price, stock or quantity is assumed.
+
+Required observable behavior:
+
+- unit mode preserves the existing unit/cart/pricing flow without a scale;
+- weight mode requires REAL ROCHI capture and KG verification;
+- a terminal without a configured scale hides permanent scale UI and keeps unit mode usable;
+- a weight attempt without a scale shows only a contextual warning and blocks REAL capture;
+- stale, disconnected, ambiguous-unit, duplicate or expired evidence blocks confirmation.
 
 ## Risks / Trade-offs
 
@@ -95,10 +135,20 @@ The implementation should extend the existing local Agent/Electron capability ra
 5. Run POS-Agent integration tests and physical Windows QA with KG verification.
 6. Roll back by disabling the scale feature or REAL terminal assignment; do not delete product sale fields or alter historical sales.
 
-## Open Questions
+## Approved decisions and remaining implementation gates
 
-- Which existing local authentication or Electron capability is authoritative for binding the Agent response to the active POS operation?
-- Is manual weight override a permitted business policy, and which existing permission should authorize it?
-- Should a capture evidence identifier be carried transiently through `/sales` or persisted for audit? The answer must preserve atomic sale/inventory behavior.
-- Is one open-read-close operation sufficient for operator UX, or is a bounded temporary session required for the weighing interaction?
+Approved for the first phase:
+
+1. Short-lived backend authorization bound to tenant, branch when applicable, terminal, POS session, product, operation and device.
+2. No manual weight substitute for `WEIGHT` or the weight mode of `BOTH`; unit sales remain manual as today.
+3. Transient, expiring, single-use REAL evidence consumed atomically with the sale; no permanent capture persistence initially.
+4. One open-read-close request per weighing operation; temporary sessions are later evolution only.
+5. Physical KG configuration and verification required; no automatic KG/LB or stability inference.
+
+Still requiring technical inspection during implementation:
+
+- exact signature, nonce or server-side lookup mechanism for the authorization;
+- exact bridge/API transport extension compatible with the existing Electron capability;
+- exact place to carry evidence through `/sales` while preserving current DTO validation and idempotency;
+- exact UI state source after terminal configuration resolution and Agent health response.
 

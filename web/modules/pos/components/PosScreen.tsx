@@ -91,10 +91,11 @@ import {
 } from "../../../domains/peripherals/pos-sale-integration";
 import {
   getPeripheralFeatureFlags,
-  readCurrentWeight,
   simulateScannerRead,
   subscribeScannerEvents,
 } from "../../../domains/peripherals/contracts";
+import { resolveCurrentPosTerminalConfig } from "../../../domains/peripherals/terminal-config";
+import { resolvePosScaleUiState } from "../../../domains/peripherals/scale-visibility";
 import type {
   PeripheralOperationError,
   ScannerReadResult,
@@ -554,6 +555,8 @@ export const PosScreen = () => {
   const productViewMode = filters.productViewMode;
   const setProductViewMode = (mode: ProductViewMode) => updateFilters({ productViewMode: mode });
   const [productToolsOpen, setProductToolsOpen] = useState(false);
+  const [bothSelectionProduct, setBothSelectionProduct] =
+    useState<ProductResponse | null>(null);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
@@ -584,6 +587,9 @@ export const PosScreen = () => {
   const [scaleLastResult, setScaleLastResult] = useState<string | null>(null);
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
+  const [scaleConfigState, setScaleConfigState] = useState<
+    "loading" | "unconfigured" | "configured" | "error"
+  >("loading");
 
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -594,6 +600,9 @@ export const PosScreen = () => {
   const scaleMockEnabled =
     peripheralFeatureFlags.peripheralsEnabled &&
     peripheralFeatureFlags.scaleEnabled;
+  const scaleUiVisible = scaleConfigState === "configured";
+  // Fase 1 only resolves terminal visibility. REAL capture belongs to Fase 2.
+  const scaleCaptureControlsVisible = false;
   const mockDeviceControlsEnabled =
     process.env.NODE_ENV !== "production" ||
     process.env.NEXT_PUBLIC_POS_MOCK_DEVICES === "true";
@@ -613,6 +622,35 @@ export const PosScreen = () => {
   const shouldFocusProductSearchRef = useRef(false);
 
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setScaleConfigState("loading");
+    setScaleLastWeight(null);
+    setScaleLastResult(null);
+    setScaleMockStatus("disabled");
+
+    void resolveCurrentPosTerminalConfig({
+      tenantId: authUser?.tenantId,
+      branchId: activeBranchId,
+      terminalId: posTerminalId,
+    })
+      .then((config) => {
+        if (!cancelled) {
+          setScaleConfigState(resolvePosScaleUiState(config));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setScaleConfigState("error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBranchId, authUser?.tenantId, posTerminalId]);
 
   useEffect(() => {
     cartRef.current = cart;
@@ -1337,15 +1375,9 @@ export const PosScreen = () => {
       }, {}),
     [cartWithDerivedValues]
   );
-  const scaleStatusLabel = scaleMockEnabled
-    ? scaleMockStatus === "reading"
-      ? "Leyendo"
-      : scaleMockStatus === "error"
-        ? "Error"
-        : "Lista"
-    : "Desactivada";
+  const scaleStatusLabel = scaleMockStatus === "error" ? "Error" : "Pendiente";
   const scaleStatusTone =
-    scaleMockStatus === "error" || !scaleMockEnabled
+    scaleMockStatus === "error" || !scaleUiVisible
       ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
       : scaleMockStatus === "reading"
         ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
@@ -1640,6 +1672,13 @@ export const PosScreen = () => {
         id: product.id,
         name: product.name,
       });
+
+      if (getProductSaleType(product) === "BOTH") {
+        setBothSelectionProduct(product);
+        setScannerLastResult("Selecciona Unidad o Peso para continuar");
+        return;
+      }
+
       const added = addToCart(product);
       if (!added) {
         setScannerLastResult(`Producto no agregado por scanner: ${product.name}`);
@@ -1748,122 +1787,54 @@ export const PosScreen = () => {
   ]);
 
   useEffect(() => {
-    if (!scaleMockEnabled) {
+    if (!scaleUiVisible) {
       setScaleMockStatus("disabled");
       return;
     }
 
-    setScaleMockStatus((current) => (current === "disabled" ? "ready" : current));
-  }, [scaleMockEnabled]);
+    setScaleMockStatus("disabled");
+  }, [scaleUiVisible]);
 
   const handleReadScaleForProduct = useCallback(
     async (product: ProductResponse) => {
-      if (!scaleMockEnabled) {
-        return;
-      }
-
-      if (!isWeighableProduct(product)) {
-        const message = "Selecciona un producto pesable antes de leer la balanza";
+      if (!scaleUiVisible) {
+        const message = "La balanza no está disponible o autorizada para esta terminal";
         setScaleLastResult(message);
         showToast(message, "warning");
         return;
       }
 
-      setScaleReading(true);
-      setScaleMockStatus("reading");
-      try {
-        const result = await readCurrentWeight({
-          tenantId: authUser?.tenantId,
-          branchId: activeBranchId ?? undefined,
-          terminalId: posTerminalId ?? "local-terminal",
-          deviceId: "mock-scale-001",
-        });
-
-        if (!result.success) {
-          const message =
-            result.error.code === "AGENT_OFFLINE"
-              ? "No se pudo leer la balanza"
-              : result.error.message;
-          setScaleMockStatus("error");
-          setScaleLastResult(message);
-          showToast(message, "warning");
-          return;
-        }
-
-        const weight = Number(result.data.weight);
-        const unit = result.data.unit || "kg";
-
-        if (!result.data.stable) {
-          const message = "Peso inestable, intenta nuevamente";
-          setScaleMockStatus("error");
-          setScaleLastResult(message);
-          showToast(message, "warning");
-          return;
-        }
-
-        if (!Number.isFinite(weight) || weight <= 0) {
-          const message = "Peso invalido, intenta nuevamente";
-          setScaleMockStatus("error");
-          setScaleLastResult(message);
-          showToast(message, "warning");
-          return;
-        }
-
-        const reading = `${formatScaleQuantity(weight)} ${unit}`;
-        setScaleLastWeight(reading);
-
-        const applied = setProductQuantityInCart(product, weight);
-        if (!applied) {
-          setScaleMockStatus("error");
-          setScaleLastResult(`Peso no aplicado: ${reading}`);
-          return;
-        }
-
-        const message = `Peso leído: ${reading}`;
-        setScaleMockStatus("ready");
-        setScaleLastResult(message);
-        void playProductAddedSound();
-        showToast(message, "success");
-        focusProductSearch();
-      } finally {
-        setScaleReading(false);
-      }
+      const message = "La lectura REAL de balanza aún no está disponible";
+      setScaleLastResult(message);
+      showToast(message, "warning");
     },
-    [
-      activeBranchId,
-      authUser?.tenantId,
-      focusProductSearch,
-      playProductAddedSound,
-      posTerminalId,
-      scaleMockEnabled,
-      setProductQuantityInCart,
-      showToast,
-    ]
+    [scaleUiVisible, showToast]
   );
 
   const handleReadScaleFromCart = useCallback(async () => {
-    if (!scaleMockEnabled) {
-      return;
-    }
-
-    if (!firstWeighableCartProduct) {
-      const message = "Selecciona un producto pesable antes de leer la balanza";
+    if (!scaleUiVisible) {
+      const message = "Esta terminal no tiene una balanza configurada y habilitada";
       setScaleLastResult(message);
       showToast(message, "warning");
       return;
     }
 
-    await handleReadScaleForProduct(firstWeighableCartProduct);
-  }, [
-    firstWeighableCartProduct,
-    handleReadScaleForProduct,
-    scaleMockEnabled,
-    showToast,
-  ]);
+    const message = "La lectura REAL de balanza aún no está disponible";
+    setScaleLastResult(message);
+    showToast(message, "warning");
+    return;
+  }, [scaleUiVisible, showToast]);
 
   const handleProductCardAction = useCallback(
     (product: ProductResponse) => {
-      if (getProductSaleType(product) === "WEIGHT") {
+      const saleType = getProductSaleType(product);
+
+      if (saleType === "BOTH") {
+        setBothSelectionProduct(product);
+        return;
+      }
+
+      if (saleType === "WEIGHT") {
         void handleReadScaleForProduct(product);
         return;
       }
@@ -1872,6 +1843,29 @@ export const PosScreen = () => {
     },
     [addToCart, handleReadScaleForProduct]
   );
+
+  const closeBothSelection = useCallback(() => {
+    setBothSelectionProduct(null);
+  }, []);
+
+  const selectBothUnit = useCallback(() => {
+    if (!bothSelectionProduct) {
+      return;
+    }
+
+    addToCart(bothSelectionProduct);
+    setBothSelectionProduct(null);
+  }, [addToCart, bothSelectionProduct]);
+
+  const selectBothWeight = useCallback(() => {
+    if (!bothSelectionProduct) {
+      return;
+    }
+
+    const product = bothSelectionProduct;
+    setBothSelectionProduct(null);
+    void handleReadScaleForProduct(product);
+  }, [bothSelectionProduct, handleReadScaleForProduct]);
 
   const handleSearchKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -2755,6 +2749,40 @@ export const PosScreen = () => {
         ) : null}
       </div>
 
+      {bothSelectionProduct ? (
+        <Modal
+          title="Selecciona la modalidad de venta"
+          description={`${bothSelectionProduct.name} permite vender por unidad o por peso.`}
+          size="md"
+          onClose={closeBothSelection}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={selectBothUnit}
+              className="min-h-24 flex-col gap-1"
+            >
+              <span>Unidad</span>
+              <span className="text-xs font-normal opacity-80">Agregar como unidad</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={selectBothWeight}
+              className="min-h-24 flex-col gap-1"
+            >
+              <span>Peso</span>
+              <span className="text-xs font-normal">Solicitar pesaje</span>
+            </Button>
+          </div>
+          <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+            La modalidad Peso requiere una balanza REAL autorizada. La selección no activa
+            el MOCK ni agrega el producto si el pesaje no está disponible.
+          </p>
+        </Modal>
+      ) : null}
+
       {catalogError ? (
         <section className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
           {catalogError}
@@ -2853,6 +2881,7 @@ export const PosScreen = () => {
                 ) : null}
               </div>
 
+              {scaleUiVisible ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div className="min-w-0">
@@ -2872,13 +2901,11 @@ export const PosScreen = () => {
                                 : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                         }`}
                       >
-                        {scaleMockEnabled
-                          ? scaleMockStatus === "reading"
-                            ? "Leyendo"
-                            : scaleMockStatus === "error"
-                              ? "Error"
-                              : "Listo"
-                          : "Desactivado por feature flag"}
+                        {scaleMockStatus === "reading"
+                          ? "Lectura pendiente"
+                          : scaleMockStatus === "error"
+                            ? "Error"
+                            : "Conexión pendiente"}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
@@ -2890,31 +2917,32 @@ export const PosScreen = () => {
                       {scaleLastResult ? <span>{scaleLastResult}</span> : null}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="md"
-                    isLoading={scaleReading}
-                    disabled={!scaleMockEnabled || scaleReading}
-                    onClick={() => void handleReadScaleFromCart()}
-                    className="xl:mb-0.5"
-                  >
-                    <Scale className="h-4 w-4" />
-                    Leer balanza
-                  </Button>
+                  {scaleCaptureControlsVisible ? (
+                    <Button
+                      variant="outline"
+                      size="md"
+                      isLoading={scaleReading}
+                      disabled={scaleReading}
+                      onClick={() => void handleReadScaleFromCart()}
+                      className="xl:mb-0.5"
+                    >
+                      <Scale className="h-4 w-4" />
+                      Leer balanza
+                    </Button>
+                  ) : null}
                 </div>
               </div>
+              ) : null}
               </>
               ) : null}
 
+              {scaleUiVisible ? (
               <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/70 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
                   >
                     Balanza {scaleStatusLabel}
-                    {scaleMockStatus === "ready" ? (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    ) : null}
                   </span>
                 </div>
                 {scaleMockStatus === "error" ? (
@@ -2978,6 +3006,7 @@ export const PosScreen = () => {
                   </div>
                 </div>
               </div>
+              ) : null}
 
               {/* Filter Chips */}
               <div className="flex flex-wrap items-center gap-1.5">
@@ -3054,16 +3083,17 @@ export const PosScreen = () => {
                   {filteredProducts.map((product) => {
                     const stock = Number(product.stock ?? 0);
                     const productSaleType = getProductSaleType(product);
+                    const isBothProduct = productSaleType === "BOTH";
                     const requiresScale = productSaleType === "WEIGHT";
                     const quantityInCart = cartQuantityByProductId[product.id] ?? 0;
                     const hasProductInCart = quantityInCart > 0;
-                    const actionLabel = requiresScale
-                      ? scaleMockEnabled
-                        ? "Leer balanza"
-                        : "Sin balanza"
-                      : "Agregar";
+                    const actionLabel = isBothProduct
+                      ? "Elegir modalidad"
+                      : requiresScale
+                        ? "Pesar"
+                        : "Agregar";
                     const actionTone = requiresScale
-                      ? scaleMockEnabled
+                      ? scaleUiVisible
                         ? "bg-sky-600 text-white shadow-sm ring-1 ring-sky-500/20 group-hover:bg-sky-700 dark:bg-sky-500 dark:text-slate-950 dark:group-hover:bg-sky-400"
                         : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
                       : "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/20 group-hover:bg-blue-700 dark:bg-blue-500 dark:text-slate-950 dark:group-hover:bg-blue-400";
@@ -3074,7 +3104,8 @@ export const PosScreen = () => {
                     const isProductActionDisabled =
                       stock <= 0 ||
                       !canCreate ||
-                      (requiresScale && (!scaleMockEnabled || scaleReading));
+                      Boolean(bothSelectionProduct) ||
+                      (requiresScale && scaleReading);
 
                     if (productViewMode === "list") {
                       return (
@@ -3146,14 +3177,7 @@ export const PosScreen = () => {
                                   <span
                                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${actionTone}`}
                                   >
-                                    {scaleMockEnabled ? (
-                                      <>
-                                        <Scale className="h-3.5 w-3.5" />
-                                        Leer balanza
-                                      </>
-                                    ) : (
-                                      actionLabel
-                                    )}
+                                    {actionLabel}
                                   </span>
                                 ) : null}
                               </div>
@@ -3164,11 +3188,7 @@ export const PosScreen = () => {
                                 className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
                               >
                                 {requiresScale ? (
-                                  scaleMockEnabled ? (
-                                    <Scale className="h-4 w-4" />
-                                  ) : (
-                                    actionLabel
-                                  )
+                                  actionLabel
                                 ) : (
                                   <Plus className="h-5 w-5" />
                                 )}
@@ -3253,14 +3273,7 @@ export const PosScreen = () => {
                                 className={`inline-flex h-10 min-w-10 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
                               >
                                 {requiresScale ? (
-                                  scaleMockEnabled ? (
-                                    <span className="inline-flex items-center gap-1.5">
-                                      <Scale className="h-4 w-4" />
-                                      Leer
-                                    </span>
-                          ) : (
-                                    actionLabel
-                                  )
+                                  actionLabel
                                 ) : (
                                   <Plus className="h-5 w-5" />
                                 )}
@@ -3286,7 +3299,7 @@ export const PosScreen = () => {
         canCharge={canCharge}
         hasPricingPending={hasPricingPending}
         pricingErrorMessage={pricingErrorMessage}
-        scaleMockEnabled={scaleMockEnabled}
+        scaleControlsVisible={scaleCaptureControlsVisible}
         scaleReading={scaleReading}
         resolvePresentation={resolveCartItemPresentation}
         formatCurrency={formatCurrency}
