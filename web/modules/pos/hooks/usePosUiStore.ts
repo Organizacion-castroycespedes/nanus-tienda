@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   closeCartSheet,
@@ -13,14 +13,38 @@ export const usePosUiStore = () => {
   const dispatch = useAppDispatch();
   const posUi = useAppSelector((state) => state.posUi);
 
+  const setCartSheetOpenAction = useCallback(
+    (open: boolean) => dispatch(setCartSheetOpen(open)),
+    [dispatch]
+  );
+  const openCartSheetAction = useCallback(
+    () => dispatch(openCartSheet()),
+    [dispatch]
+  );
+  const closeCartSheetAction = useCallback(
+    () => dispatch(closeCartSheet()),
+    [dispatch]
+  );
+  const toggleCartSheetAction = useCallback(
+    () => dispatch(toggleCartSheet()),
+    [dispatch]
+  );
+
   return useMemo(
     () => ({
       ...posUi,
-      setCartSheetOpen: (open: boolean) => dispatch(setCartSheetOpen(open)),
-      openCartSheet: () => dispatch(openCartSheet()),
-      closeCartSheet: () => dispatch(closeCartSheet()),
-      toggleCartSheet: () => dispatch(toggleCartSheet()),
+      setCartSheetOpen: setCartSheetOpenAction,
+      openCartSheet: openCartSheetAction,
+      closeCartSheet: closeCartSheetAction,
+      toggleCartSheet: toggleCartSheetAction,
     }),
-    [dispatch, posUi]
+    [
+      posUi,
+      setCartSheetOpenAction,
+      openCartSheetAction,
+      closeCartSheetAction,
+      toggleCartSheetAction,
+    ]
   );
 };
+
