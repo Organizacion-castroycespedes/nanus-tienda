@@ -1201,61 +1201,83 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          <div className={`mb-3 flex items-center gap-2.5 ${isSidebarCompact ? "lg:justify-center" : ""}`}>
-            <div className={`flex min-w-0 items-center gap-2 ${isSidebarCompact ? "lg:flex-col" : ""}`}>
-              {brandingLogo ? (
-                <img
-                  src={brandingLogo}
-                  alt="Logo empresa"
-                  className="h-8 w-8 xl:h-9 xl:w-9 shrink-0 rounded-lg object-contain p-0.5"
-                  style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
-                />
-              ) : (
-                <div
-                  className="flex h-8 w-8 xl:h-9 xl:w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
-                  style={{
-                    backgroundColor: tenantTheme.sidebar.logoBackground,
-                    color: tenantTheme.sidebar.logoText,
-                  }}
-                >
-                  {companyInitials}
-                </div>
-              )}
-              {!isSidebarCompact ? (
+          {isSidebarCompact ? (
+            <div className="mb-4 flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)]"
+                style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
+                title={`Expandir menú (${sidebarCompanyName})`}
+                aria-label={`Expandir menú (${sidebarCompanyName})`}
+              >
+                {brandingLogo ? (
+                  <img
+                    src={brandingLogo}
+                    alt="Logo empresa"
+                    className="h-8 w-8 rounded-lg object-contain p-0.5"
+                  />
+                ) : (
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: tenantTheme.sidebar.logoText }}
+                  >
+                    {companyInitials}
+                  </span>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="mb-3 flex items-center justify-between gap-2.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                {brandingLogo ? (
+                  <img
+                    src={brandingLogo}
+                    alt="Logo empresa"
+                    className="h-9 w-9 shrink-0 rounded-xl object-contain p-1"
+                    style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
+                  />
+                ) : (
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                    style={{
+                      backgroundColor: tenantTheme.sidebar.logoBackground,
+                      color: tenantTheme.sidebar.logoText,
+                    }}
+                  >
+                    {companyInitials}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
+                  <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]" title={sidebarCompanyName}>
                     {sidebarCompanyName}
                   </p>
                   <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
                     Manus POS
                   </p>
                 </div>
-              ) : null}
-            </div>
-            <div className={`ml-auto flex items-center gap-1.5 ${isSidebarCompact ? "lg:ml-0" : ""}`}>
-              <button
-                type="button"
-                className="hidden h-7 w-7 xl:h-8 xl:w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
-                aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
-                onClick={() => setSidebarCollapsed((prev) => !prev)}
-                title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5" />
-                ) : (
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
+                  aria-label="Colapsar menú lateral"
+                  title="Colapsar menú lateral"
+                  onClick={() => setSidebarCollapsed(true)}
+                >
                   <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="grid h-7 w-7 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
-                aria-label="Cerrar menu lateral"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <X className="h-4 w-4" />
-              </button>
+                </button>
+                <button
+                  type="button"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
+                  aria-label="Cerrar menú lateral"
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           <nav className="mt-2 flex-1 pb-2" aria-label="Navegacion principal">
             {renderMenuSections(menuSections, "primary")}
             {Object.keys(mainMenuSections).length > 0 ? (
