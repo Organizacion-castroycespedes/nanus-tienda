@@ -13,6 +13,7 @@ import {
   ArrowUpDown,
   BarChart3,
   Bell,
+  Bike,
   Building,
   Building2,
   Calculator,
@@ -105,6 +106,9 @@ const iconByName: Record<string, LucideIcon> = {
   grid3x3: Grid3X3,
   tags: Tags,
   truck: Truck,
+  bike: Bike,
+  motorcycle: Bike,
+  moto: Bike,
   calculator: Calculator,
   clipboardlist: ClipboardList,
   receipttext: ReceiptText,
@@ -137,7 +141,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openMenuItems, setOpenMenuItems] = useState<Record<string, boolean>>({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -233,8 +237,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
-  const desktopSidebarWidthClass = sidebarCollapsed ? "xl:w-20 xl:px-3" : "xl:w-72 xl:px-4";
-  const isSidebarCompact = sidebarCollapsed;
+  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-64 xl:w-64 lg:px-3 xl:px-4";
+  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -247,12 +251,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   useAutoClearState(toastMessage, setToastMessage);
-
-  useEffect(() => {
-    if (isPosRoute) {
-      setSidebarCollapsed(true);
-    }
-  }, [isPosRoute]);
 
   useEffect(() => {
     const handleConnectivityState = (event: Event) => {
@@ -324,9 +322,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    setSidebarCollapsed(
-      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true"
+    const storedCollapsed = window.localStorage.getItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY
     );
+    if (storedCollapsed !== null) {
+      setSidebarCollapsed(storedCollapsed === "true");
+    }
 
     const storedOpenMenuItems = window.localStorage.getItem(
       SIDEBAR_MENU_STATE_STORAGE_KEY
@@ -630,6 +631,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [isDashboardItem, menuItems]);
 
   const getMenuIcon = (label: string, module: string, iconName?: string | null) => {
+    const key = `${module} ${label}`.toLowerCase();
+    if (key.includes("pedido") || key.includes("order")) {
+      return Bike;
+    }
     if (iconName?.trim()) {
       const normalized = normalizeIconName(iconName);
       const explicitIcon = iconByName[normalized];
@@ -637,7 +642,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         return explicitIcon;
       }
     }
-    const key = `${module} ${label}`.toLowerCase();
     if (key.includes("dashboard") || key.includes("inicio")) {
       return LayoutDashboard;
     }
@@ -719,10 +723,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         return (
           <li key={item.key}>
             <div
-              className={`group relative flex items-center gap-2 overflow-hidden transition-all duration-200 ${
+              className={`group relative flex items-center gap-1.5 xl:gap-2 overflow-hidden transition-all duration-200 ${
                 depth > 0
-                  ? "rounded-lg text-[13px]"
-                  : "rounded-xl px-3 py-2 text-sm"
+                  ? "rounded-lg text-[12px] xl:text-[13px]"
+                  : "rounded-xl px-2.5 py-1.5 xl:px-3 xl:py-2 text-xs xl:text-sm"
               } ${
                 isVisuallyActive
                   ? "bg-[var(--brand-sidebar-active)] text-[var(--brand-sidebar-active-text)] shadow-sm"
@@ -734,7 +738,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <span
                 aria-hidden="true"
                 className={`absolute left-0 w-0.5 rounded-r-full transition-all duration-200 group-hover:opacity-70 ${
-                  depth > 0 ? "inset-y-1" : "inset-y-2"
+                  depth > 0 ? "inset-y-1" : "inset-y-1.5"
                 }`}
                 style={menuItemStyles.indicator}
               />
@@ -742,7 +746,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 href={effectiveRoute}
                 aria-current={isDirectActive ? "page" : undefined}
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
-                  depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
+                  depth > 0 ? "gap-2 px-2 py-1 text-[12px] xl:text-[13px] font-medium" : "gap-2.5 xl:gap-3 text-xs xl:text-sm font-semibold"
                 } ${
                   isSidebarCompact ? "justify-center" : ""
                 }`}
@@ -762,27 +766,27 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   />
                 ) : (
                   <span
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-all duration-200"
-                  style={{
-                    backgroundColor: String(menuItemStyles.icon.backgroundColor),
-                    color: String(menuItemStyles.icon.color),
-                  }}
+                    className="grid h-7 w-7 xl:h-8 xl:w-8 shrink-0 place-items-center rounded-lg transition-all duration-200"
+                    style={{
+                      backgroundColor: String(menuItemStyles.icon.backgroundColor),
+                      color: String(menuItemStyles.icon.color),
+                    }}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-3.5 w-3.5 xl:h-4 xl:w-4" />
                   </span>
                 )}
                 {!isSidebarCompact ? (
-                  <span className="flex min-w-0 flex-1 flex-col leading-5">
+                  <span className="flex min-w-0 flex-1 flex-col leading-snug">
                     <span className="truncate">{item.label}</span>
                     {posRequiresCash ? (
-                      <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] opacity-75">
+                      <span className="truncate text-[9px] xl:text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
                         Requiere caja
                       </span>
                     ) : null}
                   </span>
                 ) : null}
               </Link>
-              {hasChildren ? (
+              {hasChildren && !isSidebarCompact ? (
                 <button
                   type="button"
                   className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
@@ -793,11 +797,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   aria-label={isExpanded ? "Colapsar submenu" : "Expandir submenu"}
                   aria-expanded={isExpanded}
                   style={menuItemStyles.chevron}
-                  title={
-                    isSidebarCompact
-                      ? `${isExpanded ? "Colapsar" : "Expandir"} ${item.label}`
-                      : undefined
-                  }
                   onClick={() =>
                     setOpenMenuItems((prev) => ({
                       ...prev,
@@ -823,18 +822,18 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   const renderMenuSections = (sections: Record<string, MenuItem[]>, prefix: string) => (
-    <ul className="space-y-2 text-sm">
+    <ul className="space-y-1.5 text-sm">
       {Object.entries(sections).map(([section, items]) => {
         const sectionKey = `${prefix}:${section}`;
         const isExpanded = openSections[sectionKey] ?? true;
         return (
           <li
             key={sectionKey}
-            className="border-t pt-2 first:border-t-0 first:pt-0"
+            className="border-t pt-1.5 first:border-t-0 first:pt-0"
             style={{ borderColor: tenantTheme.sidebar.border }}
           >
             {!isSidebarCompact ? (
-              <p className="mb-2 mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--brand-sidebar-muted)] opacity-70">
+              <p className="mb-1.5 mt-0.5 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
                 {section}
               </p>
             ) : null}
@@ -1187,13 +1186,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
         aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 ${desktopSidebarWidthClass} ${
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-3 py-3 shadow-2xl transition-all duration-300 lg:sticky lg:top-0 lg:z-30 lg:translate-x-0 ${desktopSidebarWidthClass} ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1202,200 +1201,227 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "xl:justify-center" : ""}`}>
-            <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "xl:flex-col" : ""}`}>
-              {brandingLogo ? (
-                <img
-                  src={brandingLogo}
-                  alt="Logo empresa"
-                  className="h-10 w-10 shrink-0 rounded-xl object-contain p-1"
-                  style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
-                />
-              ) : (
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-                  style={{
-                    backgroundColor: tenantTheme.sidebar.logoBackground,
-                    color: tenantTheme.sidebar.logoText,
-                  }}
-                >
-                  {companyInitials}
-                </div>
-              )}
-              {!isSidebarCompact ? (
+          {isSidebarCompact ? (
+            <div className="mb-4 flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)]"
+                style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
+                title={`Expandir menú (${sidebarCompanyName})`}
+                aria-label={`Expandir menú (${sidebarCompanyName})`}
+              >
+                {brandingLogo ? (
+                  <img
+                    src={brandingLogo}
+                    alt="Logo empresa"
+                    className="h-8 w-8 rounded-lg object-contain p-0.5"
+                  />
+                ) : (
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: tenantTheme.sidebar.logoText }}
+                  >
+                    {companyInitials}
+                  </span>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="mb-3 flex items-center justify-between gap-2.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                {brandingLogo ? (
+                  <img
+                    src={brandingLogo}
+                    alt="Logo empresa"
+                    className="h-9 w-9 shrink-0 rounded-xl object-contain p-1"
+                    style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
+                  />
+                ) : (
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                    style={{
+                      backgroundColor: tenantTheme.sidebar.logoBackground,
+                      color: tenantTheme.sidebar.logoText,
+                    }}
+                  >
+                    {companyInitials}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
+                  <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]" title={sidebarCompanyName}>
                     {sidebarCompanyName}
                   </p>
-                  <p className="truncate text-xs text-[var(--brand-sidebar-muted)]">
+                  <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
                     Manus POS
                   </p>
                 </div>
-              ) : null}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
+                  aria-label="Colapsar menú lateral"
+                  title="Colapsar menú lateral"
+                  onClick={() => setSidebarCollapsed(true)}
+                >
+                  <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
+                  aria-label="Cerrar menú lateral"
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-            <div className={`ml-auto flex items-center gap-2 ${isSidebarCompact ? "xl:ml-0" : ""}`}>
-              <button
-                type="button"
-                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:grid"
-                aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
-                onClick={() => setSidebarCollapsed((prev) => !prev)}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronRight className="h-5 w-5" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 rotate-180" />
-                )}
-              </button>
-              <button
-                type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:hidden"
-                aria-label="Cerrar menu lateral"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-          <nav className="mt-4 flex-1 pb-2" aria-label="Navegacion principal">
+          )}
+          <nav className="mt-2 flex-1 pb-2" aria-label="Navegacion principal">
             {renderMenuSections(menuSections, "primary")}
             {Object.keys(mainMenuSections).length > 0 ? (
               <>
-                <div className="mt-4 px-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--brand-sidebar-muted)]">
-                  Menu principal
+                <div className="mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
+                  {!isSidebarCompact ? "Menu principal" : null}
                 </div>
-                <div className="mt-1.5">{renderMenuSections(mainMenuSections, "main")}</div>
+                <div className="mt-1">{renderMenuSections(mainMenuSections, "main")}</div>
               </>
             ) : null}
           </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b bg-[var(--brand-header-bg)]/90 px-4 py-4 shadow-sm backdrop-blur-md md:px-6"
+            className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-[var(--brand-header-bg)]/95 px-3 shadow-sm backdrop-blur-md md:px-4 lg:px-5"
             style={{ borderColor: tenantTheme.header.border }}
           >
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2 lg:gap-2.5">
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 onClick={() => {
+                  if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+                    setSidebarCollapsed((previous) => !previous);
+                    return;
+                  }
                   setSidebarOpen((previous) => !previous);
                 }}
-                aria-label={sidebarOpen ? "Cerrar menu lateral" : "Abrir menu lateral"}
+                aria-label={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
+                title={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-4 w-4" />
               </button>
               <div className="min-w-0">
                 {hasPosOperationalContext ? (
-                  <div className="space-y-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      {posOperationalRole ? (
-                        <span
-                          className="inline-flex max-w-[7.5rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--brand-header-text)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                          title={posOperationalRole}
-                        >
-                          <span className="truncate">{posOperationalRole}</span>
-                        </span>
-                      ) : null}
-                      {posOperationalTerminal ? (
-                        <span
-                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                          title={posOperationalTerminal}
-                        >
-                          <span className="truncate">{posOperationalTerminal}</span>
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex max-w-[10rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-muted)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                        >
-                          Terminal no disponible
-                        </span>
-                      )}
-                      {posOperationalBranch ? (
-                        <span
-                          className="inline-flex max-w-[12rem] items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold text-[var(--brand-header-text)]"
-                          style={{
-                            borderColor: tenantTheme.header.iconButtonBorder,
-                            backgroundColor: tenantTheme.header.iconButtonBackground,
-                          }}
-                          title={posOperationalBranch}
-                        >
-                          <span className="truncate">{posOperationalBranch}</span>
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--brand-header-muted)]">
+                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                    {posOperationalRole ? (
+                      <span
+                        className="inline-flex max-w-[6.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalRole}
+                      >
+                        <span className="truncate">{posOperationalRole}</span>
+                      </span>
+                    ) : null}
+                    {posOperationalTerminal ? (
+                      <span
+                        className="inline-flex max-w-[7.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalTerminal}
+                      >
+                        <span className="truncate">{posOperationalTerminal}</span>
+                      </span>
+                    ) : (
+                      <span
+                        className="hidden sm:inline-flex max-w-[8rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-header-muted)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                      >
+                        Terminal N/A
+                      </span>
+                    )}
+                    {posOperationalBranch ? (
+                      <span
+                        className="hidden md:inline-flex max-w-[9rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalBranch}
+                      >
+                        <span className="truncate">{posOperationalBranch}</span>
+                      </span>
+                    ) : null}
+                    <span className="hidden xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
                       {posOperationalDate} · {posOperationalTime}
-                    </p>
+                    </span>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-[var(--brand-header-muted)]">
-                      Sistema
-                    </p>
-                    <h1 className="text-lg font-semibold text-[var(--brand-header-text)]">
+                    <h1 className="truncate text-sm font-semibold text-[var(--brand-header-text)]">
                       Panel de control
                     </h1>
                   </div>
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <Link
                 href={`/${tenantSlug}/dashboard`}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-primary)] px-4 py-2 text-sm font-semibold text-[var(--brand-sidebar-active-text)] shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
-                  backgroundColor: tenantTheme.header.actionBackground,
-                  color: tenantTheme.header.actionText,
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Ir al dashboard"
+                title="Ir al dashboard"
               >
                 <LayoutDashboard className="h-4 w-4" />
               </Link>
               <button
                 type="button"
-                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Ver notificaciones"
+                title="Notificaciones"
               >
-                <Bell className="h-5 w-5" />
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[var(--brand-primary)]" />
+                <Bell className="h-4 w-4" />
+                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[var(--brand-primary)]" />
               </button>
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Mensajes"
+                title="Mensajes"
               >
-                <MessageCircle className="h-5 w-5" />
+                <MessageCircle className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                className="relative rounded-lg border p-2 text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1426,12 +1452,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }
               >
                 {connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE" ? (
-                  <WifiOff className="h-5 w-5" aria-hidden="true" />
+                  <WifiOff className="h-4 w-4" aria-hidden="true" />
                 ) : (
-                  <Wifi className="h-5 w-5" aria-hidden="true" />
+                  <Wifi className="h-4 w-4" aria-hidden="true" />
                 )}
                 <span
-                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${
                     connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE"
                       ? "bg-rose-500"
                       : connectivityState === "RECONNECTING"
@@ -1443,7 +1469,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="relative rounded-lg border p-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1474,13 +1500,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }
               >
                 <Printer
-                  className={`h-5 w-5 ${
+                  className={`h-4 w-4 ${
                     printerSocketStatus === "CONNECTING" ? "animate-pulse" : ""
                   }`}
                   aria-hidden="true"
                 />
                 <span
-                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ${
+                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${
                     printerSocketStatus === "CONNECTED"
                       ? "bg-emerald-500"
                       : printerSocketStatus === "CONNECTING"
@@ -1494,25 +1520,25 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 isPosRoute ? (
                   <button
                     type="button"
-                    className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    className="relative grid h-8 w-8 place-items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
                     aria-label={`Abrir carrito con ${posCartItemCount} items pendientes`}
                     title={`Venta POS pendiente: ${posCartItemCount} items`}
                     onClick={() => openCartSheet()}
                   >
-                    <ShoppingCart className="h-5 w-5" />
-                    <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white">
                       {posCartItemCount}
                     </span>
                   </button>
                 ) : (
                   <Link
                     href={`/${tenantSlug}/pos`}
-                    className="relative inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    className="relative grid h-8 w-8 place-items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
                     aria-label={`Volver al POS con ${posCartItemCount} items pendientes`}
                     title={`Venta POS pendiente: ${posCartItemCount} items`}
                   >
-                    <ShoppingCart className="h-5 w-5" />
-                    <span className="absolute -right-2 -top-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                    <ShoppingCart className="h-4 w-4" />
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-white">
                       {posCartItemCount}
                     </span>
                   </Link>
@@ -1521,7 +1547,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <div className="relative">
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[var(--brand-header-text)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  className="flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                   style={{
                     borderColor: tenantTheme.header.iconButtonBorder,
                     backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1532,11 +1558,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   aria-expanded={userMenuOpen}
                   aria-label="Abrir menu de usuario"
                 >
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <span className="max-w-[160px] truncate">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="max-w-[90px] sm:max-w-[120px] truncate">
                     {authUser?.name || "Usuario"}
                   </span>
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
                 </button>
                 {userMenuOpen && (
                   <div
@@ -1571,16 +1597,17 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
               <button
                 type="button"
-                className="rounded-full border p-2 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 aria-label="Cerrar sesion"
+                title="Cerrar sesión"
                 onClick={() => logout()}
               >
-                <LogOut className="h-5 w-5" />
+                <LogOut className="h-4 w-4" />
               </button>
             </div>
           </header>
