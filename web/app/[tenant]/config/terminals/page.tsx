@@ -17,6 +17,7 @@ import {
 import type { TerminalResponse } from "../../../../modules/terminals/services/terminals.service";
 import { buildTerminalPeripheralsPath } from "../../../../modules/terminals/utils/terminal-links";
 import { TerminalDeviceBindingPanel } from "../../../../modules/terminals/components/TerminalDeviceBindingPanel";
+import { TerminalPosSessionPanel } from "../../../../modules/terminals/components/TerminalPosSessionPanel";
 
 type TerminalFilters = {
   query: string;
@@ -69,6 +70,7 @@ const TerminalsPage = () => {
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedTerminal, setSelectedTerminal] = useState<TerminalResponse | null>(null);
   const [bindingTerminal, setBindingTerminal] = useState<TerminalResponse | null>(null);
+  const [sessionTerminal, setSessionTerminal] = useState<TerminalResponse | null>(null);
   const [form, setForm] = useState<TerminalFormState>(emptyForm);
 
   const {
@@ -285,6 +287,10 @@ const TerminalsPage = () => {
     setBindingTerminal(terminal);
   };
 
+  const openSessionPanel = (terminal: TerminalResponse) => {
+    setSessionTerminal(terminal);
+  };
+
   if (authUser?.role !== "SUPER_ADMIN") {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
@@ -459,6 +465,13 @@ const TerminalsPage = () => {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => openSessionPanel(terminal)}
+                        >
+                          Administrar sesiones POS
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => handleConfigurePeripherals(terminal)}
                         >
                           Configurar periféricos
@@ -510,6 +523,14 @@ const TerminalsPage = () => {
         <TerminalDeviceBindingPanel
           terminal={bindingTerminal}
           onClose={() => setBindingTerminal(null)}
+        />
+      ) : null}
+
+      {sessionTerminal ? (
+        <TerminalPosSessionPanel
+          key={sessionTerminal.id}
+          terminal={sessionTerminal}
+          onClose={() => setSessionTerminal(null)}
         />
       ) : null}
 
