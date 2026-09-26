@@ -2,3 +2,4 @@
 desktop/electron/resources/manus-shell.config.json text eol=lf
 backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json text eol=lf
 backend-perifericos/windows-installer/assets/pos/LICENSE.electron.txt text eol=lf
+*.bat text eol=crlf
