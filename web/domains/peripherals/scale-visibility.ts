@@ -8,33 +8,33 @@ export type PosScaleUiState =
 
 type PosScaleConfig = Pick<
   PosTerminalResolvedConfig,
-  "source" | "scaleDeviceId"
+  "source" | "scaleDeviceId" | "scale"
 > & {
   features: Pick<PosTerminalFeatureFlags, "scale">;
 };
-
-/**
- * These IDs are development fixtures, not evidence of a physical scale.
- * Keep this list explicit until the resolve-current contract exposes device
- * origin/connection type for the assigned SCALE device.
- */
-export const DOCUMENTED_MOCK_SCALE_DEVICE_IDS = new Set([
-  "mock-scale-001",
-]);
 
 export const resolvePosScaleUiState = (
   config: PosScaleConfig | null | undefined
 ): Exclude<PosScaleUiState, "loading" | "error"> => {
   const deviceId = config?.scaleDeviceId?.trim();
+  const scale = config?.scale;
 
-  if (!deviceId) {
+  if (!deviceId || !scale) {
+    return "unconfigured";
+  }
+
+  if (
+    scale.assignment !== "ASSIGNED" ||
+    scale.deviceId !== deviceId ||
+    scale.classification === "MOCK"
+  ) {
     return "unconfigured";
   }
 
   if (
     config?.source === "CONFIGURED" &&
     config.features.scale === true &&
-    !DOCUMENTED_MOCK_SCALE_DEVICE_IDS.has(deviceId)
+    scale.classification === "UNKNOWN"
   ) {
     return "configured";
   }

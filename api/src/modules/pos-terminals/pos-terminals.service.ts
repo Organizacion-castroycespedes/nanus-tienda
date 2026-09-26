@@ -54,6 +54,10 @@ export type ResolveCurrentPosTerminalFilters = {
   terminalCode?: string;
 };
 
+export type PosTerminalScaleClassification = "MOCK" | "UNKNOWN";
+
+const DOCUMENTED_MOCK_SCALE_DEVICE_IDS = new Set(["mock-scale-001"]);
+
 const allowedModes: PosTerminalMode[] = ["MOCK", "REAL", "HYBRID"];
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -344,6 +348,21 @@ export class PosTerminalsService {
     };
   }
 
+  private classifyScaleDevice(deviceId: string | null) {
+    const normalized = deviceId?.trim().toLowerCase() ?? "";
+    return {
+      assignment: normalized ? ("ASSIGNED" as const) : ("NONE" as const),
+      classification: DOCUMENTED_MOCK_SCALE_DEVICE_IDS.has(normalized)
+        ? ("MOCK" as const)
+        : ("UNKNOWN" as const),
+      deviceId: deviceId?.trim() || null,
+    } satisfies {
+      assignment: "ASSIGNED" | "NONE";
+      classification: PosTerminalScaleClassification;
+      deviceId: string | null;
+    };
+  }
+
   private buildResolvedResponse(
     terminal: PosTerminalRecord | null,
     settings: PosTerminalPeripheralSettingsRecord | null,
@@ -358,6 +377,7 @@ export class PosTerminalsService {
       settings,
       !terminal || terminal.mode === "MOCK"
     );
+    const scale = this.classifyScaleDevice(mappedSettings.scaleDeviceId);
 
     if (!terminal) {
       return {
@@ -375,6 +395,7 @@ export class PosTerminalsService {
         mode: "MOCK" as PosTerminalMode,
         active: true,
         source,
+        scale,
         ...mappedSettings,
       };
     }
@@ -394,6 +415,7 @@ export class PosTerminalsService {
       mode: terminal.mode,
       active: terminal.active,
       source,
+      scale,
       ...mappedSettings,
     };
   }
@@ -417,6 +439,7 @@ export class PosTerminalsService {
       mode: peripheralProfile?.mode ?? null,
       active: operationalTerminal.is_active,
       source: "OPERATIONAL_UNCONFIGURED" as const,
+      scale: this.classifyScaleDevice(null),
       ...this.mapSettings(null, false),
     };
   }

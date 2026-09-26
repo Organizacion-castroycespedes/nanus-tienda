@@ -14,7 +14,9 @@
 - [ ] 2.4 Definir TTL, cancelación, cierre, invalidación por error/desconexión y límite de concurrencia; verificar que no sobreviva una lectura usable después de cerrar o perder USB.
 - [x] 2.5 Hacer que la configuración fallida o ausente sea estado seguro sin escala operativa; verificar que no active `FALLBACK_MOCK` para ventas ponderadas. Evidencia: `PosScreen` exige `source=CONFIGURED`, `scaleDeviceId` y `features.scale`.
 - [ ] 2.6 Fase 2A documental: cerrar la matriz de identidad tenant--sucursal--terminal--instalación Agent--SCALE y sus restricciones de pertenencia. La relación propuesta está documentada; implementación y QA pendientes.
-- [ ] 2.7 Fase 2A documental: definir la extensión aditiva de `resolve-current` para clasificación MOCK/REAL, autorización, estado físico y unidad KG sin tratar `CONFIGURED` como conexión. DTO y endpoint aún no se modifican.
+- [x] 2.7 Implementar la extensión aditiva conservadora de `resolve-current`: `scale.assignment`, `scale.classification` y `scale.deviceId`. `mock-scale-001` es `MOCK`; asignaciones no MOCK son `UNKNOWN` y no prueban REAL. Evidencia: servicio POS, pruebas backend y helper de visibilidad.
+
+- [x] 2.8 Fase 2B: publicar la clasificacion conservadora del SCALE asignado en `resolve-current` y consumirla en la visibilidad POS. `MOCK` solo representa el fixture documentado; `UNKNOWN` no habilita captura REAL. Evidencia: servicio POS, tipos web, helper y pruebas focalizadas.
 
 ## 3. Peripheral Agent real
 

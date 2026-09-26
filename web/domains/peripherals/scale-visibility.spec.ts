@@ -7,11 +7,21 @@ const configured = (
     source: "CONFIGURED" | "FALLBACK_MOCK" | "OPERATIONAL_UNCONFIGURED";
     scaleDeviceId: string | null;
     features: { scale: boolean };
+    scale: {
+      assignment: "ASSIGNED" | "NONE";
+      classification: "MOCK" | "UNKNOWN";
+      deviceId: string | null;
+    };
   }> = {}
 ) => ({
   source: "CONFIGURED" as const,
   scaleDeviceId: "scale-rochi-01",
   features: { scale: true },
+  scale: {
+    assignment: "ASSIGNED" as const,
+    classification: "UNKNOWN" as const,
+    deviceId: "scale-rochi-01",
+  },
   ...overrides,
 });
 
@@ -41,4 +51,30 @@ test("oculta una asignación CONFIGURED que usa el fixture MOCK documentado", ()
 
 test("permite mostrar la sección solo con asignación administrativa efectiva", () => {
   assert.equal(resolvePosScaleUiState(configured()), "configured");
+});
+
+test("oculta una asignacion sin vinculacion efectiva", () => {
+  assert.equal(
+    resolvePosScaleUiState(
+      configured({
+        scale: { assignment: "NONE", classification: "UNKNOWN", deviceId: null },
+      })
+    ),
+    "unconfigured"
+  );
+});
+
+test("oculta una respuesta incompatible entre ID y clasificacion", () => {
+  assert.equal(
+    resolvePosScaleUiState(
+      configured({
+        scale: {
+          assignment: "ASSIGNED",
+          classification: "UNKNOWN",
+          deviceId: "otro-scale",
+        },
+      })
+    ),
+    "unconfigured"
+  );
 });

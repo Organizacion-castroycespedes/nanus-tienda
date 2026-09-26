@@ -152,6 +152,20 @@ Still requiring technical inspection during implementation:
 - exact place to carry evidence through `/sales` while preserving current DTO validation and idempotency;
 - exact UI state source after terminal configuration resolution and Agent health response.
 
+### Fase 2B implementada: extension conservadora de `resolve-current`
+
+La respuesta incorpora de forma aditiva un bloque `scale` separado de `settings`:
+
+```text
+scale: {
+  assignment: ASSIGNED | NONE,
+  deviceId: string | null,
+  classification: MOCK | UNKNOWN
+}
+```
+
+`MOCK` solo se emite para el fixture documentado `mock-scale-001`. Un ID distinto no se interpreta como REAL: se emite `UNKNOWN`. `assignment=ASSIGNED` prueba asignacion administrativa dentro del terminal autorizado, no posesion fisica, conexion, unidad KG ni disponibilidad. La clasificacion REAL/Agent, estados fisicos, autorizacion y revocacion durante pesaje requieren una fase posterior. Ante ausencia o error, POS falla cerrado.
+
 ## Fase 2A — identidad, registro y vinculación
 
 Esta sección es diseño documental. Los contratos descritos como propuestos no existen todavía y no deben ser consumidos por POS ni por ventas.

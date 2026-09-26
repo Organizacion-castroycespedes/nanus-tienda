@@ -38,6 +38,8 @@ Manus ya guarda el modelo de venta `UNIT`, `WEIGHT` y `BOTH`. El flujo de `/pos`
 - QA: simulador, pruebas de integración POS-Agent y QA físico posterior, sin declarar homologación metrológica.
 - Dependencia: `integrar-balanza-rochi-a01e` permanece independiente y conserva pendiente su tarea 4.6.
 
+Fase 2B implementa una extension aditiva minima en `resolve-current`: `scale.assignment`, `scale.classification` y `scale.deviceId`. El backend clasifica `mock-scale-001` como `MOCK` y cualquier otra asignacion como `UNKNOWN`; no inventa `REAL`. La vinculacion verificable tenant--sucursal--terminal--instalacion Agent--dispositivo SCALE, la autorizacion corta y la prueba de posesion del Agent siguen pendientes. No se acepta `UNKNOWN`, un `scaleDeviceId` no vacio ni `source=CONFIGURED` como prueba REAL.
+
 ## Fase 2A documental: identidad y vinculación REAL/MOCK
 
 Esta fase solo precisa el diseño. No implementa API, Agent, persistencia, UI administrativa ni lectura física.

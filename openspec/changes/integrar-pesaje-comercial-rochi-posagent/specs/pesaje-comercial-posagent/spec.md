@@ -246,11 +246,15 @@ The system SHALL distinguish commercial tenant, branch, terminal, Agent installa
 
 ### Requirement: Current-terminal resolution is additive and fail-closed
 
-Any future extension of `/pos-terminals/resolve-current` SHALL preserve existing fields and SHALL distinguish administrative assignment from Agent-verified physical state. Proposed fields are not current contracts and SHALL require implementation and compatibility review.
+The additive `scale` block of `/pos-terminals/resolve-current` SHALL preserve existing fields and SHALL distinguish administrative assignment from conservative MOCK/UNKNOWN classification. Agent-verified physical state is not implemented by this phase.
 
 #### Scenario: Configuration is known but origin is unknown
 - **WHEN** resolution returns terminal configuration without reliable REAL/MOCK origin or Agent proof
 - **THEN** POS SHALL use a neutral or unavailable state and SHALL NOT show physical readiness or enable commercial capture.
+
+#### Scenario: Non-MOCK assignment is conservatively classified
+- **WHEN** an authorized terminal has an assigned SCALE different from the documented MOCK fixture but no Agent proof is available
+- **THEN** `resolve-current` SHALL return `assignment=ASSIGNED` and `classification=UNKNOWN`, and POS SHALL not treat it as REAL availability.
 
 #### Scenario: Terminal or session changes
 - **WHEN** the active terminal or POS session changes while configuration or capture data is pending

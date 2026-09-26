@@ -292,6 +292,14 @@ export type PosTerminalPeripheralSettings = {
   updatedAt?: string | null;
 };
 
+export type PosTerminalScaleClassification = "MOCK" | "UNKNOWN";
+
+export type PosTerminalScaleResolution = {
+  assignment: "ASSIGNED" | "NONE";
+  classification: PosTerminalScaleClassification;
+  deviceId: string | null;
+};
+
 export type UpdateDeviceRequest = Partial<{
   name: string;
   status: PeripheralDeviceStatus;
@@ -319,6 +327,7 @@ export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
   mode: PosTerminalMode | null;
   active: boolean;
   source: "CONFIGURED" | "FALLBACK_MOCK" | "OPERATIONAL_UNCONFIGURED";
+  scale: PosTerminalScaleResolution;
 };
 
 export type CreatePosTerminalRequest = {
