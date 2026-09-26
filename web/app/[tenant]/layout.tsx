@@ -233,8 +233,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
   const posOperationalDate = posClockDateFormatter.format(posClock);
   const posOperationalTime = posClockTimeFormatter.format(posClock);
-  const desktopSidebarWidthClass = sidebarCollapsed ? "xl:w-20 xl:px-3" : "xl:w-72 xl:px-4";
-  const isSidebarCompact = sidebarCollapsed;
+  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-60 xl:w-64 lg:px-3 xl:px-4";
+  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -247,12 +247,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   useAutoClearState(toastMessage, setToastMessage);
-
-  useEffect(() => {
-    if (isPosRoute) {
-      setSidebarCollapsed(true);
-    }
-  }, [isPosRoute]);
 
   useEffect(() => {
     const handleConnectivityState = (event: Event) => {
@@ -719,10 +713,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         return (
           <li key={item.key}>
             <div
-              className={`group relative flex items-center gap-2 overflow-hidden transition-all duration-200 ${
+              className={`group relative flex items-center gap-1.5 xl:gap-2 overflow-hidden transition-all duration-200 ${
                 depth > 0
-                  ? "rounded-lg text-[13px]"
-                  : "rounded-xl px-3 py-2 text-sm"
+                  ? "rounded-lg text-[12px] xl:text-[13px]"
+                  : "rounded-xl px-2.5 py-1.5 xl:px-3 xl:py-2 text-xs xl:text-sm"
               } ${
                 isVisuallyActive
                   ? "bg-[var(--brand-sidebar-active)] text-[var(--brand-sidebar-active-text)] shadow-sm"
@@ -734,7 +728,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               <span
                 aria-hidden="true"
                 className={`absolute left-0 w-0.5 rounded-r-full transition-all duration-200 group-hover:opacity-70 ${
-                  depth > 0 ? "inset-y-1" : "inset-y-2"
+                  depth > 0 ? "inset-y-1" : "inset-y-1.5"
                 }`}
                 style={menuItemStyles.indicator}
               />
@@ -742,7 +736,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 href={effectiveRoute}
                 aria-current={isDirectActive ? "page" : undefined}
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
-                  depth > 0 ? "gap-2 px-2 py-1.5 text-[13px] font-medium" : "gap-3 text-sm font-semibold"
+                  depth > 0 ? "gap-2 px-2 py-1 text-[12px] xl:text-[13px] font-medium" : "gap-2.5 xl:gap-3 text-xs xl:text-sm font-semibold"
                 } ${
                   isSidebarCompact ? "justify-center" : ""
                 }`}
@@ -762,27 +756,27 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   />
                 ) : (
                   <span
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-all duration-200"
-                  style={{
-                    backgroundColor: String(menuItemStyles.icon.backgroundColor),
-                    color: String(menuItemStyles.icon.color),
-                  }}
+                    className="grid h-7 w-7 xl:h-8 xl:w-8 shrink-0 place-items-center rounded-lg transition-all duration-200"
+                    style={{
+                      backgroundColor: String(menuItemStyles.icon.backgroundColor),
+                      color: String(menuItemStyles.icon.color),
+                    }}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="h-3.5 w-3.5 xl:h-4 xl:w-4" />
                   </span>
                 )}
                 {!isSidebarCompact ? (
-                  <span className="flex min-w-0 flex-1 flex-col leading-5">
+                  <span className="flex min-w-0 flex-1 flex-col leading-snug">
                     <span className="truncate">{item.label}</span>
                     {posRequiresCash ? (
-                      <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] opacity-75">
+                      <span className="truncate text-[9px] xl:text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
                         Requiere caja
                       </span>
                     ) : null}
                   </span>
                 ) : null}
               </Link>
-              {hasChildren ? (
+              {hasChildren && !isSidebarCompact ? (
                 <button
                   type="button"
                   className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
@@ -793,11 +787,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   aria-label={isExpanded ? "Colapsar submenu" : "Expandir submenu"}
                   aria-expanded={isExpanded}
                   style={menuItemStyles.chevron}
-                  title={
-                    isSidebarCompact
-                      ? `${isExpanded ? "Colapsar" : "Expandir"} ${item.label}`
-                      : undefined
-                  }
                   onClick={() =>
                     setOpenMenuItems((prev) => ({
                       ...prev,
@@ -823,18 +812,18 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   const renderMenuSections = (sections: Record<string, MenuItem[]>, prefix: string) => (
-    <ul className="space-y-2 text-sm">
+    <ul className="space-y-1.5 text-sm">
       {Object.entries(sections).map(([section, items]) => {
         const sectionKey = `${prefix}:${section}`;
         const isExpanded = openSections[sectionKey] ?? true;
         return (
           <li
             key={sectionKey}
-            className="border-t pt-2 first:border-t-0 first:pt-0"
+            className="border-t pt-1.5 first:border-t-0 first:pt-0"
             style={{ borderColor: tenantTheme.sidebar.border }}
           >
             {!isSidebarCompact ? (
-              <p className="mb-2 mt-1 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--brand-sidebar-muted)] opacity-70">
+              <p className="mb-1.5 mt-0.5 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
                 {section}
               </p>
             ) : null}
@@ -1187,13 +1176,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
         aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-4 py-4 shadow-2xl transition-all duration-300 ${desktopSidebarWidthClass} ${
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-3 py-3 shadow-2xl transition-all duration-300 lg:sticky lg:top-0 lg:z-30 lg:translate-x-0 ${desktopSidebarWidthClass} ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1202,18 +1191,18 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          <div className={`mb-5 flex items-center gap-3 ${isSidebarCompact ? "xl:justify-center" : ""}`}>
-            <div className={`flex min-w-0 items-center gap-2.5 ${isSidebarCompact ? "xl:flex-col" : ""}`}>
+          <div className={`mb-3 flex items-center gap-2.5 ${isSidebarCompact ? "lg:justify-center" : ""}`}>
+            <div className={`flex min-w-0 items-center gap-2 ${isSidebarCompact ? "lg:flex-col" : ""}`}>
               {brandingLogo ? (
                 <img
                   src={brandingLogo}
                   alt="Logo empresa"
-                  className="h-10 w-10 shrink-0 rounded-xl object-contain p-1"
+                  className="h-8 w-8 xl:h-9 xl:w-9 shrink-0 rounded-lg object-contain p-0.5"
                   style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
                 />
               ) : (
                 <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                  className="flex h-8 w-8 xl:h-9 xl:w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold"
                   style={{
                     backgroundColor: tenantTheme.sidebar.logoBackground,
                     color: tenantTheme.sidebar.logoText,
@@ -1224,70 +1213,76 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               )}
               {!isSidebarCompact ? (
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
+                  <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]">
                     {sidebarCompanyName}
                   </p>
-                  <p className="truncate text-xs text-[var(--brand-sidebar-muted)]">
+                  <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
                     Manus POS
                   </p>
                 </div>
               ) : null}
             </div>
-            <div className={`ml-auto flex items-center gap-2 ${isSidebarCompact ? "xl:ml-0" : ""}`}>
+            <div className={`ml-auto flex items-center gap-1.5 ${isSidebarCompact ? "lg:ml-0" : ""}`}>
               <button
                 type="button"
-                className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:grid"
+                className="hidden h-7 w-7 xl:h-8 xl:w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
                 aria-label={sidebarCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
                 onClick={() => setSidebarCollapsed((prev) => !prev)}
+                title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
               >
                 {sidebarCollapsed ? (
-                  <ChevronRight className="h-5 w-5" />
+                  <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5" />
                 ) : (
-                  <ChevronRight className="h-5 w-5 rotate-180" />
+                  <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
                 )}
               </button>
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] xl:hidden"
+                className="grid h-7 w-7 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
                 aria-label="Cerrar menu lateral"
                 onClick={() => setSidebarOpen(false)}
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <nav className="mt-4 flex-1 pb-2" aria-label="Navegacion principal">
+          <nav className="mt-2 flex-1 pb-2" aria-label="Navegacion principal">
             {renderMenuSections(menuSections, "primary")}
             {Object.keys(mainMenuSections).length > 0 ? (
               <>
-                <div className="mt-4 px-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--brand-sidebar-muted)]">
-                  Menu principal
+                <div className="mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
+                  {!isSidebarCompact ? "Menu principal" : null}
                 </div>
-                <div className="mt-1.5">{renderMenuSections(mainMenuSections, "main")}</div>
+                <div className="mt-1">{renderMenuSections(mainMenuSections, "main")}</div>
               </>
             ) : null}
           </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b bg-[var(--brand-header-bg)]/90 px-4 py-4 shadow-sm backdrop-blur-md md:px-6"
+            className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b bg-[var(--brand-header-bg)]/90 px-3 py-2.5 shadow-sm backdrop-blur-md md:px-5 lg:px-6"
             style={{ borderColor: tenantTheme.header.border }}
           >
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2.5 lg:gap-3">
               <button
                 type="button"
-                className="rounded-lg border p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className="rounded-lg border p-1.5 xl:p-2 text-[var(--brand-header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
                 onClick={() => {
+                  if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+                    setSidebarCollapsed((previous) => !previous);
+                    return;
+                  }
                   setSidebarOpen((previous) => !previous);
                 }}
-                aria-label={sidebarOpen ? "Cerrar menu lateral" : "Abrir menu lateral"}
+                aria-label={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
+                title={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-4 w-4 xl:h-5 xl:w-5" />
               </button>
               <div className="min-w-0">
                 {hasPosOperationalContext ? (

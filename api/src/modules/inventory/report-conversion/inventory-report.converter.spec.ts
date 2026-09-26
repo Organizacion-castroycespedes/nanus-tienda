@@ -136,6 +136,7 @@ describe("text helpers", () => {
     assert.equal(unitVolumeMl("Ron viejo de caldas 1.750"), 1750);
     assert.equal(unitVolumeMl("Vino 1,5 lt"), 1500);
     assert.equal(unitVolumeMl("Aguila lata 330ml"), 330);
+    assert.equal(unitVolumeMl("Ron medellin 3 años bot lt"), 1000);
     assert.equal(packSize("Aguila lata 330ml - POR CANASTA"), 30);
     assert.equal(packSize("Poker six pack 6"), 6);
     assert.equal(packSize("Poker lata"), 1);
@@ -193,6 +194,17 @@ describe("planInventoryReport", () => {
     assert.equal(item.alcohol, 4);
     assert.equal(item.volumeMl, 9900);
     assert.equal(item.danePrice, null);
+  });
+
+  it("keeps tequila cocktails out of the snacks rule", () => {
+    const [cocktail, snack] = plan([
+      row({ code: "I-60", name: "Los cuates tequila margarita limon 269ml", category: "" }),
+      row({ code: "I-61", name: "Papa margarita limon 36g", category: "" }),
+    ]).items;
+
+    assert.equal(cocktail.subcategory, "Cocteles y RTD");
+    assert.equal(cocktail.fiscal, "LIQUOR_APERITIF");
+    assert.equal(snack.subcategory, "Pasabocas");
   });
 
   it("loads zero alcohol beer as GENERAL", () => {

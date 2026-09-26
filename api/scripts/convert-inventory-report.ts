@@ -4,18 +4,22 @@ import { config as loadEnv } from "dotenv";
 import { DatabaseService } from "../src/common/db/database.service";
 import { ProductImportRepository } from "../src/modules/inventory/product-import/product-import.repository";
 import { ProductImportService } from "../src/modules/inventory/product-import/product-import.service";
+import { PRODUCT_IMPORT_COLUMNS, PRODUCT_IMPORT_SHEET_NAME } from "../src/modules/inventory/product-import/product-import.columns";
 import {
+  buildBlankTemplate,
   fillProductTemplate,
   fillStockTemplate,
   InventoryReportFormatError,
   parseInventoryReport,
   planInventoryReport,
+  type InventoryReport,
   type InventoryReportPlan,
 } from "../src/modules/inventory/report-conversion/inventory-report.converter";
 import { ProductCategoryRepository } from "../src/modules/inventory/repositories/product-category.repository";
 import { ProductSubcategoryRepository } from "../src/modules/inventory/repositories/product-subcategory.repository";
 import { TaxRepository } from "../src/modules/inventory/repositories/tax.repository";
 import { UnitRepository } from "../src/modules/inventory/repositories/unit.repository";
+import { STOCK_IMPORT_SHEET_NAME, STOCK_IMPORT_TEMPLATE_KEYS } from "../src/modules/inventory/stock-import/stock-import.columns";
 import { StockImportRepository } from "../src/modules/inventory/stock-import/stock-import.repository";
 import { StockImportService } from "../src/modules/inventory/stock-import/stock-import.service";
 
@@ -29,6 +33,8 @@ Opciones:
   --prefijo <texto>      Prefijo del SKU (por defecto XLS-).
   --salida <carpeta>     Carpeta de salida (por defecto la del reporte).
   --env <archivo>        Archivo .env con la conexión a la base.
+  --sin-bd               No se conecta a la base: todo sale como producto nuevo
+                         y no se prevalida (hazlo al subir en la web).
 `;
 
 type CliOptions = {
@@ -38,6 +44,7 @@ type CliOptions = {
   skuPrefix: string;
   outputDir?: string;
   envFile?: string;
+  offline: boolean;
 };
 
 class CliError extends Error {}
@@ -50,11 +57,16 @@ const WRITE_SQL = /\b(insert|update|delete|merge|alter|drop|create|truncate|gran
 function parseArgs(argv: string[]): CliOptions {
   const flags: Record<string, string> = {};
   const positional: string[] = [];
+  let offline = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       console.log(USAGE);
       process.exit(0);
+    }
+    if (arg === "--sin-bd") {
+      offline = true;
+      continue;
     }
     if (arg.startsWith("--")) {
       const value = argv[index + 1];
@@ -84,6 +96,7 @@ function parseArgs(argv: string[]): CliOptions {
     skuPrefix: flags.prefijo ?? "XLS-",
     outputDir: flags.salida ? path.resolve(flags.salida) : undefined,
     envFile: flags.env ? path.resolve(flags.env) : undefined,
+    offline,
   };
 }
 
@@ -253,16 +266,15 @@ function printErrors(title: string, rows: Array<{ rowNumber: number; sku: string
   }
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
-  if (!existsSync(options.input)) {
-    throw new CliError(`No existe el archivo: ${options.input}`);
-  }
+type Conversion = {
+  plan: InventoryReportPlan;
+  productsFile: Buffer;
+  stockFile: Buffer;
+  validate?: () => Promise<boolean>;
+};
+
+async function convertWithDatabase(options: CliOptions, report: InventoryReport): Promise<Conversion> {
   const envFile = loadDatabaseEnv(options.envFile);
-
-  console.log(`\nLeyendo reporte: ${path.basename(options.input)}`);
-  const report = await parseInventoryReport(readFileSync(options.input));
-
   const db = createReadOnlyDatabase();
   const tenant = await resolveTenant(db, options.tenant);
   const stockRepository = new StockImportRepository(db);
@@ -306,6 +318,60 @@ async function main() {
     { branchCode: branch.code, currentStock: existing.stock }
   );
 
+  return {
+    plan,
+    productsFile,
+    stockFile,
+    validate: async () => {
+      const productCheck = await productService.validate(tenant.id, ACTOR, productsFile);
+      const stockCheck = await stockService.validate(tenant.id, ACTOR, stockFile);
+      const stockSummary = stockCheck.report.summary;
+      console.log(`
+Prevalidación (igual que en el sistema)
+  Productos: ${productCheck.report.canCommit ? "OK" : "CON ERRORES"} | ${productCheck.report.summary.total} filas
+  Stock:     ${stockCheck.report.canCommit ? "OK" : "CON ERRORES"} | entra ${stockSummary.in} (+${stockSummary.quantityIn}), sale ${stockSummary.out} (-${stockSummary.quantityOut}), sin cambio ${stockSummary.unchanged}`);
+      printErrors("Productos", productCheck.report.rows);
+      printErrors("Stock", stockCheck.report.rows);
+      return productCheck.report.canCommit && stockCheck.report.canCommit;
+    },
+  };
+}
+
+async function convertOffline(options: CliOptions, report: InventoryReport): Promise<Conversion> {
+  const branchCode = options.branch?.trim() || "PRINCIPAL";
+  console.log(`Modo sin base de datos | Sucursal: ${branchCode}`);
+  const plan = planInventoryReport(report.rows, {
+    skuPrefix: options.skuPrefix,
+    existingSkus: new Set(),
+    existingBarcodes: new Map(),
+  });
+  if (plan.items.length === 0) {
+    throw new CliError("El reporte no tiene productos inventariables para cargar.");
+  }
+  const productsFile = await fillProductTemplate(
+    await buildBlankTemplate(PRODUCT_IMPORT_SHEET_NAME, PRODUCT_IMPORT_COLUMNS.map((column) => column.key)),
+    plan
+  );
+  const stockFile = await fillStockTemplate(
+    await buildBlankTemplate(STOCK_IMPORT_SHEET_NAME, STOCK_IMPORT_TEMPLATE_KEYS),
+    plan,
+    { branchCode }
+  );
+  return { plan, productsFile, stockFile };
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  if (!existsSync(options.input)) {
+    throw new CliError(`No existe el archivo: ${options.input}`);
+  }
+
+  console.log(`\nLeyendo reporte: ${path.basename(options.input)}`);
+  const report = await parseInventoryReport(readFileSync(options.input));
+  const { plan, productsFile, stockFile, validate } = options.offline
+    ? await convertOffline(options, report)
+    : await convertWithDatabase(options, report);
+
   const date = report.exportDate ?? new Date().toISOString().slice(0, 10);
   const outputDir = options.outputDir ?? path.dirname(options.input);
   const productsPath = path.join(outputDir, `1_carga_productos_${date}.xlsx`);
@@ -313,27 +379,27 @@ async function main() {
   writeOutput(productsPath, productsFile);
   writeOutput(stockPath, stockFile);
 
-  const productCheck = await productService.validate(tenant.id, ACTOR, productsFile);
-  const stockCheck = await stockService.validate(tenant.id, ACTOR, stockFile);
   const created = plan.items.filter((item) => !item.exists).length;
   const negatives = plan.items.filter((item) => item.source.stock < 0).length;
   const review = plan.items.filter((item) => item.notes.some((note) => /revisar|provisional|reemplazar/i.test(note))).length;
-  const stockSummary = stockCheck.report.summary;
-
   console.log(`
 Resultado
   Filas del reporte:   ${report.rows.length}
-  Productos:           ${plan.items.length} (${created} nuevos, ${plan.items.length - created} ya existían)
+  Productos:           ${plan.items.length} (${validate ? `${created} nuevos, ${plan.items.length - created} ya existían` : "todos como nuevos: sin base no se sabe cuáles existen"})
   Omitidos:            ${plan.skipped.length}
   Con código barras:   ${plan.items.filter((item) => item.barcode).length}
   Existencia negativa: ${negatives} (se cargan en 0)
-  Para revisar:        ${review} (ver hoja "Revision")
+  Para revisar:        ${review} (ver hoja "Revision")`);
 
-Prevalidación (igual que en el sistema)
-  Productos: ${productCheck.report.canCommit ? "OK" : "CON ERRORES"} | ${productCheck.report.summary.total} filas
-  Stock:     ${stockCheck.report.canCommit ? "OK" : "CON ERRORES"} | entra ${stockSummary.in} (+${stockSummary.quantityIn}), sale ${stockSummary.out} (-${stockSummary.quantityOut}), sin cambio ${stockSummary.unchanged}`);
-  printErrors("Productos", productCheck.report.rows);
-  printErrors("Stock", stockCheck.report.rows);
+  const valid = validate ? await validate() : null;
+  if (valid === null) {
+    console.log(`
+SIN PREVALIDAR (modo sin base)
+  - La web prevalida al subir: revisa ahí los errores antes de confirmar.
+  - Todas las filas llevan categoria_fiscal: si un SKU ya existe, al subir
+    se actualiza y sus impuestos se reemplazan por los de esa categoría.
+  - Los códigos de barras no se cruzaron con la base.`);
+  }
 
   console.log(`
 Archivos generados:
@@ -346,7 +412,7 @@ Siguiente paso:
   3. Luego usa "Carga de stock" con el archivo 2 y confirma.
 `);
 
-  return productCheck.report.canCommit && stockCheck.report.canCommit ? 0 : 2;
+  return valid === false ? 2 : 0;
 }
 
 main()

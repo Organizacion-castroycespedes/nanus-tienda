@@ -259,6 +259,9 @@ export function unitVolumeMl(name: string): number | null {
   if (liters) {
     return Math.round(Number(liters[1]) * 1000);
   }
+  if (/\b(lt|litro)\b/.test(text)) {
+    return 1000;
+  }
   const dotted = text.match(/\b(\d)\.(\d{3})\b/);
   if (dotted) {
     return Number(`${dotted[1]}${dotted[2]}`);
@@ -283,7 +286,7 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
   { test: /bonfiest/, category: "Droguería", subcategory: "Medicamentos", fiscal: "GENERAL" },
   { test: /bonbon|chiclets|trident/, category: "Confitería", subcategory: "Dulces y chicles", fiscal: "GENERAL" },
   { test: /tajin/, category: "Snacks", subcategory: "Condimentos", fiscal: "GENERAL" },
-  { test: /todito|doritos|margarita (natural|pollo|limon)|papa margarita|cheetos|cheese tris|manimoto|gudiz/, category: "Snacks", subcategory: "Pasabocas", fiscal: "GENERAL" },
+  { test: /todito|doritos|(?<!tequila )margarita (natural|pollo|limon)|papa margarita|cheetos|cheese tris|manimoto|gudiz/, category: "Snacks", subcategory: "Pasabocas", fiscal: "GENERAL" },
   { test: /\bhielo\b/, category: "Bebidas sin licor", subcategory: "Hielo", fiscal: "GENERAL" },
   { test: /red bull|speed max|vive 100/, category: "Bebidas sin licor", subcategory: "Energizantes", fiscal: "GENERAL" },
   { test: /electrolit|gatorade|hidratao/, category: "Bebidas sin licor", subcategory: "Hidratantes", fiscal: "GENERAL" },
@@ -471,6 +474,24 @@ export function planInventoryReport(
   return { items, skipped };
 }
 
+export async function buildBlankTemplate(
+  sheetName: string,
+  keys: readonly string[]
+): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Manus Tienda";
+  const sheet = workbook.addWorksheet(sheetName, {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  sheet.columns = keys.map((key) => ({
+    header: key,
+    key,
+    width: key === "nombre" ? 40 : Math.max(14, key.length + 4),
+  }));
+  sheet.getRow(1).font = { bold: true };
+  return Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
+}
+
 function headerColumns(sheet: ExcelJS.Worksheet) {
   const columns = new Map<string, number>();
   sheet.getRow(1).eachCell((cell, column) => {
@@ -580,7 +601,7 @@ export async function fillProductTemplate(
 export async function fillStockTemplate(
   template: Buffer,
   plan: InventoryReportPlan,
-  options: { branchCode: string; currentStock: Map<string, number> }
+  options: { branchCode: string; currentStock?: Map<string, number> }
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(template as unknown as ArrayBuffer);
@@ -595,7 +616,9 @@ export async function fillStockTemplate(
       sku: item.sku,
       nombre: item.name,
       sucursal: options.branchCode,
-      stock_actual: options.currentStock.get(item.sku.toUpperCase()) ?? 0,
+      stock_actual: options.currentStock
+        ? options.currentStock.get(item.sku.toUpperCase()) ?? 0
+        : null,
       cantidad: item.targetStock,
     });
   });
