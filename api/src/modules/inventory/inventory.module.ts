@@ -17,6 +17,9 @@ import { InventoryLotBalanceController } from "./controllers/inventory-lot-balan
 import { InventoryLotController } from "./controllers/inventory-lot.controller";
 import { InventoryLocationController } from "./controllers/inventory-location.controller";
 import { OrderController } from "./controllers/order.controller";
+import { ProductImportController } from "./product-import/product-import.controller";
+import { ProductImportRepository } from "./product-import/product-import.repository";
+import { ProductImportService } from "./product-import/product-import.service";
 import { ProductBarcodeController } from "./controllers/product-barcode.controller";
 import { ProductCategoryController } from "./controllers/product-category.controller";
 import { ProductController } from "./controllers/product.controller";
@@ -25,6 +28,9 @@ import { PurchaseController } from "./controllers/purchase.controller";
 import { SaleController } from "./controllers/sale.controller";
 import { SupplierController } from "./controllers/supplier.controller";
 import { StockAdjustmentController } from "./controllers/stock-adjustment.controller";
+import { StockImportController } from "./stock-import/stock-import.controller";
+import { StockImportRepository } from "./stock-import/stock-import.repository";
+import { StockImportService } from "./stock-import/stock-import.service";
 import { StockMovementLotController } from "./controllers/stock-movement-lot.controller";
 import { TaxController } from "./controllers/tax.controller";
 import { UnitController } from "./controllers/unit.controller";
@@ -86,6 +92,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotBalanceController,
     InventoryLotController,
     InventoryLocationController,
+    ProductImportController,
     ProductController,
     ProductBarcodeController,
     ProductCategoryController,
@@ -94,6 +101,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     UnitController,
     TaxController,
     StockAdjustmentController,
+    StockImportController,
     PurchaseController,
     CustomerController,
     OrderController,
@@ -110,6 +118,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationService,
     OrderService,
     ProductService,
+    ProductImportService,
+    ProductImportRepository,
     ProductImageService,
     LocalImageStorageService,
     ProductBarcodeService,
@@ -118,6 +128,8 @@ import { UnitRepository } from "./repositories/unit.repository";
     PurchaseService,
     SaleService,
     StockAdjustmentService,
+    StockImportService,
+    StockImportRepository,
     StockMovementService,
     StockMovementLotService,
     SupplierService,

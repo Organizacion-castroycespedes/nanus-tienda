@@ -977,6 +977,85 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
     );
   }
 
+  async updateDocumentForRecovery(
+    tenantId: string,
+    id: string,
+    updates: {
+      status: ElectronicDocumentStatus;
+      subtotalAmount: number | string;
+      discountAmount: number | string;
+      taxAmount: number | string;
+      totalAmount: number | string;
+      metadata: Record<string, unknown>;
+      lastErrorCode?: string | null;
+      lastErrorMessage?: string | null;
+      providerStatusDetail?: string | null;
+    },
+    client?: PoolClient,
+  ) {
+    return this.queryOne<ElectronicDocumentRecord>(
+      `UPDATE electronic_documents
+      SET status = $3,
+          subtotal_amount = $4,
+          discount_amount = $5,
+          tax_amount = $6,
+          total_amount = $7,
+          metadata = $8,
+          last_error_code = NULL,
+          last_error_message = NULL,
+          provider_status_detail = NULL,
+          updated_at = NOW()
+      WHERE tenant_id = $1 AND id = $2
+      RETURNING
+        id,
+        tenant_id,
+        provider_id,
+        provider_config_id,
+        document_type,
+        source_type,
+        source_id,
+        external_reference,
+        provider_document_id,
+        prefix,
+        number,
+        full_number,
+        status,
+        provider_status,
+        provider_status_detail,
+        cufe,
+        cude,
+        currency_code,
+        subtotal_amount,
+        discount_amount,
+        tax_amount,
+        total_amount,
+        issue_date,
+        issue_time,
+        sent_at,
+        accepted_at,
+        rejected_at,
+        last_status_check_at,
+        processing_stage,
+        processing_stage_updated_at,
+        last_error_code,
+        last_error_message,
+        metadata,
+        created_at,
+        updated_at`,
+      [
+        tenantId,
+        id,
+        updates.status,
+        updates.subtotalAmount,
+        updates.discountAmount,
+        updates.taxAmount,
+        updates.totalAmount,
+        updates.metadata,
+      ],
+      client,
+    );
+  }
+
   async claimForProcessing(
     tenantId: string,
     id: string,

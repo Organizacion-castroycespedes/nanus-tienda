@@ -15,7 +15,8 @@
     "build:bin": "npm run build:linux-x64",
     "build:linux-x64": "npm run build && pkg . --targets node24-linux-x64 --output dist-bin/api-linux --compress Brotli",
     "release": "npm run build && pkg . --targets node24-linux-x64 --output dist-bin/emaus_api --compress Brotli",
-    "build:windows-x64": "npm run build && pkg . --targets node24-win-x64 --output dist-bin/emaus_api.exe --compress Brotli"
+    "build:windows-x64": "npm run build && pkg . --targets node24-win-x64 --output dist-bin/emaus_api.exe --compress Brotli",
+    "inventory:convert-report": "tsx scripts/convert-inventory-report.ts"
   },
   "pkg": {
     "assets": [
@@ -40,6 +41,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.8.0",
     "jsonwebtoken": "^9.0.2",
     "node-forge": "^1.4.0",

@@ -546,13 +546,25 @@ export const PosScreen = () => {
   const [query, setQuery] = useState("");
   const { filters, updateFilters } = usePosFiltersStorage();
   const activeStockFilter = filters.activeStockFilter;
-  const setActiveStockFilter = (filter: StockFilterKey) => updateFilters({ activeStockFilter: filter });
+  const setActiveStockFilter = useCallback(
+    (filter: StockFilterKey) => updateFilters({ activeStockFilter: filter }),
+    [updateFilters]
+  );
   const selectedProductCategoryId = filters.selectedProductCategoryId;
-  const setSelectedProductCategoryId = (id: string) => updateFilters({ selectedProductCategoryId: id });
+  const setSelectedProductCategoryId = useCallback(
+    (id: string) => updateFilters({ selectedProductCategoryId: id }),
+    [updateFilters]
+  );
   const selectedProductSubcategoryId = filters.selectedProductSubcategoryId;
-  const setSelectedProductSubcategoryId = (id: string) => updateFilters({ selectedProductSubcategoryId: id });
+  const setSelectedProductSubcategoryId = useCallback(
+    (id: string) => updateFilters({ selectedProductSubcategoryId: id }),
+    [updateFilters]
+  );
   const productViewMode = filters.productViewMode;
-  const setProductViewMode = (mode: ProductViewMode) => updateFilters({ productViewMode: mode });
+  const setProductViewMode = useCallback(
+    (mode: ProductViewMode) => updateFilters({ productViewMode: mode }),
+    [updateFilters]
+  );
   const [productToolsOpen, setProductToolsOpen] = useState(false);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
@@ -2562,7 +2574,8 @@ export const PosScreen = () => {
         error instanceof ApiError && error.status >= 400 && error.status < 500;
       if (isDefinitiveRejection) {
         allowSaleSubmissionRetry();
-        setSubmitError("La venta fue rechazada. Revisa stock, pagos y permisos.");
+        const msg = (error instanceof Error && error.message?.trim()) ? error.message.trim() : 'La venta fue rechazada. Revisa stock, pagos y permisos.';
+        setSubmitError(msg);
         showToast("La venta fue rechazada.", "error");
       } else {
         markSaleSubmissionUnknown();
@@ -3382,6 +3395,7 @@ export const PosScreen = () => {
             : null
         }
         isSubmitting={processingSale}
+        serverError={submitError}
         onConfirm={(paymentRows, customerId) => {
           if (customerId) {
             setSelectedCustomerId(customerId);

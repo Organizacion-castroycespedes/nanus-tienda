@@ -269,6 +269,14 @@ export class FactuCoreClient {
     const response = await this.request(request);
     const responseText = await readResponseText(response);
 
+    if (process.env.FACTUCORE_DEBUG_REQUESTS === "true") {
+      console.log(`[FactuCoreClient Response] status=${response.status} (op: ${request.operation})`, {
+        status: response.status,
+        operation: request.operation,
+        response: parseJson(responseText, responseText),
+      });
+    }
+
     if (!response.ok) {
       throw this.mapHttpError(request.operation, response, responseText);
     }
@@ -309,6 +317,15 @@ export class FactuCoreClient {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const url = buildUrl(request.context.baseUrl, request.path);
     const credentials = request.context.credentials;
+
+    if (process.env.FACTUCORE_DEBUG_REQUESTS === "true") {
+      console.log(`[FactuCoreClient Request] ${request.method} ${url.toString()} (op: ${request.operation})`, {
+        url: url.toString(),
+        method: request.method,
+        operation: request.operation,
+        body: "body" in request ? (request as FactuCoreJsonRequest).body ?? null : null,
+      });
+    }
 
     try {
       const hasBody = "body" in request && request.body !== undefined;

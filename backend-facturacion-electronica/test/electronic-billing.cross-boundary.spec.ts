@@ -132,9 +132,14 @@ const buildConsumer = () => {
       runner({ query: async () => ({ rows: [] }), release: () => undefined }),
   };
 
+  const documentRepository = {
+    findByExternalReference: async () => null,
+  };
+
   return new SaleCompletedForElectronicBillingConsumerService(
     db as never,
     inbox as never,
+    documentRepository as never,
     billingService as never,
     providerResolver as never,
   );
