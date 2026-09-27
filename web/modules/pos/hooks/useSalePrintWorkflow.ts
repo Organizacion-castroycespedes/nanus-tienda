@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PARAMETER_CODES,
   PARAMETER_MODES,
@@ -16,11 +16,126 @@ import {
 import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
 import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
 import { requestElectronicBilling } from "../../reporteria/services/electronic-billing.service";
+import { refreshOperationalSaleBillingStatus } from "../../operational-sales/services/operational-sales.service";
 import {
   ELECTRONIC_DOCUMENT_STATUSES,
   type ElectronicInvoicePrintDataset,
 } from "../../reporteria/types";
 import type { ToastVariant } from "../../../components/design-system/Toast";
+import { ApiError } from "../../../lib/request";
+
+const ELECTRONIC_INVOICE_POLL_INTERVAL_MS = 3_000;
+const ELECTRONIC_INVOICE_MAX_ATTEMPTS = 41;
+const ELECTRONIC_INVOICE_TERMINAL_STATUSES = new Set<
+  ElectronicInvoicePrintDataset["status"]
+>([
+  ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED,
+  ELECTRONIC_DOCUMENT_STATUSES.REJECTED,
+  ELECTRONIC_DOCUMENT_STATUSES.TECHNICAL_ERROR,
+  ELECTRONIC_DOCUMENT_STATUSES.CANCELLED,
+]);
+
+const isAbortError = (error: unknown) =>
+  error instanceof Error && error.name === "AbortError";
+
+const abortError = () => {
+  const error = new Error("Electronic invoice polling aborted");
+  error.name = "AbortError";
+  return error;
+};
+
+const waitForDelay = (delayMs: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+
+    const handleAbort = () => {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", handleAbort);
+      reject(abortError());
+    };
+    const timeoutId = window.setTimeout(() => {
+      signal?.removeEventListener("abort", handleAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
+
+export type ElectronicInvoicePollingDependencies = {
+  loadInvoice: (
+    saleId: string,
+    signal?: AbortSignal,
+  ) => Promise<ElectronicInvoicePrintDataset>;
+  refreshStatus: (saleId: string, signal?: AbortSignal) => Promise<unknown>;
+  wait: (delayMs: number, signal?: AbortSignal) => Promise<void>;
+};
+
+export const waitForElectronicInvoice = async (
+  saleId: string,
+  options: {
+    signal?: AbortSignal;
+    maxAttempts?: number;
+    intervalMs?: number;
+  } = {},
+  dependencies: ElectronicInvoicePollingDependencies = {
+    loadInvoice: getElectronicInvoicePrintData,
+    refreshStatus: refreshOperationalSaleBillingStatus,
+    wait: waitForDelay,
+  },
+) => {
+  const maxAttempts = options.maxAttempts ?? ELECTRONIC_INVOICE_MAX_ATTEMPTS;
+  const intervalMs = options.intervalMs ?? ELECTRONIC_INVOICE_POLL_INTERVAL_MS;
+  let refreshAttempted = false;
+  let latestInvoice: ElectronicInvoicePrintDataset | null = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (options.signal?.aborted) {
+      throw abortError();
+    }
+
+    try {
+      latestInvoice = await dependencies.loadInvoice(saleId, options.signal);
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      if (!(error instanceof ApiError) || error.status !== 404) {
+        throw error;
+      }
+    }
+
+    if (
+      latestInvoice &&
+      ELECTRONIC_INVOICE_TERMINAL_STATUSES.has(latestInvoice.status)
+    ) {
+      return latestInvoice;
+    }
+
+    if (
+      latestInvoice?.status === ELECTRONIC_DOCUMENT_STATUSES.PROCESSING &&
+      !refreshAttempted
+    ) {
+      refreshAttempted = true;
+      try {
+        await dependencies.refreshStatus(saleId, options.signal);
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
+        // Background reconciliation remains active. Continue bounded polling.
+      }
+      continue;
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await dependencies.wait(intervalMs, options.signal);
+    }
+  }
+
+  return latestInvoice;
+};
 
 export type PdfPreviewConfig = {
   title: string;
@@ -47,6 +162,7 @@ export const executeSalePrintWorkflow = async (
   options: {
     setPdfConfig: (config: PdfPreviewConfig | null) => void;
     setIsBillingProcessing: (isProcessing: boolean) => void;
+    signal?: AbortSignal;
   }
 ) => {
   const {
@@ -57,7 +173,7 @@ export const executeSalePrintWorkflow = async (
     electronicBillingEnabled = true,
     showToast,
   } = params;
-  const { setPdfConfig, setIsBillingProcessing } = options;
+  const { setPdfConfig, setIsBillingProcessing, signal } = options;
 
   let printTicketMode: ParameterMode = PARAMETER_MODES.ON_DEMAND;
   let printInvoiceMode: ParameterMode = PARAMETER_MODES.ON_DEMAND;
@@ -96,30 +212,26 @@ export const executeSalePrintWorkflow = async (
   if (isElectronicBillingActive) {
     setIsBillingProcessing(true);
     let invoiceData: ElectronicInvoicePrintDataset | null = null;
+    let cancelled = false;
     try {
-      await requestElectronicBilling(saleId);
-
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          const data = await getElectronicInvoicePrintData(saleId);
-          if (
-            data &&
-            (data.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED ||
-              data.status === ELECTRONIC_DOCUMENT_STATUSES.REJECTED ||
-              data.status === ELECTRONIC_DOCUMENT_STATUSES.TECHNICAL_ERROR)
-          ) {
-            invoiceData = data;
-            break;
-          }
-        } catch {
-          // Keep polling
-        }
-        await new Promise((res) => setTimeout(res, 1200));
+      const request = await requestElectronicBilling(saleId);
+      if (!["REQUESTED", "DOCUMENT_EXISTS"].includes(request.result)) {
+        throw new Error(
+          request.reason ?? "La venta no es elegible para facturación electrónica.",
+        );
       }
+      invoiceData = await waitForElectronicInvoice(saleId, { signal });
     } catch (err) {
-      console.error("Error al procesar facturación electrónica:", err);
+      cancelled = isAbortError(err);
+      if (!cancelled) {
+        console.error("Error al procesar facturación electrónica:", err);
+      }
     } finally {
       setIsBillingProcessing(false);
+    }
+
+    if (cancelled) {
+      return;
     }
 
     if (invoiceData?.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED) {
@@ -237,6 +349,11 @@ export const executeSalePrintWorkflow = async (
 export const useSalePrintWorkflow = () => {
   const [pdfConfig, setPdfConfig] = useState<PdfPreviewConfig | null>(null);
   const [isBillingProcessing, setIsBillingProcessing] = useState(false);
+  const activeWorkflowRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    activeWorkflowRef.current?.abort();
+  }, []);
 
   const closePdfModal = useCallback(() => {
     setPdfConfig(null);
@@ -244,10 +361,25 @@ export const useSalePrintWorkflow = () => {
 
   const triggerPrintWorkflow = useCallback(
     async (params: ExecuteSalePrintWorkflowParams) => {
+      activeWorkflowRef.current?.abort();
+      const controller = new AbortController();
+      activeWorkflowRef.current = controller;
       await executeSalePrintWorkflow(params, {
-        setPdfConfig,
-        setIsBillingProcessing,
+        setPdfConfig: (config) => {
+          if (activeWorkflowRef.current === controller) {
+            setPdfConfig(config);
+          }
+        },
+        setIsBillingProcessing: (isProcessing) => {
+          if (activeWorkflowRef.current === controller) {
+            setIsBillingProcessing(isProcessing);
+          }
+        },
+        signal: controller.signal,
       });
+      if (activeWorkflowRef.current === controller) {
+        activeWorkflowRef.current = null;
+      }
     },
     []
   );
