@@ -6,7 +6,12 @@ import {
 } from "./contracts";
 import { canonicalPosSourceToSaleTicketInput } from "../../modules/reporteria/canonical-printable-document";
 import { isCashPaymentMethod } from "../../modules/shared/payments/payment-allocation.helper";
-import { resolveTenantSettings } from "../parameters/api";
+import {
+  PARAMETER_CODES,
+  PARAMETER_MODES,
+  type ParameterMode,
+  resolveTenantSettings,
+} from "../parameters/api";
 import type {
   PeripheralOperationError,
   PeripheralTicketPayment,
@@ -141,22 +146,22 @@ export const runSalePeripheralOperations = async (
   const ticketInput = buildSaleTicketInputFromPos(context);
 
   if (flags.printSaleEnabled) {
-    let printTicketMode = "ON_DEMAND";
+    let printTicketMode: ParameterMode = PARAMETER_MODES.ON_DEMAND;
     if (context.tenantId) {
       try {
         const resolved = await resolveTenantSettings({
           tenantId: context.tenantId,
           branchId: context.branchId ?? undefined,
           terminalId: context.terminalId ?? undefined,
-          code: "PRINT_TICKET",
+          code: PARAMETER_CODES.PRINT_TICKET,
         });
-        printTicketMode = resolved.value ?? "ON_DEMAND";
+        printTicketMode = (resolved.value as ParameterMode) ?? PARAMETER_MODES.ON_DEMAND;
       } catch {
-        printTicketMode = "ON_DEMAND";
+        printTicketMode = PARAMETER_MODES.ON_DEMAND;
       }
     }
 
-    if (printTicketMode === "AUTOMATIC") {
+    if (printTicketMode === PARAMETER_MODES.AUTOMATIC) {
       buildSaleTicketPayload(ticketInput);
       const printResult = await printSaleTicket(ticketInput);
 
