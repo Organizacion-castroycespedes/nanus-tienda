@@ -2871,11 +2871,11 @@ export const PosScreen = () => {
       ) : null}
 
       {/* Main Layout - Sale-first workspace */}
-      <div className="grid gap-5">
+      <div className="grid gap-4">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
-            <div className="flex flex-col gap-3 2xl:gap-4">
+          <div className="rounded-[24px] border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 xl:p-4 dark:border-slate-700 dark:bg-slate-950/80">
+            <div className="flex flex-col gap-2.5 2xl:gap-3.5">
               <PosAccountTabs
                 accounts={accounts}
                 activeAccountId={activeAccountId}
@@ -2886,11 +2886,7 @@ export const PosScreen = () => {
                 formatCurrency={formatCurrency}
               />
 
-              <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <Search className="h-4 w-4" />
-                  Buscar productos
-                </div>
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-900">
                 <Input
                   ref={searchInputRef}
                   label=""
@@ -2900,11 +2896,35 @@ export const PosScreen = () => {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   onKeyDown={handleSearchKeyDown}
-                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                  className="min-h-11 pl-10 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                 />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Usa nombre, SKU o codigo. Escape limpia la busqueda.
-                </p>
+                <div className="mt-2 flex items-center justify-between gap-2 px-1">
+                  <span className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:inline">
+                    Nombre, SKU o código
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
+                      const isActive = activeStockFilter === filter;
+                      return (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => handleStockFilterChange(filter)}
+                          className={`inline-flex min-h-7 items-center gap-1 rounded-full border px-2.5 text-[10px] font-semibold transition ${
+                            isActive
+                              ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                          }`}
+                        >
+                          {stockFilterLabels[filter]}
+                          <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[9px] dark:bg-white/10">
+                            {stockFilterCounts[filter]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </section>
 
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
@@ -3020,7 +3040,7 @@ export const PosScreen = () => {
               </>
               ) : null}
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/70 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 text-sm dark:border-slate-700 dark:bg-slate-800/70 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
@@ -3093,8 +3113,8 @@ export const PosScreen = () => {
                 </div>
               </div>
 
-              {/* Filter Chips */}
-              <div className="flex flex-wrap items-center gap-1.5">
+              {/* Active filters and catalog controls */}
+              <div className="hidden flex-wrap items-center gap-1.5">
                 <div className="flex flex-wrap gap-1.5">
                   {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
                     const isActive = activeStockFilter === filter;
@@ -3161,7 +3181,7 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1400px]:grid-cols-6"
                       : "grid gap-2.5"
                   }
                 >
