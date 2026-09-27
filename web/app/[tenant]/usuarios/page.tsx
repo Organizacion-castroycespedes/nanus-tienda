@@ -876,7 +876,11 @@ const UsuariosPage = () => {
                   {wizardMode === "create" ? (
                     <Input
                       label="Contraseña inicial"
+                      name="new_user_initial_password"
                       type="password"
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                       placeholder="Mínimo 8 caracteres"
                       hint="Mínimo 8 caracteres seguros"
@@ -1197,6 +1201,7 @@ const UsuariosPage = () => {
           footer={
             <div className="flex items-center justify-end gap-3">
               <Button
+                type="button"
                 variant="ghost"
                 onClick={closePasswordModal}
                 disabled={passwordSaving}
@@ -1204,6 +1209,7 @@ const UsuariosPage = () => {
                 Cancelar
               </Button>
               <Button
+                type="button"
                 onClick={handleSavePassword}
                 disabled={passwordSaving}
               >
@@ -1212,7 +1218,14 @@ const UsuariosPage = () => {
             </div>
           }
         >
-          <div className="space-y-4">
+          <form
+            autoComplete="off"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSavePassword();
+            }}
+            className="space-y-4"
+          >
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
               Estás actualizando la contraseña para el usuario{" "}
               <strong>{passwordModalUser.email}</strong>.
@@ -1224,60 +1237,88 @@ const UsuariosPage = () => {
               </div>
             ) : null}
 
-            <div className="space-y-3">
-              <div className="relative">
-                <Input
-                  label="Nueva contraseña"
-                  type={showNewPassword ? "text" : "password"}
-                  required
-                  placeholder="Mínimo 8 caracteres"
-                  value={newPassword}
-                  onChange={(e) => {
-                    setPasswordModalError(null);
-                    setNewPassword(e.target.value);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPassword((prev) => !prev)}
-                  className="absolute right-3 top-8 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  tabIndex={-1}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="modal-new-password"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-200"
                 >
-                  {showNewPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
+                  Nueva contraseña <span className="text-red-500">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    id="modal-new-password"
+                    name="admin_new_user_pwd"
+                    type={showNewPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    required
+                    placeholder="Mínimo 8 caracteres"
+                    value={newPassword}
+                    onChange={(e) => {
+                      setPasswordModalError(null);
+                      setNewPassword(e.target.value);
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3.5 pr-11 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    className="absolute right-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/30 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                    title={showNewPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                    aria-label={showNewPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                  >
+                    {showNewPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <div className="relative">
-                <Input
-                  label="Confirmar nueva contraseña"
-                  type={showConfirmPassword ? "text" : "password"}
-                  required
-                  placeholder="Repite la contraseña"
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setPasswordModalError(null);
-                    setConfirmPassword(e.target.value);
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword((prev) => !prev)}
-                  className="absolute right-3 top-8 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  tabIndex={-1}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="modal-confirm-password"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-200"
                 >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
+                  Confirmar nueva contraseña <span className="text-red-500">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    id="modal-confirm-password"
+                    name="admin_confirm_user_pwd"
+                    type={showConfirmPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    required
+                    placeholder="Repite la contraseña"
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setPasswordModalError(null);
+                      setConfirmPassword(e.target.value);
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3.5 pr-11 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute right-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/30 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                    title={showConfirmPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                    aria-label={showConfirmPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </form>
         </Modal>
       ) : null}
 

@@ -176,6 +176,8 @@ const CashSessionsPage = () => {
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const [statusFilter, setStatusFilter] = useState("all");
   const [registerFilter, setRegisterFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [closeModal, setCloseModal] = useState(false);
   const [auditModal, setAuditModal] = useState(false);
   const [closeForm, setCloseForm] = useState<CloseCashSessionPayload>(closeFormInitial);
@@ -248,6 +250,11 @@ const CashSessionsPage = () => {
       return true;
     });
   }, [history, registerFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredHistory.length / pageSize));
+  const paginatedHistory = useMemo(() => {
+    return filteredHistory.slice(page * pageSize, (page + 1) * pageSize);
+  }, [filteredHistory, page, pageSize]);
 
   const expectedCurrent =
     currentSession && sessionSummary?.sessionId === currentSession.id
@@ -867,13 +874,30 @@ const CashSessionsPage = () => {
         </article>
 
         <article className="min-w-0 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
-          <div className="grid min-w-0 gap-4 md:grid-cols-2">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Historial de caja
+              </p>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                Cierres y sesiones registradas
+              </h2>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+              {filteredHistory.length} {filteredHistory.length === 1 ? "sesión" : "sesiones"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Select
               label="Caja"
               value={registerFilter}
-              onChange={(event) => setRegisterFilter(event.target.value)}
+              onChange={(event) => {
+                setRegisterFilter(event.target.value);
+                setPage(0);
+              }}
             >
-              <option value="">Todas</option>
+              <option value="">Todas las cajas</option>
               {registerOptions.map((register) => (
                 <option key={register.id} value={register.id}>
                   {register.nombre}
@@ -883,99 +907,223 @@ const CashSessionsPage = () => {
             <Select
               label="Estado"
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
+              onChange={(event) => {
+                setStatusFilter(event.target.value);
+                setPage(0);
+              }}
             >
-              <option value="all">Todos</option>
+              <option value="all">Todos los estados</option>
               <option value="OPEN">Abiertas</option>
               <option value="CLOSED">Cerradas</option>
               <option value="CANCELLED">Canceladas</option>
             </Select>
+            <Select
+              label="Filas por página"
+              value={String(pageSize)}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(0);
+              }}
+            >
+              <option value="10">10 filas</option>
+              <option value="25">25 filas</option>
+              <option value="50">50 filas</option>
+            </Select>
           </div>
 
-          <div className="mt-5 space-y-3">
-            {loadingHistory ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
-                Cargando historial...
-              </div>
-            ) : filteredHistory.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
-                No hay sesiones para mostrar.
-              </div>
-            ) : (
-              filteredHistory.map((session) => (
-                <div
-                  key={session.id}
-                  className="min-w-0 rounded-2xl border border-slate-200 px-4 py-4"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="min-w-0 break-words font-semibold leading-tight text-slate-900 dark:text-white">
-                        {session.cashRegisterNombre ?? "Caja"}
-                      </p>
-                      <p className="mt-1 min-w-0 break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
-                        Apertura {formatDateTime(session.openedAt)}
-                      </p>
-                    </div>
-                    <FinanceStatusBadge value={session.status} kind="session" />
-                  </div>
-                  <div className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Apertura</p>
-                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
+          <div className="mt-5 overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-900/50">
+                <tr>
+                  <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Caja
+                  </th>
+                  <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Apertura
+                  </th>
+                  <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Cierre
+                  </th>
+                  <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Apertura
+                  </th>
+                  <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Cierre
+                  </th>
+                  <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Diferencia
+                  </th>
+                  <th className="px-3.5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Estado
+                  </th>
+                  <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {loadingHistory ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                      Cargando historial...
+                    </td>
+                  </tr>
+                ) : paginatedHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                      No hay sesiones para mostrar con los filtros seleccionados.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedHistory.map((session) => (
+                    <tr
+                      key={session.id}
+                      className="transition hover:bg-slate-50/80 dark:hover:bg-slate-900/30"
+                    >
+                      <td className="whitespace-nowrap px-3.5 py-3.5">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 dark:text-white">
+                            {session.cashRegisterNombre ?? "Caja"}
+                          </p>
+                          {session.cashRegisterCodigo ? (
+                            <p className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                              {session.cashRegisterCodigo}
+                            </p>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5">
+                        <p className="font-medium text-slate-800 dark:text-slate-200">
+                          {formatDateTime(session.openedAt)}
+                        </p>
+                        {session.openedByUserEmail ? (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {session.openedByUserEmail}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5">
+                        {session.closedAt ? (
+                          <>
+                            <p className="font-medium text-slate-800 dark:text-slate-200">
+                              {formatDateTime(session.closedAt)}
+                            </p>
+                            {session.closedByUserEmail ? (
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {session.closedByUserEmail}
+                              </p>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right font-medium tabular-nums text-slate-900 dark:text-white">
                         {formatCurrency(session.openingAmount)}
-                      </p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Cierre</p>
-                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
-                        {formatCurrency(session.closingAmount ?? 0)}
-                      </p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase leading-tight tracking-[0.16em] text-slate-400">Diferencia</p>
-                      <p className="mt-1 min-w-0 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
-                        {formatCurrency(session.differenceAmount ?? 0)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4 border-t border-slate-100 pt-4">
-                    {session.status === "CLOSED" ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openTicketPreview(session.id)}
-                        >
-                          <Eye className="h-4 w-4" />
-                          Ver ticket
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void handleDownloadTicket(session.id)}
-                        >
-                          <Download className="h-4 w-4" />
-                          Descargar PDF
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void handlePrintTicket(session.id)}
-                        >
-                          <Printer className="h-4 w-4" />
-                          Imprimir
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        El ticket de cierre estara disponible cuando la caja quede cerrada.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right font-medium tabular-nums text-slate-900 dark:text-white">
+                        {session.closingAmount !== null && session.closingAmount !== undefined ? (
+                          formatCurrency(session.closingAmount)
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right font-medium tabular-nums">
+                        {session.differenceAmount !== null && session.differenceAmount !== undefined && session.status === "CLOSED" ? (
+                          <span
+                            className={
+                              session.differenceAmount === 0
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : session.differenceAmount < 0
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-amber-600 dark:text-amber-400"
+                            }
+                          >
+                            {session.differenceAmount > 0 ? "+" : ""}
+                            {formatCurrency(session.differenceAmount)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5 text-center">
+                        <FinanceStatusBadge value={session.status} kind="session" />
+                      </td>
+                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right">
+                        {session.status === "CLOSED" ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              title="Ver ticket de cierre"
+                              onClick={() => openTicketPreview(session.id)}
+                              className="h-8 gap-1.5 px-2.5 text-xs"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span className="hidden xl:inline">Ticket</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Descargar PDF"
+                              onClick={() => void handleDownloadTicket(session.id)}
+                              className="h-8 px-2 text-xs"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Imprimir ticket"
+                              onClick={() => void handlePrintTicket(session.id)}
+                              className="h-8 px-2 text-xs"
+                            >
+                              <Printer className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">En curso</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
+
+          {filteredHistory.length > 0 ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
+              <span>
+                Mostrando {page * pageSize + 1} -{" "}
+                {Math.min((page + 1) * pageSize, filteredHistory.length)} de{" "}
+                {filteredHistory.length} sesiones
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((prev) => Math.max(prev - 1, 0))}
+                  disabled={page === 0 || loadingHistory}
+                >
+                  Anterior
+                </Button>
+                <span className="px-1 text-xs font-semibold text-slate-500">
+                  {page + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setPage((prev) => Math.min(prev + 1, Math.max(totalPages - 1, 0)))
+                  }
+                  disabled={page >= totalPages - 1 || loadingHistory}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </article>
       </section>
 

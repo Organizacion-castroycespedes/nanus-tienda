@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Building2,
+  Mail,
   Pencil,
   Plus,
   RefreshCw,
   Search,
   Shield,
   ShieldCheck,
+  User,
+  Users,
 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
@@ -22,8 +26,13 @@ import { hasMenuAccess } from "../../../lib/permissions";
 import { MENU_KEYS } from "../../../domains/menu/constants";
 import { listTenants } from "../../../domains/tenants/api";
 import type { TenantSummaryResponse } from "../../../domains/tenants/dtos";
-import { createRole, listRoles, updateRole } from "../../../domains/roles/api";
-import type { RoleResponse } from "../../../domains/roles/dtos";
+import {
+  createRole,
+  getRoleUsers,
+  listRoles,
+  updateRole,
+} from "../../../domains/roles/api";
+import type { RoleResponse, RoleUserResponse } from "../../../domains/roles/dtos";
 import { useAppSelector } from "../../../store/hooks";
 
 type RoleFormState = {
@@ -73,6 +82,16 @@ const RolesPage = () => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [hasAccess, setHasAccess] = useState(false);
   const [canWrite, setCanWrite] = useState(false);
+
+  // Role users modal state
+  const [usersModalOpen, setUsersModalOpen] = useState(false);
+  const [selectedRoleForUsers, setSelectedRoleForUsers] =
+    useState<RoleResponse | null>(null);
+  const [roleUsers, setRoleUsers] = useState<RoleUserResponse[]>([]);
+  const [roleUsersLoading, setRoleUsersLoading] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userTenantFilter, setUserTenantFilter] = useState("");
+
   const confirm = useConfirm();
   const authUser = useAppSelector((state) => state.auth.user);
   const permissions = useAppSelector((state) => state.menu.permissions);
@@ -97,7 +116,8 @@ const RolesPage = () => {
     return roles.filter((role) => {
       const name = role.nombre.toLowerCase();
       const description = role.descripcion?.toLowerCase() ?? "";
-      const matchesQuery = !query || name.includes(query) || description.includes(query);
+      const matchesQuery =
+        !query || name.includes(query) || description.includes(query);
 
       if (!matchesQuery) return false;
 
@@ -223,6 +243,53 @@ const RolesPage = () => {
     setRoleModalOpen(false);
   };
 
+  const openUsersModal = async (role: RoleResponse) => {
+    setSelectedRoleForUsers(role);
+    setUserSearchQuery("");
+    setUserTenantFilter("");
+    setUsersModalOpen(true);
+    setRoleUsersLoading(true);
+    try {
+      const users = await getRoleUsers(role.id, undefined, buildAuthHeaders());
+      setRoleUsers(users);
+    } catch {
+      showToast("No se pudieron cargar los usuarios para este rol.", "error");
+    } finally {
+      setRoleUsersLoading(false);
+    }
+  };
+
+  const closeUsersModal = () => {
+    setUsersModalOpen(false);
+    setSelectedRoleForUsers(null);
+    setRoleUsers([]);
+  };
+
+  const filteredRoleUsers = useMemo(() => {
+    const query = userSearchQuery.trim().toLowerCase();
+    return roleUsers.filter((u) => {
+      const matchesTenant =
+        !userTenantFilter || u.tenant.id === userTenantFilter;
+      if (!matchesTenant) return false;
+
+      if (!query) return true;
+      const fullName = `${u.persona?.nombres ?? ""} ${
+        u.persona?.apellidos ?? ""
+      }`.toLowerCase();
+      const email = u.email.toLowerCase();
+      const doc = u.persona?.documentoNumero?.toLowerCase() ?? "";
+      const cargo = u.persona?.cargoNombre?.toLowerCase() ?? "";
+      const tenantName = (u.tenant.nombre ?? u.tenant.slug).toLowerCase();
+      return (
+        fullName.includes(query) ||
+        email.includes(query) ||
+        doc.includes(query) ||
+        cargo.includes(query) ||
+        tenantName.includes(query)
+      );
+    });
+  }, [roleUsers, userSearchQuery, userTenantFilter]);
+
   const handleTenantSelect = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const selected = Array.from(event.target.selectedOptions).map(
       (option) => option.value
@@ -282,7 +349,8 @@ const RolesPage = () => {
           roleModalMode === "create"
             ? `Se creará el rol "${roleForm.nombre.trim()}" con la configuración asignada.`
             : `Se actualizará la configuración del rol "${roleForm.nombre.trim()}".`,
-        confirmText: roleModalMode === "create" ? "Crear rol" : "Actualizar rol",
+        confirmText:
+          roleModalMode === "create" ? "Crear rol" : "Actualizar rol",
         variant: "default",
       });
       await handleSubmitRole();
@@ -502,8 +570,15 @@ const RolesPage = () => {
                         <RowActionsMenu
                           items={[
                             {
+                              label: "Ver usuarios",
+                              icon: <Users className="h-4 w-4 text-slate-500" />,
+                              onSelect: () => void openUsersModal(role),
+                            },
+                            {
                               label: "Editar",
-                              icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                              icon: (
+                                <Pencil className="h-4 w-4 text-slate-500" />
+                              ),
                               disabled: !canManageRoles,
                               onSelect: () => openEditModal(role),
                             },
@@ -522,7 +597,9 @@ const RolesPage = () => {
         {filteredRoles.length > 0 ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
             <span>
-              Página {Math.min(page + 1, totalPages)} de {totalPages} ({filteredRoles.length} {filteredRoles.length === 1 ? "rol" : "roles"})
+              Página {Math.min(page + 1, totalPages)} de {totalPages} (
+              {filteredRoles.length}{" "}
+              {filteredRoles.length === 1 ? "rol" : "roles"})
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -545,6 +622,134 @@ const RolesPage = () => {
           </div>
         ) : null}
       </section>
+
+      {/* Role Users Detail Modal */}
+      {usersModalOpen && selectedRoleForUsers ? (
+        <Modal
+          title={`Usuarios con rol: ${selectedRoleForUsers.nombre}`}
+          onClose={closeUsersModal}
+        >
+          <div className="space-y-4 max-w-2xl">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Listado de usuarios asignados a este rol dentro de los tenants a
+              los que tienes acceso.
+            </p>
+
+            {/* Filter controls inside modal */}
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <Input
+                placeholder="Buscar por nombre, email o documento..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+              />
+
+              {isSuperAdmin && tenantOptions.length > 0 ? (
+                <Select
+                  value={userTenantFilter}
+                  onChange={(e) => setUserTenantFilter(e.target.value)}
+                  className="w-full sm:w-48"
+                >
+                  <option value="">Todos los tenants</option>
+                  {tenantOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nombre ?? t.slug}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
+            </div>
+
+            {/* Users list table / view */}
+            <div className="max-h-[360px] overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700">
+              {roleUsersLoading ? (
+                <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                  Cargando usuarios...
+                </div>
+              ) : filteredRoleUsers.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-500 dark:text-slate-400">
+                  {roleUsers.length === 0
+                    ? "No hay usuarios asignados a este rol."
+                    : "No se encontraron usuarios con el filtro aplicado."}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredRoleUsers.map((u) => {
+                    const fullName = u.persona
+                      ? `${u.persona.nombres} ${u.persona.apellidos}`.trim()
+                      : u.email;
+                    return (
+                      <div
+                        key={u.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 font-semibold text-xs">
+                            <User className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900 dark:text-white text-sm">
+                                {fullName}
+                              </span>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                  u.estado === "ACTIVE"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800"
+                                    : "bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                                }`}
+                              >
+                                {u.estado === "ACTIVE" ? "Activo" : u.estado}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              <span className="flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {u.email}
+                              </span>
+                              {u.persona?.documentoNumero ? (
+                                <span>
+                                  {u.persona.documentoTipo}:{" "}
+                                  {u.persona.documentoNumero}
+                                </span>
+                              ) : null}
+                              {u.persona?.cargoNombre ? (
+                                <span className="font-medium text-slate-600 dark:text-slate-300">
+                                  {u.persona.cargoNombre}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:items-end gap-1 text-xs pl-12 sm:pl-0">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            <Building2 className="h-3 w-3 text-slate-400" />
+                            {u.tenant.nombre ?? u.tenant.slug}
+                          </span>
+                          {u.branch?.nombre ? (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {u.branch.nombre}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {filteredRoleUsers.length} usuario(s) encontrado(s)
+              </span>
+              <Button variant="ghost" onClick={closeUsersModal}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {/* Create / Edit Modal */}
       {roleModalOpen ? (

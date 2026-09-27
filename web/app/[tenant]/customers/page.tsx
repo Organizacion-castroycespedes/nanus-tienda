@@ -72,24 +72,32 @@ const resolveFiscalBadge = (customer: CustomerResponse) => {
   if (customer.isFinalConsumer || customer.fiscalStatus === "NOT_REQUIRED") {
     return {
       label: "Consumidor Final",
-      className: "border-slate-200 bg-slate-100 text-slate-700",
+      dotColor: "bg-slate-400 dark:bg-slate-500",
+      className:
+        "border-slate-200 bg-slate-100/90 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
     };
   }
   if (customer.isDianValidated || customer.fiscalStatus === "VALIDATED") {
     return {
       label: "Validado DIAN",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dotColor: "bg-emerald-500",
+      className:
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
     };
   }
   if (customer.fiscalDataSource === "MANUAL") {
     return {
       label: "Manual",
-      className: "border-blue-200 bg-blue-50 text-blue-700",
+      dotColor: "bg-blue-500",
+      className:
+        "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
     };
   }
   return {
     label: "Pendiente",
-    className: "border-amber-200 bg-amber-50 text-amber-800",
+    dotColor: "bg-amber-500",
+    className:
+      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
   };
 };
 
@@ -418,9 +426,9 @@ const CustomersPage = () => {
             <thead className="bg-slate-50 text-left text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Nombre</th>
-                <th className="px-4 py-3 font-medium">Documento</th>
-                <th className="px-4 py-3 font-medium">Estado fiscal</th>
-                <th className="px-4 py-3 font-medium">Teléfono</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Documento</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Estado fiscal</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">Teléfono</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Ubicación</th>
                 <th className="px-4 py-3 text-right font-medium">Acciones</th>
@@ -453,20 +461,24 @@ const CustomersPage = () => {
                       <td className="px-4 py-3 text-slate-900 dark:text-white">
                         <div className="font-medium">{customer.name}</div>
                         {customer.legalName && customer.legalName !== customer.name ? (
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{customer.legalName}</div>
+                           <div className="text-xs text-slate-500 dark:text-slate-400">{customer.legalName}</div>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">
                         {getCustomerDocument(customer)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3">
                         <span
-                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${fiscalBadge.className}`}
+                          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs ${fiscalBadge.className}`}
                         >
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${fiscalBadge.dotColor}`}
+                            aria-hidden="true"
+                          />
                           {fiscalBadge.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-300">
                         {customer.phone || "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
