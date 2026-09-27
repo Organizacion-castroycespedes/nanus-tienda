@@ -509,33 +509,7 @@ export const SupplierForm = ({
     };
   }, [values.departamentoId]);
 
-  useEffect(() => {
-    const selected = countries.find(
-      (country) => country.codigo_iso2 === values.countryCode
-    );
-    if (selected && selected.id !== values.countryId) {
-      setValues((prev) => ({ ...prev, countryId: selected.id }));
-    }
-  }, [countries, values.countryCode, values.countryId]);
-
-  useEffect(() => {
-    const selected = departments.find(
-      (department) => department.codigo_dane === values.departmentCode
-    );
-    if (selected && selected.id !== values.departamentoId) {
-      setValues((prev) => ({ ...prev, departamentoId: selected.id }));
-    }
-  }, [departments, values.departmentCode, values.departamentoId]);
-
-  useEffect(() => {
-    const selected = municipalities.find(
-      (municipality) => municipality.codigo_dane === values.municipalityCode
-    );
-    if (selected && selected.id !== values.municipioId) {
-      setValues((prev) => ({ ...prev, municipioId: selected.id }));
-    }
-  }, [municipalities, values.municipalityCode, values.municipioId]);
-
+  // Sincronización de ubicación gestionada de forma imperativa en onChange y carga inicial
   const resetLookupState = () => {
     setPreview(null);
     setSelectedFields([]);

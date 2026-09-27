@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Banknote,
   Download,
   Eye,
   PackageCheck,
@@ -16,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
@@ -119,7 +121,7 @@ const OrdersPage = () => {
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [cashSessionChecked, setCashSessionChecked] = useState(false);
-  const [cashScope, setCashScope] = useState<"current" | "all">("current");
+  const [cashScope, setCashScope] = useState<"current" | "all">("all");
   const [deliveryRelation, setDeliveryRelation] =
     useState<OrderDeliveryRelation | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
@@ -130,8 +132,7 @@ const OrdersPage = () => {
   const canCreate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const canUpdate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const hasOpenCashSession = Boolean(currentCashSession);
-  const canUseAllCashScope =
-    role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canUseAllCashScope = true;
   const isGlobalRole = role === "SUPER_ADMIN";
   const tenantSlug =
     authUser?.tenantSlug ?? authUser?.tenantId ?? currentTenant ?? "default";
@@ -228,38 +229,21 @@ const OrdersPage = () => {
     };
   }, [authUser?.tenantId]);
 
-  useEffect(() => {
-    if (!canUseAllCashScope && cashScope !== "current") {
-      setCashScope("current");
-    }
-  }, [canUseAllCashScope, cashScope]);
-
   const loadOrders = useCallback(
     async (filters?: OrderFilters) => {
       const activeFilters = filters ?? appliedFilters;
       setLoading(true);
       setErrorMessage(null);
       try {
-        const result = await getOrders(
-          isGlobalRole
-            ? {
-                tenantId: activeFilters.tenantId || undefined,
-                branchId: activeFilters.branchId || undefined,
-                fromDate: activeFilters.fromDate || undefined,
-                toDate: activeFilters.toDate || undefined,
-                cashScope,
-                cashSessionId:
-                  cashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
-              }
-            : {
-                tenantId: currentTenant ?? undefined,
-                branchId: activeFilters.branchId || undefined,
-                fromDate: activeFilters.fromDate || undefined,
-                toDate: activeFilters.toDate || undefined,
-                cashScope: "current",
-                cashSessionId: currentCashSession?.id ?? undefined,
-              }
-        );
+        const result = await getOrders({
+          tenantId: isGlobalRole ? activeFilters.tenantId || undefined : currentTenant ?? undefined,
+          branchId: activeFilters.branchId || undefined,
+          fromDate: activeFilters.fromDate || undefined,
+          toDate: activeFilters.toDate || undefined,
+          cashScope,
+          cashSessionId:
+            cashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
+        });
         setOrders(result);
         setHasSearched(true);
       } catch {
@@ -356,20 +340,12 @@ const OrdersPage = () => {
   };
 
   const openCreateForm = () => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(null);
     setFormMode("create");
   };
 
   const handleEdit = async (orderId: string) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setLoadingOrder(true);
     setErrorMessage(null);
     try {
@@ -385,30 +361,18 @@ const OrdersPage = () => {
   };
 
   const handleOpenDeliver = (orderId: string) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(orderId);
     setFormMode("deliver");
   };
 
   const handleOpenInvoice = (orderId: string) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(orderId);
     setFormMode("invoice");
   };
 
   const handleOpenPayment = (order: OrderResponse) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(order.id);
     setSelectedPaymentOrder(order);
@@ -429,10 +393,6 @@ const OrdersPage = () => {
   };
 
   const handleCancel = async (order: OrderResponse) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     try {
       await confirm({
         title: "Cancelar pedido",
@@ -548,10 +508,7 @@ const OrdersPage = () => {
               Actualizar
             </Button>
             {canCreate ? (
-              <Button
-                onClick={openCreateForm}
-                disabled={cashSessionChecked && !hasOpenCashSession}
-              >
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear pedido
               </Button>
@@ -560,14 +517,6 @@ const OrdersPage = () => {
           ) : null}
         </div>
       </section>
-
-      {cashSessionChecked && !hasOpenCashSession ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          No tienes una caja abierta. Abre caja para ver la operacion actual
-          de pedidos. Crear, editar, entregar, abonar, facturar o cancelar sigue
-          bloqueado.
-        </section>
-      ) : null}
 
       {!isActionMode ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
@@ -578,17 +527,17 @@ const OrdersPage = () => {
               </p>
               <p className="mt-1 text-emerald-800">
                 {cashScope === "all"
-                  ? "Mostrando historico autorizado de pedidos."
+                  ? "Mostrando todos los pedidos registrados."
                   : currentCashSession
                     ? `Mostrando operacion de caja actual: ${
                         currentCashSession.cashRegisterNombre ??
                         currentCashSession.cashRegisterCodigo ??
                         "Caja"
                       }.`
-                    : "No se mezcla historico con la operacion actual."}
+                    : "Mostrando operacion de pedidos."}
               </p>
             </div>
-            {canUseAllCashScope ? (
+            {currentCashSession ? (
               <Select
                 label="Alcance"
                 value={cashScope}
@@ -597,8 +546,8 @@ const OrdersPage = () => {
                 }
                 className="min-w-[180px]"
               >
-                <option value="current">Caja actual</option>
                 <option value="all">Todas</option>
+                <option value="current">Caja actual</option>
               </Select>
             ) : null}
           </div>
@@ -892,7 +841,7 @@ const OrdersPage = () => {
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -937,111 +886,84 @@ const OrdersPage = () => {
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatDate(order.createdAt)}
                     </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const hasRowActions =
-                          canOpenDeliveryRelation(order) ||
-                          (canUpdate &&
-                            (canEditOrder(order.status) ||
-                              canDeliverOrder(order.status) ||
-                              canRegisterOrderPayment(order) ||
-                              canInvoiceOrder(order) ||
-                              canCancelOrder(order.status))) ||
-                          canAccessTicket(order.status);
-
-                        return (
-                      <div className="flex flex-wrap gap-2">
-                        {canUpdate && canEditOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleEdit(order.id)}
-                            disabled={loadingOrder || !hasOpenCashSession}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canDeliverOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenDeliver(order.id)}
-                            disabled={!hasOpenCashSession}
-                          >
-                            <PackageCheck className="h-4 w-4" />
-                            Entregar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canInvoiceOrder(order) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenInvoice(order.id)}
-                            disabled={!hasOpenCashSession}
-                          >
-                            <Receipt className="h-4 w-4" />
-                            Facturar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canRegisterOrderPayment(order) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenPayment(order)}
-                            disabled={!hasOpenCashSession}
-                          >
-                            <Receipt className="h-4 w-4" />
-                            Abonar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canCancelOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleCancel(order)}
-                            disabled={!hasOpenCashSession}
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Cancelar
-                          </Button>
-                        ) : null}
-                        {canAccessTicket(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPreviewOrder(order)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Ver Ticket
-                          </Button>
-                        ) : null}
-                        {canOpenDeliveryRelation(order) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenDeliveryRelation(order)}
-                          >
-                            <Truck className="h-4 w-4" />
-                            Domicilio
-                          </Button>
-                        ) : null}
-                        {canAccessTicket(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleDownloadTicket(order)}
-                          >
-                            <Download className="h-4 w-4" />
-                            Descargar
-                          </Button>
-                        ) : null}
-                        {!hasRowActions ? (
-                          <span className="text-xs text-slate-400">Sin acciones</span>
-                        ) : null}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canUpdate && canEditOrder(order.status)
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    disabled: loadingOrder,
+                                    onSelect: () => void handleEdit(order.id),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canDeliverOrder(order.status)
+                              ? [
+                                  {
+                                    label: "Entregar",
+                                    icon: <PackageCheck className="h-4 w-4 text-emerald-500" />,
+                                    onSelect: () => handleOpenDeliver(order.id),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canInvoiceOrder(order)
+                              ? [
+                                  {
+                                    label: "Facturar",
+                                    icon: <Receipt className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => handleOpenInvoice(order.id),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canRegisterOrderPayment(order)
+                              ? [
+                                  {
+                                    label: "Abonar",
+                                    icon: <Banknote className="h-4 w-4 text-blue-500" />,
+                                    onSelect: () => handleOpenPayment(order),
+                                  },
+                                ]
+                              : []),
+                            ...(canAccessTicket(order.status)
+                              ? [
+                                  {
+                                    label: "Ver Ticket",
+                                    icon: <Eye className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => setPreviewOrder(order),
+                                  },
+                                  {
+                                    label: "Descargar ticket",
+                                    icon: <Download className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => void handleDownloadTicket(order),
+                                  },
+                                ]
+                              : []),
+                            ...(canOpenDeliveryRelation(order)
+                              ? [
+                                  {
+                                    label: "Domicilio",
+                                    icon: <Truck className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => handleOpenDeliveryRelation(order),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canCancelOrder(order.status)
+                              ? [
+                                  {
+                                    label: "Cancelar pedido",
+                                    icon: <XCircle className="h-4 w-4 text-rose-500" />,
+                                    destructive: true,
+                                    separatorBefore: true,
+                                    onSelect: () => void handleCancel(order),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       </div>
-                        );
-                      })()}
                     </td>
                   </tr>
                 ))

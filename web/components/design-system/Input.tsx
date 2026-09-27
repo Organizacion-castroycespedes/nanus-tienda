@@ -4,7 +4,7 @@ import {
 } from "react";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
-  label: string;
+  label?: string;
   hint?: string;
 };
 

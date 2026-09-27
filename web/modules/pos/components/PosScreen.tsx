@@ -30,6 +30,7 @@ import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { usePosCartStore } from "../hooks/usePosCartStore";
 import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
@@ -49,10 +50,12 @@ import type {
   FinancialInstitution,
 } from "../../finance/types";
 import { PaymentDialog, type PosPaymentRow } from "./payment/PaymentDialog";
+import { PosAccountTabs } from "./accounts/PosAccountTabs";
 import {
   CartSaleModal,
   type CartSaleItemPresentation,
 } from "./cart/CartSaleModal";
+import { PosProductCard } from "./catalog/PosProductCard";
 import {
   createSale,
   getPosCustomers,
@@ -124,7 +127,9 @@ import {
 import {
   buildClearedPosProductCatalogFilters,
   filterPosProductsForCatalog,
+  getProductSaleType,
   normalizePosClassificationId,
+  productSaleTypeLabels,
   resolveEffectivePosProductImage,
   resolvePosSubcategoryFilterForCategory,
   sortPosClassificationOptions,
@@ -316,15 +321,6 @@ const isWeighableProduct = (product: ProductResponse) => {
 const formatScaleQuantity = (value: number) =>
   value.toFixed(3).replace(/\.?0+$/, "");
 
-const getProductSaleType = (product: ProductResponse) =>
-  product.saleType ?? (isWeighableProduct(product) ? "WEIGHT" : "UNIT");
-
-const productSaleTypeLabels: Record<"UNIT" | "WEIGHT" | "BOTH", string> = {
-  UNIT: "Unidad",
-  WEIGHT: "Peso",
-  BOTH: "Unidad/peso",
-};
-
 const parseQuantityInput = (value: string) => {
   const normalized = value.replace(",", ".").replace(/[^0-9.]/g, "");
   const [whole, ...decimalParts] = normalized.split(".");
@@ -514,8 +510,11 @@ export const PosScreen = () => {
   const branding = useAppSelector((state) => state.branding.config);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
   const posTerminalId = useAppSelector((state) => state.pos.terminalId);
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const {
     items: cart,
+    accounts,
+    activeAccountId,
     payments,
     saleStatus,
     saleAttempt,
@@ -529,10 +528,20 @@ export const PosScreen = () => {
     allowSaleSubmissionRetry,
     allowUnknownSaleRetry,
     resetPosCartSale,
+    addAccount,
+    switchAccount,
+    renameAccount,
+    removeAccount,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
+  const confirm = useConfirm();
   const canRead = hasMenuAccess("POS", "READ");
   const canCreate = hasMenuAccess("POS", "WRITE");
+
+  const activeAccount = useMemo(
+    () => accounts.find((account) => account.id === activeAccountId) ?? accounts[0],
+    [accounts, activeAccountId]
+  );
 
   if (!hasSession) {
     return null;
@@ -853,7 +862,7 @@ export const PosScreen = () => {
       try {
         const [methods, session, banks] = await Promise.all([
           listPaymentMethods({ active: true }),
-          getCurrentCashSession(),
+          getCurrentCashSession(posCashRegisterId ?? undefined),
           listFinancialInstitutions().catch(() => []),
         ]);
 
@@ -877,11 +886,13 @@ export const PosScreen = () => {
     };
 
     void loadFinanceCatalog();
+    window.addEventListener("manus:cash-session-changed", loadFinanceCatalog);
 
     return () => {
       active = false;
+      window.removeEventListener("manus:cash-session-changed", loadFinanceCatalog);
     };
-  }, []);
+  }, [posCashRegisterId]);
 
   useEffect(() => {
     let active = true;
@@ -1056,25 +1067,6 @@ export const PosScreen = () => {
   ].filter((label): label is string => Boolean(label));
   const hasProductCatalogFilters = activeProductFilterLabels.length > 0;
 
-  useEffect(() => {
-    const nextSubcategoryId = resolvePosSubcategoryFilterForCategory(
-      selectedProductSubcategoryId,
-      selectedProductCategoryId,
-      productSubcategoryOptions
-    );
-
-    if (
-      selectedProductSubcategoryId &&
-      selectedProductSubcategoryId !== nextSubcategoryId
-    ) {
-      setSelectedProductSubcategoryId(nextSubcategoryId);
-    }
-  }, [
-    productSubcategoryOptions,
-    selectedProductCategoryId,
-    selectedProductSubcategoryId,
-  ]);
-
   const handleStockFilterChange = useCallback(
     (filter: StockFilterKey) => {
       setActiveStockFilter(filter);
@@ -1148,6 +1140,52 @@ export const PosScreen = () => {
     selectedProductCategoryId,
     selectedProductSubcategoryId,
   ]);
+
+  const POS_CATALOG_PAGE_SIZE = 48;
+  const [visibleProductCount, setVisibleProductCount] = useState(POS_CATALOG_PAGE_SIZE);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setVisibleProductCount(POS_CATALOG_PAGE_SIZE);
+  }, [
+    query,
+    activeStockFilter,
+    selectedProductCategoryId,
+    selectedProductSubcategoryId,
+  ]);
+
+  const visibleProducts = useMemo(
+    () => filteredProducts.slice(0, visibleProductCount),
+    [filteredProducts, visibleProductCount]
+  );
+
+  const hasMoreProducts = visibleProductCount < filteredProducts.length;
+
+  useEffect(() => {
+    if (!hasMoreProducts) {
+      return;
+    }
+
+    const node = loadMoreSentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisibleProductCount((prev) =>
+            Math.min(prev + POS_CATALOG_PAGE_SIZE, filteredProducts.length)
+          );
+        }
+      },
+      { rootMargin: "300px" }
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [filteredProducts.length, hasMoreProducts]);
 
   const productById = useMemo(
     () =>
@@ -2078,13 +2116,21 @@ export const PosScreen = () => {
     summary.total,
   ]);
 
-  const cancelCurrentSale = useCallback(() => {
+  const cancelCurrentSale = useCallback(async () => {
     if (cartRef.current.length > 0) {
-      const confirmed = window.confirm(
-        "¿Cancelar la venta actual? Se vaciará el carrito."
-      );
-      if (!confirmed) {
-        return;
+      try {
+        await confirm({
+          title: "¿Cancelar la venta actual?",
+          description: "Se vaciará el carrito y se restablecerá la venta en curso.",
+          confirmText: "Aceptar",
+          cancelText: "Cancelar",
+          variant: "danger",
+        });
+      } catch (error) {
+        if (isConfirmCancelledError(error)) {
+          return;
+        }
+        throw error;
       }
     }
     resetPosCartSale();
@@ -2095,6 +2141,7 @@ export const PosScreen = () => {
     setCartSheetOpen(false);
     setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
   }, [
+    confirm,
     finalConsumerCustomer?.id,
     resetPosCartSale,
     setCartItemsAndRef,
@@ -2185,13 +2232,14 @@ export const PosScreen = () => {
 
   useEffect(() => {
     if (paymentModalOpen && firstPaymentId) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const firstInput = document.getElementById(`payment-amount-${firstPaymentId}`);
         if (firstInput) {
           firstInput.focus();
           if (firstInput instanceof HTMLInputElement) firstInput.select();
         }
       }, 100);
+      return () => clearTimeout(timer);
     }
   }, [firstPaymentId, paymentModalOpen]);
 
@@ -2632,7 +2680,6 @@ export const PosScreen = () => {
         <Toast
           message={toastMessage}
           variant={toastVariant}
-          onClose={() => setToastMessage(null)}
         />
       ) : null}
 
@@ -2785,6 +2832,16 @@ export const PosScreen = () => {
         <div className="min-w-0">
           <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
             <div className="flex flex-col gap-3 2xl:gap-4">
+              <PosAccountTabs
+                accounts={accounts}
+                activeAccountId={activeAccountId}
+                onSelectAccount={switchAccount}
+                onAddAccount={addAccount}
+                onRenameAccount={renameAccount}
+                onRemoveAccount={removeAccount}
+                formatCurrency={formatCurrency}
+              />
+
               <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   <Search className="h-4 w-4" />
@@ -3064,228 +3121,58 @@ export const PosScreen = () => {
                       : "grid gap-2.5"
                   }
                 >
-                  {filteredProducts.map((product) => {
+                  {visibleProducts.map((product) => {
                     const stock = Number(product.stock ?? 0);
                     const productSaleType = getProductSaleType(product);
                     const requiresScale = productSaleType === "WEIGHT";
-                    const quantityInCart = cartQuantityByProductId[product.id] ?? 0;
-                    const hasProductInCart = quantityInCart > 0;
-                    const actionLabel = requiresScale
-                      ? scaleMockEnabled
-                        ? "Leer balanza"
-                        : "Sin balanza"
-                      : "Agregar";
-                    const actionTone = requiresScale
-                      ? scaleMockEnabled
-                        ? "bg-sky-600 text-white shadow-sm ring-1 ring-sky-500/20 group-hover:bg-sky-700 dark:bg-sky-500 dark:text-slate-950 dark:group-hover:bg-sky-400"
-                        : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
-                      : "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/20 group-hover:bg-blue-700 dark:bg-blue-500 dark:text-slate-950 dark:group-hover:bg-blue-400";
-                    const effectiveImage = resolveEffectivePosProductImage(product, {
-                      categoryById: productCategoryById,
-                      subcategoryById: productSubcategoryById,
-                    });
                     const isProductActionDisabled =
                       stock <= 0 ||
                       !canCreate ||
                       (requiresScale && (!scaleMockEnabled || scaleReading));
-
-                    if (productViewMode === "list") {
-                      return (
-                        <button
-                          key={product.id}
-                          type="button"
-                          onClick={() => handleProductCardAction(product)}
-                          disabled={isProductActionDisabled}
-                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-800 dark:hover:border-slate-700 ${
-                            hasProductInCart
-                              ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                              : "border-slate-200 dark:border-slate-700"
-                          }`}
-                        >
-                          <div className="grid min-h-[88px] grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 sm:min-h-[92px] sm:grid-cols-[80px_minmax(0,1fr)_auto] md:min-h-[96px] lg:min-h-[100px]">
-                            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950 sm:h-20 sm:w-20 md:h-[78px] md:w-[78px] lg:h-20 lg:w-20">
-                              <InventoryImagePreview
-                                imageUrl={effectiveImage.imageUrl}
-                                altText={effectiveImage.altText}
-                                lazy
-                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                                fallback={<span>{buildImageLabel(product.name)}</span>}
-                              />
-                            </div>
-
-                            <div className="min-w-0 py-0.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <h3 className="line-clamp-2 text-[0.98rem] font-semibold leading-tight text-slate-950 dark:text-white sm:text-[1rem]">
-                                  {product.name}
-                                </h3>
-                                <span
-                                  className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${getProductStockTone(
-                                    stock
-                                  )}`}
-                                >
-                                  {stock <= 0
-                                    ? "Sin stock"
-                                    : isLowStock(stock)
-                                      ? `Stock bajo ${stock}`
-                                      : `Stock ${stock}`}
-                                </span>
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
-                                <span className="text-slate-600 dark:text-slate-300">
-                                  {productSaleTypeLabels[productSaleType]} /{" "}
-                                  {product.measurementUnit ??
-                                    (productSaleType === "UNIT" ? "UND" : "KG")}
-                                </span>
-                              </div>
-
-                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
-                                    Precio final
-                                  </p>
-                                  <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
-                                    {formatCurrency(Number(product.priceWithTax ?? product.price))}
-                                  </p>
-                                </div>
-                                {hasProductInCart ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                    En carrito {quantityInCart}
-                                  </span>
-                                ) : null}
-                                {requiresScale ? (
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${actionTone}`}
-                                  >
-                                    {scaleMockEnabled ? (
-                                      <>
-                                        <Scale className="h-3.5 w-3.5" />
-                                        Leer balanza
-                                      </>
-                                    ) : (
-                                      actionLabel
-                                    )}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-end">
-                              <span
-                                className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
-                              >
-                                {requiresScale ? (
-                                  scaleMockEnabled ? (
-                                    <Scale className="h-4 w-4" />
-                                  ) : (
-                                    actionLabel
-                                  )
-                                ) : (
-                                  <Plus className="h-5 w-5" />
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    }
+                    const effectiveImage = resolveEffectivePosProductImage(product, {
+                      categoryById: productCategoryById,
+                      subcategoryById: productSubcategoryById,
+                    });
 
                     return (
-                      <button
+                      <PosProductCard
                         key={product.id}
-                          type="button"
-                          onClick={() => handleProductCardAction(product)}
-                          disabled={isProductActionDisabled}
-                          className={`group min-h-[200px] overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
-                            hasProductInCart
-                              ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                              : "border-slate-200 dark:border-slate-700"
-                          }`}
-                      >
-                        <div className="flex h-full flex-col">
-                          <div className="relative">
-                            <div className="relative aspect-[4/3] max-h-52 w-full overflow-hidden bg-white xl:max-h-44">
-                              <InventoryImagePreview
-                                imageUrl={effectiveImage.imageUrl}
-                                altText={effectiveImage.altText}
-                                lazy
-                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                                fallback={<span>{buildImageLabel(product.name)}</span>}
-                              />
-                            </div>
-                            <div className="absolute left-2.5 top-2.5 flex max-w-[calc(100%-1.25rem)] flex-wrap gap-1.5">
-                              {hasProductInCart ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                  En carrito {quantityInCart}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="absolute right-2.5 top-2.5">
-                              <span
-                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
-                                  stock
-                                )}`}
-                              >
-                                {stock <= 0
-                                  ? "Sin stock"
-                                  : isLowStock(stock)
-                                    ? `Stock bajo ${stock}`
-                                    : `Stock ${stock}`}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-3">
-                            <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-tight text-slate-950 dark:text-white">
-                                {product.name}
-                              </h3>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
-                                <span className="text-slate-600 dark:text-slate-300">
-                                  {productSaleTypeLabels[productSaleType]} /{" "}
-                                  {product.measurementUnit ??
-                                    (productSaleType === "UNIT" ? "UND" : "KG")}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                                  Precio final
-                                </p>
-                                <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
-                                  {formatCurrency(Number(product.priceWithTax ?? product.price))}
-                                </p>
-                              </div>
-                              <span
-                                className={`inline-flex h-10 min-w-10 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
-                              >
-                                {requiresScale ? (
-                                  scaleMockEnabled ? (
-                                    <span className="inline-flex items-center gap-1.5">
-                                      <Scale className="h-4 w-4" />
-                                      Leer
-                                    </span>
-                          ) : (
-                                    actionLabel
-                                  )
-                                ) : (
-                                  <Plus className="h-5 w-5" />
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
+                        product={product}
+                        viewMode={productViewMode}
+                        quantityInCart={cartQuantityByProductId[product.id] ?? 0}
+                        stock={stock}
+                        isProductActionDisabled={isProductActionDisabled}
+                        requiresScale={requiresScale}
+                        scaleMockEnabled={scaleMockEnabled}
+                        scaleReading={scaleReading}
+                        effectiveImage={effectiveImage}
+                        formattedPrice={formatCurrency(
+                          Number(product.priceWithTax ?? product.price)
+                        )}
+                        onAction={handleProductCardAction}
+                      />
                     );
                   })}
                 </div>
               )}
+
+              {hasMoreProducts ? (
+                <div className="mt-6 flex flex-col items-center justify-center gap-3">
+                  <div ref={loadMoreSentinelRef} className="h-4 w-full" />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setVisibleProductCount((prev) =>
+                        Math.min(prev + POS_CATALOG_PAGE_SIZE, filteredProducts.length)
+                      )
+                    }
+                  >
+                    Cargar más productos (mostrando {visibleProducts.length} de{" "}
+                    {filteredProducts.length})
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -3293,6 +3180,7 @@ export const PosScreen = () => {
 
       <CartSaleModal
         open={cartSheetOpen}
+        accountName={activeAccount?.name}
         items={cartWithDerivedValues}
         summary={summary}
         expandedTaxItems={expandedTaxItems}
@@ -3337,6 +3225,7 @@ export const PosScreen = () => {
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="font-semibold">
+            {activeAccount?.name ? `${activeAccount.name} • ` : ""}
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
           {canCharge ? (

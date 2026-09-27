@@ -1,10 +1,11 @@
 "use client";
 
-import { Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Input } from "../../../../components/design-system/Input";
 import { Modal } from "../../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
@@ -45,9 +46,11 @@ const CashRegistersPage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
-  const [query, setQuery] = useState("");
-  const [branchFilter, setBranchFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [filters, setFilters] = useState({
+    query: "",
+    branchId: "",
+    status: "all",
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CashRegister | null>(null);
   const [form, setForm] = useState<CreateCashRegisterPayload>(emptyForm);
@@ -111,16 +114,16 @@ const CashRegistersPage = () => {
   ]);
 
   const filteredItems = useMemo(() => {
-    const normalized = normalizeSearch(query);
+    const normalized = normalizeSearch(filters.query);
 
     return cashRegisters.filter((item) => {
-      if (branchFilter && item.branchId !== branchFilter) {
+      if (filters.branchId && item.branchId !== filters.branchId) {
         return false;
       }
-      if (statusFilter === "active" && !item.activo) {
+      if (filters.status === "active" && !item.activo) {
         return false;
       }
-      if (statusFilter === "inactive" && item.activo) {
+      if (filters.status === "inactive" && item.activo) {
         return false;
       }
       if (!normalized) {
@@ -133,7 +136,7 @@ const CashRegistersPage = () => {
         item.terminalNombre ?? "",
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [branchFilter, cashRegisters, query, statusFilter]);
+  }, [cashRegisters, filters]);
 
   const openCreateModal = () => {
     setEditingItem(null);
@@ -344,13 +347,17 @@ const CashRegistersPage = () => {
           <Input
             label="Buscar"
             placeholder="Caja, codigo, sucursal o terminal"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={filters.query}
+            onChange={(event) =>
+              setFilters((prev) => ({ ...prev, query: event.target.value }))
+            }
           />
           <Select
             label="Sucursal"
-            value={branchFilter}
-            onChange={(event) => setBranchFilter(event.target.value)}
+            value={filters.branchId}
+            onChange={(event) =>
+              setFilters((prev) => ({ ...prev, branchId: event.target.value }))
+            }
           >
             <option value="">Todas</option>
             {branchOptions.map((branch) => (
@@ -361,8 +368,10 @@ const CashRegistersPage = () => {
           </Select>
           <Select
             label="Estado"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            value={filters.status}
+            onChange={(event) =>
+              setFilters((prev) => ({ ...prev, status: event.target.value }))
+            }
           >
             <option value="all">Todas</option>
             <option value="active">Activas</option>
@@ -389,7 +398,7 @@ const CashRegistersPage = () => {
                 <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Creada</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -418,23 +427,31 @@ const CashRegistersPage = () => {
                       <FinanceStatusBadge value={item.activo} kind="active" />
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatDate(item.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {canManageCashRegisters ? (
-                          <Button variant="ghost" size="sm" onClick={() => openEditModal(item)}>
-                            Editar
-                          </Button>
-                        ) : null}
-                        {canManageCashRegisterAssignments ? (
-                          <Button variant="outline" size="sm" onClick={() => openAssignments(item)}>
-                            <UserPlus className="h-4 w-4" />
-                            Usuarios
-                          </Button>
-                        ) : null}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canManageCashRegisters
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openEditModal(item),
+                                  },
+                                ]
+                              : []),
+                            ...(canManageCashRegisterAssignments
+                              ? [
+                                  {
+                                    label: "Usuarios",
+                                    icon: <UserPlus className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openAssignments(item),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       </div>
-                      {!canManageCashRegisters && role !== "SUPER_ADMIN" ? (
-                        <span className="text-xs text-slate-400">Solo lectura</span>
-                      ) : null}
                     </td>
                   </tr>
                 ))
