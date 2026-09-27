@@ -616,6 +616,7 @@ export const PosScreen = () => {
   const {
     pdfConfig,
     isBillingProcessing,
+    cancelBillingProcessing,
     closePdfModal,
     triggerPrintWorkflow,
   } = useSalePrintWorkflow();
@@ -3374,7 +3375,7 @@ export const PosScreen = () => {
       {isBillingProcessing ? (
         <Modal
           title="Facturación Electrónica"
-          onClose={() => {}}
+          onClose={cancelBillingProcessing}
           size="md"
         >
           <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
@@ -3382,7 +3383,10 @@ export const PosScreen = () => {
             <div>
               <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
               <p className="text-xs text-slate-500 mt-1">
-                Procesando documento con el servicio fiscal. Por favor espere...
+                Procesando documento con el servicio fiscal. Puede tardar hasta 2 minutos.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
               </p>
             </div>
           </div>

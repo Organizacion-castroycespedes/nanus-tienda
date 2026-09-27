@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import { ApiError } from "../../../lib/request";
 import type { ElectronicInvoicePrintDataset } from "../../reporteria/types";
@@ -129,4 +131,17 @@ test("waitForElectronicInvoice aborts before issuing another request", async () 
     (error: unknown) => error instanceof Error && error.name === "AbortError",
   );
   assert.equal(loadCalls, 0);
+});
+
+test("POS billing wait dialog closes through the workflow cancellation handler", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "modules/pos/components/PosScreen.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /cancelBillingProcessing,/);
+  assert.match(source, /onClose=\{cancelBillingProcessing\}/);
+  assert.doesNotMatch(source, /onClose=\{\(\) => \{\}\}/);
+  assert.match(source, /Puede tardar hasta 2 minutos/);
+  assert.match(source, /la factura seguirá procesándose/);
 });

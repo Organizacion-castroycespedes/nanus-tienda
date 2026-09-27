@@ -359,6 +359,13 @@ export const useSalePrintWorkflow = () => {
     setPdfConfig(null);
   }, []);
 
+  const cancelBillingProcessing = useCallback(() => {
+    const activeWorkflow = activeWorkflowRef.current;
+    activeWorkflowRef.current = null;
+    activeWorkflow?.abort();
+    setIsBillingProcessing(false);
+  }, []);
+
   const triggerPrintWorkflow = useCallback(
     async (params: ExecuteSalePrintWorkflowParams) => {
       activeWorkflowRef.current?.abort();
@@ -387,6 +394,7 @@ export const useSalePrintWorkflow = () => {
   return {
     pdfConfig,
     isBillingProcessing,
+    cancelBillingProcessing,
     closePdfModal,
     triggerPrintWorkflow,
   };
