@@ -50,6 +50,7 @@ import type {
   FinancialInstitution,
 } from "../../finance/types";
 import { PaymentDialog, type PosPaymentRow } from "./payment/PaymentDialog";
+import { PosAccountTabs } from "./accounts/PosAccountTabs";
 import {
   CartSaleModal,
   type CartSaleItemPresentation,
@@ -509,8 +510,11 @@ export const PosScreen = () => {
   const branding = useAppSelector((state) => state.branding.config);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
   const posTerminalId = useAppSelector((state) => state.pos.terminalId);
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const {
     items: cart,
+    accounts,
+    activeAccountId,
     payments,
     saleStatus,
     saleAttempt,
@@ -524,11 +528,20 @@ export const PosScreen = () => {
     allowSaleSubmissionRetry,
     allowUnknownSaleRetry,
     resetPosCartSale,
+    addAccount,
+    switchAccount,
+    renameAccount,
+    removeAccount,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
   const confirm = useConfirm();
   const canRead = hasMenuAccess("POS", "READ");
   const canCreate = hasMenuAccess("POS", "WRITE");
+
+  const activeAccount = useMemo(
+    () => accounts.find((account) => account.id === activeAccountId) ?? accounts[0],
+    [accounts, activeAccountId]
+  );
 
   if (!hasSession) {
     return null;
@@ -849,7 +862,7 @@ export const PosScreen = () => {
       try {
         const [methods, session, banks] = await Promise.all([
           listPaymentMethods({ active: true }),
-          getCurrentCashSession(),
+          getCurrentCashSession(posCashRegisterId ?? undefined),
           listFinancialInstitutions().catch(() => []),
         ]);
 
@@ -873,11 +886,13 @@ export const PosScreen = () => {
     };
 
     void loadFinanceCatalog();
+    window.addEventListener("manus:cash-session-changed", loadFinanceCatalog);
 
     return () => {
       active = false;
+      window.removeEventListener("manus:cash-session-changed", loadFinanceCatalog);
     };
-  }, []);
+  }, [posCashRegisterId]);
 
   useEffect(() => {
     let active = true;
@@ -2817,6 +2832,16 @@ export const PosScreen = () => {
         <div className="min-w-0">
           <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
             <div className="flex flex-col gap-3 2xl:gap-4">
+              <PosAccountTabs
+                accounts={accounts}
+                activeAccountId={activeAccountId}
+                onSelectAccount={switchAccount}
+                onAddAccount={addAccount}
+                onRenameAccount={renameAccount}
+                onRemoveAccount={removeAccount}
+                formatCurrency={formatCurrency}
+              />
+
               <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
                   <Search className="h-4 w-4" />
@@ -3155,6 +3180,7 @@ export const PosScreen = () => {
 
       <CartSaleModal
         open={cartSheetOpen}
+        accountName={activeAccount?.name}
         items={cartWithDerivedValues}
         summary={summary}
         expandedTaxItems={expandedTaxItems}
@@ -3199,6 +3225,7 @@ export const PosScreen = () => {
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="font-semibold">
+            {activeAccount?.name ? `${activeAccount.name} • ` : ""}
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
           {canCharge ? (

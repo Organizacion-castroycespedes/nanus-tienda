@@ -5,6 +5,7 @@ import { MapPin, Pencil, Plus, RefreshCw, Search, XCircle } from "lucide-react";
 import { Button } from "../../../../components/design-system/Button";
 import { ConfirmationMessage } from "../../../../components/design-system/confirmation-message";
 import { Input } from "../../../../components/design-system/Input";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { listBranches } from "../../../../domains/branches/api";
@@ -505,7 +506,7 @@ const InventoryLocationsPage = () => {
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Descripcion</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -563,28 +564,31 @@ const InventoryLocationsPage = () => {
                         {location.description ?? "-"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {canEdit ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditForm(location)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
-                        ) : null}
-                        {canEdit && location.isActive ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPendingDeactivateLocation(location)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Inactivar
-                          </Button>
-                        ) : null}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canEdit
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openEditForm(location),
+                                  },
+                                  ...(location.isActive
+                                    ? [
+                                        {
+                                          label: "Inactivar",
+                                          icon: <XCircle className="h-4 w-4 text-amber-500" />,
+                                          destructive: true,
+                                          onSelect: () => setPendingDeactivateLocation(location),
+                                        },
+                                      ]
+                                    : []),
+                                ]
+                              : []),
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

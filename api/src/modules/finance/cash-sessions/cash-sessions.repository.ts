@@ -160,6 +160,24 @@ export class CashSessionsRepository {
     return result.rows[0] ?? null;
   }
 
+  async findOpenByBranch(
+    branchId: string,
+    tenantId: string,
+    client?: PoolClient
+  ): Promise<CashSessionRecord | null> {
+    const result = await this.query<CashSessionRecord>(
+      `${this.buildBaseQuery()}
+      WHERE session.branch_id = $1
+        AND session.tenant_id = $2
+        AND session.status = 'OPEN'
+      ORDER BY session.opened_at DESC
+      LIMIT 1`,
+      [branchId, tenantId],
+      client
+    );
+    return result.rows[0] ?? null;
+  }
+
   async hasActiveAssignment(
     cashRegisterId: string,
     userId: string,

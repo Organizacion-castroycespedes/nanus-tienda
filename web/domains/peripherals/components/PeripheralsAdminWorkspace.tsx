@@ -2,15 +2,18 @@
 
 import {
   Archive,
+  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   Printer,
   RefreshCw,
   Search,
 } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "../../../components/design-system/Button";
+
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import {
   listTerminals as listOperationalTerminals,
@@ -463,13 +466,27 @@ const PeripheralsAdminWorkspace = () => {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
+            <Link
+              href={`/${tenantSlug}/config/terminals`}
+              className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-blue-700 transition hover:text-blue-800 hover:underline dark:text-cyan-300 dark:hover:text-cyan-200"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver a terminales
+            </Link>
             <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Configuración operativa</p>
             <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Periféricos por terminal</h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Terminal canónica, periféricos asociados y dispositivos disponibles en Agent local.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${tenantSlug}/config/terminals`)}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Button>
             <Button variant="ghost" onClick={() => void loadSnapshot(selectedTerminalId || undefined)} isLoading={loading.snapshot}>
               <RefreshCw className="h-4 w-4" />
               Resolver

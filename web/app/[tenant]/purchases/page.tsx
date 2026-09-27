@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { NoticeDialog } from "../../../components/design-system/NoticeDialog";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
@@ -206,7 +207,7 @@ const PurchasesPage = () => {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [cashSessionChecked, setCashSessionChecked] = useState(false);
-  const [cashScope, setCashScope] = useState<"current" | "all">("current");
+  const [cashScope, setCashScope] = useState<"current" | "all">("all");
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
@@ -241,8 +242,7 @@ const PurchasesPage = () => {
   const canSettlePartial =
     canManagePurchases && hasPermission("inventory.settle_partial");
   const hasOpenCashSession = Boolean(currentCashSession);
-  const canUseAllCashScope =
-    role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canUseAllCashScope = true;
 
   const showApiConfirmError = useCallback(
     async (error: unknown, fallbackMessage: string) => {
@@ -280,39 +280,21 @@ const PurchasesPage = () => {
 
   const openPurchasePanel = useCallback(
     (action: PurchasePanelAction, purchaseId: string) => {
-      if (
-        action !== "detail" &&
-        action !== "ticket" &&
-        !hasOpenCashSession
-      ) {
-        notice.showWarning(
-          "Caja requerida",
-          "Debes tener una caja abierta para realizar esta operacion."
-        );
-        return;
-      }
       const params = new URLSearchParams(searchParams.toString());
       params.set("purchaseId", purchaseId);
       params.set("action", action);
       router.push(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [hasOpenCashSession, notice, pathname, router, searchParams]
+    [pathname, router, searchParams]
   );
 
   const openCreateForm = useCallback(() => {
-    if (!hasOpenCashSession) {
-      notice.showWarning(
-        "Caja requerida",
-        "Debes tener una caja abierta para realizar esta operacion."
-      );
-      return;
-    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("purchaseId");
     params.set("action", "create");
     const nextQuery = params.toString();
     router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-  }, [hasOpenCashSession, notice, pathname, router, searchParams]);
+  }, [pathname, router, searchParams]);
 
   const handleBackToList = useCallback(() => {
     setCreateHasUnsavedChanges(false);
@@ -335,7 +317,7 @@ const PurchasesPage = () => {
 
   const resolvePurchaseFilters = useCallback(
     (filters?: PurchaseFilters) => {
-      const resolvedCashScope = canUseAllCashScope ? cashScope : "current";
+      const resolvedCashScope = cashScope;
       if (canViewAllTenants) {
         return {
           tenantId: filters?.tenantId || undefined,
@@ -362,7 +344,7 @@ const PurchasesPage = () => {
           resolvedCashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
       };
     },
-    [canUseAllCashScope, canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
+    [canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
   );
 
   const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
@@ -426,32 +408,7 @@ const PurchasesPage = () => {
     };
   }, [authUser?.tenantId]);
 
-  useEffect(() => {
-    if (!canUseAllCashScope && cashScope !== "current") {
-      setCashScope("current");
-    }
-  }, [canUseAllCashScope, cashScope]);
 
-  useEffect(() => {
-    if (!cashSessionChecked || hasOpenCashSession || !activeViewMode) {
-      return;
-    }
-    if (activeViewMode === "detail" || activeViewMode === "ticket") {
-      return;
-    }
-
-    notice.showWarning(
-      "Caja requerida",
-      "Debes tener una caja abierta para realizar esta operacion."
-    );
-    handleBackToList();
-  }, [
-    activeViewMode,
-    cashSessionChecked,
-    handleBackToList,
-    hasOpenCashSession,
-    notice,
-  ]);
 
   useEffect(() => {
     if (!activePurchaseId || !activeAction) {
@@ -1178,10 +1135,7 @@ const PurchasesPage = () => {
                 Actualizar
               </Button>
               {canCreate ? (
-                <Button
-                  onClick={openCreateForm}
-                  disabled={cashSessionChecked && !hasOpenCashSession}
-                >
+                <Button onClick={openCreateForm}>
                   <Plus className="h-4 w-4" />
                   Crear compra
                 </Button>
@@ -1190,13 +1144,6 @@ const PurchasesPage = () => {
           ) : null}
         </div>
       </section>
-
-      {cashSessionChecked && !hasOpenCashSession ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          No tienes una caja abierta. Abre caja para ver la operacion actual
-          de compras. Crear, recibir, pagar, liquidar o cancelar sigue bloqueado.
-        </section>
-      ) : null}
 
       {!isActionMode ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
@@ -1207,17 +1154,17 @@ const PurchasesPage = () => {
               </p>
               <p className="mt-1 text-emerald-800">
                 {cashScope === "all"
-                  ? "Mostrando historico autorizado de compras."
+                  ? "Mostrando todas las compras registradas."
                   : currentCashSession
                     ? `Mostrando operacion de caja actual: ${
                         currentCashSession.cashRegisterNombre ??
                         currentCashSession.cashRegisterCodigo ??
                         "Caja"
                       }.`
-                    : "No se mezcla historico con la operacion actual."}
+                    : "Mostrando operacion de compras."}
               </p>
             </div>
-            {canUseAllCashScope ? (
+            {currentCashSession ? (
               <Select
                 label="Alcance"
                 value={cashScope}
@@ -1226,8 +1173,8 @@ const PurchasesPage = () => {
                 }
                 className="min-w-[180px]"
               >
-                <option value="current">Caja actual</option>
                 <option value="all">Todas</option>
+                <option value="current">Caja actual</option>
               </Select>
             ) : null}
           </div>
@@ -1425,7 +1372,7 @@ const PurchasesPage = () => {
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 font-medium">Pago</th>
                   <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1470,93 +1417,75 @@ const PurchasesPage = () => {
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatDate(purchase.createdAt)}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Detalle"
-                            onClick={() => openPurchasePanel("detail", purchase.id)}
-                            className="px-2"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {canReceive &&
-                          purchase.status !== "CANCELLED" &&
-                          purchase.status !== "RECEIVED" &&
-                          purchase.status !== "CERRADA_PARCIAL" ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Recibir"
-                              onClick={() => openPurchasePanel("receive", purchase.id)}
-                              disabled={!hasOpenCashSession}
-                              className="px-2"
-                            >
-                              <PackageCheck className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canReceive &&
-                          purchase.status !== "CANCELLED" &&
-                          purchase.balanceDue > 0 &&
-                          purchase.branchId ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Pagar"
-                              onClick={() => openPurchasePanel("pay", purchase.id)}
-                              disabled={!hasOpenCashSession}
-                              className="px-2"
-                            >
-                              <Banknote className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canLiquidatePurchase(purchase) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Liquidar"
-                              onClick={() => openPurchasePanel("settle-partial", purchase.id)}
-                              disabled={!hasOpenCashSession}
-                              className="px-2"
-                            >
-                              <FileCheck className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canCancelPurchase(purchase) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Cancelar compra"
-                              onClick={() => openPurchasePanel("cancel", purchase.id)}
-                              disabled={!hasOpenCashSession}
-                              className="px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canAccessTicket(purchase.status) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Ver Ticket"
-                              onClick={() => openPurchasePanel("ticket", purchase.id)}
-                              className="px-2"
-                            >
-                              <Receipt className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canAccessTicket(purchase.status) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Descargar"
-                              onClick={() => void handleDownloadTicket(purchase)}
-                              className="px-2"
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          ) : null}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end">
+                          <RowActionsMenu
+                            items={[
+                              {
+                                label: "Ver Detalle",
+                                icon: <Eye className="h-4 w-4 text-slate-500" />,
+                                onSelect: () => openPurchasePanel("detail", purchase.id),
+                              },
+                              ...(canReceive &&
+                              purchase.status !== "CANCELLED" &&
+                              purchase.status !== "RECEIVED" &&
+                              purchase.status !== "CERRADA_PARCIAL"
+                                ? [
+                                    {
+                                      label: "Recibir",
+                                      icon: <PackageCheck className="h-4 w-4 text-emerald-500" />,
+                                      onSelect: () => openPurchasePanel("receive", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(canReceive &&
+                              purchase.status !== "CANCELLED" &&
+                              purchase.balanceDue > 0 &&
+                              purchase.branchId
+                                ? [
+                                    {
+                                      label: "Pagar",
+                                      icon: <Banknote className="h-4 w-4 text-blue-500" />,
+                                      onSelect: () => openPurchasePanel("pay", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(canLiquidatePurchase(purchase)
+                                ? [
+                                    {
+                                      label: "Liquidar",
+                                      icon: <FileCheck className="h-4 w-4 text-amber-500" />,
+                                      onSelect: () => openPurchasePanel("settle-partial", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(canAccessTicket(purchase.status)
+                                ? [
+                                    {
+                                      label: "Ver Ticket",
+                                      icon: <Receipt className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => openPurchasePanel("ticket", purchase.id),
+                                    },
+                                    {
+                                      label: "Descargar ticket",
+                                      icon: <Download className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => void handleDownloadTicket(purchase),
+                                    },
+                                  ]
+                                : []),
+                              ...(canCancelPurchase(purchase)
+                                ? [
+                                    {
+                                      label: "Cancelar compra",
+                                      icon: <XCircle className="h-4 w-4 text-rose-500" />,
+                                      destructive: true,
+                                      separatorBefore: true,
+                                      onSelect: () => openPurchasePanel("cancel", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>

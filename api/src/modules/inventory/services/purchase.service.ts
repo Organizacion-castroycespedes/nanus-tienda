@@ -405,11 +405,8 @@ export class PurchaseService {
     actor: BranchScopedActor,
     tenantId: string | undefined
   ) {
-    const scope = filters.cashScope === "all" ? "all" : "current";
+    const scope = filters.cashScope === "current" ? "current" : "all";
     if (scope === "all") {
-      if (!this.canUseAllCashScope(actor)) {
-        throw new ForbiddenException("No autorizado para consultar historico completo");
-      }
       return { scope, cashSessionId: null as string | null };
     }
 

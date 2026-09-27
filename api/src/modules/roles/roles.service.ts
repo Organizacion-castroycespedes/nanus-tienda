@@ -3,6 +3,7 @@ import { DatabaseService } from "../../common/db/database.service";
 import { SUPER_ADMIN_ROLE } from "../../common/services/role-assignment-policy";
 import type { CreateRoleDto } from "./dto/create-role.dto";
 import type { UpdateRoleDto } from "./dto/update-role.dto";
+import type { RoleUserResponseDto } from "./dto/role-user-response.dto";
 
 export type RoleRecord = {
   id: string;
@@ -25,7 +26,7 @@ export class RolesService {
   ) {}
 
   async listRoles(actor: ActorContext): Promise<RoleRecord[]> {
-    const userId = this.ensureUserId(actor);
+    const isSuperAdmin = actor.roles.includes(SUPER_ADMIN_ROLE);
     const result = await this.db.query<RoleRecord>(
       `
       SELECT
@@ -35,26 +36,129 @@ export class RolesService {
         roles.created_at,
         COALESCE(
           ARRAY_AGG(DISTINCT user_roles.tenant_id)
-            FILTER (WHERE user_roles.user_id = $1),
+            FILTER (WHERE user_roles.tenant_id IS NOT NULL),
           '{}'::uuid[]
         ) AS tenant_ids
       FROM roles
       LEFT JOIN user_roles
         ON user_roles.role_id = roles.id
-        AND user_roles.user_id = $1
-        AND ($2::boolean OR user_roles.tenant_id = $4)
-      WHERE $2::boolean OR roles.nombre <> $3
+        AND ($1::boolean OR user_roles.tenant_id = $3)
+      WHERE $1::boolean OR roles.nombre <> $2
       GROUP BY roles.id
       ORDER BY roles.nombre ASC
       `,
       [
-        userId,
-        actor.roles.includes(SUPER_ADMIN_ROLE),
+        isSuperAdmin,
         SUPER_ADMIN_ROLE,
         actor.tenantId ?? null,
       ]
     );
     return result.rows ?? [];
+  }
+
+  async listRoleUsers(
+    roleId: string,
+    actor: ActorContext,
+    query?: { tenantId?: string }
+  ): Promise<RoleUserResponseDto[]> {
+    const isSuperAdmin = actor.roles.includes(SUPER_ADMIN_ROLE);
+    const resolvedTenantId = isSuperAdmin
+      ? query?.tenantId ?? null
+      : actor.tenantId ?? null;
+
+    const result = await this.db.query<{
+      id: string;
+      email: string;
+      estado: string;
+      created_at: string;
+      tenant_id: string;
+      tenant_nombre: string | null;
+      tenant_slug: string;
+      persona_id: string | null;
+      nombres: string | null;
+      apellidos: string | null;
+      documento_tipo: string | null;
+      documento_numero: string | null;
+      cargo_nombre: string | null;
+      telefono: string | null;
+      email_personal: string | null;
+      branch_id: string | null;
+      branch_nombre: string | null;
+    }>(
+      `
+      SELECT
+        users.id,
+        users.email,
+        users.estado,
+        users.created_at,
+        tenants.id AS tenant_id,
+        tenants.nombre AS tenant_nombre,
+        tenants.slug AS tenant_slug,
+        personas.id AS persona_id,
+        personas.nombres,
+        personas.apellidos,
+        personas.documento_tipo,
+        personas.documento_numero,
+        personas.cargo_nombre,
+        personas.telefono,
+        personas.email_personal,
+        tb.id AS branch_id,
+        tb.nombre AS branch_nombre
+      FROM users
+      INNER JOIN tenants ON tenants.id = users.tenant_id
+      INNER JOIN user_roles ur
+        ON ur.user_id = users.id
+        AND ur.tenant_id = users.tenant_id
+      INNER JOIN roles ON roles.id = ur.role_id
+      LEFT JOIN personas ON personas.id = users.persona_id
+      LEFT JOIN persona_tenant_branches ptb
+        ON ptb.persona_id = personas.id
+        AND ptb.es_principal = TRUE
+      LEFT JOIN tenant_branches tb ON tb.id = ptb.tenant_branch_id
+      WHERE roles.id = $1
+        AND ($2::boolean OR roles.nombre <> $3)
+        AND ($2::boolean OR users.tenant_id = $4)
+        AND ($5::uuid IS NULL OR users.tenant_id = $5)
+      ORDER BY tenants.nombre ASC, users.email ASC
+      `,
+      [
+        roleId,
+        isSuperAdmin,
+        SUPER_ADMIN_ROLE,
+        actor.tenantId ?? null,
+        resolvedTenantId,
+      ]
+    );
+
+    return (result.rows ?? []).map((row) => ({
+      id: row.id,
+      email: row.email,
+      estado: row.estado,
+      createdAt: row.created_at,
+      tenant: {
+        id: row.tenant_id,
+        nombre: row.tenant_nombre,
+        slug: row.tenant_slug,
+      },
+      persona: row.persona_id
+        ? {
+            id: row.persona_id,
+            nombres: row.nombres ?? "",
+            apellidos: row.apellidos ?? "",
+            documentoTipo: row.documento_tipo ?? "",
+            documentoNumero: row.documento_numero ?? "",
+            cargoNombre: row.cargo_nombre ?? "",
+            telefono: row.telefono,
+            emailPersonal: row.email_personal,
+          }
+        : null,
+      branch: row.branch_id
+        ? {
+            id: row.branch_id,
+            nombre: row.branch_nombre ?? "",
+          }
+        : null,
+    }));
   }
 
   async createRole(payload: CreateRoleDto, actor: ActorContext) {

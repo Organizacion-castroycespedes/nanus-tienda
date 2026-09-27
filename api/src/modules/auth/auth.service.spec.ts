@@ -4,6 +4,9 @@ import * as bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { AuthService } from "./auth.service";
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || "test-jwt-secret-key-1234567890";
+
+
 const email = "qa-role@example.test";
 const password = "qa-password";
 const user = {

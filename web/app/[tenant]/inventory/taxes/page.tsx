@@ -6,6 +6,7 @@ import { Button } from "../../../../components/design-system/Button";
 import { ConfirmDialog } from "../../../../components/design-system/confirm-dialog";
 import { ConfirmationMessage } from "../../../../components/design-system/confirmation-message";
 import { Input } from "../../../../components/design-system/Input";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasPermission } from "../../../../lib/permissions";
@@ -330,7 +331,7 @@ const TaxesPage = () => {
                 <th className="px-4 py-3 font-medium">Porcentaje</th>
                 <th className="px-4 py-3 font-medium">Incluido</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -363,28 +364,31 @@ const TaxesPage = () => {
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {tax.isActive ? "Activo" : "Inactivo"}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {canEdit ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditForm(tax)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
-                        ) : null}
-                        {canDelete ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPendingDeleteTax(tax)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Eliminar
-                          </Button>
-                        ) : null}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canEdit
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openEditForm(tax),
+                                  },
+                                ]
+                              : []),
+                            ...(canDelete
+                              ? [
+                                  {
+                                    label: "Eliminar",
+                                    icon: <Trash2 className="h-4 w-4 text-rose-500" />,
+                                    destructive: true,
+                                    onSelect: () => setPendingDeleteTax(tax),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

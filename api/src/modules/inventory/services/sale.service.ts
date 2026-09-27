@@ -2799,6 +2799,7 @@ export class SaleService {
 
       return this.getSaleById(saleRow.id, saleContext);
     } catch (error) {
+      console.error("[SaleService.createSale] Error:", error);
       await client.query("ROLLBACK");
       throw error;
     } finally {
