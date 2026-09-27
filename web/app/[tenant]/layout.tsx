@@ -19,6 +19,7 @@ import {
   Calculator,
   Calendar,
   ClipboardList,
+  CreditCard,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -35,6 +36,8 @@ import {
   Printer,
   ReceiptText,
   Ruler,
+  ScanLine,
+  Scale,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -81,8 +84,10 @@ import {
   subscribePeripheralEvents,
   type PeripheralSocketStatus,
 } from "../../domains/peripherals/contracts";
+import type { PeripheralDevice } from "../../domains/peripherals/types";
 import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
 import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
+import { HeaderPeripheralStatus } from "../../components/layout/HeaderPeripheralStatus";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -164,6 +169,23 @@ const PosClock = () => {
   );
 };
 
+const peripheralStatusLabel = (device?: PeripheralDevice) => {
+  if (!device) return "No configurado";
+  if (device.status === "CONNECTED" || device.status === "SIMULATED") return "OK";
+  if (device.status === "NOT_REACHABLE") return "Sin señal";
+  if (device.status === "ERROR") return "Error";
+  return "Desconectado";
+};
+
+const peripheralStatusTone = (device?: PeripheralDevice) => {
+  if (!device) return "text-slate-400";
+  if (device.status === "CONNECTED" || device.status === "SIMULATED") {
+    return "text-emerald-500";
+  }
+  if (device.status === "NOT_REACHABLE") return "text-amber-500";
+  return "text-rose-500";
+};
+
 const TenantLayout = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -221,6 +243,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
   const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
   const [printerName, setPrinterName] = useState<string | null>(null);
+  const [peripheralDevices, setPeripheralDevices] = useState<PeripheralDevice[]>([]);
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
     if (!name) return "";
@@ -244,6 +267,37 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const hasPosOperationalContext = Boolean(
     posOperationalRole || posOperationalBranch || posOperationalTerminal || posContext.posSessionId
   );
+  const findPeripheral = useCallback(
+    (type: PeripheralDevice["type"]) =>
+      peripheralDevices.find((device) => device.type === type),
+    [peripheralDevices]
+  );
+  const scaleDevice = findPeripheral("SCALE");
+  const scannerDevice = findPeripheral("SCANNER");
+  const printerHeaderStatus =
+    printerSocketStatus === "CONNECTED"
+      ? "OK"
+      : printerSocketStatus === "CONNECTING"
+        ? "Conectando"
+        : "Error";
+  const printerHeaderTone =
+    printerSocketStatus === "CONNECTED"
+      ? "text-emerald-500"
+      : printerSocketStatus === "CONNECTING"
+        ? "text-amber-500"
+        : "text-rose-500";
+  const networkHeaderStatus =
+    connectivityState === "ONLINE" || connectivityState === "RESTORED"
+      ? "OK"
+      : connectivityState === "RECONNECTING"
+        ? "Conectando"
+        : "Error";
+  const networkHeaderTone =
+    connectivityState === "ONLINE" || connectivityState === "RESTORED"
+      ? "text-emerald-500"
+      : connectivityState === "RECONNECTING"
+        ? "text-amber-500"
+        : "text-rose-500";
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -281,6 +335,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     const loadPrinterName = async () => {
       if (!authUser?.tenantId) {
         setPrinterName(null);
+        setPeripheralDevices([]);
         return;
       }
 
@@ -300,9 +355,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         setPrinterName(
           resolvePrinterDisplayName(configResult, devicesResult.data ?? [])
         );
+        setPeripheralDevices(devicesResult.data ?? []);
       } catch {
         if (!cancelled) {
           setPrinterName(null);
+          setPeripheralDevices([]);
         }
       }
     };
@@ -1257,25 +1314,27 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                     {posOperationalRole ? (
                       <span
-                        className="inline-flex max-w-[6.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
+                        className="inline-flex max-w-[6.5rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
                         title={posOperationalRole}
                       >
+                        <User className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{posOperationalRole}</span>
                       </span>
                     ) : null}
                     {posOperationalTerminal ? (
                       <span
-                        className="inline-flex max-w-[7.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        className="inline-flex max-w-[7.5rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
                         title={posOperationalTerminal}
                       >
+                        <Monitor className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{posOperationalTerminal}</span>
                       </span>
                     ) : (
@@ -1291,13 +1350,14 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     )}
                     {posOperationalBranch ? (
                       <span
-                        className="hidden md:inline-flex max-w-[9rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        className="hidden max-w-[9rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)] md:inline-flex"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
                         title={posOperationalBranch}
                       >
+                        <Store className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{posOperationalBranch}</span>
                       </span>
                     ) : null}
@@ -1313,6 +1373,40 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              {isPosRoute ? (
+                <div className="hidden items-center gap-1 lg:flex" aria-label="Estado de periféricos POS">
+                  <HeaderPeripheralStatus
+                    label="Balanza"
+                    Icon={Scale}
+                    status={peripheralStatusLabel(scaleDevice)}
+                    tone={peripheralStatusTone(scaleDevice)}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Impresora"
+                    Icon={Printer}
+                    status={printerHeaderStatus}
+                    tone={printerHeaderTone}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Escáner"
+                    Icon={ScanLine}
+                    status={peripheralStatusLabel(scannerDevice)}
+                    tone={peripheralStatusTone(scannerDevice)}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Datáfono"
+                    Icon={CreditCard}
+                    status="No configurado"
+                    tone="text-slate-400"
+                  />
+                  <HeaderPeripheralStatus
+                    label="Red"
+                    Icon={Wifi}
+                    status={networkHeaderStatus}
+                    tone={networkHeaderTone}
+                  />
+                </div>
+              ) : null}
               <Link
                 href={`/${tenantSlug}/dashboard`}
                 className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
