@@ -8,7 +8,24 @@ export type PaymentDraft = {
   financialInstitutionId?: string | null;
 };
 
-export type PosCartPricingStatus = "PENDING" | "READY" | "ERROR";
+export const POS_CART_PRICING_STATUSES = {
+  PENDING: "PENDING",
+  READY: "READY",
+  ERROR: "ERROR",
+} as const;
+
+export type PosCartPricingStatus =
+  (typeof POS_CART_PRICING_STATUSES)[keyof typeof POS_CART_PRICING_STATUSES];
+
+export const POS_SALE_STATUSES = {
+  DRAFT: "DRAFT",
+  SUBMITTING: "SUBMITTING",
+  UNKNOWN: "UNKNOWN",
+  CONFIRMED: "CONFIRMED",
+} as const;
+
+export type PosSaleStatus =
+  (typeof POS_SALE_STATUSES)[keyof typeof POS_SALE_STATUSES];
 
 export type PosCartAppliedTax = {
   taxId: string;
@@ -62,8 +79,6 @@ export type PosSaleAttempt = {
   startedAt: string;
 };
 
-export type PosSaleStatus = "DRAFT" | "SUBMITTING" | "UNKNOWN" | "CONFIRMED";
-
 export type PosCartAccount = {
   id: string;
   name: string;
@@ -109,7 +124,7 @@ export const buildDefaultAccount = (
   items: [],
   selectedCustomerId: null,
   payments: buildDefaultPayments(),
-  saleStatus: "DRAFT",
+  saleStatus: POS_SALE_STATUSES.DRAFT,
   saleAttempt: null,
   createdAt: Date.now(),
 });
@@ -218,7 +233,7 @@ const normalizePersistedPosCartState = (value: unknown) => {
           ? acc.payments.filter(isValidPayment)
           : [];
         const persistedAttempt = acc.saleAttempt as Record<string, unknown> | null | undefined;
-        const saleAttempt =
+        const rawSaleAttempt =
           persistedAttempt &&
           typeof persistedAttempt === "object" &&
           typeof persistedAttempt.attemptId === "string" &&
@@ -226,11 +241,14 @@ const normalizePersistedPosCartState = (value: unknown) => {
             ? (persistedAttempt as unknown as PosSaleAttempt)
             : null;
         const saleStatus: PosSaleStatus =
-          acc.saleStatus === "CONFIRMED"
-            ? "CONFIRMED"
-            : acc.saleStatus === "UNKNOWN" || acc.saleStatus === "SUBMITTING"
-              ? "UNKNOWN"
-              : "DRAFT";
+          items.length === 0
+            ? POS_SALE_STATUSES.DRAFT
+            : acc.saleStatus === POS_SALE_STATUSES.CONFIRMED
+              ? POS_SALE_STATUSES.CONFIRMED
+              : acc.saleStatus === POS_SALE_STATUSES.UNKNOWN || acc.saleStatus === POS_SALE_STATUSES.SUBMITTING
+                ? POS_SALE_STATUSES.UNKNOWN
+                : POS_SALE_STATUSES.DRAFT;
+        const saleAttempt = items.length === 0 ? null : rawSaleAttempt;
 
         return {
           id:
@@ -284,7 +302,7 @@ const normalizePersistedPosCartState = (value: unknown) => {
     ? candidate.payments.filter(isValidPayment)
     : [];
   const persistedAttempt = candidate.saleAttempt as Record<string, unknown> | null | undefined;
-  const saleAttempt =
+  const rawSaleAttempt =
     persistedAttempt &&
     typeof persistedAttempt === "object" &&
     typeof persistedAttempt.attemptId === "string" &&
@@ -292,11 +310,14 @@ const normalizePersistedPosCartState = (value: unknown) => {
       ? (persistedAttempt as unknown as PosSaleAttempt)
       : null;
   const saleStatus: PosSaleStatus =
-    candidate.saleStatus === "CONFIRMED"
-      ? "CONFIRMED"
-      : candidate.saleStatus === "UNKNOWN" || candidate.saleStatus === "SUBMITTING"
-        ? "UNKNOWN"
-        : "DRAFT";
+    items.length === 0
+      ? POS_SALE_STATUSES.DRAFT
+      : candidate.saleStatus === POS_SALE_STATUSES.CONFIRMED
+        ? POS_SALE_STATUSES.CONFIRMED
+        : candidate.saleStatus === POS_SALE_STATUSES.UNKNOWN || candidate.saleStatus === POS_SALE_STATUSES.SUBMITTING
+          ? POS_SALE_STATUSES.UNKNOWN
+          : POS_SALE_STATUSES.DRAFT;
+  const saleAttempt = items.length === 0 ? null : rawSaleAttempt;
 
   const singleAccount: PosCartAccount = {
     id: "cuenta-1",
@@ -356,21 +377,30 @@ const posCartSlice = createSlice({
       );
     },
     setCartItems(state, action: PayloadAction<PosCartItem[]>) {
-      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN
+      ) {
         return;
       }
       state.items = action.payload;
       syncActiveAccount(state);
     },
     setSelectedCustomerId(state, action: PayloadAction<string | null>) {
-      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN
+      ) {
         return;
       }
       state.selectedCustomerId = action.payload;
       syncActiveAccount(state);
     },
     setPayments(state, action: PayloadAction<PaymentDraft[]>) {
-      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN
+      ) {
         return;
       }
       state.payments =
@@ -378,34 +408,41 @@ const posCartSlice = createSlice({
       syncActiveAccount(state);
     },
     setSaleStatus(state, action: PayloadAction<PosSaleStatus>) {
-      if (state.saleStatus === "UNKNOWN" && action.payload === "DRAFT") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN &&
+        action.payload === POS_SALE_STATUSES.DRAFT &&
+        state.items.length > 0
+      ) {
         return;
       }
       state.saleStatus = action.payload;
-      if (action.payload === "DRAFT") {
+      if (action.payload === POS_SALE_STATUSES.DRAFT) {
         state.saleAttempt = null;
       }
       syncActiveAccount(state);
     },
     beginSaleSubmission(state, action: PayloadAction<PosSaleAttempt>) {
-      state.saleStatus = "SUBMITTING";
+      state.saleStatus = POS_SALE_STATUSES.SUBMITTING;
       state.saleAttempt = action.payload;
       syncActiveAccount(state);
     },
     markSaleSubmissionUnknown(state) {
       if (state.saleAttempt) {
-        state.saleStatus = "UNKNOWN";
+        state.saleStatus = POS_SALE_STATUSES.UNKNOWN;
         syncActiveAccount(state);
       }
     },
     allowSaleSubmissionRetry(state) {
-      state.saleStatus = "DRAFT";
+      state.saleStatus = POS_SALE_STATUSES.DRAFT;
       state.saleAttempt = null;
       syncActiveAccount(state);
     },
     allowUnknownSaleRetry(state) {
-      if (state.saleStatus === "UNKNOWN" && state.saleAttempt) {
-        state.saleStatus = "DRAFT";
+      if (
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN &&
+        state.saleAttempt
+      ) {
+        state.saleStatus = POS_SALE_STATUSES.DRAFT;
         syncActiveAccount(state);
       }
     },
@@ -413,7 +450,7 @@ const posCartSlice = createSlice({
       state.items = [];
       state.selectedCustomerId = null;
       state.payments = buildDefaultPayments();
-      state.saleStatus = "DRAFT";
+      state.saleStatus = POS_SALE_STATUSES.DRAFT;
       state.saleAttempt = null;
       syncActiveAccount(state);
     },
@@ -431,7 +468,7 @@ const posCartSlice = createSlice({
           items: [],
           selectedCustomerId: null,
           payments: buildDefaultPayments(),
-          saleStatus: "DRAFT",
+          saleStatus: POS_SALE_STATUSES.DRAFT,
           saleAttempt: null,
           createdAt: Date.now(),
         };
@@ -473,14 +510,14 @@ const posCartSlice = createSlice({
         state.items = [];
         state.selectedCustomerId = null;
         state.payments = buildDefaultPayments();
-        state.saleStatus = "DRAFT";
+        state.saleStatus = POS_SALE_STATUSES.DRAFT;
         state.saleAttempt = null;
         if (state.accounts[0]) {
           state.accounts[0].name = "Cuenta 1";
           state.accounts[0].items = [];
           state.accounts[0].selectedCustomerId = null;
           state.accounts[0].payments = buildDefaultPayments();
-          state.accounts[0].saleStatus = "DRAFT";
+          state.accounts[0].saleStatus = POS_SALE_STATUSES.DRAFT;
           state.accounts[0].saleAttempt = null;
         }
         return;

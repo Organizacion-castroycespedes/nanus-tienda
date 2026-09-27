@@ -24,6 +24,37 @@ export type CurrentShiftFilters = {
   search?: string;
 };
 
+export const BILLING_STATUSES = {
+  NO_DOCUMENT: "NO_DOCUMENT",
+  ELIGIBLE_ON_DEMAND: "ELIGIBLE_ON_DEMAND",
+  REQUESTED: "REQUESTED",
+  PENDING: "PENDING",
+  PROCESSING: "PROCESSING",
+  ACCEPTED: "ACCEPTED",
+  REJECTED: "REJECTED",
+  TECHNICAL_ERROR: "TECHNICAL_ERROR",
+  CANCELLED: "CANCELLED",
+  AMBIGUOUS: "AMBIGUOUS",
+  FAILED: "FAILED",
+} as const;
+
+export type BillingStatus =
+  (typeof BILLING_STATUSES)[keyof typeof BILLING_STATUSES];
+
+export const ELECTRONIC_DOCUMENT_STATUSES = {
+  DRAFT: "DRAFT",
+  PENDING: "PENDING",
+  PROCESSING: "PROCESSING",
+  ACCEPTED: "ACCEPTED",
+  REJECTED: "REJECTED",
+  FAILED: "FAILED",
+  TECHNICAL_ERROR: "TECHNICAL_ERROR",
+  CANCELLED: "CANCELLED",
+} as const;
+
+export type ElectronicDocumentStatus =
+  (typeof ELECTRONIC_DOCUMENT_STATUSES)[keyof typeof ELECTRONIC_DOCUMENT_STATUSES];
+
 export type PosSalesListRow = {
   saleId: string;
   date: string;
@@ -36,17 +67,7 @@ export type PosSalesListRow = {
   branchId: string;
   branchName?: string | null;
   cashSessionId: string | null;
-  billingStatus:
-    | "NO_DOCUMENT"
-    | "ELIGIBLE_ON_DEMAND"
-    | "REQUESTED"
-    | "PENDING"
-    | "PROCESSING"
-    | "ACCEPTED"
-    | "REJECTED"
-    | "TECHNICAL_ERROR"
-    | "CANCELLED"
-    | "AMBIGUOUS";
+  billingStatus: BillingStatus;
   billingDocumentNumber: string | null;
   billingCufe: string | null;
   billingAcceptedAt: string | null;
