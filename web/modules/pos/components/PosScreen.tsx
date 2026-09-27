@@ -2665,7 +2665,6 @@ export const PosScreen = () => {
         <Toast
           message={toastMessage}
           variant={toastVariant}
-          onClose={() => setToastMessage(null)}
         />
       ) : null}
 
