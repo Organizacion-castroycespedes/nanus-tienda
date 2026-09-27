@@ -10,6 +10,7 @@ import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { Modal } from "../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { CustomerForm } from "../../../modules/inventory/components/CustomerForm";
 import {
   listElectronicInvoicingCustomers,
@@ -422,7 +423,7 @@ const CustomersPage = () => {
                 <th className="px-4 py-3 font-medium">Teléfono</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Ubicación</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -478,34 +479,32 @@ const CustomersPage = () => {
                             .join(", ") ||
                           "-"}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          {canEdit ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openEditForm(customer)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Editar
-                            </Button>
-                          ) : null}
-                          {canDelete ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={customer.isFinalConsumer}
-                              title={
-                                customer.isFinalConsumer
-                                  ? "Consumidor Final protegido"
-                                  : undefined
-                              }
-                              onClick={() => void handleDelete(customer)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Eliminar
-                            </Button>
-                          ) : null}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end">
+                          <RowActionsMenu
+                            items={[
+                              ...(canEdit
+                                ? [
+                                    {
+                                      label: "Editar",
+                                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => openEditForm(customer),
+                                    },
+                                  ]
+                                : []),
+                              ...(canDelete
+                                ? [
+                                    {
+                                      label: "Eliminar",
+                                      icon: <Trash2 className="h-4 w-4 text-rose-500" />,
+                                      disabled: customer.isFinalConsumer,
+                                      destructive: true,
+                                      onSelect: () => void handleDelete(customer),
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>

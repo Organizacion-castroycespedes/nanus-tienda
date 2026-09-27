@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { NoticeDialog } from "../../../components/design-system/NoticeDialog";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
@@ -1371,7 +1372,7 @@ const PurchasesPage = () => {
                   <th className="px-4 py-3 font-medium">Estado</th>
                   <th className="px-4 py-3 font-medium">Pago</th>
                   <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1416,89 +1417,75 @@ const PurchasesPage = () => {
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                         {formatDate(purchase.createdAt)}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Detalle"
-                            onClick={() => openPurchasePanel("detail", purchase.id)}
-                            className="px-2"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {canReceive &&
-                          purchase.status !== "CANCELLED" &&
-                          purchase.status !== "RECEIVED" &&
-                          purchase.status !== "CERRADA_PARCIAL" ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Recibir"
-                              onClick={() => openPurchasePanel("receive", purchase.id)}
-                              className="px-2"
-                            >
-                              <PackageCheck className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canReceive &&
-                          purchase.status !== "CANCELLED" &&
-                          purchase.balanceDue > 0 &&
-                          purchase.branchId ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Pagar"
-                              onClick={() => openPurchasePanel("pay", purchase.id)}
-                              className="px-2"
-                            >
-                              <Banknote className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canLiquidatePurchase(purchase) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Liquidar"
-                              onClick={() => openPurchasePanel("settle-partial", purchase.id)}
-                              className="px-2"
-                            >
-                              <FileCheck className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canCancelPurchase(purchase) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Cancelar compra"
-                              onClick={() => openPurchasePanel("cancel", purchase.id)}
-                              className="px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canAccessTicket(purchase.status) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Ver Ticket"
-                              onClick={() => openPurchasePanel("ticket", purchase.id)}
-                              className="px-2"
-                            >
-                              <Receipt className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {canAccessTicket(purchase.status) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Descargar"
-                              onClick={() => void handleDownloadTicket(purchase)}
-                              className="px-2"
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          ) : null}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end">
+                          <RowActionsMenu
+                            items={[
+                              {
+                                label: "Ver Detalle",
+                                icon: <Eye className="h-4 w-4 text-slate-500" />,
+                                onSelect: () => openPurchasePanel("detail", purchase.id),
+                              },
+                              ...(canReceive &&
+                              purchase.status !== "CANCELLED" &&
+                              purchase.status !== "RECEIVED" &&
+                              purchase.status !== "CERRADA_PARCIAL"
+                                ? [
+                                    {
+                                      label: "Recibir",
+                                      icon: <PackageCheck className="h-4 w-4 text-emerald-500" />,
+                                      onSelect: () => openPurchasePanel("receive", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(canReceive &&
+                              purchase.status !== "CANCELLED" &&
+                              purchase.balanceDue > 0 &&
+                              purchase.branchId
+                                ? [
+                                    {
+                                      label: "Pagar",
+                                      icon: <Banknote className="h-4 w-4 text-blue-500" />,
+                                      onSelect: () => openPurchasePanel("pay", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(canLiquidatePurchase(purchase)
+                                ? [
+                                    {
+                                      label: "Liquidar",
+                                      icon: <FileCheck className="h-4 w-4 text-amber-500" />,
+                                      onSelect: () => openPurchasePanel("settle-partial", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(canAccessTicket(purchase.status)
+                                ? [
+                                    {
+                                      label: "Ver Ticket",
+                                      icon: <Receipt className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => openPurchasePanel("ticket", purchase.id),
+                                    },
+                                    {
+                                      label: "Descargar ticket",
+                                      icon: <Download className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => void handleDownloadTicket(purchase),
+                                    },
+                                  ]
+                                : []),
+                              ...(canCancelPurchase(purchase)
+                                ? [
+                                    {
+                                      label: "Cancelar compra",
+                                      icon: <XCircle className="h-4 w-4 text-rose-500" />,
+                                      destructive: true,
+                                      separatorBefore: true,
+                                      onSelect: () => openPurchasePanel("cancel", purchase.id),
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
                         </div>
                       </td>
                     </tr>

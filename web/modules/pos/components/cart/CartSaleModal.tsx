@@ -45,6 +45,7 @@ export type CartSaleItemPresentation = {
 
 type CartSaleModalProps = {
   open: boolean;
+  accountName?: string;
   items: CartSaleLineItem[];
   summary: CartSaleSummary;
   expandedTaxItems: Record<string, boolean>;
@@ -69,6 +70,7 @@ type CartSaleModalProps = {
 
 export const CartSaleModal = ({
   open,
+  accountName,
   items,
   summary,
   expandedTaxItems,
@@ -112,9 +114,16 @@ export const CartSaleModal = ({
             <ShoppingCart className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
-              Carrito de venta
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
+                Carrito de venta
+              </h3>
+              {accountName ? (
+                <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                  {accountName}
+                </span>
+              ) : null}
+            </div>
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
               Revisa productos, totales y cobra sin perder contexto.
             </p>

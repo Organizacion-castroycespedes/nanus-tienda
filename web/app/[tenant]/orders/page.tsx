@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Banknote,
   Download,
   Eye,
   PackageCheck,
@@ -16,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
@@ -839,7 +841,7 @@ const OrdersPage = () => {
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -884,107 +886,84 @@ const OrdersPage = () => {
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatDate(order.createdAt)}
                     </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const hasRowActions =
-                          canOpenDeliveryRelation(order) ||
-                          (canUpdate &&
-                            (canEditOrder(order.status) ||
-                              canDeliverOrder(order.status) ||
-                              canRegisterOrderPayment(order) ||
-                              canInvoiceOrder(order) ||
-                              canCancelOrder(order.status))) ||
-                          canAccessTicket(order.status);
-
-                        return (
-                      <div className="flex flex-wrap gap-2">
-                        {canUpdate && canEditOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleEdit(order.id)}
-                            disabled={loadingOrder}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canDeliverOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenDeliver(order.id)}
-                          >
-                            <PackageCheck className="h-4 w-4" />
-                            Entregar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canInvoiceOrder(order) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenInvoice(order.id)}
-                          >
-                            <Receipt className="h-4 w-4" />
-                            Facturar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canRegisterOrderPayment(order) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenPayment(order)}
-                          >
-                            <Receipt className="h-4 w-4" />
-                            Abonar
-                          </Button>
-                        ) : null}
-                        {canUpdate && canCancelOrder(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleCancel(order)}
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Cancelar
-                          </Button>
-                        ) : null}
-                        {canAccessTicket(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPreviewOrder(order)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Ver Ticket
-                          </Button>
-                        ) : null}
-                        {canOpenDeliveryRelation(order) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenDeliveryRelation(order)}
-                          >
-                            <Truck className="h-4 w-4" />
-                            Domicilio
-                          </Button>
-                        ) : null}
-                        {canAccessTicket(order.status) ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => void handleDownloadTicket(order)}
-                          >
-                            <Download className="h-4 w-4" />
-                            Descargar
-                          </Button>
-                        ) : null}
-                        {!hasRowActions ? (
-                          <span className="text-xs text-slate-400">Sin acciones</span>
-                        ) : null}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canUpdate && canEditOrder(order.status)
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    disabled: loadingOrder,
+                                    onSelect: () => void handleEdit(order.id),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canDeliverOrder(order.status)
+                              ? [
+                                  {
+                                    label: "Entregar",
+                                    icon: <PackageCheck className="h-4 w-4 text-emerald-500" />,
+                                    onSelect: () => handleOpenDeliver(order.id),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canInvoiceOrder(order)
+                              ? [
+                                  {
+                                    label: "Facturar",
+                                    icon: <Receipt className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => handleOpenInvoice(order.id),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canRegisterOrderPayment(order)
+                              ? [
+                                  {
+                                    label: "Abonar",
+                                    icon: <Banknote className="h-4 w-4 text-blue-500" />,
+                                    onSelect: () => handleOpenPayment(order),
+                                  },
+                                ]
+                              : []),
+                            ...(canAccessTicket(order.status)
+                              ? [
+                                  {
+                                    label: "Ver Ticket",
+                                    icon: <Eye className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => setPreviewOrder(order),
+                                  },
+                                  {
+                                    label: "Descargar ticket",
+                                    icon: <Download className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => void handleDownloadTicket(order),
+                                  },
+                                ]
+                              : []),
+                            ...(canOpenDeliveryRelation(order)
+                              ? [
+                                  {
+                                    label: "Domicilio",
+                                    icon: <Truck className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => handleOpenDeliveryRelation(order),
+                                  },
+                                ]
+                              : []),
+                            ...(canUpdate && canCancelOrder(order.status)
+                              ? [
+                                  {
+                                    label: "Cancelar pedido",
+                                    icon: <XCircle className="h-4 w-4 text-rose-500" />,
+                                    destructive: true,
+                                    separatorBefore: true,
+                                    onSelect: () => void handleCancel(order),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       </div>
-                        );
-                      })()}
                     </td>
                   </tr>
                 ))

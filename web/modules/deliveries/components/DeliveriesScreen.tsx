@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Ban,
+  CheckCircle2,
   Eye,
   FileText,
   Plus,
@@ -9,12 +11,14 @@ import {
   Truck,
   UserCheck,
   Users,
+  XCircle,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../components/design-system/Select";
 import { Textarea } from "../../../components/design-system/Textarea";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
@@ -35,6 +39,7 @@ import {
   deliveryStatusLabels,
   filterDeliveriesByQuery,
   getDeliveryActionLabel,
+  getDeliveryAvailableActions,
   getDeliveryFeeSource,
 } from "../delivery-helpers";
 import {
@@ -1198,7 +1203,7 @@ export const DeliveriesScreen = ({
                   <th className="px-4 py-3 font-medium">Repartidor</th>
                   <th className="px-4 py-3 font-medium">Fechas</th>
                   <th className="px-4 py-3 font-medium">Valor</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1221,99 +1226,116 @@ export const DeliveriesScreen = ({
                     </td>
                   </tr>
                 ) : (
-                  visibleDeliveries.map((delivery) => (
-                    <tr key={delivery.id}>
-                      <td className="px-4 py-3">
-                        <DeliveryStatusBadge status={delivery.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <DeliveryCashBadge
-                          delivery={delivery}
-                          currentCashSessionId={currentCashSessionId}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-slate-900 dark:text-white">
-                        <div className="max-w-[180px]">
-                          <p className="truncate font-medium">
-                            {delivery.customer_name || "Sin contacto"}
-                          </p>
-                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {delivery.delivery_number}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                        {delivery.customer_phone || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                        <div className="max-w-[220px]">
-                          <p className="line-clamp-2">{delivery.delivery_address}</p>
-                          {delivery.delivery_reference ? (
-                            <p className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
-                              {delivery.delivery_reference}
-                            </p>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <DeliverySourceCell delivery={delivery} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                        {getDriverLabel(delivery)}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-                        <p>Creado: {formatDateTime(delivery.created_at)}</p>
-                        <p>Actualizado: {formatDateTime(delivery.updated_at)}</p>
-                        <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
-                        <p>Entregado: {formatDateTime(delivery.delivered_at)}</p>
-                        <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
-                        <p>Cancelado: {formatDateTime(delivery.cancelled_at)}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                        <p className="font-medium text-slate-900 dark:text-white">
-                          {formatCurrency(delivery.delivery_fee)}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {getDeliveryFeeSource(delivery)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void openDetail(delivery)}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Detalle
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDriverAssignment(delivery)}
-                            disabled={savingAction || loading || !canAssignDriver}
-                          >
-                            <UserCheck className="h-4 w-4" />
-                            {getDriverActionLabel(delivery)}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openDeliveryTicket(delivery)}
-                          >
-                            <FileText className="h-4 w-4" />
-                            Ticket domicilio
-                          </Button>
-                          <DeliveryActions
+                  visibleDeliveries.map((delivery) => {
+                    const availableActions = getDeliveryAvailableActions(
+                      delivery.status,
+                      actionPermissions,
+                      delivery
+                    );
+
+                    const deliveryActionIcons: Record<DeliveryActionKey, React.ReactNode> = {
+                      prepare: <UserCheck className="h-4 w-4 text-slate-500" />,
+                      dispatch: <Truck className="h-4 w-4 text-blue-500" />,
+                      "mark-delivered": <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
+                      "mark-not-delivered": <Ban className="h-4 w-4 text-amber-500" />,
+                      cancel: <XCircle className="h-4 w-4 text-rose-500" />,
+                    };
+
+                    return (
+                      <tr key={delivery.id}>
+                        <td className="px-4 py-3">
+                          <DeliveryStatusBadge status={delivery.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <DeliveryCashBadge
                             delivery={delivery}
-                            permissions={actionPermissions}
-                            disabled={getRowActionDisabled(delivery)}
-                            onAction={openAction}
+                            currentCashSessionId={currentCashSessionId}
                           />
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-4 py-3 text-slate-900 dark:text-white">
+                          <div className="max-w-[180px]">
+                            <p className="truncate font-medium">
+                              {delivery.customer_name || "Sin contacto"}
+                            </p>
+                            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {delivery.delivery_number}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                          {delivery.customer_phone || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                          <div className="max-w-[220px]">
+                            <p className="line-clamp-2">{delivery.delivery_address}</p>
+                            {delivery.delivery_reference ? (
+                              <p className="mt-1 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
+                                {delivery.delivery_reference}
+                              </p>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <DeliverySourceCell delivery={delivery} />
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                          {getDriverLabel(delivery)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                          <p>Creado: {formatDateTime(delivery.created_at)}</p>
+                          <p>Actualizado: {formatDateTime(delivery.updated_at)}</p>
+                          <p>Despachado: {formatDateTime(delivery.dispatched_at)}</p>
+                          <p>Entregado: {formatDateTime(delivery.delivered_at)}</p>
+                          <p>No entregado: {formatDateTime(delivery.failed_at)}</p>
+                          <p>Cancelado: {formatDateTime(delivery.cancelled_at)}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                          <p className="font-medium text-slate-900 dark:text-white">
+                            {formatCurrency(delivery.delivery_fee)}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {getDeliveryFeeSource(delivery)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end">
+                            <RowActionsMenu
+                              items={[
+                                {
+                                  label: "Ver Detalle",
+                                  icon: <Eye className="h-4 w-4 text-slate-500" />,
+                                  onSelect: () => void openDetail(delivery),
+                                },
+                                ...(canAssignDriver
+                                  ? [
+                                      {
+                                        label: getDriverActionLabel(delivery),
+                                        icon: <UserCheck className="h-4 w-4 text-slate-500" />,
+                                        disabled: savingAction || loading,
+                                        onSelect: () => openDriverAssignment(delivery),
+                                      },
+                                    ]
+                                  : []),
+                                {
+                                  label: "Ticket domicilio",
+                                  icon: <FileText className="h-4 w-4 text-slate-500" />,
+                                  onSelect: () => openDeliveryTicket(delivery),
+                                },
+                                ...availableActions.map((action) => ({
+                                  label: getDeliveryActionLabel(action, delivery),
+                                  icon: deliveryActionIcons[action] ?? <Truck className="h-4 w-4 text-slate-500" />,
+                                  disabled: getRowActionDisabled(delivery),
+                                  destructive: action === "cancel" || action === "mark-not-delivered",
+                                  separatorBefore: action === "cancel",
+                                  onSelect: () => openAction(action, delivery),
+                                })),
+                              ]}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -1,14 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import {
+  Briefcase,
+  Building2,
+  Eye,
+  EyeOff,
+  FileText,
+  KeyRound,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Shield,
+  User as UserIcon,
+} from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { SearchFilters } from "../../../components/design-system/SearchFilters";
 import { Select } from "../../../components/design-system/Select";
 import { Textarea } from "../../../components/design-system/Textarea";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import {
+  WizardModal,
+  type WizardStepConfig,
+} from "../../../components/design-system/WizardModal";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { useAppSelector } from "../../../store/hooks";
@@ -24,6 +41,7 @@ import {
   createUser,
   listUsers,
   updateUser,
+  updateUserPassword,
   type ListUsersParams,
 } from "../../../domains/users/api";
 import type {
@@ -31,6 +49,16 @@ import type {
   UpdateUserDto,
   UserResponse,
 } from "../../../domains/users/dtos";
+import {
+  sanitizeDocumentNumber,
+  sanitizeEmail,
+  sanitizeXss,
+  validateStepCargo,
+  validateStepCredentials,
+  validateStepOrganization,
+  validateStepPersona,
+  validateStepRole,
+} from "../../../domains/users/validation";
 
 type WizardMode = "create" | "edit";
 
@@ -59,7 +87,7 @@ const emptyForm: UserFormState = {
   estado: "ACTIVE",
   nombres: "",
   apellidos: "",
-  documentoTipo: "",
+  documentoTipo: "CC",
   documentoNumero: "",
   telefono: "",
   direccion: "",
@@ -78,13 +106,13 @@ const statusOptions = [
   { value: "INACTIVE", label: "Inactivos" },
 ];
 
-const wizardSteps = [
-  "Credenciales",
-  "Persona",
-  "Cargo y funciones",
-  "Organización",
-  "Rol",
-  "Resumen",
+const wizardSteps: WizardStepConfig[] = [
+  { key: "credentials", label: "Credenciales", icon: KeyRound },
+  { key: "persona", label: "Persona", icon: UserIcon },
+  { key: "cargo", label: "Cargo y funciones", icon: Briefcase },
+  { key: "organizacion", label: "Organización", icon: Building2 },
+  { key: "rol", label: "Rol", icon: Shield },
+  { key: "resumen", label: "Resumen", icon: FileText },
 ];
 
 const UsuariosPage = () => {
@@ -104,8 +132,17 @@ const UsuariosPage = () => {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<WizardMode>("create");
   const [wizardStep, setWizardStep] = useState(0);
+  const [wizardError, setWizardError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState<UserFormState>({ ...emptyForm });
   const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
+  const [passwordModalUser, setPasswordModalUser] = useState<UserResponse | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordModalError, setPasswordModalError] = useState<string | null>(null);
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [hasAccess, setHasAccess] = useState(false);
@@ -275,6 +312,7 @@ const UsuariosPage = () => {
     }
     setWizardMode("create");
     setWizardStep(0);
+    setWizardError(null);
     setEditingUser(null);
     setForm({
       ...emptyForm,
@@ -290,6 +328,7 @@ const UsuariosPage = () => {
     }
     setWizardMode("edit");
     setWizardStep(0);
+    setWizardError(null);
     setEditingUser(user);
     if (isSuperAdmin) {
       void loadBranches(user.tenantId);
@@ -300,7 +339,7 @@ const UsuariosPage = () => {
       estado: user.estado,
       nombres: user.persona?.nombres ?? "",
       apellidos: user.persona?.apellidos ?? "",
-      documentoTipo: user.persona?.documentoTipo ?? "",
+      documentoTipo: user.persona?.documentoTipo ?? "CC",
       documentoNumero: user.persona?.documentoNumero ?? "",
       telefono: user.persona?.telefono ?? "",
       direccion: user.persona?.direccion ?? "",
@@ -317,95 +356,198 @@ const UsuariosPage = () => {
 
   const closeWizard = () => {
     setWizardOpen(false);
+    setWizardError(null);
+  };
+
+  const openPasswordModal = (user: UserResponse) => {
+    setPasswordModalUser(user);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setPasswordModalError(null);
+  };
+
+  const closePasswordModal = () => {
+    setPasswordModalUser(null);
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordModalError(null);
+    setPasswordSaving(false);
+  };
+
+  const handleSavePassword = async () => {
+    if (!passwordModalUser) return;
+    const trimmed = newPassword.trim();
+    if (!trimmed || trimmed.length < 8) {
+      setPasswordModalError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (trimmed !== confirmPassword.trim()) {
+      setPasswordModalError("Las contraseñas no coinciden.");
+      return;
+    }
+    setPasswordSaving(true);
+    setPasswordModalError(null);
+    try {
+      await updateUserPassword(
+        passwordModalUser.id,
+        trimmed,
+        buildAuthHeaders()
+      );
+      showToast("Contraseña actualizada correctamente.", "success");
+      closePasswordModal();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "No se pudo actualizar la contraseña.";
+      setPasswordModalError(message);
+    } finally {
+      setPasswordSaving(false);
+    }
   };
 
   const updateForm = (field: keyof UserFormState, value: string) => {
+    setWizardError(null);
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const validateCurrentStep = useCallback(
+    (stepIndex: number): { isValid: boolean; error?: string } => {
+      switch (stepIndex) {
+        case 0:
+          return validateStepCredentials(
+            { email: form.email, password: form.password },
+            wizardMode
+          );
+        case 1:
+          return validateStepPersona({
+            nombres: form.nombres,
+            apellidos: form.apellidos,
+            documentoTipo: form.documentoTipo,
+            documentoNumero: form.documentoNumero,
+            telefono: form.telefono,
+            direccion: form.direccion,
+            emailPersonal: form.emailPersonal,
+          });
+        case 2:
+          return validateStepCargo({
+            cargoNombre: form.cargoNombre,
+            cargoDescripcion: form.cargoDescripcion,
+            funcionesDescripcion: form.funcionesDescripcion,
+          });
+        case 3:
+          return validateStepOrganization(
+            { tenantId: form.tenantId, tenantBranchId: form.tenantBranchId },
+            isSuperAdmin
+          );
+        case 4:
+          return validateStepRole({ roleId: form.roleId });
+        default:
+          return { isValid: true };
+      }
+    },
+    [form, isSuperAdmin, wizardMode]
+  );
+
   const canProceed = useMemo(() => {
-    const emailOk = form.email.trim().length > 0;
-    const passwordOk = wizardMode === "edit" || form.password.length >= 8;
-    const personaOk =
-      form.nombres.trim() &&
-      form.apellidos.trim() &&
-      form.documentoTipo.trim() &&
-      form.documentoNumero.trim();
-    const cargoOk = form.cargoNombre.trim();
-    const tenantOk = isSuperAdmin ? form.tenantId.trim() : true;
-    const branchOk = form.tenantBranchId.trim();
-    const roleOk = form.roleId.trim();
-
-    const checks = [
-      emailOk && passwordOk,
-      personaOk,
-      cargoOk,
-      tenantOk && branchOk,
-      roleOk,
-    ];
-
-    return checks[wizardStep] ?? true;
-  }, [form, isSuperAdmin, wizardMode, wizardStep]);
+    return validateCurrentStep(wizardStep).isValid;
+  }, [validateCurrentStep, wizardStep]);
 
   const handleNext = () => {
-    if (!canProceed) {
-      showToast("Completa los campos requeridos para continuar.", "warning");
+    const validation = validateCurrentStep(wizardStep);
+    if (!validation.isValid) {
+      setWizardError(
+        validation.error || "Completa los campos requeridos para continuar."
+      );
       return;
     }
+    setWizardError(null);
     setWizardStep((prev) => Math.min(prev + 1, wizardSteps.length - 1));
   };
 
   const handleBack = () => {
+    setWizardError(null);
     setWizardStep((prev) => Math.max(prev - 1, 0));
   };
 
-  const handleSubmit = async () => {
-    if (!canProceed) {
-      showToast("Completa los campos requeridos.", "warning");
-      return;
+  const handleStepClick = (targetIndex: number) => {
+    if (targetIndex < wizardStep) {
+      setWizardError(null);
+      setWizardStep(targetIndex);
+    } else if (targetIndex > wizardStep) {
+      const validation = validateCurrentStep(wizardStep);
+      if (!validation.isValid) {
+        setWizardError(
+          validation.error || "Completa los campos requeridos para continuar."
+        );
+        return;
+      }
+      setWizardError(null);
+      setWizardStep(targetIndex);
     }
+  };
+
+  const handleSubmit = async () => {
+    // Validate all steps before submitting
+    for (let i = 0; i < wizardSteps.length - 1; i++) {
+      const stepVal = validateCurrentStep(i);
+      if (!stepVal.isValid) {
+        setWizardStep(i);
+        setWizardError(stepVal.error || "Hay datos incompletos en el formulario.");
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    setWizardError(null);
 
     try {
       if (wizardMode === "create") {
         const payload: CreateUserDto = {
-          email: form.email.trim(),
+          email: sanitizeEmail(form.email),
           password: form.password,
-          estado: form.estado,
-          tenantId: isSuperAdmin ? form.tenantId : undefined,
-          tenantBranchId: form.tenantBranchId,
-          roleId: form.roleId,
+          estado: "ACTIVE", // Clean default, removed technical selection
+          tenantId: isSuperAdmin ? form.tenantId.trim() : undefined,
+          tenantBranchId: form.tenantBranchId.trim(),
+          roleId: form.roleId.trim(),
           persona: {
-            nombres: form.nombres.trim(),
-            apellidos: form.apellidos.trim(),
+            nombres: sanitizeXss(form.nombres),
+            apellidos: sanitizeXss(form.apellidos),
             documentoTipo: form.documentoTipo.trim(),
-            documentoNumero: form.documentoNumero.trim(),
+            documentoNumero: sanitizeDocumentNumber(form.documentoNumero),
             telefono: form.telefono.trim() || undefined,
-            direccion: form.direccion.trim() || undefined,
-            emailPersonal: form.emailPersonal.trim() || undefined,
-            cargoNombre: form.cargoNombre.trim(),
-            cargoDescripcion: form.cargoDescripcion.trim() || undefined,
-            funcionesDescripcion: form.funcionesDescripcion.trim() || undefined,
+            direccion: sanitizeXss(form.direccion) || undefined,
+            emailPersonal: sanitizeEmail(form.emailPersonal) || undefined,
+            cargoNombre: sanitizeXss(form.cargoNombre),
+            cargoDescripcion: sanitizeXss(form.cargoDescripcion) || undefined,
+            funcionesDescripcion:
+              sanitizeXss(form.funcionesDescripcion) || undefined,
           },
         };
         await createUser(payload, buildAuthHeaders());
         showToast("Usuario creado correctamente.", "success");
       } else if (editingUser) {
         const payload: UpdateUserDto = {
-          email: form.email.trim(),
-          estado: form.estado,
-          tenantBranchId: form.tenantBranchId,
-          roleId: form.roleId,
+          email: sanitizeEmail(form.email),
+          estado: form.estado || "ACTIVE",
+          tenantBranchId: form.tenantBranchId.trim(),
+          roleId: form.roleId.trim(),
           persona: {
-            nombres: form.nombres.trim(),
-            apellidos: form.apellidos.trim(),
+            nombres: sanitizeXss(form.nombres),
+            apellidos: sanitizeXss(form.apellidos),
             documentoTipo: form.documentoTipo.trim(),
-            documentoNumero: form.documentoNumero.trim(),
+            documentoNumero: sanitizeDocumentNumber(form.documentoNumero),
             telefono: form.telefono.trim() || undefined,
-            direccion: form.direccion.trim() || undefined,
-            emailPersonal: form.emailPersonal.trim() || undefined,
-            cargoNombre: form.cargoNombre.trim(),
-            cargoDescripcion: form.cargoDescripcion.trim() || undefined,
-            funcionesDescripcion: form.funcionesDescripcion.trim() || undefined,
+            direccion: sanitizeXss(form.direccion) || undefined,
+            emailPersonal: sanitizeEmail(form.emailPersonal) || undefined,
+            cargoNombre: sanitizeXss(form.cargoNombre),
+            cargoDescripcion: sanitizeXss(form.cargoDescripcion) || undefined,
+            funcionesDescripcion:
+              sanitizeXss(form.funcionesDescripcion) || undefined,
           },
         };
         await updateUser(editingUser.id, payload, buildAuthHeaders());
@@ -413,28 +555,41 @@ const UsuariosPage = () => {
       }
       setWizardOpen(false);
       await loadUsers();
-    } catch {
-      showToast("No se pudo guardar el usuario.", "error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "No se pudo guardar el usuario. Por favor verifica los datos ingresados.";
+      setWizardError(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleConfirmSubmit = async () => {
-    if (!canProceed) {
-      await handleSubmit();
-      return;
+    // Validate all steps first
+    for (let i = 0; i < wizardSteps.length - 1; i++) {
+      const stepVal = validateCurrentStep(i);
+      if (!stepVal.isValid) {
+        setWizardStep(i);
+        setWizardError(stepVal.error || "Hay datos incompletos en el formulario.");
+        return;
+      }
     }
 
     try {
       await confirm({
         title:
           wizardMode === "create"
-            ? "¿Deseas guardar los cambios?"
+            ? "¿Deseas crear este usuario?"
             : "¿Confirmas actualizar la información?",
         description:
           wizardMode === "create"
-            ? "Se creará un nuevo usuario con la información consolidada en el asistente."
-            : "Se actualizará la información del usuario seleccionado.",
-        confirmText: wizardMode === "create" ? "Crear usuario" : "Guardar usuario",
+            ? `Se creará el usuario para ${form.nombres} ${form.apellidos} con acceso a la sucursal seleccionada.`
+            : `Se actualizarán los datos de acceso y perfil del usuario ${form.email}.`,
+        confirmText: wizardMode === "create" ? "Crear usuario" : "Guardar cambios",
         variant: "default",
       });
       await handleSubmit();
@@ -459,7 +614,6 @@ const UsuariosPage = () => {
       void loadBranches(tenantId);
     }
   };
-  const canSubmit = wizardStep === wizardSteps.length - 1 && canProceed;
 
   if (!hasAccess) {
     return (
@@ -555,10 +709,10 @@ const UsuariosPage = () => {
                 ) : null}
                 <th className="px-4 py-3 font-medium">Rol</th>
                 <th className="px-4 py-3 font-medium">Sucursal</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {usersLoading ? (
                 <tr>
                   <td
@@ -579,15 +733,23 @@ const UsuariosPage = () => {
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id}>
-                    <td className="px-4 py-3 text-slate-900 dark:text-white">
+                  <tr key={user.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40">
+                    <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
                       {`${user.persona?.nombres ?? ""} ${
                         user.persona?.apellidos ?? ""
                       }`.trim() || "Sin nombre"}
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{user.email}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                      {user.estado}
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          user.estado === "ACTIVE"
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            : "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        {user.estado === "ACTIVE" ? "Activo" : user.estado}
+                      </span>
                     </td>
                     {isSuperAdmin ? (
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
@@ -600,13 +762,27 @@ const UsuariosPage = () => {
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {user.branch?.nombre ?? "-"}
                     </td>
-                    <td className="px-4 py-3">
-                      <Button
-                        variant="ghost"
-                        onClick={() => openEditWizard(user)}
-                      >
-                        Editar
-                      </Button>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canWrite
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openEditWizard(user),
+                                  },
+                                  {
+                                    label: "Cambiar contraseña",
+                                    icon: <KeyRound className="h-4 w-4 text-amber-500" />,
+                                    onSelect: () => openPasswordModal(user),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -617,9 +793,7 @@ const UsuariosPage = () => {
         {users.length > 0 || hasNextPage || page > 0 ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-3">
-              <span>
-                Página {page + 1}
-              </span>
+              <span>Página {page + 1}</span>
               <Select
                 label="Filas por página"
                 value={String(pageSize)}
@@ -654,202 +828,256 @@ const UsuariosPage = () => {
       </section>
 
       {wizardOpen ? (
-        <Modal
-          title={
+        <WizardModal
+          open={wizardOpen}
+          title={wizardMode === "create" ? "Crear usuario" : "Editar usuario"}
+          description={
             wizardMode === "create"
-              ? "Crear usuario"
-              : "Editar usuario"
+              ? "Completa los datos del nuevo usuario paso a paso para habilitar su acceso."
+              : `Modifica los datos del usuario ${editingUser?.email ?? ""}.`
           }
+          steps={wizardSteps}
+          currentStepIndex={wizardStep}
+          onStepClick={handleStepClick}
+          onClose={closeWizard}
+          onBack={handleBack}
+          onNext={handleNext}
+          onSubmit={() => void handleConfirmSubmit()}
+          canProceed={canProceed}
+          canSubmit={canProceed}
+          isSubmitting={isSubmitting}
+          size="xl"
+          submitText={wizardMode === "create" ? "Crear usuario" : "Guardar cambios"}
+          error={wizardError}
+          onDismissError={() => setWizardError(null)}
         >
-          <div className="space-y-6">
-            <div className="flex flex-wrap gap-2 text-sm text-slate-500 dark:text-slate-400">
-              {wizardSteps.map((step, index) => (
-                <span
-                  key={step}
-                  className={`rounded-full px-3 py-1 ${
-                    index === wizardStep
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-slate-100"
-                  }`}
-                >
-                  {index + 1}. {step}
-                </span>
-              ))}
-            </div>
-
+          <div className="py-2">
             {wizardStep === 0 ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Email"
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(event) =>
-                    updateForm("email", event.target.value)
-                  }
-                />
-                <Select
-                  label="Estado"
-                  value={form.estado}
-                  onChange={(event) =>
-                    updateForm("estado", event.target.value)
-                  }
-                >
-                  <option value="ACTIVE">Activo</option>
-                  <option value="INACTIVE">Inactivo</option>
-                </Select>
-                {wizardMode === "create" ? (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-700/40">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    Credenciales de inicio de sesión
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Ingresa la cuenta de correo corporativo para el acceso a la plataforma.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Input
-                    label="Contraseña"
-                    type="password"
+                    label="Correo electrónico"
+                    type="email"
                     required
-                    hint="Mínimo 8 caracteres"
-                    value={form.password}
-                    onChange={(event) =>
-                      updateForm("password", event.target.value)
-                    }
+                    placeholder="ejemplo@empresa.com"
+                    value={form.email}
+                    onChange={(event) => updateForm("email", event.target.value)}
                   />
-                ) : (
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    La contraseña se gestiona por separado.
-                  </div>
-                )}
+
+                  {wizardMode === "create" ? (
+                    <Input
+                      label="Contraseña inicial"
+                      type="password"
+                      required
+                      placeholder="Mínimo 8 caracteres"
+                      hint="Mínimo 8 caracteres seguros"
+                      value={form.password}
+                      onChange={(event) => updateForm("password", event.target.value)}
+                    />
+                  ) : (
+                    <div className="flex flex-col justify-between gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-3.5 dark:border-slate-700 dark:bg-slate-800/40 sm:flex-row sm:items-center">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          Gestión de contraseña
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Cambia la clave de acceso de este usuario
+                        </p>
+                      </div>
+                      {editingUser ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openPasswordModal(editingUser)}
+                        >
+                          <KeyRound className="h-3.5 w-3.5 text-amber-500" />
+                          Cambiar clave
+                        </Button>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
 
             {wizardStep === 1 ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label="Nombres"
-                  required
-                  value={form.nombres}
-                  onChange={(event) =>
-                    updateForm("nombres", event.target.value)
-                  }
-                />
-                <Input
-                  label="Apellidos"
-                  required
-                  value={form.apellidos}
-                  onChange={(event) =>
-                    updateForm("apellidos", event.target.value)
-                  }
-                />
-                <Select
-                  label="Tipo de documento"
-                  required
-                  value={form.documentoTipo}
-                  onChange={(event) =>
-                    updateForm("documentoTipo", event.target.value)
-                  }
-                >
-                  <option value="">Selecciona un tipo de documento</option>
-                  <option value="CC">CC</option>
-                  <option value="CE">CE</option>
-                  <option value="NIT">NIT</option>
-                  <option value="Pasaporte">Pasaporte</option>
-                </Select>
-                <Input
-                  label="Número de documento"
-                  required
-                  value={form.documentoNumero}
-                  onChange={(event) =>
-                    updateForm("documentoNumero", event.target.value)
-                  }
-                />
-                <Input
-                  label="Teléfono"
-                  value={form.telefono}
-                  onChange={(event) =>
-                    updateForm("telefono", event.target.value)
-                  }
-                />
-                <Input
-                  label="Dirección"
-                  value={form.direccion}
-                  onChange={(event) =>
-                    updateForm("direccion", event.target.value)
-                  }
-                />
-                <Input
-                  label="Email personal"
-                  type="email"
-                  value={form.emailPersonal}
-                  onChange={(event) =>
-                    updateForm("emailPersonal", event.target.value)
-                  }
-                />
+              <div className="space-y-4">
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-700/40">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    Datos personales
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Información de identidad y contacto del usuario.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="Nombres"
+                    required
+                    placeholder="Ej. Juan Carlos"
+                    value={form.nombres}
+                    onChange={(event) => updateForm("nombres", event.target.value)}
+                  />
+                  <Input
+                    label="Apellidos"
+                    required
+                    placeholder="Ej. Pérez Gómez"
+                    value={form.apellidos}
+                    onChange={(event) => updateForm("apellidos", event.target.value)}
+                  />
+                  <Select
+                    label="Tipo de documento"
+                    required
+                    value={form.documentoTipo}
+                    onChange={(event) =>
+                      updateForm("documentoTipo", event.target.value)
+                    }
+                  >
+                    <option value="CC">Cédula de Ciudadanía (CC)</option>
+                    <option value="CE">Cédula de Extranjería (CE)</option>
+                    <option value="NIT">NIT</option>
+                    <option value="Pasaporte">Pasaporte</option>
+                    <option value="TI">Tarjeta de Identidad (TI)</option>
+                    <option value="PEP">Permiso Especial de Permanencia (PEP)</option>
+                    <option value="PPT">Permiso por Protección Temporal (PPT)</option>
+                  </Select>
+                  <Input
+                    label="Número de documento"
+                    required
+                    placeholder="Ej. 1020304050"
+                    value={form.documentoNumero}
+                    onChange={(event) =>
+                      updateForm(
+                        "documentoNumero",
+                        sanitizeDocumentNumber(event.target.value)
+                      )
+                    }
+                  />
+                  <Input
+                    label="Teléfono de contacto"
+                    placeholder="Ej. +57 300 1234567"
+                    value={form.telefono}
+                    onChange={(event) => updateForm("telefono", event.target.value)}
+                  />
+                  <Input
+                    label="Correo electrónico personal"
+                    type="email"
+                    placeholder="usuario.personal@correo.com"
+                    value={form.emailPersonal}
+                    onChange={(event) =>
+                      updateForm("emailPersonal", event.target.value)
+                    }
+                  />
+                  <div className="sm:col-span-2">
+                    <Input
+                      label="Dirección de residencia"
+                      placeholder="Ej. Calle 123 # 45-67"
+                      value={form.direccion}
+                      onChange={(event) =>
+                        updateForm("direccion", event.target.value)
+                      }
+                    />
+                  </div>
+                </div>
               </div>
             ) : null}
 
             {wizardStep === 2 ? (
-              <div className="grid gap-4">
-                <Input
-                  label="Nombre del cargo"
-                  required
-                  value={form.cargoNombre}
-                  onChange={(event) =>
-                    updateForm("cargoNombre", event.target.value)
-                  }
-                />
-                <Textarea
-                  label="Descripción del cargo"
-                  value={form.cargoDescripcion}
-                  onChange={(event) =>
-                    updateForm("cargoDescripcion", event.target.value)
-                  }
-                />
-                <Textarea
-                  label="Funciones"
-                  value={form.funcionesDescripcion}
-                  onChange={(event) =>
-                    updateForm("funcionesDescripcion", event.target.value)
-                  }
-                />
+              <div className="space-y-4">
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-700/40">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    Cargo y responsabilidades
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Define la posición operativa del colaborador en la organización.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  <Input
+                    label="Nombre del cargo"
+                    required
+                    placeholder="Ej. Cajero Principal, Supervisor de Turno, Administrador"
+                    value={form.cargoNombre}
+                    onChange={(event) =>
+                      updateForm("cargoNombre", event.target.value)
+                    }
+                  />
+                  <Textarea
+                    label="Descripción del cargo"
+                    placeholder="Breve resumen de la posición..."
+                    value={form.cargoDescripcion}
+                    onChange={(event) =>
+                      updateForm("cargoDescripcion", event.target.value)
+                    }
+                  />
+                  <Textarea
+                    label="Funciones principales"
+                    placeholder="Detalla las funciones asignadas a este puesto..."
+                    value={form.funcionesDescripcion}
+                    onChange={(event) =>
+                      updateForm("funcionesDescripcion", event.target.value)
+                    }
+                  />
+                </div>
               </div>
             ) : null}
 
             {wizardStep === 3 ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {isSuperAdmin ? (
+              <div className="space-y-4">
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-700/40">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    Asignación de organización y sucursal
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Establece el establecimiento principal donde desempeñará sus actividades.
+                  </p>
+                </div>
+
+                <div className={`grid gap-4 ${isSuperAdmin ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+                  {isSuperAdmin ? (
+                    <Select
+                      label="Empresa / Tenant"
+                      required
+                      disabled={wizardMode === "edit"}
+                      value={form.tenantId}
+                      onChange={(event) => handleTenantChange(event.target.value)}
+                    >
+                      <option value="">Selecciona un tenant</option>
+                      {tenantOptions.map((tenant) => (
+                        <option key={tenant.id} value={tenant.id}>
+                          {tenant.nombre ?? tenant.slug}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : null}
                   <Select
-                    label="Tenant"
+                    label="Sucursal principal"
                     required
-                    disabled={wizardMode === "edit"}
-                    value={form.tenantId}
+                    value={form.tenantBranchId}
                     onChange={(event) =>
-                      handleTenantChange(event.target.value)
+                      updateForm("tenantBranchId", event.target.value)
                     }
                   >
-                    <option value="">Selecciona un tenant</option>
-                    {tenantOptions.map((tenant) => (
-                      <option key={tenant.id} value={tenant.id}>
-                        {tenant.nombre ?? tenant.slug}
+                    <option value="">Selecciona una sucursal</option>
+                    {selectedBranchOptions.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.nombre}
                       </option>
                     ))}
                   </Select>
-                ) : (
-                  <Input
-                    label="Tenant"
-                    disabled
-                    value={authUser?.tenantId ?? ""}
-                  />
-                )}
-                <Select
-                  label="Sucursal principal"
-                  required
-                  value={form.tenantBranchId}
-                  onChange={(event) =>
-                    updateForm("tenantBranchId", event.target.value)
-                  }
-                >
-                  <option value="">Selecciona una sucursal</option>
-                  {selectedBranchOptions.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.nombre}
-                    </option>
-                  ))}
-                </Select>
+                </div>
                 {branchesLoading ? (
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     Cargando sucursales...
@@ -859,73 +1087,194 @@ const UsuariosPage = () => {
             ) : null}
 
             {wizardStep === 4 ? (
-              <div className="grid gap-4">
-                <Select
-                  label="Rol"
-                  required
-                  value={form.roleId}
-                  onChange={(event) =>
-                    updateForm("roleId", event.target.value)
-                  }
-                >
-                  <option value="">Selecciona un rol</option>
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.nombre}
-                    </option>
-                  ))}
-                </Select>
-                {rolesLoading ? (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Cargando roles...
-                  </span>
-                ) : null}
+              <div className="space-y-4">
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-700/40">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+                    Rol y permisos de acceso
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    El rol determinará las opciones de menú y acciones que el usuario puede realizar.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  <Select
+                    label="Rol asignado"
+                    required
+                    value={form.roleId}
+                    onChange={(event) => updateForm("roleId", event.target.value)}
+                  >
+                    <option value="">Selecciona un rol</option>
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.nombre}
+                      </option>
+                    ))}
+                  </Select>
+                  {rolesLoading ? (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      Cargando roles...
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
             {wizardStep === 5 ? (
-              <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
-                <p>
-                  <strong>Email:</strong> {form.email}
-                </p>
-                <p>
-                  <strong>Nombre:</strong> {form.nombres} {form.apellidos}
-                </p>
-                <p>
-                  <strong>Documento:</strong> {form.documentoTipo} {form.documentoNumero}
-                </p>
-                <p>
-                  <strong>Cargo:</strong> {form.cargoNombre}
-                </p>
-                <p>
-                  <strong>Rol:</strong> {roles.find((role) => role.id === form.roleId)?.nombre ?? "-"}
-                </p>
-                <p>
-                  <strong>Sucursal:</strong> {branches.find((branch) => branch.id === form.tenantBranchId)?.nombre ?? "-"}
-                </p>
+              <div className="space-y-4">
+                <div className="rounded-xl bg-emerald-50/80 p-4 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                  <h4 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200 mb-1">
+                    Resumen de datos listos para guardar
+                  </h4>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                    Revisa la información consolidada antes de confirmar la operación.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700 space-y-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Cuenta y Acceso
+                    </p>
+                    <div className="text-sm space-y-1">
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="font-medium text-slate-900 dark:text-white">Email:</span>{" "}
+                        {form.email}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="font-medium text-slate-900 dark:text-white">Rol:</span>{" "}
+                        {roles.find((r) => r.id === form.roleId)?.nombre ?? "-"}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="font-medium text-slate-900 dark:text-white">Sucursal:</span>{" "}
+                        {branches.find((b) => b.id === form.tenantBranchId)?.nombre ?? "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700 space-y-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Datos del Colaborador
+                    </p>
+                    <div className="text-sm space-y-1">
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="font-medium text-slate-900 dark:text-white">Nombre:</span>{" "}
+                        {form.nombres} {form.apellidos}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="font-medium text-slate-900 dark:text-white">Documento:</span>{" "}
+                        {form.documentoTipo} {form.documentoNumero}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-300">
+                        <span className="font-medium text-slate-900 dark:text-white">Cargo:</span>{" "}
+                        {form.cargoNombre}
+                      </p>
+                      {form.telefono ? (
+                        <p className="text-slate-700 dark:text-slate-300">
+                          <span className="font-medium text-slate-900 dark:text-white">Teléfono:</span>{" "}
+                          {form.telefono}
+                        </p>
+                      ) : null}
+                      {form.emailPersonal ? (
+                        <p className="text-slate-700 dark:text-slate-300">
+                          <span className="font-medium text-slate-900 dark:text-white">Email personal:</span>{" "}
+                          {form.emailPersonal}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </WizardModal>
+      ) : null}
+
+      {passwordModalUser ? (
+        <Modal
+          title={`Cambiar contraseña - ${passwordModalUser.email}`}
+          onClose={closePasswordModal}
+          footer={
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                variant="ghost"
+                onClick={closePasswordModal}
+                disabled={passwordSaving}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSavePassword}
+                disabled={passwordSaving}
+              >
+                {passwordSaving ? "Guardando..." : "Guardar contraseña"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              Estás actualizando la contraseña para el usuario{" "}
+              <strong>{passwordModalUser.email}</strong>.
+            </div>
+
+            {passwordModalError ? (
+              <div className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                {passwordModalError}
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between">
-              <Button variant="ghost" onClick={closeWizard}>
-                Cancelar
-              </Button>
-              <div className="flex items-center gap-2">
-                {wizardStep > 0 ? (
-                  <Button variant="ghost" onClick={handleBack}>
-                    Atrás
-                  </Button>
-                ) : null}
-                {wizardStep < wizardSteps.length - 1 ? (
-                  <Button onClick={handleNext}>Siguiente</Button>
-                ) : (
-                  <Button
-                    onClick={() => void handleConfirmSubmit()}
-                    disabled={!canSubmit}
-                  >
-                    {wizardMode === "create" ? "Crear" : "Guardar"}
-                  </Button>
-                )}
+            <div className="space-y-3">
+              <div className="relative">
+                <Input
+                  label="Nueva contraseña"
+                  type={showNewPassword ? "text" : "password"}
+                  required
+                  placeholder="Mínimo 8 caracteres"
+                  value={newPassword}
+                  onChange={(e) => {
+                    setPasswordModalError(null);
+                    setNewPassword(e.target.value);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  className="absolute right-3 top-8 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  tabIndex={-1}
+                >
+                  {showNewPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+
+              <div className="relative">
+                <Input
+                  label="Confirmar nueva contraseña"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  placeholder="Repite la contraseña"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setPasswordModalError(null);
+                    setConfirmPassword(e.target.value);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="absolute right-3 top-8 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
               </div>
             </div>
           </div>

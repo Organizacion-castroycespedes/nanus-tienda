@@ -10,6 +10,7 @@ import {
   type DataTableColumn,
 } from "../../../../components/design-system/DataTable";
 import { Input } from "../../../../components/design-system/Input";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasMenuAccess } from "../../../../lib/permissions";
@@ -63,7 +64,7 @@ const CategoryImage = ({ category }: { category: ProductCategoryResponse }) => {
     <InventoryImagePreview
       imageUrl={category.defaultImageUrl}
       altText={category.defaultImageAltText ?? category.name}
-      className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600 dark:text-slate-300"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
       fallback={getClassificationInitials(category.name)}
     />
   );
@@ -240,13 +241,16 @@ const ProductCategoriesPage = () => {
       key: "name",
       header: "Categoria",
       render: (category) => (
-        <div className="flex min-w-[260px] items-start gap-3">
+        <div className="flex min-w-[260px] max-w-md items-start gap-3">
           <CategoryImage category={category} />
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0 flex-1 space-y-1">
             <p className="font-semibold text-slate-900 dark:text-white">{category.name}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">{category.slug}</p>
             {category.description ? (
-              <p className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300">
+              <p
+                className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300"
+                title={category.description}
+              >
                 {category.description}
               </p>
             ) : null}
@@ -289,34 +293,35 @@ const ProductCategoriesPage = () => {
     {
       key: "actions",
       header: "Acciones",
+      className: "text-right",
+      cellClassName: "text-right",
       render: (category) => (
-        <div className="flex flex-wrap gap-2">
-          {canWrite ? (
-            <Button variant="ghost" size="sm" onClick={() => openEdit(category)}>
-              <Pencil className="h-4 w-4" />
-              Editar
-            </Button>
-          ) : null}
-          {canWrite && category.isActive ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => openStatusAction(category, "deactivate")}
-            >
-              <PowerOff className="h-4 w-4" />
-              Desactivar
-            </Button>
-          ) : null}
-          {canWrite && !category.isActive ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => openStatusAction(category, "activate")}
-            >
-              <Power className="h-4 w-4" />
-              Activar
-            </Button>
-          ) : null}
+        <div className="flex items-center justify-end">
+          <RowActionsMenu
+            items={[
+              ...(canWrite
+                ? [
+                    {
+                      label: "Editar",
+                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                      onSelect: () => openEdit(category),
+                    },
+                    category.isActive
+                      ? {
+                          label: "Desactivar",
+                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                          destructive: true,
+                          onSelect: () => openStatusAction(category, "deactivate"),
+                        }
+                      : {
+                          label: "Activar",
+                          icon: <Power className="h-4 w-4 text-emerald-500" />,
+                          onSelect: () => openStatusAction(category, "activate"),
+                        },
+                  ]
+                : []),
+            ]}
+          />
         </div>
       ),
     },

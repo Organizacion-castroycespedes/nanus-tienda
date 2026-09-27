@@ -1,10 +1,11 @@
 "use client";
 
-import { Plus, RefreshCw, Search, Landmark, CreditCard } from "lucide-react";
+import { CreditCard, Landmark, Pencil, Plus, Power, PowerOff, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Input } from "../../../../components/design-system/Input";
 import { Modal } from "../../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
@@ -377,7 +378,7 @@ const PaymentMethodsPage = () => {
                   <th className="px-4 py-3 font-medium">Reglas</th>
                   <th className="px-4 py-3 font-medium">Bancos vinculados</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -419,23 +420,34 @@ const PaymentMethodsPage = () => {
                       <td className="px-4 py-3">
                         <FinanceStatusBadge value={item.active} kind="active" />
                       </td>
-                      <td className="px-4 py-3">
-                        {canManagePaymentMethods ? (
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => void openEditMethodModal(item)}>
-                              Editar
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void toggleMethodStatus(item)}
-                            >
-                              {item.active ? "Inactivar" : "Activar"}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">Solo lectura</span>
-                        )}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end">
+                          <RowActionsMenu
+                            items={[
+                              ...(canManagePaymentMethods
+                                ? [
+                                    {
+                                      label: "Editar",
+                                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => void openEditMethodModal(item),
+                                    },
+                                    item.active
+                                      ? {
+                                          label: "Inactivar",
+                                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                                          destructive: true,
+                                          onSelect: () => void toggleMethodStatus(item),
+                                        }
+                                      : {
+                                          label: "Activar",
+                                          icon: <Power className="h-4 w-4 text-emerald-500" />,
+                                          onSelect: () => void toggleMethodStatus(item),
+                                        },
+                                  ]
+                                : []),
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -458,7 +470,7 @@ const PaymentMethodsPage = () => {
                   <th className="px-4 py-3 font-medium">Tipo</th>
                   <th className="px-4 py-3 font-medium">Orden</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-4 py-3 text-right font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -492,25 +504,34 @@ const PaymentMethodsPage = () => {
                       <td className="px-4 py-3">
                         <FinanceStatusBadge value={item.active} kind="active" />
                       </td>
-                      <td className="px-4 py-3">
-                        {canManagePaymentMethods && (item.tenantId !== null || role === "SUPER_ADMIN") ? (
-                          <div className="flex gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => openEditBankModal(item)}>
-                              Editar
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void toggleBankStatus(item)}
-                            >
-                              {item.active ? "Inactivar" : "Activar"}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">
-                            {item.tenantId === null ? "Catálogo global" : "Solo lectura"}
-                          </span>
-                        )}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end">
+                          <RowActionsMenu
+                            items={[
+                              ...(canManagePaymentMethods && (item.tenantId !== null || role === "SUPER_ADMIN")
+                                ? [
+                                    {
+                                      label: "Editar",
+                                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => openEditBankModal(item),
+                                    },
+                                    item.active
+                                      ? {
+                                          label: "Inactivar",
+                                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                                          destructive: true,
+                                          onSelect: () => void toggleBankStatus(item),
+                                        }
+                                      : {
+                                          label: "Activar",
+                                          icon: <Power className="h-4 w-4 text-emerald-500" />,
+                                          onSelect: () => void toggleBankStatus(item),
+                                        },
+                                  ]
+                                : []),
+                            ]}
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))

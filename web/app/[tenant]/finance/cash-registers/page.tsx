@@ -1,10 +1,11 @@
 "use client";
 
-import { Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Input } from "../../../../components/design-system/Input";
 import { Modal } from "../../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
@@ -397,7 +398,7 @@ const CashRegistersPage = () => {
                 <th className="px-4 py-3 font-medium">Terminal</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Creada</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -426,23 +427,31 @@ const CashRegistersPage = () => {
                       <FinanceStatusBadge value={item.activo} kind="active" />
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatDate(item.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {canManageCashRegisters ? (
-                          <Button variant="ghost" size="sm" onClick={() => openEditModal(item)}>
-                            Editar
-                          </Button>
-                        ) : null}
-                        {canManageCashRegisterAssignments ? (
-                          <Button variant="outline" size="sm" onClick={() => openAssignments(item)}>
-                            <UserPlus className="h-4 w-4" />
-                            Usuarios
-                          </Button>
-                        ) : null}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canManageCashRegisters
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openEditModal(item),
+                                  },
+                                ]
+                              : []),
+                            ...(canManageCashRegisterAssignments
+                              ? [
+                                  {
+                                    label: "Usuarios",
+                                    icon: <UserPlus className="h-4 w-4 text-slate-500" />,
+                                    onSelect: () => openAssignments(item),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       </div>
-                      {!canManageCashRegisters && role !== "SUPER_ADMIN" ? (
-                        <span className="text-xs text-slate-400">Solo lectura</span>
-                      ) : null}
                     </td>
                   </tr>
                 ))
