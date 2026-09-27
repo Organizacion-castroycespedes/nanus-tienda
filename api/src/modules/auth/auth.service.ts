@@ -447,17 +447,23 @@ export class AuthService {
 
   async forgotPassword(payload: ForgotPasswordDto): Promise<void> {
     const normalizedEmail = payload.email.trim().toLowerCase();
-    const users = await this.db.query(
-      `
-      SELECT users.id, users.tenant_id
-      FROM users
-      INNER JOIN tenants ON tenants.id = users.tenant_id
-      WHERE users.email = $1 AND tenants.slug = $2
-      `,
-      [normalizedEmail, payload.tenantSlug]
-    );
+    const query = payload.tenantSlug
+      ? `
+        SELECT users.id, users.tenant_id
+        FROM users
+        INNER JOIN tenants ON tenants.id = users.tenant_id
+        WHERE users.email = $1 AND tenants.slug = $2
+        `
+      : `
+        SELECT users.id, users.tenant_id
+        FROM users
+        INNER JOIN tenants ON tenants.id = users.tenant_id
+        WHERE users.email = $1
+        `;
+    const params = payload.tenantSlug ? [normalizedEmail, payload.tenantSlug] : [normalizedEmail];
+    const users = await this.db.query(query, params);
 
-    const user = users.rows[0];
+    const user = users.rows?.[0];
     if (!user) {
       return;
     }
@@ -473,8 +479,8 @@ export class AuthService {
       [user.id, user.tenant_id, tokenHash]
     );
 
-    // TODO: enviar email con link que contiene token.
-    console.info("Password reset token", token);
+    // TODO: enviar email real con servicio SMTP o proveedor transaccional.
+    console.info(`[Password Reset] Token for ${normalizedEmail}: ${token}`);
   }
 
   async resetPassword(payload: ResetPasswordDto): Promise<void> {

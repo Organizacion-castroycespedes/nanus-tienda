@@ -46,7 +46,21 @@ export const formatReportStatus = (value?: string | null) => {
     return "No disponible";
   }
 
-  return value!.trim();
+  const translations: Record<string, string> = {
+    OPEN: "Abierta",
+    CLOSED: "Cerrada",
+    CANCELLED: "Cancelada",
+    PENDING: "Pendiente",
+    PARTIAL: "Parcial",
+    PAID: "Pagado",
+    COMPLETED: "Completado",
+    ACTIVE: "Activo",
+    INACTIVE: "Inactivo",
+    REFUNDED: "Reembolsado",
+    ERROR: "Error",
+  };
+
+  return translations[normalized] ?? value!.trim();
 };
 
 export const getTodayRange = () => {

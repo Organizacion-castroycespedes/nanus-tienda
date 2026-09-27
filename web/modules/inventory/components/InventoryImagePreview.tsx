@@ -118,7 +118,7 @@ export const InventoryImagePreview = ({
     <div
       ref={containerRef}
       aria-label={altText ?? undefined}
-      className={className}
+      className={`shrink-0 ${className}`}
       role="img"
       style={
         objectUrl && !failed
