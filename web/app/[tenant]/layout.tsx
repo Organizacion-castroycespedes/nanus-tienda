@@ -36,8 +36,7 @@ import {
   Printer,
   ReceiptText,
   Ruler,
-  ScanLine,
-  Scale,
+  ScanBarcode,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -48,6 +47,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Weight,
   Wifi,
   WifiOff,
   Wrench,
@@ -87,7 +87,11 @@ import {
 import type { PeripheralDevice } from "../../domains/peripherals/types";
 import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
 import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
-import { HeaderPeripheralStatus } from "../../components/layout/HeaderPeripheralStatus";
+import {
+  HeaderPeripheralStatus,
+  HeaderPeripheralStatusGroup,
+  type HeaderPeripheralTone,
+} from "../../components/layout/HeaderPeripheralStatus";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -163,27 +167,30 @@ const PosClock = () => {
   }, []);
 
   return (
-    <span className="hidden xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
+    <span className="hidden 2xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
       {posClockDateFormatter.format(clock)} · {posClockTimeFormatter.format(clock)}
     </span>
   );
 };
 
 const peripheralStatusLabel = (device?: PeripheralDevice) => {
-  if (!device) return "No configurado";
+  if (!device) return "Sin config.";
   if (device.status === "CONNECTED" || device.status === "SIMULATED") return "OK";
   if (device.status === "NOT_REACHABLE") return "Sin señal";
   if (device.status === "ERROR") return "Error";
-  return "Desconectado";
+  return "Desconect.";
 };
 
-const peripheralStatusTone = (device?: PeripheralDevice) => {
-  if (!device) return "text-slate-400";
-  if (device.status === "CONNECTED" || device.status === "SIMULATED") {
-    return "text-emerald-500";
-  }
-  if (device.status === "NOT_REACHABLE") return "text-amber-500";
-  return "text-rose-500";
+const peripheralStatusTone = (device?: PeripheralDevice): HeaderPeripheralTone => {
+  if (!device) return "idle";
+  if (device.status === "CONNECTED" || device.status === "SIMULATED") return "ok";
+  if (device.status === "NOT_REACHABLE") return "warning";
+  return "error";
+};
+
+const peripheralStatusDetail = (device?: PeripheralDevice) => {
+  if (!device) return "No configurado en esta terminal";
+  return device.name || undefined;
 };
 
 const TenantLayout = ({ children }: { children: ReactNode }) => {
@@ -280,24 +287,34 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       : printerSocketStatus === "CONNECTING"
         ? "Conectando"
         : "Error";
-  const printerHeaderTone =
+  const printerHeaderTone: HeaderPeripheralTone =
     printerSocketStatus === "CONNECTED"
-      ? "text-emerald-500"
+      ? "ok"
       : printerSocketStatus === "CONNECTING"
-        ? "text-amber-500"
-        : "text-rose-500";
+        ? "warning"
+        : "error";
+  const printerHeaderDetail =
+    printerSocketStatus === "CONNECTED"
+      ? printerName ?? "Nombre no disponible"
+      : printerSocketStatus === "CONNECTING"
+        ? "Conectando con el servicio de impresión"
+        : "Revise el Peripheral Agent";
+  const isNetworkOffline =
+    connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE";
   const networkHeaderStatus =
     connectivityState === "ONLINE" || connectivityState === "RESTORED"
       ? "OK"
       : connectivityState === "RECONNECTING"
         ? "Conectando"
-        : "Error";
-  const networkHeaderTone =
+        : connectivityState === "OFFLINE"
+          ? "Sin red"
+          : "Sin servicio";
+  const networkHeaderTone: HeaderPeripheralTone =
     connectivityState === "ONLINE" || connectivityState === "RESTORED"
-      ? "text-emerald-500"
+      ? "ok"
       : connectivityState === "RECONNECTING"
-        ? "text-amber-500"
-        : "text-rose-500";
+        ? "warning"
+        : "error";
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -1311,10 +1328,21 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <div className="min-w-0">
                 {hasPosOperationalContext ? (
-                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                    {posOperationalRole ? (
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                    {isPosRoute ? (
                       <span
-                        className="inline-flex max-w-[6.5rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
+                        className="inline-flex h-9 shrink-0 items-center rounded-xl border px-3 text-base font-bold tracking-tight text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalRole ? `Punto de venta · Rol ${posOperationalRole}` : "Punto de venta"}
+                      >
+                        POS
+                      </span>
+                    ) : posOperationalRole ? (
+                      <span
+                        className="inline-flex h-7 max-w-[6.5rem] shrink-0 items-center gap-1 rounded-full border px-2.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1327,19 +1355,18 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     ) : null}
                     {posOperationalTerminal ? (
                       <span
-                        className="inline-flex max-w-[7.5rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        className="inline-flex h-7 max-w-[8rem] shrink-0 items-center rounded-full border px-3 text-xs font-medium text-[var(--brand-header-text)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
-                        title={posOperationalTerminal}
+                        title={`Terminal: ${posOperationalTerminal}`}
                       >
-                        <Monitor className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{posOperationalTerminal}</span>
                       </span>
                     ) : (
                       <span
-                        className="hidden sm:inline-flex max-w-[8rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-header-muted)]"
+                        className="hidden sm:inline-flex h-7 max-w-[8rem] shrink-0 items-center rounded-full border px-3 text-xs font-medium text-[var(--brand-header-muted)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1350,14 +1377,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     )}
                     {posOperationalBranch ? (
                       <span
-                        className="hidden max-w-[9rem] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)] md:inline-flex"
+                        className="hidden h-7 max-w-[10rem] shrink-0 items-center rounded-full border px-3 text-xs font-medium text-[var(--brand-header-text)] md:inline-flex"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
-                        title={posOperationalBranch}
+                        title={`Sucursal: ${posOperationalBranch}`}
                       >
-                        <Store className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{posOperationalBranch}</span>
                       </span>
                     ) : null}
@@ -1373,53 +1399,21 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              {isPosRoute ? (
-                <div className="hidden items-center gap-1 lg:flex" aria-label="Estado de periféricos POS">
-                  <HeaderPeripheralStatus
-                    label="Balanza"
-                    Icon={Scale}
-                    status={peripheralStatusLabel(scaleDevice)}
-                    tone={peripheralStatusTone(scaleDevice)}
-                  />
-                  <HeaderPeripheralStatus
-                    label="Impresora"
-                    Icon={Printer}
-                    status={printerHeaderStatus}
-                    tone={printerHeaderTone}
-                  />
-                  <HeaderPeripheralStatus
-                    label="Escáner"
-                    Icon={ScanLine}
-                    status={peripheralStatusLabel(scannerDevice)}
-                    tone={peripheralStatusTone(scannerDevice)}
-                  />
-                  <HeaderPeripheralStatus
-                    label="Datáfono"
-                    Icon={CreditCard}
-                    status="No configurado"
-                    tone="text-slate-400"
-                  />
-                  <HeaderPeripheralStatus
-                    label="Red"
-                    Icon={Wifi}
-                    status={networkHeaderStatus}
-                    tone={networkHeaderTone}
-                  />
-                </div>
+              {!isPosRoute ? (
+                <Link
+                  href={`/${tenantSlug}/dashboard`}
+                  className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  style={{
+                    borderColor: tenantTheme.header.iconButtonBorder,
+                    backgroundColor: tenantTheme.header.iconButtonBackground,
+                    color: tenantTheme.header.iconButtonText,
+                  }}
+                  aria-label="Ir al dashboard"
+                  title="Ir al dashboard"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                </Link>
               ) : null}
-              <Link
-                href={`/${tenantSlug}/dashboard`}
-                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
-                style={{
-                  borderColor: tenantTheme.header.iconButtonBorder,
-                  backgroundColor: tenantTheme.header.iconButtonBackground,
-                  color: tenantTheme.header.iconButtonText,
-                }}
-                aria-label="Ir al dashboard"
-                title="Ir al dashboard"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-              </Link>
               <button
                 type="button"
                 className="relative grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
@@ -1434,22 +1428,65 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 <Bell className="h-4 w-4" />
                 <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[var(--brand-primary)]" />
               </button>
+              {!isPosRoute ? (
+                <button
+                  type="button"
+                  className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  style={{
+                    borderColor: tenantTheme.header.iconButtonBorder,
+                    backgroundColor: tenantTheme.header.iconButtonBackground,
+                    color: tenantTheme.header.iconButtonText,
+                  }}
+                  aria-label="Mensajes"
+                  title="Mensajes"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </button>
+              ) : null}
+              {isPosRoute ? (
+                <HeaderPeripheralStatusGroup>
+                  <HeaderPeripheralStatus
+                    label="Balanza"
+                    Icon={Weight}
+                    status={peripheralStatusLabel(scaleDevice)}
+                    tone={peripheralStatusTone(scaleDevice)}
+                    detail={peripheralStatusDetail(scaleDevice)}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Impresora"
+                    Icon={Printer}
+                    status={printerHeaderStatus}
+                    tone={printerHeaderTone}
+                    detail={printerHeaderDetail}
+                    pulse={printerSocketStatus === "CONNECTING"}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Escáner"
+                    Icon={ScanBarcode}
+                    status={peripheralStatusLabel(scannerDevice)}
+                    tone={peripheralStatusTone(scannerDevice)}
+                    detail={peripheralStatusDetail(scannerDevice)}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Datáfono"
+                    Icon={CreditCard}
+                    status="Sin config."
+                    tone="idle"
+                    detail="No configurado en esta terminal"
+                  />
+                  <HeaderPeripheralStatus
+                    label="Red"
+                    Icon={isNetworkOffline ? WifiOff : Wifi}
+                    status={networkHeaderStatus}
+                    tone={networkHeaderTone}
+                  />
+                </HeaderPeripheralStatusGroup>
+              ) : null}
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
-                style={{
-                  borderColor: tenantTheme.header.iconButtonBorder,
-                  backgroundColor: tenantTheme.header.iconButtonBackground,
-                  color: tenantTheme.header.iconButtonText,
-                }}
-                aria-label="Mensajes"
-                title="Mensajes"
-              >
-                <MessageCircle className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className={`relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] ${
+                  isPosRoute ? "lg:hidden" : ""
+                }`}
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1497,7 +1534,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className={`relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] ${
+                  isPosRoute ? "lg:hidden" : ""
+                }`}
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1884,7 +1923,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             </div>
           )}
         </div>
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} floating /> : null}
     </div>
   );
 };

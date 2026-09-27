@@ -1,33 +1,83 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+
+export type HeaderPeripheralTone = "ok" | "warning" | "error" | "idle";
 
 export type HeaderPeripheralStatusProps = {
   label: string;
   Icon: LucideIcon;
   status: string;
-  tone: string;
+  tone: HeaderPeripheralTone;
+  detail?: string;
+  pulse?: boolean;
 };
+
+const toneStyles: Record<HeaderPeripheralTone, { icon: string; dot: string; text: string }> = {
+  ok: {
+    icon: "text-slate-700 dark:text-slate-200",
+    dot: "bg-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-400",
+  },
+  warning: {
+    icon: "text-amber-600 dark:text-amber-400",
+    dot: "bg-amber-400",
+    text: "text-amber-600 dark:text-amber-400",
+  },
+  error: {
+    icon: "text-rose-600 dark:text-rose-400",
+    dot: "bg-rose-500",
+    text: "text-rose-600 dark:text-rose-400",
+  },
+  idle: {
+    icon: "text-slate-400 dark:text-slate-500",
+    dot: "bg-slate-300 dark:bg-slate-600",
+    text: "text-slate-400 dark:text-slate-500",
+  },
+};
+
+export const HeaderPeripheralStatusGroup = ({ children }: { children: ReactNode }) => (
+  <div
+    className="hidden items-stretch divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white/80 shadow-sm lg:flex dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900/80"
+    role="group"
+    aria-label="Estado de periféricos POS"
+  >
+    {children}
+  </div>
+);
 
 export const HeaderPeripheralStatus = ({
   label,
   Icon,
   status,
   tone,
-}: HeaderPeripheralStatusProps) => (
-  <span
-    className="group inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white/80 text-[var(--brand-header-text)] xl:h-9 xl:w-auto xl:min-w-[4.25rem] xl:gap-1.5 xl:px-2 dark:border-slate-700 dark:bg-slate-900/80"
-    title={`${label}: ${status}`}
-    aria-label={`${label}: ${status}`}
-  >
-    <span className="relative inline-flex shrink-0">
-      <Icon className={`h-4 w-4 ${tone}`} aria-hidden="true" />
-      <span
-        className={`absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-current ${tone}`}
-        aria-hidden="true"
-      />
+  detail,
+  pulse = false,
+}: HeaderPeripheralStatusProps) => {
+  const styles = toneStyles[tone];
+  const description = detail ? `${label}: ${status} · ${detail}` : `${label}: ${status}`;
+
+  return (
+    <span
+      className="inline-flex h-11 min-w-[3.5rem] shrink-0 flex-col items-center justify-center px-1.5"
+      title={description}
+      aria-label={description}
+      role="status"
+    >
+      <span className="relative inline-flex shrink-0">
+        <Icon
+          className={`h-4 w-4 ${styles.icon} ${pulse ? "animate-pulse" : ""}`}
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
+        <span
+          className={`absolute -right-1.5 -top-1 h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-900 ${styles.dot}`}
+          aria-hidden="true"
+        />
+      </span>
+      <span className="mt-0.5 block text-center text-[9px] font-medium leading-[1.15]">
+        <span className="block text-slate-600 dark:text-slate-300">{label}</span>
+        <span className={`block font-semibold ${styles.text}`}>{status}</span>
+      </span>
     </span>
-    <span className="hidden text-[9px] font-semibold leading-tight xl:inline">
-      <span className="block text-[var(--brand-header-text)]">{label}</span>
-      <span className={`block ${tone}`}>{status}</span>
-    </span>
-  </span>
-);
+  );
+};

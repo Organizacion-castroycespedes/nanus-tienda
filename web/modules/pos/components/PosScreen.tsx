@@ -1,9 +1,10 @@
 "use client";
 
 import {
+  AlertTriangle,
   CheckCircle2,
   CreditCard,
-  Grid3X3,
+  LayoutGrid,
   List,
   Loader2,
   Package,
@@ -11,6 +12,7 @@ import {
   Scale,
   Search,
   SlidersHorizontal,
+  Stethoscope,
   ShoppingCart,
   UserRound,
   UserPlus,
@@ -146,7 +148,6 @@ import {
 import { createProductAddedSoundPlayer } from "../utils/product-added-sound";
 import {
   FLOATING_CART_STORAGE_KEY,
-  FLOATING_POS_STORAGE_KEY,
   FLOATING_CHARGE_STORAGE_KEY,
 } from "../utils/floating-control-position";
 import { useDraggableFloatingControl } from "../hooks/useDraggableFloatingControl";
@@ -196,12 +197,12 @@ const stockFilterLabels: Record<StockFilterKey, string> = {
 const productViewModeOptions: Array<{
   value: ProductViewMode;
   label: string;
-  icon: typeof Grid3X3;
+  icon: typeof LayoutGrid;
 }> = [
   {
     value: "grid",
-    label: "Cuadricula",
-    icon: Grid3X3,
+    label: "Cuadrícula",
+    icon: LayoutGrid,
   },
   {
     value: "list",
@@ -638,7 +639,6 @@ export const PosScreen = () => {
   const cartRef = useRef(cart);
   const productsRef = useRef(products);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const scannerErrorToastShownRef = useRef(false);
   const scannerWedgeStateRef = useRef(createPosScannerWedgeState());
   const scannerWedgeOptions = useMemo(() => resolvePosScannerWedgeOptions(), []);
   const scannerHidLogger = useMemo(
@@ -646,8 +646,6 @@ export const PosScreen = () => {
     []
   );
   const playProductAddedSound = useMemo(() => createProductAddedSoundPlayer(), []);
-  const shouldFocusProductSearchRef = useRef(false);
-
   useAutoClearState(toastMessage, setToastMessage);
 
   useEffect(() => {
@@ -667,20 +665,9 @@ export const PosScreen = () => {
   );
 
   const openProductTools = useCallback(() => {
-    shouldFocusProductSearchRef.current = true;
     setProductToolsOpen(true);
   }, []);
 
-  const posFloatingControl = useDraggableFloatingControl({
-    storageKey: FLOATING_POS_STORAGE_KEY,
-    defaultAnchor: "top-right",
-    defaultSize: {
-      width: 176,
-      height: 56,
-    },
-    minTop: 96,
-    onActivate: openProductTools,
-  });
   const cartFloatingControl = useDraggableFloatingControl({
     storageKey: FLOATING_CART_STORAGE_KEY,
     defaultAnchor: "bottom-right",
@@ -700,35 +687,88 @@ export const PosScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (!productToolsOpen || !shouldFocusProductSearchRef.current) {
-      return;
-    }
-
-    shouldFocusProductSearchRef.current = false;
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, [productToolsOpen]);
-
-  useEffect(() => {
     if (cart.length === 0 && cartSheetOpen) {
       setCartSheetOpen(false);
     }
   }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
+  const isSearchFocusReleased =
+    productToolsOpen ||
+    paymentModalOpen ||
+    quickFiscalCustomerOpen ||
+    cartSheetOpen ||
+    Boolean(pdfConfig) ||
+    isBillingProcessing;
+
   useEffect(() => {
-    if (paymentModalOpen || quickFiscalCustomerOpen) {
-      return;
+    if (isSearchFocusReleased) {
+      return undefined;
     }
 
+    // Keyboard users must be able to Tab away from the search input.
+    let isKeyboardNavigation = false;
+    const isEditableElement = (element: Element | null) =>
+      element instanceof HTMLElement &&
+      (element.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName));
+    const isInsideOverlay = (element: Element | null) =>
+      Boolean(
+        element?.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [aria-modal="true"]')
+      );
+
+    const restoreSearchFocus = () => {
+      if (isKeyboardNavigation) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        const input = searchInputRef.current;
+        const activeElement = document.activeElement;
+        if (
+          !input ||
+          activeElement === input ||
+          isEditableElement(activeElement) ||
+          isInsideOverlay(activeElement) ||
+          document.querySelector('[aria-modal="true"]')
+        ) {
+          return;
+        }
+
+        input.focus({ preventScroll: true });
+      });
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        isKeyboardNavigation = true;
+      }
+    };
+    const handlePointerDown = () => {
+      isKeyboardNavigation = false;
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointerup", restoreSearchFocus);
+    document.addEventListener("focusout", restoreSearchFocus);
     focusProductSearch();
-  }, [focusProductSearch, paymentModalOpen, quickFiscalCustomerOpen]);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointerup", restoreSearchFocus);
+      document.removeEventListener("focusout", restoreSearchFocus);
+    };
+  }, [focusProductSearch, isSearchFocusReleased]);
 
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  useEffect(() => {
+    if (catalogWarnings.length > 0) {
+      showToast(catalogWarnings.join(" "), "warning");
+    }
+  }, [catalogWarnings, showToast]);
 
   const handleSalePeripheralFeedback = useCallback(
     async (context: PosSalePeripheralContext) => {
@@ -1081,6 +1121,8 @@ export const PosScreen = () => {
       : null,
   ].filter((label): label is string => Boolean(label));
   const hasProductCatalogFilters = activeProductFilterLabels.length > 0;
+  const productClassificationFilterCount =
+    Number(Boolean(selectedProductCategory)) + Number(Boolean(selectedProductSubcategory));
 
   const handleStockFilterChange = useCallback(
     (filter: StockFilterKey) => {
@@ -1402,20 +1444,6 @@ export const PosScreen = () => {
       }, {}),
     [cartWithDerivedValues]
   );
-  const scaleStatusLabel = scaleMockEnabled
-    ? scaleMockStatus === "reading"
-      ? "Leyendo"
-      : scaleMockStatus === "error"
-        ? "Error"
-        : "Lista"
-    : "Desactivada";
-  const scaleStatusTone =
-    scaleMockStatus === "error" || !scaleMockEnabled
-      ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-      : scaleMockStatus === "reading"
-        ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100";
-
   const refreshCartItemPricing = useCallback(
     async (productId: string, quantity: number, pricingRequestKey: string) => {
       if (!activeBranchId) {
@@ -1721,14 +1749,9 @@ export const PosScreen = () => {
   const handleScannerConnectionError = useCallback(
     (error: PeripheralOperationError) => {
       setScannerMockStatus("error");
-      setScannerLastResult("Scanner desconectado");
-
-      if (!scannerErrorToastShownRef.current) {
-        scannerErrorToastShownRef.current = true;
-        showToast(error.message || "Scanner desconectado", "warning");
-      }
+      setScannerLastResult(`Scanner desconectado (${error.code})`);
     },
-    [showToast]
+    []
   );
 
   useEffect(() => {
@@ -1737,7 +1760,6 @@ export const PosScreen = () => {
       return undefined;
     }
 
-    scannerErrorToastShownRef.current = false;
     setScannerMockStatus("connected");
     scannerHidLogger.captureEnabled();
     const unsubscribe = subscribeScannerEvents(
@@ -2724,40 +2746,16 @@ export const PosScreen = () => {
         <Toast
           message={toastMessage}
           variant={toastVariant}
+          floating
         />
       ) : null}
 
-      {/* POS operational panel trigger */}
+      {/* POS operational panel */}
       <div className="relative">
-        <button
-          type="button"
-          ref={posFloatingControl.buttonRef}
-          onPointerDown={posFloatingControl.buttonProps.onPointerDown}
-          onPointerMove={posFloatingControl.buttonProps.onPointerMove}
-          onPointerUp={posFloatingControl.buttonProps.onPointerUp}
-          onPointerCancel={posFloatingControl.buttonProps.onPointerCancel}
-          onClick={posFloatingControl.buttonProps.onClick}
-          style={posFloatingControl.buttonStyle}
-          className={`fixed z-20 inline-flex cursor-grab select-none items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 active:cursor-grabbing dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-900 ${posFloatingControl.isDragging ? "scale-[1.02] shadow-2xl" : ""}`}
-          aria-label="Abrir panel operativo POS"
-          title="Abrir panel operativo POS. Arrastra para mover."
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          <span>POS</span>
-          {hasProductCatalogFilters ? (
-            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-900 px-2 py-0.5 text-xs font-bold text-white dark:bg-white dark:text-slate-950">
-              {activeProductFilterLabels.length}
-            </span>
-          ) : null}
-          {selectedCustomerId && selectedCustomerId !== finalConsumerCustomer?.id ? (
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          ) : null}
-        </button>
-
         {productToolsOpen ? (
           <Modal
             title="Panel operativo POS"
-            description="Ajustar filtros de producto sin reservar espacio permanente."
+            description="Filtra el catálogo por categoría y subcategoría."
             size="xl"
             onClose={() => setProductToolsOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
@@ -2806,46 +2804,6 @@ export const PosScreen = () => {
                     ))}
                   </Select>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
-                    const isActive = activeStockFilter === filter;
-                    return (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => handleStockFilterChange(filter)}
-                        className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                          isActive
-                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <span>{stockFilterLabels[filter]}</span>
-                        <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-[11px] dark:bg-white/10">
-                          {stockFilterCounts[filter]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={productViewMode === "grid" ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setProductViewMode("grid")}
-                  >
-                    <Grid3X3 className="h-4 w-4" />
-                    Cuadricula
-                  </Button>
-                  <Button
-                    variant={productViewMode === "list" ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setProductViewMode("list")}
-                  >
-                    <List className="h-4 w-4" />
-                    Lista
-                  </Button>
-                </div>
                 {hasSelectedCategoryWithoutSubcategories ? (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {selectedProductCategory?.name ?? "Categoría"} sin subcategorías.
@@ -2853,7 +2811,24 @@ export const PosScreen = () => {
                 ) : null}
               </section>
 
-
+              {canShowPeripheralDiagnostics ? (
+                <section className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                    Diagnóstico de periféricos
+                  </div>
+                  <Button
+                    variant={peripheralDiagnosticsOpen ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setPeripheralDiagnosticsOpen((current) => !current);
+                      setProductToolsOpen(false);
+                    }}
+                  >
+                    {peripheralDiagnosticsOpen ? "Ocultar" : "Mostrar"}
+                  </Button>
+                </section>
+              ) : null}
             </div>
           </Modal>
         ) : null}
@@ -2864,12 +2839,6 @@ export const PosScreen = () => {
           {catalogError}
         </section>
       ) : null}
-      {catalogWarnings.length > 0 && !catalogError ? (
-        <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-          {catalogWarnings.join(" ")}
-        </section>
-      ) : null}
-
       {/* Main Layout - Sale-first workspace */}
       <div className="grid gap-4">
         {/* Products Panel - Always visible */}
@@ -2886,23 +2855,33 @@ export const PosScreen = () => {
                 formatCurrency={formatCurrency}
               />
 
-              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-900">
-                <Input
-                  ref={searchInputRef}
-                  label=""
-                  aria-label="Buscar productos"
-                  placeholder="Buscar productos por nombre, SKU o codigo"
-                  autoFocus
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  className="min-h-11 pl-10 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                <div className="mt-2 flex items-center justify-between gap-2 px-1">
-                  <span className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:inline">
-                    Nombre, SKU o código
-                  </span>
-                  <div className="flex flex-wrap items-center gap-1.5">
+              <section className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-900/[0.03] dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1 lg:min-w-[13rem]">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    aria-label="Buscar productos"
+                    placeholder="Buscar productos por nombre, SKU o código"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-400"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">
+                  <div
+                    className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap"
+                    role="group"
+                    aria-label="Filtrar por stock"
+                  >
                     {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
                       const isActive = activeStockFilter === filter;
                       return (
@@ -2910,22 +2889,100 @@ export const PosScreen = () => {
                           key={filter}
                           type="button"
                           onClick={() => handleStockFilterChange(filter)}
-                          className={`inline-flex min-h-7 items-center gap-1 rounded-full border px-2.5 text-[10px] font-semibold transition ${
+                          aria-pressed={isActive}
+                          className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border pl-3 pr-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
                             isActive
-                              ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                              ? "border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-950"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
                           }`}
                         >
                           {stockFilterLabels[filter]}
-                          <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[9px] dark:bg-white/10">
+                          <span
+                            className={`inline-flex min-w-[1.5rem] justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums ${
+                              isActive
+                                ? "bg-white/15 text-white dark:bg-slate-950/10 dark:text-slate-950"
+                                : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                            }`}
+                          >
                             {stockFilterCounts[filter]}
                           </span>
                         </button>
                       );
                     })}
                   </div>
+
+                  <div
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-950"
+                    role="group"
+                    aria-label="Vista de productos"
+                  >
+                    {productViewModeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isActive = productViewMode === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setProductViewMode(option.value)}
+                          aria-pressed={isActive}
+                          className={`inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+                            isActive
+                              ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                              : "text-slate-700 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openProductTools}
+                    className="relative inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+                    aria-label="Abrir panel operativo POS"
+                    title="Filtros por categoría y subcategoría"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                    POS
+                    {productClassificationFilterCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                        {productClassificationFilterCount}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  {canShowPeripheralDiagnostics ? (
+                    <button
+                      type="button"
+                      onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
+                      aria-pressed={peripheralDiagnosticsOpen}
+                      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition lg:hidden xl:inline-flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+                        peripheralDiagnosticsOpen
+                          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+                      }`}
+                      aria-label="Diagnóstico de periféricos"
+                      title="Diagnóstico de periféricos"
+                    >
+                      <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
               </section>
+
+              {scaleMockEnabled && scaleMockStatus === "error" ? (
+                <div
+                  className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                  role="alert"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Balanza no disponible. Revisa la conexión antes de vender productos por peso.
+                </div>
+              ) : null}
 
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
               <>
@@ -3040,129 +3097,6 @@ export const PosScreen = () => {
               </>
               ) : null}
 
-              <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 text-sm dark:border-slate-700 dark:bg-slate-800/70 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
-                  >
-                    Balanza {scaleStatusLabel}
-                    {scaleMockStatus === "ready" ? (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    ) : null}
-                  </span>
-                </div>
-                {scaleMockStatus === "error" ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                    Balanza no disponible
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
-                    className="inline-flex min-h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Periféricos OK
-                  </button>
-                )}
-                {canShowPeripheralDiagnostics ? (
-                  <button
-                    type="button"
-                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
-                    className="inline-flex min-h-7 items-center justify-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    Diagnóstico
-                  </button>
-                ) : null}
-
-                <span className="text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-                  Sync {appVersion || "sin version"}
-                </span>
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                    {filteredProducts.length} productos disponibles
-                  </span>
-                  <div
-                    className="inline-flex rounded-full border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-800"
-                    role="group"
-                    aria-label="Vista de productos"
-                  >
-                    {productViewModeOptions.map((option) => {
-                      const Icon = option.icon;
-                      const isActive = productViewMode === option.value;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setProductViewMode(option.value)}
-                          aria-pressed={isActive}
-                          className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
-                            isActive
-                              ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
-                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                          }`}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Active filters and catalog controls */}
-              <div className="hidden flex-wrap items-center gap-1.5">
-                <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
-                    const isActive = activeStockFilter === filter;
-                    return (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => handleStockFilterChange(filter)}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none transition-all duration-200 active:scale-95 ${
-                          isActive
-                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <span>{stockFilterLabels[filter]}</span>
-                        <span className="rounded-full bg-black/10 px-1 py-0.5 text-[9px] leading-none dark:bg-white/10">
-                          {stockFilterCounts[filter]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1">
-                  {activeProductFilterLabels.length > 0 ? (
-                    <>
-                      {activeProductFilterLabels.map((label) => (
-                        <span
-                          key={label}
-                          className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearProductCatalogFilters}
-                        disabled={!hasProductCatalogFilters}
-                        className="min-h-7 px-2 py-0.5 text-[10px] leading-none"
-                      >
-                        <X className="h-3 w-3" />
-                        Limpiar
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
             </div>
 
             {/* Products Catalog */}
@@ -3235,6 +3169,17 @@ export const PosScreen = () => {
                     Cargar más productos (mostrando {visibleProducts.length} de{" "}
                     {filteredProducts.length})
                   </Button>
+                </div>
+              ) : null}
+
+              {!catalogLoading ? (
+                <div className="mt-4 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+                  <span>
+                    {filteredProducts.length} productos disponibles
+                    {appVersion ? ` · v${appVersion}` : ""}
+                  </span>
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
                 </div>
               ) : null}
             </div>
