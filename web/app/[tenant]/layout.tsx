@@ -598,14 +598,22 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [authStatus, authUser?.id, tenantSlug]);
 
   const isPosMenuItem = useCallback((item: MenuItem) => {
-    const normalizedRoute = item.route.toLowerCase();
+    const normalizedRoute = item.route.toLowerCase().replace(/\/+$/, "");
     const normalizedKey = item.key.toLowerCase();
     const normalizedLabel = item.label.toLowerCase();
+    const normalizedModule = (item.module ?? "").toLowerCase();
+
+    if (
+      normalizedModule === "reporteria" ||
+      normalizedRoute.includes("/reporteria") ||
+      normalizedKey.includes("reporteria")
+    ) {
+      return false;
+    }
 
     return (
-      normalizedKey === "pos" ||
-      normalizedLabel === "pos" ||
-      normalizedRoute.endsWith("/pos")
+      (normalizedKey === "pos" || normalizedLabel === "pos" || normalizedRoute.endsWith("/pos")) &&
+      !normalizedRoute.includes("/reporteria")
     );
   }, []);
 
