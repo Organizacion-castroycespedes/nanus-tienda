@@ -1,5 +1,6 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { OperationalSalesReportDataset } from "../../../reports/types/operational-sales-report.types";
+import { REPORT_TIME_ZONE, formatReportDateTime } from "../../../reports/report-date-range";
 
 export const OPERATIONAL_SALES_PAGE_MARGINS: [number, number, number, number] = [28, 28, 28, 28];
 // A4 landscape is 841.89pt wide. 841.89 - 28 - 28 = 785.89pt.
@@ -15,6 +16,7 @@ const money = (value: number) => new Intl.NumberFormat("es-CO", {
 const date = (value: string) => new Intl.DateTimeFormat("es-CO", {
   dateStyle: "medium",
   timeStyle: "short",
+  timeZone: REPORT_TIME_ZONE,
 }).format(new Date(value));
 
 const buildLogo = (logo: string | null): Content => {
@@ -48,6 +50,7 @@ const buildHeader = (dataset: OperationalSalesReportDataset): Content => ({
           style: "meta",
         },
         { text: "Reporte de ventas operativas", style: "title" },
+        { text: `Período: ${formatReportDateTime(dataset.query.dateFrom)} → ${formatReportDateTime(dataset.query.dateTo)} | Zona: ${REPORT_TIME_ZONE} | Generado: ${formatReportDateTime(new Date())}`, style: "meta" },
         { text: `Sucursal: ${dataset.branding.branchName ?? "Todas"}`, style: "meta" },
       ],
     },
