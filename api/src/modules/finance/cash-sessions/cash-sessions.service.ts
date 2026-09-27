@@ -1578,6 +1578,7 @@ export class CashSessionsService {
           tenantId,
           status: "OPEN",
           limit: 1,
+          offset: 0,
         });
         if (openSessions.length > 0) {
           current = openSessions[0];
