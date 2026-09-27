@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
 import { Textarea } from "../../../components/design-system/Textarea";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
@@ -394,7 +395,7 @@ export const DeliveryDriversScreen = () => {
                 <th className="px-4 py-3 font-medium">Documento</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Notas</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -438,31 +439,34 @@ export const DeliveryDriversScreen = () => {
                         {driver.notes || "-"}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      {canManage ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEdit(driver)}
-                            disabled={saving}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            Editar
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => void deactivateDriver(driver)}
-                            disabled={saving || !driver.active}
-                          >
-                            <Ban className="h-4 w-4" />
-                            Desactivar
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Solo lectura</span>
-                      )}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            ...(canManage
+                              ? [
+                                  {
+                                    label: "Editar",
+                                    icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                    disabled: saving,
+                                    onSelect: () => openEdit(driver),
+                                  },
+                                  ...(driver.active
+                                    ? [
+                                        {
+                                          label: "Desactivar",
+                                          icon: <Ban className="h-4 w-4 text-amber-500" />,
+                                          disabled: saving,
+                                          destructive: true,
+                                          onSelect: () => void deactivateDriver(driver),
+                                        },
+                                      ]
+                                    : []),
+                                ]
+                              : []),
+                          ]}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))

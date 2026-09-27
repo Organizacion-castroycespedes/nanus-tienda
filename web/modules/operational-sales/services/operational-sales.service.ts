@@ -49,10 +49,13 @@ export const fetchOperationalSaleDetail = (saleId: string) =>
     { includePosSession: true },
   );
 
-export const refreshOperationalSaleBillingStatus = (saleId: string) =>
+export const refreshOperationalSaleBillingStatus = (
+  saleId: string,
+  signal?: AbortSignal,
+) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/refresh`,
-    { method: "POST", includePosSession: true },
+    { method: "POST", includePosSession: true, signal },
   );
 
 export type ElectronicBillingRequestResult = {

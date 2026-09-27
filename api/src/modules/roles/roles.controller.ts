@@ -54,6 +54,18 @@ export class RolesController {
     return this.rolesService.listRoles(actor);
   }
 
+  @Get(":id/users")
+  @Roles("SUPER_ADMIN", "SUPER_USER")
+  @RequirePermission({ menuKey: MENU_KEYS.CONFIG_USUARIOS, level: "READ" })
+  async getRoleUsers(
+    @Param("id") roleId: string,
+    @Req() request: AuthRequest
+  ) {
+    const actor = this.buildActor(request);
+    const tenantId = typeof request.query?.tenantId === "string" ? request.query.tenantId : undefined;
+    return this.rolesService.listRoleUsers(roleId, actor, { tenantId });
+  }
+
   @Post()
   @Roles("SUPER_ADMIN")
   @RequirePermission({ menuKey: MENU_KEYS.CONFIG_ROLES, level: "WRITE" })
@@ -76,3 +88,4 @@ export class RolesController {
     );
   }
 }
+

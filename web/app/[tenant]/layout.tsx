@@ -19,6 +19,7 @@ import {
   Calculator,
   Calendar,
   ClipboardList,
+  CreditCard,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -35,6 +36,7 @@ import {
   Printer,
   ReceiptText,
   Ruler,
+  ScanBarcode,
   Settings,
   ShieldCheck,
   ShoppingCart,
@@ -45,6 +47,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Weight,
   Wifi,
   WifiOff,
   Wrench,
@@ -81,8 +84,14 @@ import {
   subscribePeripheralEvents,
   type PeripheralSocketStatus,
 } from "../../domains/peripherals/contracts";
+import type { PeripheralDevice } from "../../domains/peripherals/types";
 import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
 import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
+import {
+  HeaderPeripheralStatus,
+  HeaderPeripheralStatusGroup,
+  type HeaderPeripheralTone,
+} from "../../components/layout/HeaderPeripheralStatus";
 
 const normalizeIconName = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -132,16 +141,63 @@ const iconByName: Record<string, LucideIcon> = {
   x: X,
 };
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "flexibuild.sidebar.collapsed";
 const SIDEBAR_MENU_STATE_STORAGE_KEY = "sidebar_open_menu_items";
 type HeaderConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
+
+const posClockDateFormatter = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const posClockTimeFormatter = new Intl.DateTimeFormat("es-CO", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const PosClock = () => {
+  const [clock, setClock] = useState(() => new Date());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClock(new Date());
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return (
+    <span className="hidden 2xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
+      {posClockDateFormatter.format(clock)} · {posClockTimeFormatter.format(clock)}
+    </span>
+  );
+};
+
+const peripheralStatusLabel = (device?: PeripheralDevice) => {
+  if (!device) return "Sin config.";
+  if (device.status === "CONNECTED" || device.status === "SIMULATED") return "OK";
+  if (device.status === "NOT_REACHABLE") return "Sin señal";
+  if (device.status === "ERROR") return "Error";
+  return "Desconect.";
+};
+
+const peripheralStatusTone = (device?: PeripheralDevice): HeaderPeripheralTone => {
+  if (!device) return "idle";
+  if (device.status === "CONNECTED" || device.status === "SIMULATED") return "ok";
+  if (device.status === "NOT_REACHABLE") return "warning";
+  return "error";
+};
+
+const peripheralStatusDetail = (device?: PeripheralDevice) => {
+  if (!device) return "No configurado en esta terminal";
+  return device.name || undefined;
+};
 
 const TenantLayout = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openMenuItems, setOpenMenuItems] = useState<Record<string, boolean>>({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -194,7 +250,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
   const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
   const [printerName, setPrinterName] = useState<string | null>(null);
-  const [posClock, setPosClock] = useState(() => new Date());
+  const [peripheralDevices, setPeripheralDevices] = useState<PeripheralDevice[]>([]);
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
     if (!name) return "";
@@ -212,33 +268,53 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     () => Boolean(pathname && /^\/[^/]+\/pos(?:\/|$)/i.test(pathname)),
     [pathname]
   );
-  const posClockDateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat("es-CO", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-    []
-  );
-  const posClockTimeFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat("es-CO", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    []
-  );
   const posOperationalRole = authUser?.role ?? null;
   const posOperationalBranch = posContext.branchName ?? null;
   const posOperationalTerminal = posContext.terminalName ?? null;
   const hasPosOperationalContext = Boolean(
     posOperationalRole || posOperationalBranch || posOperationalTerminal || posContext.posSessionId
   );
-  const posOperationalDate = posClockDateFormatter.format(posClock);
-  const posOperationalTime = posClockTimeFormatter.format(posClock);
-  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-64 xl:w-64 lg:px-3 xl:px-4";
-  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
+  const findPeripheral = useCallback(
+    (type: PeripheralDevice["type"]) =>
+      peripheralDevices.find((device) => device.type === type),
+    [peripheralDevices]
+  );
+  const scaleDevice = findPeripheral("SCALE");
+  const scannerDevice = findPeripheral("SCANNER");
+  const printerHeaderStatus =
+    printerSocketStatus === "CONNECTED"
+      ? "OK"
+      : printerSocketStatus === "CONNECTING"
+        ? "Conectando"
+        : "Error";
+  const printerHeaderTone: HeaderPeripheralTone =
+    printerSocketStatus === "CONNECTED"
+      ? "ok"
+      : printerSocketStatus === "CONNECTING"
+        ? "warning"
+        : "error";
+  const printerHeaderDetail =
+    printerSocketStatus === "CONNECTED"
+      ? printerName ?? "Nombre no disponible"
+      : printerSocketStatus === "CONNECTING"
+        ? "Conectando con el servicio de impresión"
+        : "Revise el Peripheral Agent";
+  const isNetworkOffline =
+    connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE";
+  const networkHeaderStatus =
+    connectivityState === "ONLINE" || connectivityState === "RESTORED"
+      ? "OK"
+      : connectivityState === "RECONNECTING"
+        ? "Conectando"
+        : connectivityState === "OFFLINE"
+          ? "Sin red"
+          : "Sin servicio";
+  const networkHeaderTone: HeaderPeripheralTone =
+    connectivityState === "ONLINE" || connectivityState === "RESTORED"
+      ? "ok"
+      : connectivityState === "RECONNECTING"
+        ? "warning"
+        : "error";
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -276,6 +352,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     const loadPrinterName = async () => {
       if (!authUser?.tenantId) {
         setPrinterName(null);
+        setPeripheralDevices([]);
         return;
       }
 
@@ -295,9 +372,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         setPrinterName(
           resolvePrinterDisplayName(configResult, devicesResult.data ?? [])
         );
+        setPeripheralDevices(devicesResult.data ?? []);
       } catch {
         if (!cancelled) {
           setPrinterName(null);
+          setPeripheralDevices([]);
         }
       }
     };
@@ -310,23 +389,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [authUser?.branchId, authUser?.tenantId]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setPosClock(new Date());
-    }, 60_000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
-    }
-
-    const storedCollapsed = window.localStorage.getItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY
-    );
-    if (storedCollapsed !== null) {
-      setSidebarCollapsed(storedCollapsed === "true");
     }
 
     const storedOpenMenuItems = window.localStorage.getItem(
@@ -343,17 +407,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       window.localStorage.removeItem(SIDEBAR_MENU_STATE_STORAGE_KEY);
     }
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      String(sidebarCollapsed)
-    );
-  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -597,14 +650,22 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [authStatus, authUser?.id, tenantSlug]);
 
   const isPosMenuItem = useCallback((item: MenuItem) => {
-    const normalizedRoute = item.route.toLowerCase();
+    const normalizedRoute = item.route.toLowerCase().replace(/\/+$/, "");
     const normalizedKey = item.key.toLowerCase();
     const normalizedLabel = item.label.toLowerCase();
+    const normalizedModule = (item.module ?? "").toLowerCase();
+
+    if (
+      normalizedModule === "reporteria" ||
+      normalizedRoute.includes("/reporteria") ||
+      normalizedKey.includes("reporteria")
+    ) {
+      return false;
+    }
 
     return (
-      normalizedKey === "pos" ||
-      normalizedLabel === "pos" ||
-      normalizedRoute.endsWith("/pos")
+      (normalizedKey === "pos" || normalizedLabel === "pos" || normalizedRoute.endsWith("/pos")) &&
+      !normalizedRoute.includes("/reporteria")
     );
   }, []);
 
@@ -733,7 +794,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   : "text-[var(--brand-sidebar-text)] hover:bg-[var(--brand-sidebar-hover)]"
               }`}
               style={menuItemStyles.container}
-              title={isSidebarCompact ? item.label : undefined}
             >
               <span
                 aria-hidden="true"
@@ -747,16 +807,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 aria-current={isDirectActive ? "page" : undefined}
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
                   depth > 0 ? "gap-2 px-2 py-1 text-[12px] xl:text-[13px] font-medium" : "gap-2.5 xl:gap-3 text-xs xl:text-sm font-semibold"
-                } ${
-                  isSidebarCompact ? "justify-center" : ""
                 }`}
                 onClick={() => setSidebarOpen(false)}
                 aria-label={
                   posRequiresCash
                     ? "POS requiere caja abierta"
-                    : isSidebarCompact
-                      ? item.label
-                      : undefined
+                    : undefined
                 }
               >
                 {depth > 0 ? (
@@ -775,18 +831,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     <Icon className="h-3.5 w-3.5 xl:h-4 xl:w-4" />
                   </span>
                 )}
-                {!isSidebarCompact ? (
-                  <span className="flex min-w-0 flex-1 flex-col leading-snug">
-                    <span className="truncate">{item.label}</span>
-                    {posRequiresCash ? (
-                      <span className="truncate text-[9px] xl:text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
-                        Requiere caja
-                      </span>
-                    ) : null}
-                  </span>
-                ) : null}
+                <span className="flex min-w-0 flex-1 flex-col leading-snug">
+                  <span className="truncate">{item.label}</span>
+                  {posRequiresCash ? (
+                    <span className="truncate text-[9px] xl:text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
+                      Requiere caja
+                    </span>
+                  ) : null}
+                </span>
               </Link>
-              {hasChildren && !isSidebarCompact ? (
+              {hasChildren ? (
                 <button
                   type="button"
                   className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
@@ -812,7 +866,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </button>
               ) : null}
             </div>
-            {hasChildren && (isExpanded || hasActiveChild) && !isSidebarCompact
+            {hasChildren && (isExpanded || hasActiveChild)
               ? renderMenuItems(item.children ?? [], depth + 1)
               : null}
           </li>
@@ -832,11 +886,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             className="border-t pt-1.5 first:border-t-0 first:pt-0"
             style={{ borderColor: tenantTheme.sidebar.border }}
           >
-            {!isSidebarCompact ? (
-              <p className="mb-1.5 mt-0.5 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
-                {section}
-              </p>
-            ) : null}
+            <p className="mb-1.5 mt-0.5 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
+              {section}
+            </p>
             {isExpanded ? renderMenuItems(items) : null}
           </li>
         );
@@ -1186,13 +1238,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
-        aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-3 py-3 shadow-2xl transition-all duration-300 lg:sticky lg:top-0 lg:z-30 lg:translate-x-0 ${desktopSidebarWidthClass} ${
+        aria-label="Barra lateral de navegación"
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 sm:w-80 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-3.5 py-3 shadow-2xl transition-transform duration-300 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1201,98 +1253,62 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          {isSidebarCompact ? (
-            <div className="mb-4 flex flex-col items-center">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(false)}
-                className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)]"
+        <div className="mb-3 flex items-center justify-between gap-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {brandingLogo ? (
+              <img
+                src={brandingLogo}
+                alt="Logo empresa"
+                className="h-9 w-9 shrink-0 rounded-xl object-contain p-1"
                 style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
-                title={`Expandir menú (${sidebarCompanyName})`}
-                aria-label={`Expandir menú (${sidebarCompanyName})`}
+              />
+            ) : (
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                style={{
+                  backgroundColor: tenantTheme.sidebar.logoBackground,
+                  color: tenantTheme.sidebar.logoText,
+                }}
               >
-                {brandingLogo ? (
-                  <img
-                    src={brandingLogo}
-                    alt="Logo empresa"
-                    className="h-8 w-8 rounded-lg object-contain p-0.5"
-                  />
-                ) : (
-                  <span
-                    className="text-xs font-bold"
-                    style={{ color: tenantTheme.sidebar.logoText }}
-                  >
-                    {companyInitials}
-                  </span>
-                )}
-              </button>
-            </div>
-          ) : (
-            <div className="mb-3 flex items-center justify-between gap-2.5">
-              <div className="flex min-w-0 items-center gap-2.5">
-                {brandingLogo ? (
-                  <img
-                    src={brandingLogo}
-                    alt="Logo empresa"
-                    className="h-9 w-9 shrink-0 rounded-xl object-contain p-1"
-                    style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
-                  />
-                ) : (
-                  <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-                    style={{
-                      backgroundColor: tenantTheme.sidebar.logoBackground,
-                      color: tenantTheme.sidebar.logoText,
-                    }}
-                  >
-                    {companyInitials}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]" title={sidebarCompanyName}>
-                    {sidebarCompanyName}
-                  </p>
-                  <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
-                    Manus POS
-                  </p>
-                </div>
+                {companyInitials}
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
-                  aria-label="Colapsar menú lateral"
-                  title="Colapsar menú lateral"
-                  onClick={() => setSidebarCollapsed(true)}
-                >
-                  <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
-                </button>
-                <button
-                  type="button"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
-                  aria-label="Cerrar menú lateral"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]" title={sidebarCompanyName}>
+                {sidebarCompanyName}
+              </p>
+              <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
+                Manus POS
+              </p>
             </div>
-          )}
-          <nav className="mt-2 flex-1 pb-2" aria-label="Navegacion principal">
-            {renderMenuSections(menuSections, "primary")}
-            {Object.keys(mainMenuSections).length > 0 ? (
-              <>
-                <div className="mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
-                  {!isSidebarCompact ? "Menu principal" : null}
-                </div>
-                <div className="mt-1">{renderMenuSections(mainMenuSections, "main")}</div>
-              </>
-            ) : null}
-          </nav>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)]"
+              aria-label="Cerrar menú lateral"
+              title="Cerrar menú lateral"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
+            </button>
+          </div>
+        </div>
+        <nav className="mt-2 flex-1 pb-2" aria-label="Navegación principal">
+          {renderMenuSections(menuSections, "primary")}
+          {Object.keys(mainMenuSections).length > 0 ? (
+            <>
+              <div className="mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
+                Menú principal
+              </div>
+              <div className="mt-1">{renderMenuSections(mainMenuSections, "main")}</div>
+            </>
+          ) : null}
+        </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-[var(--brand-header-bg)]/95 px-3 shadow-sm backdrop-blur-md md:px-4 lg:px-5"
+            className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-[var(--brand-header-bg)]/95 px-2.5 sm:px-3 md:px-4 lg:px-5 shadow-sm backdrop-blur-md"
             style={{ borderColor: tenantTheme.header.border }}
           >
             <div className="flex min-w-0 items-center gap-2 lg:gap-2.5">
@@ -1304,47 +1320,53 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
-                onClick={() => {
-                  if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-                    setSidebarCollapsed((previous) => !previous);
-                    return;
-                  }
-                  setSidebarOpen((previous) => !previous);
-                }}
-                aria-label={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
-                title={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
+                onClick={() => setSidebarOpen((previous) => !previous)}
+                aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
+                title={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
               >
                 <Menu className="h-4 w-4" />
               </button>
               <div className="min-w-0">
                 {hasPosOperationalContext ? (
-                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-                    {posOperationalRole ? (
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                    {isPosRoute ? (
                       <span
-                        className="inline-flex max-w-[6.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
+                        className="inline-flex h-9 shrink-0 items-center rounded-xl border px-3 text-base font-bold tracking-tight text-[var(--brand-header-text)]"
+                        style={{
+                          borderColor: tenantTheme.header.iconButtonBorder,
+                          backgroundColor: tenantTheme.header.iconButtonBackground,
+                        }}
+                        title={posOperationalRole ? `Punto de venta · Rol ${posOperationalRole}` : "Punto de venta"}
+                      >
+                        POS
+                      </span>
+                    ) : posOperationalRole ? (
+                      <span
+                        className="inline-flex h-7 max-w-[6.5rem] shrink-0 items-center gap-1 rounded-full border px-2.5 text-[10px] xl:text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--brand-header-text)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
                         title={posOperationalRole}
                       >
+                        <User className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{posOperationalRole}</span>
                       </span>
                     ) : null}
                     {posOperationalTerminal ? (
                       <span
-                        className="inline-flex max-w-[7.5rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        className="inline-flex h-7 max-w-[8rem] shrink-0 items-center rounded-full border px-3 text-xs font-medium text-[var(--brand-header-text)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
-                        title={posOperationalTerminal}
+                        title={`Terminal: ${posOperationalTerminal}`}
                       >
                         <span className="truncate">{posOperationalTerminal}</span>
                       </span>
                     ) : (
                       <span
-                        className="hidden sm:inline-flex max-w-[8rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold text-[var(--brand-header-muted)]"
+                        className="hidden sm:inline-flex h-7 max-w-[8rem] shrink-0 items-center rounded-full border px-3 text-xs font-medium text-[var(--brand-header-muted)]"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1355,19 +1377,17 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     )}
                     {posOperationalBranch ? (
                       <span
-                        className="hidden md:inline-flex max-w-[9rem] shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] xl:text-[11px] font-semibold text-[var(--brand-header-text)]"
+                        className="hidden h-7 max-w-[10rem] shrink-0 items-center rounded-full border px-3 text-xs font-medium text-[var(--brand-header-text)] md:inline-flex"
                         style={{
                           borderColor: tenantTheme.header.iconButtonBorder,
                           backgroundColor: tenantTheme.header.iconButtonBackground,
                         }}
-                        title={posOperationalBranch}
+                        title={`Sucursal: ${posOperationalBranch}`}
                       >
                         <span className="truncate">{posOperationalBranch}</span>
                       </span>
                     ) : null}
-                    <span className="hidden xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
-                      {posOperationalDate} · {posOperationalTime}
-                    </span>
+                    <PosClock />
                   </div>
                 ) : (
                   <div>
@@ -1379,19 +1399,21 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              <Link
-                href={`/${tenantSlug}/dashboard`}
-                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
-                style={{
-                  borderColor: tenantTheme.header.iconButtonBorder,
-                  backgroundColor: tenantTheme.header.iconButtonBackground,
-                  color: tenantTheme.header.iconButtonText,
-                }}
-                aria-label="Ir al dashboard"
-                title="Ir al dashboard"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-              </Link>
+              {!isPosRoute ? (
+                <Link
+                  href={`/${tenantSlug}/dashboard`}
+                  className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  style={{
+                    borderColor: tenantTheme.header.iconButtonBorder,
+                    backgroundColor: tenantTheme.header.iconButtonBackground,
+                    color: tenantTheme.header.iconButtonText,
+                  }}
+                  aria-label="Ir al dashboard"
+                  title="Ir al dashboard"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                </Link>
+              ) : null}
               <button
                 type="button"
                 className="relative grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
@@ -1406,22 +1428,65 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 <Bell className="h-4 w-4" />
                 <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[var(--brand-primary)]" />
               </button>
+              {!isPosRoute ? (
+                <button
+                  type="button"
+                  className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                  style={{
+                    borderColor: tenantTheme.header.iconButtonBorder,
+                    backgroundColor: tenantTheme.header.iconButtonBackground,
+                    color: tenantTheme.header.iconButtonText,
+                  }}
+                  aria-label="Mensajes"
+                  title="Mensajes"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </button>
+              ) : null}
+              {isPosRoute ? (
+                <HeaderPeripheralStatusGroup>
+                  <HeaderPeripheralStatus
+                    label="Balanza"
+                    Icon={Weight}
+                    status={peripheralStatusLabel(scaleDevice)}
+                    tone={peripheralStatusTone(scaleDevice)}
+                    detail={peripheralStatusDetail(scaleDevice)}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Impresora"
+                    Icon={Printer}
+                    status={printerHeaderStatus}
+                    tone={printerHeaderTone}
+                    detail={printerHeaderDetail}
+                    pulse={printerSocketStatus === "CONNECTING"}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Escáner"
+                    Icon={ScanBarcode}
+                    status={peripheralStatusLabel(scannerDevice)}
+                    tone={peripheralStatusTone(scannerDevice)}
+                    detail={peripheralStatusDetail(scannerDevice)}
+                  />
+                  <HeaderPeripheralStatus
+                    label="Datáfono"
+                    Icon={CreditCard}
+                    status="Sin config."
+                    tone="idle"
+                    detail="No configurado en esta terminal"
+                  />
+                  <HeaderPeripheralStatus
+                    label="Red"
+                    Icon={isNetworkOffline ? WifiOff : Wifi}
+                    status={networkHeaderStatus}
+                    tone={networkHeaderTone}
+                  />
+                </HeaderPeripheralStatusGroup>
+              ) : null}
               <button
                 type="button"
-                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
-                style={{
-                  borderColor: tenantTheme.header.iconButtonBorder,
-                  backgroundColor: tenantTheme.header.iconButtonBackground,
-                  color: tenantTheme.header.iconButtonText,
-                }}
-                aria-label="Mensajes"
-                title="Mensajes"
-              >
-                <MessageCircle className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className={`relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] ${
+                  isPosRoute ? "lg:hidden" : ""
+                }`}
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1469,7 +1534,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </button>
               <button
                 type="button"
-                className="relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                className={`relative grid h-8 w-8 place-items-center rounded-lg border transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)] ${
+                  isPosRoute ? "lg:hidden" : ""
+                }`}
                 style={{
                   borderColor: tenantTheme.header.iconButtonBorder,
                   backgroundColor: tenantTheme.header.iconButtonBackground,
@@ -1615,11 +1682,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             id="contenido-principal"
             className="flex-1 overflow-y-auto overscroll-contain"
           >
-            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8">
+            <div className="min-h-full p-[1%]" style={{ padding: "1%" }}>
               {children}
             </div>
             <footer
-              className="border-t px-4 py-4 text-sm md:px-6"
+              className="border-t px-[1%] py-3 text-sm"
               style={{
                 borderColor: tenantTheme.surface.border,
                 backgroundColor: tenantTheme.surface.card,
@@ -1856,7 +1923,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             </div>
           )}
         </div>
-      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
+      {toastMessage ? <Toast message={toastMessage} variant={toastVariant} floating /> : null}
     </div>
   );
 };

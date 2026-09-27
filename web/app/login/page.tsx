@@ -109,16 +109,11 @@ const LoginPageContent = () => {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
     if (!email.trim() || !password.trim()) {
       setStatusWarning("Ingresa tu email y Contraseña.");
-      return;
-    }
-    if (authStatus === "authenticated") {
-      setStatusWarning("Ya existe una sesion activa en este navegador.");
-      return;
-    }
-    if (authStatus === "authenticating" || authStatus === "refreshing") {
-      setStatusWarning("Estamos procesando otra autenticacion. Intenta de nuevo.");
       return;
     }
     setStatus(null);
@@ -144,6 +139,7 @@ const LoginPageContent = () => {
         requestError.status === 409 &&
         (!requestError.code || requestError.code === "SESSION_ACTIVE")
       ) {
+        dispatch(setAuthStatus("anonymous"));
         setPendingCredentials({ email, password });
         setShowSessionConflict(true);
         setStatusWarning(
@@ -161,6 +157,7 @@ const LoginPageContent = () => {
   const handleReplaceSession = useCallback(async () => {
     if (!pendingCredentials) {
       setShowSessionConflict(false);
+      dispatch(setAuthStatus("anonymous"));
       return;
     }
     setIsSubmitting(true);
@@ -182,7 +179,7 @@ const LoginPageContent = () => {
       setStatusSuccess("Sesion anterior cerrada. Redirigiendo...");
       router.push(`/${nextTenantSlug}/dashboard`);
     } catch {
-      dispatch(setAuthStatus("error"));
+      dispatch(setAuthStatus("anonymous"));
       setStatusError("No fue posible iniciar sesion. Intenta nuevamente.");
     } finally {
       setIsSubmitting(false);
@@ -192,8 +189,9 @@ const LoginPageContent = () => {
   const handleCancelForceLogin = useCallback(() => {
     setShowSessionConflict(false);
     setPendingCredentials(null);
+    dispatch(setAuthStatus("anonymous"));
     setStatusWarning("Inicio de sesion cancelado.");
-  }, [setStatusWarning]);
+  }, [dispatch, setStatusWarning]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950">
@@ -206,7 +204,7 @@ const LoginPageContent = () => {
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">
         <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:mr-0 lg:w-[30vw] lg:max-w-[31rem] lg:p-11 dark:border-slate-700/70 dark:bg-slate-900/95">
           {showSessionConflict ? (
-            <Modal title="Sesion activa detectada">
+            <Modal title="Sesion activa detectada" onClose={handleCancelForceLogin}>
               <p className="text-sm text-slate-600 dark:text-slate-300">
                 Ya existe una sesion activa en otro dispositivo o navegador. Si
                 continuas aqui, la sesion anterior se cerrara automaticamente.

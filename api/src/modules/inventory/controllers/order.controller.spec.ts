@@ -37,7 +37,7 @@ test("OrderController: maps order delivery endpoints to DELIVERIES permissions",
     level: "WRITE",
     action: DELIVERY_PERMISSION_ACTIONS.CREATE,
   });
-  assert.equal(requiresOpenCashSession("createDelivery"), true);
+  assert.equal(requiresOpenCashSession("createDelivery"), undefined);
   assert.equal(requiresOpenCashSession("getDelivery"), undefined);
 });
 

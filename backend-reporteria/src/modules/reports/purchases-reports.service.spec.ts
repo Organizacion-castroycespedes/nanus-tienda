@@ -17,8 +17,8 @@ test("PurchasesReportsService construye un XLSX real con columnas contractuales 
   assert.ok(sheet);
   assert.equal(sheet.columnCount, 14);
   assert.equal(sheet.getRow(2).getCell(7).value, 10);
-  assert.ok(sheet.getRow(2).getCell(1).value instanceof Date);
+  assert.match(String(sheet.getRow(2).getCell(1).value), /America\/Bogota/);
   assert.equal(sheet.getRow(2).getCell(2).value, "purchase-full-id");
   assert.equal(sheet.getRow(2).getCell(4).value, "FAC-100");
-  assert.ok(sheet.getRow(2).getCell(5).value instanceof Date);
+  assert.equal(sheet.getRow(2).getCell(5).value, "2026-09-19");
 });

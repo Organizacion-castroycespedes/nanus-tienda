@@ -1,13 +1,14 @@
-"use client";
-
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { Button } from "../../../components/design-system/Button";
 
-const TenantUnauthorizedPage = () => {
-  const params = useParams();
-  const tenantParam = params?.tenant;
-  const tenantSlug = Array.isArray(tenantParam) ? tenantParam[0] : tenantParam;
+type TenantUnauthorizedPageProps = {
+  params: {
+    tenant: string;
+  };
+};
+
+const TenantUnauthorizedPage = ({ params }: TenantUnauthorizedPageProps) => {
+  const tenantSlug = params?.tenant;
   const dashboardHref = tenantSlug ? `/${tenantSlug}/dashboard` : "/login";
 
   return (
@@ -31,3 +32,4 @@ const TenantUnauthorizedPage = () => {
 };
 
 export default TenantUnauthorizedPage;
+

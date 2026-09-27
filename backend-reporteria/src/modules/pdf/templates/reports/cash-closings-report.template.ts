@@ -1,5 +1,6 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { CashClosingListDataset } from "../../../reports/types/cash-report.types";
+import { REPORT_TIME_ZONE, formatReportDateTime } from "../../../reports/report-date-range";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -13,6 +14,7 @@ const formatDateTime = (value: string | null | undefined) =>
     ? new Intl.DateTimeFormat("es-CO", {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone: REPORT_TIME_ZONE,
       }).format(new Date(value))
     : "-";
 
@@ -35,6 +37,7 @@ const buildHeader = (dataset: CashClosingListDataset): Content => ({
         { text: dataset.branding?.nit ? `NIT ${dataset.branding.nit}` : "", style: "meta" },
         { text: [dataset.branding?.address, dataset.branding?.phone, dataset.branding?.email].filter(Boolean).join("  |  "), style: "meta" },
         { text: "Reporte de cierres de caja", style: "title" },
+        { text: `Zona: ${REPORT_TIME_ZONE} | Generado: ${formatReportDateTime(new Date())}`, style: "meta" },
         { text: `Tenant: ${dataset.branding?.tenantName ?? dataset.branding?.legalName ?? "No disponible"}  |  Rol: ${dataset.filters.actorRole}`, style: "meta" },
         { text: `Sucursal: ${dataset.branding?.branchName ?? "Todas"}  |  Desde: ${dataset.filters.dateFrom ? formatDateTime(dataset.filters.dateFrom) : "-"}  |  Hasta: ${dataset.filters.dateTo ? formatDateTime(dataset.filters.dateTo) : "-"}`, style: "meta" },
       ],

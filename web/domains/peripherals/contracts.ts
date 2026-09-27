@@ -25,26 +25,28 @@ import {
   resolvePeripheralTerminalConfig,
 } from "./terminal-config";
 import { resolveCashDrawerDeviceIdForOperation } from "./cash-drawer-routing";
-import type {
-  CashDrawerOpenInput,
-  CashDrawerResponse,
-  OrderTicketInput,
-  PeripheralAgentHealth,
-  PeripheralDevice,
-  PeripheralFeatureFlags,
-  PeripheralOperationError,
-  PeripheralOperationResult,
-  PeripheralScannerResponse,
-  PeripheralSocketEvent,
-  PosTerminalFeatureFlags,
-  PosTerminalResolvedConfig,
-  PrintJobResponse,
-  PurchaseTicketInput,
-  SaleTicketInput,
-  ScaleReadInput,
-  ScaleReadResult,
-  ScannerReadResult,
-  ScannerSimulateInput,
+import {
+  PERIPHERAL_ERROR_CODES,
+  POS_TERMINAL_CONFIG_SOURCES,
+  type CashDrawerOpenInput,
+  type CashDrawerResponse,
+  type OrderTicketInput,
+  type PeripheralAgentHealth,
+  type PeripheralDevice,
+  type PeripheralFeatureFlags,
+  type PeripheralOperationError,
+  type PeripheralOperationResult,
+  type PeripheralScannerResponse,
+  type PeripheralSocketEvent,
+  type PosTerminalFeatureFlags,
+  type PosTerminalResolvedConfig,
+  type PrintJobResponse,
+  type PurchaseTicketInput,
+  type SaleTicketInput,
+  type ScaleReadInput,
+  type ScaleReadResult,
+  type ScannerReadResult,
+  type ScannerSimulateInput,
 } from "./types";
 
 export {
@@ -204,7 +206,7 @@ const resolveConfiguredInput = async <T extends ConfigurablePeripheralInput>(
   const shouldUseConfiguredDevice =
     !input.deviceId || input.deviceId === defaultDeviceId;
   const terminalId =
-    config.source === "CONFIGURED"
+    config.source === POS_TERMINAL_CONFIG_SOURCES.CONFIGURED
       ? resolvePeripheralOperationTerminalId(config)
       : input.terminalId ??
         config.agentTerminalCode ??
@@ -237,21 +239,21 @@ const requireRealPrinterConfig = async (
   const config = await resolvePeripheralTerminalConfig(input);
   if (!isRealPrinterConfig(config)) {
     throw new PeripheralAgentRequestError(
-      "PRINTER_NOT_CONFIGURED",
+      PERIPHERAL_ERROR_CODES.PRINTER_NOT_CONFIGURED,
       "La terminal POS actual no tiene una impresora real configurada."
     );
   }
 
   if (!config.features.printSale) {
     throw new PeripheralAgentRequestError(
-      "PRINTER_NOT_CONFIGURED",
+      PERIPHERAL_ERROR_CODES.PRINTER_NOT_CONFIGURED,
       "La impresion de ventas esta desactivada para la terminal POS actual."
     );
   }
 
   if (!config.agentTerminalCode || !config.printerDeviceId) {
     throw new PeripheralAgentRequestError(
-      "PRINTER_NOT_CONFIGURED",
+      PERIPHERAL_ERROR_CODES.PRINTER_NOT_CONFIGURED,
       "La terminal POS actual no tiene una impresora real configurada."
     );
   }
@@ -264,7 +266,7 @@ const requireRealPrinterConfig = async (
 };
 
 export const isRealPrinterConfig = (config: PosTerminalResolvedConfig) =>
-  config.source === "CONFIGURED" &&
+  config.source === POS_TERMINAL_CONFIG_SOURCES.CONFIGURED &&
   config.active &&
   config.mode !== "MOCK" &&
   Boolean(config.printerDeviceId) &&

@@ -1,11 +1,12 @@
 "use client";
 
-import { Monitor, Plus, RefreshCw, Search } from "lucide-react";
+import { Laptop, Monitor, Pencil, Plus, Power, PowerOff, RefreshCw, Search, Sliders } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Input } from "../../../../components/design-system/Input";
 import { Modal } from "../../../../components/design-system/Modal";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
@@ -406,7 +407,7 @@ const TerminalsPage = () => {
                 <th className="px-4 py-3 font-medium">Sucursal</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Creada</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -453,6 +454,7 @@ const TerminalsPage = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatDate(terminal.createdAt)}</td>
+                    {/*
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -487,6 +489,47 @@ const TerminalsPage = () => {
                         >
                           {terminal.isActive ? "Inactivar" : "Reactivar"}
                         </Button>
+                    */}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end">
+                        <RowActionsMenu
+                          items={[
+                            {
+                              label: "Administrar dispositivo",
+                              icon: <Laptop className="h-4 w-4 text-slate-500" />,
+                              onSelect: () => openBindingPanel(terminal),
+                            },
+                            {
+                              label: "Administrar sesiones POS",
+                              icon: <Monitor className="h-4 w-4 text-slate-500" />,
+                              onSelect: () => openSessionPanel(terminal),
+                            },
+                            {
+                              label: "Configurar periféricos",
+                              icon: <Sliders className="h-4 w-4 text-slate-500" />,
+                              onSelect: () => handleConfigurePeripherals(terminal),
+                            },
+                            {
+                              label: "Editar",
+                              icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                              onSelect: () => openEditModal(terminal),
+                            },
+                            terminal.isActive
+                              ? {
+                                  label: "Inactivar",
+                                  icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                                  disabled: saving,
+                                  destructive: true,
+                                  onSelect: () => void handleStatusChange(terminal),
+                                }
+                              : {
+                                  label: "Reactivar",
+                                  icon: <Power className="h-4 w-4 text-emerald-500" />,
+                                  disabled: saving,
+                                  onSelect: () => void handleStatusChange(terminal),
+                                },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

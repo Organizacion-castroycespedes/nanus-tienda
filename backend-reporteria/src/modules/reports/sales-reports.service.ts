@@ -17,6 +17,7 @@ import { buildElectronicInvoiceRepresentation } from "./electronic-invoice-repre
 import { buildElectronicInvoiceRepresentationTemplate } from "../pdf/templates/tickets/electronic-invoice-representation.template";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import { DocumentExportService } from "./document-export.service";
+import { formatReportDateTime, REPORT_TIME_ZONE, resolveReportDateRange, type ReportDateRange } from "./report-date-range";
 import type {
   PosSaleCancelTicketDataset,
   PosSaleTicketPrintDataset,
@@ -76,35 +77,8 @@ export class SalesReportsService {
     };
   }
 
-  private normalizeDate(value: string | undefined, endExclusive = false) {
-    if (!value) {
-      return undefined;
-    }
-
-    const normalized = value.trim();
-    if (!normalized) {
-      return undefined;
-    }
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-      const date = new Date(`${normalized}T00:00:00.000Z`);
-      if (Number.isNaN(date.getTime())) {
-        throw new BadRequestException(`invalid date value: ${value}`);
-      }
-
-      if (endExclusive) {
-        date.setUTCDate(date.getUTCDate() + 1);
-      }
-
-      return date.toISOString();
-    }
-
-    const date = new Date(normalized);
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException(`invalid date value: ${value}`);
-    }
-
-    return date.toISOString();
+  private resolveDates(query: SalesListQuery): ReportDateRange {
+    return resolveReportDateRange(query);
   }
 
   private normalizeCustomerDocument(value: string | undefined) {
@@ -131,11 +105,12 @@ export class SalesReportsService {
     actor: ReportActorContext,
     query: SalesListQuery
   ): PosSalesListDataset {
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: payload?.filters?.tenantId ?? query.tenantId ?? actor.tenantId,
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
-      dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
-      dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      dateFrom: payload?.filters?.dateFrom ?? dates.dateFrom,
+      dateTo: payload?.filters?.dateTo ?? dates.dateTo,
       customerDocument: payload?.filters?.customerDocument ?? this.normalizeCustomerDocument(query.customerDocument) ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
@@ -272,11 +247,12 @@ export class SalesReportsService {
 
   async getSalesList(query: SalesListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const payload = await this.salesReportAdapter.getSalesList(actor, {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
       customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     });
 
@@ -295,11 +271,12 @@ export class SalesReportsService {
 
   private async createSalesDocumentPackage(query: SalesListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
       customerDocument: this.normalizeCustomerDocument(query.customerDocument),
     };
     const rows = await this.documentExport.collect(
@@ -344,8 +321,10 @@ export class SalesReportsService {
       ["Reporte", "Ventas POS"],
       ["Tenant", dataset.filters.tenantId],
       ["Sucursal", dataset.filters.branchId ?? "Todas"],
-      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
-      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Desde", dataset.filters.dateFrom ? formatReportDateTime(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? formatReportDateTime(dataset.filters.dateTo) : ""],
+      ["Zona horaria", REPORT_TIME_ZONE],
+      ["Generado", formatReportDateTime(new Date())],
       ["Número identificación", dataset.filters.customerDocument ?? ""],
       ["Ventas", dataset.summary.count],
       ["Total", dataset.summary.total],
@@ -367,11 +346,10 @@ export class SalesReportsService {
       { header: "Pago", key: "paymentStatus", width: 16 },
       { header: "Facturación electrónica", key: "billingStatus", width: 24 },
     ];
-    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: new Date(row.date) }));
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: formatReportDateTime(row.date) }));
     sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF334155" } };
     for (const key of ["total", "paid", "balance"]) sheet.getColumn(key).numFmt = "#,##0.00";
-    sheet.getColumn("date").numFmt = "yyyy-mm-dd hh:mm";
     sheet.autoFilter = { from: "A1", to: `J${Math.max(1, sheet.rowCount)}` };
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }

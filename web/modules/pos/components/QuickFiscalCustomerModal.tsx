@@ -171,18 +171,24 @@ export const QuickFiscalCustomerModal = ({
       .then((items) => {
         if (!active) return;
         setCountries(items);
-        const selected =
-          items.find((item) => item.codigo_iso2 === (form.countryCode || "CO")) ??
-          items.find((item) => item.codigo_iso2 === "CO") ??
-          items.find((item) => item.nombre.toLowerCase().includes("colombia")) ??
-          items[0];
-        if (selected && (!form.countryId || selected.id !== form.countryId)) {
-          setForm((current) => ({
-            ...current,
-            countryId: selected.id,
-            countryCode: selected.codigo_iso2,
-          }));
-        }
+        setForm((current) => {
+          if (current.countryId) {
+            return current;
+          }
+          const selected =
+            items.find((item) => item.codigo_iso2 === (current.countryCode || "CO")) ??
+            items.find((item) => item.codigo_iso2 === "CO") ??
+            items.find((item) => item.nombre.toLowerCase().includes("colombia")) ??
+            items[0];
+          if (selected) {
+            return {
+              ...current,
+              countryId: selected.id,
+              countryCode: selected.codigo_iso2,
+            };
+          }
+          return current;
+        });
       })
       .catch(() => {
         if (active) setCountries([]);
@@ -193,7 +199,7 @@ export const QuickFiscalCustomerModal = ({
     return () => {
       active = false;
     };
-  }, [form.countryCode, form.countryId]);
+  }, []);
 
   useEffect(() => {
     let active = true;

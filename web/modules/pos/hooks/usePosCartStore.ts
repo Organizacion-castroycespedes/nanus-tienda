@@ -4,36 +4,63 @@ import { useCallback, useMemo } from "react";
 import { store } from "../../../store";
 import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
-  resetPosCartSale,
+  addAccount,
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,
   beginSaleSubmission,
   markSaleSubmissionUnknown,
   persistPosCartState,
+  removeAccount,
+  renameAccount,
+  resetPosCartSale,
   setCartItems,
   setPayments,
   setSaleStatus,
   setSelectedCustomerId,
+  switchAccount,
+  POS_SALE_STATUSES,
+  POS_CART_PRICING_STATUSES,
+  type PosSaleStatus,
+  type PosCartPricingStatus,
 } from "../../../store/posCart";
+
+export {
+  POS_SALE_STATUSES,
+  POS_CART_PRICING_STATUSES,
+  type PosSaleStatus,
+  type PosCartPricingStatus,
+};
 
 export const usePosCartStore = () => {
   const dispatch = useAppDispatch();
   const posCart = useAppSelector((state) => state.posCart);
 
   const setCartItemsAction = useCallback(
-    (items: typeof posCart.items) => dispatch(setCartItems(items)),
+    (items: typeof posCart.items) => {
+      dispatch(setCartItems(items));
+      persistPosCartState(store.getState().posCart);
+    },
     [dispatch]
   );
   const setSelectedCustomerIdAction = useCallback(
-    (customerId: string | null) => dispatch(setSelectedCustomerId(customerId)),
+    (customerId: string | null) => {
+      dispatch(setSelectedCustomerId(customerId));
+      persistPosCartState(store.getState().posCart);
+    },
     [dispatch]
   );
   const setPaymentsAction = useCallback(
-    (payments: typeof posCart.payments) => dispatch(setPayments(payments)),
+    (payments: typeof posCart.payments) => {
+      dispatch(setPayments(payments));
+      persistPosCartState(store.getState().posCart);
+    },
     [dispatch]
   );
   const setSaleStatusAction = useCallback(
-    (status: typeof posCart.saleStatus) => dispatch(setSaleStatus(status)),
+    (status: typeof posCart.saleStatus) => {
+      dispatch(setSaleStatus(status));
+      persistPosCartState(store.getState().posCart);
+    },
     [dispatch]
   );
   const beginSaleSubmissionAction = useCallback(
@@ -55,8 +82,40 @@ export const usePosCartStore = () => {
     dispatch(allowUnknownSaleRetry());
     persistPosCartState(store.getState().posCart);
   }, [dispatch]);
-  const resetPosCartSaleAction = useCallback(
-    () => dispatch(resetPosCartSale()),
+  const resetPosCartSaleAction = useCallback(() => {
+    dispatch(resetPosCartSale());
+    persistPosCartState(store.getState().posCart);
+  }, [dispatch]);
+
+  const addAccountAction = useCallback(
+    (options?: { name?: string }) => {
+      dispatch(addAccount(options));
+      persistPosCartState(store.getState().posCart);
+    },
+    [dispatch]
+  );
+
+  const switchAccountAction = useCallback(
+    (accountId: string) => {
+      dispatch(switchAccount(accountId));
+      persistPosCartState(store.getState().posCart);
+    },
+    [dispatch]
+  );
+
+  const renameAccountAction = useCallback(
+    (payload: { id: string; name: string }) => {
+      dispatch(renameAccount(payload));
+      persistPosCartState(store.getState().posCart);
+    },
+    [dispatch]
+  );
+
+  const removeAccountAction = useCallback(
+    (accountId: string) => {
+      dispatch(removeAccount(accountId));
+      persistPosCartState(store.getState().posCart);
+    },
     [dispatch]
   );
 
@@ -72,6 +131,10 @@ export const usePosCartStore = () => {
       allowSaleSubmissionRetry: allowSaleSubmissionRetryAction,
       allowUnknownSaleRetry: allowUnknownSaleRetryAction,
       resetPosCartSale: resetPosCartSaleAction,
+      addAccount: addAccountAction,
+      switchAccount: switchAccountAction,
+      renameAccount: renameAccountAction,
+      removeAccount: removeAccountAction,
     }),
     [
       posCart,
@@ -84,6 +147,10 @@ export const usePosCartStore = () => {
       allowSaleSubmissionRetryAction,
       allowUnknownSaleRetryAction,
       resetPosCartSaleAction,
+      addAccountAction,
+      switchAccountAction,
+      renameAccountAction,
+      removeAccountAction,
     ]
   );
 };

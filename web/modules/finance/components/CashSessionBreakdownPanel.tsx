@@ -1,5 +1,3 @@
-"use client";
-
 import type { CashSessionSummary } from "../types";
 import { formatCurrency } from "../utils";
 
