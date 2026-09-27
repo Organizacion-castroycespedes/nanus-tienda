@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import { ApiError } from "../../../lib/request";
+import { PARAMETER_MODES } from "../../../domains/parameters/api";
 import type { ElectronicInvoicePrintDataset } from "../../reporteria/types";
 import {
   executeSalePrintWorkflow,
@@ -34,6 +35,34 @@ test("executeSalePrintWorkflow opens on-demand ticket preview when billing is di
       saleId: "sale-12345678-abcd",
       tenantId: null, // fallback defaults to ON_DEMAND
       electronicBillingEnabled: false,
+    },
+    {
+      setPdfConfig: (cfg) => {
+        pdfConfig = cfg;
+      },
+      setIsBillingProcessing: (val) => {
+        isBilling = val;
+      },
+    }
+  );
+
+  assert.equal(isBilling, false);
+  assert.ok(pdfConfig);
+  assert.equal(pdfConfig?.title, "Ticket de venta sale-123");
+  assert.equal(pdfConfig?.fileName, "ticket-venta-sale-12345678-abcd.pdf");
+  assert.equal(pdfConfig?.allowPrint, true);
+});
+
+test("executeSalePrintWorkflow opens on-demand ticket preview when billing mode is ON_DEMAND", async () => {
+  let pdfConfig: PdfPreviewConfig | null = null;
+  let isBilling = false;
+
+  await executeSalePrintWorkflow(
+    {
+      saleId: "sale-12345678-abcd",
+      tenantId: null,
+      electronicBillingEnabled: true,
+      electronicBillingMode: PARAMETER_MODES.ON_DEMAND,
     },
     {
       setPdfConfig: (cfg) => {

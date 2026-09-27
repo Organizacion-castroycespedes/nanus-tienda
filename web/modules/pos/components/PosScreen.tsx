@@ -110,6 +110,7 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import { PARAMETER_MODES } from "../../../domains/parameters/api";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { useSalePrintWorkflow } from "../hooks/useSalePrintWorkflow";
 import {
@@ -2669,6 +2670,10 @@ export const PosScreen = () => {
         branchId: activeBranchId,
         terminalId: posTerminalId ?? undefined,
         electronicBillingEnabled: branding.electronicBillingEnabled !== false,
+        electronicBillingMode:
+          branding.electronicBillingMode === PARAMETER_MODES.ON_DEMAND
+            ? PARAMETER_MODES.ON_DEMAND
+            : PARAMETER_MODES.AUTOMATIC,
         showToast,
       });
 

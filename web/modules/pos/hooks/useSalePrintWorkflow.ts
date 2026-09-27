@@ -151,6 +151,7 @@ export type ExecuteSalePrintWorkflowParams = {
   branchId?: string | null;
   terminalId?: string | null;
   electronicBillingEnabled?: boolean;
+  electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
   showToast?: (
     message: string,
     variant: ToastVariant
@@ -171,42 +172,48 @@ export const executeSalePrintWorkflow = async (
     branchId,
     terminalId,
     electronicBillingEnabled = true,
+    electronicBillingMode,
     showToast,
   } = params;
   const { setPdfConfig, setIsBillingProcessing, signal } = options;
 
   let printTicketMode: ParameterMode = PARAMETER_MODES.ON_DEMAND;
   let printInvoiceMode: ParameterMode = PARAMETER_MODES.ON_DEMAND;
+  let generateInvoiceMode: ParameterMode =
+    electronicBillingMode === PARAMETER_MODES.ON_DEMAND
+      ? PARAMETER_MODES.ON_DEMAND
+      : PARAMETER_MODES.AUTOMATIC;
+  let sendInvoiceMode: ParameterMode = PARAMETER_MODES.AUTOMATIC;
 
   if (tenantId) {
     try {
-      const [ticketRes, invoiceRes] = await Promise.allSettled([
-        resolveTenantSettings({
-          tenantId,
-          branchId: branchId ?? undefined,
-          terminalId: terminalId ?? undefined,
-          code: PARAMETER_CODES.PRINT_TICKET,
-        }),
-        resolveTenantSettings({
-          tenantId,
-          branchId: branchId ?? undefined,
-          terminalId: terminalId ?? undefined,
-          code: PARAMETER_CODES.PRINT_INVOICE,
-        }),
-      ]);
-      if (ticketRes.status === "fulfilled" && ticketRes.value?.value) {
-        printTicketMode = ticketRes.value.value as ParameterMode;
+      const resolved = await resolveTenantSettings({
+        tenantId,
+        branchId: branchId ?? undefined,
+        terminalId: terminalId ?? undefined,
+      });
+      const values = resolved?.values ?? {};
+      if (values[PARAMETER_CODES.PRINT_TICKET]) {
+        printTicketMode = values[PARAMETER_CODES.PRINT_TICKET] as ParameterMode;
       }
-      if (invoiceRes.status === "fulfilled" && invoiceRes.value?.value) {
-        printInvoiceMode = invoiceRes.value.value as ParameterMode;
+      if (values[PARAMETER_CODES.PRINT_INVOICE]) {
+        printInvoiceMode = values[PARAMETER_CODES.PRINT_INVOICE] as ParameterMode;
+      }
+      if (values[PARAMETER_CODES.GENERATE_INVOICE]) {
+        generateInvoiceMode = values[PARAMETER_CODES.GENERATE_INVOICE] as ParameterMode;
+      }
+      if (values[PARAMETER_CODES.SEND_INVOICE]) {
+        sendInvoiceMode = values[PARAMETER_CODES.SEND_INVOICE] as ParameterMode;
       }
     } catch {
-      // Keep default ON_DEMAND
+      // Keep defaults
     }
   }
 
   const isElectronicBillingActive =
     electronicBillingEnabled !== false &&
+    generateInvoiceMode === PARAMETER_MODES.AUTOMATIC &&
+    sendInvoiceMode !== PARAMETER_MODES.DISABLED &&
     printInvoiceMode !== PARAMETER_MODES.DISABLED;
 
   if (isElectronicBillingActive) {
