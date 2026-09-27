@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { apiBlobClient } from "../../../lib/http";
+import {
+  fetchAndCacheInventoryImage,
+  getCachedInventoryImageUrl,
+  observeInventoryImageElement,
+} from "../services/inventory-image-cache";
 import { normalizeInventoryImageApiPath } from "../utils/inventory-image-upload";
 
 type InventoryImagePreviewProps = {
@@ -20,21 +24,15 @@ export const InventoryImagePreview = ({
   lazy = false,
 }: InventoryImagePreviewProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const normalizedPath = normalizeInventoryImageApiPath(imageUrl);
+  const [objectUrl, setObjectUrl] = useState<string | null>(() =>
+    normalizedPath ? getCachedInventoryImageUrl(normalizedPath) : null
+  );
   const [failed, setFailed] = useState(false);
-  const [shouldLoad, setShouldLoad] = useState(!lazy);
+  const [shouldLoad, setShouldLoad] = useState(!lazy || Boolean(objectUrl));
 
   useEffect(() => {
-    const apiPath = normalizeInventoryImageApiPath(imageUrl);
-
-    if (!lazy || !apiPath) {
-      setShouldLoad(true);
-      return;
-    }
-
-    setShouldLoad(false);
-
-    if (typeof IntersectionObserver === "undefined") {
+    if (!lazy || !normalizedPath || shouldLoad) {
       setShouldLoad(true);
       return;
     }
@@ -45,50 +43,36 @@ export const InventoryImagePreview = ({
       return;
     }
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "160px" }
-    );
+    const cleanup = observeInventoryImageElement(node, () => {
+      setShouldLoad(true);
+    });
 
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, [imageUrl, lazy]);
+    return cleanup;
+  }, [lazy, normalizedPath, shouldLoad]);
 
   useEffect(() => {
     let mounted = true;
-    let currentObjectUrl: string | null = null;
-    const apiPath = normalizeInventoryImageApiPath(imageUrl);
 
-    setObjectUrl(null);
+    if (!normalizedPath || !shouldLoad) {
+      return;
+    }
+
+    const cached = getCachedInventoryImageUrl(normalizedPath);
+    if (cached) {
+      setObjectUrl(cached);
+      setFailed(false);
+      return;
+    }
+
     setFailed(false);
 
-    if (!apiPath || !shouldLoad) {
-      return () => {
-        mounted = false;
-      };
-    }
-
-    if (apiPath.startsWith("blob:") || apiPath.startsWith("data:")) {
-      setObjectUrl(apiPath);
-      return () => {
-        mounted = false;
-      };
-    }
-
-    const loadImage = async () => {
+    const load = async () => {
       try {
-        const blob = await apiBlobClient(apiPath);
-        if (!mounted) {
-          return;
+        const url = await fetchAndCacheInventoryImage(normalizedPath);
+        if (mounted) {
+          setObjectUrl(url);
+          setFailed(false);
         }
-        currentObjectUrl = URL.createObjectURL(blob);
-        setObjectUrl(currentObjectUrl);
       } catch {
         if (mounted) {
           setFailed(true);
@@ -96,15 +80,39 @@ export const InventoryImagePreview = ({
       }
     };
 
-    void loadImage();
+    void load();
+
+    const handleInvalidation = (event: Event) => {
+      const customEvent = event as CustomEvent<{ path: string | null }>;
+      const targetPath = customEvent.detail?.path;
+      if (!targetPath || targetPath === normalizedPath) {
+        if (mounted) {
+          void fetchAndCacheInventoryImage(normalizedPath, { forceRefresh: true })
+            .then((url) => {
+              if (mounted) {
+                setObjectUrl(url);
+                setFailed(false);
+              }
+            })
+            .catch(() => {
+              if (mounted) {
+                setFailed(true);
+              }
+            });
+        }
+      }
+    };
+
+    window.addEventListener("manus:inventory-image-invalidated", handleInvalidation);
 
     return () => {
       mounted = false;
-      if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
-      }
+      window.removeEventListener(
+        "manus:inventory-image-invalidated",
+        handleInvalidation
+      );
     };
-  }, [imageUrl, shouldLoad]);
+  }, [normalizedPath, shouldLoad]);
 
   return (
     <div
@@ -122,3 +130,4 @@ export const InventoryImagePreview = ({
     </div>
   );
 };
+

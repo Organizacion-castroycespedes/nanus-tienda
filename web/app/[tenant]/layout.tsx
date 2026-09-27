@@ -598,14 +598,22 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, [authStatus, authUser?.id, tenantSlug]);
 
   const isPosMenuItem = useCallback((item: MenuItem) => {
-    const normalizedRoute = item.route.toLowerCase();
+    const normalizedRoute = item.route.toLowerCase().replace(/\/+$/, "");
     const normalizedKey = item.key.toLowerCase();
     const normalizedLabel = item.label.toLowerCase();
+    const normalizedModule = (item.module ?? "").toLowerCase();
+
+    if (
+      normalizedModule === "reporteria" ||
+      normalizedRoute.includes("/reporteria") ||
+      normalizedKey.includes("reporteria")
+    ) {
+      return false;
+    }
 
     return (
-      normalizedKey === "pos" ||
-      normalizedLabel === "pos" ||
-      normalizedRoute.endsWith("/pos")
+      (normalizedKey === "pos" || normalizedLabel === "pos" || normalizedRoute.endsWith("/pos")) &&
+      !normalizedRoute.includes("/reporteria")
     );
   }, []);
 
@@ -1614,7 +1622,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             id="contenido-principal"
             className="flex-1 overflow-y-auto overscroll-contain"
           >
-            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8">
+            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8 xs:px-1">
               {children}
             </div>
             <footer
