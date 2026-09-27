@@ -4,6 +4,7 @@ import { ImageIcon, Trash2, Upload } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { InventoryImagePreview } from "./InventoryImagePreview";
+import { invalidateInventoryImageCache } from "../services/inventory-image-cache";
 import {
   formatInventoryImageSize,
   INVENTORY_IMAGE_MAX_SIZE_MB,
@@ -82,6 +83,7 @@ export const InventoryImageUploadPanel = ({
     setErrorMessage(null);
     try {
       await onUpload(selectedFile!);
+      invalidateInventoryImageCache(imageUrl);
       setSelectedFile(null);
     } catch (error) {
       setErrorMessage(
@@ -103,6 +105,7 @@ export const InventoryImageUploadPanel = ({
     setErrorMessage(null);
     try {
       await onDelete();
+      invalidateInventoryImageCache(imageUrl);
       setSelectedFile(null);
     } catch (error) {
       setErrorMessage(

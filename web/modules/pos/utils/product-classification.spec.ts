@@ -262,7 +262,10 @@ describe("POS product classification helpers", () => {
       }
     );
 
-    assert.equal(result.imageUrl, "/inventory/product-subcategories/sub-1/image");
+    assert.equal(
+      result.imageUrl,
+      "/inventory/product-subcategories/sub-1/image?v=2026-06-17T00%3A00%3A00.000Z"
+    );
     assert.equal(result.source, "subcategory");
   });
 
@@ -287,7 +290,8 @@ describe("POS product classification helpers", () => {
         lookup
       ),
       {
-        imageUrl: "/inventory/product-categories/cat-1/image",
+        imageUrl:
+          "/inventory/product-categories/cat-1/image?v=2026-06-17T00%3A00%3A00.000Z",
         altText: "Yogur",
         source: "category",
       }

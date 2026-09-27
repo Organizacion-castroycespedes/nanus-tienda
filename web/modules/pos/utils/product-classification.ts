@@ -238,11 +238,30 @@ export const sortPosClassificationOptions = <
     return byOrder === 0 ? left.name.localeCompare(right.name, "es") : byOrder;
   });
 
+const withVersion = (url?: string | null, version?: string | null) => {
+  const normalized = url?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (
+    !version ||
+    normalized.includes("?") ||
+    normalized.startsWith("blob:") ||
+    normalized.startsWith("data:")
+  ) {
+    return normalized;
+  }
+  return `${normalized}?v=${encodeURIComponent(version)}`;
+};
+
 export const resolveEffectivePosProductImage = (
   product: Pick<
     ProductResponse,
     "imageUrl" | "imageAltText" | "categoryId" | "subcategoryId" | "name"
-  >,
+  > & {
+    imageUpdatedAt?: string | null;
+    updatedAt?: string | null;
+  },
   lookup: {
     categoryById: Map<string, ProductCategoryResponse>;
     subcategoryById: Map<string, ProductSubcategoryResponse>;
@@ -250,7 +269,10 @@ export const resolveEffectivePosProductImage = (
 ): EffectivePosProductImage => {
   if (product.imageUrl) {
     return {
-      imageUrl: product.imageUrl,
+      imageUrl: withVersion(
+        product.imageUrl,
+        product.imageUpdatedAt ?? product.updatedAt
+      ),
       altText: product.imageAltText ?? product.name,
       source: "product",
     };
@@ -262,7 +284,7 @@ export const resolveEffectivePosProductImage = (
 
   if (subcategory?.defaultImageUrl) {
     return {
-      imageUrl: subcategory.defaultImageUrl,
+      imageUrl: withVersion(subcategory.defaultImageUrl, subcategory.updatedAt),
       altText: subcategory.defaultImageAltText ?? product.name,
       source: "subcategory",
     };
@@ -274,7 +296,7 @@ export const resolveEffectivePosProductImage = (
 
   if (category?.defaultImageUrl) {
     return {
-      imageUrl: category.defaultImageUrl,
+      imageUrl: withVersion(category.defaultImageUrl, category.updatedAt),
       altText: category.defaultImageAltText ?? product.name,
       source: "category",
     };
@@ -286,3 +308,62 @@ export const resolveEffectivePosProductImage = (
     source: null,
   };
 };
+
+const normalizeProductUnitValue = (value?: string | null) =>
+  (value ?? "").trim().toLowerCase();
+
+const weighableUnitCodes = new Set([
+  "kg",
+  "kilo",
+  "kilogramo",
+  "gr",
+  "gramo",
+  "lb",
+  "libra",
+]);
+
+const weighableProductTypes = new Set([
+  "peso",
+  "pesable",
+  "granel",
+  "weighable",
+  "weight",
+]);
+
+export const isWeighableProduct = (product?: ProductResponse | null) => {
+  if (!product) {
+    return false;
+  }
+  if (product.saleType === "WEIGHT" || product.saleType === "BOTH") {
+    return true;
+  }
+  if (product.isWeighable || product.weighable || product.soldByWeight) {
+    return true;
+  }
+  const unitValues = [
+    product.unitCode,
+    product.measurementUnit,
+    product.unitName,
+    product.unitSymbol,
+    product.unitAbbreviation,
+  ];
+  const typeValues = [product.productType];
+  return (
+    unitValues
+      .map(normalizeProductUnitValue)
+      .some((value) => weighableUnitCodes.has(value)) ||
+    typeValues
+      .map(normalizeProductUnitValue)
+      .some((value) => weighableProductTypes.has(value))
+  );
+};
+
+export const getProductSaleType = (product: ProductResponse) =>
+  product.saleType ?? (isWeighableProduct(product) ? "WEIGHT" : "UNIT");
+
+export const productSaleTypeLabels: Record<"UNIT" | "WEIGHT" | "BOTH", string> = {
+  UNIT: "Unidad",
+  WEIGHT: "Peso",
+  BOTH: "Unidad/peso",
+};
+

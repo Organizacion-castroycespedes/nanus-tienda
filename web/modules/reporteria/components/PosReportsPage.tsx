@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Eye, Download, Printer, Truck } from "lucide-react";
+import { Eye, Download, Printer, Truck, Receipt } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu";
@@ -41,10 +41,7 @@ import { Input } from "../../../components/design-system/Input";
 import { ReportFilters, type ReportFilterDefinition } from "../../../components/design-system/ReportFilters";
 import { resolveTenantSettings } from "../../../domains/parameters/api";
 import { canViewElectronicDocument } from "../utils/electronic-document-action";
-import {
-  requestElectronicBilling,
-  requestElectronicBillingBatch,
-} from "../services/electronic-billing.service";
+import { PreInvoiceWizardModal } from "../../operational-sales/components/wizard/PreInvoiceWizardModal";
 
 type PdfConfig = {
   title: string;
@@ -76,8 +73,7 @@ const PosReportsPage = () => {
   const [printingSaleId, setPrintingSaleId] = useState<string | null>(null);
   const [directPrintFeedback, setDirectPrintFeedback] =
     useState<DirectPrintFeedback | null>(null);
-  const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([]);
-  const [billingRequestBusy, setBillingRequestBusy] = useState(false);
+  const [wizardSaleId, setWizardSaleId] = useState<string | null>(null);
   const posContext = usePosContext();
   const [resolvedElectronicBillingEnabled, setResolvedElectronicBillingEnabled] =
     useState<boolean | null>(null);
@@ -157,36 +153,6 @@ const PosReportsPage = () => {
     setPage(1);
   }, [branchId, customerDocument, dateRange.from, dateRange.to, loadReports, tenantId]);
 
-  const handleBillingRequest = useCallback(async (saleIds: string[]) => {
-    setBillingRequestBusy(true);
-    try {
-      const response = saleIds.length === 1
-        ? { results: [await requestElectronicBilling(saleIds[0])] }
-        : await requestElectronicBillingBatch(saleIds);
-      const requested = response.results.filter((item) => item.requestCreated).length;
-      setDirectPrintFeedback({
-        saleId: saleIds[0],
-        variant: "success",
-        message: requested === 1
-          ? "Se creó una solicitud de facturación electrónica."
-          : `Se crearon ${requested} solicitudes de facturación electrónica.`,
-      });
-      setSelectedSaleIds([]);
-      await handleSearch();
-    } catch (error) {
-      setDirectPrintFeedback({
-        saleId: saleIds[0] ?? "billing",
-        variant: "error",
-        message: getApiErrorMessage(
-          error,
-          "No se pudo solicitar la facturación electrónica.",
-        ),
-      });
-    } finally {
-      setBillingRequestBusy(false);
-    }
-  }, [handleSearch]);
-
   useEffect(() => {
     if (!canViewReports || !tenantId) {
       return;
@@ -246,22 +212,110 @@ const PosReportsPage = () => {
   const columns = useMemo<DataTableColumn<PosSalesListRow>[]>(
     () => [
       {
-        key: "select",
-        header: "Seleccionar",
-        render: (row) => (
-          <input
-            type="checkbox"
-            aria-label={`Seleccionar venta ${row.saleId}`}
-            checked={selectedSaleIds.includes(row.saleId)}
-            onChange={(event) =>
-              setSelectedSaleIds((current) =>
-                event.target.checked
-                  ? [...current, row.saleId]
-                  : current.filter((saleId) => saleId !== row.saleId),
-              )
-            }
-          />
-        ),
+        key: "actions",
+        actionFirst: true,
+        header: "Acciones",
+        className: "w-14 text-center",
+        cellClassName: "w-14",
+        render: (row) => {
+          const hasAcceptedBilling =
+            showElectronicBilling && row.billingStatus === "ACCEPTED";
+          const canRequestBilling =
+            showElectronicBilling &&
+            row.billingStatus !== "ACCEPTED" &&
+            row.billingStatus !== "PENDING" &&
+            row.billingStatus !== "PROCESSING" &&
+            row.billingStatus !== "REJECTED" &&
+            row.billingStatus !== "TECHNICAL_ERROR" &&
+            row.billingStatus !== "CANCELLED" &&
+            row.billingStatus !== "AMBIGUOUS" &&
+            row.status === "CONFIRMED";
+
+          return (
+            <RowActionsMenu
+              label={`Acciones de venta ${row.saleId.slice(0, 8)}`}
+              items={[
+                ...(canRequestBilling
+                  ? [
+                      {
+                        label: (
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            Facturar electrónicamente
+                          </span>
+                        ),
+                        icon: <Receipt className="h-4 w-4 text-emerald-600" />,
+                        onSelect: () => setWizardSaleId(row.saleId),
+                      },
+                    ]
+                  : []),
+                {
+                  label: "Ver ticket",
+                  icon: <Eye className="h-4 w-4 text-slate-500" />,
+                  onSelect: () =>
+                    setPdfConfig({
+                      title: `Ticket de venta ${row.saleId.slice(0, 8)}`,
+                      fileName: `ticket-venta-${row.saleId}.pdf`,
+                      getPdf: () => getPosSaleTicket(row.saleId),
+                    }),
+                },
+                ...(hasAcceptedBilling
+                  ? [
+                      {
+                        label: "Ver factura electrónica",
+                        icon: <Eye className="h-4 w-4 text-slate-500" />,
+                        onSelect: () =>
+                          setPdfConfig({
+                            title: `Factura electrónica ${row.saleId.slice(0, 8)}`,
+                            fileName: `factura-electronica-${row.saleId}.pdf`,
+                            getPdf: () => getElectronicInvoice(row.saleId),
+                          }),
+                      },
+                    ]
+                  : []),
+                {
+                  label:
+                    printingSaleId === row.saleId
+                      ? "Imprimiendo..."
+                      : hasAcceptedBilling
+                        ? "Imprimir factura"
+                        : "Imprimir ticket",
+                  icon: <Printer className="h-4 w-4 text-slate-500" />,
+                  onSelect: () => void handleDirectPrint(row.saleId, row.billingStatus),
+                  disabled: printingSaleId === row.saleId,
+                },
+                {
+                  label: hasAcceptedBilling
+                    ? "Descargar factura PDF"
+                    : "Descargar ticket PDF",
+                  icon: <Download className="h-4 w-4 text-slate-500" />,
+                  onSelect: async () => {
+                    if (hasAcceptedBilling) {
+                      const blob = await getElectronicInvoice(row.saleId);
+                      downloadBlob(
+                        blob,
+                        `factura-electronica-${row.billingDocumentNumber || row.saleId}.pdf`
+                      );
+                    } else {
+                      const blob = await getPosSaleTicket(row.saleId);
+                      downloadBlob(blob, `ticket-venta-${row.saleId}.pdf`);
+                    }
+                  },
+                },
+                {
+                  label: "Domicilio",
+                  icon: <Truck className="h-4 w-4 text-slate-500" />,
+                  onSelect: () =>
+                    setDeliveryRelation({
+                      id: row.saleId,
+                      tenantId: tenantId || "default",
+                      label: `Venta ${row.saleId.slice(0, 8)}`,
+                      customerName: row.customerName,
+                    }),
+                },
+              ]}
+            />
+          );
+        },
       },
       {
         key: "date",
@@ -316,7 +370,7 @@ const PosReportsPage = () => {
       ...(showElectronicBilling
         ? [{
             key: "billingStatus",
-            header: "Facturación electrónica",
+            header: "Facturación",
             render: (row: PosSalesListRow) => (
               <div>
                 <p className="text-sm font-medium text-slate-700">
@@ -341,96 +395,8 @@ const PosReportsPage = () => {
             ),
           }]
         : []),
-      {
-        key: "actions",
-        header: "Acciones",
-        cellClassName: "w-14",
-        render: (row) => (
-          <div className="flex flex-wrap gap-2">
-            {showElectronicBilling && row.billingStatus !== "ACCEPTED" &&
-            row.billingStatus !== "PENDING" &&
-            row.billingStatus !== "PROCESSING" &&
-            row.billingStatus !== "REJECTED" &&
-            row.billingStatus !== "TECHNICAL_ERROR" &&
-            row.billingStatus !== "CANCELLED" &&
-            row.billingStatus !== "AMBIGUOUS" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleBillingRequest([row.saleId])}
-                disabled={billingRequestBusy}
-              >
-                Facturar
-              </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setPdfConfig({
-                  title: `Ticket de venta ${row.saleId.slice(0, 8)}`,
-                  fileName: `ticket-venta-${row.saleId}.pdf`,
-                  getPdf: () => getPosSaleTicket(row.saleId),
-                })
-              }
-            >
-              <Eye className="h-4 w-4" />
-              Ver ticket
-              </Button>
-            {showElectronicBilling && canViewElectronicDocument(row.billingStatus) ? <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setPdfConfig({
-                  title: `Factura electrónica ${row.saleId.slice(0, 8)}`,
-                  fileName: `factura-electronica-${row.saleId}.pdf`,
-                  getPdf: () => getElectronicInvoice(row.saleId),
-                })
-              }
-            >
-              <Eye className="h-4 w-4" />
-              Ver factura electrónica
-            </Button> : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleDirectPrint(row.saleId, row.billingStatus)}
-              disabled={printingSaleId === row.saleId}
-            >
-              <Printer className="h-4 w-4" />
-              {printingSaleId === row.saleId ? "Imprimiendo..." : "Imprimir"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                const blob = await getPosSaleTicket(row.saleId);
-                downloadBlob(blob, `ticket-venta-${row.saleId}.pdf`);
-              }}
-            >
-              <Download className="h-4 w-4" />
-              Descargar
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setDeliveryRelation({
-                  id: row.saleId,
-                  tenantId: tenantId || "default",
-                  label: `Venta ${row.saleId.slice(0, 8)}`,
-                  customerName: row.customerName,
-                })
-              }
-            >
-              <Truck className="h-4 w-4" />
-              Domicilio
-            </Button>
-          </div>
-        ),
-      },
     ],
-    [billingRequestBusy, handleBillingRequest, handleDirectPrint, printingSaleId, selectedSaleIds, showElectronicBilling, tenantId]
+    [handleDirectPrint, printingSaleId, showElectronicBilling, tenantId]
   );
 
   const canExport = Boolean(dataset);
@@ -570,18 +536,20 @@ const PosReportsPage = () => {
         />
       ) : null}
 
-      {showElectronicBilling && selectedSaleIds.length > 0 ? (
-        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
-          <span className="text-sm text-blue-900">{selectedSaleIds.length} venta(s) seleccionada(s)</span>
-          <Button
-            size="sm"
-            onClick={() => void handleBillingRequest(selectedSaleIds)}
-            disabled={billingRequestBusy}
-          >
-            Facturar electrónicamente seleccionadas
-          </Button>
-        </div>
-      ) : null}
+      <PreInvoiceWizardModal
+        open={Boolean(wizardSaleId)}
+        saleId={wizardSaleId}
+        onClose={() => setWizardSaleId(null)}
+        onSuccess={async (msg) => {
+          setWizardSaleId(null);
+          setDirectPrintFeedback({
+            saleId: wizardSaleId ?? "billing",
+            variant: "success",
+            message: msg || "Factura electrónica generada exitosamente.",
+          });
+          await handleSearch();
+        }}
+      />
 
       {directPrintFeedback ? (
         <div

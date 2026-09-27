@@ -136,31 +136,19 @@ export const PosContextSelector = ({ tenantSlug }: PosContextSelectorProps) => {
     return branches.filter((branch) => branch.id === authBranchId);
   }, [authBranchId, mustUseAssignedBranch, selectedTenant]);
 
-  const selectedBranch = useMemo(
-    () => availableBranches.find((branch) => branch.id === branchId) ?? null,
-    [availableBranches, branchId]
-  );
+  const selectedBranch =
+    availableBranches.find((branch) => branch.id === branchId) ?? null;
 
-  const availableTerminals = useMemo(
-    () => selectedBranch?.terminals ?? [],
-    [selectedBranch]
-  );
+  const availableTerminals = selectedBranch?.terminals ?? [];
 
-  const selectedTerminal = useMemo(
-    () => availableTerminals.find((terminal) => terminal.id === terminalId) ?? null,
-    [availableTerminals, terminalId]
-  );
+  const selectedTerminal =
+    availableTerminals.find((terminal) => terminal.id === terminalId) ?? null;
 
-  const selectedCashRegister = useMemo(() => {
-    if (!terminalId) {
-      return null;
-    }
-    return (
-      cashRegisters.find(
+  const selectedCashRegister = terminalId
+    ? cashRegisters.find(
         (register) => register.activo && register.terminalId === terminalId
       ) ?? null
-    );
-  }, [cashRegisters, terminalId]);
+    : null;
 
   const currentCashMatchesSelection =
     Boolean(currentCashSession && selectedCashRegister) &&

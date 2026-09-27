@@ -58,23 +58,238 @@ const CashReportsPage = () => {
   }, [initialRange, load, scope.canViewReports, scope.tenantId]);
 
   const closingsColumns = useMemo<DataTableColumn<CashClosingListRow>[]>(() => [
-    { key: "openedAt", header: "Fecha apertura", render: (row) => <div><p className="font-medium">{formatDateTime(row.openedAt)}</p><p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p></div> },
-    { key: "closedAt", header: "Fecha cierre", render: (row) => <div><p className="font-medium">{formatDateTime(row.closedAt)}</p><p className="text-xs text-slate-500">{row.cashRegister ?? "Caja"}</p></div> },
-    { key: "openingAmount", header: "Apertura", render: (row) => formatCurrency(row.openingAmount) },
-    { key: "totalIn", header: "Ingresos", render: (row) => formatCurrency(row.totalIn) },
-    { key: "totalOut", header: "Egresos", render: (row) => formatCurrency(row.totalOut) },
-    { key: "expectedAmount", header: "Esperado", render: (row) => formatCurrency(row.expectedAmount) },
-    { key: "difference", header: "Diferencia", render: (row) => <div><p className="font-medium">{formatCurrency(row.difference)}</p><ReportStatusBadge value={row.status} /></div> },
-    { key: "actions", header: "Acciones", cellClassName: "min-w-[180px]", render: (row) => <RowActionsMenu><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de cierre ${row.cashSessionId.slice(0, 8)}`, fileName: `ticket-cierre-${row.cashSessionId}.pdf`, getPdf: () => getCashClosingTicket(row.cashSessionId), allowPrint: true })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashClosingTicket(row.cashSessionId), `ticket-cierre-${row.cashSessionId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></RowActionsMenu> },
+    {
+      key: "actions",
+      header: "Acciones",
+      className: "text-center w-14",
+      cellClassName: "text-center whitespace-nowrap",
+      render: (row) =>
+        row.status === "CLOSED" ? (
+          <div className="flex justify-center">
+            <RowActionsMenu
+              label="Acciones"
+              items={[
+                {
+                  label: "Ver ticket",
+                  icon: <Eye className="h-4 w-4" />,
+                  onSelect: () =>
+                    setPdfConfig({
+                      title: `Ticket de cierre ${row.cashSessionId.slice(0, 8)}`,
+                      fileName: `ticket-cierre-${row.cashSessionId}.pdf`,
+                      getPdf: () => getCashClosingTicket(row.cashSessionId),
+                      allowPrint: true,
+                    }),
+                },
+                {
+                  label: "Descargar PDF",
+                  icon: <Download className="h-4 w-4" />,
+                  onSelect: async () =>
+                    downloadBlob(
+                      await getCashClosingTicket(row.cashSessionId),
+                      `ticket-cierre-${row.cashSessionId}.pdf`
+                    ),
+                },
+              ]}
+            />
+          </div>
+        ) : (
+          <span className="text-xs italic text-slate-400">En curso</span>
+        ),
+    },
+    {
+      key: "openedAt",
+      header: "Fecha Apertura",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.openedAt)}</p>
+          <p className="text-xs text-slate-500">{row.openedBy ?? row.branchName ?? "Sucursal"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "closedAt",
+      header: "Fecha Cierre",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 dark:text-white">{row.closedAt ? formatDateTime(row.closedAt) : "—"}</p>
+          <p className="text-xs text-slate-500">{row.closedBy ?? row.cashRegister ?? "Caja"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "cashRegister",
+      header: "Caja",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 dark:text-white">{row.cashRegister ?? "Caja"}</p>
+          <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "openingAmount",
+      header: "Apertura",
+      className: "text-right",
+      cellClassName: "text-right font-medium tabular-nums text-slate-900 dark:text-white",
+      render: (row) => formatCurrency(row.openingAmount),
+    },
+    {
+      key: "totalIn",
+      header: "Ingresos",
+      className: "text-right",
+      cellClassName: "text-right font-medium tabular-nums text-emerald-600 dark:text-emerald-400",
+      render: (row) => `+${formatCurrency(row.totalIn)}`,
+    },
+    {
+      key: "totalOut",
+      header: "Egresos",
+      className: "text-right",
+      cellClassName: "text-right font-medium tabular-nums text-rose-600 dark:text-rose-400",
+      render: (row) => `-${formatCurrency(row.totalOut)}`,
+    },
+    {
+      key: "expectedAmount",
+      header: "Esperado",
+      className: "text-right",
+      cellClassName: "text-right font-medium tabular-nums text-slate-900 dark:text-white",
+      render: (row) => formatCurrency(row.expectedAmount),
+    },
+    {
+      key: "difference",
+      header: "Diferencia",
+      className: "text-right",
+      cellClassName: "text-right font-semibold tabular-nums",
+      render: (row) => (
+        <span
+          className={
+            row.difference === 0
+              ? "text-slate-700 dark:text-slate-300"
+              : row.difference < 0
+              ? "text-rose-600 dark:text-rose-400"
+              : "text-amber-600 dark:text-amber-400"
+          }
+        >
+          {row.difference > 0 ? "+" : ""}
+          {formatCurrency(row.difference)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Estado",
+      className: "text-center",
+      cellClassName: "text-center whitespace-nowrap",
+      render: (row) => <ReportStatusBadge value={row.status} />,
+    },
   ], []);
 
   const auditsColumns = useMemo<DataTableColumn<CashAuditListRow>[]>(() => [
-    { key: "countedAt", header: "Fecha", render: (row) => <div><p className="font-medium">{formatDateTime(row.countedAt)}</p><p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p></div> },
-    { key: "user", header: "Usuario", render: (row) => <div><p className="font-medium">{row.countedBy ?? "Usuario"}</p><p className="text-xs text-slate-500">{row.cashRegister ?? "Caja"}</p></div> },
-    { key: "counted", header: "Contado", render: (row) => formatCurrency(row.countedAmount) },
-    { key: "expected", header: "Esperado", render: (row) => formatCurrency(row.expectedAmount) },
-    { key: "difference", header: "Diferencia", render: (row) => <div><p className="font-medium">{formatCurrency(row.difference)}</p><ReportStatusBadge value={row.sessionStatus} /></div> },
-    { key: "actions", header: "Acciones", cellClassName: "min-w-[180px]", render: (row) => <RowActionsMenu ><Button variant="outline" size="sm" onClick={() => setPdfConfig({ title: `Ticket de arqueo ${row.cashCountId.slice(0, 8)}`, fileName: `ticket-arqueo-${row.cashCountId}.pdf`, getPdf: () => getCashAuditTicket(row.cashCountId), allowPrint: true })}><Eye className="h-4 w-4" /> Ver ticket</Button><Button variant="ghost" size="sm" onClick={async () => downloadBlob(await getCashAuditTicket(row.cashCountId), `ticket-arqueo-${row.cashCountId}.pdf`)}><Download className="h-4 w-4" /> Descargar</Button></RowActionsMenu> },
+    {
+      key: "actions",
+      header: "Acciones",
+      className: "text-center w-14",
+      cellClassName: "text-center whitespace-nowrap",
+      render: (row) => (
+        <div className="flex justify-center">
+          <RowActionsMenu
+            label="Acciones"
+            items={[
+              {
+                label: "Ver ticket",
+                icon: <Eye className="h-4 w-4" />,
+                onSelect: () =>
+                  setPdfConfig({
+                    title: `Ticket de arqueo ${row.cashCountId.slice(0, 8)}`,
+                    fileName: `ticket-arqueo-${row.cashCountId}.pdf`,
+                    getPdf: () => getCashAuditTicket(row.cashCountId),
+                    allowPrint: true,
+                  }),
+              },
+              {
+                label: "Descargar PDF",
+                icon: <Download className="h-4 w-4" />,
+                onSelect: async () =>
+                  downloadBlob(
+                    await getCashAuditTicket(row.cashCountId),
+                    `ticket-arqueo-${row.cashCountId}.pdf`
+                  ),
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
+      key: "countedAt",
+      header: "Fecha",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 dark:text-white">{formatDateTime(row.countedAt)}</p>
+          <p className="text-xs text-slate-500">{row.branchName ?? "Sucursal"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "user",
+      header: "Usuario / Cajero",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 dark:text-white">{row.countedBy ?? "Usuario"}</p>
+          <p className="text-xs text-slate-500">{row.cashRegister ?? "Caja"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "cashRegister",
+      header: "Caja",
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-900 dark:text-white">{row.cashRegister ?? "Caja"}</p>
+          <p className="text-xs text-slate-500">{row.terminal ?? "Terminal"}</p>
+        </div>
+      ),
+    },
+    {
+      key: "counted",
+      header: "Contado",
+      className: "text-right",
+      cellClassName: "text-right font-medium tabular-nums text-slate-900 dark:text-white",
+      render: (row) => formatCurrency(row.countedAmount),
+    },
+    {
+      key: "expected",
+      header: "Esperado",
+      className: "text-right",
+      cellClassName: "text-right font-medium tabular-nums text-slate-900 dark:text-white",
+      render: (row) => formatCurrency(row.expectedAmount),
+    },
+    {
+      key: "difference",
+      header: "Diferencia",
+      className: "text-right",
+      cellClassName: "text-right font-semibold tabular-nums",
+      render: (row) => (
+        <span
+          className={
+            row.difference === 0
+              ? "text-slate-700 dark:text-slate-300"
+              : row.difference < 0
+              ? "text-rose-600 dark:text-rose-400"
+              : "text-amber-600 dark:text-amber-400"
+          }
+        >
+          {row.difference > 0 ? "+" : ""}
+          {formatCurrency(row.difference)}
+        </span>
+      ),
+    },
+    {
+      key: "sessionStatus",
+      header: "Estado",
+      className: "text-center",
+      cellClassName: "text-center whitespace-nowrap",
+      render: (row) => <ReportStatusBadge value={row.sessionStatus} />,
+    },
   ], []);
 
   if (!scope.canViewReports) return <FinanceAccessNotice description="No cuentas con permisos para consultar cierres y arqueos de caja." />;
@@ -104,7 +319,27 @@ const CashReportsPage = () => {
         <ReportFilters filters={filters} actions={<><Button size="sm" onClick={() => void load(dateRange)} isLoading={reports.loadingClosings || reports.loadingAudits}>Buscar</Button><Button variant="outline" size="sm" disabled={!activeDataset} onClick={() => setReportPreviewOpen(true)}><Eye className="h-4 w-4" /> Reporte</Button></>} />
         <ReportSummary items={summaryItems} />
         <Tabs items={[{ value: "closings", label: "Cierres", helper: `${reports.closingsDataset?.summary.count ?? 0} registros` }, { value: "audits", label: "Arqueos", helper: `${reports.auditsDataset?.summary.count ?? 0} registros` }]} value={activeTab} onChange={(value) => { setActiveTab(value as ActiveTab); setPage(1); }} />
-        {activeTab === "closings" ? <DataTable columns={closingsColumns} rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashClosingListRow[]} getRowKey={(row) => row.cashSessionId} loading={reports.loadingClosings} error={reports.closingsError} emptyState={reports.searched ? "No hay cierres para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} /> : <DataTable columns={auditsColumns} rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashAuditListRow[]} getRowKey={(row) => row.cashCountId} loading={reports.loadingAudits} error={reports.auditsError} emptyState={reports.searched ? "No hay arqueos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."} />}
+        {activeTab === "closings" ? (
+          <DataTable
+            columns={closingsColumns}
+            rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashClosingListRow[]}
+            getRowKey={(row) => row.cashSessionId}
+            loading={reports.loadingClosings}
+            error={reports.closingsError}
+            emptyState={reports.searched ? "No hay cierres para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."}
+            disableHeaderUppercase={true}
+          />
+        ) : (
+          <DataTable
+            columns={auditsColumns}
+            rows={activeRows.slice((page - 1) * pageSize, page * pageSize) as CashAuditListRow[]}
+            getRowKey={(row) => row.cashCountId}
+            loading={reports.loadingAudits}
+            error={reports.auditsError}
+            emptyState={reports.searched ? "No hay arqueos para los filtros seleccionados." : "Usa los filtros y ejecuta la búsqueda para cargar el reporte."}
+            disableHeaderUppercase={true}
+          />
+        )}
         {activeDataset ? <Pagination page={page} pageSize={pageSize} totalItems={activeRows.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /> : null}
       </div>
       {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} allowPrint={pdfConfig.allowPrint} onClose={() => setPdfConfig(null)} /> : null}
