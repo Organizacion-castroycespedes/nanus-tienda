@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -192,10 +193,16 @@ const LoginPageContent = () => {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950">
-      <div
-        aria-hidden="true"
-        className="login-background absolute inset-0 bg-slate-950"
-      />
+      <div aria-hidden="true" className="absolute inset-0 pointer-events-none select-none opacity-35">
+        <Image
+          src="/logo-login.png"
+          alt="EMAUS POS"
+          fill
+          priority
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          className="object-contain object-center"
+        />
+      </div>
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">
         <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:mr-0 lg:w-[30vw] lg:max-w-[31rem] lg:p-11 dark:border-slate-700/70 dark:bg-slate-900/95">

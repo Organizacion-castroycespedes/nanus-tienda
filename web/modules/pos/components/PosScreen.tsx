@@ -1056,25 +1056,6 @@ export const PosScreen = () => {
   ].filter((label): label is string => Boolean(label));
   const hasProductCatalogFilters = activeProductFilterLabels.length > 0;
 
-  useEffect(() => {
-    const nextSubcategoryId = resolvePosSubcategoryFilterForCategory(
-      selectedProductSubcategoryId,
-      selectedProductCategoryId,
-      productSubcategoryOptions
-    );
-
-    if (
-      selectedProductSubcategoryId &&
-      selectedProductSubcategoryId !== nextSubcategoryId
-    ) {
-      setSelectedProductSubcategoryId(nextSubcategoryId);
-    }
-  }, [
-    productSubcategoryOptions,
-    selectedProductCategoryId,
-    selectedProductSubcategoryId,
-  ]);
-
   const handleStockFilterChange = useCallback(
     (filter: StockFilterKey) => {
       setActiveStockFilter(filter);
@@ -2185,13 +2166,14 @@ export const PosScreen = () => {
 
   useEffect(() => {
     if (paymentModalOpen && firstPaymentId) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const firstInput = document.getElementById(`payment-amount-${firstPaymentId}`);
         if (firstInput) {
           firstInput.focus();
           if (firstInput instanceof HTMLInputElement) firstInput.select();
         }
       }, 100);
+      return () => clearTimeout(timer);
     }
   }, [firstPaymentId, paymentModalOpen]);
 

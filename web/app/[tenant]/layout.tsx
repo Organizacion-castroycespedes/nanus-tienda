@@ -136,6 +136,35 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "flexibuild.sidebar.collapsed";
 const SIDEBAR_MENU_STATE_STORAGE_KEY = "sidebar_open_menu_items";
 type HeaderConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
 
+const posClockDateFormatter = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const posClockTimeFormatter = new Intl.DateTimeFormat("es-CO", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const PosClock = () => {
+  const [clock, setClock] = useState(() => new Date());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setClock(new Date());
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return (
+    <span className="hidden xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
+      {posClockDateFormatter.format(clock)} · {posClockTimeFormatter.format(clock)}
+    </span>
+  );
+};
+
 const TenantLayout = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -194,7 +223,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
   const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
   const [printerName, setPrinterName] = useState<string | null>(null);
-  const [posClock, setPosClock] = useState(() => new Date());
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
     if (!name) return "";
@@ -212,31 +240,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     () => Boolean(pathname && /^\/[^/]+\/pos(?:\/|$)/i.test(pathname)),
     [pathname]
   );
-  const posClockDateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat("es-CO", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-    []
-  );
-  const posClockTimeFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat("es-CO", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    []
-  );
   const posOperationalRole = authUser?.role ?? null;
   const posOperationalBranch = posContext.branchName ?? null;
   const posOperationalTerminal = posContext.terminalName ?? null;
   const hasPosOperationalContext = Boolean(
     posOperationalRole || posOperationalBranch || posOperationalTerminal || posContext.posSessionId
   );
-  const posOperationalDate = posClockDateFormatter.format(posClock);
-  const posOperationalTime = posClockTimeFormatter.format(posClock);
   const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-64 xl:w-64 lg:px-3 xl:px-4";
   const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
@@ -308,14 +317,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       cancelled = true;
     };
   }, [authUser?.branchId, authUser?.tenantId]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setPosClock(new Date());
-    }, 60_000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1365,9 +1366,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                         <span className="truncate">{posOperationalBranch}</span>
                       </span>
                     ) : null}
-                    <span className="hidden xl:inline text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-header-muted)] shrink-0 pl-1">
-                      {posOperationalDate} · {posOperationalTime}
-                    </span>
+                    <PosClock />
                   </div>
                 ) : (
                   <div>

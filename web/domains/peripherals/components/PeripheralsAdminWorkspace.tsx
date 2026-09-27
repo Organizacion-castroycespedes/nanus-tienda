@@ -131,7 +131,7 @@ const PeripheralsAdminWorkspace = () => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tenantSlug = useMemo(() => pathname.split("/")[1] ?? "", [pathname]);
+  const tenantSlug = pathname.split("/")[1] ?? "";
   const queryTerminalId = searchParams.get("terminalId")?.trim() ?? "";
   const [terminals, setTerminals] = useState<TerminalResponse[]>([]);
   const [health, setHealth] = useState<PeripheralAgentHealth | null>(null);
