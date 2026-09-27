@@ -191,15 +191,16 @@ const LoginPageContent = () => {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950">
-      <div aria-hidden="true" className="absolute inset-0 pointer-events-none select-none opacity-35">
+      <div aria-hidden="true" className="absolute inset-0 pointer-events-none select-none">
         <Image
           src="/logo-login.png"
           alt="EMAUS POS"
           fill
           priority
-          sizes="(max-width: 1024px) 100vw, 50vw"
-          className="object-contain object-center"
+          sizes="100vw"
+          className="object-cover object-left lg:object-contain lg:object-left"
         />
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-950/30 to-slate-950/80 lg:to-slate-950/60" />
       </div>
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">

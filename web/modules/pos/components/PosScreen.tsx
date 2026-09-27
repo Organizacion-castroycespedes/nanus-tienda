@@ -510,6 +510,7 @@ export const PosScreen = () => {
   const branding = useAppSelector((state) => state.branding.config);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
   const posTerminalId = useAppSelector((state) => state.pos.terminalId);
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const {
     items: cart,
     accounts,
@@ -861,7 +862,7 @@ export const PosScreen = () => {
       try {
         const [methods, session, banks] = await Promise.all([
           listPaymentMethods({ active: true }),
-          getCurrentCashSession(),
+          getCurrentCashSession(posCashRegisterId ?? undefined),
           listFinancialInstitutions().catch(() => []),
         ]);
 
@@ -885,11 +886,13 @@ export const PosScreen = () => {
     };
 
     void loadFinanceCatalog();
+    window.addEventListener("manus:cash-session-changed", loadFinanceCatalog);
 
     return () => {
       active = false;
+      window.removeEventListener("manus:cash-session-changed", loadFinanceCatalog);
     };
-  }, []);
+  }, [posCashRegisterId]);
 
   useEffect(() => {
     let active = true;

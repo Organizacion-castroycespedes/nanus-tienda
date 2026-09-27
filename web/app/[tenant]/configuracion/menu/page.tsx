@@ -41,9 +41,11 @@ import {
   Save,
   Search,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
+  Sparkles,
   Store,
   Tags,
   Trash2,
@@ -559,23 +561,6 @@ const MenuManagementPage = () => {
     }));
   };
 
-  const handleReadToggle = (menuItemId: string, checked: boolean) => {
-    if (checked) {
-      const current = permissionDraft[menuItemId];
-      handlePermissionChange(menuItemId, current === "WRITE" ? "WRITE" : "READ");
-      return;
-    }
-    handlePermissionChange(menuItemId, null);
-  };
-
-  const handleWriteToggle = (menuItemId: string, checked: boolean) => {
-    if (checked) {
-      handlePermissionChange(menuItemId, "WRITE");
-      return;
-    }
-    handlePermissionChange(menuItemId, "READ");
-  };
-
   // Module-level mass actions
   const handleModuleMassPermission = (items: MenuItemRecord[], level: AccessLevel | null) => {
     setPermissionDraft((prev) => {
@@ -641,7 +626,7 @@ const MenuManagementPage = () => {
         buildAuthHeaders()
       );
       setInitialPermissionDraft({ ...permissionDraft });
-      showToast("Permisos actualizados.", "success");
+      showToast("Permisos actualizados correctamente.", "success");
     } catch {
       showToast("No se pudieron guardar los permisos.", "error");
     } finally {
@@ -723,7 +708,7 @@ const MenuManagementPage = () => {
 
     try {
       await confirm({
-        title: "¿Deseas guardar los cambios?",
+        title: "¿Deseas guardar los cambios de permisos?",
         description:
           "Los permisos del rol seleccionado se actualizarán con la configuración actual.",
         confirmText: "Guardar permisos",
@@ -737,25 +722,23 @@ const MenuManagementPage = () => {
     }
   };
 
-  // Compact Tree Renderer for Permissions
+  // Compact Tree Renderer for Permissions with Segmented Quick Toggles
   const renderPermissionTree = (items: MenuTreeNode[], depth = 0) => (
     <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
       {items.map((item) => {
         const access = permissionDraft[item.id] ?? null;
-        const canRead = access === "READ" || access === "WRITE";
-        const canWrite = access === "WRITE";
         const ItemIcon = item.icon ? iconByName[normalizeIconName(item.icon)] : null;
 
         return (
-          <div key={item.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+          <div key={item.id} className="transition-colors hover:bg-slate-50/90 dark:hover:bg-slate-800/40">
             <div
-              className={`flex flex-col gap-2 py-2.5 px-3 sm:flex-row sm:items-center sm:justify-between ${
-                depth > 0 ? "border-l-2 border-primary-300 dark:border-primary-700 ml-4 pl-3" : ""
+              className={`flex flex-col gap-2.5 py-2 px-3 sm:flex-row sm:items-center sm:justify-between ${
+                depth > 0 ? "border-l-2 border-primary-400/80 dark:border-primary-600/80 ml-4 pl-3" : ""
               }`}
             >
               {/* Menu Info */}
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-100/70 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100/80 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   {ItemIcon ? (
                     <ItemIcon className="h-3.5 w-3.5" />
                   ) : (
@@ -782,45 +765,53 @@ const MenuManagementPage = () => {
                 </div>
               </div>
 
-              {/* Status Badge & Checkboxes */}
-              <div className="flex shrink-0 items-center justify-between sm:justify-end gap-3 sm:gap-4 pl-9 sm:pl-0">
-                {/* Visual Status Indicator */}
-                <div className="w-24 text-right">
-                  {access === "WRITE" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                      <ShieldCheck className="h-3 w-3" /> Total
-                    </span>
-                  ) : access === "READ" ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-                      <Eye className="h-3 w-3" /> Lectura
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                      <Lock className="h-3 w-3" /> Sin acceso
-                    </span>
-                  )}
-                </div>
+              {/* Segmented Permission Control Pill */}
+              <div className="flex shrink-0 items-center gap-2 pl-9 sm:pl-0">
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/70 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
+                  {/* Sin acceso */}
+                  <button
+                    type="button"
+                    onClick={() => handlePermissionChange(item.id, null)}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-all ${
+                      access === null
+                        ? "bg-white text-slate-700 shadow-sm dark:bg-slate-700 dark:text-slate-100"
+                        : "text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300"
+                    }`}
+                    title="Quitar acceso a esta opción"
+                  >
+                    <Lock className="h-3 w-3" />
+                    <span className="hidden xs:inline">Ninguno</span>
+                  </button>
 
-                {/* Checkbox Controls */}
-                <div className="flex items-center gap-3">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-900"
-                      checked={canRead}
-                      onChange={(event) => handleReadToggle(item.id, event.target.checked)}
-                    />
+                  {/* Lectura */}
+                  <button
+                    type="button"
+                    onClick={() => handlePermissionChange(item.id, "READ")}
+                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
+                      access === "READ"
+                        ? "bg-blue-600 text-white shadow-sm dark:bg-blue-600 dark:text-white"
+                        : "text-blue-700/80 hover:text-blue-800 hover:bg-blue-50/50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                    }`}
+                    title="Permiso de solo lectura"
+                  >
+                    <Eye className="h-3 w-3" />
                     <span>Lectura</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-900"
-                      checked={canWrite}
-                      onChange={(event) => handleWriteToggle(item.id, event.target.checked)}
-                    />
-                    <span>Escritura</span>
-                  </label>
+                  </button>
+
+                  {/* Total (Escritura) */}
+                  <button
+                    type="button"
+                    onClick={() => handlePermissionChange(item.id, "WRITE")}
+                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all ${
+                      access === "WRITE"
+                        ? "bg-emerald-600 text-white shadow-sm dark:bg-emerald-600 dark:text-white"
+                        : "text-emerald-700/80 hover:text-emerald-800 hover:bg-emerald-50/50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                    }`}
+                    title="Permiso completo (Lectura y Escritura)"
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    <span>Total</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -844,7 +835,7 @@ const MenuManagementPage = () => {
             key={item.id}
             className={`transition-colors ${
               isEditing
-                ? "bg-primary-50/70 dark:bg-primary-950/30"
+                ? "bg-primary-50/80 dark:bg-primary-950/30"
                 : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
             }`}
           >
@@ -892,42 +883,46 @@ const MenuManagementPage = () => {
               </div>
 
               {/* Row Action Buttons */}
-              <div className="flex shrink-0 items-center gap-1 pl-9 sm:pl-0">
-                <Button
-                  size="sm"
-                  variant="ghost"
+              <div className="flex shrink-0 items-center gap-1.5 pl-9 sm:pl-0">
+                <button
+                  type="button"
                   onClick={() => handleEdit(item)}
-                  className="h-7 px-2 text-xs gap-1 text-slate-600 dark:text-slate-300"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
-                  <Pencil className="h-3 w-3" />
+                  <Pencil className="h-3 w-3 text-primary-600" />
                   <span>Editar</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => void handleConfirmToggleVisibility(item)}
-                  className="h-7 px-2 text-xs gap-1 text-slate-600 dark:text-slate-300"
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium shadow-xs transition-colors ${
+                    item.visible
+                      ? "border-amber-200 bg-amber-50/50 text-amber-700 hover:bg-amber-100/60 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+                      : "border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100/60 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  }`}
                 >
                   {item.visible ? (
                     <>
-                      <EyeOff className="h-3 w-3 text-amber-600" />
+                      <EyeOff className="h-3 w-3" />
                       <span>Ocultar</span>
                     </>
                   ) : (
                     <>
-                      <Eye className="h-3 w-3 text-emerald-600" />
+                      <Eye className="h-3 w-3" />
                       <span>Mostrar</span>
                     </>
                   )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => void handleConfirmDeleteItem(item)}
-                  className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:border-red-900/50 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                  title="Eliminar elemento"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                </button>
               </div>
             </div>
 
@@ -1016,11 +1011,14 @@ const MenuManagementPage = () => {
       {activeTab === "permissions" && (
         <div className="space-y-4">
           {/* Sticky Toolbar for Permissions */}
-          <div className="sticky top-2 z-20 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-md backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
+          <div className="sticky top-2 z-20 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95 space-y-3.5">
+            
+            {/* Top Control Line: Role selection + Unsaved badge + Primary Actions */}
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              {/* Role Selector & Metrics */}
+              
+              {/* Left: Role Select & Live Status */}
               <div className="flex flex-wrap items-center gap-3">
-                <div className="w-48 sm:w-56">
+                <div className="w-52 sm:w-64">
                   <Select
                     value={selectedRoleId}
                     onChange={(event) => setSelectedRoleId(event.target.value)}
@@ -1034,42 +1032,44 @@ const MenuManagementPage = () => {
                   </Select>
                 </div>
 
-                {/* Quick Status Pill */}
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium dark:bg-slate-800">
+                {/* Status Chips */}
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                     <Check className="h-3.5 w-3.5 text-emerald-600" />
-                    <strong>{permissionStats.grantedCount}</strong> de {permissionStats.total} con acceso
+                    <span><strong>{permissionStats.grantedCount}</strong> de {permissionStats.total} asignados</span>
                   </span>
+
                   {hasUnsavedPermissions && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse">
-                      Cambios pendientes
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      <span>Cambios pendientes</span>
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Action Buttons: Expand/Collapse & Save */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => toggleAllPermModules(true)}
-                  title="Expandir todos los módulos"
-                  className="h-9 text-xs gap-1"
-                >
-                  <ChevronsUpDown className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Expandir todo</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => toggleAllPermModules(false)}
-                  title="Colapsar todos los módulos"
-                  className="h-9 text-xs gap-1"
-                >
-                  <ChevronsDownUp className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Colapsar todo</span>
-                </Button>
+              {/* Right: Expand/Collapse & Save Button */}
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100/70 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={() => toggleAllPermModules(true)}
+                    className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700 transition-colors"
+                    title="Expandir todos los módulos"
+                  >
+                    <ChevronsUpDown className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Expandir todo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleAllPermModules(false)}
+                    className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700 transition-colors"
+                    title="Colapsar todos los módulos"
+                  >
+                    <ChevronsDownUp className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Colapsar todo</span>
+                  </button>
+                </div>
 
                 <Button
                   variant="primary"
@@ -1079,20 +1079,22 @@ const MenuManagementPage = () => {
                   className="h-9 px-4 font-semibold shadow-sm"
                 >
                   {savingPermissions ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
                   ) : (
-                    <Save className="h-4 w-4 mr-1" />
+                    <Save className="h-4 w-4 mr-1.5" />
                   )}
                   <span>Guardar permisos</span>
                 </Button>
               </div>
             </div>
 
-            {/* Search, Filters and Mass Actions */}
-            <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-              {/* Search & Dropdown Filters */}
-              <div className="flex flex-wrap items-center gap-2 flex-1">
-                <div className="relative min-w-[200px] flex-1 max-w-sm">
+            {/* Bottom Controls Line: Filters + Global Mass Actions Bar */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              
+              {/* Search & Filters */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1 max-w-2xl">
+                {/* Live Search */}
+                <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                   <input
                     type="text"
@@ -1111,10 +1113,11 @@ const MenuManagementPage = () => {
                   )}
                 </div>
 
+                {/* Module Dropdown */}
                 <select
                   value={permModuleFilter}
                   onChange={(e) => setPermModuleFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2.5 text-xs text-slate-700 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2.5 text-xs text-slate-700 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 >
                   <option value="all">Todos los módulos</option>
                   {availableModules.map((m) => (
@@ -1124,51 +1127,51 @@ const MenuManagementPage = () => {
                   ))}
                 </select>
 
+                {/* Status Dropdown */}
                 <select
                   value={permStatusFilter}
                   onChange={(e) => setPermStatusFilter(e.target.value as PermissionFilterState)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2.5 text-xs text-slate-700 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2.5 text-xs text-slate-700 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 >
-                  <option value="all">Cualquier permiso</option>
+                  <option value="all">Cualquier estado</option>
                   <option value="granted">Con acceso asignado</option>
-                  <option value="write">Solo Lectura + Escritura</option>
+                  <option value="write">Solo Total (Lectura + Escritura)</option>
                   <option value="read">Solo Lectura</option>
                   <option value="none">Sin acceso</option>
                 </select>
               </div>
 
-              {/* Mass Selection Tools */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mr-1 hidden md:inline">
-                  Selección masiva:
+              {/* Global Mass Selection Action Group */}
+              <div className="flex items-center gap-2 self-start xl:self-auto">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Global:
                 </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleGlobalMassPermission("READ")}
-                  className="h-7 px-2 text-[11px] gap-1 text-blue-600 dark:text-blue-400 bg-blue-50/50 hover:bg-blue-100/60 dark:bg-blue-950/30"
-                >
-                  <Eye className="h-3 w-3" />
-                  <span>Todo Lectura</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleGlobalMassPermission("WRITE")}
-                  className="h-7 px-2 text-[11px] gap-1 text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 hover:bg-emerald-100/60 dark:bg-emerald-950/30"
-                >
-                  <ShieldCheck className="h-3 w-3" />
-                  <span>Todo Total</span>
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleGlobalMassPermission(null)}
-                  className="h-7 px-2 text-[11px] gap-1 text-slate-600 dark:text-slate-400 bg-slate-100/70 hover:bg-slate-200/70 dark:bg-slate-800"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  <span>Limpiar todo</span>
-                </Button>
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleGlobalMassPermission("READ")}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100/70 dark:text-blue-300 dark:hover:bg-blue-950/60 transition-colors"
+                  >
+                    <Eye className="h-3 w-3" />
+                    <span>Todo Lectura</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGlobalMassPermission("WRITE")}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100/70 dark:text-emerald-300 dark:hover:bg-emerald-950/60 transition-colors"
+                  >
+                    <ShieldCheck className="h-3 w-3" />
+                    <span>Todo Total</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGlobalMassPermission(null)}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200/80 dark:text-slate-300 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    <span>Limpiar</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1207,57 +1210,101 @@ const MenuManagementPage = () => {
                 const moduleGrantedCount = group.items.filter(
                   (it) => Boolean(permissionDraft[it.id])
                 ).length;
+                const allTotal = group.items.every(
+                  (it) => permissionDraft[it.id] === "WRITE"
+                );
+                const allRead = group.items.every(
+                  (it) => permissionDraft[it.id] === "READ"
+                );
+                const allNone = group.items.every(
+                  (it) => !permissionDraft[it.id]
+                );
 
                 return (
                   <div
                     key={group.module}
-                    className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900"
+                    className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs transition-all dark:border-slate-800 dark:bg-slate-900"
                   >
                     {/* Module Accordion Header */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50/70 px-4 py-2.5 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800/80">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/80 px-4 py-2.5 dark:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800/80">
+                      
+                      {/* Left: Expand toggle + Module name + Count Badge */}
                       <button
                         type="button"
                         onClick={() => togglePermModule(group.module)}
-                        className="flex items-center gap-2 text-left font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 hover:text-primary-600 dark:hover:text-primary-400"
+                        className="flex items-center gap-2.5 text-left font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 hover:text-primary-600 dark:hover:text-primary-400 group"
                       >
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-slate-400 transition-transform" />
-                        )}
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white border border-slate-200 shadow-2xs dark:bg-slate-700 dark:border-slate-600 group-hover:border-primary-400">
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-slate-500 group-hover:text-primary-600" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-slate-500 group-hover:text-primary-600" />
+                          )}
+                        </div>
+
                         <span className="uppercase tracking-wider">
                           {group.module}
                         </span>
-                        <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-normal text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                            moduleGrantedCount > 0
+                              ? "bg-primary-50 text-primary-700 border border-primary-200 dark:bg-primary-950/50 dark:text-primary-300 dark:border-primary-800"
+                              : "bg-slate-200/70 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+                          }`}
+                        >
                           {moduleGrantedCount} de {group.items.length} asignados
                         </span>
                       </button>
 
-                      {/* Module Mass Quick Buttons */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleModuleMassPermission(group.items, "READ")}
-                          className="rounded px-2 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-100/60 dark:text-blue-400 dark:hover:bg-blue-950/50"
-                        >
-                          + Lectura
-                        </button>
-                        <span className="text-slate-300 dark:text-slate-700">•</span>
-                        <button
-                          type="button"
-                          onClick={() => handleModuleMassPermission(group.items, "WRITE")}
-                          className="rounded px-2 py-0.5 text-[10px] font-medium text-emerald-600 hover:bg-emerald-100/60 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
-                        >
-                          + Total
-                        </button>
-                        <span className="text-slate-300 dark:text-slate-700">•</span>
-                        <button
-                          type="button"
-                          onClick={() => handleModuleMassPermission(group.items, null)}
-                          className="rounded px-2 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:bg-slate-800"
-                        >
-                          Quitar
-                        </button>
+                      {/* Right: Module Mass Action Pill Buttons */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 hidden sm:inline mr-1">
+                          Módulo:
+                        </span>
+                        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs dark:border-slate-700 dark:bg-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => handleModuleMassPermission(group.items, "READ")}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                              allRead
+                                ? "bg-blue-600 text-white"
+                                : "text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                            }`}
+                            title="Asignar solo lectura a todo este módulo"
+                          >
+                            <Eye className="h-3 w-3" />
+                            <span>Lectura</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleModuleMassPermission(group.items, "WRITE")}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                              allTotal
+                                ? "bg-emerald-600 text-white"
+                                : "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                            }`}
+                            title="Asignar acceso total a todo este módulo"
+                          >
+                            <ShieldCheck className="h-3 w-3" />
+                            <span>Total</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleModuleMassPermission(group.items, null)}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                              allNone
+                                ? "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200"
+                                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700/60"
+                            }`}
+                            title="Quitar permisos de todo este módulo"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>Quitar</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1548,20 +1595,22 @@ const MenuManagementPage = () => {
                   return (
                     <div
                       key={group.module}
-                      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900"
+                      className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs transition-all dark:border-slate-800 dark:bg-slate-900"
                     >
                       {/* Module Header */}
-                      <div className="flex items-center justify-between bg-slate-50/70 px-4 py-2.5 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center justify-between bg-slate-50/80 px-4 py-2.5 dark:bg-slate-800/70 border-b border-slate-100 dark:border-slate-800/80">
                         <button
                           type="button"
                           onClick={() => togglePreviewModule(group.module)}
-                          className="flex items-center gap-2 text-left font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 hover:text-primary-600 dark:hover:text-primary-400"
+                          className="flex items-center gap-2.5 text-left font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 hover:text-primary-600 dark:hover:text-primary-400 group"
                         >
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-slate-400" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-slate-400" />
-                          )}
+                          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white border border-slate-200 shadow-2xs dark:bg-slate-700 dark:border-slate-600 group-hover:border-primary-400">
+                            {isExpanded ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-slate-500 group-hover:text-primary-600" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5 text-slate-500 group-hover:text-primary-600" />
+                            )}
+                          </div>
                           <span className="uppercase tracking-wider">{group.module}</span>
                           <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-normal text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                             {group.items.length} {group.items.length === 1 ? "opción" : "opciones"}

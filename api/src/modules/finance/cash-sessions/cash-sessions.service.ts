@@ -1556,12 +1556,35 @@ export class CashSessionsService {
 
     // Never exclude completed closures here: POS and context selection need the
     // OPEN session while it remains open (even after USER delivered their close).
-    const current = await this.repository.findCurrentByUser(
+    let current = await this.repository.findCurrentByUser(
       actor.userId,
       tenantId,
       undefined,
       false
     );
+
+    if (!current && this.canAdminCash(actor)) {
+      const allowedBranchIds = await this.resolveAllowedBranchIds(
+        actor,
+        tenantId
+      );
+      if (allowedBranchIds && allowedBranchIds.length > 0) {
+        for (const branchId of allowedBranchIds) {
+          current = await this.repository.findOpenByBranch(branchId, tenantId);
+          if (current) break;
+        }
+      } else if (this.canManageTenant(actor)) {
+        const openSessions = await this.repository.listHistory({
+          tenantId,
+          status: "OPEN",
+          limit: 1,
+        });
+        if (openSessions.length > 0) {
+          current = openSessions[0];
+        }
+      }
+    }
+
     if (!current) {
       return null;
     }

@@ -170,10 +170,18 @@ export class PaymentsService {
     branchId: string,
     existingClient?: PoolClient
   ) {
-    const currentSession = await this.cashSessionsRepository.findCurrentByUser(
+    let currentSession = await this.cashSessionsRepository.findCurrentByUser(
       actor.userId,
       tenantId
     );
+
+    if (!currentSession && this.canAdminPayments(actor)) {
+      currentSession = await this.cashSessionsRepository.findOpenByBranch(
+        branchId,
+        tenantId,
+        existingClient
+      );
+    }
 
     if (!currentSession) {
       return null;
