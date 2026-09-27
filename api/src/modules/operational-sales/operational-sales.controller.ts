@@ -9,6 +9,8 @@ import { OperationalSalesService } from "./operational-sales.service";
 import type { OperationalSalesQueryDto } from "./dto/operational-sales-query.dto";
 import { UpdateSaleCustomerDto } from "./dto/update-sale-customer.dto";
 import { CorrectSalePaymentsDto } from "./dto/correct-sale-payments.dto";
+import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
+import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
 
 type OperationalRequest = Request & {
   user?: { id?: string; tenantId?: string; roles?: string[] };
@@ -80,14 +82,24 @@ export class OperationalSalesController {
     return this.service.updateCustomer(this.actor(request), saleId, dto);
   }
 
-  @Post(":saleId/payment-correction")
+  @Post(":saleId/void")
   @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "WRITE", operationalRoles: ["USER"] })
-  correctPayments(
+  voidSale(
     @Param("saleId") saleId: string,
-    @Body() dto: CorrectSalePaymentsDto,
+    @Body() dto: VoidOperationalSaleDto,
     @Req() request: OperationalRequest
   ) {
-    return this.service.correctPayments(this.actor(request), saleId, dto);
+    return this.service.voidSale(this.actor(request), saleId, dto);
+  }
+
+  @Post(":saleId/debit-note")
+  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "WRITE", operationalRoles: ["USER"] })
+  issueDebitNote(
+    @Param("saleId") saleId: string,
+    @Body() dto: OperationalDebitNoteDto,
+    @Req() request: OperationalRequest
+  ) {
+    return this.service.issueDebitNote(this.actor(request), saleId, dto);
   }
 
   private actor(request: OperationalRequest) {
