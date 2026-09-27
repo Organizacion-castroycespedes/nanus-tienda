@@ -11,6 +11,7 @@ import {
   type DataTableColumn,
 } from "../../../../components/design-system/DataTable";
 import { Input } from "../../../../components/design-system/Input";
+import { Pagination } from "../../../../components/design-system/Pagination";
 import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
@@ -100,6 +101,8 @@ const ProductSubcategoriesPage = () => {
     useState<ProductSubcategoryResponse | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -197,6 +200,11 @@ const ProductSubcategoriesPage = () => {
     [categoryById, subcategories]
   );
 
+  const paginatedSubcategories = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedSubcategories.slice(start, start + pageSize);
+  }, [sortedSubcategories, page, pageSize]);
+
   const openCreate = () => {
     setSelectedSubcategory(null);
     setActionError(null);
@@ -228,11 +236,13 @@ const ProductSubcategoriesPage = () => {
   };
 
   const handleApplyFilters = () => {
+    setPage(1);
     setAppliedFilters(filters);
     void loadSubcategories(filters);
   };
 
   const handleResetFilters = () => {
+    setPage(1);
     setFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
     void loadSubcategories(defaultFilters);
@@ -304,8 +314,44 @@ const ProductSubcategoriesPage = () => {
 
   const columns: DataTableColumn<ProductSubcategoryResponse>[] = [
     {
+      key: "actions",
+      header: "Acciones",
+      actionFirst: true,
+      className: "w-16 text-center",
+      cellClassName: "w-16 text-center",
+      render: (subcategory) => (
+        <div className="flex items-center justify-center">
+          <RowActionsMenu
+            items={[
+              ...(canWrite
+                ? [
+                    {
+                      label: "Editar",
+                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                      onSelect: () => openEdit(subcategory),
+                    },
+                    subcategory.isActive
+                      ? {
+                          label: "Desactivar",
+                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                          destructive: true,
+                          onSelect: () => openStatusAction(subcategory, "deactivate"),
+                        }
+                      : {
+                          label: "Activar",
+                          icon: <Power className="h-4 w-4 text-emerald-500" />,
+                          onSelect: () => openStatusAction(subcategory, "activate"),
+                        },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
       key: "name",
-      header: "Subcategoria",
+      header: "Subcategoría",
       render: (subcategory) => (
         <div className="flex min-w-[260px] max-w-md items-start gap-3">
           <SubcategoryImage subcategory={subcategory} />
@@ -326,7 +372,7 @@ const ProductSubcategoriesPage = () => {
     },
     {
       key: "category",
-      header: "Categoria padre",
+      header: "Categoría padre",
       render: (subcategory) => (
         <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
           {categoryById.get(subcategory.categoryId)?.name ?? "Sin cargar"}
@@ -365,41 +411,6 @@ const ProductSubcategoriesPage = () => {
           <ImageIcon className="h-4 w-4" />
           {subcategory.defaultImageUrl ? "URL configurada" : "Placeholder"}
         </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "Acciones",
-      className: "text-right",
-      cellClassName: "text-right",
-      render: (subcategory) => (
-        <div className="flex items-center justify-end">
-          <RowActionsMenu
-            items={[
-              ...(canWrite
-                ? [
-                    {
-                      label: "Editar",
-                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
-                      onSelect: () => openEdit(subcategory),
-                    },
-                    subcategory.isActive
-                      ? {
-                          label: "Desactivar",
-                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
-                          destructive: true,
-                          onSelect: () => openStatusAction(subcategory, "deactivate"),
-                        }
-                      : {
-                          label: "Activar",
-                          icon: <Power className="h-4 w-4 text-emerald-500" />,
-                          onSelect: () => openStatusAction(subcategory, "activate"),
-                        },
-                  ]
-                : []),
-            ]}
-          />
-        </div>
       ),
     },
   ];
@@ -609,13 +620,29 @@ const ProductSubcategoriesPage = () => {
 
           <DataTable
             columns={columns}
-            rows={sortedSubcategories}
+            rows={paginatedSubcategories}
             getRowKey={(subcategory) => subcategory.id}
             loading={loadingSubcategories}
             error={listError}
+            actionColumnFirst={true}
+            disableHeaderUppercase={true}
             loadingState="Cargando subcategorias..."
             emptyState="No hay subcategorias para mostrar."
           />
+
+          {sortedSubcategories.length > 0 ? (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={sortedSubcategories.length}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+              loading={loadingSubcategories}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

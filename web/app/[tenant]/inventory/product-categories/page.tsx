@@ -10,6 +10,7 @@ import {
   type DataTableColumn,
 } from "../../../../components/design-system/DataTable";
 import { Input } from "../../../../components/design-system/Input";
+import { Pagination } from "../../../../components/design-system/Pagination";
 import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
@@ -85,6 +86,8 @@ const ProductCategoriesPage = () => {
     useState<ProductCategoryResponse | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -137,6 +140,11 @@ const ProductCategoriesPage = () => {
     [categories]
   );
 
+  const paginatedCategories = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedCategories.slice(start, start + pageSize);
+  }, [sortedCategories, page, pageSize]);
+
   const openCreate = () => {
     setSelectedCategory(null);
     setActionError(null);
@@ -168,11 +176,13 @@ const ProductCategoriesPage = () => {
   };
 
   const handleApplyFilters = () => {
+    setPage(1);
     setAppliedFilters(filters);
     void loadCategories(filters);
   };
 
   const handleResetFilters = () => {
+    setPage(1);
     setFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
     void loadCategories(defaultFilters);
@@ -238,8 +248,44 @@ const ProductCategoriesPage = () => {
 
   const columns: DataTableColumn<ProductCategoryResponse>[] = [
     {
+      key: "actions",
+      header: "Acciones",
+      actionFirst: true,
+      className: "w-16 text-center",
+      cellClassName: "w-16 text-center",
+      render: (category) => (
+        <div className="flex items-center justify-center">
+          <RowActionsMenu
+            items={[
+              ...(canWrite
+                ? [
+                    {
+                      label: "Editar",
+                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                      onSelect: () => openEdit(category),
+                    },
+                    category.isActive
+                      ? {
+                          label: "Desactivar",
+                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                          destructive: true,
+                          onSelect: () => openStatusAction(category, "deactivate"),
+                        }
+                      : {
+                          label: "Activar",
+                          icon: <Power className="h-4 w-4 text-emerald-500" />,
+                          onSelect: () => openStatusAction(category, "activate"),
+                        },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
       key: "name",
-      header: "Categoria",
+      header: "Categoría",
       render: (category) => (
         <div className="flex min-w-[260px] max-w-md items-start gap-3">
           <CategoryImage category={category} />
@@ -288,41 +334,6 @@ const ProductCategoriesPage = () => {
           <ImageIcon className="h-4 w-4" />
           {category.defaultImageUrl ? "URL configurada" : "Placeholder"}
         </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "Acciones",
-      className: "text-right",
-      cellClassName: "text-right",
-      render: (category) => (
-        <div className="flex items-center justify-end">
-          <RowActionsMenu
-            items={[
-              ...(canWrite
-                ? [
-                    {
-                      label: "Editar",
-                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
-                      onSelect: () => openEdit(category),
-                    },
-                    category.isActive
-                      ? {
-                          label: "Desactivar",
-                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
-                          destructive: true,
-                          onSelect: () => openStatusAction(category, "deactivate"),
-                        }
-                      : {
-                          label: "Activar",
-                          icon: <Power className="h-4 w-4 text-emerald-500" />,
-                          onSelect: () => openStatusAction(category, "activate"),
-                        },
-                  ]
-                : []),
-            ]}
-          />
-        </div>
       ),
     },
   ];
@@ -490,13 +501,29 @@ const ProductCategoriesPage = () => {
 
           <DataTable
             columns={columns}
-            rows={sortedCategories}
+            rows={paginatedCategories}
             getRowKey={(category) => category.id}
             loading={loading}
             error={listError}
+            actionColumnFirst={true}
+            disableHeaderUppercase={true}
             loadingState="Cargando categorias..."
             emptyState="No hay categorias para mostrar."
           />
+
+          {sortedCategories.length > 0 ? (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={sortedCategories.length}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+              loading={loading}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

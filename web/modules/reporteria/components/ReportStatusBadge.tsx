@@ -24,7 +24,7 @@ const colorByStatus = (value: string) => {
 
 export const ReportStatusBadge = ({ value }: ReportStatusBadgeProps) => (
   <span
-    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${colorByStatus(
+    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${colorByStatus(
       value
     )}`}
   >

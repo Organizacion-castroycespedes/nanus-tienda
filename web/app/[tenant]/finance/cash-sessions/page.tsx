@@ -1,24 +1,32 @@
 "use client";
 
 import {
+  Calendar,
   ClipboardCheck,
   Download,
   Eye,
+  Filter,
   Plus,
   Printer,
   Receipt,
   RefreshCw,
+  User,
+  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
+import { Input } from "../../../../components/design-system/Input";
 import { Modal } from "../../../../components/design-system/Modal";
 import {
   NoticeDialog,
   type NoticeDialogVariant,
 } from "../../../../components/design-system/NoticeDialog";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
+import { listUsers } from "../../../../domains/users/api";
+import type { UserResponse } from "../../../../domains/users/dtos";
 import { useAutoClearState } from "../../../../lib/useAutoClearState";
 import { CloseCashSessionForm } from "../../../../modules/finance/components/CloseCashSessionForm";
 import { CashSessionAuditForm } from "../../../../modules/finance/components/CashSessionAuditForm";
@@ -176,6 +184,10 @@ const CashSessionsPage = () => {
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
   const [statusFilter, setStatusFilter] = useState("all");
   const [registerFilter, setRegisterFilter] = useState("");
+  const [userFilter, setUserFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [users, setUsers] = useState<UserResponse[]>([]);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [closeModal, setCloseModal] = useState(false);
@@ -221,8 +233,11 @@ const CashSessionsPage = () => {
     }
 
     void loadCurrentSession();
-    void loadHistory({ limit: 50 });
+    void loadHistory({ limit: 100 });
     void loadCashRegisters();
+    void listUsers({ tenantId: authUser?.tenantId, limit: 300 })
+      .then(setUsers)
+      .catch(() => setUsers([]));
   }, [
     authUser?.tenantId,
     canViewFinance,
@@ -239,6 +254,20 @@ const CashSessionsPage = () => {
     void loadSessionSummary(currentSession.id);
   }, [currentSession?.id, loadSessionSummary]);
 
+  const userMap = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+
+  const getUserDisplayName = (userId?: string | null, fallbackEmail?: string | null) => {
+    if (!userId) return fallbackEmail ?? "—";
+    const foundUser = userMap.get(userId);
+    if (foundUser?.persona) {
+      const fullName = `${foundUser.persona.nombres ?? ""} ${foundUser.persona.apellidos ?? ""}`.trim();
+      if (fullName) return fullName;
+    }
+    return fallbackEmail ?? foundUser?.email ?? "—";
+  };
+
+  const isCashierRole = role === "USER";
+
   const filteredHistory = useMemo(() => {
     return history.filter((item) => {
       if (registerFilter && item.cashRegisterId !== registerFilter) {
@@ -247,9 +276,67 @@ const CashSessionsPage = () => {
       if (statusFilter !== "all" && item.status !== statusFilter) {
         return false;
       }
+      if (isCashierRole) {
+        if (authUser?.id && item.openedByUserId !== authUser.id && item.closedByUserId !== authUser.id) {
+          return false;
+        }
+      } else if (userFilter) {
+        if (item.openedByUserId !== userFilter && item.closedByUserId !== userFilter) {
+          return false;
+        }
+      }
+      if (dateFrom) {
+        const itemDate = (item.openedAt || item.createdAt).slice(0, 10);
+        if (itemDate < dateFrom) {
+          return false;
+        }
+      }
+      if (dateTo) {
+        const itemDate = (item.openedAt || item.createdAt).slice(0, 10);
+        if (itemDate > dateTo) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [history, registerFilter, statusFilter]);
+  }, [
+    history,
+    registerFilter,
+    statusFilter,
+    isCashierRole,
+    authUser?.id,
+    userFilter,
+    dateFrom,
+    dateTo,
+  ]);
+
+  const historyReportSummary = useMemo(() => {
+    let totalOpening = 0;
+    let totalClosing = 0;
+    let totalDifference = 0;
+    let closedCount = 0;
+    let openCount = 0;
+
+    for (const session of filteredHistory) {
+      totalOpening += Number(session.openingAmount || 0);
+      if (session.status === "CLOSED") {
+        closedCount++;
+        totalClosing += Number(session.closingAmount || 0);
+        totalDifference += Number(session.differenceAmount || 0);
+      } else if (session.status === "OPEN") {
+        openCount++;
+      }
+    }
+
+    return {
+      totalSessions: filteredHistory.length,
+      closedCount,
+      openCount,
+      totalOpening,
+      totalClosing,
+      totalDifference,
+    };
+  }, [filteredHistory]);
 
   const totalPages = Math.max(1, Math.ceil(filteredHistory.length / pageSize));
   const paginatedHistory = useMemo(() => {
@@ -883,12 +970,32 @@ const CashSessionsPage = () => {
                 Cierres y sesiones registradas
               </h2>
             </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-              {filteredHistory.length} {filteredHistory.length === 1 ? "sesión" : "sesiones"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {(registerFilter || statusFilter !== "all" || userFilter || dateFrom || dateTo) ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setRegisterFilter("");
+                    setStatusFilter("all");
+                    setUserFilter("");
+                    setDateFrom("");
+                    setDateTo("");
+                    setPage(0);
+                  }}
+                  className="h-8 gap-1.5 px-2.5 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Limpiar filtros
+                </Button>
+              ) : null}
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                {filteredHistory.length} {filteredHistory.length === 1 ? "sesión" : "sesiones"}
+              </span>
+            </div>
           </div>
 
-          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Select
               label="Caja"
               value={registerFilter}
@@ -904,6 +1011,7 @@ const CashSessionsPage = () => {
                 </option>
               ))}
             </Select>
+
             <Select
               label="Estado"
               value={statusFilter}
@@ -917,8 +1025,50 @@ const CashSessionsPage = () => {
               <option value="CLOSED">Cerradas</option>
               <option value="CANCELLED">Canceladas</option>
             </Select>
+
+            {!isCashierRole ? (
+              <Select
+                label="Cajero / Usuario"
+                value={userFilter}
+                onChange={(event) => {
+                  setUserFilter(event.target.value);
+                  setPage(0);
+                }}
+              >
+                <option value="">Todos los usuarios</option>
+                {users.map((u) => {
+                  const name = getUserDisplayName(u.id, u.email);
+                  return (
+                    <option key={u.id} value={u.id}>
+                      {name}
+                    </option>
+                  );
+                })}
+              </Select>
+            ) : null}
+
+            <Input
+              label="Desde"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => {
+                setDateFrom(event.target.value);
+                setPage(0);
+              }}
+            />
+
+            <Input
+              label="Hasta"
+              type="date"
+              value={dateTo}
+              onChange={(event) => {
+                setDateTo(event.target.value);
+                setPage(0);
+              }}
+            />
+
             <Select
-              label="Filas por página"
+              label="Filas por pág."
               value={String(pageSize)}
               onChange={(event) => {
                 setPageSize(Number(event.target.value));
@@ -931,24 +1081,77 @@ const CashSessionsPage = () => {
             </Select>
           </div>
 
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-4 dark:border-slate-700/60 dark:bg-slate-900/40">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Sesiones filtradas
+              </p>
+              <p className="mt-0.5 text-base font-bold text-slate-900 dark:text-white">
+                {historyReportSummary.totalSessions}{" "}
+                <span className="text-xs font-normal text-slate-500">
+                  ({historyReportSummary.closedCount} cerr. / {historyReportSummary.openCount} ab.)
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Total Apertura
+              </p>
+              <p className="mt-0.5 text-base font-bold text-slate-900 tabular-nums dark:text-white">
+                {formatCurrency(historyReportSummary.totalOpening)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Total Cierre
+              </p>
+              <p className="mt-0.5 text-base font-bold text-slate-900 tabular-nums dark:text-white">
+                {formatCurrency(historyReportSummary.totalClosing)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Diferencia Total
+              </p>
+              <p
+                className={`mt-0.5 text-base font-bold tabular-nums ${
+                  historyReportSummary.totalDifference === 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : historyReportSummary.totalDifference < 0
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {historyReportSummary.totalDifference > 0 ? "+" : ""}
+                {formatCurrency(historyReportSummary.totalDifference)}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
-              <thead className="bg-slate-50 dark:bg-slate-900/50">
+              <thead className="bg-slate-50 dark:bg-slate-900/60">
                 <tr>
+                  <th className="w-14 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Acciones
+                  </th>
                   <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Caja
                   </th>
                   <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Cajero / Gestión
+                  </th>
+                  <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Apertura
                   </th>
                   <th className="px-3.5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Cierre
                   </th>
                   <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Apertura
+                    M. Apertura
                   </th>
                   <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Cierre
+                    M. Cierre
                   </th>
                   <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Diferencia
@@ -956,137 +1159,148 @@ const CashSessionsPage = () => {
                   <th className="px-3.5 py-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                     Estado
                   </th>
-                  <th className="px-3.5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Acciones
-                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
                 {loadingHistory ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                    <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
                       Cargando historial...
                     </td>
                   </tr>
                 ) : paginatedHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                      No hay sesiones para mostrar con los filtros seleccionados.
+                    <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                      No hay sesiones registradas que coincidan con los filtros.
                     </td>
                   </tr>
                 ) : (
-                  paginatedHistory.map((session) => (
-                    <tr
-                      key={session.id}
-                      className="transition hover:bg-slate-50/80 dark:hover:bg-slate-900/30"
-                    >
-                      <td className="whitespace-nowrap px-3.5 py-3.5">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 dark:text-white">
-                            {session.cashRegisterNombre ?? "Caja"}
-                          </p>
-                          {session.cashRegisterCodigo ? (
-                            <p className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                              {session.cashRegisterCodigo}
+                  paginatedHistory.map((session) => {
+                    const openedUserName = getUserDisplayName(
+                      session.openedByUserId,
+                      session.openedByUserEmail
+                    );
+                    const closedUserName = session.closedByUserId
+                      ? getUserDisplayName(session.closedByUserId, session.closedByUserEmail)
+                      : null;
+
+                    return (
+                      <tr
+                        key={session.id}
+                        className="transition hover:bg-slate-50/80 dark:hover:bg-slate-900/30"
+                      >
+                        <td className="whitespace-nowrap px-3 py-3 text-center">
+                          {session.status === "CLOSED" ? (
+                            <div className="flex justify-center">
+                              <RowActionsMenu
+                                label="Acciones de sesión"
+                                items={[
+                                  {
+                                    label: "Ver ticket",
+                                    icon: <Eye className="h-4 w-4" />,
+                                    onSelect: () => openTicketPreview(session.id),
+                                  },
+                                  {
+                                    label: "Descargar PDF",
+                                    icon: <Download className="h-4 w-4" />,
+                                    onSelect: () => void handleDownloadTicket(session.id),
+                                  },
+                                  {
+                                    label: "Imprimir ticket",
+                                    icon: <Printer className="h-4 w-4" />,
+                                    onSelect: () => void handlePrintTicket(session.id),
+                                  },
+                                ]}
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-[11px] italic text-slate-400">En curso</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold leading-tight text-slate-900 dark:text-white">
+                              {session.cashRegisterNombre ?? "Caja"}
                             </p>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5">
-                        <p className="font-medium text-slate-800 dark:text-slate-200">
-                          {formatDateTime(session.openedAt)}
-                        </p>
-                        {session.openedByUserEmail ? (
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {session.openedByUserEmail}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5">
-                        {session.closedAt ? (
-                          <>
-                            <p className="font-medium text-slate-800 dark:text-slate-200">
-                              {formatDateTime(session.closedAt)}
-                            </p>
-                            {session.closedByUserEmail ? (
-                              <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {session.closedByUserEmail}
+                            {session.cashRegisterCodigo ? (
+                              <p className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                                {session.cashRegisterCodigo}
                               </p>
                             ) : null}
-                          </>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right font-medium tabular-nums text-slate-900 dark:text-white">
-                        {formatCurrency(session.openingAmount)}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right font-medium tabular-nums text-slate-900 dark:text-white">
-                        {session.closingAmount !== null && session.closingAmount !== undefined ? (
-                          formatCurrency(session.closingAmount)
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right font-medium tabular-nums">
-                        {session.differenceAmount !== null && session.differenceAmount !== undefined && session.status === "CLOSED" ? (
-                          <span
-                            className={
-                              session.differenceAmount === 0
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : session.differenceAmount < 0
-                                ? "text-rose-600 dark:text-rose-400"
-                                : "text-amber-600 dark:text-amber-400"
-                            }
-                          >
-                            {session.differenceAmount > 0 ? "+" : ""}
-                            {formatCurrency(session.differenceAmount)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5 text-center">
-                        <FinanceStatusBadge value={session.status} kind="session" />
-                      </td>
-                      <td className="whitespace-nowrap px-3.5 py-3.5 text-right">
-                        {session.status === "CLOSED" ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              title="Ver ticket de cierre"
-                              onClick={() => openTicketPreview(session.id)}
-                              className="h-8 gap-1.5 px-2.5 text-xs"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              <span className="hidden xl:inline">Ticket</span>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Descargar PDF"
-                              onClick={() => void handleDownloadTicket(session.id)}
-                              className="h-8 px-2 text-xs"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Imprimir ticket"
-                              onClick={() => void handlePrintTicket(session.id)}
-                              className="h-8 px-2 text-xs"
-                            >
-                              <Printer className="h-3.5 w-3.5" />
-                            </Button>
                           </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">En curso</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3">
+                          <div className="min-w-0 max-w-[200px]">
+                            <p
+                              className="truncate font-medium leading-tight text-slate-900 dark:text-slate-100"
+                              title={openedUserName}
+                            >
+                              {openedUserName}
+                            </p>
+                            {closedUserName && session.closedByUserId !== session.openedByUserId ? (
+                              <p
+                                className="truncate text-[11px] leading-tight text-slate-400"
+                                title={`Cierre por: ${closedUserName}`}
+                              >
+                                Cierre: {closedUserName}
+                              </p>
+                            ) : (
+                              <p className="truncate text-[11px] leading-tight text-slate-400">
+                                {session.openedByUserEmail}
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3 text-slate-700 dark:text-slate-300">
+                          <p className="font-medium leading-tight">
+                            {formatDateTime(session.openedAt)}
+                          </p>
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3 text-slate-700 dark:text-slate-300">
+                          {session.closedAt ? (
+                            <p className="font-medium leading-tight">
+                              {formatDateTime(session.closedAt)}
+                            </p>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3 text-right font-medium tabular-nums text-slate-900 dark:text-white">
+                          {formatCurrency(session.openingAmount)}
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3 text-right font-medium tabular-nums text-slate-900 dark:text-white">
+                          {session.closingAmount !== null && session.closingAmount !== undefined ? (
+                            formatCurrency(session.closingAmount)
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3 text-right font-medium tabular-nums">
+                          {session.differenceAmount !== null &&
+                          session.differenceAmount !== undefined &&
+                          session.status === "CLOSED" ? (
+                            <span
+                              className={
+                                session.differenceAmount === 0
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : session.differenceAmount < 0
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-amber-600 dark:text-amber-400"
+                              }
+                            >
+                              {session.differenceAmount > 0 ? "+" : ""}
+                              {formatCurrency(session.differenceAmount)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3.5 py-3 text-center">
+                          <FinanceStatusBadge value={session.status} kind="session" />
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
