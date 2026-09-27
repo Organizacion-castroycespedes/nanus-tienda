@@ -1812,6 +1812,72 @@ test("SaleService.getSaleById rejects an actor without tenant context", async ()
   );
 });
 
+test("SaleService dispatches an on-demand billing event immediately after commit", async () => {
+  const actions: string[] = [];
+  const client = {
+    query: async (text: string) => {
+      actions.push(text.trim());
+      return { rows: [] };
+    },
+    release: () => {
+      actions.push("RELEASE");
+    },
+  };
+  const service = new SaleService(
+    { getClient: async () => client as unknown as PoolClient } as never,
+    {} as never,
+    { logEvent: () => actions.push("AUDIT") } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {
+      runOnceForEvent: async (eventId: string) => {
+        actions.push(`DISPATCH:${eventId}`);
+      },
+    } as never,
+  );
+
+  (service as unknown as {
+    normalizeSaleContext: () => Promise<Record<string, unknown>>;
+  }).normalizeSaleContext = async () => ({
+    tenantId: ids.tenant,
+    userId: ids.user,
+    roles: ["ADMIN"],
+  });
+  (service as unknown as {
+    requestElectronicBillingForSaleInTransaction: () => Promise<Record<string, unknown>>;
+  }).requestElectronicBillingForSaleInTransaction = async () => ({
+    saleId: ids.sale,
+    result: "REQUESTED",
+    eligibility: "ELIGIBLE",
+    requestCreated: true,
+    electronicDocumentId: null,
+    outboxEventId: "event-on-demand",
+  });
+
+  await service.requestElectronicBillingForSale(ids.sale, {
+    tenantId: ids.tenant,
+    userId: ids.user,
+    roles: ["ADMIN"],
+  });
+
+  assert.deepEqual(actions, [
+    "BEGIN",
+    "COMMIT",
+    "DISPATCH:event-on-demand",
+    "AUDIT",
+    "RELEASE",
+  ]);
+});
+
 test("SaleService classifies a draft electronic-billing snapshot as stale after confirmation", () => {
   const { service } = buildService();
   const customer = {

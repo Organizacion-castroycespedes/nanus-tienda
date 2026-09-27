@@ -8,6 +8,7 @@ type ToastProps = {
   message: ReactNode;
   variant?: ToastVariant;
   onClose?: () => void;
+  floating?: boolean;
 };
 
 const variantStyles: Record<ToastVariant, string> = {
@@ -22,16 +23,20 @@ const dotStyles: Record<ToastVariant, string> = {
   warning: "bg-amber-500",
 };
 
-export const Toast = ({ message, variant = "success", onClose }: ToastProps) => (
+export const Toast = ({ message, variant = "success", onClose, floating = false }: ToastProps) => (
   <div
     role="status"
     aria-live="polite"
-    className={`rounded-xl border px-4 py-3 text-sm shadow-sm ${variantStyles[variant]}`}
+    className={`rounded-xl border px-4 py-3 text-sm ${variantStyles[variant]} ${
+      floating
+        ? "pointer-events-auto fixed right-4 top-16 z-[60] w-[calc(100%-2rem)] max-w-sm shadow-xl shadow-slate-900/10"
+        : "shadow-sm"
+    }`}
   >
     <div className="flex items-start justify-between gap-4">
       <div className="flex items-start gap-3">
         <span
-          className={`mt-1 h-2.5 w-2.5 rounded-full ${dotStyles[variant]}`}
+          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${dotStyles[variant]}`}
           aria-hidden="true"
         />
         <span className="font-medium">{message}</span>

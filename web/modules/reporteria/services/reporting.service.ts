@@ -98,10 +98,14 @@ export const getElectronicInvoice = (saleId: string) =>
     `/reports/pos-sales/${saleId}/electronic-invoice`
   );
 
-export const getElectronicInvoicePrintData = (saleId: string) =>
+export const getElectronicInvoicePrintData = (
+  saleId: string,
+  signal?: AbortSignal,
+) =>
   apiClientWithBaseUrl<ElectronicInvoicePrintDataset>(
     reportsBaseUrl,
-    `/reports/pos-sales/${saleId}/electronic-invoice-data`
+    `/reports/pos-sales/${saleId}/electronic-invoice-data`,
+    { signal },
   );
 
 export const getCashClosingsReport = (filters: ReportFilters) =>

@@ -8,6 +8,7 @@ import { buildCashAuditTicketTemplate } from "../pdf/templates/tickets/cash-audi
 import { buildCashClosingTicketTemplate } from "../pdf/templates/tickets/cash-closing-ticket.template";
 import { CashReportAdapter } from "./sql-adapters/cash-report.adapter";
 import { DocumentExportService } from "./document-export.service";
+import { formatReportDateTime, REPORT_TIME_ZONE, resolveReportDateRange, type ReportDateRange } from "./report-date-range";
 import type {
   CashAuditListDataset,
   CashAuditListRow,
@@ -64,35 +65,8 @@ export class CashReportsService {
     };
   }
 
-  private normalizeDate(value: string | undefined, endExclusive = false) {
-    if (!value) {
-      return undefined;
-    }
-
-    const normalized = value.trim();
-    if (!normalized) {
-      return undefined;
-    }
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-      const date = new Date(`${normalized}T00:00:00.000Z`);
-      if (Number.isNaN(date.getTime())) {
-        throw new BadRequestException(`invalid date value: ${value}`);
-      }
-
-      if (endExclusive) {
-        date.setUTCDate(date.getUTCDate() + 1);
-      }
-
-      return date.toISOString();
-    }
-
-    const date = new Date(normalized);
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException(`invalid date value: ${value}`);
-    }
-
-    return date.toISOString();
+  private resolveDates(query: CashListQuery): ReportDateRange {
+    return resolveReportDateRange(query);
   }
 
   private toNumber(value: unknown) {
@@ -165,11 +139,12 @@ export class CashReportsService {
     actor: ReportActorContext,
     query: CashListQuery
   ): CashClosingListDataset {
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: payload?.filters?.tenantId ?? query.tenantId ?? actor.tenantId,
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
-      dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
-      dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      dateFrom: payload?.filters?.dateFrom ?? dates.dateFrom,
+      dateTo: payload?.filters?.dateTo ?? dates.dateTo,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -209,11 +184,12 @@ export class CashReportsService {
     actor: ReportActorContext,
     query: CashListQuery
   ): CashAuditListDataset {
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: payload?.filters?.tenantId ?? query.tenantId ?? actor.tenantId,
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
-      dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
-      dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      dateFrom: payload?.filters?.dateFrom ?? dates.dateFrom,
+      dateTo: payload?.filters?.dateTo ?? dates.dateTo,
       actorRole: payload?.filters?.actorRole ?? actor.role,
     };
 
@@ -367,11 +343,12 @@ export class CashReportsService {
 
   async getCashClosings(query: CashListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const payload = await this.cashReportAdapter.getCashClosingsList(actor, {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
     });
 
     return this.normalizeCashClosingsListDataset(payload, actor, query);
@@ -410,11 +387,12 @@ export class CashReportsService {
 
   async getCashAudits(query: CashListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const payload = await this.cashReportAdapter.getCashAuditList(actor, {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
     });
 
     return this.normalizeCashAuditsListDataset(payload, actor, query);
@@ -432,11 +410,12 @@ export class CashReportsService {
 
   private async createCashClosingsDataset(query: CashListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
     };
     const rows = await this.documentExport.collect(
       (client) => this.cashReportAdapter.getCashClosingsExportCount(actor, filters, client),
@@ -468,11 +447,12 @@ export class CashReportsService {
 
   private async createCashAuditsDataset(query: CashListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
     };
     const rows = await this.documentExport.collect(
       (client) => this.cashReportAdapter.getCashAuditsExportCount(actor, filters, client),
@@ -508,8 +488,10 @@ export class CashReportsService {
       ["Reporte", title],
       ["Tenant", dataset.branding?.tenantName ?? dataset.filters.tenantId],
       ["Sucursal", dataset.branding?.branchName ?? dataset.filters.branchId ?? "Todas"],
-      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
-      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Desde", dataset.filters.dateFrom ? formatReportDateTime(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? formatReportDateTime(dataset.filters.dateTo) : ""],
+      ["Zona horaria", REPORT_TIME_ZONE],
+      ["Generado", formatReportDateTime(new Date())],
       ["Registros", dataset.rows.length],
     ]);
     sheet.getColumn(1).width = 24;
@@ -529,8 +511,8 @@ export class CashReportsService {
       ["Egresos", "totalOut", 16], ["Esperado", "expectedAmount", 16], ["Cierre monto", "closingAmount", 16],
       ["Diferencia", "difference", 16], ["Estado", "status", 16],
     ].map(([header, key, width]) => ({ header: String(header), key: String(key), width: Number(width) }));
-    dataset.rows.forEach((row) => sheet.addRow({ ...row, openedAt: new Date(row.openedAt), closedAt: row.closedAt ? new Date(row.closedAt) : null }));
-    this.formatCashSheet(sheet, ["openingAmount", "totalIn", "totalOut", "expectedAmount", "closingAmount", "difference"], ["openedAt", "closedAt"]);
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, openedAt: formatReportDateTime(row.openedAt), closedAt: row.closedAt ? formatReportDateTime(row.closedAt) : null }));
+    this.formatCashSheet(sheet, ["openingAmount", "totalIn", "totalOut", "expectedAmount", "closingAmount", "difference"], []);
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
@@ -545,8 +527,8 @@ export class CashReportsService {
       ["Terminal", "terminal", 20], ["Usuario", "countedBy", 26], ["Contado", "countedAmount", 16],
       ["Esperado", "expectedAmount", 16], ["Diferencia", "difference", 16], ["Estado sesión", "sessionStatus", 18], ["Notas", "notes", 32],
     ].map(([header, key, width]) => ({ header: String(header), key: String(key), width: Number(width) }));
-    dataset.rows.forEach((row) => sheet.addRow({ ...row, countedAt: new Date(row.countedAt) }));
-    this.formatCashSheet(sheet, ["countedAmount", "expectedAmount", "difference"], ["countedAt"]);
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, countedAt: formatReportDateTime(row.countedAt) }));
+    this.formatCashSheet(sheet, ["countedAmount", "expectedAmount", "difference"], []);
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
