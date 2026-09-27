@@ -18,7 +18,18 @@ import {
   setSaleStatus,
   setSelectedCustomerId,
   switchAccount,
+  POS_SALE_STATUSES,
+  POS_CART_PRICING_STATUSES,
+  type PosSaleStatus,
+  type PosCartPricingStatus,
 } from "../../../store/posCart";
+
+export {
+  POS_SALE_STATUSES,
+  POS_CART_PRICING_STATUSES,
+  type PosSaleStatus,
+  type PosCartPricingStatus,
+};
 
 export const usePosCartStore = () => {
   const dispatch = useAppDispatch();
