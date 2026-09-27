@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getEnvironment } from "../../desktop/electron/scripts/environments.mjs";
+import { QA_AGENT_VERSION } from "./agent-version.mjs";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const electronRoot = resolve(projectRoot, "..", "desktop", "electron");
@@ -16,7 +17,11 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const run = (cwd, args) => {
   const result = spawnSync(npmCommand, args, {
     cwd,
-    env: { ...process.env, MANUS_ENVIRONMENT: environment.name },
+    env: {
+      ...process.env,
+      MANUS_ENVIRONMENT: environment.name,
+      ...(environment.name === "qa" ? { MANUS_AGENT_VERSION: QA_AGENT_VERSION } : {}),
+    },
     stdio: "inherit",
     windowsHide: true,
     shell: process.platform === "win32",

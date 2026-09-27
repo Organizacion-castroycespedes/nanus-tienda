@@ -59,6 +59,44 @@ func TestBuildAgentEnvironmentUsesPersistedConfigOverInheritedPeripheralValues(t
 	}
 }
 
+func TestAgentPortOwnershipBlocksUnmanagedProcess(t *testing.T) {
+	if err := validateAgentPortOwnership(agentPortOwnership{PortAvailable: false}); err == nil {
+		t.Fatal("unmanaged process occupying Agent port must block before mutation")
+	}
+}
+
+func TestAgentPortOwnershipAllowsManagedServiceBeforeStop(t *testing.T) {
+	if err := validateAgentPortOwnership(agentPortOwnership{
+		PortAvailable:  false,
+		ServicePresent: true,
+		ServiceRunning: true,
+	}); err != nil {
+		t.Fatalf("running managed service should be eligible for controlled stop: %v", err)
+	}
+}
+
+func TestAgentPortOwnershipBlocksStoppedServiceWithOccupiedPort(t *testing.T) {
+	if err := validateAgentPortOwnership(agentPortOwnership{
+		PortAvailable:  false,
+		ServicePresent: true,
+	}); err == nil {
+		t.Fatal("occupied port with stopped service must remain blocked")
+	}
+}
+
+func TestHealthInstallationMatchesExpectedIdentity(t *testing.T) {
+	payload := map[string]any{"agentInstallationId": "installation-a"}
+	if !healthInstallationMatches(payload, "installation-a") {
+		t.Fatal("matching installation identity must pass")
+	}
+	if healthInstallationMatches(payload, "installation-b") {
+		t.Fatal("different installation identity must fail")
+	}
+	if !healthInstallationMatches(payload) {
+		t.Fatal("fresh install without previous identity must not require one")
+	}
+}
+
 func TestPOSPayloadValidRequiresCurrentPayload(t *testing.T) {
 	dir := t.TempDir()
 	current := filepath.Join(dir, "POS", "current")

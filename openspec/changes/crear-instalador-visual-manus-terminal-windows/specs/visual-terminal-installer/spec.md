@@ -50,6 +50,31 @@ The UI SHALL fit 1024x768, 1280x720, 1366x768 and 1920x1080 without horizontal o
 - **WHEN** viewport height is limited
 - **THEN** content scrolls internally while header and primary actions remain accessible
 
+### Requirement: Agent port ownership preflight
+
+The Installer Core SHALL verify ownership and availability of
+`127.0.0.1:4050` before copying or activating an Agent payload.
+
+#### Scenario: Unmanaged Agent blocks installation
+
+- **WHEN** the Agent port is occupied and `ManusPeripheralAgent` is missing or stopped
+- **THEN** installation stops before payload mutation with a sanitized diagnostic and does not terminate the occupying process
+
+#### Scenario: Managed Agent releases the port
+
+- **WHEN** the port is occupied by the running managed service
+- **THEN** the Core stops that service, confirms `STOPPED`, waits for the port to become available, and only then copies or activates the replacement
+
+#### Scenario: Health gate preserves identity
+
+- **WHEN** a managed upgrade or rollback starts the Agent
+- **THEN** health must match version, platform, architecture and the previous `agentInstallationId` when one was available; HTTP 200 alone is insufficient
+
+#### Scenario: Rollback is not merely file restoration
+
+- **WHEN** rollback reactivates the previous files but the service cannot start or health cannot match
+- **THEN** the result is `ROLLBACK_FAILED` and the UI does not claim successful restoration
+
 ### Requirement: User-friendly errors and cancellation
 The UI SHALL translate technical failures into actionable Spanish messages and SHALL require confirmation before cancellation can leave a partial installation.
 

@@ -26,12 +26,8 @@ import { setAuthStatus } from "../../store/authSlice";
 
 const loginBackgroundImage =
   process.env.LOGIN_BG_IMAGE ??
-  (process.env.NODE_ENV === "production"
-    ? "/logo-login-tablet.png"
-    : "/login-bg.jpg");
-const loginBrandName =
-  process.env.LOGIN_BRAND_NAME ??
-  (process.env.NODE_ENV === "production" ? "EMAUS POS" : "MANUS POS");
+  "/logo-login-tablet.png";
+const loginBrandName = process.env.LOGIN_BRAND_NAME ?? "EMAUS POS";
 
 const LoginPageContent = () => {
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";

@@ -1,14 +1,12 @@
 /** @type {import('next').NextConfig} */
+import { resolveLoginBranding } from "./lib/login-branding.mjs";
+
+const loginBranding = resolveLoginBranding(process.env);
+
 const nextConfig = {
   env: {
-    LOGIN_BG_IMAGE:
-      process.env.LOGIN_BG_IMAGE ??
-      (process.env.NODE_ENV === "production"
-        ? "/logo-login-tablet.png"
-        : "/login-bg.jpg"),
-    LOGIN_BRAND_NAME:
-      process.env.LOGIN_BRAND_NAME ??
-      (process.env.NODE_ENV === "production" ? "EMAUS POS" : "MANUS POS"),
+    LOGIN_BG_IMAGE: loginBranding.backgroundImage,
+    LOGIN_BRAND_NAME: loginBranding.brandName,
   },
   async rewrites() {
     const apiProxyTarget = process.env.API_PROXY_TARGET ?? "http://localhost:4020";

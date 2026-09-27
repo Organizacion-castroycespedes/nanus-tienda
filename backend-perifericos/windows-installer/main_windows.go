@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -324,6 +325,12 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 
 	layout := buildLayout(manifest)
 	layout.POSPreviousPresent = posPayloadValid(layout, manifest)
+	if err := preflightAgentPort(manifest); err != nil {
+		if preflightLogger != nil {
+			preflightLogger.Printf("lifecycle phase=PORT_PREFLIGHT_FAILURE targetVersion=%s error=%v", manifest.Version, err)
+		}
+		return err
+	}
 	if err := runCoreStep(observer, &sequence, stepPrepareFiles, func() error { return ensureBaseDirectories(layout) }); err != nil {
 		return err
 	}
@@ -350,6 +357,16 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 	rollbackPath := ""
 	repairBackupPath := ""
 	repairStagingPath := ""
+	previousInstallationID := ""
+	serviceWasRunning := false
+	if present, running, serviceErr := queryManagedService(manifest); serviceErr != nil {
+		return fmt.Errorf("query Manus service before install: %w", serviceErr)
+	} else if present {
+		serviceWasRunning = running
+	}
+	if serviceWasRunning {
+		previousInstallationID = readHealthInstallationID(manifest.HealthURL)
+	}
 
 	if err := runCoreStep(observer, &sequence, stepInstallAgent, func() error {
 		if sameVersion {
@@ -361,7 +378,22 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 			rollbackPath = repairBackupPath
 			return nil
 		}
+		if serviceWasRunning {
+			if err := stopService(manifest); err != nil {
+				return fmt.Errorf("stop managed Agent before activation: %w", err)
+			}
+			if err := waitForServiceStopped(manifest); err != nil {
+				return fmt.Errorf("managed Agent stop confirmation: %w", err)
+			}
+			if err := waitForAgentPortAvailable(); err != nil {
+				_ = startService(manifest)
+				return err
+			}
+		}
 		if err := copyBundleToVersion(layout, manifest); err != nil {
+			if serviceWasRunning {
+				_ = startService(manifest)
+			}
 			return fmt.Errorf("install copy payload: %w", err)
 		}
 		if err := copySelfExecutable(layout.ServiceExe); err != nil {
@@ -429,7 +461,9 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		return fmt.Errorf("start service: %w", err)
 	}
 
-	if err := runCoreStep(observer, &sequence, stepVerifyService, func() error { return waitForHealth(manifest) }); err != nil {
+	if err := runCoreStep(observer, &sequence, stepVerifyService, func() error {
+		return waitForHealthVersion(manifest, manifest.Version, previousInstallationID)
+	}); err != nil {
 		logger.Printf("health failed: %v", err)
 		_ = stopService(manifest)
 		if rollbackPath != "" {
@@ -1213,7 +1247,7 @@ func waitForHealth(manifest installerManifest) error {
 	return waitForHealthVersion(manifest, manifest.Version)
 }
 
-func waitForHealthVersion(manifest installerManifest, expectedVersion string) error {
+func waitForHealthVersion(manifest installerManifest, expectedVersion string, expectedInstallationID ...string) error {
 	timeout := envDurationSeconds("MANUS_INSTALLER_HEALTH_TIMEOUT_SECONDS", 60)
 	poll := envDurationSeconds("MANUS_INSTALLER_HEALTH_POLL_SECONDS", 2)
 	deadline := time.Now().Add(timeout)
@@ -1231,7 +1265,8 @@ func waitForHealthVersion(manifest installerManifest, expectedVersion string) er
 					if payload["status"] == "ok" &&
 						stringValue(payload["version"]) == expectedVersion &&
 						stringValue(payload["platform"]) == "win32" &&
-						stringValue(payload["architecture"]) == "x64" {
+						stringValue(payload["architecture"]) == "x64" &&
+						healthInstallationMatches(payload, expectedInstallationID...) {
 						return nil
 					}
 				}
@@ -1246,6 +1281,103 @@ func waitForHealthVersion(manifest installerManifest, expectedVersion string) er
 		lastErr = errors.New("health timeout")
 	}
 	return lastErr
+}
+
+func healthInstallationMatches(payload map[string]any, expectedInstallationID ...string) bool {
+	if len(expectedInstallationID) == 0 || expectedInstallationID[0] == "" {
+		return true
+	}
+	return stringValue(payload["agentInstallationId"]) == expectedInstallationID[0]
+}
+
+func readHealthInstallationID(healthURL string) string {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(healthURL)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return ""
+	}
+	return stringValue(payload["agentInstallationId"])
+}
+
+type agentPortOwnership struct {
+	PortAvailable  bool
+	ServicePresent bool
+	ServiceRunning bool
+}
+
+func validateAgentPortOwnership(state agentPortOwnership) error {
+	if state.PortAvailable {
+		return nil
+	}
+	if !state.ServicePresent {
+		return errors.New("Agent port 127.0.0.1:4050 is occupied by an unmanaged process; close it manually before installing")
+	}
+	if !state.ServiceRunning {
+		return errors.New("Agent port 127.0.0.1:4050 is occupied while ManusPeripheralAgent is stopped; process ownership is ambiguous")
+	}
+	return nil
+}
+
+func localAgentPortAvailable() bool {
+	listener, err := net.Listen("tcp", "127.0.0.1:4050")
+	if err != nil {
+		return false
+	}
+	_ = listener.Close()
+	return true
+}
+
+func waitForAgentPortAvailable() error {
+	timeout := envDurationSeconds("MANUS_INSTALLER_PORT_RELEASE_TIMEOUT_SECONDS", 30)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if localAgentPortAvailable() {
+			return nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return errors.New("Agent port 127.0.0.1:4050 did not become available after stopping the managed service")
+}
+
+func queryManagedService(manifest installerManifest) (present bool, running bool, err error) {
+	manager, err := mgr.Connect()
+	if err != nil {
+		return false, false, err
+	}
+	defer manager.Disconnect()
+	service, err := manager.OpenService(manifest.ServiceName)
+	if err != nil {
+		if isMissingServiceError(err) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	defer service.Close()
+	status, err := service.Query()
+	if err != nil {
+		return true, false, err
+	}
+	return true, status.State == svc.Running, nil
+}
+
+func preflightAgentPort(manifest installerManifest) error {
+	present, running, err := queryManagedService(manifest)
+	if err != nil {
+		return fmt.Errorf("cannot inspect ManusPeripheralAgent ownership: %w", err)
+	}
+	return validateAgentPortOwnership(agentPortOwnership{
+		PortAvailable:  localAgentPortAvailable(),
+		ServicePresent: present,
+		ServiceRunning: running,
+	})
 }
 
 func ensureSupportedHost() error {
@@ -1517,6 +1649,9 @@ func prepareSameVersionRepair(layout runtimeLayout, manifest installerManifest, 
 	if err := waitForServiceStopped(manifest); err != nil {
 		return "", "", err
 	}
+	if err := waitForAgentPortAvailable(); err != nil {
+		return "", "", fmt.Errorf("repair Agent port release: %w", err)
+	}
 	if logger != nil {
 		logger.Printf("repair service stopped")
 		logger.Printf("repair activation start oldTarget=%s backup=%s", layout.VersionRoot, backupPath)
@@ -1709,6 +1844,9 @@ func rollbackToPreviousVersion(
 		if err := waitForServiceStopped(manifest); err != nil {
 			return err
 		}
+		if err := waitForAgentPortAvailable(); err != nil {
+			return fmt.Errorf("rollback Agent port release: %w", err)
+		}
 		failedPath := filepath.Join(layout.VersionsRoot, ".failed-repair-"+fmt.Sprintf("%d-%d", time.Now().UnixNano(), os.Getpid()))
 		if err := os.Rename(layout.VersionRoot, failedPath); err != nil {
 			return fmt.Errorf("rollback preserve failed replacement: %w", err)
@@ -1741,6 +1879,9 @@ func rollbackToPreviousVersion(
 	}
 	if err := waitForServiceStopped(manifest); err != nil {
 		return fmt.Errorf("rollback service stop confirmation: %w", err)
+	}
+	if err := waitForAgentPortAvailable(); err != nil {
+		return fmt.Errorf("rollback Agent port release: %w", err)
 	}
 	if err := restorePreviousVersion(manifest, layout, rollbackPath, logger); err != nil {
 		return err

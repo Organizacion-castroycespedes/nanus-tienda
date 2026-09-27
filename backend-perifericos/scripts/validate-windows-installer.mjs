@@ -3,11 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { resolveAgentVersion } from "./agent-version.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
-const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${packageJson.version}-win-x64.exe`;
+const agentVersion = resolveAgentVersion({ packageVersion: packageJson.version });
+const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${agentVersion}-win-x64.exe`;
 const installerPath = join(
   projectRoot,
   "dist-installer",
@@ -22,7 +24,7 @@ const inspectOutput = execFileSync(installerPath, ["inspect"], {
   windowsHide: true,
 });
 const inspectData = JSON.parse(inspectOutput);
-assert.equal(inspectData.version, packageJson.version);
+assert.equal(inspectData.version, agentVersion);
 assert.equal(inspectData.serviceName, "ManusPeripheralAgent");
 assert.equal(inspectData.displayName, "Manus Peripheral Agent");
 assert.equal(inspectData.serviceAccount, "NT AUTHORITY\\LocalService");
