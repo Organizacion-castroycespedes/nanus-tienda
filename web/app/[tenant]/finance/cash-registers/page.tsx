@@ -45,9 +45,11 @@ const CashRegistersPage = () => {
   const authUser = useAppSelector((state) => state.auth.user);
   const role = authUser?.role ?? "";
   const tenantSlug = authUser?.tenantSlug ?? authUser?.tenantId ?? "default";
-  const [query, setQuery] = useState("");
-  const [branchFilter, setBranchFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [filters, setFilters] = useState({
+    query: "",
+    branchId: "",
+    status: "all",
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CashRegister | null>(null);
   const [form, setForm] = useState<CreateCashRegisterPayload>(emptyForm);
@@ -111,16 +113,16 @@ const CashRegistersPage = () => {
   ]);
 
   const filteredItems = useMemo(() => {
-    const normalized = normalizeSearch(query);
+    const normalized = normalizeSearch(filters.query);
 
     return cashRegisters.filter((item) => {
-      if (branchFilter && item.branchId !== branchFilter) {
+      if (filters.branchId && item.branchId !== filters.branchId) {
         return false;
       }
-      if (statusFilter === "active" && !item.activo) {
+      if (filters.status === "active" && !item.activo) {
         return false;
       }
-      if (statusFilter === "inactive" && item.activo) {
+      if (filters.status === "inactive" && item.activo) {
         return false;
       }
       if (!normalized) {
@@ -133,7 +135,7 @@ const CashRegistersPage = () => {
         item.terminalNombre ?? "",
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [branchFilter, cashRegisters, query, statusFilter]);
+  }, [cashRegisters, filters]);
 
   const openCreateModal = () => {
     setEditingItem(null);
@@ -344,13 +346,17 @@ const CashRegistersPage = () => {
           <Input
             label="Buscar"
             placeholder="Caja, codigo, sucursal o terminal"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={filters.query}
+            onChange={(event) =>
+              setFilters((prev) => ({ ...prev, query: event.target.value }))
+            }
           />
           <Select
             label="Sucursal"
-            value={branchFilter}
-            onChange={(event) => setBranchFilter(event.target.value)}
+            value={filters.branchId}
+            onChange={(event) =>
+              setFilters((prev) => ({ ...prev, branchId: event.target.value }))
+            }
           >
             <option value="">Todas</option>
             {branchOptions.map((branch) => (
@@ -361,8 +367,10 @@ const CashRegistersPage = () => {
           </Select>
           <Select
             label="Estado"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            value={filters.status}
+            onChange={(event) =>
+              setFilters((prev) => ({ ...prev, status: event.target.value }))
+            }
           >
             <option value="all">Todas</option>
             <option value="active">Activas</option>

@@ -277,32 +277,40 @@ const PosCartStateManager = () => {
 
 const InventoryScopeManager = () => {
   const dispatch = useAppDispatch();
-  const auth = useAppSelector((state) => state.auth);
-  const pos = useAppSelector((state) => state.pos);
+  const posTenantId = useAppSelector((state) => state.pos.tenantId);
+  const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const authTenantId = useAppSelector((state) => state.auth.tenantId);
+  const authUserTenantId = useAppSelector((state) => state.auth.user?.tenantId);
+  const authUserBranchId = useAppSelector((state) => state.auth.user?.branchId);
 
   useEffect(() => {
     dispatch(
       setInventoryScope({
-        currentTenant: pos.tenantId ?? auth.user?.tenantId ?? auth.tenantId ?? null,
-        currentBranch: pos.branchId ?? auth.user?.branchId ?? null,
+        currentTenant: posTenantId ?? authUserTenantId ?? authTenantId ?? null,
+        currentBranch: posBranchId ?? authUserBranchId ?? null,
       })
     );
-  }, [auth.tenantId, auth.user?.branchId, auth.user?.tenantId, dispatch, pos.branchId, pos.tenantId]);
+  }, [authTenantId, authUserBranchId, authUserTenantId, dispatch, posBranchId, posTenantId]);
 
   return null;
 };
 
 const LocalPeripheralSyncManager = () => {
-  const auth = useAppSelector((state) => state.auth);
-  const pos = useAppSelector((state) => state.pos);
+  const authUserId = useAppSelector((state) => state.auth.user?.id);
+  const authTenantId = useAppSelector((state) => state.auth.tenantId);
+  const authUserTenantId = useAppSelector((state) => state.auth.user?.tenantId);
+  const authUserBranchId = useAppSelector((state) => state.auth.user?.branchId);
+  const posTenantId = useAppSelector((state) => state.pos.tenantId);
+  const posBranchId = useAppSelector((state) => state.pos.branchId);
+  const posTerminalId = useAppSelector((state) => state.pos.terminalId);
   const lastSyncKey = useRef<string | null>(null);
 
   useEffect(() => {
-    const tenantId = pos.tenantId ?? auth.user?.tenantId ?? auth.tenantId ?? null;
-    const branchId = pos.branchId ?? auth.user?.branchId ?? null;
-    const terminalId = pos.terminalId ?? null;
-    const key = [auth.user?.id ?? "", tenantId ?? "", branchId ?? "", terminalId ?? ""].join(":");
-    if (!auth.user || !tenantId || !branchId || !terminalId || terminalId === "local-terminal" || lastSyncKey.current === key) {
+    const tenantId = posTenantId ?? authUserTenantId ?? authTenantId ?? null;
+    const branchId = posBranchId ?? authUserBranchId ?? null;
+    const terminalId = posTerminalId ?? null;
+    const key = [authUserId ?? "", tenantId ?? "", branchId ?? "", terminalId ?? ""].join(":");
+    if (!authUserId || !tenantId || !branchId || !terminalId || terminalId === "local-terminal" || lastSyncKey.current === key) {
       return;
     }
     void syncLocalPeripheralAssignments({
@@ -315,7 +323,7 @@ const LocalPeripheralSyncManager = () => {
         lastSyncKey.current = key;
       }
     });
-  }, [auth.tenantId, auth.user, pos.branchId, pos.terminalId, pos.tenantId]);
+  }, [authTenantId, authUserId, authUserBranchId, authUserTenantId, posBranchId, posTerminalId, posTenantId]);
 
   return null;
 };
