@@ -217,21 +217,22 @@ export class JwtAuthGuard implements CanActivate {
           payload.roles.includes("SUPER_ADMIN") ||
           payload.roles.includes("SUPER_USER"));
 
-      const params: unknown[] = [actorUserId, payload.tenant_id];
+      const params: unknown[] = [payload.tenant_id];
       const conditions = [
-        "session.tenant_id = $2",
+        "session.tenant_id = $1",
         "session.status = 'OPEN'",
       ];
 
       if (!isCashAdmin) {
+        params.push(actorUserId);
         conditions.push(
           `(
-            session.opened_by_user_id = $1
+            session.opened_by_user_id = $${params.length}
             OR EXISTS (
               SELECT 1
               FROM cash_register_user_assignments AS assignment
               WHERE assignment.cash_register_id = register.id
-                AND assignment.user_id = $1
+                AND assignment.user_id = $${params.length}
                 AND assignment.unassigned_at IS NULL
             )
           )`
