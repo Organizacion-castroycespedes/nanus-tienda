@@ -18,6 +18,7 @@ import posCartReducer, {
   setPosCartContext,
   setCartItems,
   switchAccount,
+  POS_SALE_STATUSES,
 } from "./posCart";
 
 const globalAny = globalThis as typeof globalThis & {
@@ -99,7 +100,7 @@ describe("POS sale submission recovery", () => {
     );
 
     assert.equal(storage.size, 1);
-    assert.equal(rehydrated.saleStatus, "UNKNOWN");
+    assert.equal(rehydrated.saleStatus, POS_SALE_STATUSES.UNKNOWN);
     assert.equal(rehydrated.saleAttempt?.attemptId, "attempt-a");
     assert.equal(rehydrated.items.length, 1);
   });
@@ -125,17 +126,17 @@ describe("POS sale submission recovery", () => {
       beginSaleSubmission({ attemptId: "attempt-a", startedAt: "2026-09-16T12:00:00.000Z" })
     );
     const unknown = posCartReducer(submitting, markSaleSubmissionUnknown());
-    const editAttempt = posCartReducer(unknown, setSaleStatus("DRAFT"));
+    const editAttempt = posCartReducer(unknown, setSaleStatus(POS_SALE_STATUSES.DRAFT));
     const cartEditAttempt = posCartReducer(unknown, setCartItems([]));
     const retryable = posCartReducer(unknown, allowSaleSubmissionRetry());
     const sameKeyRetry = posCartReducer(unknown, allowUnknownSaleRetry());
 
-    assert.equal(unknown.saleStatus, "UNKNOWN");
-    assert.equal(editAttempt.saleStatus, "UNKNOWN");
+    assert.equal(unknown.saleStatus, POS_SALE_STATUSES.UNKNOWN);
+    assert.equal(editAttempt.saleStatus, POS_SALE_STATUSES.UNKNOWN);
     assert.deepEqual(cartEditAttempt.items, unknown.items);
-    assert.equal(retryable.saleStatus, "DRAFT");
+    assert.equal(retryable.saleStatus, POS_SALE_STATUSES.DRAFT);
     assert.equal(retryable.saleAttempt, null);
-    assert.equal(sameKeyRetry.saleStatus, "DRAFT");
+    assert.equal(sameKeyRetry.saleStatus, POS_SALE_STATUSES.DRAFT);
     assert.equal(sameKeyRetry.saleAttempt?.attemptId, "attempt-a");
   });
 

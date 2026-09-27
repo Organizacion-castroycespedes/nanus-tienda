@@ -210,22 +210,28 @@ export type ScannerSimulateInput = {
   format?: string;
 };
 
+export const PERIPHERAL_ERROR_CODES = {
+  PERIPHERALS_DISABLED: "PERIPHERALS_DISABLED",
+  OPERATION_DISABLED: "OPERATION_DISABLED",
+  MISSING_CONFIG: "MISSING_CONFIG",
+  INVALID_CONFIG: "INVALID_CONFIG",
+  AGENT_OFFLINE: "AGENT_OFFLINE",
+  DEVICE_NOT_FOUND: "DEVICE_NOT_FOUND",
+  TIMEOUT: "TIMEOUT",
+  CONNECTION_REFUSED: "CONNECTION_REFUSED",
+  PRINT_ERROR: "PRINT_ERROR",
+  PRINTER_NOT_CONFIGURED: "PRINTER_NOT_CONFIGURED",
+  NETWORK_ERROR: "NETWORK_ERROR",
+  HTTP_ERROR: "HTTP_ERROR",
+  AGENT_ERROR: "AGENT_ERROR",
+  UNSUPPORTED_RUNTIME: "UNSUPPORTED_RUNTIME",
+} as const;
+
+export type PeripheralErrorCode =
+  (typeof PERIPHERAL_ERROR_CODES)[keyof typeof PERIPHERAL_ERROR_CODES];
+
 export type PeripheralOperationError = {
-  code:
-    | "PERIPHERALS_DISABLED"
-    | "OPERATION_DISABLED"
-    | "MISSING_CONFIG"
-    | "INVALID_CONFIG"
-    | "AGENT_OFFLINE"
-    | "DEVICE_NOT_FOUND"
-    | "TIMEOUT"
-    | "CONNECTION_REFUSED"
-    | "PRINT_ERROR"
-    | "PRINTER_NOT_CONFIGURED"
-    | "NETWORK_ERROR"
-    | "HTTP_ERROR"
-    | "AGENT_ERROR"
-    | "UNSUPPORTED_RUNTIME";
+  code: PeripheralErrorCode;
   message: string;
   operation: string;
   timestamp: string;
@@ -303,6 +309,15 @@ export type UpdateDeviceRequest = Partial<{
   metadata: Record<string, unknown>;
 }>;
 
+export const POS_TERMINAL_CONFIG_SOURCES = {
+  CONFIGURED: "CONFIGURED",
+  FALLBACK_MOCK: "FALLBACK_MOCK",
+  OPERATIONAL_UNCONFIGURED: "OPERATIONAL_UNCONFIGURED",
+} as const;
+
+export type PosTerminalConfigSource =
+  (typeof POS_TERMINAL_CONFIG_SOURCES)[keyof typeof POS_TERMINAL_CONFIG_SOURCES];
+
 export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
   /** @deprecated Legacy alias for agentTerminalCode. */
   terminalId: string | null;
@@ -318,7 +333,7 @@ export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
   name: string;
   mode: PosTerminalMode | null;
   active: boolean;
-  source: "CONFIGURED" | "FALLBACK_MOCK" | "OPERATIONAL_UNCONFIGURED";
+  source: PosTerminalConfigSource;
 };
 
 export type CreatePosTerminalRequest = {

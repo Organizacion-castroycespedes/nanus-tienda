@@ -31,7 +31,11 @@ import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
-import { usePosCartStore } from "../hooks/usePosCartStore";
+import {
+  POS_CART_PRICING_STATUSES,
+  POS_SALE_STATUSES,
+  usePosCartStore,
+} from "../hooks/usePosCartStore";
 import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
@@ -89,11 +93,13 @@ import {
 } from "../../shared/payments/payment-allocation.helper";
 import {
   buildSalePeripheralFeedbackMessage,
+  hasCashPeripheralPayment,
   runSalePeripheralOperations,
   type PosSalePeripheralContext,
 } from "../../../domains/peripherals/pos-sale-integration";
 import {
   getPeripheralFeatureFlags,
+  openCashDrawer,
   readCurrentWeight,
   simulateScannerRead,
   subscribeScannerEvents,
@@ -102,6 +108,8 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { useSalePrintWorkflow } from "../hooks/useSalePrintWorkflow";
 import {
   collectPosScannerProductCodes,
   findUniquePosScannerProduct,
@@ -438,7 +446,7 @@ const markPricingPending = (
   quantity,
   price: item.baseUnitPrice ?? item.price,
   priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
-  pricingStatus: "PENDING",
+  pricingStatus: POS_CART_PRICING_STATUSES.PENDING,
   pricingRequestKey,
   pricingError: null,
   finalUnitPrice: undefined,
@@ -464,7 +472,7 @@ const applyPricingPreview = (
   priceWithoutTax:
     preview.quantity > 0 ? round(preview.taxBase / preview.quantity) : item.priceWithoutTax,
   taxId: preview.taxId,
-  pricingStatus: "READY",
+  pricingStatus: POS_CART_PRICING_STATUSES.READY,
   pricingRequestKey,
   pricingError: null,
   baseUnitPrice: preview.baseUnitPrice,
@@ -489,7 +497,7 @@ const applyPricingError = (
   ...item,
   price: item.baseUnitPrice ?? item.price,
   priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
-  pricingStatus: "ERROR",
+  pricingStatus: POS_CART_PRICING_STATUSES.ERROR,
   pricingRequestKey,
   pricingError,
   finalUnitPrice: undefined,
@@ -605,6 +613,12 @@ export const PosScreen = () => {
   const [scaleLastResult, setScaleLastResult] = useState<string | null>(null);
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
+  const {
+    pdfConfig,
+    isBillingProcessing,
+    closePdfModal,
+    triggerPrintWorkflow,
+  } = useSalePrintWorkflow();
 
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -1458,7 +1472,7 @@ export const PosScreen = () => {
               item.productId === productId && item.pricingRequestKey === pricingRequestKey
                 ? {
                     ...item,
-                    pricingStatus: "PENDING",
+                    pricingStatus: POS_CART_PRICING_STATUSES.PENDING,
                     pricingError: "Precio pendiente de actualización",
                   }
                 : item
@@ -1598,7 +1612,7 @@ export const PosScreen = () => {
 
   const setProductQuantityInCart = useCallback(
     (product: ProductResponse, quantity: number) => {
-      setSaleStatus("DRAFT");
+      allowSaleSubmissionRetry();
       setSubmitError(null);
 
       const currentCart = cartRef.current;
@@ -1646,7 +1660,7 @@ export const PosScreen = () => {
       queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
       return true;
     },
-    [queueCartItemPricing, setSaleStatus, showToast]
+    [allowSaleSubmissionRetry, queueCartItemPricing, showToast]
   );
 
   const addToCart = useCallback(
@@ -2004,7 +2018,7 @@ export const PosScreen = () => {
   );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
-    setSaleStatus("DRAFT");
+    setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
 
     const currentCart = cartRef.current;
@@ -2019,7 +2033,7 @@ export const PosScreen = () => {
     }
 
     const safeQuantity = Math.min(nextQuantity, target.stock);
-    if (safeQuantity === target.quantity && target.pricingStatus !== "ERROR") {
+    if (safeQuantity === target.quantity && target.pricingStatus !== POS_CART_PRICING_STATUSES.ERROR) {
       return;
     }
 
@@ -2036,7 +2050,7 @@ export const PosScreen = () => {
   };
 
   const removeCartItem = (productId: string) => {
-    setSaleStatus("DRAFT");
+    setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
     setCartItemsAndRef(cartRef.current.filter((item) => item.productId !== productId));
   };
@@ -2059,7 +2073,7 @@ export const PosScreen = () => {
   };
 
   const reconcileUnknownSale = async () => {
-    if (saleStatus !== "UNKNOWN" || !saleAttempt) {
+    if (saleStatus !== POS_SALE_STATUSES.UNKNOWN || !saleAttempt) {
       return;
     }
 
@@ -2067,7 +2081,7 @@ export const PosScreen = () => {
     setSubmitError(null);
     try {
       const sale = await reconcileSale(saleAttempt.attemptId);
-      setSaleStatus("CONFIRMED");
+      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
       setCartItemsAndRef([]);
       setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
       setExpandedTaxItems({});
@@ -2490,7 +2504,7 @@ export const PosScreen = () => {
     paymentsOverride?: PaymentDraft[];
     customerIdOverride?: string | null;
   }) => {
-    if (saleStatus === "UNKNOWN") {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN) {
       setSubmitError(
         "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
       );
@@ -2562,7 +2576,7 @@ export const PosScreen = () => {
         { "Idempotency-Key": attempt.attemptId },
       );
 
-      setSaleStatus("CONFIRMED");
+      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
       // Successful checkout clears the persisted sale for this POS context.
       setCartItemsAndRef([]);
       setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
@@ -2606,7 +2620,34 @@ export const PosScreen = () => {
           };
         }),
       };
-      void handleSalePeripheralFeedback(salePeripheralContext);
+
+      // 1. Cash drawer opening on cash payments
+      if (hasCashPeripheralPayment(salePeripheralContext.payments)) {
+        const flags = getPeripheralFeatureFlags();
+        if (flags.peripheralsEnabled && flags.openDrawerEnabled) {
+          void openCashDrawer({
+            tenantId: authUser?.tenantId ?? undefined,
+            branchId: activeBranchId ?? undefined,
+            terminalId: posTerminalId ?? "local-terminal",
+            deviceId: "mock-cashdrawer-001",
+            reason: "SALE_CASH_PAYMENT",
+          }).then((drawerRes) => {
+            if (drawerRes.success) {
+              showToast("Cajón abierto", "success");
+            }
+          });
+        }
+      }
+
+      // 2. Document printing and electronic invoicing workflow
+      void triggerPrintWorkflow({
+        saleId: sale.id,
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId,
+        terminalId: posTerminalId ?? undefined,
+        electronicBillingEnabled: branding.electronicBillingEnabled !== false,
+        showToast,
+      });
 
       try {
         if (!activeBranchId) {
@@ -2638,7 +2679,9 @@ export const PosScreen = () => {
   };
 
   const renderedStatus =
-    saleStatus === "CONFIRMED" && cartWithDerivedValues.length === 0 ? "CONFIRMED" : "DRAFT";
+    saleStatus === POS_SALE_STATUSES.CONFIRMED && cartWithDerivedValues.length === 0
+      ? POS_SALE_STATUSES.CONFIRMED
+      : POS_SALE_STATUSES.DRAFT;
 
   if (!canRead) {
     return (
@@ -3314,6 +3357,36 @@ export const PosScreen = () => {
           onCustomerSelected={handleSelectPosCustomer}
           onCustomerSaved={handleFiscalCustomerSaved}
         />
+      ) : null}
+
+      {pdfConfig ? (
+        <PdfPreviewModal
+          isOpen={Boolean(pdfConfig)}
+          title={pdfConfig.title}
+          fileName={pdfConfig.fileName}
+          getPdf={pdfConfig.getPdf}
+          description={pdfConfig.description}
+          allowPrint={pdfConfig.allowPrint ?? true}
+          onClose={closePdfModal}
+        />
+      ) : null}
+
+      {isBillingProcessing ? (
+        <Modal
+          title="Facturación Electrónica"
+          onClose={() => {}}
+          size="md"
+        >
+          <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+            <div>
+              <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Procesando documento con el servicio fiscal. Por favor espere...
+              </p>
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );
