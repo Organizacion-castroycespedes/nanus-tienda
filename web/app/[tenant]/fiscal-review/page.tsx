@@ -45,7 +45,7 @@ const FiscalReviewPage = () => {
   );
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="space-y-6">
       <header>
         <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">Administración</p>
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Revisión fiscal</h1>
@@ -111,7 +111,7 @@ const FiscalReviewPage = () => {
           </tbody>
         </table>
       </section>
-    </main>
+    </div>
   );
 };
 

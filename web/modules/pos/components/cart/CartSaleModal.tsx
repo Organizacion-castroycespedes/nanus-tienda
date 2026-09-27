@@ -25,7 +25,6 @@ export type CartSaleLineItem = PosCartItem & {
   taxTotal: number;
   discountTotal: number;
 };
-
 export type CartSaleSummary = {
   subtotal: number;
   taxesTotal: number;
@@ -45,6 +44,7 @@ export type CartSaleItemPresentation = {
 
 type CartSaleModalProps = {
   open: boolean;
+  accountName?: string;
   items: CartSaleLineItem[];
   summary: CartSaleSummary;
   expandedTaxItems: Record<string, boolean>;
@@ -69,6 +69,7 @@ type CartSaleModalProps = {
 
 export const CartSaleModal = ({
   open,
+  accountName,
   items,
   summary,
   expandedTaxItems,
@@ -112,9 +113,16 @@ export const CartSaleModal = ({
             <ShoppingCart className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
-              Carrito de venta
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
+                Carrito de venta
+              </h3>
+              {accountName ? (
+                <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                  {accountName}
+                </span>
+              ) : null}
+            </div>
             <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
               Revisa productos, totales y cobra sin perder contexto.
             </p>
@@ -146,7 +154,7 @@ export const CartSaleModal = ({
         </>
       }
     >
-      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)]">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
         <section className="flex min-h-0 flex-col overflow-hidden">
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
@@ -191,7 +199,7 @@ export const CartSaleModal = ({
                   return (
                     <article
                       key={item.productId}
-                      className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900/80 sm:p-4"
+                      className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/80 sm:p-3"
                     >
                       <div className="flex items-start gap-3">
                         <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950 sm:h-16 sm:w-16">
@@ -259,11 +267,11 @@ export const CartSaleModal = ({
                                 </button>
                               </div>
 
-                              {presentation.isWeighable && scaleControlsVisible ? (
+                              {presentation.isWeighable ? (
                                 <button
                                   type="button"
                                   onClick={() => onReadScale(item.productId)}
-                                  disabled={scaleReading}
+                                  disabled={!scaleControlsVisible || scaleReading}
                                   className="inline-flex h-8 items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
                                 >
                                   {scaleReading ? (
@@ -368,7 +376,7 @@ export const CartSaleModal = ({
           </div>
         </section>
 
-        <aside className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/60 sm:p-4 md:overflow-y-auto">
+        <aside className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-b from-slate-50 to-blue-50/70 p-3 dark:border-slate-700 dark:from-slate-900 dark:to-blue-950/30 sm:p-4 md:overflow-y-auto">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
             <ShoppingBag className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             Resumen de pago

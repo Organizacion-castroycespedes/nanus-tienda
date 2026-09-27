@@ -240,6 +240,81 @@ export class ElectronicBillingService {
         client,
       );
       if (existing) {
+        if (existing.status !== "ACCEPTED" && !existing.provider_document_id) {
+          const updatedDoc = await this.documentRepository.updateDocumentForRecovery(
+            providerContext.tenantId,
+            existing.id,
+            {
+              status: "PENDING",
+              lastErrorCode: null,
+              lastErrorMessage: null,
+              providerStatusDetail: null,
+              subtotalAmount: command.totals.subtotalAmount,
+              discountAmount: command.totals.discountAmount,
+              taxAmount: command.totals.taxAmount,
+              totalAmount: command.totals.totalAmount,
+              metadata: {
+                ...(existing.metadata ?? {}),
+                ...(command.metadata ?? {}),
+                electronicBilling: buildBillingSnapshotMetadata(command),
+                [ELECTRONIC_BILLING_PROCESSING_STATE_KEY]: buildProcessingState("PRE_PROVIDER_CREATE"),
+              },
+            },
+            client,
+          );
+
+          await this.eventRepository.append(
+            {
+              id: getDocumentId(),
+              electronicDocumentId: existing.id,
+              eventType: "STATUS_CHANGED",
+              status: "PENDING",
+              providerStatus: null,
+              operation: "RESET_CORRECTED",
+              attempt: 1,
+              httpStatus: null,
+              errorCode: null,
+              errorMessage: null,
+              metadata: { reason: "Reset with corrected snapshot for recovery" },
+              createdAt: new Date(),
+            },
+            client,
+          );
+
+          const lines = await this.lineRepository.findByDocumentId(
+            providerContext.tenantId,
+            existing.id,
+            client,
+          );
+          const taxes = await this.taxRepository.findByDocumentId(
+            providerContext.tenantId,
+            existing.id,
+            client,
+          );
+          const references = await this.referenceRepository.findByDocumentId(
+            providerContext.tenantId,
+            existing.id,
+            client,
+          );
+          const events = await this.eventRepository.listByDocumentId(
+            providerContext.tenantId,
+            existing.id,
+            client,
+          );
+
+          if (ownsClient) {
+            await client.query("COMMIT");
+          }
+          return {
+            document: updatedDoc ?? existing,
+            lines,
+            taxes,
+            references,
+            events,
+            idempotent: false,
+          };
+        }
+
         const lines = await this.lineRepository.findByDocumentId(
           providerContext.tenantId,
           existing.id,

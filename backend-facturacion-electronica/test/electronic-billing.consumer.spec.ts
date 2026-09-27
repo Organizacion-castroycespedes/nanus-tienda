@@ -257,9 +257,14 @@ const buildHarness = (overrides: {
     }),
   };
 
+  const documentRepository = {
+    findByExternalReference: async () => null,
+  };
+
   const consumer = new SaleCompletedForElectronicBillingConsumerService(
     db as never,
     inboxRepository as never,
+    documentRepository as never,
     billingService as never,
     providerResolver as never,
   );

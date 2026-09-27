@@ -1812,6 +1812,72 @@ test("SaleService.getSaleById rejects an actor without tenant context", async ()
   );
 });
 
+test("SaleService dispatches an on-demand billing event immediately after commit", async () => {
+  const actions: string[] = [];
+  const client = {
+    query: async (text: string) => {
+      actions.push(text.trim());
+      return { rows: [] };
+    },
+    release: () => {
+      actions.push("RELEASE");
+    },
+  };
+  const service = new SaleService(
+    { getClient: async () => client as unknown as PoolClient } as never,
+    {} as never,
+    { logEvent: () => actions.push("AUDIT") } as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {
+      runOnceForEvent: async (eventId: string) => {
+        actions.push(`DISPATCH:${eventId}`);
+      },
+    } as never,
+  );
+
+  (service as unknown as {
+    normalizeSaleContext: () => Promise<Record<string, unknown>>;
+  }).normalizeSaleContext = async () => ({
+    tenantId: ids.tenant,
+    userId: ids.user,
+    roles: ["ADMIN"],
+  });
+  (service as unknown as {
+    requestElectronicBillingForSaleInTransaction: () => Promise<Record<string, unknown>>;
+  }).requestElectronicBillingForSaleInTransaction = async () => ({
+    saleId: ids.sale,
+    result: "REQUESTED",
+    eligibility: "ELIGIBLE",
+    requestCreated: true,
+    electronicDocumentId: null,
+    outboxEventId: "event-on-demand",
+  });
+
+  await service.requestElectronicBillingForSale(ids.sale, {
+    tenantId: ids.tenant,
+    userId: ids.user,
+    roles: ["ADMIN"],
+  });
+
+  assert.deepEqual(actions, [
+    "BEGIN",
+    "COMMIT",
+    "DISPATCH:event-on-demand",
+    "AUDIT",
+    "RELEASE",
+  ]);
+});
+
 test("SaleService classifies a draft electronic-billing snapshot as stale after confirmation", () => {
   const { service } = buildService();
   const customer = {
@@ -1847,4 +1913,46 @@ test("SaleService classifies a draft electronic-billing snapshot as stale after 
     ),
     false,
   );
+  assert.equal(
+    isStale.call(
+      service,
+      { payload: { ...event.payload, sale: { saleStatus: "CONFIRMED" }, customer: { ...customer, verificationDigit: "9" } } },
+      { status: "CONFIRMED", total: "119.00" },
+      { ...customer, verificationDigit: "3" },
+      currentLines,
+    ),
+    true,
+  );
 });
+
+test("SaleService validates verification digit presence for NIT customer fiscal data", () => {
+  const { service } = buildService();
+  const isComplete = (service as unknown as {
+    isElectronicBillingCustomerFiscalDataComplete: (customer: unknown) => boolean;
+  }).isElectronicBillingCustomerFiscalDataComplete;
+
+  const validNitCustomer = {
+    customerType: "COMPANY",
+    isFinalConsumer: false,
+    identificationNumber: "900123456",
+    identificationTypeCode: "31",
+    verificationDigit: "9",
+    legalName: "Empresa SAS",
+    countryCode: "CO",
+    countryName: "Colombia",
+    departmentCode: "05",
+    departmentName: "Antioquia",
+    municipalityCode: "05001",
+    cityName: "Medellin",
+    addressLine1: "Calle 10 # 20-30",
+    email: "factura@empresa.com",
+    taxLevelCode: "JURIDICA",
+    taxSchemeId: "ORDINARIO",
+    fiscalResponsibilityCodes: ["O-13"],
+  };
+
+  assert.equal(isComplete.call(service, validNitCustomer), true);
+  assert.equal(isComplete.call(service, { ...validNitCustomer, verificationDigit: "" }), false);
+  assert.equal(isComplete.call(service, { ...validNitCustomer, verificationDigit: null }), false);
+});
+

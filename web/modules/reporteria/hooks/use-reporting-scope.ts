@@ -24,28 +24,19 @@ export const useReportingScope = () => {
     inventoryScope.currentTenant ?? authUser?.tenantId ?? authTenantId ?? "";
   const currentBranchId = inventoryScope.currentBranch ?? authUser?.branchId ?? "";
 
-  const [tenantId, setTenantId] = useState(currentTenantId);
-  const [branchId, setBranchId] = useState(currentBranchId);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [tenantOptions, setTenantOptions] = useState<SelectorOption[]>([]);
   const [branchOptions, setBranchOptions] = useState<SelectorOption[]>([]);
   const [loadingTenants, setLoadingTenants] = useState(false);
   const [loadingBranches, setLoadingBranches] = useState(false);
 
-  useEffect(() => {
-    if (!permissions.showTenantSelector && currentTenantId && tenantId !== currentTenantId) {
-      setTenantId(currentTenantId);
-    }
-
-    if (permissions.showTenantSelector && !tenantId && currentTenantId) {
-      setTenantId(currentTenantId);
-    }
-  }, [currentTenantId, permissions.showTenantSelector, tenantId]);
-
-  useEffect(() => {
-    if (!permissions.showBranchSelector && branchId !== currentBranchId) {
-      setBranchId(currentBranchId);
-    }
-  }, [branchId, currentBranchId, permissions.showBranchSelector]);
+  const resolvedTenantId = permissions.showTenantSelector
+    ? selectedTenantId || currentTenantId
+    : currentTenantId;
+  const resolvedBranchId = permissions.showBranchSelector
+    ? selectedBranchId
+    : currentBranchId;
 
   useEffect(() => {
     if (!permissions.showTenantSelector) {
@@ -82,8 +73,7 @@ export const useReportingScope = () => {
   }, [permissions.showTenantSelector]);
 
   useEffect(() => {
-    const scopedTenantId = permissions.showTenantSelector ? tenantId : currentTenantId;
-    if (!scopedTenantId) {
+    if (!resolvedTenantId) {
       setBranchOptions(permissions.showBranchSelector ? [ALL_BRANCHES_OPTION] : []);
       return;
     }
@@ -91,7 +81,7 @@ export const useReportingScope = () => {
     let active = true;
     setLoadingBranches(true);
 
-    void listBranches({ tenantId: scopedTenantId })
+    void listBranches({ tenantId: resolvedTenantId })
       .then((items) => {
         if (!active) {
           return;
@@ -114,17 +104,17 @@ export const useReportingScope = () => {
           return;
         }
 
-        const branchExists = mappedBranches.some((item) => item.value === branchId);
-        if (branchId && branchExists) {
+        const branchExists = mappedBranches.some((item) => item.value === selectedBranchId);
+        if (selectedBranchId && branchExists) {
           return;
         }
 
         if (currentBranchId && mappedBranches.some((item) => item.value === currentBranchId)) {
-          setBranchId(currentBranchId);
+          setSelectedBranchId(currentBranchId);
           return;
         }
 
-        setBranchId("");
+        setSelectedBranchId("");
       })
       .finally(() => {
         if (active) {
@@ -136,16 +126,11 @@ export const useReportingScope = () => {
       active = false;
     };
   }, [
-    branchId,
     currentBranchId,
-    currentTenantId,
     permissions.showBranchSelector,
-    permissions.showTenantSelector,
-    tenantId,
+    resolvedTenantId,
+    selectedBranchId,
   ]);
-
-  const resolvedTenantId = permissions.showTenantSelector ? tenantId : currentTenantId;
-  const resolvedBranchId = permissions.showBranchSelector ? branchId : currentBranchId;
 
   const resolvedTenantLabel =
     tenantOptions.find((item) => item.value === resolvedTenantId)?.label ??
@@ -161,12 +146,12 @@ export const useReportingScope = () => {
     tenantId: resolvedTenantId,
     branchId: resolvedBranchId,
     setTenantId: (value: string) => {
-      setTenantId(value);
+      setSelectedTenantId(value);
       if (permissions.showBranchSelector) {
-        setBranchId("");
+        setSelectedBranchId("");
       }
     },
-    setBranchId,
+    setBranchId: setSelectedBranchId,
     tenantOptions,
     branchOptions,
     loadingTenants,

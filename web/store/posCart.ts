@@ -8,7 +8,24 @@ export type PaymentDraft = {
   financialInstitutionId?: string | null;
 };
 
-export type PosCartPricingStatus = "PENDING" | "READY" | "ERROR";
+export const POS_CART_PRICING_STATUSES = {
+  PENDING: "PENDING",
+  READY: "READY",
+  ERROR: "ERROR",
+} as const;
+
+export type PosCartPricingStatus =
+  (typeof POS_CART_PRICING_STATUSES)[keyof typeof POS_CART_PRICING_STATUSES];
+
+export const POS_SALE_STATUSES = {
+  DRAFT: "DRAFT",
+  SUBMITTING: "SUBMITTING",
+  UNKNOWN: "UNKNOWN",
+  CONFIRMED: "CONFIRMED",
+} as const;
+
+export type PosSaleStatus =
+  (typeof POS_SALE_STATUSES)[keyof typeof POS_SALE_STATUSES];
 
 export type PosCartAppliedTax = {
   taxId: string;
@@ -62,10 +79,21 @@ export type PosSaleAttempt = {
   startedAt: string;
 };
 
-export type PosSaleStatus = "DRAFT" | "SUBMITTING" | "UNKNOWN" | "CONFIRMED";
+export type PosCartAccount = {
+  id: string;
+  name: string;
+  items: PosCartItem[];
+  selectedCustomerId: string | null;
+  payments: PaymentDraft[];
+  saleStatus: PosSaleStatus;
+  saleAttempt: PosSaleAttempt | null;
+  createdAt: number;
+};
 
 export type PosCartState = PosCartContext & {
   contextKey: string | null;
+  accounts: PosCartAccount[];
+  activeAccountId: string;
   items: PosCartItem[];
   selectedCustomerId: string | null;
   payments: PaymentDraft[];
@@ -87,13 +115,58 @@ export const buildDefaultPayments = (): PaymentDraft[] => [
   },
 ];
 
-const buildEmptySaleState = () => ({
-  items: [] as PosCartItem[],
-  selectedCustomerId: null as string | null,
+export const buildDefaultAccount = (
+  id = "cuenta-1",
+  name = "Cuenta 1"
+): PosCartAccount => ({
+  id,
+  name,
+  items: [],
+  selectedCustomerId: null,
   payments: buildDefaultPayments(),
-  saleStatus: "DRAFT" as const,
-  saleAttempt: null as PosSaleAttempt | null,
+  saleStatus: POS_SALE_STATUSES.DRAFT,
+  saleAttempt: null,
+  createdAt: Date.now(),
 });
+
+const buildEmptySaleState = () => {
+  const defaultAccount = buildDefaultAccount();
+  return {
+    accounts: [defaultAccount],
+    activeAccountId: defaultAccount.id,
+    items: defaultAccount.items,
+    selectedCustomerId: defaultAccount.selectedCustomerId,
+    payments: defaultAccount.payments,
+    saleStatus: defaultAccount.saleStatus,
+    saleAttempt: defaultAccount.saleAttempt,
+  };
+};
+
+const syncActiveAccount = (state: PosCartState) => {
+  const activeAccount = state.accounts.find(
+    (acc) => acc.id === state.activeAccountId
+  );
+  if (activeAccount) {
+    activeAccount.items = state.items;
+    activeAccount.selectedCustomerId = state.selectedCustomerId;
+    activeAccount.payments = state.payments;
+    activeAccount.saleStatus = state.saleStatus;
+    activeAccount.saleAttempt = state.saleAttempt;
+  }
+};
+
+const loadAccountIntoState = (
+  state: PosCartState,
+  account: PosCartAccount
+) => {
+  state.activeAccountId = account.id;
+  state.items = account.items;
+  state.selectedCustomerId = account.selectedCustomerId;
+  state.payments =
+    account.payments.length > 0 ? account.payments : buildDefaultPayments();
+  state.saleStatus = account.saleStatus;
+  state.saleAttempt = account.saleAttempt;
+};
 
 export const buildPosCartStorageKey = (context: PosCartContext) => {
   if (
@@ -120,58 +193,154 @@ export const initialPosCartState: PosCartState = {
   ...buildEmptySaleState(),
 };
 
+const isValidCartItem = (item: unknown): item is PosCartItem =>
+  Boolean(item) &&
+  typeof (item as PosCartItem).productId === "string" &&
+  typeof (item as PosCartItem).name === "string" &&
+  typeof (item as PosCartItem).sku === "string" &&
+  typeof (item as PosCartItem).quantity === "number" &&
+  typeof (item as PosCartItem).price === "number" &&
+  typeof (item as PosCartItem).stock === "number" &&
+  (typeof (item as PosCartItem).taxId === "string" ||
+    (item as PosCartItem).taxId === null) &&
+  typeof (item as PosCartItem).priceWithoutTax === "number";
+
+const isValidPayment = (payment: unknown): payment is PaymentDraft =>
+  Boolean(payment) &&
+  typeof (payment as PaymentDraft).id === "string" &&
+  typeof (payment as PaymentDraft).paymentMethodId === "string" &&
+  typeof (payment as PaymentDraft).amount === "string" &&
+  typeof (payment as PaymentDraft).reference === "string";
+
 const normalizePersistedPosCartState = (value: unknown) => {
   if (!value || typeof value !== "object") {
     return buildEmptySaleState();
   }
 
-  const candidate = value as Partial<PosCartState>;
+  const candidate = value as Record<string, unknown>;
+
+  // Multi-account payload
+  if (Array.isArray(candidate.accounts) && candidate.accounts.length > 0) {
+    const normalizedAccounts: PosCartAccount[] = candidate.accounts.map(
+      (rawAcc, index) => {
+        const acc = (rawAcc && typeof rawAcc === "object"
+          ? rawAcc
+          : {}) as Partial<PosCartAccount>;
+        const items = Array.isArray(acc.items)
+          ? acc.items.filter(isValidCartItem)
+          : [];
+        const payments = Array.isArray(acc.payments)
+          ? acc.payments.filter(isValidPayment)
+          : [];
+        const persistedAttempt = acc.saleAttempt as Record<string, unknown> | null | undefined;
+        const rawSaleAttempt =
+          persistedAttempt &&
+          typeof persistedAttempt === "object" &&
+          typeof persistedAttempt.attemptId === "string" &&
+          typeof persistedAttempt.startedAt === "string"
+            ? (persistedAttempt as unknown as PosSaleAttempt)
+            : null;
+        const saleStatus: PosSaleStatus =
+          items.length === 0
+            ? POS_SALE_STATUSES.DRAFT
+            : acc.saleStatus === POS_SALE_STATUSES.CONFIRMED
+              ? POS_SALE_STATUSES.CONFIRMED
+              : acc.saleStatus === POS_SALE_STATUSES.UNKNOWN || acc.saleStatus === POS_SALE_STATUSES.SUBMITTING
+                ? POS_SALE_STATUSES.UNKNOWN
+                : POS_SALE_STATUSES.DRAFT;
+        const saleAttempt = items.length === 0 ? null : rawSaleAttempt;
+
+        return {
+          id:
+            typeof acc.id === "string" && acc.id
+              ? acc.id
+              : `cuenta-${index + 1}`,
+          name:
+            typeof acc.name === "string" && acc.name.trim()
+              ? acc.name.trim()
+              : `Cuenta ${index + 1}`,
+          items,
+          selectedCustomerId:
+            typeof acc.selectedCustomerId === "string"
+              ? acc.selectedCustomerId
+              : null,
+          payments: payments.length > 0 ? payments : buildDefaultPayments(),
+          saleStatus,
+          saleAttempt,
+          createdAt:
+            typeof acc.createdAt === "number" ? acc.createdAt : Date.now(),
+        };
+      }
+    );
+
+    const activeAccountId =
+      typeof candidate.activeAccountId === "string" &&
+      normalizedAccounts.some((acc) => acc.id === candidate.activeAccountId)
+        ? candidate.activeAccountId
+        : normalizedAccounts[0].id;
+
+    const activeAccount =
+      normalizedAccounts.find((acc) => acc.id === activeAccountId) ??
+      normalizedAccounts[0];
+
+    return {
+      accounts: normalizedAccounts,
+      activeAccountId: activeAccount.id,
+      items: activeAccount.items,
+      selectedCustomerId: activeAccount.selectedCustomerId,
+      payments: activeAccount.payments,
+      saleStatus: activeAccount.saleStatus,
+      saleAttempt: activeAccount.saleAttempt,
+    };
+  }
+
+  // Legacy single-cart payload
   const items = Array.isArray(candidate.items)
-    ? candidate.items.filter(
-        (item): item is PosCartItem =>
-          Boolean(item) &&
-          typeof item.productId === "string" &&
-          typeof item.name === "string" &&
-          typeof item.sku === "string" &&
-          typeof item.quantity === "number" &&
-          typeof item.price === "number" &&
-          typeof item.stock === "number" &&
-          (typeof item.taxId === "string" || item.taxId === null) &&
-          typeof item.priceWithoutTax === "number"
-      )
+    ? candidate.items.filter(isValidCartItem)
     : [];
   const payments = Array.isArray(candidate.payments)
-    ? candidate.payments.filter(
-        (payment): payment is PaymentDraft =>
-          Boolean(payment) &&
-          typeof payment.id === "string" &&
-          typeof payment.paymentMethodId === "string" &&
-          typeof payment.amount === "string" &&
-          typeof payment.reference === "string"
-      )
+    ? candidate.payments.filter(isValidPayment)
     : [];
-  const persistedAttempt = candidate.saleAttempt;
-  const saleAttempt =
+  const persistedAttempt = candidate.saleAttempt as Record<string, unknown> | null | undefined;
+  const rawSaleAttempt =
     persistedAttempt &&
     typeof persistedAttempt === "object" &&
     typeof persistedAttempt.attemptId === "string" &&
     typeof persistedAttempt.startedAt === "string"
-      ? persistedAttempt
+      ? (persistedAttempt as unknown as PosSaleAttempt)
       : null;
   const saleStatus: PosSaleStatus =
-    candidate.saleStatus === "CONFIRMED"
-      ? "CONFIRMED"
-      : candidate.saleStatus === "UNKNOWN" || candidate.saleStatus === "SUBMITTING"
-        ? "UNKNOWN"
-        : "DRAFT";
+    items.length === 0
+      ? POS_SALE_STATUSES.DRAFT
+      : candidate.saleStatus === POS_SALE_STATUSES.CONFIRMED
+        ? POS_SALE_STATUSES.CONFIRMED
+        : candidate.saleStatus === POS_SALE_STATUSES.UNKNOWN || candidate.saleStatus === POS_SALE_STATUSES.SUBMITTING
+          ? POS_SALE_STATUSES.UNKNOWN
+          : POS_SALE_STATUSES.DRAFT;
+  const saleAttempt = items.length === 0 ? null : rawSaleAttempt;
 
-  return {
+  const singleAccount: PosCartAccount = {
+    id: "cuenta-1",
+    name: "Cuenta 1",
     items,
     selectedCustomerId:
-      typeof candidate.selectedCustomerId === "string" ? candidate.selectedCustomerId : null,
+      typeof candidate.selectedCustomerId === "string"
+        ? candidate.selectedCustomerId
+        : null,
     payments: payments.length > 0 ? payments : buildDefaultPayments(),
     saleStatus,
     saleAttempt,
+    createdAt: Date.now(),
+  };
+
+  return {
+    accounts: [singleAccount],
+    activeAccountId: singleAccount.id,
+    items: singleAccount.items,
+    selectedCustomerId: singleAccount.selectedCustomerId,
+    payments: singleAccount.payments,
+    saleStatus: singleAccount.saleStatus,
+    saleAttempt: singleAccount.saleAttempt,
   };
 };
 
@@ -202,55 +371,167 @@ const posCartSlice = createSlice({
         return;
       }
 
-      Object.assign(state, normalizePersistedPosCartState(action.payload.snapshot));
+      Object.assign(
+        state,
+        normalizePersistedPosCartState(action.payload.snapshot)
+      );
     },
     setCartItems(state, action: PayloadAction<PosCartItem[]>) {
-      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN
+      ) {
         return;
       }
       state.items = action.payload;
+      syncActiveAccount(state);
     },
     setSelectedCustomerId(state, action: PayloadAction<string | null>) {
-      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN
+      ) {
         return;
       }
       state.selectedCustomerId = action.payload;
+      syncActiveAccount(state);
     },
     setPayments(state, action: PayloadAction<PaymentDraft[]>) {
-      if (state.saleStatus === "SUBMITTING" || state.saleStatus === "UNKNOWN") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN
+      ) {
         return;
       }
-      state.payments = action.payload.length > 0 ? action.payload : buildDefaultPayments();
+      state.payments =
+        action.payload.length > 0 ? action.payload : buildDefaultPayments();
+      syncActiveAccount(state);
     },
     setSaleStatus(state, action: PayloadAction<PosSaleStatus>) {
-      if (state.saleStatus === "UNKNOWN" && action.payload === "DRAFT") {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN &&
+        action.payload === POS_SALE_STATUSES.DRAFT &&
+        state.items.length > 0
+      ) {
         return;
       }
       state.saleStatus = action.payload;
-      if (action.payload === "DRAFT") {
+      if (action.payload === POS_SALE_STATUSES.DRAFT) {
         state.saleAttempt = null;
       }
+      syncActiveAccount(state);
     },
     beginSaleSubmission(state, action: PayloadAction<PosSaleAttempt>) {
-      state.saleStatus = "SUBMITTING";
+      state.saleStatus = POS_SALE_STATUSES.SUBMITTING;
       state.saleAttempt = action.payload;
+      syncActiveAccount(state);
     },
     markSaleSubmissionUnknown(state) {
       if (state.saleAttempt) {
-        state.saleStatus = "UNKNOWN";
+        state.saleStatus = POS_SALE_STATUSES.UNKNOWN;
+        syncActiveAccount(state);
       }
     },
     allowSaleSubmissionRetry(state) {
-      state.saleStatus = "DRAFT";
+      state.saleStatus = POS_SALE_STATUSES.DRAFT;
       state.saleAttempt = null;
+      syncActiveAccount(state);
     },
     allowUnknownSaleRetry(state) {
-      if (state.saleStatus === "UNKNOWN" && state.saleAttempt) {
-        state.saleStatus = "DRAFT";
+      if (
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN &&
+        state.saleAttempt
+      ) {
+        state.saleStatus = POS_SALE_STATUSES.DRAFT;
+        syncActiveAccount(state);
       }
     },
     resetPosCartSale(state) {
-      Object.assign(state, buildEmptySaleState());
+      state.items = [];
+      state.selectedCustomerId = null;
+      state.payments = buildDefaultPayments();
+      state.saleStatus = POS_SALE_STATUSES.DRAFT;
+      state.saleAttempt = null;
+      syncActiveAccount(state);
+    },
+    addAccount: {
+      reducer(
+        state,
+        action: PayloadAction<{ name?: string } | undefined>
+      ) {
+        syncActiveAccount(state);
+        const nextNum = state.accounts.length + 1;
+        const name = action.payload?.name?.trim() || `Cuenta ${nextNum}`;
+        const newAccount: PosCartAccount = {
+          id: `cuenta-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          name,
+          items: [],
+          selectedCustomerId: null,
+          payments: buildDefaultPayments(),
+          saleStatus: POS_SALE_STATUSES.DRAFT,
+          saleAttempt: null,
+          createdAt: Date.now(),
+        };
+        state.accounts.push(newAccount);
+        loadAccountIntoState(state, newAccount);
+      },
+      prepare(options?: { name?: string }) {
+        return { payload: options };
+      },
+    },
+    switchAccount(state, action: PayloadAction<string>) {
+      const targetId = action.payload;
+      if (targetId === state.activeAccountId) {
+        return;
+      }
+      syncActiveAccount(state);
+      const targetAccount = state.accounts.find((acc) => acc.id === targetId);
+      if (targetAccount) {
+        loadAccountIntoState(state, targetAccount);
+      }
+    },
+    renameAccount(
+      state,
+      action: PayloadAction<{ id: string; name: string }>
+    ) {
+      const { id, name } = action.payload;
+      const cleanName = name.trim();
+      if (!cleanName) {
+        return;
+      }
+      const target = state.accounts.find((acc) => acc.id === id);
+      if (target) {
+        target.name = cleanName;
+      }
+    },
+    removeAccount(state, action: PayloadAction<string>) {
+      const targetId = action.payload;
+      if (state.accounts.length <= 1) {
+        state.items = [];
+        state.selectedCustomerId = null;
+        state.payments = buildDefaultPayments();
+        state.saleStatus = POS_SALE_STATUSES.DRAFT;
+        state.saleAttempt = null;
+        if (state.accounts[0]) {
+          state.accounts[0].name = "Cuenta 1";
+          state.accounts[0].items = [];
+          state.accounts[0].selectedCustomerId = null;
+          state.accounts[0].payments = buildDefaultPayments();
+          state.accounts[0].saleStatus = POS_SALE_STATUSES.DRAFT;
+          state.accounts[0].saleAttempt = null;
+        }
+        return;
+      }
+
+      const index = state.accounts.findIndex((acc) => acc.id === targetId);
+      if (index >= 0) {
+        state.accounts.splice(index, 1);
+        if (state.activeAccountId === targetId) {
+          const nextActive =
+            state.accounts[Math.max(0, index - 1)] ?? state.accounts[0];
+          loadAccountIntoState(state, nextActive);
+        }
+      }
     },
     clearPosCartState() {
       return {
@@ -294,19 +575,34 @@ export const persistPosCartState = (state: PosCartState) => {
   }
 
   try {
-    if (state.items.length === 0) {
+    const totalItems = state.accounts.reduce(
+      (sum, acc) => sum + acc.items.length,
+      0
+    );
+    if (totalItems === 0 && state.accounts.length <= 1) {
       window.localStorage.removeItem(state.contextKey);
       return;
     }
 
+    const accountsToPersist = state.accounts.map((acc) => {
+      if (acc.id === state.activeAccountId) {
+        return {
+          ...acc,
+          items: state.items,
+          selectedCustomerId: state.selectedCustomerId,
+          payments: state.payments,
+          saleStatus: state.saleStatus,
+          saleAttempt: state.saleAttempt,
+        };
+      }
+      return acc;
+    });
+
     window.localStorage.setItem(
       state.contextKey,
       JSON.stringify({
-        items: state.items,
-        selectedCustomerId: state.selectedCustomerId,
-        payments: state.payments,
-        saleStatus: state.saleStatus,
-        saleAttempt: state.saleAttempt,
+        accounts: accountsToPersist,
+        activeAccountId: state.activeAccountId,
       })
     );
   } catch {
@@ -348,6 +644,10 @@ export const {
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,
   resetPosCartSale,
+  addAccount,
+  switchAccount,
+  renameAccount,
+  removeAccount,
   clearPosCartState,
 } = posCartSlice.actions;
 

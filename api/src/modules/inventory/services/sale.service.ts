@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   Optional,
   NotFoundException,
   UnauthorizedException,
@@ -54,6 +55,7 @@ import {
   type BranchScopedFilters,
 } from "../utils/access";
 import { IntegrationOutboxService } from "../../integration-outbox/services/integration-outbox.service";
+import { IntegrationOutboxDispatcher } from "../../integration-outbox/services/integration-outbox-dispatcher";
 import type {
   BuildSaleCompletedForElectronicBillingEventInput,
   SaleLineSnapshot,
@@ -80,6 +82,7 @@ import {
   normalizeVatResponsibility,
   type VatResponsibility,
 } from "../../tenants/vat-responsibility";
+import { calculateDianDv, isDvApplicable } from "../../electronic-invoicing/dian-dv";
 
 type SaleListRow = SaleRow & {
   branch_id: string;
@@ -330,6 +333,8 @@ export const normalizeElectronicBillingTaxForQuantity = (input: {
 
 @Injectable()
 export class SaleService {
+  private readonly logger = new Logger(SaleService.name);
+
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(SaleRepository) private readonly repository: SaleRepository,
@@ -361,7 +366,10 @@ export class SaleService {
     private readonly electronicInvoicingCustomersRepository?: ElectronicInvoicingCustomersRepository,
     @Optional()
     @Inject(ParametersService)
-    private readonly parametersService?: ParametersService
+    private readonly parametersService?: ParametersService,
+    @Optional()
+    @Inject(IntegrationOutboxDispatcher)
+    private readonly integrationOutboxDispatcher?: IntegrationOutboxDispatcher,
   ) {}
 
   private toNumber(value: string | number) {
@@ -919,7 +927,16 @@ export class SaleService {
         resolvedCustomer?.documentTypeCode ??
         null,
       identificationNumber,
-      verificationDigit: resolvedCustomer?.verificationDigit ?? null,
+      verificationDigit:
+        resolvedCustomer?.verificationDigit ??
+        (isDvApplicable(
+          resolvedCustomer?.dianIdentificationType ??
+            resolvedCustomer?.documentTypeCode ??
+            null
+        )
+          ? calculateDianDv(identificationNumber)
+          : null) ??
+        null,
       legalName,
       firstName,
       familyName,
@@ -1170,9 +1187,14 @@ export class SaleService {
   ) {
     const requiresPersonNames =
       customer.customerType === "PERSON" && customer.isFinalConsumer !== true;
+    const isNit =
+      customer.identificationTypeCode?.trim().toUpperCase() === "31" ||
+      customer.identificationTypeCode?.trim().toUpperCase() === "NIT" ||
+      customer.identificationType?.trim().toUpperCase() === "NIT";
     return Boolean(
       customer.identificationNumber?.trim() &&
         customer.identificationTypeCode?.trim() &&
+        (!isNit || customer.verificationDigit?.trim()) &&
         customer.legalName?.trim() &&
         customer.countryCode?.trim() &&
         customer.countryName?.trim() &&
@@ -1238,6 +1260,7 @@ export class SaleService {
         payload.customer?.departmentCode !== currentCustomer.departmentCode ||
         payload.customer?.municipalityCode !== currentCustomer.municipalityCode ||
         payload.customer?.identificationNumber !== currentCustomer.identificationNumber ||
+        payload.customer?.verificationDigit !== currentCustomer.verificationDigit ||
         payload.customer?.legalName !== currentCustomer.legalName ||
         payload.customer?.email !== currentCustomer.email ||
         payload.customer?.addressLine1 !== currentCustomer.addressLine1,
@@ -1779,6 +1802,15 @@ export class SaleService {
         client,
       );
       await client.query("COMMIT");
+      if (result.outboxEventId && this.integrationOutboxDispatcher) {
+        try {
+          await this.integrationOutboxDispatcher.runOnceForEvent(result.outboxEventId);
+        } catch (error) {
+          this.logger.warn(
+            `Immediate electronic billing dispatch failed for sale ${saleId}; background dispatch remains active: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -2783,6 +2815,7 @@ export class SaleService {
 
       return this.getSaleById(saleRow.id, saleContext);
     } catch (error) {
+      console.error("[SaleService.createSale] Error:", error);
       await client.query("ROLLBACK");
       throw error;
     } finally {

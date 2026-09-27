@@ -167,16 +167,18 @@ export const rehydrateSession = async (accessToken: string, fallbackEmail?: stri
   const baseUser = buildUserFromToken(accessToken, fallbackEmail);
   store.dispatch(setUser(baseUser));
 
-  try {
-    const profile = await requestJson<AuthProfile>("/auth/me", {
+  await Promise.all([
+    requestJson<AuthProfile>("/auth/me", {
       headers: getAuthHeader(accessToken),
-    });
-    applyProfileToState(profile, role);
-  } catch {
-    // keep base user if profile fetch fails
-  }
-
-  await rehydrateMenuAndPermissions(accessToken, tenantId, tenantSlug);
+    })
+      .then((profile) => {
+        applyProfileToState(profile, role);
+      })
+      .catch(() => {
+        // keep base user if profile fetch fails
+      }),
+    rehydrateMenuAndPermissions(accessToken, tenantId, tenantSlug),
+  ]);
 };
 
 export const refreshSession = async (): Promise<string | null> => {

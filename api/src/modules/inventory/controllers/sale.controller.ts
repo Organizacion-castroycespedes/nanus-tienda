@@ -94,7 +94,11 @@ export class SaleController {
 
   private getSaleContext(request: AuthRequest) {
     if (request.context) {
-      return request.context;
+      return {
+        roles: Array.isArray(request.user?.roles) ? request.user.roles : [],
+        sessionId: request.user?.sessionId,
+        ...request.context,
+      };
     }
 
     const tenantId = request.user?.tenantId;

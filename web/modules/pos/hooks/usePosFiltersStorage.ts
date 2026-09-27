@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { PosStockFilterKey } from "../utils/product-classification";
 
 type ProductViewMode = "grid" | "list";
@@ -37,7 +37,7 @@ export const usePosFiltersStorage = () => {
     }
   }, []);
 
-  const updateFilters = (updates: Partial<PosFiltersState>) => {
+  const updateFilters = useCallback((updates: Partial<PosFiltersState>) => {
     setFilters((current) => {
       const nextState = { ...current, ...updates };
       if (typeof window !== "undefined") {
@@ -52,10 +52,11 @@ export const usePosFiltersStorage = () => {
       }
       return nextState;
     });
-  };
+  }, []);
 
   return {
     filters,
     updateFilters,
   };
 };
+

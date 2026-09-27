@@ -7,6 +7,7 @@ import { DocumentExportService } from "./document-export.service";
 import { SalesReportAdapter } from "./sql-adapters/sales-report.adapter";
 import { OperationalSalesReportAdapter } from "./sql-adapters/operational-sales-report.adapter";
 import { OperationalSalesReportScopeService } from "./operational-sales-report-scope.service";
+import { formatReportDateTime, REPORT_TIME_ZONE, resolveReportDateRange } from "./report-date-range";
 import type { OperationalSalesReportDataset, OperationalSalesReportQuery } from "./types/operational-sales-report.types";
 
 @Injectable()
@@ -27,7 +28,9 @@ export class OperationalSalesReportsService {
       const value = result[key];
       if (typeof value === "string") (result[key] as string) = value.trim() as never;
     }
-    if (result.dateFrom && result.dateTo && result.dateTo < result.dateFrom) throw new BadRequestException("dateTo must be greater than or equal to dateFrom");
+    const dates = resolveReportDateRange(result);
+    result.dateFrom = dates.dateFrom;
+    result.dateTo = dates.dateTo;
     result.sortBy = ["createdAt", "total", "status"].includes(result.sortBy ?? "") ? result.sortBy : "createdAt";
     result.sortDirection = result.sortDirection === "ASC" ? "ASC" : "DESC";
     return result;
@@ -49,11 +52,11 @@ export class OperationalSalesReportsService {
     const dataset = await this.dataset(query, user, posSessionId);
     const workbook = new ExcelJS.Workbook();
     const summary = workbook.addWorksheet("Resumen");
-    summary.addRows([[dataset.branding.legalName ?? dataset.branding.tenantName ?? ""], [dataset.branding.nit ? `NIT ${dataset.branding.nit}` : ""], ["Reporte", "Ventas operativas"], ["Registros", dataset.rows.length], ["Total", dataset.rows.reduce((sum, row) => sum + row.total, 0)]]);
+    summary.addRows([[dataset.branding.legalName ?? dataset.branding.tenantName ?? ""], [dataset.branding.nit ? `NIT ${dataset.branding.nit}` : ""], ["Reporte", "Ventas operativas"], ["Desde", formatReportDateTime(dataset.query.dateFrom)], ["Hasta", formatReportDateTime(dataset.query.dateTo)], ["Zona horaria", REPORT_TIME_ZONE], ["Generado", formatReportDateTime(new Date())], ["Registros", dataset.rows.length], ["Total", dataset.rows.reduce((sum, row) => sum + row.total, 0)]]);
     const sheet = workbook.addWorksheet("Ventas", { views: [{ state: "frozen", ySplit: 1 }] });
     sheet.columns = [{ header: "Venta", key: "id", width: 38 }, { header: "Fecha", key: "createdAt", width: 22 }, { header: "Cliente", key: "customerName", width: 28 }, { header: "Sucursal", key: "branchName", width: 24 }, { header: "Estado", key: "status", width: 18 }, { header: "Estado pago", key: "paymentStatus", width: 18 }, { header: "Facturación electrónica", key: "electronicBillingStatus", width: 28 }, { header: "Documento", key: "electronicDocumentNumber", width: 24 }, { header: "Total", key: "total", width: 16 }];
-    dataset.rows.forEach((row) => sheet.addRow(row));
-    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } }; sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } }; sheet.getColumn("total").numFmt = "#,##0.00"; sheet.getColumn("createdAt").numFmt = "yyyy-mm-dd hh:mm";
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, createdAt: formatReportDateTime(row.createdAt) }));
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } }; sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } }; sheet.getColumn("total").numFmt = "#,##0.00";
     return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
 }

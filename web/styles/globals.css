@@ -2,6 +2,10 @@
 
 @custom-variant dark (&:is(.dark *), .dark);
 
+@theme {
+  --breakpoint-xs: 480px;
+}
+
 /* The POS cart uses the viewport only on compact POS/mobile screens. */
 @media (max-width: 767px), (max-width: 1024px) and (max-height: 768px) {
   .cart-sale-modal-overlay {
@@ -203,14 +207,7 @@
 }
 
 .login-background {
-  background-image: url("/logo-login.png");
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
-}
-
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .login-background {
-    background-image: url("/logo-login-tablet.png");
-  }
 }
