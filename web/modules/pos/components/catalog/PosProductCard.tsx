@@ -120,12 +120,15 @@ export const PosProductCard = memo(
 
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <span className="max-w-full truncate">{product.sku}</span>
-                <span className="text-slate-300 dark:text-slate-600">•</span>
-                <span className="text-slate-600 dark:text-slate-300">
-                  {productSaleTypeLabels[productSaleType]} /{" "}
-                  {product.measurementUnit ??
-                    (productSaleType === "UNIT" ? "UND" : "KG")}
-                </span>
+                {productSaleType !== "UNIT" ? (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      {productSaleTypeLabels[productSaleType]} /{" "}
+                      {product.measurementUnit ?? "KG"}
+                    </span>
+                  </>
+                ) : null}
               </div>
 
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -198,7 +201,11 @@ export const PosProductCard = memo(
                 altText={effectiveImage.altText}
                 lazy
                 className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                fallback={<span>{buildImageLabel(product.name)}</span>}
+                fallback={
+                  <span className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-base font-bold tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                    {buildImageLabel(product.name)}
+                  </span>
+                }
               />
             </div>
             <div className="absolute left-2.5 top-2.5 flex max-w-[calc(100%-1.25rem)] flex-wrap gap-1.5">
@@ -230,26 +237,29 @@ export const PosProductCard = memo(
               </h3>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <span className="max-w-full truncate">{product.sku}</span>
-                <span className="text-slate-300 dark:text-slate-600">•</span>
-                <span className="text-slate-600 dark:text-slate-300">
-                  {productSaleTypeLabels[productSaleType]} /{" "}
-                  {product.measurementUnit ??
-                    (productSaleType === "UNIT" ? "UND" : "KG")}
-                </span>
+                {productSaleType !== "UNIT" ? (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      {productSaleTypeLabels[productSaleType]} /{" "}
+                      {product.measurementUnit ?? "KG"}
+                    </span>
+                  </>
+                ) : null}
               </div>
             </div>
 
-            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">
+            <div className="mt-auto flex items-end justify-between gap-2 pt-1.5">
               <div>
                 <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                   Precio final
                 </p>
-                <p className="mt-0.5 text-[1.05rem] font-semibold leading-none text-slate-950 dark:text-white">
+                <p className="mt-1 text-[1.1rem] font-bold leading-none tabular-nums text-slate-950 dark:text-white">
                   {formattedPrice}
                 </p>
               </div>
               <span
-                className={`inline-flex h-10 min-w-10 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
+                className={`inline-flex h-10 min-w-10 items-center justify-center rounded-xl px-2.5 text-sm font-bold transition-colors ${actionTone}`}
               >
                 {requiresScale ? (
                   scaleMockEnabled ? (
