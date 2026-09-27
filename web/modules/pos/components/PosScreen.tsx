@@ -3181,7 +3181,7 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1400px]:grid-cols-6"
+                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
                       : "grid gap-2.5"
                   }
                 >
