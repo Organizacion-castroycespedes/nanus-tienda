@@ -80,6 +80,7 @@ import { getCurrentCashSession } from "../../modules/finance/services/finance.se
 import type { CashSession } from "../../modules/finance/types";
 import {
   getPeripheralDevices,
+  getPeripheralFeatureFlags,
   subscribePeripheralEvents,
   type PeripheralSocketStatus,
 } from "../../domains/peripherals/contracts";
@@ -340,6 +341,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    const flags = getPeripheralFeatureFlags();
+    if (!flags.peripheralsEnabled) {
+      setPrinterSocketStatus("DISCONNECTED");
+      return;
+    }
     return subscribePeripheralEvents(() => undefined, {
       onStatus: setPrinterSocketStatus,
     });
@@ -349,7 +355,8 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const loadPrinterName = async () => {
-      if (!authUser?.tenantId) {
+      const flags = getPeripheralFeatureFlags();
+      if (!flags.peripheralsEnabled || !authUser?.tenantId) {
         setPrinterName(null);
         setPeripheralDevices([]);
         return;
