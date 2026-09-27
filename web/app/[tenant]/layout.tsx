@@ -1622,7 +1622,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             id="contenido-principal"
             className="flex-1 overflow-y-auto overscroll-contain"
           >
-            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8">
+            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8 xs:px-1">
               {children}
             </div>
             <footer

@@ -30,6 +30,7 @@ import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { usePosCartStore } from "../hooks/usePosCartStore";
 import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
@@ -525,6 +526,7 @@ export const PosScreen = () => {
     resetPosCartSale,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
+  const confirm = useConfirm();
   const canRead = hasMenuAccess("POS", "READ");
   const canCreate = hasMenuAccess("POS", "WRITE");
 
@@ -2099,13 +2101,21 @@ export const PosScreen = () => {
     summary.total,
   ]);
 
-  const cancelCurrentSale = useCallback(() => {
+  const cancelCurrentSale = useCallback(async () => {
     if (cartRef.current.length > 0) {
-      const confirmed = window.confirm(
-        "¿Cancelar la venta actual? Se vaciará el carrito."
-      );
-      if (!confirmed) {
-        return;
+      try {
+        await confirm({
+          title: "¿Cancelar la venta actual?",
+          description: "Se vaciará el carrito y se restablecerá la venta en curso.",
+          confirmText: "Aceptar",
+          cancelText: "Cancelar",
+          variant: "danger",
+        });
+      } catch (error) {
+        if (isConfirmCancelledError(error)) {
+          return;
+        }
+        throw error;
       }
     }
     resetPosCartSale();
@@ -2116,6 +2126,7 @@ export const PosScreen = () => {
     setCartSheetOpen(false);
     setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
   }, [
+    confirm,
     finalConsumerCustomer?.id,
     resetPosCartSale,
     setCartItemsAndRef,

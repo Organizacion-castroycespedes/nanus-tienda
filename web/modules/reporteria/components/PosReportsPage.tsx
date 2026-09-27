@@ -370,7 +370,7 @@ const PosReportsPage = () => {
       ...(showElectronicBilling
         ? [{
             key: "billingStatus",
-            header: "Facturación electrónica",
+            header: "Facturación",
             render: (row: PosSalesListRow) => (
               <div>
                 <p className="text-sm font-medium text-slate-700">
