@@ -19,3 +19,17 @@ test("installation identity is not a terminal or peripheral identity", () => {
   assert.notEqual(identity.installationId, identity.terminalId);
   assert.notEqual(identity.deviceId, identity.peripheralId);
 });
+
+test("credential registration rejects non-SHA256 verifier before database access", async () => {
+  await assert.rejects(
+    () => service().registerCredential({ deviceId: "device-a", credentialId: "cred-a", verifierSha256: "plain-token" }, actor),
+    /verifierSha256/
+  );
+});
+
+test("SCALE binding rejects an empty logical identifier before database access", async () => {
+  await assert.rejects(
+    () => service().bindScale({ branchId: "branch-a", posTerminalId: "pos-a", operationalTerminalId: "terminal-a", deviceId: "device-a", logicalScaleId: " " }, actor),
+    /logicalScaleId/
+  );
+});

@@ -9,6 +9,9 @@ export class TerminalDevicesController { constructor(@Inject(TerminalDevicesServ
   @Post("register") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) register(@Body() p: RegisterTerminalDeviceDto, @Req() r: R) { return this.service.register(p, this.actor(r)); }
   @Get() @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" }) list(@Query("tenantId") t: string|undefined, @Req() r: R) { return this.service.list(this.actor(r), t); }
   @Get(":id") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" }) get(@Param("id") id: string, @Req() r: R) { return this.service.get(id, this.actor(r)); }
+  @Post(":id/credentials") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) credential(@Param("id") id: string, @Body() p: { credentialId: string; verifierSha256: string; expiresAt?: string | null }, @Req() r: R) { return this.service.registerCredential({ ...p, deviceId: id }, this.actor(r)); }
+  @Get(":id/credentials") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" }) credentials(@Param("id") id: string, @Req() r: R) { return this.service.credentials(this.actor(r), id); }
+  @Post(":id/credentials/:credentialId/revoke") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) revokeCredential(@Param("credentialId") id: string, @Req() r: R) { return this.service.revokeCredential(id, this.actor(r)); }
 }
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard) @Roles("SUPER_ADMIN") @Controller("terminal-device-bindings")
 export class TerminalDeviceBindingsController { constructor(@Inject(TerminalDevicesService) private readonly service: TerminalDevicesService) {} private actor(r: R) { return { roles: r.user?.roles ?? [], tenantId: r.user?.tenantId, userId: r.user?.id }; }
@@ -16,4 +19,7 @@ export class TerminalDeviceBindingsController { constructor(@Inject(TerminalDevi
   @Post() @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) bind(@Body() p: CreateTerminalDeviceBindingDto, @Req() r: R) { return this.service.bind(p, this.actor(r)); }
   @Post("unbind") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) unbind(@Body() p: TerminalDeviceBindingActionDto, @Req() r: R) { return this.service.unbind(p, this.actor(r)); }
   @Post("revoke") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) revoke(@Body() p: TerminalDeviceBindingActionDto, @Req() r: R) { return this.service.revoke(p, this.actor(r)); }
+  @Get("scale") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "READ" }) scaleList(@Query("terminalId") id: string|undefined, @Req() r: R) { return this.service.scaleBindings(this.actor(r), id); }
+  @Post("scale") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) scaleBind(@Body() p: { branchId: string; posTerminalId: string; operationalTerminalId: string; deviceId: string; logicalScaleId: string }, @Req() r: R) { return this.service.bindScale(p, this.actor(r)); }
+  @Post("scale/:id/revoke") @RequirePermission({ menuKey: MENU_KEYS.CONFIG_TERMINALS, level: "WRITE" }) scaleRevoke(@Param("id") id: string, @Req() r: R) { return this.service.revokeScale(id, this.actor(r)); }
 }

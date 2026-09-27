@@ -79,6 +79,181 @@ Frontend identifiers are hints, not proof. The backend and local Agent must corr
 
 The implementation should extend the existing local Agent/Electron capability rather than create a remote endpoint or a parallel service. The exact HTTP/IPC shape remains an implementation detail to be selected after confirming the current runtime trust boundary and compatibility with other peripherals.
 
+## Fase 2C.2A: protocolo y persistencia propuestos
+
+Esta sección es diseño. No describe funcionalidades implementadas.
+
+### Hechos que fijan el diseño
+
+- `terminal_devices` registra una instalación Agent por `installation_id` y contiene `tenant_id`.
+- `terminal_device_bindings` vincula una instalación con una terminal del mismo tenant y limita vínculos activos.
+- `pos_terminal_peripheral_settings.scale_device_id` es texto y no tiene FK hacia `terminal_devices` ni hacia el JSON local del Agent.
+- `FileAgentInstallationStateStore` guarda `agent-installation-id` local con permisos `0600`; ese valor no es secreto.
+- `PeripheralDevice` puede contener `descriptor.agentInstallationId`, `nativeIdentifier` y `fingerprint`, pero el registro local no es autoridad cloud.
+- `backend-perifericos/src/main.ts` configura bind, CORS y Private Network Access, pero no instala autenticación de mensajes Agent.
+- `ScaleController` recibe `terminalId` y `deviceId` del cliente. `ScaleService` usa el registro local y devuelve el MOCK `1.25 kg`.
+- `web/domains/peripherals/api.ts` usa IPC tipado en Electron y HTTP loopback en WEB. No existe credencial Agent específica en esos canales.
+
+### Protocolo recomendado de credencial
+
+Se recomienda una credencial aleatoria de alta entropía por instalación Agent, no un JWT de usuario y no un hash usado como secreto HMAC.
+
+```text
+PENDING_ENROLLMENT -> ACTIVE -> ROTATING -> REVOKED
+```
+
+Enrolamiento:
+
+1. Un administrador autenticado solicita enrolamiento para un tenant y terminal permitidos.
+2. El backend crea un desafío de un solo uso y una respuesta de enrolamiento con expiración corta.
+3. El instalador/Agent genera o recibe una credencial una sola vez por un canal protegido.
+4. El backend guarda solo un verificador KDF y nunca devuelve el secreto después del enrolamiento.
+5. El Agent guarda el secreto en Windows Credential Manager/DPAPI o equivalente aprobado. El archivo `agent-installation-id` continúa siendo solo identidad local.
+6. El backend asocia la credencial a `terminal_devices.id`, tenant y estado de enrolamiento.
+
+Petición autenticada propuesta:
+
+```text
+agentInstallationId
+credentialId
+requestId/nonce
+audience
+operation
+terminalBindingId
+issuedAt
+expiresAt
+proof
+```
+
+El servidor valida la credencial activa, la audiencia, el nonce no usado, el timestamp, la instalación, el tenant, la terminal y la operación. El Agent valida que la petición corresponda a su instalación y a su configuración local. El nonce se consume de forma atómica. La respuesta no se reutiliza.
+
+No se recomienda almacenar el secreto en `sessionStorage`, `localStorage`, una página WEB, el renderer Electron, logs, query strings o JSON de periféricos.
+
+Rotación y revocación:
+
+- una sola credencial nueva puede estar en transición;
+- la credencial anterior expira en una ventana corta y controlada;
+- `REVOKED` bloquea inmediatamente nuevas peticiones;
+- reinstalación crea una nueva instalación y revoca la anterior;
+- recuperación requiere un nuevo enrolamiento administrativo;
+- cada emisión, rotación y revocación genera auditoría cloud.
+
+La biblioteca KDF, el almacén Windows y la protección del canal requieren aprobación de Seguridad. No son mecanismos existentes confirmados.
+
+### Migración A propuesta: `terminal_device_credentials`
+
+No se crea en esta fase. La migración debe seguir el runner de `scripts/database/migrations` y el estilo transaccional existente.
+
+Esquema mínimo propuesto:
+
+| Campo | Tipo propuesto | Regla |
+|---|---|---|
+| `id` | `uuid` | PK, `gen_random_uuid()` |
+| `tenant_id` | `uuid` | FK a `tenants`, obligatorio |
+| `terminal_device_id` | `uuid` | FK compuesta con `(id, tenant_id)` de `terminal_devices` |
+| `credential_id` | `text` | único por instalación activa |
+| `verifier` | `text`/`bytea` | KDF; nunca secreto plano |
+| `status` | `text` | `PENDING`, `ACTIVE`, `ROTATING`, `REVOKED` |
+| `issued_at` | `timestamptz` | obligatorio |
+| `expires_at` | `timestamptz` | obligatorio para credencial temporal o rotación |
+| `rotated_at` | `timestamptz` | nullable |
+| `revoked_at` | `timestamptz` | nullable |
+| `last_used_at` | `timestamptz` | nullable |
+| `created_by` | `uuid` | actor administrativo, nullable en recuperación controlada |
+| `created_at`, `updated_at` | `timestamptz` | convención existente |
+
+Restricciones mínimas:
+
+- FK `(terminal_device_id, tenant_id)`;
+- índice `(tenant_id, status)`;
+- índice por `terminal_device_id`;
+- unicidad de una credencial `ACTIVE` por instalación;
+- estado y fechas coherentes;
+- revocación dentro de una transacción;
+- no devolver `verifier` por DTO administrativo.
+
+Extender `terminal_devices` sería menor en columnas, pero mezcla identidad de instalación con historial de credenciales. Se recomienda tabla separada para rotación, auditoría y revocación.
+
+### Migración B propuesta: `terminal_scale_bindings`
+
+Esquema mínimo propuesto:
+
+| Campo | Tipo propuesto | Regla |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `tenant_id` | `uuid` | FK a `tenants` |
+| `branch_id` | `uuid` | FK a `tenant_branches` del mismo tenant |
+| `terminal_id` | `uuid` | FK compuesta a terminal y tenant |
+| `terminal_device_id` | `uuid` | FK compuesta a `terminal_devices` y tenant |
+| `logical_scale_id` | `text` | ID lógico declarado por Agent; no COM/PnP |
+| `status` | `text` | `PENDING`, `ACTIVE`, `REVOKED`, `UNBOUND` |
+| `unit_verified` | `boolean` | false por defecto |
+| `unit_verified_at` | `timestamptz` | nullable |
+| `last_probe_at` | `timestamptz` | nullable |
+| `last_observed_at` | `timestamptz` | nullable |
+| `revoked_at`, `revocation_reason` | según convención | nullable |
+| `created_at`, `updated_at` | `timestamptz` | convención existente |
+
+Restricciones mínimas:
+
+- FK tenant-terminal-sucursal;
+- FK tenant-terminal-device;
+- terminal activa y Agent no revocado antes de activar;
+- índice parcial para un binding `ACTIVE` por terminal;
+- índice parcial para un binding `ACTIVE` por `(terminal_device_id, logical_scale_id)`;
+- rechazo de duplicados activos;
+- transacción única para reemplazo y revocación;
+- `branch_id` debe coincidir con la terminal;
+- no FK hacia `PeripheralDevice`, porque ese registro es local al Agent.
+
+`pos_terminal_peripheral_settings.scale_device_id` sigue siendo compatible. La nueva relación sería autoridad para clasificación REAL futura. Un ID administrativo no coincidente con `logical_scale_id` produce `UNKNOWN` y bloqueo.
+
+### Contratos propuestos
+
+No son endpoints existentes.
+
+1. Enrolamiento Agent: emitir desafío, aceptar prueba, crear o rotar credencial.
+2. Binding Agent-terminal: reutilizar `POST /terminal-device-bindings` y añadir validación de credencial Agent cuando el binding sea operativo.
+3. Binding SCALE: operación administrativa transaccional para crear, reemplazar, habilitar y revocar `terminal_scale_bindings`.
+4. Probe local: Agent autenticado declara `logicalScaleId`, descriptor opaco, driver, `unitVerified`, timestamp y `requestId`.
+5. Estado: backend publica de forma aditiva `agentBinding`, `scaleBinding`, `physicalState`, `unitState`, `observedAt` y `expiresAt` solo cuando estén respaldados.
+6. `/pos-terminals/resolve-current` conserva `source`, `scaleDeviceId`, `features.scale` y el bloque `scale` de Fase 2B. Sin prueba Agent conserva `UNKNOWN`.
+
+`REAL_AVAILABLE` requiere vínculo activo, credencial activa, probe autenticado reciente, dispositivo local coincidente, KG verificado y TTL vigente. No autoriza por sí mismo una venta; la autorización corta y la evidencia consumible siguen siendo posteriores.
+
+### Transporte
+
+Electron debe usar el bridge tipado existente. El renderer no guarda ni firma con la credencial. El proceso principal solicita al backend el desafío y habla con el Agent autorizado.
+
+WEB usa hoy HTTP loopback y CORS. Eso no basta. Para REAL se requiere un handshake de un solo uso: backend emite desafío, navegador lo entrega al Agent, Agent responde con prueba, backend valida y devuelve solo estado temporal. Si el navegador no puede completar ese handshake, permanece `UNKNOWN`. No se agrega un endpoint localhost sin autenticación.
+
+### Amenazas y controles
+
+| Amenaza | Control |
+|---|---|
+| Suplantar `installationId` | Credencial activa y binding cloud |
+| Replay | Nonce consumible, timestamp y TTL |
+| Robo local | Almacén OS, rotación y revocación |
+| Petición maliciosa a localhost | Auth Agent, origin allowlist como capa adicional, no como identidad |
+| Cross-tenant | FK compuestas y validación de actor/tenant |
+| Agent revocado | Revisión transaccional antes de cada probe/estado |
+| Doble asignación | Índices parciales únicos |
+| Cambio USB/PnP | Estado físico local nuevo, probe nuevo y expiración |
+| Fuga en logs | Nunca registrar secreto, verifier, nonce completo o COM sensible |
+
+### Orden de implementación y rollback
+
+1. Aprobar protocolo, KDF, almacén Windows y canal WEB.
+2. Crear Migración A y servicio de enrolamiento.
+3. Crear Migración B y servicio de binding.
+4. Añadir middleware de autenticación al Agent.
+5. Implementar Detectar/Probar sin ventas.
+6. Publicar estado aditivo en `resolve-current`.
+7. Adaptar Electron y bloquear WEB hasta cerrar su handshake.
+8. Probar revocación, expiración y aislamiento.
+
+Rollback: desactivar la capacidad, revocar credenciales y bindings, conservar las columnas y configuraciones antiguas, devolver `UNKNOWN`, y no eliminar migraciones con datos activos. No se toca `mock-scale-001`.
+
 ## AS-IS and gap
 
 - Product sale model is persisted and validated, but POS handling of `BOTH` is not an explicit mode-selection flow.
@@ -274,6 +449,19 @@ La alternativa final necesita aprobacion humana de seguridad. No se inventa una 
 La asignacion administrativa, la vinculacion Agent, la prueba fisica y la disponibilidad son estados distintos. Una observacion Agent debe tener timestamp y TTL. Desconexion, error, revocacion, cambio de terminal, cambio de USB o vencimiento deben pasar a estado seguro e invalidar cualquier autorizacion pendiente. `mock-scale-001` permanece MOCK y nunca cruza el gate REAL.
 
 ### Gate para implementar
+
+### Fase 2D implementada localmente
+
+Se prepararon `V095__terminal_device_credentials.sql` y
+`V096__terminal_scale_bindings.sql`, además de rutas administrativas bajo
+`terminal-devices` y `terminal-device-bindings`. El backend no entrega tokens: recibe solo un
+`credentialId` público y un verificador SHA-256 de un token generado fuera de este flujo, y nunca
+devuelve el verificador. La vinculación exige tenant, sucursal, `pos_terminal`, terminal operativa,
+Agent registrado y binding Agent-terminal activo; el SCALE es un `logicalScaleId` opaco y no una FK
+al JSON local `PeripheralDevice`.
+
+Las migraciones no fueron aplicadas. El enrolamiento TLS, SecureSecretStore DPAPI, anti-replay,
+prueba física, disponibilidad `REAL_AVAILABLE` y captura comercial permanecen bloqueados.
 
 No se autoriza codigo Fase 2C.1 hasta confirmar: mecanismo de autenticacion de instalacion, relacion persistente Agent--SCALE, pertenencia tenant/sucursal, canal autorizado WEB/Electron--Agent, revocacion, doble asignacion, prueba local ROCHI y rollback. La ausencia de cualquiera mantiene `UNKNOWN` y bloquea `REAL_AVAILABLE`.
 

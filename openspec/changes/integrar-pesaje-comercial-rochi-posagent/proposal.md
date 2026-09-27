@@ -4,6 +4,12 @@ Manus ya guarda el modelo de venta `UNIT`, `WEIGHT` y `BOTH`. El flujo de `/pos`
 
 ## What Changes
 
+### Fase 2D — registro administrativo seguro
+
+Esta fase agrega únicamente el registro administrativo de credenciales de instalación y la
+vinculación tenant-aware entre terminal, instalación Agent y SCALE lógico. No emite secretos,
+no autentica todavía al Agent y no habilita lecturas ni ventas `REAL`.
+
 - Reutilizar `saleType` y `measurementUnit` existentes para distinguir ventas por unidad, peso y elección unidad/peso.
 - Definir el flujo POS para que `UNIT` no dependa de una balanza, `WEIGHT` solicite pesaje y `BOTH` permita elegir explícitamente el modo de venta.
 - Ocultar por completo los elementos permanentes de balanza en `/pos` cuando la terminal no tenga balanza asignada y habilitada; mostrar avisos solo en el intento contextual de una operación que requiere peso.
@@ -52,6 +58,23 @@ Propuesta: reutilizar la identidad autenticada de la instalacion y el binding cl
 - Dependencia: `integrar-balanza-rochi-a01e` permanece independiente y conserva pendiente su tarea 4.6.
 
 Fase 2B implementa una extension aditiva minima en `resolve-current`: `scale.assignment`, `scale.classification` y `scale.deviceId`. El backend clasifica `mock-scale-001` como `MOCK` y cualquier otra asignacion como `UNKNOWN`; no inventa `REAL`. La vinculacion verificable tenant--sucursal--terminal--instalacion Agent--dispositivo SCALE, la autorizacion corta y la prueba de posesion del Agent siguen pendientes. No se acepta `UNKNOWN`, un `scaleDeviceId` no vacio ni `source=CONFIGURED` como prueba REAL.
+
+## Fase 2C.2A: diseño implementable de confianza Agent--SCALE
+
+Esta fase documental concreta el protocolo y las migraciones mínimas propuestas para desbloquear la implementación posterior. No ejecuta migraciones, no crea credenciales, no modifica código y no habilita pesaje REAL.
+
+Decisión propuesta: usar una credencial aleatoria de alta entropía, única por instalación Agent, entregada una sola vez durante un enrolamiento administrativo autorizado. El backend conserva únicamente un verificador derivado con KDF de contraseña apropiado y metadatos de ciclo de vida; el Agent conserva el secreto en el almacén protegido del sistema operativo. No se usa HMAC con un hash de contraseña, no se guarda el secreto en WEB/Electron renderer y no se acepta `installationId`, CORS, loopback o un ID de dispositivo como autenticación.
+
+La petición autenticada debe incluir desafío de un solo uso, audiencia, operación, instalación, timestamp y expiración. El backend valida tenant, sucursal, terminal, binding, credencial activa, nonce no consumido y ventana temporal. La revocación invalida inmediatamente. La rotación usa una ventana de transición limitada y una sola credencial nueva activa al finalizar.
+
+Se proponen dos migraciones aditivas, aún no creadas:
+
+- `terminal_device_credentials`: credencial revocable ligada a `terminal_devices.id`, con verificador, estado, emisión, expiración, rotación, revocación y auditoría.
+- `terminal_scale_bindings`: vínculo tenant--sucursal--terminal--instalación Agent--SCALE lógico, con estado, verificación KG, última prueba y revocación. No contiene COM, PnP ni parámetros seriales.
+
+La tabla existente `terminal_device_bindings` se reutiliza para la relación instalación Agent--terminal. `pos_terminal_peripheral_settings.scale_device_id` se conserva por compatibilidad, pero una disponibilidad REAL futura exige además un `terminal_scale_bindings` activo y una observación autenticada reciente del Agent. El `PeripheralDevice` JSON local no se convierte en FK cloud.
+
+Electron puede usar el bridge tipado existente. WEB no puede usar el canal localhost actual para REAL sin un desafío autenticado y de un solo uso. CORS y loopback son controles de transporte, no identidad. La decisión final de almacén seguro Windows, KDF y protocolo de desafío requiere aprobación de Seguridad/Infraestructura antes de código.
 
 ## Fase 2A documental: identidad y vinculación REAL/MOCK
 

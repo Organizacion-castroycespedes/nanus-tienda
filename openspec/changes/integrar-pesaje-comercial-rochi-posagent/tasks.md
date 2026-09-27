@@ -38,6 +38,22 @@
 - [ ] 3A.6 Verificar compatibilidad de Electron y WEB; bloquear WEB si solo existe localhost/CORS sin autenticacion Agent suficiente.
 - [ ] 3A.7 Cubrir tenant/sucursal/terminal ajenos, Agent revocado, dispositivo falso, peticion local no autorizada, MOCK, duplicado, desconexion, expiracion y rollback. Ninguna tarea esta completada por esta documentacion.
 
+## 3B. Fase 2C.2A - protocolo implementable pendiente de aprobación
+
+- [ ] 3B.1 Aprobar credencial aleatoria por instalación, KDF/verificador, almacenamiento protegido Windows, rotación, expiración, revocación y auditoría. No usar `installationId`, CORS o loopback como autenticación.
+- [ ] 3B.2 Crear y probar la migración propuesta `terminal_device_credentials` con FK tenant--`terminal_devices`, una credencial activa por instalación, estados y transacciones de revocación. Migración no creada ni ejecutada en esta fase documental.
+- [ ] 3B.3 Crear y probar la migración propuesta `terminal_scale_bindings` con FK tenant--sucursal--terminal--`terminal_devices`, `logical_scale_id`, unicidad activa, estados y verificación KG. No crear FK hacia el JSON local `PeripheralDevice`.
+- [ ] 3B.4 Implementar enrolamiento y middleware Agent con nonce, audiencia, TTL, anti-replay y rechazo de credencial revocada. Código pendiente.
+- [ ] 3B.5 Implementar DetectarProbarVincularHabilitarRevocar usando el driver ROCHI existente; mantener COM/PnP y parámetros seriales en Agent local. No declarar `REAL_AVAILABLE` por una declaración solamente.
+- [ ] 3B.6 Definir handshake seguro Electron/WEB; mantener WEB bloqueado mientras solo existan loopback y CORS.
+- [ ] 3B.7 Añadir pruebas de tenant/sucursal ajenos, doble asignación, replay, expiración, rotación, revocación, reinstalación, cambio USB, desconexión, MOCK, UNKNOWN y rollback. Ninguna completada.
+
+### Fase 2D — estado de implementación
+
+- Preparadas localmente `V095__terminal_device_credentials.sql` y `V096__terminal_scale_bindings.sql`; pendientes de revisión SQL aislada y aplicación autorizada.
+- Agregadas rutas administrativas de registro/consulta/revocación de credenciales y alta/consulta/revocación de vínculos SCALE. No emiten secretos ni habilitan operaciones Agent.
+- TypeScript, build API y pruebas administrativas existentes pasan. La autenticación Agent, DPAPI productivo, anti-replay y captura REAL siguen pendientes.
+
 ## 4. POS y modelo de venta existente
 
 - [ ] 4.1 Adaptar `PosScreen` y `CartSaleModal` sin duplicar paneles, hooks o stores; verificar estados visibles `Sin balanza configurada`, `Balanza deshabilitada`, disponible, desconectada, error, unidad no verificada, pendiente, inválida y capturada.

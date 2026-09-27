@@ -4,6 +4,30 @@ Define a safe, on-demand commercial weighing capability between Manus POS and th
 
 ## ADDED Requirements
 
+### Requirement: Administrative credential records never issue secrets
+
+The system SHALL persist only a public credential identifier and a versioned SHA-256 verifier for an active Agent installation; it SHALL NOT issue or return the bearer token.
+
+#### Scenario: Credential record is registered
+- **WHEN** an authorized administrator registers a credential record for an active Agent installation
+- **THEN** the API SHALL store no recoverable token and SHALL return no verifier or secret.
+
+### Requirement: SCALE binding is tenant and terminal scoped
+
+The backend SHALL require the same tenant and branch across the POS terminal, operational terminal, Agent installation and active Agent-terminal binding.
+
+#### Scenario: Cross-scope binding is rejected
+- **WHEN** any terminal, branch, Agent or device belongs to another tenant or branch
+- **THEN** the binding SHALL be rejected transactionally.
+
+### Requirement: Administrative records do not enable REAL weighing
+
+An administrative credential or SCALE binding SHALL NOT establish physical possession or authorize a commercial weight capture.
+
+#### Scenario: Binding without Agent evidence remains blocked
+- **WHEN** a credential or SCALE binding exists without authenticated Agent evidence and KG verification
+- **THEN** POS SHALL retain `UNKNOWN` or pending state and SHALL NOT expose `REAL_AVAILABLE` or add a weight.
+
 ### Requirement: Product sale mode governs weighing
 
 The system SHALL reuse the existing product `saleType` and `measurementUnit` values without creating a second product model.
@@ -335,4 +359,64 @@ The system SHALL expose physical availability only from an authenticated Agent o
 #### Scenario: MOCK remains isolated
 - **WHEN** the assigned device is `mock-scale-001` or another explicitly classified MOCK fixture
 - **THEN** the system SHALL preserve MOCK classification and SHALL not use detection success or `stable=true` to authorize REAL weighing.
+
+### Requirement: Agent credentials are installation-scoped and revocable
+
+The system SHALL use a high-entropy credential unique to the Agent installation for authenticated Agent operations. The backend SHALL store only an approved verifier, SHALL bind the credential to the tenant and `terminal_devices` installation, and SHALL never treat `installationId`, CORS, loopback, `terminalId`, `deviceId`, COM, PnP, USB or SERIAL as authentication by themselves.
+
+#### Scenario: Credential enrollment
+- **WHEN** an authorized administrator enrolls an Agent installation
+- **THEN** the backend SHALL issue a one-time credential through an approved protected channel, store only its verifier and audit the issuance; WEB and the Electron renderer SHALL not receive a reusable long-lived secret.
+
+#### Scenario: Authenticated Agent request
+- **WHEN** an Agent calls a protected operation
+- **THEN** the request SHALL prove credential, installation, audience, operation, nonce and freshness, and the backend SHALL validate tenant, terminal binding and credential status before accepting it.
+
+#### Scenario: Replay or revoked credential
+- **WHEN** a nonce is reused, a credential is expired or revoked, or the installation is unbound
+- **THEN** the backend and Agent SHALL reject the request and SHALL not expose physical availability or open the serial connection.
+
+#### Scenario: Credential rotation or reinstall
+- **WHEN** an installation rotates its credential or is reinstalled
+- **THEN** the previous credential SHALL expire or be revoked within the approved transition window, the new credential SHALL be bound to one installation, and old requests SHALL remain invalid.
+
+### Requirement: Agent and SCALE binding is persistent and tenant-safe
+
+The system SHALL persist a binding between tenant, branch, commercial terminal, authenticated Agent installation and logical SCALE without treating the local `PeripheralDevice` JSON as a cloud foreign key. The binding SHALL reject cross-tenant ownership, inactive terminals, revoked installations and duplicate active assignments.
+
+#### Scenario: Binding is created
+- **WHEN** an authorized administrator binds an authenticated Agent and logical SCALE to an active terminal in the same tenant and branch
+- **THEN** the backend SHALL create one active binding transactionally and SHALL preserve `COM`, PnP and serial parameters only in the Agent local configuration.
+
+#### Scenario: Double or cross-tenant binding
+- **WHEN** a terminal, Agent installation or logical SCALE already has an incompatible active binding, or belongs to another tenant or branch
+- **THEN** the backend SHALL reject the operation without partial persistence or exposure to POS.
+
+#### Scenario: Binding is revoked or replaced
+- **WHEN** an administrator revokes or replaces the Agent, terminal or SCALE binding
+- **THEN** pending observations and future authorizations SHALL be invalidated immediately, and `resolve-current` SHALL remain conservative until a new authenticated observation exists.
+
+### Requirement: Physical observation is separate from authentication
+
+The system SHALL distinguish authenticated Agent identity, administrative binding, local ROCHI communication, KG verification and commercial capture authorization. A valid credential or binding SHALL not by itself produce `REAL_AVAILABLE`.
+
+#### Scenario: Authenticated physical probe
+- **WHEN** an authenticated Agent probes the bound logical SCALE using the existing ROCHI driver and the operator explicitly verifies KG
+- **THEN** the backend MAY record a time-limited observation containing logical device, request nonce, timestamp, unit state and safe status, without storing COM as global identity.
+
+#### Scenario: Probe is stale or incomplete
+- **WHEN** the probe exceeds its TTL, the Agent reports disconnect/error, the USB identity changes, or KG is not verified
+- **THEN** the system SHALL invalidate availability and SHALL expose `UNKNOWN`, `DISCONNECTED`, `ERROR` or `UNIT_NOT_VERIFIED` as appropriate; it SHALL not expose `REAL_AVAILABLE`.
+
+### Requirement: WEB and Electron use authenticated transport boundaries
+
+Electron SHALL use the existing typed bridge without exposing the Agent credential to the renderer. WEB SHALL not enable REAL Agent operations through loopback or CORS alone; it SHALL require an approved one-time challenge handshake or remain unavailable.
+
+#### Scenario: Local request has only origin controls
+- **WHEN** a browser request reaches the Agent with an allowed origin or loopback address but without valid Agent proof
+- **THEN** the Agent SHALL reject protected operations and the POS SHALL retain `UNKNOWN` or unavailable state.
+
+#### Scenario: Electron renderer supplies identifiers only
+- **WHEN** the renderer supplies only `terminalId`, `deviceId` or `installationId`
+- **THEN** the main process and backend SHALL reject the operation as insufficient proof and SHALL not open ROCHI.
 
