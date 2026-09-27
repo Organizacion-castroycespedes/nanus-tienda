@@ -73,8 +73,8 @@ export const PosAccountTabs = ({
 
   return (
     <>
-      <div className="flex w-full items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar select-none">
-        <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex w-full items-center gap-2 overflow-x-auto pb-0.5 text-sm no-scrollbar select-none">
+        <div className="flex items-center gap-2 min-w-0">
           {accounts.map((account) => {
             const isActive = account.id === activeAccountId;
             const itemCount = account.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -100,10 +100,10 @@ export const PosAccountTabs = ({
                     handleSelect(account.id);
                   }
                 }}
-                className={`group relative inline-flex items-center gap-2 rounded-xl px-3 py-1.5 font-medium transition-all duration-150 shrink-0 ${
+                className={`group relative inline-flex h-10 min-w-[7.5rem] shrink-0 items-center gap-2 rounded-xl border px-3.5 font-medium transition-all duration-150 ${
                   isActive
-                    ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/20"
-                    : "border border-slate-200/80 bg-white/90 text-slate-700 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-800"
+                    ? "border-blue-600 bg-blue-600 text-white shadow-sm shadow-blue-600/20"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 }`}
                 title={isActive ? "Cuenta activa (Doble clic para renombrar)" : `Cambiar a ${account.name}`}
                 onDoubleClick={(e) => handleStartRename(account, e)}
@@ -134,8 +134,8 @@ export const PosAccountTabs = ({
                   </div>
                 ) : (
                   <>
-                    <span className="flex items-center gap-1 font-semibold truncate max-w-[120px] sm:max-w-[160px]">
-                      <ShoppingBag className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                    <span className="flex max-w-[120px] items-center gap-2 truncate font-medium sm:max-w-[160px]">
+                      <ShoppingBag className="h-4 w-4 shrink-0 opacity-90" aria-hidden="true" />
                       {account.name}
                     </span>
 
@@ -191,10 +191,10 @@ export const PosAccountTabs = ({
           <button
             type="button"
             onClick={() => onAddAccount()}
-            className="inline-flex items-center gap-1 rounded-xl border border-dashed border-slate-300 bg-white/60 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-blue-500 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-blue-400 dark:hover:bg-blue-950/50 dark:hover:text-blue-300 shrink-0"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 transition hover:border-blue-500 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-blue-400 dark:hover:bg-blue-950/50 dark:hover:text-blue-300 shrink-0"
             title="Abrir nueva cuenta"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" aria-hidden="true" />
             <span>Nueva cuenta</span>
           </button>
         </div>
@@ -202,7 +202,11 @@ export const PosAccountTabs = ({
 
       {/* Modal de confirmacion al cerrar cuenta con productos */}
       {confirmDeleteAccount ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
               ¿Cerrar {confirmDeleteAccount.name}?

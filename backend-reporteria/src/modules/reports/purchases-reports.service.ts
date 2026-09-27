@@ -14,6 +14,7 @@ import type {
   ReportActorContext,
 } from "./types/purchases-report.types";
 import type { PrintableCompanyHeader } from "./types/sales-report.types";
+import { formatReportDateTime, REPORT_TIME_ZONE, resolveReportDateRange, type ReportDateRange } from "./report-date-range";
 
 type PurchasesListQuery = {
   tenantId?: string;
@@ -64,35 +65,8 @@ export class PurchasesReportsService {
     };
   }
 
-  private normalizeDate(value: string | undefined, endExclusive = false) {
-    if (!value) {
-      return undefined;
-    }
-
-    const normalized = value.trim();
-    if (!normalized) {
-      return undefined;
-    }
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-      const date = new Date(`${normalized}T00:00:00.000Z`);
-      if (Number.isNaN(date.getTime())) {
-        throw new BadRequestException(`invalid date value: ${value}`);
-      }
-
-      if (endExclusive) {
-        date.setUTCDate(date.getUTCDate() + 1);
-      }
-
-      return date.toISOString();
-    }
-
-    const date = new Date(normalized);
-    if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException(`invalid date value: ${value}`);
-    }
-
-    return date.toISOString();
+  private resolveDates(query: PurchasesListQuery): ReportDateRange {
+    return resolveReportDateRange(query);
   }
 
   private toNumber(value: unknown) {
@@ -118,11 +92,12 @@ export class PurchasesReportsService {
     actor: ReportActorContext,
     query: PurchasesListQuery
   ): PurchasesReportListDataset {
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: payload?.filters?.tenantId ?? query.tenantId ?? actor.tenantId,
       branchId: payload?.filters?.branchId ?? query.branchId ?? actor.branchId ?? null,
-      dateFrom: payload?.filters?.dateFrom ?? this.normalizeDate(query.dateFrom) ?? null,
-      dateTo: payload?.filters?.dateTo ?? this.normalizeDate(query.dateTo, true) ?? null,
+      dateFrom: payload?.filters?.dateFrom ?? dates.dateFrom,
+      dateTo: payload?.filters?.dateTo ?? dates.dateTo,
       status: payload?.filters?.status ?? query.status ?? null,
       supplierInvoiceNumber: payload?.filters?.supplierInvoiceNumber ?? query.supplierInvoiceNumber ?? null,
       actorRole: payload?.filters?.actorRole ?? actor.role,
@@ -191,11 +166,9 @@ export class PurchasesReportsService {
 
   async getPurchases(query: PurchasesListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
-    const dateFrom = this.normalizeDate(query.dateFrom);
-    const dateTo = this.normalizeDate(query.dateTo, true);
-    if (dateFrom && dateTo && dateTo < dateFrom) {
-      throw new BadRequestException("date_to must be greater than or equal to date_from");
-    }
+    const dates = this.resolveDates(query);
+    const dateFrom = dates.dateFrom;
+    const dateTo = dates.dateTo;
     const payload = await this.purchasesReportAdapter.getPurchasesList(actor, {
       tenantId: query.tenantId,
       branchId: query.branchId,
@@ -228,17 +201,15 @@ export class PurchasesReportsService {
 
   private async createPurchasesDocumentDataset(query: PurchasesListQuery, user?: ReportUser) {
     const actor = this.resolveActor(user);
+    const dates = this.resolveDates(query);
     const filters = {
       tenantId: query.tenantId,
       branchId: query.branchId,
-      dateFrom: this.normalizeDate(query.dateFrom),
-      dateTo: this.normalizeDate(query.dateTo, true),
+      dateFrom: dates.dateFrom,
+      dateTo: dates.dateTo,
       status: this.normalizeStatus(query.status),
       supplierInvoiceNumber: query.supplierInvoiceNumber?.trim() || undefined,
     };
-    if (filters.dateFrom && filters.dateTo && filters.dateTo < filters.dateFrom) {
-      throw new BadRequestException("date_to must be greater than or equal to date_from");
-    }
     const rows = await this.documentExport.collect(
       (client) => this.purchasesReportAdapter.getPurchasesExportCount(actor, filters, client),
       (client, offset, limit) => this.purchasesReportAdapter.getPurchasesExportBatch(actor, filters, client, offset, limit),
@@ -271,8 +242,10 @@ export class PurchasesReportsService {
       ["Reporte", "Compras"],
       ["Tenant", dataset.branding.tenantName ?? dataset.filters.tenantId],
       ["Sucursal", dataset.branding.branchName ?? dataset.filters.branchId ?? "Todas"],
-      ["Desde", dataset.filters.dateFrom ? new Date(dataset.filters.dateFrom) : ""],
-      ["Hasta", dataset.filters.dateTo ? new Date(dataset.filters.dateTo) : ""],
+      ["Desde", dataset.filters.dateFrom ? formatReportDateTime(dataset.filters.dateFrom) : ""],
+      ["Hasta", dataset.filters.dateTo ? formatReportDateTime(dataset.filters.dateTo) : ""],
+      ["Zona horaria", REPORT_TIME_ZONE],
+      ["Generado", formatReportDateTime(new Date())],
       ["Estado", dataset.filters.status ?? "Todos"],
       ["Compras", dataset.summary.count],
       ["Total", dataset.summary.total],
@@ -291,14 +264,12 @@ export class PurchasesReportsService {
       { header: "Pagado", key: "paid", width: 16 }, { header: "Saldo", key: "balance", width: 16 },
       { header: "Estado", key: "status", width: 18 }, { header: "Estado pago", key: "paymentStatus", width: 18 },
     ];
-    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: new Date(row.date), supplierInvoiceDate: row.supplierInvoiceDate ? new Date(row.supplierInvoiceDate) : null }));
+    dataset.rows.forEach((row) => sheet.addRow({ ...row, date: formatReportDateTime(row.date), supplierInvoiceDate: row.supplierInvoiceDate ?? null }));
     sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
     ["total", "totalPedido", "totalLiquidado", "diferenciaNoRecibida", "paid", "balance"].forEach((key) => {
       sheet.getColumn(key).numFmt = "#,##0.00";
     });
-    sheet.getColumn("date").numFmt = "yyyy-mm-dd hh:mm";
-    sheet.getColumn("supplierInvoiceDate").numFmt = "yyyy-mm-dd";
     return workbook.xlsx.writeBuffer() as unknown as Promise<Buffer>;
   }
 

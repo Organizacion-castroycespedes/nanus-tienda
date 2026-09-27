@@ -5,6 +5,7 @@ import type {
 } from "pdfmake/interfaces";
 import type { PosSalesListDataset } from "../../../reports/types/sales-report.types";
 import { formatTicketStatus } from "../base/status-label";
+import { REPORT_TIME_ZONE, formatReportDateTime } from "../../../reports/report-date-range";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -18,6 +19,7 @@ const formatDate = (value: string | null | undefined) =>
     ? new Intl.DateTimeFormat("es-CO", {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone: REPORT_TIME_ZONE,
       }).format(new Date(value))
     : "N/A";
 
@@ -50,6 +52,7 @@ const buildHeader = (dataset: PosSalesListDataset): Content => ({
           style: "meta",
         },
         { text: "Reporte de ventas POS", style: "title" },
+        { text: `Zona: ${REPORT_TIME_ZONE} | Generado: ${formatReportDateTime(new Date())}`, style: "meta" },
         { text: `Tenant: ${dataset.branding?.tenantName ?? dataset.branding?.legalName ?? "No disponible"}`, style: "subtitle" },
         { text: `Sucursal: ${dataset.branding?.branchName ?? "Todas"} | Desde: ${formatDate(dataset.filters.dateFrom)} | Hasta: ${formatDate(dataset.filters.dateTo)}${dataset.filters.customerDocument ? ` | Identificación: ${dataset.filters.customerDocument}` : ""}`, style: "meta" },
       ],

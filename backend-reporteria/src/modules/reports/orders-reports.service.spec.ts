@@ -18,5 +18,5 @@ test("OrdersReportsService construye XLSX real con venta generada y estados", as
   assert.equal(sheet.columnCount, 10);
   assert.equal(sheet.getRow(2).getCell(4).value, "sale-1");
   assert.equal(sheet.getRow(2).getCell(6).value, 10);
-  assert.ok(sheet.getRow(2).getCell(1).value instanceof Date);
+  assert.match(String(sheet.getRow(2).getCell(1).value), /America\/Bogota/);
 });
