@@ -206,7 +206,7 @@ const PurchasesPage = () => {
   const [liquidationError, setLiquidationError] = useState<string | null>(null);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [cashSessionChecked, setCashSessionChecked] = useState(false);
-  const [cashScope, setCashScope] = useState<"current" | "all">("current");
+  const [cashScope, setCashScope] = useState<"current" | "all">("all");
   const [noticeConfirmAction, setNoticeConfirmAction] = useState<NoticeConfirmAction>(null);
   const [createHasUnsavedChanges, setCreateHasUnsavedChanges] = useState(false);
   const notice = useNoticeDialog();
@@ -241,8 +241,7 @@ const PurchasesPage = () => {
   const canSettlePartial =
     canManagePurchases && hasPermission("inventory.settle_partial");
   const hasOpenCashSession = Boolean(currentCashSession);
-  const canUseAllCashScope =
-    role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canUseAllCashScope = true;
 
   const showApiConfirmError = useCallback(
     async (error: unknown, fallbackMessage: string) => {
@@ -280,39 +279,21 @@ const PurchasesPage = () => {
 
   const openPurchasePanel = useCallback(
     (action: PurchasePanelAction, purchaseId: string) => {
-      if (
-        action !== "detail" &&
-        action !== "ticket" &&
-        !hasOpenCashSession
-      ) {
-        notice.showWarning(
-          "Caja requerida",
-          "Debes tener una caja abierta para realizar esta operacion."
-        );
-        return;
-      }
       const params = new URLSearchParams(searchParams.toString());
       params.set("purchaseId", purchaseId);
       params.set("action", action);
       router.push(`${pathname}?${params.toString()}`, { scroll: false });
     },
-    [hasOpenCashSession, notice, pathname, router, searchParams]
+    [pathname, router, searchParams]
   );
 
   const openCreateForm = useCallback(() => {
-    if (!hasOpenCashSession) {
-      notice.showWarning(
-        "Caja requerida",
-        "Debes tener una caja abierta para realizar esta operacion."
-      );
-      return;
-    }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("purchaseId");
     params.set("action", "create");
     const nextQuery = params.toString();
     router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
-  }, [hasOpenCashSession, notice, pathname, router, searchParams]);
+  }, [pathname, router, searchParams]);
 
   const handleBackToList = useCallback(() => {
     setCreateHasUnsavedChanges(false);
@@ -335,7 +316,7 @@ const PurchasesPage = () => {
 
   const resolvePurchaseFilters = useCallback(
     (filters?: PurchaseFilters) => {
-      const resolvedCashScope = canUseAllCashScope ? cashScope : "current";
+      const resolvedCashScope = cashScope;
       if (canViewAllTenants) {
         return {
           tenantId: filters?.tenantId || undefined,
@@ -362,7 +343,7 @@ const PurchasesPage = () => {
           resolvedCashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
       };
     },
-    [canUseAllCashScope, canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
+    [canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
   );
 
   const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
@@ -426,32 +407,7 @@ const PurchasesPage = () => {
     };
   }, [authUser?.tenantId]);
 
-  useEffect(() => {
-    if (!canUseAllCashScope && cashScope !== "current") {
-      setCashScope("current");
-    }
-  }, [canUseAllCashScope, cashScope]);
 
-  useEffect(() => {
-    if (!cashSessionChecked || hasOpenCashSession || !activeViewMode) {
-      return;
-    }
-    if (activeViewMode === "detail" || activeViewMode === "ticket") {
-      return;
-    }
-
-    notice.showWarning(
-      "Caja requerida",
-      "Debes tener una caja abierta para realizar esta operacion."
-    );
-    handleBackToList();
-  }, [
-    activeViewMode,
-    cashSessionChecked,
-    handleBackToList,
-    hasOpenCashSession,
-    notice,
-  ]);
 
   useEffect(() => {
     if (!activePurchaseId || !activeAction) {
@@ -1178,10 +1134,7 @@ const PurchasesPage = () => {
                 Actualizar
               </Button>
               {canCreate ? (
-                <Button
-                  onClick={openCreateForm}
-                  disabled={cashSessionChecked && !hasOpenCashSession}
-                >
+                <Button onClick={openCreateForm}>
                   <Plus className="h-4 w-4" />
                   Crear compra
                 </Button>
@@ -1190,13 +1143,6 @@ const PurchasesPage = () => {
           ) : null}
         </div>
       </section>
-
-      {cashSessionChecked && !hasOpenCashSession ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          No tienes una caja abierta. Abre caja para ver la operacion actual
-          de compras. Crear, recibir, pagar, liquidar o cancelar sigue bloqueado.
-        </section>
-      ) : null}
 
       {!isActionMode ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
@@ -1207,17 +1153,17 @@ const PurchasesPage = () => {
               </p>
               <p className="mt-1 text-emerald-800">
                 {cashScope === "all"
-                  ? "Mostrando historico autorizado de compras."
+                  ? "Mostrando todas las compras registradas."
                   : currentCashSession
                     ? `Mostrando operacion de caja actual: ${
                         currentCashSession.cashRegisterNombre ??
                         currentCashSession.cashRegisterCodigo ??
                         "Caja"
                       }.`
-                    : "No se mezcla historico con la operacion actual."}
+                    : "Mostrando operacion de compras."}
               </p>
             </div>
-            {canUseAllCashScope ? (
+            {currentCashSession ? (
               <Select
                 label="Alcance"
                 value={cashScope}
@@ -1226,8 +1172,8 @@ const PurchasesPage = () => {
                 }
                 className="min-w-[180px]"
               >
-                <option value="current">Caja actual</option>
                 <option value="all">Todas</option>
+                <option value="current">Caja actual</option>
               </Select>
             ) : null}
           </div>
@@ -1490,7 +1436,6 @@ const PurchasesPage = () => {
                               size="sm"
                               title="Recibir"
                               onClick={() => openPurchasePanel("receive", purchase.id)}
-                              disabled={!hasOpenCashSession}
                               className="px-2"
                             >
                               <PackageCheck className="h-4 w-4" />
@@ -1505,7 +1450,6 @@ const PurchasesPage = () => {
                               size="sm"
                               title="Pagar"
                               onClick={() => openPurchasePanel("pay", purchase.id)}
-                              disabled={!hasOpenCashSession}
                               className="px-2"
                             >
                               <Banknote className="h-4 w-4" />
@@ -1517,7 +1461,6 @@ const PurchasesPage = () => {
                               size="sm"
                               title="Liquidar"
                               onClick={() => openPurchasePanel("settle-partial", purchase.id)}
-                              disabled={!hasOpenCashSession}
                               className="px-2"
                             >
                               <FileCheck className="h-4 w-4" />
@@ -1529,7 +1472,6 @@ const PurchasesPage = () => {
                               size="sm"
                               title="Cancelar compra"
                               onClick={() => openPurchasePanel("cancel", purchase.id)}
-                              disabled={!hasOpenCashSession}
                               className="px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
                             >
                               <XCircle className="h-4 w-4" />

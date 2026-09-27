@@ -132,7 +132,6 @@ const iconByName: Record<string, LucideIcon> = {
   x: X,
 };
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "flexibuild.sidebar.collapsed";
 const SIDEBAR_MENU_STATE_STORAGE_KEY = "sidebar_open_menu_items";
 type HeaderConnectivityState = "ONLINE" | "OFFLINE" | "RECONNECTING" | "RESTORED" | "SERVICE_UNAVAILABLE";
 
@@ -170,7 +169,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openMenuItems, setOpenMenuItems] = useState<Record<string, boolean>>({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -246,8 +244,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const hasPosOperationalContext = Boolean(
     posOperationalRole || posOperationalBranch || posOperationalTerminal || posContext.posSessionId
   );
-  const desktopSidebarWidthClass = sidebarCollapsed ? "lg:w-20 lg:px-2.5" : "lg:w-64 xl:w-64 lg:px-3 xl:px-4";
-  const isSidebarCompact = sidebarCollapsed && !sidebarOpen;
 
   const applyTenantToMenu = useCallback(
     (items: MenuResponse["items"], tenant: string): MenuResponse["items"] =>
@@ -323,13 +319,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const storedCollapsed = window.localStorage.getItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY
-    );
-    if (storedCollapsed !== null) {
-      setSidebarCollapsed(storedCollapsed === "true");
-    }
-
     const storedOpenMenuItems = window.localStorage.getItem(
       SIDEBAR_MENU_STATE_STORAGE_KEY
     );
@@ -344,17 +333,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       window.localStorage.removeItem(SIDEBAR_MENU_STATE_STORAGE_KEY);
     }
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(
-      SIDEBAR_COLLAPSED_STORAGE_KEY,
-      String(sidebarCollapsed)
-    );
-  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -742,7 +720,6 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   : "text-[var(--brand-sidebar-text)] hover:bg-[var(--brand-sidebar-hover)]"
               }`}
               style={menuItemStyles.container}
-              title={isSidebarCompact ? item.label : undefined}
             >
               <span
                 aria-hidden="true"
@@ -756,16 +733,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 aria-current={isDirectActive ? "page" : undefined}
                 className={`relative z-10 flex flex-1 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
                   depth > 0 ? "gap-2 px-2 py-1 text-[12px] xl:text-[13px] font-medium" : "gap-2.5 xl:gap-3 text-xs xl:text-sm font-semibold"
-                } ${
-                  isSidebarCompact ? "justify-center" : ""
                 }`}
                 onClick={() => setSidebarOpen(false)}
                 aria-label={
                   posRequiresCash
                     ? "POS requiere caja abierta"
-                    : isSidebarCompact
-                      ? item.label
-                      : undefined
+                    : undefined
                 }
               >
                 {depth > 0 ? (
@@ -784,18 +757,16 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     <Icon className="h-3.5 w-3.5 xl:h-4 xl:w-4" />
                   </span>
                 )}
-                {!isSidebarCompact ? (
-                  <span className="flex min-w-0 flex-1 flex-col leading-snug">
-                    <span className="truncate">{item.label}</span>
-                    {posRequiresCash ? (
-                      <span className="truncate text-[9px] xl:text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
-                        Requiere caja
-                      </span>
-                    ) : null}
-                  </span>
-                ) : null}
+                <span className="flex min-w-0 flex-1 flex-col leading-snug">
+                  <span className="truncate">{item.label}</span>
+                  {posRequiresCash ? (
+                    <span className="truncate text-[9px] xl:text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
+                      Requiere caja
+                    </span>
+                  ) : null}
+                </span>
               </Link>
-              {hasChildren && !isSidebarCompact ? (
+              {hasChildren ? (
                 <button
                   type="button"
                   className={`relative z-10 rounded-md p-1 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] ${
@@ -821,7 +792,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 </button>
               ) : null}
             </div>
-            {hasChildren && (isExpanded || hasActiveChild) && !isSidebarCompact
+            {hasChildren && (isExpanded || hasActiveChild)
               ? renderMenuItems(item.children ?? [], depth + 1)
               : null}
           </li>
@@ -841,11 +812,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             className="border-t pt-1.5 first:border-t-0 first:pt-0"
             style={{ borderColor: tenantTheme.sidebar.border }}
           >
-            {!isSidebarCompact ? (
-              <p className="mb-1.5 mt-0.5 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
-                {section}
-              </p>
-            ) : null}
+            <p className="mb-1.5 mt-0.5 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
+              {section}
+            </p>
             {isExpanded ? renderMenuItems(items) : null}
           </li>
         );
@@ -1195,13 +1164,13 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
         <button
           type="button"
           aria-label="Cerrar menú lateral"
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <aside
-        aria-label="Barra lateral de navegacion"
-        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-3 py-3 shadow-2xl transition-all duration-300 lg:sticky lg:top-0 lg:z-30 lg:translate-x-0 ${desktopSidebarWidthClass} ${
+        aria-label="Barra lateral de navegación"
+        className={`sidebar-scroll fixed inset-y-0 left-0 z-50 flex h-screen w-72 sm:w-80 shrink-0 transform flex-col overflow-y-auto overscroll-contain border-r border-white/10 px-3.5 py-3 shadow-2xl transition-transform duration-300 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         style={{
@@ -1210,98 +1179,62 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
           color: tenantTheme.sidebar.text,
         }}
       >
-          {isSidebarCompact ? (
-            <div className="mb-4 flex flex-col items-center">
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(false)}
-                className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-150 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)]"
+        <div className="mb-3 flex items-center justify-between gap-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {brandingLogo ? (
+              <img
+                src={brandingLogo}
+                alt="Logo empresa"
+                className="h-9 w-9 shrink-0 rounded-xl object-contain p-1"
                 style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
-                title={`Expandir menú (${sidebarCompanyName})`}
-                aria-label={`Expandir menú (${sidebarCompanyName})`}
+              />
+            ) : (
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                style={{
+                  backgroundColor: tenantTheme.sidebar.logoBackground,
+                  color: tenantTheme.sidebar.logoText,
+                }}
               >
-                {brandingLogo ? (
-                  <img
-                    src={brandingLogo}
-                    alt="Logo empresa"
-                    className="h-8 w-8 rounded-lg object-contain p-0.5"
-                  />
-                ) : (
-                  <span
-                    className="text-xs font-bold"
-                    style={{ color: tenantTheme.sidebar.logoText }}
-                  >
-                    {companyInitials}
-                  </span>
-                )}
-              </button>
-            </div>
-          ) : (
-            <div className="mb-3 flex items-center justify-between gap-2.5">
-              <div className="flex min-w-0 items-center gap-2.5">
-                {brandingLogo ? (
-                  <img
-                    src={brandingLogo}
-                    alt="Logo empresa"
-                    className="h-9 w-9 shrink-0 rounded-xl object-contain p-1"
-                    style={{ backgroundColor: tenantTheme.sidebar.logoBackground }}
-                  />
-                ) : (
-                  <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
-                    style={{
-                      backgroundColor: tenantTheme.sidebar.logoBackground,
-                      color: tenantTheme.sidebar.logoText,
-                    }}
-                  >
-                    {companyInitials}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]" title={sidebarCompanyName}>
-                    {sidebarCompanyName}
-                  </p>
-                  <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
-                    Manus POS
-                  </p>
-                </div>
+                {companyInitials}
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="hidden h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:grid"
-                  aria-label="Colapsar menú lateral"
-                  title="Colapsar menú lateral"
-                  onClick={() => setSidebarCollapsed(true)}
-                >
-                  <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
-                </button>
-                <button
-                  type="button"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)] lg:hidden"
-                  aria-label="Cerrar menú lateral"
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs xl:text-sm font-bold leading-tight text-[var(--brand-sidebar-text)]" title={sidebarCompanyName}>
+                {sidebarCompanyName}
+              </p>
+              <p className="truncate text-[10px] xl:text-xs text-[var(--brand-sidebar-muted)]">
+                Manus POS
+              </p>
             </div>
-          )}
-          <nav className="mt-2 flex-1 pb-2" aria-label="Navegacion principal">
-            {renderMenuSections(menuSections, "primary")}
-            {Object.keys(mainMenuSections).length > 0 ? (
-              <>
-                <div className="mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
-                  {!isSidebarCompact ? "Menu principal" : null}
-                </div>
-                <div className="mt-1">{renderMenuSections(mainMenuSections, "main")}</div>
-              </>
-            ) : null}
-          </nav>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-lg text-[var(--brand-sidebar-text)] transition hover:bg-[var(--brand-sidebar-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-sidebar-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-sidebar-focus-offset)]"
+              aria-label="Cerrar menú lateral"
+              title="Cerrar menú lateral"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <ChevronRight className="h-4 w-4 xl:h-5 xl:w-5 rotate-180" />
+            </button>
+          </div>
+        </div>
+        <nav className="mt-2 flex-1 pb-2" aria-label="Navegación principal">
+          {renderMenuSections(menuSections, "primary")}
+          {Object.keys(mainMenuSections).length > 0 ? (
+            <>
+              <div className="mt-3 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--brand-sidebar-muted)] opacity-70">
+                Menú principal
+              </div>
+              <div className="mt-1">{renderMenuSections(mainMenuSections, "main")}</div>
+            </>
+          ) : null}
+        </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <header
-            className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-[var(--brand-header-bg)]/95 px-3 shadow-sm backdrop-blur-md md:px-4 lg:px-5"
+            className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-[var(--brand-header-bg)]/95 px-2.5 sm:px-3 md:px-4 lg:px-5 shadow-sm backdrop-blur-md"
             style={{ borderColor: tenantTheme.header.border }}
           >
             <div className="flex min-w-0 items-center gap-2 lg:gap-2.5">
@@ -1313,15 +1246,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                   backgroundColor: tenantTheme.header.iconButtonBackground,
                   color: tenantTheme.header.iconButtonText,
                 }}
-                onClick={() => {
-                  if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-                    setSidebarCollapsed((previous) => !previous);
-                    return;
-                  }
-                  setSidebarOpen((previous) => !previous);
-                }}
-                aria-label={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
-                title={sidebarCollapsed ? "Expandir menú lateral" : "Colapsar menú lateral"}
+                onClick={() => setSidebarOpen((previous) => !previous)}
+                aria-label={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
+                title={sidebarOpen ? "Cerrar menú lateral" : "Abrir menú lateral"}
               >
                 <Menu className="h-4 w-4" />
               </button>
@@ -1622,11 +1549,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
             id="contenido-principal"
             className="flex-1 overflow-y-auto overscroll-contain"
           >
-            <div className="min-h-full px-4 py-6 md:px-6 lg:px-8 xs:px-1">
+            <div className="min-h-full p-[1%]" style={{ padding: "1%" }}>
               {children}
             </div>
             <footer
-              className="border-t px-4 py-4 text-sm md:px-6"
+              className="border-t px-[1%] py-3 text-sm"
               style={{
                 borderColor: tenantTheme.surface.border,
                 backgroundColor: tenantTheme.surface.card,

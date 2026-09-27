@@ -119,7 +119,7 @@ const OrdersPage = () => {
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [cashSessionChecked, setCashSessionChecked] = useState(false);
-  const [cashScope, setCashScope] = useState<"current" | "all">("current");
+  const [cashScope, setCashScope] = useState<"current" | "all">("all");
   const [deliveryRelation, setDeliveryRelation] =
     useState<OrderDeliveryRelation | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
@@ -130,8 +130,7 @@ const OrdersPage = () => {
   const canCreate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const canUpdate = hasPermission(MENU_KEYS.ORDERS, "write") || isAdminLikeRole;
   const hasOpenCashSession = Boolean(currentCashSession);
-  const canUseAllCashScope =
-    role === "ADMIN" || role === "SUPER_ADMIN" || role === "SUPER_USER";
+  const canUseAllCashScope = true;
   const isGlobalRole = role === "SUPER_ADMIN";
   const tenantSlug =
     authUser?.tenantSlug ?? authUser?.tenantId ?? currentTenant ?? "default";
@@ -228,38 +227,21 @@ const OrdersPage = () => {
     };
   }, [authUser?.tenantId]);
 
-  useEffect(() => {
-    if (!canUseAllCashScope && cashScope !== "current") {
-      setCashScope("current");
-    }
-  }, [canUseAllCashScope, cashScope]);
-
   const loadOrders = useCallback(
     async (filters?: OrderFilters) => {
       const activeFilters = filters ?? appliedFilters;
       setLoading(true);
       setErrorMessage(null);
       try {
-        const result = await getOrders(
-          isGlobalRole
-            ? {
-                tenantId: activeFilters.tenantId || undefined,
-                branchId: activeFilters.branchId || undefined,
-                fromDate: activeFilters.fromDate || undefined,
-                toDate: activeFilters.toDate || undefined,
-                cashScope,
-                cashSessionId:
-                  cashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
-              }
-            : {
-                tenantId: currentTenant ?? undefined,
-                branchId: activeFilters.branchId || undefined,
-                fromDate: activeFilters.fromDate || undefined,
-                toDate: activeFilters.toDate || undefined,
-                cashScope: "current",
-                cashSessionId: currentCashSession?.id ?? undefined,
-              }
-        );
+        const result = await getOrders({
+          tenantId: isGlobalRole ? activeFilters.tenantId || undefined : currentTenant ?? undefined,
+          branchId: activeFilters.branchId || undefined,
+          fromDate: activeFilters.fromDate || undefined,
+          toDate: activeFilters.toDate || undefined,
+          cashScope,
+          cashSessionId:
+            cashScope === "current" ? currentCashSession?.id ?? undefined : undefined,
+        });
         setOrders(result);
         setHasSearched(true);
       } catch {
@@ -356,20 +338,12 @@ const OrdersPage = () => {
   };
 
   const openCreateForm = () => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(null);
     setFormMode("create");
   };
 
   const handleEdit = async (orderId: string) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setLoadingOrder(true);
     setErrorMessage(null);
     try {
@@ -385,30 +359,18 @@ const OrdersPage = () => {
   };
 
   const handleOpenDeliver = (orderId: string) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(orderId);
     setFormMode("deliver");
   };
 
   const handleOpenInvoice = (orderId: string) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(orderId);
     setFormMode("invoice");
   };
 
   const handleOpenPayment = (order: OrderResponse) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     setSelectedOrder(null);
     setSelectedOrderId(order.id);
     setSelectedPaymentOrder(order);
@@ -429,10 +391,6 @@ const OrdersPage = () => {
   };
 
   const handleCancel = async (order: OrderResponse) => {
-    if (!hasOpenCashSession) {
-      showToast("Debes tener una caja abierta para realizar esta operacion.", "warning");
-      return;
-    }
     try {
       await confirm({
         title: "Cancelar pedido",
@@ -548,10 +506,7 @@ const OrdersPage = () => {
               Actualizar
             </Button>
             {canCreate ? (
-              <Button
-                onClick={openCreateForm}
-                disabled={cashSessionChecked && !hasOpenCashSession}
-              >
+              <Button onClick={openCreateForm}>
                 <Plus className="h-4 w-4" />
                 Crear pedido
               </Button>
@@ -560,14 +515,6 @@ const OrdersPage = () => {
           ) : null}
         </div>
       </section>
-
-      {cashSessionChecked && !hasOpenCashSession ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-sm">
-          No tienes una caja abierta. Abre caja para ver la operacion actual
-          de pedidos. Crear, editar, entregar, abonar, facturar o cancelar sigue
-          bloqueado.
-        </section>
-      ) : null}
 
       {!isActionMode ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
@@ -578,17 +525,17 @@ const OrdersPage = () => {
               </p>
               <p className="mt-1 text-emerald-800">
                 {cashScope === "all"
-                  ? "Mostrando historico autorizado de pedidos."
+                  ? "Mostrando todos los pedidos registrados."
                   : currentCashSession
                     ? `Mostrando operacion de caja actual: ${
                         currentCashSession.cashRegisterNombre ??
                         currentCashSession.cashRegisterCodigo ??
                         "Caja"
                       }.`
-                    : "No se mezcla historico con la operacion actual."}
+                    : "Mostrando operacion de pedidos."}
               </p>
             </div>
-            {canUseAllCashScope ? (
+            {currentCashSession ? (
               <Select
                 label="Alcance"
                 value={cashScope}
@@ -597,8 +544,8 @@ const OrdersPage = () => {
                 }
                 className="min-w-[180px]"
               >
-                <option value="current">Caja actual</option>
                 <option value="all">Todas</option>
+                <option value="current">Caja actual</option>
               </Select>
             ) : null}
           </div>
@@ -956,7 +903,7 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => void handleEdit(order.id)}
-                            disabled={loadingOrder || !hasOpenCashSession}
+                            disabled={loadingOrder}
                           >
                             <Pencil className="h-4 w-4" />
                             Editar
@@ -967,7 +914,6 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenDeliver(order.id)}
-                            disabled={!hasOpenCashSession}
                           >
                             <PackageCheck className="h-4 w-4" />
                             Entregar
@@ -978,7 +924,6 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenInvoice(order.id)}
-                            disabled={!hasOpenCashSession}
                           >
                             <Receipt className="h-4 w-4" />
                             Facturar
@@ -989,7 +934,6 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenPayment(order)}
-                            disabled={!hasOpenCashSession}
                           >
                             <Receipt className="h-4 w-4" />
                             Abonar
@@ -1000,7 +944,6 @@ const OrdersPage = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => void handleCancel(order)}
-                            disabled={!hasOpenCashSession}
                           >
                             <XCircle className="h-4 w-4" />
                             Cancelar
