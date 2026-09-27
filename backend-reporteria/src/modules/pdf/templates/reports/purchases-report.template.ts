@@ -1,5 +1,6 @@
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
 import type { PurchasesReportListDataset } from "../../../reports/types/purchases-report.types";
+import { REPORT_TIME_ZONE, formatReportDateTime } from "../../../reports/report-date-range";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -13,6 +14,7 @@ const formatDate = (value: string | null | undefined) =>
     ? new Intl.DateTimeFormat("es-CO", {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone: REPORT_TIME_ZONE,
       }).format(new Date(value))
     : "N/A";
 
@@ -38,6 +40,7 @@ const buildHeader = (dataset: PurchasesReportListDataset): Content => ({
         { text: dataset.branding?.nit ? `NIT ${dataset.branding.nit}` : "", style: "meta" },
         { text: [dataset.branding?.address, dataset.branding?.phone, dataset.branding?.email].filter(Boolean).join(" | "), style: "meta" },
         { text: "Reporte de compras", style: "reportTitle" },
+        { text: `Zona: ${REPORT_TIME_ZONE} | Generado: ${formatReportDateTime(new Date())}`, style: "meta" },
       ],
     },
   ],

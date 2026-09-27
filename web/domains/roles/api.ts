@@ -1,5 +1,5 @@
 import { apiClient } from "../../lib/http";
-import type { RoleResponse } from "./dtos";
+import type { RoleResponse, RoleUserResponse } from "./dtos";
 
 export type RoleCreatePayload = {
   nombre: string;
@@ -15,6 +15,17 @@ export type RoleUpdatePayload = {
 
 export const listRoles = (headers?: HeadersInit) =>
   apiClient<RoleResponse[]>("/roles", { headers });
+
+export const getRoleUsers = (
+  roleId: string,
+  tenantId?: string,
+  headers?: HeadersInit
+) => {
+  const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : "";
+  return apiClient<RoleUserResponse[]>(`/roles/${roleId}/users${query}`, {
+    headers,
+  });
+};
 
 export const createRole = (
   payload: RoleCreatePayload,

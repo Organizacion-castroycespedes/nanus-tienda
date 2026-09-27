@@ -10,3 +10,12 @@ test("POS toolbar removes legacy reconciliation action and keeps Reporte", () =>
   assert.match(source, /getPosSalesReportExcel/);
   assert.match(source, /onDownloadExcel/);
 });
+
+test("POS reports page unifies row actions with RowActionsMenu and PreInvoiceWizardModal", () => {
+  const source = readFileSync(resolve(process.cwd(), "modules/reporteria/components/PosReportsPage.tsx"), "utf8");
+  assert.match(source, /RowActionsMenu/);
+  assert.match(source, /PreInvoiceWizardModal/);
+  assert.match(source, /Facturar electr[oó]nicamente/);
+  assert.doesNotMatch(source, /requestElectronicBillingBatch/);
+});
+

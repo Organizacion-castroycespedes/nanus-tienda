@@ -22,6 +22,7 @@ import {
 } from "../../../../components/design-system/DataTable";
 import { ConfirmDialog } from "../../../../components/design-system/confirm-dialog";
 import { Input } from "../../../../components/design-system/Input";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasMenuAccess } from "../../../../lib/permissions";
@@ -628,29 +629,34 @@ const PromotionsAdminPage = () => {
     {
       key: "actions",
       header: "Acciones",
+      className: "text-right",
+      cellClassName: "text-right",
       render: (promotion) => (
-        <div className="flex flex-wrap gap-2">
-          {canWrite ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void openEditForm(promotion)}
-              isLoading={openingPromotionId === promotion.id}
-            >
-              <Pencil className="h-4 w-4" />
-              Editar
-            </Button>
-          ) : null}
-          {canWrite && promotion.isActive ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setPromotionToDeactivate(promotion)}
-            >
-              <Power className="h-4 w-4" />
-              Inactivar
-            </Button>
-          ) : null}
+        <div className="flex items-center justify-end">
+          <RowActionsMenu
+            items={[
+              ...(canWrite
+                ? [
+                    {
+                      label: "Editar",
+                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                      disabled: openingPromotionId === promotion.id,
+                      onSelect: () => void openEditForm(promotion),
+                    },
+                    ...(promotion.isActive
+                      ? [
+                          {
+                            label: "Inactivar",
+                            icon: <Power className="h-4 w-4 text-amber-500" />,
+                            destructive: true,
+                            onSelect: () => setPromotionToDeactivate(promotion),
+                          },
+                        ]
+                      : []),
+                  ]
+                : []),
+            ]}
+          />
         </div>
       ),
     },

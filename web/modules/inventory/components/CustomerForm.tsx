@@ -130,38 +130,46 @@ const WIZARD_TABS = [
   { id: "confirmation", label: "Confirmación", subtitle: "Estado y guardar", icon: CheckCircle2 },
 ] as const;
 
-const createInitialValues = (customer?: CustomerResponse | null): CustomerFormValues => ({
-  name: customer?.name ?? "",
-  dianIdentificationType:
-    customer?.dianIdentificationType ?? customer?.documentTypeCode ?? "31",
-  identificationNumber:
+const createInitialValues = (customer?: CustomerResponse | null): CustomerFormValues => {
+  const identificationNumber =
     customer?.identificationNumber ??
     customer?.documentNumberNormalized ??
     customer?.documentNumber ??
-    "",
-  verificationDigit: customer?.verificationDigit ?? "",
-  legalName: customer?.legalName ?? "",
-  tradeName: customer?.tradeName ?? "",
-  email: customer?.email ?? customer?.fiscalEmail ?? customer?.invoiceEmail ?? "",
-  invoiceEmail: customer?.invoiceEmail ?? customer?.fiscalEmail ?? customer?.email ?? "",
-  phone: customer?.phone ?? "",
-  address: customer?.address ?? "",
-  countryId: "",
-  departamentoId: customer?.departamentoId ?? "",
-  municipioId: customer?.municipioId ?? "",
-  countryCode: customer?.countryCode?.trim() || "CO",
-  departmentCode: customer?.departmentCode ?? "",
-  municipalityCode: customer?.municipalityCode ?? "",
-  personType: customer?.personType ?? "",
-  taxRegime: customer?.taxRegime ?? "",
-  taxResponsibilities: customer?.taxResponsibilities?.join(", ") ?? "",
-  fiscalDataSource: customer?.fiscalDataSource ?? "MANUAL",
-  fiscalStatus:
-    customer?.fiscalStatus ?? (customer?.isFinalConsumer ? "NOT_REQUIRED" : "PENDING"),
-  isDianValidated: customer?.isDianValidated ?? false,
-  isFinalConsumer: customer?.isFinalConsumer ?? false,
-  isActive: customer?.isFinalConsumer ? true : customer?.isActive ?? true,
-});
+    "";
+  const dianIdentificationType =
+    customer?.dianIdentificationType ?? customer?.documentTypeCode ?? "31";
+  const verificationDigit =
+    customer?.verificationDigit ||
+    (isDvApplicable(dianIdentificationType) ? calculateDianDv(identificationNumber) : "");
+
+  return {
+    name: customer?.name ?? "",
+    dianIdentificationType,
+    identificationNumber,
+    verificationDigit,
+    legalName: customer?.legalName ?? "",
+    tradeName: customer?.tradeName ?? "",
+    email: customer?.email ?? customer?.fiscalEmail ?? customer?.invoiceEmail ?? "",
+    invoiceEmail: customer?.invoiceEmail ?? customer?.fiscalEmail ?? customer?.email ?? "",
+    phone: customer?.phone ?? "",
+    address: customer?.address ?? "",
+    countryId: "",
+    departamentoId: customer?.departamentoId ?? "",
+    municipioId: customer?.municipioId ?? "",
+    countryCode: customer?.countryCode?.trim() || "CO",
+    departmentCode: customer?.departmentCode ?? "",
+    municipalityCode: customer?.municipalityCode ?? "",
+    personType: customer?.personType ?? "",
+    taxRegime: customer?.taxRegime ?? "",
+    taxResponsibilities: customer?.taxResponsibilities?.join(", ") ?? "",
+    fiscalDataSource: customer?.fiscalDataSource ?? "MANUAL",
+    fiscalStatus:
+      customer?.fiscalStatus ?? (customer?.isFinalConsumer ? "NOT_REQUIRED" : "PENDING"),
+    isDianValidated: customer?.isDianValidated ?? false,
+    isFinalConsumer: customer?.isFinalConsumer ?? false,
+    isActive: customer?.isFinalConsumer ? true : customer?.isActive ?? true,
+  };
+};
 
 const isValidEmail = (value: string) =>
   value.trim() === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -540,33 +548,7 @@ export const CustomerForm = ({
     };
   }, [values.departamentoId]);
 
-  useEffect(() => {
-    const selected = countries.find(
-      (country) => country.codigo_iso2 === values.countryCode
-    );
-    if (selected && selected.id !== values.countryId) {
-      setValues((prev) => ({ ...prev, countryId: selected.id }));
-    }
-  }, [countries, values.countryCode, values.countryId]);
-
-  useEffect(() => {
-    const selected = departments.find(
-      (department) => department.codigo_dane === values.departmentCode
-    );
-    if (selected && selected.id !== values.departamentoId) {
-      setValues((prev) => ({ ...prev, departamentoId: selected.id }));
-    }
-  }, [departments, values.departmentCode, values.departamentoId]);
-
-  useEffect(() => {
-    const selected = municipalities.find(
-      (municipality) => municipality.codigo_dane === values.municipalityCode
-    );
-    if (selected && selected.id !== values.municipioId) {
-      setValues((prev) => ({ ...prev, municipioId: selected.id }));
-    }
-  }, [municipalities, values.municipalityCode, values.municipioId]);
-
+  // Sincronización de ubicación gestionada de forma imperativa en onChange y carga inicial
   const resetLookupState = () => {
     setPreview(null);
     setSelectedFields([]);
@@ -606,27 +588,30 @@ export const CustomerForm = ({
     const nextErrors: CustomerFormErrors = {};
 
     if (!values.name.trim()) {
-      nextErrors.name = "El nombre o razón social es requerido.";
+      nextErrors.name = "Ingresa el nombre o razón social del cliente.";
     }
-    if (!isValidEmail(values.email)) {
-      nextErrors.email = "El correo comercial no es válido.";
+    if (!values.isFinalConsumer && !values.identificationNumber.trim()) {
+      nextErrors.identificationNumber = "Ingresa el número de identificación o NIT.";
     }
-    if (!isValidEmail(values.invoiceEmail)) {
-      nextErrors.invoiceEmail = "El correo de factura no es válido.";
+    if (values.email && !isValidEmail(values.email)) {
+      nextErrors.email = "Ingresa un correo comercial válido (ej: cliente@correo.com).";
+    }
+    if (values.invoiceEmail && !isValidEmail(values.invoiceEmail)) {
+      nextErrors.invoiceEmail = "Ingresa un correo de factura válido (ej: facturas@empresa.com).";
     }
     if (!values.countryCode) {
-      nextErrors.countryCode = "El país es requerido.";
+      nextErrors.countryCode = "Selecciona el país.";
     }
     if (values.countryCode === "CO" && !values.departmentCode) {
-      nextErrors.departmentCode = "El departamento es requerido.";
+      nextErrors.departmentCode = "Selecciona el departamento.";
     }
     if (values.countryCode === "CO" && !values.municipalityCode) {
-      nextErrors.municipalityCode = "El municipio es requerido.";
+      nextErrors.municipalityCode = "Selecciona el municipio o ciudad.";
     }
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      if (nextErrors.name) {
+      if (nextErrors.name || nextErrors.identificationNumber) {
         setActiveTab(0);
       } else if (
         nextErrors.email ||
@@ -646,24 +631,27 @@ export const CustomerForm = ({
     const nextErrors: CustomerFormErrors = {};
 
     if (stepIndex === 0) {
+      if (!values.isFinalConsumer && !values.identificationNumber.trim()) {
+        nextErrors.identificationNumber = "Ingresa el número de identificación o NIT.";
+      }
       if (!values.name.trim()) {
-        nextErrors.name = "El nombre o razón social es requerido.";
+        nextErrors.name = "Ingresa el nombre o razón social del cliente.";
       }
     } else if (stepIndex === 1) {
-      if (!isValidEmail(values.email)) {
-        nextErrors.email = "El correo comercial no es válido.";
+      if (values.email && !isValidEmail(values.email)) {
+        nextErrors.email = "Ingresa un correo comercial válido (ej: cliente@correo.com).";
       }
-      if (!isValidEmail(values.invoiceEmail)) {
-        nextErrors.invoiceEmail = "El correo para facturación no es válido.";
+      if (values.invoiceEmail && !isValidEmail(values.invoiceEmail)) {
+        nextErrors.invoiceEmail = "Ingresa un correo de factura válido (ej: facturas@empresa.com).";
       }
       if (!values.countryCode) {
-        nextErrors.countryCode = "El país es requerido.";
+        nextErrors.countryCode = "Selecciona el país.";
       }
       if (values.countryCode === "CO" && !values.departmentCode) {
-        nextErrors.departmentCode = "El departamento es requerido.";
+        nextErrors.departmentCode = "Selecciona el departamento.";
       }
       if (values.countryCode === "CO" && !values.municipalityCode) {
-        nextErrors.municipalityCode = "El municipio es requerido.";
+        nextErrors.municipalityCode = "Selecciona el municipio o ciudad.";
       }
     }
 
@@ -928,23 +916,36 @@ export const CustomerForm = ({
   const showDv = isDvApplicable(values.dianIdentificationType);
 
   const handleDocTypeChange = (newDocType: string) => {
-    updateValue("dianIdentificationType", newDocType as CustomerFormValues["dianIdentificationType"]);
-    if (isDvApplicable(newDocType)) {
-      const computedDv = calculateDianDv(values.identificationNumber);
-      if (computedDv) {
-        updateValue("verificationDigit", computedDv);
-      }
-    }
+    const computedDv = isDvApplicable(newDocType)
+      ? calculateDianDv(values.identificationNumber.trim())
+      : "";
+    setValues((prev) => ({
+      ...prev,
+      dianIdentificationType: newDocType,
+      verificationDigit: computedDv,
+    }));
+    setErrors((prev) => ({
+      ...prev,
+      dianIdentificationType: undefined,
+      submit: undefined,
+    }));
+    resetLookupState();
   };
 
   const handleIdentificationNumberChange = (newDocNum: string) => {
-    updateValue("identificationNumber", newDocNum);
-    if (showDv) {
-      const computedDv = calculateDianDv(newDocNum);
-      if (computedDv) {
-        updateValue("verificationDigit", computedDv);
-      }
-    }
+    const cleanNum = newDocNum.trim();
+    const computedDv = showDv ? calculateDianDv(cleanNum) : "";
+    setValues((prev) => ({
+      ...prev,
+      identificationNumber: newDocNum,
+      verificationDigit: computedDv,
+    }));
+    setErrors((prev) => ({
+      ...prev,
+      identificationNumber: undefined,
+      submit: undefined,
+    }));
+    resetLookupState();
   };
 
   return (
@@ -1023,7 +1024,7 @@ export const CustomerForm = ({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* TAB 0: Identificación y Datos Básicos */}
         {activeTab === 0 && (
           <div className="rounded-2xl border border-slate-200/70 bg-slate-50/40 p-5 sm:p-6 dark:border-slate-700/60 dark:bg-slate-900/20 space-y-6">
@@ -1071,18 +1072,22 @@ export const CustomerForm = ({
                     value={values.identificationNumber}
                     onChange={(event) => handleIdentificationNumberChange(event.target.value)}
                   />
+                  {errors.identificationNumber ? (
+                    <p className="mt-1 text-xs font-medium text-rose-600 dark:text-rose-400">
+                      {errors.identificationNumber}
+                    </p>
+                  ) : null}
                 </div>
                 {showDv ? (
                   <div className="col-span-1">
                     <Input
                       label="DV"
-                      placeholder="0"
+                      placeholder="Auto"
                       maxLength={1}
-                      title="Dígito de Verificación DIAN (Módulo 11)"
+                      title="Dígito de Verificación DIAN (calculado automáticamente con Módulo 11)"
                       value={values.verificationDigit}
-                      onChange={(event) =>
-                        updateValue("verificationDigit", event.target.value)
-                      }
+                      readOnly
+                      className="bg-slate-100/80 font-bold text-center text-slate-900 dark:bg-slate-800 dark:text-white cursor-default"
                     />
                   </div>
                 ) : null}
@@ -1096,7 +1101,11 @@ export const CustomerForm = ({
                   value={values.name}
                   onChange={(event) => updateValue("name", event.target.value)}
                 />
-                {errors.name ? <p className="text-xs text-rose-600">{errors.name}</p> : null}
+                {errors.name ? (
+                  <p className="mt-1 text-xs font-medium text-rose-600 dark:text-rose-400">
+                    {errors.name}
+                  </p>
+                ) : null}
               </div>
 
               <div>

@@ -11,6 +11,8 @@ import {
   type DataTableColumn,
 } from "../../../../components/design-system/DataTable";
 import { Input } from "../../../../components/design-system/Input";
+import { Pagination } from "../../../../components/design-system/Pagination";
+import { RowActionsMenu } from "../../../../components/design-system/RowActionsMenu";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
 import { hasMenuAccess } from "../../../../lib/permissions";
@@ -72,7 +74,7 @@ const SubcategoryImage = ({
     <InventoryImagePreview
       imageUrl={subcategory.defaultImageUrl}
       altText={subcategory.defaultImageAltText ?? subcategory.name}
-      className="flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600 dark:text-slate-300"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
       fallback={getClassificationInitials(subcategory.name)}
     />
   );
@@ -99,6 +101,8 @@ const ProductSubcategoriesPage = () => {
     useState<ProductSubcategoryResponse | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -196,6 +200,11 @@ const ProductSubcategoriesPage = () => {
     [categoryById, subcategories]
   );
 
+  const paginatedSubcategories = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedSubcategories.slice(start, start + pageSize);
+  }, [sortedSubcategories, page, pageSize]);
+
   const openCreate = () => {
     setSelectedSubcategory(null);
     setActionError(null);
@@ -227,11 +236,13 @@ const ProductSubcategoriesPage = () => {
   };
 
   const handleApplyFilters = () => {
+    setPage(1);
     setAppliedFilters(filters);
     void loadSubcategories(filters);
   };
 
   const handleResetFilters = () => {
+    setPage(1);
     setFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
     void loadSubcategories(defaultFilters);
@@ -303,16 +314,55 @@ const ProductSubcategoriesPage = () => {
 
   const columns: DataTableColumn<ProductSubcategoryResponse>[] = [
     {
-      key: "name",
-      header: "Subcategoria",
+      key: "actions",
+      header: "Acciones",
+      actionFirst: true,
+      className: "w-16 text-center",
+      cellClassName: "w-16 text-center",
       render: (subcategory) => (
-        <div className="flex min-w-[260px] items-start gap-3">
+        <div className="flex items-center justify-center">
+          <RowActionsMenu
+            items={[
+              ...(canWrite
+                ? [
+                    {
+                      label: "Editar",
+                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                      onSelect: () => openEdit(subcategory),
+                    },
+                    subcategory.isActive
+                      ? {
+                          label: "Desactivar",
+                          icon: <PowerOff className="h-4 w-4 text-amber-500" />,
+                          destructive: true,
+                          onSelect: () => openStatusAction(subcategory, "deactivate"),
+                        }
+                      : {
+                          label: "Activar",
+                          icon: <Power className="h-4 w-4 text-emerald-500" />,
+                          onSelect: () => openStatusAction(subcategory, "activate"),
+                        },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
+      key: "name",
+      header: "Subcategoría",
+      render: (subcategory) => (
+        <div className="flex min-w-[260px] max-w-md items-start gap-3">
           <SubcategoryImage subcategory={subcategory} />
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0 flex-1 space-y-1">
             <p className="font-semibold text-slate-900 dark:text-white">{subcategory.name}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">{subcategory.slug}</p>
             {subcategory.description ? (
-              <p className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300">
+              <p
+                className="line-clamp-2 text-xs text-slate-600 dark:text-slate-300"
+                title={subcategory.description}
+              >
                 {subcategory.description}
               </p>
             ) : null}
@@ -322,7 +372,7 @@ const ProductSubcategoriesPage = () => {
     },
     {
       key: "category",
-      header: "Categoria padre",
+      header: "Categoría padre",
       render: (subcategory) => (
         <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
           {categoryById.get(subcategory.categoryId)?.name ?? "Sin cargar"}
@@ -361,40 +411,6 @@ const ProductSubcategoriesPage = () => {
           <ImageIcon className="h-4 w-4" />
           {subcategory.defaultImageUrl ? "URL configurada" : "Placeholder"}
         </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "Acciones",
-      render: (subcategory) => (
-        <div className="flex flex-wrap gap-2">
-          {canWrite ? (
-            <Button variant="ghost" size="sm" onClick={() => openEdit(subcategory)}>
-              <Pencil className="h-4 w-4" />
-              Editar
-            </Button>
-          ) : null}
-          {canWrite && subcategory.isActive ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => openStatusAction(subcategory, "deactivate")}
-            >
-              <PowerOff className="h-4 w-4" />
-              Desactivar
-            </Button>
-          ) : null}
-          {canWrite && !subcategory.isActive ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => openStatusAction(subcategory, "activate")}
-            >
-              <Power className="h-4 w-4" />
-              Activar
-            </Button>
-          ) : null}
-        </div>
       ),
     },
   ];
@@ -546,13 +562,6 @@ const ProductSubcategoriesPage = () => {
             />
           ) : null}
 
-          {categories.length > 0 && !filters.categoryId ? (
-            <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-              Selecciona una categoria para filtrar el listado o crear una
-              subcategoria ya asociada.
-            </section>
-          ) : null}
-
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
             <div className="grid gap-4 lg:grid-cols-[1fr_260px_180px_auto]">
               <Input
@@ -611,13 +620,29 @@ const ProductSubcategoriesPage = () => {
 
           <DataTable
             columns={columns}
-            rows={sortedSubcategories}
+            rows={paginatedSubcategories}
             getRowKey={(subcategory) => subcategory.id}
             loading={loadingSubcategories}
             error={listError}
+            actionColumnFirst={true}
+            disableHeaderUppercase={true}
             loadingState="Cargando subcategorias..."
             emptyState="No hay subcategorias para mostrar."
           />
+
+          {sortedSubcategories.length > 0 ? (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={sortedSubcategories.length}
+              onPageChange={setPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+              loading={loadingSubcategories}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

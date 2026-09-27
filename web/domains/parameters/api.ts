@@ -24,7 +24,25 @@ export type TenantSettingRecord = {
   updated_at: string;
 };
 
-export type ParameterMode = "DISABLED" | "ON_DEMAND" | "AUTOMATIC";
+export const PARAMETER_MODES = {
+  DISABLED: "DISABLED",
+  ON_DEMAND: "ON_DEMAND",
+  AUTOMATIC: "AUTOMATIC",
+} as const;
+
+export type ParameterMode =
+  (typeof PARAMETER_MODES)[keyof typeof PARAMETER_MODES];
+
+export const PARAMETER_CODES = {
+  PRINT_TICKET: "PRINT_TICKET",
+  PRINT_INVOICE: "PRINT_INVOICE",
+  GENERATE_INVOICE: "GENERATE_INVOICE",
+  SEND_INVOICE: "SEND_INVOICE",
+  CONVERT_REMISSION: "CONVERT_REMISSION",
+} as const;
+
+export type ParameterCode =
+  (typeof PARAMETER_CODES)[keyof typeof PARAMETER_CODES];
 
 export const listParameters = (includeInactive = false) =>
   apiClient<ParameterRecord[]>(

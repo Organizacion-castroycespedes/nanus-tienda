@@ -1,9 +1,10 @@
 "use client";
 
 import {
+  AlertTriangle,
   CheckCircle2,
   CreditCard,
-  Grid3X3,
+  LayoutGrid,
   List,
   Loader2,
   Package,
@@ -11,6 +12,7 @@ import {
   Scale,
   Search,
   SlidersHorizontal,
+  Stethoscope,
   ShoppingCart,
   UserRound,
   UserPlus,
@@ -30,7 +32,12 @@ import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
-import { usePosCartStore } from "../hooks/usePosCartStore";
+import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
+import {
+  POS_CART_PRICING_STATUSES,
+  POS_SALE_STATUSES,
+  usePosCartStore,
+} from "../hooks/usePosCartStore";
 import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
 import { useAppSelector } from "../../../store/hooks";
@@ -49,10 +56,12 @@ import type {
   FinancialInstitution,
 } from "../../finance/types";
 import { PaymentDialog, type PosPaymentRow } from "./payment/PaymentDialog";
+import { PosAccountTabs } from "./accounts/PosAccountTabs";
 import {
   CartSaleModal,
   type CartSaleItemPresentation,
 } from "./cart/CartSaleModal";
+import { PosProductCard } from "./catalog/PosProductCard";
 import {
   createSale,
   getPosCustomers,
@@ -86,11 +95,13 @@ import {
 } from "../../shared/payments/payment-allocation.helper";
 import {
   buildSalePeripheralFeedbackMessage,
+  hasCashPeripheralPayment,
   runSalePeripheralOperations,
   type PosSalePeripheralContext,
 } from "../../../domains/peripherals/pos-sale-integration";
 import {
   getPeripheralFeatureFlags,
+  openCashDrawer,
   readCurrentWeight,
   simulateScannerRead,
   subscribeScannerEvents,
@@ -99,6 +110,8 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { useSalePrintWorkflow } from "../hooks/useSalePrintWorkflow";
 import {
   collectPosScannerProductCodes,
   findUniquePosScannerProduct,
@@ -124,7 +137,9 @@ import {
 import {
   buildClearedPosProductCatalogFilters,
   filterPosProductsForCatalog,
+  getProductSaleType,
   normalizePosClassificationId,
+  productSaleTypeLabels,
   resolveEffectivePosProductImage,
   resolvePosSubcategoryFilterForCategory,
   sortPosClassificationOptions,
@@ -133,7 +148,6 @@ import {
 import { createProductAddedSoundPlayer } from "../utils/product-added-sound";
 import {
   FLOATING_CART_STORAGE_KEY,
-  FLOATING_POS_STORAGE_KEY,
   FLOATING_CHARGE_STORAGE_KEY,
 } from "../utils/floating-control-position";
 import { useDraggableFloatingControl } from "../hooks/useDraggableFloatingControl";
@@ -183,12 +197,12 @@ const stockFilterLabels: Record<StockFilterKey, string> = {
 const productViewModeOptions: Array<{
   value: ProductViewMode;
   label: string;
-  icon: typeof Grid3X3;
+  icon: typeof LayoutGrid;
 }> = [
   {
     value: "grid",
-    label: "Cuadricula",
-    icon: Grid3X3,
+    label: "Cuadrícula",
+    icon: LayoutGrid,
   },
   {
     value: "list",
@@ -316,15 +330,6 @@ const isWeighableProduct = (product: ProductResponse) => {
 const formatScaleQuantity = (value: number) =>
   value.toFixed(3).replace(/\.?0+$/, "");
 
-const getProductSaleType = (product: ProductResponse) =>
-  product.saleType ?? (isWeighableProduct(product) ? "WEIGHT" : "UNIT");
-
-const productSaleTypeLabels: Record<"UNIT" | "WEIGHT" | "BOTH", string> = {
-  UNIT: "Unidad",
-  WEIGHT: "Peso",
-  BOTH: "Unidad/peso",
-};
-
 const parseQuantityInput = (value: string) => {
   const normalized = value.replace(",", ".").replace(/[^0-9.]/g, "");
   const [whole, ...decimalParts] = normalized.split(".");
@@ -442,7 +447,7 @@ const markPricingPending = (
   quantity,
   price: item.baseUnitPrice ?? item.price,
   priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
-  pricingStatus: "PENDING",
+  pricingStatus: POS_CART_PRICING_STATUSES.PENDING,
   pricingRequestKey,
   pricingError: null,
   finalUnitPrice: undefined,
@@ -468,7 +473,7 @@ const applyPricingPreview = (
   priceWithoutTax:
     preview.quantity > 0 ? round(preview.taxBase / preview.quantity) : item.priceWithoutTax,
   taxId: preview.taxId,
-  pricingStatus: "READY",
+  pricingStatus: POS_CART_PRICING_STATUSES.READY,
   pricingRequestKey,
   pricingError: null,
   baseUnitPrice: preview.baseUnitPrice,
@@ -493,7 +498,7 @@ const applyPricingError = (
   ...item,
   price: item.baseUnitPrice ?? item.price,
   priceWithoutTax: item.basePriceWithoutTax ?? item.priceWithoutTax,
-  pricingStatus: "ERROR",
+  pricingStatus: POS_CART_PRICING_STATUSES.ERROR,
   pricingRequestKey,
   pricingError,
   finalUnitPrice: undefined,
@@ -514,8 +519,11 @@ export const PosScreen = () => {
   const branding = useAppSelector((state) => state.branding.config);
   const posBranchId = useAppSelector((state) => state.pos.branchId);
   const posTerminalId = useAppSelector((state) => state.pos.terminalId);
+  const posCashRegisterId = useAppSelector((state) => state.pos.cashRegisterId);
   const {
     items: cart,
+    accounts,
+    activeAccountId,
     payments,
     saleStatus,
     saleAttempt,
@@ -529,10 +537,20 @@ export const PosScreen = () => {
     allowSaleSubmissionRetry,
     allowUnknownSaleRetry,
     resetPosCartSale,
+    addAccount,
+    switchAccount,
+    renameAccount,
+    removeAccount,
   } = usePosCartStore();
   const { cartSheetOpen, setCartSheetOpen } = usePosUiStore();
+  const confirm = useConfirm();
   const canRead = hasMenuAccess("POS", "READ");
   const canCreate = hasMenuAccess("POS", "WRITE");
+
+  const activeAccount = useMemo(
+    () => accounts.find((account) => account.id === activeAccountId) ?? accounts[0],
+    [accounts, activeAccountId]
+  );
 
   if (!hasSession) {
     return null;
@@ -596,6 +614,13 @@ export const PosScreen = () => {
   const [scaleLastResult, setScaleLastResult] = useState<string | null>(null);
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
+  const {
+    pdfConfig,
+    isBillingProcessing,
+    cancelBillingProcessing,
+    closePdfModal,
+    triggerPrintWorkflow,
+  } = useSalePrintWorkflow();
 
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -614,7 +639,6 @@ export const PosScreen = () => {
   const cartRef = useRef(cart);
   const productsRef = useRef(products);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const scannerErrorToastShownRef = useRef(false);
   const scannerWedgeStateRef = useRef(createPosScannerWedgeState());
   const scannerWedgeOptions = useMemo(() => resolvePosScannerWedgeOptions(), []);
   const scannerHidLogger = useMemo(
@@ -622,8 +646,6 @@ export const PosScreen = () => {
     []
   );
   const playProductAddedSound = useMemo(() => createProductAddedSoundPlayer(), []);
-  const shouldFocusProductSearchRef = useRef(false);
-
   useAutoClearState(toastMessage, setToastMessage);
 
   useEffect(() => {
@@ -643,20 +665,9 @@ export const PosScreen = () => {
   );
 
   const openProductTools = useCallback(() => {
-    shouldFocusProductSearchRef.current = true;
     setProductToolsOpen(true);
   }, []);
 
-  const posFloatingControl = useDraggableFloatingControl({
-    storageKey: FLOATING_POS_STORAGE_KEY,
-    defaultAnchor: "top-right",
-    defaultSize: {
-      width: 176,
-      height: 56,
-    },
-    minTop: 96,
-    onActivate: openProductTools,
-  });
   const cartFloatingControl = useDraggableFloatingControl({
     storageKey: FLOATING_CART_STORAGE_KEY,
     defaultAnchor: "bottom-right",
@@ -676,35 +687,88 @@ export const PosScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (!productToolsOpen || !shouldFocusProductSearchRef.current) {
-      return;
-    }
-
-    shouldFocusProductSearchRef.current = false;
-    window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, [productToolsOpen]);
-
-  useEffect(() => {
     if (cart.length === 0 && cartSheetOpen) {
       setCartSheetOpen(false);
     }
   }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
+  const isSearchFocusReleased =
+    productToolsOpen ||
+    paymentModalOpen ||
+    quickFiscalCustomerOpen ||
+    cartSheetOpen ||
+    Boolean(pdfConfig) ||
+    isBillingProcessing;
+
   useEffect(() => {
-    if (paymentModalOpen || quickFiscalCustomerOpen) {
-      return;
+    if (isSearchFocusReleased) {
+      return undefined;
     }
 
+    // Keyboard users must be able to Tab away from the search input.
+    let isKeyboardNavigation = false;
+    const isEditableElement = (element: Element | null) =>
+      element instanceof HTMLElement &&
+      (element.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName));
+    const isInsideOverlay = (element: Element | null) =>
+      Boolean(
+        element?.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [aria-modal="true"]')
+      );
+
+    const restoreSearchFocus = () => {
+      if (isKeyboardNavigation) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        const input = searchInputRef.current;
+        const activeElement = document.activeElement;
+        if (
+          !input ||
+          activeElement === input ||
+          isEditableElement(activeElement) ||
+          isInsideOverlay(activeElement) ||
+          document.querySelector('[aria-modal="true"]')
+        ) {
+          return;
+        }
+
+        input.focus({ preventScroll: true });
+      });
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        isKeyboardNavigation = true;
+      }
+    };
+    const handlePointerDown = () => {
+      isKeyboardNavigation = false;
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointerup", restoreSearchFocus);
+    document.addEventListener("focusout", restoreSearchFocus);
     focusProductSearch();
-  }, [focusProductSearch, paymentModalOpen, quickFiscalCustomerOpen]);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointerup", restoreSearchFocus);
+      document.removeEventListener("focusout", restoreSearchFocus);
+    };
+  }, [focusProductSearch, isSearchFocusReleased]);
 
   const showToast = useCallback((message: string, variant: ToastVariant) => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  useEffect(() => {
+    if (catalogWarnings.length > 0) {
+      showToast(catalogWarnings.join(" "), "warning");
+    }
+  }, [catalogWarnings, showToast]);
 
   const handleSalePeripheralFeedback = useCallback(
     async (context: PosSalePeripheralContext) => {
@@ -853,7 +917,7 @@ export const PosScreen = () => {
       try {
         const [methods, session, banks] = await Promise.all([
           listPaymentMethods({ active: true }),
-          getCurrentCashSession(),
+          getCurrentCashSession(posCashRegisterId ?? undefined),
           listFinancialInstitutions().catch(() => []),
         ]);
 
@@ -877,11 +941,13 @@ export const PosScreen = () => {
     };
 
     void loadFinanceCatalog();
+    window.addEventListener("manus:cash-session-changed", loadFinanceCatalog);
 
     return () => {
       active = false;
+      window.removeEventListener("manus:cash-session-changed", loadFinanceCatalog);
     };
-  }, []);
+  }, [posCashRegisterId]);
 
   useEffect(() => {
     let active = true;
@@ -1055,25 +1121,8 @@ export const PosScreen = () => {
       : null,
   ].filter((label): label is string => Boolean(label));
   const hasProductCatalogFilters = activeProductFilterLabels.length > 0;
-
-  useEffect(() => {
-    const nextSubcategoryId = resolvePosSubcategoryFilterForCategory(
-      selectedProductSubcategoryId,
-      selectedProductCategoryId,
-      productSubcategoryOptions
-    );
-
-    if (
-      selectedProductSubcategoryId &&
-      selectedProductSubcategoryId !== nextSubcategoryId
-    ) {
-      setSelectedProductSubcategoryId(nextSubcategoryId);
-    }
-  }, [
-    productSubcategoryOptions,
-    selectedProductCategoryId,
-    selectedProductSubcategoryId,
-  ]);
+  const productClassificationFilterCount =
+    Number(Boolean(selectedProductCategory)) + Number(Boolean(selectedProductSubcategory));
 
   const handleStockFilterChange = useCallback(
     (filter: StockFilterKey) => {
@@ -1148,6 +1197,52 @@ export const PosScreen = () => {
     selectedProductCategoryId,
     selectedProductSubcategoryId,
   ]);
+
+  const POS_CATALOG_PAGE_SIZE = 48;
+  const [visibleProductCount, setVisibleProductCount] = useState(POS_CATALOG_PAGE_SIZE);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setVisibleProductCount(POS_CATALOG_PAGE_SIZE);
+  }, [
+    query,
+    activeStockFilter,
+    selectedProductCategoryId,
+    selectedProductSubcategoryId,
+  ]);
+
+  const visibleProducts = useMemo(
+    () => filteredProducts.slice(0, visibleProductCount),
+    [filteredProducts, visibleProductCount]
+  );
+
+  const hasMoreProducts = visibleProductCount < filteredProducts.length;
+
+  useEffect(() => {
+    if (!hasMoreProducts) {
+      return;
+    }
+
+    const node = loadMoreSentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisibleProductCount((prev) =>
+            Math.min(prev + POS_CATALOG_PAGE_SIZE, filteredProducts.length)
+          );
+        }
+      },
+      { rootMargin: "300px" }
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [filteredProducts.length, hasMoreProducts]);
 
   const productById = useMemo(
     () =>
@@ -1349,20 +1444,6 @@ export const PosScreen = () => {
       }, {}),
     [cartWithDerivedValues]
   );
-  const scaleStatusLabel = scaleMockEnabled
-    ? scaleMockStatus === "reading"
-      ? "Leyendo"
-      : scaleMockStatus === "error"
-        ? "Error"
-        : "Lista"
-    : "Desactivada";
-  const scaleStatusTone =
-    scaleMockStatus === "error" || !scaleMockEnabled
-      ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-      : scaleMockStatus === "reading"
-        ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100";
-
   const refreshCartItemPricing = useCallback(
     async (productId: string, quantity: number, pricingRequestKey: string) => {
       if (!activeBranchId) {
@@ -1420,7 +1501,7 @@ export const PosScreen = () => {
               item.productId === productId && item.pricingRequestKey === pricingRequestKey
                 ? {
                     ...item,
-                    pricingStatus: "PENDING",
+                    pricingStatus: POS_CART_PRICING_STATUSES.PENDING,
                     pricingError: "Precio pendiente de actualización",
                   }
                 : item
@@ -1560,7 +1641,7 @@ export const PosScreen = () => {
 
   const setProductQuantityInCart = useCallback(
     (product: ProductResponse, quantity: number) => {
-      setSaleStatus("DRAFT");
+      allowSaleSubmissionRetry();
       setSubmitError(null);
 
       const currentCart = cartRef.current;
@@ -1608,7 +1689,7 @@ export const PosScreen = () => {
       queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
       return true;
     },
-    [queueCartItemPricing, setSaleStatus, showToast]
+    [allowSaleSubmissionRetry, queueCartItemPricing, showToast]
   );
 
   const addToCart = useCallback(
@@ -1668,14 +1749,9 @@ export const PosScreen = () => {
   const handleScannerConnectionError = useCallback(
     (error: PeripheralOperationError) => {
       setScannerMockStatus("error");
-      setScannerLastResult("Scanner desconectado");
-
-      if (!scannerErrorToastShownRef.current) {
-        scannerErrorToastShownRef.current = true;
-        showToast(error.message || "Scanner desconectado", "warning");
-      }
+      setScannerLastResult(`Scanner desconectado (${error.code})`);
     },
-    [showToast]
+    []
   );
 
   useEffect(() => {
@@ -1684,7 +1760,6 @@ export const PosScreen = () => {
       return undefined;
     }
 
-    scannerErrorToastShownRef.current = false;
     setScannerMockStatus("connected");
     scannerHidLogger.captureEnabled();
     const unsubscribe = subscribeScannerEvents(
@@ -1966,7 +2041,7 @@ export const PosScreen = () => {
   );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
-    setSaleStatus("DRAFT");
+    setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
 
     const currentCart = cartRef.current;
@@ -1981,7 +2056,7 @@ export const PosScreen = () => {
     }
 
     const safeQuantity = Math.min(nextQuantity, target.stock);
-    if (safeQuantity === target.quantity && target.pricingStatus !== "ERROR") {
+    if (safeQuantity === target.quantity && target.pricingStatus !== POS_CART_PRICING_STATUSES.ERROR) {
       return;
     }
 
@@ -1998,7 +2073,7 @@ export const PosScreen = () => {
   };
 
   const removeCartItem = (productId: string) => {
-    setSaleStatus("DRAFT");
+    setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
     setCartItemsAndRef(cartRef.current.filter((item) => item.productId !== productId));
   };
@@ -2021,7 +2096,7 @@ export const PosScreen = () => {
   };
 
   const reconcileUnknownSale = async () => {
-    if (saleStatus !== "UNKNOWN" || !saleAttempt) {
+    if (saleStatus !== POS_SALE_STATUSES.UNKNOWN || !saleAttempt) {
       return;
     }
 
@@ -2029,7 +2104,7 @@ export const PosScreen = () => {
     setSubmitError(null);
     try {
       const sale = await reconcileSale(saleAttempt.attemptId);
-      setSaleStatus("CONFIRMED");
+      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
       setCartItemsAndRef([]);
       setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
       setExpandedTaxItems({});
@@ -2078,13 +2153,21 @@ export const PosScreen = () => {
     summary.total,
   ]);
 
-  const cancelCurrentSale = useCallback(() => {
+  const cancelCurrentSale = useCallback(async () => {
     if (cartRef.current.length > 0) {
-      const confirmed = window.confirm(
-        "¿Cancelar la venta actual? Se vaciará el carrito."
-      );
-      if (!confirmed) {
-        return;
+      try {
+        await confirm({
+          title: "¿Cancelar la venta actual?",
+          description: "Se vaciará el carrito y se restablecerá la venta en curso.",
+          confirmText: "Aceptar",
+          cancelText: "Cancelar",
+          variant: "danger",
+        });
+      } catch (error) {
+        if (isConfirmCancelledError(error)) {
+          return;
+        }
+        throw error;
       }
     }
     resetPosCartSale();
@@ -2095,6 +2178,7 @@ export const PosScreen = () => {
     setCartSheetOpen(false);
     setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
   }, [
+    confirm,
     finalConsumerCustomer?.id,
     resetPosCartSale,
     setCartItemsAndRef,
@@ -2185,13 +2269,14 @@ export const PosScreen = () => {
 
   useEffect(() => {
     if (paymentModalOpen && firstPaymentId) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const firstInput = document.getElementById(`payment-amount-${firstPaymentId}`);
         if (firstInput) {
           firstInput.focus();
           if (firstInput instanceof HTMLInputElement) firstInput.select();
         }
       }, 100);
+      return () => clearTimeout(timer);
     }
   }, [firstPaymentId, paymentModalOpen]);
 
@@ -2442,7 +2527,7 @@ export const PosScreen = () => {
     paymentsOverride?: PaymentDraft[];
     customerIdOverride?: string | null;
   }) => {
-    if (saleStatus === "UNKNOWN") {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN) {
       setSubmitError(
         "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
       );
@@ -2514,7 +2599,7 @@ export const PosScreen = () => {
         { "Idempotency-Key": attempt.attemptId },
       );
 
-      setSaleStatus("CONFIRMED");
+      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
       // Successful checkout clears the persisted sale for this POS context.
       setCartItemsAndRef([]);
       setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
@@ -2558,7 +2643,34 @@ export const PosScreen = () => {
           };
         }),
       };
-      void handleSalePeripheralFeedback(salePeripheralContext);
+
+      // 1. Cash drawer opening on cash payments
+      if (hasCashPeripheralPayment(salePeripheralContext.payments)) {
+        const flags = getPeripheralFeatureFlags();
+        if (flags.peripheralsEnabled && flags.openDrawerEnabled) {
+          void openCashDrawer({
+            tenantId: authUser?.tenantId ?? undefined,
+            branchId: activeBranchId ?? undefined,
+            terminalId: posTerminalId ?? "local-terminal",
+            deviceId: "mock-cashdrawer-001",
+            reason: "SALE_CASH_PAYMENT",
+          }).then((drawerRes) => {
+            if (drawerRes.success) {
+              showToast("Cajón abierto", "success");
+            }
+          });
+        }
+      }
+
+      // 2. Document printing and electronic invoicing workflow
+      void triggerPrintWorkflow({
+        saleId: sale.id,
+        tenantId: authUser?.tenantId,
+        branchId: activeBranchId,
+        terminalId: posTerminalId ?? undefined,
+        electronicBillingEnabled: branding.electronicBillingEnabled !== false,
+        showToast,
+      });
 
       try {
         if (!activeBranchId) {
@@ -2590,7 +2702,9 @@ export const PosScreen = () => {
   };
 
   const renderedStatus =
-    saleStatus === "CONFIRMED" && cartWithDerivedValues.length === 0 ? "CONFIRMED" : "DRAFT";
+    saleStatus === POS_SALE_STATUSES.CONFIRMED && cartWithDerivedValues.length === 0
+      ? POS_SALE_STATUSES.CONFIRMED
+      : POS_SALE_STATUSES.DRAFT;
 
   if (!canRead) {
     return (
@@ -2632,41 +2746,16 @@ export const PosScreen = () => {
         <Toast
           message={toastMessage}
           variant={toastVariant}
-          onClose={() => setToastMessage(null)}
+          floating
         />
       ) : null}
 
-      {/* POS operational panel trigger */}
+      {/* POS operational panel */}
       <div className="relative">
-        <button
-          type="button"
-          ref={posFloatingControl.buttonRef}
-          onPointerDown={posFloatingControl.buttonProps.onPointerDown}
-          onPointerMove={posFloatingControl.buttonProps.onPointerMove}
-          onPointerUp={posFloatingControl.buttonProps.onPointerUp}
-          onPointerCancel={posFloatingControl.buttonProps.onPointerCancel}
-          onClick={posFloatingControl.buttonProps.onClick}
-          style={posFloatingControl.buttonStyle}
-          className={`fixed z-20 inline-flex cursor-grab select-none items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-800 shadow-lg shadow-slate-900/10 backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 active:cursor-grabbing dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-100 dark:hover:border-slate-600 dark:hover:bg-slate-900 ${posFloatingControl.isDragging ? "scale-[1.02] shadow-2xl" : ""}`}
-          aria-label="Abrir panel operativo POS"
-          title="Abrir panel operativo POS. Arrastra para mover."
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          <span>POS</span>
-          {hasProductCatalogFilters ? (
-            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-slate-900 px-2 py-0.5 text-xs font-bold text-white dark:bg-white dark:text-slate-950">
-              {activeProductFilterLabels.length}
-            </span>
-          ) : null}
-          {selectedCustomerId && selectedCustomerId !== finalConsumerCustomer?.id ? (
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          ) : null}
-        </button>
-
         {productToolsOpen ? (
           <Modal
             title="Panel operativo POS"
-            description="Ajustar filtros de producto sin reservar espacio permanente."
+            description="Filtra el catálogo por categoría y subcategoría."
             size="xl"
             onClose={() => setProductToolsOpen(false)}
             className="max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-slate-950"
@@ -2715,46 +2804,6 @@ export const PosScreen = () => {
                     ))}
                   </Select>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
-                    const isActive = activeStockFilter === filter;
-                    return (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => handleStockFilterChange(filter)}
-                        className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                          isActive
-                            ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <span>{stockFilterLabels[filter]}</span>
-                        <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-[11px] dark:bg-white/10">
-                          {stockFilterCounts[filter]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={productViewMode === "grid" ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setProductViewMode("grid")}
-                  >
-                    <Grid3X3 className="h-4 w-4" />
-                    Cuadricula
-                  </Button>
-                  <Button
-                    variant={productViewMode === "list" ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => setProductViewMode("list")}
-                  >
-                    <List className="h-4 w-4" />
-                    Lista
-                  </Button>
-                </div>
                 {hasSelectedCategoryWithoutSubcategories ? (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {selectedProductCategory?.name ?? "Categoría"} sin subcategorías.
@@ -2762,7 +2811,24 @@ export const PosScreen = () => {
                 ) : null}
               </section>
 
-
+              {canShowPeripheralDiagnostics ? (
+                <section className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                    Diagnóstico de periféricos
+                  </div>
+                  <Button
+                    variant={peripheralDiagnosticsOpen ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setPeripheralDiagnosticsOpen((current) => !current);
+                      setProductToolsOpen(false);
+                    }}
+                  >
+                    {peripheralDiagnosticsOpen ? "Ocultar" : "Mostrar"}
+                  </Button>
+                </section>
+              ) : null}
             </div>
           </Modal>
         ) : null}
@@ -2773,38 +2839,150 @@ export const PosScreen = () => {
           {catalogError}
         </section>
       ) : null}
-      {catalogWarnings.length > 0 && !catalogError ? (
-        <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-          {catalogWarnings.join(" ")}
-        </section>
-      ) : null}
-
       {/* Main Layout - Sale-first workspace */}
-      <div className="grid gap-5">
+      <div className="grid gap-4">
         {/* Products Panel - Always visible */}
         <div className="min-w-0">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 lg:p-3 xl:p-4 2xl:p-5 dark:border-slate-700 dark:bg-slate-950/80">
-            <div className="flex flex-col gap-3 2xl:gap-4">
-              <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 xl:p-3 2xl:space-y-3 2xl:p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  <Search className="h-4 w-4" />
-                  Buscar productos
+          <div className="rounded-[24px] border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.35)] md:p-3 xl:p-4 dark:border-slate-700 dark:bg-slate-950/80">
+            <div className="flex flex-col gap-2.5 2xl:gap-3.5">
+              <PosAccountTabs
+                accounts={accounts}
+                activeAccountId={activeAccountId}
+                onSelectAccount={switchAccount}
+                onAddAccount={addAccount}
+                onRenameAccount={renameAccount}
+                onRemoveAccount={removeAccount}
+                formatCurrency={formatCurrency}
+              />
+
+              <section className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-900/[0.03] dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1 lg:min-w-[13rem]">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                    strokeWidth={2}
+                    aria-hidden="true"
+                  />
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    aria-label="Buscar productos"
+                    placeholder="Buscar productos por nombre, SKU o código"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-400"
+                  />
                 </div>
-                <Input
-                  ref={searchInputRef}
-                  label=""
-                  aria-label="Buscar productos"
-                  placeholder="Buscar productos por nombre, SKU o codigo"
-                  autoFocus
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  className="min-h-12 pl-10 text-base dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Usa nombre, SKU o codigo. Escape limpia la busqueda.
-                </p>
+                <div className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap">
+                  <div
+                    className="flex flex-wrap items-center gap-1.5 lg:flex-nowrap"
+                    role="group"
+                    aria-label="Filtrar por stock"
+                  >
+                    {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
+                      const isActive = activeStockFilter === filter;
+                      return (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => handleStockFilterChange(filter)}
+                          aria-pressed={isActive}
+                          className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border pl-3 pr-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+                            isActive
+                              ? "border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-950"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {stockFilterLabels[filter]}
+                          <span
+                            className={`inline-flex min-w-[1.5rem] justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums ${
+                              isActive
+                                ? "bg-white/15 text-white dark:bg-slate-950/10 dark:text-slate-950"
+                                : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                            }`}
+                          >
+                            {stockFilterCounts[filter]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-950"
+                    role="group"
+                    aria-label="Vista de productos"
+                  >
+                    {productViewModeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const isActive = productViewMode === option.value;
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setProductViewMode(option.value)}
+                          aria-pressed={isActive}
+                          className={`inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+                            isActive
+                              ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
+                              : "text-slate-700 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" aria-hidden="true" />
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openProductTools}
+                    className="relative inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+                    aria-label="Abrir panel operativo POS"
+                    title="Filtros por categoría y subcategoría"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                    POS
+                    {productClassificationFilterCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                        {productClassificationFilterCount}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  {canShowPeripheralDiagnostics ? (
+                    <button
+                      type="button"
+                      onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
+                      aria-pressed={peripheralDiagnosticsOpen}
+                      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition lg:hidden xl:inline-flex focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+                        peripheralDiagnosticsOpen
+                          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+                      }`}
+                      aria-label="Diagnóstico de periféricos"
+                      title="Diagnóstico de periféricos"
+                    >
+                      <Stethoscope className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
               </section>
+
+              {scaleMockEnabled && scaleMockStatus === "error" ? (
+                <div
+                  className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                  role="alert"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Balanza no disponible. Revisa la conexión antes de vender productos por peso.
+                </div>
+              ) : null}
 
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
               <>
@@ -2919,129 +3097,6 @@ export const PosScreen = () => {
               </>
               ) : null}
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/70 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${scaleStatusTone}`}
-                  >
-                    Balanza {scaleStatusLabel}
-                    {scaleMockStatus === "ready" ? (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    ) : null}
-                  </span>
-                </div>
-                {scaleMockStatus === "error" ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
-                    Balanza no disponible
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
-                    className="inline-flex min-h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Periféricos OK
-                  </button>
-                )}
-                {canShowPeripheralDiagnostics ? (
-                  <button
-                    type="button"
-                    onClick={() => setPeripheralDiagnosticsOpen((current) => !current)}
-                    className="inline-flex min-h-7 items-center justify-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    Diagnóstico
-                  </button>
-                ) : null}
-
-                <span className="text-[10px] uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
-                  Sync {appVersion || "sin version"}
-                </span>
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                    {filteredProducts.length} productos disponibles
-                  </span>
-                  <div
-                    className="inline-flex rounded-full border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-800"
-                    role="group"
-                    aria-label="Vista de productos"
-                  >
-                    {productViewModeOptions.map((option) => {
-                      const Icon = option.icon;
-                      const isActive = productViewMode === option.value;
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setProductViewMode(option.value)}
-                          aria-pressed={isActive}
-                          className={`inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 ${
-                            isActive
-                              ? "bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-950"
-                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                          }`}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Filter Chips */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(stockFilterLabels) as StockFilterKey[]).map((filter) => {
-                    const isActive = activeStockFilter === filter;
-                    return (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => handleStockFilterChange(filter)}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none transition-all duration-200 active:scale-95 ${
-                          isActive
-                            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        <span>{stockFilterLabels[filter]}</span>
-                        <span className="rounded-full bg-black/10 px-1 py-0.5 text-[9px] leading-none dark:bg-white/10">
-                          {stockFilterCounts[filter]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1">
-                  {activeProductFilterLabels.length > 0 ? (
-                    <>
-                      {activeProductFilterLabels.map((label) => (
-                        <span
-                          key={label}
-                          className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearProductCatalogFilters}
-                        disabled={!hasProductCatalogFilters}
-                        className="min-h-7 px-2 py-0.5 text-[10px] leading-none"
-                      >
-                        <X className="h-3 w-3" />
-                        Limpiar
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
             </div>
 
             {/* Products Catalog */}
@@ -3060,232 +3115,73 @@ export const PosScreen = () => {
                 <div
                   className={
                     productViewMode === "grid"
-                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                      ? "grid min-w-0 grid-cols-1 gap-2.5 min-[640px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
                       : "grid gap-2.5"
                   }
                 >
-                  {filteredProducts.map((product) => {
+                  {visibleProducts.map((product) => {
                     const stock = Number(product.stock ?? 0);
                     const productSaleType = getProductSaleType(product);
                     const requiresScale = productSaleType === "WEIGHT";
-                    const quantityInCart = cartQuantityByProductId[product.id] ?? 0;
-                    const hasProductInCart = quantityInCart > 0;
-                    const actionLabel = requiresScale
-                      ? scaleMockEnabled
-                        ? "Leer balanza"
-                        : "Sin balanza"
-                      : "Agregar";
-                    const actionTone = requiresScale
-                      ? scaleMockEnabled
-                        ? "bg-sky-600 text-white shadow-sm ring-1 ring-sky-500/20 group-hover:bg-sky-700 dark:bg-sky-500 dark:text-slate-950 dark:group-hover:bg-sky-400"
-                        : "bg-slate-100 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700"
-                      : "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/20 group-hover:bg-blue-700 dark:bg-blue-500 dark:text-slate-950 dark:group-hover:bg-blue-400";
-                    const effectiveImage = resolveEffectivePosProductImage(product, {
-                      categoryById: productCategoryById,
-                      subcategoryById: productSubcategoryById,
-                    });
                     const isProductActionDisabled =
                       stock <= 0 ||
                       !canCreate ||
                       (requiresScale && (!scaleMockEnabled || scaleReading));
-
-                    if (productViewMode === "list") {
-                      return (
-                        <button
-                          key={product.id}
-                          type="button"
-                          onClick={() => handleProductCardAction(product)}
-                          disabled={isProductActionDisabled}
-                          className={`group w-full overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.995] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:border-slate-200 disabled:hover:shadow-sm dark:bg-slate-800 dark:hover:border-slate-700 ${
-                            hasProductInCart
-                              ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                              : "border-slate-200 dark:border-slate-700"
-                          }`}
-                        >
-                          <div className="grid min-h-[88px] grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 sm:min-h-[92px] sm:grid-cols-[80px_minmax(0,1fr)_auto] md:min-h-[96px] lg:min-h-[100px]">
-                            <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950 sm:h-20 sm:w-20 md:h-[78px] md:w-[78px] lg:h-20 lg:w-20">
-                              <InventoryImagePreview
-                                imageUrl={effectiveImage.imageUrl}
-                                altText={effectiveImage.altText}
-                                lazy
-                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                                fallback={<span>{buildImageLabel(product.name)}</span>}
-                              />
-                            </div>
-
-                            <div className="min-w-0 py-0.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <h3 className="line-clamp-2 text-[0.98rem] font-semibold leading-tight text-slate-950 dark:text-white sm:text-[1rem]">
-                                  {product.name}
-                                </h3>
-                                <span
-                                  className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${getProductStockTone(
-                                    stock
-                                  )}`}
-                                >
-                                  {stock <= 0
-                                    ? "Sin stock"
-                                    : isLowStock(stock)
-                                      ? `Stock bajo ${stock}`
-                                      : `Stock ${stock}`}
-                                </span>
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
-                                <span className="text-slate-600 dark:text-slate-300">
-                                  {productSaleTypeLabels[productSaleType]} /{" "}
-                                  {product.measurementUnit ??
-                                    (productSaleType === "UNIT" ? "UND" : "KG")}
-                                </span>
-                              </div>
-
-                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
-                                    Precio final
-                                  </p>
-                                  <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
-                                    {formatCurrency(Number(product.priceWithTax ?? product.price))}
-                                  </p>
-                                </div>
-                                {hasProductInCart ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                    En carrito {quantityInCart}
-                                  </span>
-                                ) : null}
-                                {requiresScale ? (
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${actionTone}`}
-                                  >
-                                    {scaleMockEnabled ? (
-                                      <>
-                                        <Scale className="h-3.5 w-3.5" />
-                                        Leer balanza
-                                      </>
-                                    ) : (
-                                      actionLabel
-                                    )}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-end">
-                              <span
-                                className={`inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
-                              >
-                                {requiresScale ? (
-                                  scaleMockEnabled ? (
-                                    <Scale className="h-4 w-4" />
-                                  ) : (
-                                    actionLabel
-                                  )
-                                ) : (
-                                  <Plus className="h-5 w-5" />
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    }
+                    const effectiveImage = resolveEffectivePosProductImage(product, {
+                      categoryById: productCategoryById,
+                      subcategoryById: productSubcategoryById,
+                    });
 
                     return (
-                      <button
+                      <PosProductCard
                         key={product.id}
-                          type="button"
-                          onClick={() => handleProductCardAction(product)}
-                          disabled={isProductActionDisabled}
-                          className={`group min-h-[200px] overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm dark:bg-slate-800 ${
-                            hasProductInCart
-                              ? "border-blue-200 ring-2 ring-blue-100 dark:border-blue-500/40 dark:ring-blue-500/10"
-                              : "border-slate-200 dark:border-slate-700"
-                          }`}
-                      >
-                        <div className="flex h-full flex-col">
-                          <div className="relative">
-                            <div className="relative aspect-[4/3] max-h-52 w-full overflow-hidden bg-white xl:max-h-44">
-                              <InventoryImagePreview
-                                imageUrl={effectiveImage.imageUrl}
-                                altText={effectiveImage.altText}
-                                lazy
-                                className="flex h-full w-full items-center justify-center overflow-hidden bg-white bg-contain bg-center bg-no-repeat p-2 text-sm font-semibold text-slate-900 dark:bg-slate-950 dark:text-white"
-                                fallback={<span>{buildImageLabel(product.name)}</span>}
-                              />
-                            </div>
-                            <div className="absolute left-2.5 top-2.5 flex max-w-[calc(100%-1.25rem)] flex-wrap gap-1.5">
-                              {hasProductInCart ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-                                  En carrito {quantityInCart}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="absolute right-2.5 top-2.5">
-                              <span
-                                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
-                                  stock
-                                )}`}
-                              >
-                                {stock <= 0
-                                  ? "Sin stock"
-                                  : isLowStock(stock)
-                                    ? `Stock bajo ${stock}`
-                                    : `Stock ${stock}`}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-3">
-                            <div className="min-w-0">
-                              <h3 className="line-clamp-2 text-[0.95rem] font-semibold leading-tight text-slate-950 dark:text-white">
-                                {product.name}
-                              </h3>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                <span className="max-w-full truncate">{product.sku}</span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
-                                <span className="text-slate-600 dark:text-slate-300">
-                                  {productSaleTypeLabels[productSaleType]} /{" "}
-                                  {product.measurementUnit ??
-                                    (productSaleType === "UNIT" ? "UND" : "KG")}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="mt-auto flex items-end justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-700">
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                                  Precio final
-                                </p>
-                                <p className="mt-0.5 text-[1.1rem] font-semibold leading-none text-slate-950 dark:text-white">
-                                  {formatCurrency(Number(product.priceWithTax ?? product.price))}
-                                </p>
-                              </div>
-                              <span
-                                className={`inline-flex h-10 min-w-10 items-center justify-center rounded-2xl px-3 text-sm font-bold transition-colors ${actionTone}`}
-                              >
-                                {requiresScale ? (
-                                  scaleMockEnabled ? (
-                                    <span className="inline-flex items-center gap-1.5">
-                                      <Scale className="h-4 w-4" />
-                                      Leer
-                                    </span>
-                          ) : (
-                                    actionLabel
-                                  )
-                                ) : (
-                                  <Plus className="h-5 w-5" />
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
+                        product={product}
+                        viewMode={productViewMode}
+                        quantityInCart={cartQuantityByProductId[product.id] ?? 0}
+                        stock={stock}
+                        isProductActionDisabled={isProductActionDisabled}
+                        requiresScale={requiresScale}
+                        scaleMockEnabled={scaleMockEnabled}
+                        scaleReading={scaleReading}
+                        effectiveImage={effectiveImage}
+                        formattedPrice={formatCurrency(
+                          Number(product.priceWithTax ?? product.price)
+                        )}
+                        onAction={handleProductCardAction}
+                      />
                     );
                   })}
                 </div>
               )}
+
+              {hasMoreProducts ? (
+                <div className="mt-6 flex flex-col items-center justify-center gap-3">
+                  <div ref={loadMoreSentinelRef} className="h-4 w-full" />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setVisibleProductCount((prev) =>
+                        Math.min(prev + POS_CATALOG_PAGE_SIZE, filteredProducts.length)
+                      )
+                    }
+                  >
+                    Cargar más productos (mostrando {visibleProducts.length} de{" "}
+                    {filteredProducts.length})
+                  </Button>
+                </div>
+              ) : null}
+
+              {!catalogLoading ? (
+                <div className="mt-4 flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+                  <span>
+                    {filteredProducts.length} productos disponibles
+                    {appVersion ? ` · v${appVersion}` : ""}
+                  </span>
+                  <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -3293,6 +3189,7 @@ export const PosScreen = () => {
 
       <CartSaleModal
         open={cartSheetOpen}
+        accountName={activeAccount?.name}
         items={cartWithDerivedValues}
         summary={summary}
         expandedTaxItems={expandedTaxItems}
@@ -3337,6 +3234,7 @@ export const PosScreen = () => {
         >
           <ShoppingCart className="h-5 w-5" />
           <span className="font-semibold">
+            {activeAccount?.name ? `${activeAccount.name} • ` : ""}
             {cartItemCount} <span className="mx-1">-</span> {formatCurrency(summary.total)}
           </span>
           {canCharge ? (
@@ -3425,6 +3323,39 @@ export const PosScreen = () => {
           onCustomerSelected={handleSelectPosCustomer}
           onCustomerSaved={handleFiscalCustomerSaved}
         />
+      ) : null}
+
+      {pdfConfig ? (
+        <PdfPreviewModal
+          isOpen={Boolean(pdfConfig)}
+          title={pdfConfig.title}
+          fileName={pdfConfig.fileName}
+          getPdf={pdfConfig.getPdf}
+          description={pdfConfig.description}
+          allowPrint={pdfConfig.allowPrint ?? true}
+          onClose={closePdfModal}
+        />
+      ) : null}
+
+      {isBillingProcessing ? (
+        <Modal
+          title="Facturación Electrónica"
+          onClose={cancelBillingProcessing}
+          size="md"
+        >
+          <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+            <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+            <div>
+              <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Procesando documento con el servicio fiscal. Puede tardar hasta 2 minutos.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
+              </p>
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

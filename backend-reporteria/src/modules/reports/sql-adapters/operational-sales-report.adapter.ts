@@ -43,7 +43,7 @@ export class OperationalSalesReportAdapter {
     if (scope.cashSessionId) where.push(`EXISTS (SELECT 1 FROM payments p_scope WHERE p_scope.tenant_id = s.tenant_id AND p_scope.reference_type = 'SALE' AND p_scope.reference_id = s.id AND p_scope.cash_session_id = $${params.push(scope.cashSessionId)})`);
     if (scope.userId) add(scope.userId, (p) => `s.user_id = $${p}`);
     if (query.dateFrom) add(query.dateFrom, (p) => `s.created_at >= $${p}::timestamptz`);
-    if (query.dateTo) add(query.dateTo, (p) => `s.created_at < ($${p}::date + INTERVAL '1 day')`);
+    if (query.dateTo) add(query.dateTo, (p) => `s.created_at < $${p}::timestamptz`);
     if (query.status) add(query.status, (p) => `s.status = $${p}`);
     if (query.paymentStatus) add(query.paymentStatus, (p) => `s.payment_status = $${p}`);
     if (query.paymentMethod) add(query.paymentMethod, (p) => `EXISTS (SELECT 1 FROM payments pm JOIN payment_methods method ON method.id = pm.payment_method_id AND method.tenant_id = pm.tenant_id WHERE pm.tenant_id = s.tenant_id AND pm.reference_type = 'SALE' AND pm.reference_id = s.id AND (method.codigo = $${p} OR method.nombre = $${p}))`);

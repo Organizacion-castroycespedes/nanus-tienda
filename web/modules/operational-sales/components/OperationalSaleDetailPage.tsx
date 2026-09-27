@@ -162,6 +162,7 @@ const ActionCard = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
+  const [retryConfirmOpen, setRetryConfirmOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [localActionMessage, setLocalActionMessage] = useState<string | null>(null);
   const billing = sale.electronicBilling;
@@ -301,11 +302,7 @@ const ActionCard = ({
             <Button
               type="button"
               variant="outline"
-              onClick={() => {
-                if (window.confirm("¿Reintentar el procesamiento seguro de esta factura electrónica?")) {
-                  void onRetry();
-                }
-              }}
+              onClick={() => setRetryConfirmOpen(true)}
               disabled={refreshLoading}
               className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
@@ -349,6 +346,17 @@ const ActionCard = ({
           </div>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={retryConfirmOpen}
+        onOpenChange={setRetryConfirmOpen}
+        title="Reintentar procesamiento"
+        description="¿Reintentar el procesamiento seguro de esta factura electrónica?"
+        confirmText="Reintentar"
+        cancelText="Cancelar"
+        variant="warning"
+        onConfirm={onRetry}
+        loading={refreshLoading}
+      />
       <ConfirmDialog
         open={recoveryConfirmOpen}
         onOpenChange={setRecoveryConfirmOpen}

@@ -60,13 +60,13 @@ test("CashReportsService construye workbooks reales de Cierres y Arqueos", async
   await closingWorkbook.xlsx.load(closingXlsx);
   assert.equal(closingWorkbook.getWorksheet("Cierres")?.columnCount, 14);
   assert.equal(typeof closingWorkbook.getWorksheet("Cierres")?.getCell("H2").value, "number");
-  assert.equal(closingWorkbook.getWorksheet("Cierres")?.getCell("A2").value instanceof Date, true);
+  assert.match(String(closingWorkbook.getWorksheet("Cierres")?.getCell("A2").value), /America\/Bogota/);
 
   const auditWorkbook = new ExcelJS.Workbook();
   await auditWorkbook.xlsx.load(auditXlsx);
   assert.equal(auditWorkbook.getWorksheet("Arqueos")?.columnCount, 10);
   assert.equal(typeof auditWorkbook.getWorksheet("Arqueos")?.getCell("F2").value, "number");
-  assert.equal(auditWorkbook.getWorksheet("Arqueos")?.getCell("A2").value instanceof Date, true);
+  assert.match(String(auditWorkbook.getWorksheet("Arqueos")?.getCell("A2").value), /America\/Bogota/);
 });
 
 test("CashReportsService PDF no ejecuta renderer Excel en Cierres ni Arqueos", async () => {

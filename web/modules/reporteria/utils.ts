@@ -19,6 +19,7 @@ export const formatDate = (value?: string | null) => {
 
   return new Intl.DateTimeFormat("es-CO", {
     dateStyle: "medium",
+    timeZone: "America/Bogota",
   }).format(date);
 };
 
@@ -35,6 +36,7 @@ export const formatDateTime = (value?: string | null) => {
   return new Intl.DateTimeFormat("es-CO", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "America/Bogota",
   }).format(date);
 };
 
@@ -44,20 +46,49 @@ export const formatReportStatus = (value?: string | null) => {
     return "No disponible";
   }
 
-  return value!.trim();
+  const translations: Record<string, string> = {
+    OPEN: "Abierta",
+    CLOSED: "Cerrada",
+    CANCELLED: "Cancelada",
+    PENDING: "Pendiente",
+    PARTIAL: "Parcial",
+    PAID: "Pagado",
+    COMPLETED: "Completado",
+    ACTIVE: "Activo",
+    INACTIVE: "Inactivo",
+    REFUNDED: "Reembolsado",
+    ERROR: "Error",
+  };
+
+  return translations[normalized] ?? value!.trim();
 };
 
 export const getTodayRange = () => {
   const today = new Date();
-  const month = `${today.getMonth() + 1}`.padStart(2, "0");
-  const day = `${today.getDate()}`.padStart(2, "0");
-  const isoDate = `${today.getFullYear()}-${month}-${day}`;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(today).map(({ type, value }) => [type, value]));
+  const isoDate = `${parts.year}-${parts.month}-${parts.day}`;
 
   return {
     from: isoDate,
     to: isoDate,
   };
 };
+
+export const getReportDateBounds = (now = new Date()) => {
+  const today = getTodayRange().from;
+  const [year, month, day] = today.split("-").map(Number);
+  const minimumDate = new Date(Date.UTC(year, month - 1 - 3, 1));
+  const lastDay = new Date(Date.UTC(minimumDate.getUTCFullYear(), minimumDate.getUTCMonth() + 1, 0)).getUTCDate();
+  minimumDate.setUTCDate(Math.min(day, lastDay));
+  return {
+    min: minimumDate.toISOString().slice(0, 10),
+    max: today,
+  };
+};
+
+export const REPORT_DATE_LIMIT_MESSAGE = "Solo puedes consultar información de los últimos 3 meses. Modifica las fechas seleccionadas para continuar";
 
 export const normalizeFilters = <T extends Record<string, string | undefined>>(filters: T) =>
   Object.fromEntries(
