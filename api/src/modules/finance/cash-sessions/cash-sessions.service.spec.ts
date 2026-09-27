@@ -94,12 +94,14 @@ const buildHarness = (
     assignedToOpen?: boolean;
     cashCountAuditSchema?: boolean;
     findCurrentByUserResult?: ReturnType<typeof buildRecord> | null;
+    listHistoryResult?: Array<ReturnType<typeof buildRecord>>;
     onFindCurrentByUser?: (
       userId: string,
       tenantId: string,
       cashRegisterId: string | undefined,
       excludeCompletedClosure: boolean
     ) => void;
+    onListHistory?: (filters: Record<string, unknown>) => void;
   } = {}
 ) => {
   const queries: string[] = [];
@@ -135,6 +137,10 @@ const buildHarness = (
         excludeCompletedClosure
       );
       return options.findCurrentByUserResult ?? null;
+    },
+    listHistory: async (filters: Record<string, unknown>) => {
+      options.onListHistory?.(filters);
+      return options.listHistoryResult ?? [];
     },
     hasActiveAssignment: async () => options.assignedToOpen ?? false,
     findById: async () =>
@@ -615,5 +621,25 @@ test("getCurrent keeps OPEN session for ADMIN after closing counts exist", async
   const current = await harness.service.getCurrent({}, actor);
 
   assert.equal(excludeCompletedClosure, false);
+  assert.equal(current?.id, cashSessionId);
+});
+
+test("getCurrent paginates tenant admin OPEN session fallback from offset zero", async () => {
+  let historyFilters: Record<string, unknown> | undefined;
+  const harness = buildHarness(100000, {
+    listHistoryResult: [buildRecord()],
+    onListHistory: (filters) => {
+      historyFilters = filters;
+    },
+  });
+
+  const current = await harness.service.getCurrent({}, actor);
+
+  assert.deepEqual(historyFilters, {
+    tenantId,
+    status: "OPEN",
+    limit: 1,
+    offset: 0,
+  });
   assert.equal(current?.id, cashSessionId);
 });
