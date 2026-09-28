@@ -10,6 +10,7 @@ import {
 import type { Request, Response } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ReportAuthzGuard } from "../auth/report-authz.guard";
+import { ReportRoles } from "../auth/report-roles.decorator";
 import type { ReportUser } from "../auth/report-auth.types";
 import { CustomersReportsService } from "./customers-reports.service";
 
@@ -26,6 +27,7 @@ export class CustomersReportsController {
   ) {}
 
   @Get()
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getCustomerMaster(
     @Query()
     query: {
@@ -61,6 +63,7 @@ export class CustomersReportsController {
   }
 
   @Get("orders-status")
+  @ReportRoles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   async getCustomerOrdersStatus(
     @Query()
     query: {
