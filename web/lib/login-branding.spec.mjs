@@ -8,8 +8,8 @@ import {
 test("uses both configured branding values", () => {
   assert.deepEqual(
     resolveLoginBranding({
-      LOGIN_BG_IMAGE: "/login-bg.png",
-      LOGIN_BRAND_NAME: "MANUS POS",
+      NEXT_PUBLIC_GIN_BG_IMAGE: "/login-bg.png",
+      NEXT_PUBLIC_LOGIN_BRAND_NAME: "MANUS POS",
     }),
     { backgroundImage: "/login-bg.png", brandName: "MANUS POS" },
   );
@@ -21,11 +21,11 @@ test("falls back together when both values are absent", () => {
 
 test("does not mix brands when configuration is partial", () => {
   assert.deepEqual(
-    resolveLoginBranding({ LOGIN_BG_IMAGE: "/login-bg.png" }),
+    resolveLoginBranding({ NEXT_PUBLIC_GIN_BG_IMAGE: "/login-bg.png" }),
     DEFAULT_LOGIN_BRANDING,
   );
   assert.deepEqual(
-    resolveLoginBranding({ LOGIN_BRAND_NAME: "MANUS POS" }),
+    resolveLoginBranding({ NEXT_PUBLIC_LOGIN_BRAND_NAME: "MANUS POS" }),
     DEFAULT_LOGIN_BRANDING,
   );
 });

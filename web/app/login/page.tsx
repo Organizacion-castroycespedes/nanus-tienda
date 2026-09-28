@@ -25,9 +25,9 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthStatus } from "../../store/authSlice";
 
 const loginBackgroundImage =
-  process.env.LOGIN_BG_IMAGE ??
+  process.env.NEXT_PUBLIC_GIN_BG_IMAGE ??
   "/logo-login-tablet.png";
-const loginBrandName = process.env.LOGIN_BRAND_NAME ?? "EMAUS POS";
+const loginBrandName = process.env.NEXT_PUBLIC_LOGIN_BRAND_NAME ?? "EMAUS POS";
 
 const LoginPageContent = () => {
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";

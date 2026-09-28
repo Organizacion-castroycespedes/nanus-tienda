@@ -5,8 +5,8 @@ const loginBranding = resolveLoginBranding(process.env);
 
 const nextConfig = {
   env: {
-    LOGIN_BG_IMAGE: loginBranding.backgroundImage,
-    LOGIN_BRAND_NAME: loginBranding.brandName,
+    NEXT_PUBLIC_GIN_BG_IMAGE: loginBranding.backgroundImage,
+    NEXT_PUBLIC_LOGIN_BRAND_NAME: loginBranding.brandName,
   },
   async rewrites() {
     const apiProxyTarget = process.env.API_PROXY_TARGET ?? "http://localhost:4020";

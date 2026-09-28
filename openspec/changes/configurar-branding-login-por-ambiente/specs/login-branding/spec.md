@@ -2,11 +2,11 @@
 
 ### Requirement: Atomic login branding configuration
 
-The Web login MUST use `LOGIN_BG_IMAGE` and `LOGIN_BRAND_NAME` as one public visual configuration. When both values are non-empty, the login MUST use both configured values. When either value is absent or blank, the login MUST use the complete EMAUS POS fallback: `/logo-login-tablet.png` and `EMAUS POS`.
+The Web login MUST use `NEXT_PUBLIC_GIN_BG_IMAGE` and `NEXT_PUBLIC_LOGIN_BRAND_NAME` as one public visual configuration. When both values are non-empty, the login MUST use both configured values. When either value is absent or blank, the login MUST use the complete EMAUS POS fallback: `/logo-login-tablet.png` and `EMAUS POS`.
 
 #### Scenario: DEV or QA Manus branding
 
-- **WHEN** the Web deployment receives `LOGIN_BG_IMAGE=/login-bg.png` and `LOGIN_BRAND_NAME=MANUS POS`
+- **WHEN** the Web deployment receives `NEXT_PUBLIC_GIN_BG_IMAGE=/login-bg.png` and `NEXT_PUBLIC_LOGIN_BRAND_NAME=MANUS POS`
 - **THEN** the login uses the Manus image and Manus brand name together
 
 #### Scenario: No branding variables

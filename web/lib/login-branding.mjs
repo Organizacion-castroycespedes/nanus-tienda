@@ -9,8 +9,8 @@ const readValue = (value) => {
 };
 
 export const resolveLoginBranding = (env = {}) => {
-  const backgroundImage = readValue(env.LOGIN_BG_IMAGE);
-  const brandName = readValue(env.LOGIN_BRAND_NAME);
+  const backgroundImage = readValue(env.NEXT_PUBLIC_GIN_BG_IMAGE);
+  const brandName = readValue(env.NEXT_PUBLIC_LOGIN_BRAND_NAME);
 
   if (backgroundImage && brandName) {
     return { backgroundImage, brandName };
