@@ -1,6 +1,7 @@
 export type PeripheralAgentHealth = {
   status: string;
   agent: string;
+  agentApiVersion?: number;
   mode: string;
   agentInstallationId?: string;
   platform?: string;

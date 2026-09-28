@@ -1,12 +1,13 @@
 import { Module } from "@nestjs/common";
 import { AccessControlModule } from "../../common/access-control.module";
 import { DatabaseModule } from "../../common/db/database.module";
+import { CommonServicesModule } from "../../common/services/common-services.module";
 import { PosUserSessionsController } from "./pos-user-sessions.controller";
 import { PosUserSessionsRepository } from "./pos-user-sessions.repository";
 import { PosUserSessionsService } from "./pos-user-sessions.service";
 
 @Module({
-  imports: [DatabaseModule, AccessControlModule],
+  imports: [DatabaseModule, AccessControlModule, CommonServicesModule],
   controllers: [PosUserSessionsController],
   providers: [PosUserSessionsService, PosUserSessionsRepository],
   exports: [PosUserSessionsService, PosUserSessionsRepository],

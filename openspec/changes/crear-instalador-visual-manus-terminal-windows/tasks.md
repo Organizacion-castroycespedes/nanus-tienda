@@ -80,6 +80,7 @@
 - [x] 11.1m Ejecutar QA fisico de uninstall estandar y `--remove-data`
 - [x] 11.1n Corregir preflight para ignorar ProgramData persistente y limpiar padre Manus vacio
 - [x] 11.1o Corregir cleanup diferido del helper TEMP usando working directory externo y rutas con espacios
+- [x] 11.1p Bloquear colisiones de `127.0.0.1:4050`, validar propiedad del servicio y exigir identidad/version en health y rollback
 - [ ] 11.2 Conectar eventos reales del Core al host WebView2 sin simular progreso
 - [ ] 11.3 Activar discovery y periféricos únicamente después del health gate
 - [ ] 11.4 Validar cancelación protegida, rollback visible y flujo sin efectos duplicados
