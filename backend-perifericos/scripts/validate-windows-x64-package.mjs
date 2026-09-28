@@ -5,15 +5,17 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { getEnvironment } from "../../desktop/electron/scripts/environments.mjs";
+import { resolveAgentVersion } from "./agent-version.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
+const agentVersion = resolveAgentVersion({ packageVersion: packageJson.version });
 const artifactRoot = join(
   projectRoot,
   "dist-terminal",
   "windows-x64",
-  `ManusPeripheralAgent-win-x64-${packageJson.version}`,
+  `ManusPeripheralAgent-win-x64-${agentVersion}`,
 );
 const runtime = join(artifactRoot, "runtime", "node.exe");
 const main = join(artifactRoot, "app", "main.js");
@@ -65,8 +67,8 @@ const localConfig = JSON.parse(
 const versionMetadata = JSON.parse(
   readFileSync(join(artifactRoot, "VERSION.json"), "utf8")
 );
-assert.equal(versionMetadata.version, packageJson.version);
-assert.equal(readFileSync(join(artifactRoot, "VERSION"), "utf8").trim(), packageJson.version);
+assert.equal(versionMetadata.version, agentVersion);
+assert.equal(readFileSync(join(artifactRoot, "VERSION"), "utf8").trim(), agentVersion);
 assert.equal(localConfig.port, 4050);
 assert.equal(localConfig.bind, "127.0.0.1");
 assert.equal(localConfig.mode, "REAL");
@@ -149,7 +151,7 @@ const child = spawn(runtime, [main], {
   env: {
     ...process.env,
     PERIPHERALS_CONFIG_PATH: join(artifactRoot, "config", "agent.config.local.json"),
-    PERIPHERALS_VERSION: packageJson.version,
+    PERIPHERALS_VERSION: agentVersion,
     PERIPHERALS_PORT: String(port),
     // The artifact config above is asserted as REAL. Disable only startup
     // discovery for this smoke so a slow Windows spooler cannot hide health;
@@ -187,7 +189,7 @@ try {
   assert.equal(typeof healthBody.uptimeSeconds, "number");
   assert.equal(typeof healthBody.configuredDevices, "number");
   assert.equal(typeof healthBody.discoveredDevices, "number");
-  assert.equal(healthBody.version, packageJson.version);
+  assert.equal(healthBody.version, agentVersion);
   assert.equal(healthBody.persistenceState?.schemaVersion, 1);
   assert.ok(["empty", "loaded", "corrupt"].includes(healthBody.persistenceState?.status));
 
