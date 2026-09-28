@@ -19,6 +19,7 @@ import { PosTerminalsModule } from "./pos-terminals/pos-terminals.module";
 import { DeliveriesModule } from "./deliveries/deliveries.module";
 import { OperationalSalesModule } from "./operational-sales/operational-sales.module";
 import { ParametersModule } from "./parameters/parameters.module";
+import { TerminalRuntimeModule } from "./terminal-runtime/terminal-runtime.module";
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ParametersModule } from "./parameters/parameters.module";
     PosTerminalsModule,
     DeliveriesModule,
     OperationalSalesModule,
+    TerminalRuntimeModule,
   ],
 })
 export class AppModule {}

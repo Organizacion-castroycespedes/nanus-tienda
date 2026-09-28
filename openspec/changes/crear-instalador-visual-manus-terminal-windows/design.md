@@ -157,6 +157,26 @@ independiente y activa el replacement. El rollback restaura ese backup y
 reconstruye `current`, servicio y health. La identidad y ProgramData quedan
 fuera del payload reemplazable.
 
+### Fase 7.1C — propiedad segura del puerto del Agent
+
+Antes de crear directorios, copiar payloads o activar `current`, el Core
+comprueba la disponibilidad de `127.0.0.1:4050` y la presencia/estado del
+servicio `ManusPeripheralAgent`. Un puerto ocupado sin un servicio Manus
+administrado en estado `RUNNING` bloquea el flujo con diagnóstico operativo
+sanitizado. El Core nunca termina `node.exe` por nombre, PID o puerto.
+
+Cuando el servicio Manus administrado está activo, el Core lo detiene de forma
+controlada, confirma `STOPPED` y espera la liberación real del puerto antes de
+copiar o activar la nueva versión. Si el puerto no se libera, el flujo falla
+antes de activar archivos nuevos. El health gate exige versión, plataforma,
+arquitectura y, cuando existe una identidad previa leída del Agent administrado,
+la misma `agentInstallationId`; no trata HTTP 200 aislado como instalación
+válida.
+
+Rollback aplica los mismos controles: restaurar archivos no equivale a
+recuperación funcional. Solo se informa rollback exitoso después de reactivar
+el servicio y pasar el health gate de la versión anterior.
+
 Preflight clasifica como `INCONSISTENT` una instalacion con footprints
 productivos pero sin metadata `VERSION.json` valida.
 

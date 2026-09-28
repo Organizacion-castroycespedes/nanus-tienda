@@ -11,6 +11,9 @@ ManusTerminalSetup instala un PeripheralAgent funcional, pero expone un flujo te
 - Mostrar detalles tecnicos solo bajo demanda, sin secretos.
 - Preparar layout responsive para resoluciones Windows POS.
 - Dejar launcher/kiosk avanzado para una fase posterior.
+- Bloquear de forma temprana colisiones de `127.0.0.1:4050` causadas por un
+  Agent directo no administrado y evitar rollbacks declarados como exitosos sin
+  health funcional.
 
 ## Capabilities
 

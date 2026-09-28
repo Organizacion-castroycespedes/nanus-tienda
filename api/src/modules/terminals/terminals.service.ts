@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { DatabaseService } from "../../common/db/database.service";
-import { AccessControlService } from "../../common/services/access-control.service";
+import { AccessControlService, isUuid } from "../../common/services/access-control.service";
 import { AuditService } from "../../common/services/audit.service";
 import {
   TerminalsRepository,
@@ -74,7 +74,7 @@ export class TerminalsService {
 
   private async resolveTenantIdForRequest(actor: ActorContext, tenantId?: string) {
     const normalized = this.normalizeOptional(tenantId);
-    if (!normalized || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalized)) {
+    if (!normalized || isUuid(normalized)) {
       return this.resolveTenantId(actor, normalized ?? undefined);
     }
     return this.accessControl.resolveTenantIdFromSlug(actor, normalized);

@@ -4,11 +4,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { getEnvironment } from "../../desktop/electron/scripts/environments.mjs";
+import { resolveAgentVersion } from "./agent-version.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
-const artifactName = `ManusPeripheralAgent-win-x64-${packageJson.version}`;
+const agentVersion = resolveAgentVersion({ packageVersion: packageJson.version });
+const artifactName = `ManusPeripheralAgent-win-x64-${agentVersion}`;
 const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactName);
 const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -76,7 +78,7 @@ const writeAutostartScripts = () => {
       'if (-not $configPath) {',
       '  $configPath = Join-Path $scriptRoot "config\\agent.config.local.json"',
       '}',
-      '$defaultVersion = "' + packageJson.version + '"',
+      '$defaultVersion = "' + agentVersion + '"',
       '$healthUrl = "http://127.0.0.1:4050/health"',
       'function Resolve-WritableDirectory {',
       '  param(',
@@ -366,16 +368,16 @@ try {
     printerWidthChars: 48,
   }, null, 2)}\n`);
 
-  writeText("start-agent.cmd", `@echo off\r\nsetlocal\r\nset "AGENT_ROOT=%~dp0"\r\nif not defined PERIPHERALS_CONFIG_PATH set "PERIPHERALS_CONFIG_PATH=%AGENT_ROOT%config\\agent.config.local.json"\r\nif not defined PERIPHERALS_VERSION set "PERIPHERALS_VERSION=${packageJson.version}"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state"\r\n"%AGENT_ROOT%runtime\\node.exe" "%AGENT_ROOT%app\\main.js"\r\n`);
+  writeText("start-agent.cmd", `@echo off\r\nsetlocal\r\nset "AGENT_ROOT=%~dp0"\r\nif not defined PERIPHERALS_CONFIG_PATH set "PERIPHERALS_CONFIG_PATH=%AGENT_ROOT%config\\agent.config.local.json"\r\nif not defined PERIPHERALS_VERSION set "PERIPHERALS_VERSION=${agentVersion}"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state"\r\n"%AGENT_ROOT%runtime\\node.exe" "%AGENT_ROOT%app\\main.js"\r\n`);
   writeText("VERSION.json", `${JSON.stringify({
     agent: "manus-pos-peripheral-agent",
-    version: packageJson.version,
+    version: agentVersion,
     platform: "win32",
     architecture: "x64",
     runtime: process.version,
     packaging: "portable-node-runtime",
   }, null, 2)}\n`);
-  writeText("VERSION", `${packageJson.version}\r\n`);
+  writeText("VERSION", `${agentVersion}\r\n`);
   writeAutostartScripts();
   writeText("README-WINDOWS-X64.txt", `MANUS PERIPHERAL AGENT - Windows x64 portable\r\n\r\n1. Copy this directory to C:\\Program Files\\Manus\\PeripheralAgent (administrator) or another local path.\r\n2. Edit config\\agent.config.local.json only for local workstation values. It accepts no secrets.\r\n3. Double-click start-agent.cmd.\r\n4. Check http://127.0.0.1:4050/health.\r\n5. Call POST http://127.0.0.1:4050/devices/discover.\r\n6. Install autostart with install-agent-autostart.ps1.\r\n7. Inspect autostart with status-agent-autostart.ps1.\r\n8. Remove autostart with remove-agent-autostart.ps1.\r\n\r\nThe agent is loopback-only by default. Its Node runtime is embedded; npm and Git are not required on the POS workstation.\r\nPowerShell 5.1 compatibility: the autostart launcher sets PERIPHERALS_CONFIG_PATH in the launcher environment before process start, and passes the main entry point as a quoted argument so paths with spaces like C:\\Program Files\\Manus\\PeripheralAgent work.\r\nLogs/state are under %LOCALAPPDATA%\\Manus\\PeripheralAgent.\r\nAutostart uses a Scheduled Task in the current user session and launches the portable installation from its own folder.\r\n`);
   writeText("logs/.gitkeep", "");
