@@ -27,7 +27,7 @@ const createService = () => {
     },
     findById: async (resolvedScope: unknown, saleId: string) => {
       calls.push({ method: "findById", value: { resolvedScope, saleId } });
-      return saleId === "sale-a"
+      return saleId === "sale-a" || saleId === "sale-accepted-fe"
         ? { id: saleId }
         : saleId === "sale-refresh"
           ? {
@@ -92,6 +92,24 @@ const createService = () => {
         status: "PENDING",
         processingStage: "PRE_PROVIDER_CREATE",
         safeUserMessage: "recovered",
+      };
+    },
+    issueCreditNote: async (tenantId: string, electronicDocumentId: string, payload: any) => {
+      calls.push({ method: "issueCreditNote", value: { tenantId, electronicDocumentId, payload } });
+      return {
+        id: "nc-doc-1",
+        documentId: "nc-doc-1",
+        status: "SENT",
+        queued: true,
+      };
+    },
+    issueDebitNote: async (tenantId: string, electronicDocumentId: string, payload: any) => {
+      calls.push({ method: "issueDebitNote", value: { tenantId, electronicDocumentId, payload } });
+      return {
+        id: "nd-doc-1",
+        documentId: "nd-doc-1",
+        status: "SENT",
+        queued: true,
       };
     },
   };
@@ -338,4 +356,85 @@ test("correctPayments cancels previous payments, inserts new payments and audits
   assert.ok(executedQueries.some((q) => q.text.includes("UPDATE payments")));
   assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO payments")));
 });
+
+test("voidSale rejects cancelled sale or missing reason", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.voidSale(actor, "sale-a", { reason: "abc" }),
+    /El motivo de anulación debe tener al menos 5 caracteres/
+  );
+
+  await assert.rejects(
+    () => service.voidSale(actor, "sale-cancelled", { reason: "Anulación de prueba" }),
+    /La venta ya ha sido anulada previamente/
+  );
+});
+
+test("voidSale executes local voiding for sale without electronic invoice", async () => {
+  const { service, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-a", {
+    reason: "Cliente desistió de la compra",
+    returnInventory: true,
+  });
+
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "VOID_SALE");
+  assert.equal((auditEvents[0].after as any).status, "CANCELLED");
+  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales")));
+});
+
+test("voidSale calls Factucore issueCreditNote for sale with accepted electronic invoice", async () => {
+  const { service, calls, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-accepted-fe", {
+    reason: "Devolución total con nota crédito",
+    discrepancyResponseCode: "2",
+  });
+
+  const ncCall = calls.find((c) => c.method === "issueCreditNote");
+  assert.ok(ncCall);
+  assert.equal((ncCall.value as any).electronicDocumentId, "doc-1");
+  assert.equal((ncCall.value as any).payload.discrepancyResponseCode, "2");
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "VOID_SALE");
+  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO electronic_documents")));
+});
+
+test("issueDebitNote rejects sale without accepted electronic invoice", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.issueDebitNote(actor, "sale-a", {
+      reason: "Intereses por mora",
+      discrepancyResponseCode: "1",
+      amount: 15000,
+    }),
+    /No se puede emitir una Nota Débito sin una factura electrónica aceptada previa/
+  );
+});
+
+test("issueDebitNote dispatches to Factucore and saves document", async () => {
+  const { service, calls, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.issueDebitNote(actor, "sale-accepted-fe", {
+    reason: "Intereses moratorios",
+    discrepancyResponseCode: "1",
+    amount: 15000,
+  });
+
+  const ndCall = calls.find((c) => c.method === "issueDebitNote");
+  assert.ok(ndCall);
+  assert.equal((ndCall.value as any).electronicDocumentId, "doc-1");
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "ISSUE_DEBIT_NOTE");
+  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO electronic_documents")));
+});
+
 

@@ -90,7 +90,24 @@ export class PricingService {
   }
 
   private getBridgePercentageTax(product: PricingProductSnapshot) {
-    return this.getAssignedTaxes(product).find((tax) => this.isPercentageTax(tax)) ?? null;
+    const assigned = this.getAssignedTaxes(product);
+    if (product.taxId) {
+      const match = assigned.find((tax) => tax.taxId === product.taxId);
+      if (match && this.isPercentageTax(match)) {
+        return match;
+      }
+    }
+    const vatTax = assigned.find(
+      (tax) =>
+        this.isPercentageTax(tax) &&
+        (tax.taxTypeCode === "VAT" ||
+          tax.dianCode === "01" ||
+          tax.taxName?.toUpperCase().includes("IVA"))
+    );
+    if (vatTax) {
+      return vatTax;
+    }
+    return assigned.find((tax) => this.isPercentageTax(tax)) ?? null;
   }
 
   private getPercentageRate(tax: PricingProductTaxSnapshot | null) {
@@ -217,7 +234,7 @@ export class PricingService {
     finalUnitPrice: number;
   }) {
     const taxes = this.getAssignedTaxes(input.product);
-    const percentageTax = taxes.find((tax) => this.isPercentageTax(tax)) ?? null;
+    const percentageTax = this.getBridgePercentageTax(input.product);
     const percentageRate = this.getPercentageRate(percentageTax);
     const lineFinal = this.roundCurrency(input.finalUnitPrice * input.quantity);
     const taxCalculationLine = this.roundCurrency(

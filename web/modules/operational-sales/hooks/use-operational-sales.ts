@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../lib/request";
 import { fetchOperationalSales } from "../services/operational-sales.service";
 import { emptyOperationalSalesFilters, type OperationalSalesFilters, type OperationalSalesResponse } from "../types";
@@ -29,9 +29,32 @@ const friendlyError = (error: unknown) => {
   return "No se pudieron cargar las ventas operativas.";
 };
 
-export const useOperationalSales = () => {
-  const [filters, setFilters] = useState<OperationalSalesFilters>(emptyOperationalSalesFilters);
-  const [appliedFilters, setAppliedFilters] = useState<OperationalSalesFilters | null>(null);
+export const getDefaultOperationalSalesFilters = (role?: string): OperationalSalesFilters => {
+  const normalizedRole = (role ?? "").toUpperCase();
+  const isAdmin = ["ADMIN", "SUPER_USER", "SUPER_ADMIN"].includes(normalizedRole);
+  if (isAdmin) {
+    const now = new Date();
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(now.getDate() - 2);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dateTo = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const dateFrom = `${twoDaysAgo.getFullYear()}-${pad(twoDaysAgo.getMonth() + 1)}-${pad(twoDaysAgo.getDate())}`;
+    return {
+      ...emptyOperationalSalesFilters,
+      dateFrom,
+      dateTo,
+    };
+  }
+  return emptyOperationalSalesFilters;
+};
+
+export const useOperationalSales = (initialFilters?: OperationalSalesFilters) => {
+  const [filters, setFilters] = useState<OperationalSalesFilters>(
+    initialFilters ?? emptyOperationalSalesFilters
+  );
+  const [appliedFilters, setAppliedFilters] = useState<OperationalSalesFilters | null>(
+    initialFilters ?? null
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sortBy, setSortBy] = useState<"createdAt" | "total" | "status">("createdAt");
@@ -40,6 +63,7 @@ export const useOperationalSales = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
+  const initialized = useRef(false);
 
   const load = useCallback(async (nextPage: number, nextPageSize: number, nextSortBy: typeof sortBy, nextSortDirection: typeof sortDirection, nextFilters: OperationalSalesFilters) => {
     const currentRequest = ++requestId.current;
@@ -55,8 +79,24 @@ export const useOperationalSales = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      const initial = initialFilters ?? emptyOperationalSalesFilters;
+      setFilters(initial);
+      setAppliedFilters(initial);
+      void load(1, pageSize, sortBy, sortDirection, initial);
+    }
+  }, [initialFilters, load, pageSize, sortBy, sortDirection]);
+
   const updateFilter = (key: keyof OperationalSalesFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
-  const resetFilters = () => setFilters(emptyOperationalSalesFilters);
+  const resetFilters = () => {
+    const reset = initialFilters ?? emptyOperationalSalesFilters;
+    setFilters(reset);
+    setAppliedFilters(reset);
+    setPage(1);
+    void load(1, pageSize, sortBy, sortDirection, reset);
+  };
   const search = () => {
     const nextFilters = { ...filters };
     setAppliedFilters(nextFilters);

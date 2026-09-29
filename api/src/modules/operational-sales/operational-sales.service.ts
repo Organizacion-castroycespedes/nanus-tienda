@@ -10,6 +10,8 @@ import { normalizeOperationalDashboardQuery, type OperationalDashboardQueryDto }
 import { DatabaseService } from "../../common/db/database.service";
 import { UpdateSaleCustomerDto } from "./dto/update-sale-customer.dto";
 import { CorrectSalePaymentsDto } from "./dto/correct-sale-payments.dto";
+import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
+import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
 
 const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
 
@@ -547,6 +549,419 @@ export class OperationalSalesService {
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
+    } finally {
+      client.release();
+    }
+
+    return this.detail(actor, saleId);
+  }
+
+  async voidSale(
+    actor: OperationalSaleActor,
+    saleId: string,
+    dto: VoidOperationalSaleDto
+  ) {
+    if (!dto.reason || dto.reason.trim().length < 5) {
+      throw new BadRequestException("El motivo de anulación debe tener al menos 5 caracteres");
+    }
+    const tenantId = actor.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException("tenantId es requerido");
+    }
+    if (!this.db) {
+      throw new Error("database unavailable");
+    }
+
+    const roles = actor.roles ?? [];
+    const isAdmin =
+      roles.includes("SUPER_ADMIN") ||
+      roles.includes("ADMIN") ||
+      roles.includes("SUPER_USER");
+
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const saleResult = await client.query<{
+        id: string;
+        tenant_id: string;
+        branch_id: string;
+        total: string;
+        status: string;
+        payment_status: string;
+        order_id: string | null;
+        user_id: string | null;
+      }>(
+        `SELECT id, tenant_id, branch_id, total::text, status, payment_status, order_id, user_id
+           FROM sales
+          WHERE id = $1 AND tenant_id = $2
+          FOR UPDATE`,
+        [saleId, tenantId]
+      );
+      const sale = saleResult.rows[0];
+      if (!sale) {
+        throw new NotFoundException("Venta no encontrada");
+      }
+      if (sale.status === "CANCELLED" || sale.status === "REFUNDED") {
+        throw new BadRequestException("La venta ya ha sido anulada previamente");
+      }
+
+      // Check open cash session
+      const openSessionResult = await client.query<{
+        id: string;
+      }>(
+        `SELECT id FROM cash_sessions
+          WHERE tenant_id = $1 AND branch_id = $2 AND status = 'OPEN'
+          ORDER BY opened_at DESC LIMIT 1`,
+        [tenantId, sale.branch_id]
+      );
+      const currentCashSession = openSessionResult.rows[0];
+
+      if (!isAdmin) {
+        if (!currentCashSession) {
+          throw new BadRequestException(
+            "No puede anular la venta porque no hay una caja/turno abierto en esta sucursal."
+          );
+        }
+
+        const salePayments = await client.query<{ cash_session_id: string | null }>(
+          `SELECT cash_session_id FROM payments
+            WHERE tenant_id = $1 AND reference_type = 'SALE' AND reference_id = $2`,
+          [tenantId, saleId]
+        );
+        if (
+          salePayments.rows.some(
+            (p) => p.cash_session_id && p.cash_session_id !== currentCashSession.id
+          )
+        ) {
+          throw new BadRequestException(
+            "El cajero solo puede anular ventas realizadas dentro de su turno de caja abierto actual."
+          );
+        }
+      }
+
+      // Check electronic document (Factura Electrónica)
+      const billingDocResult = await client.query<{
+        id: string;
+        status: string;
+        document_type: string;
+        provider_document_id: string | null;
+        full_number: string | null;
+      }>(
+        `SELECT id, status, document_type, provider_document_id, full_number
+           FROM electronic_documents
+          WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
+          ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, saleId]
+      );
+      const billingDoc = billingDocResult.rows[0];
+
+      let creditNoteResult: any = null;
+      if (billingDoc && billingDoc.status === "ACCEPTED") {
+        try {
+          creditNoteResult = await this.billingClient.issueCreditNote(tenantId, billingDoc.id, {
+            discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
+            discrepancyResponseDescription:
+              dto.discrepancyResponseDescription?.trim() || dto.reason.trim(),
+            noteReason: dto.reason.trim(),
+          });
+        } catch (error) {
+          throw new BadGatewayException(
+            error instanceof Error
+              ? `Error emitiendo Nota Crédito en Factucore: ${error.message}`
+              : "No fue posible emitir la Nota Crédito electrónica en el proveedor fiscal"
+          );
+        }
+
+        if (creditNoteResult?.id) {
+          await client.query(
+            `INSERT INTO electronic_documents (
+              id, tenant_id, source_type, source_id, document_type,
+              status, provider_status, provider_document_id,
+              created_at, updated_at
+            ) VALUES (
+              gen_random_uuid(), $1, 'SALE', $2, 'CREDIT_NOTE',
+              $3, $4, $5, NOW(), NOW()
+            )`,
+            [
+              tenantId,
+              saleId,
+              creditNoteResult.status ?? "SENT",
+              creditNoteResult.status ?? "SENT",
+              creditNoteResult.id,
+            ]
+          );
+        }
+      }
+
+      // 1. Return inventory / Kardex if requested
+      if (dto.returnInventory !== false) {
+        const stockMovements = await client.query<{
+          id: string;
+          product_id: string;
+          quantity: string;
+          branch_id: string;
+          terminal_id: string | null;
+          pos_session_code: string | null;
+          user_id: string | null;
+        }>(
+          `SELECT id, product_id, quantity::text, branch_id, terminal_id, pos_session_code, user_id
+             FROM stock_movements
+            WHERE tenant_id = $1 AND reference_type = 'SALE' AND reference_id = $2
+              AND reference_table = 'sales' AND type = 'OUT'`,
+          [tenantId, saleId]
+        );
+
+        for (const mov of stockMovements.rows) {
+          const qty = Number(mov.quantity);
+          const reverseMovResult = await client.query<{ id: string }>(
+            `INSERT INTO stock_movements (
+              id, tenant_id, product_id, type, quantity, reference_type, reference_id,
+              branch_id, terminal_id, pos_session_code, user_id, reference_table, created_at
+            ) VALUES (
+              gen_random_uuid(), $1, $2, 'IN', $3, 'SALE', $4,
+              $5, $6, $7, $8, 'sales', NOW()
+            ) RETURNING id`,
+            [
+              tenantId,
+              mov.product_id,
+              qty,
+              saleId,
+              mov.branch_id,
+              mov.terminal_id,
+              mov.pos_session_code,
+              actor.id ?? mov.user_id,
+            ]
+          );
+          const reverseMovId = reverseMovResult.rows[0].id;
+
+          const lotLinks = await client.query<{
+            lot_id: string;
+            quantity: string;
+          }>(
+            `SELECT lot_id, quantity::text
+               FROM stock_movement_lots
+              WHERE tenant_id = $1 AND stock_movement_id = $2`,
+            [tenantId, mov.id]
+          );
+
+          for (const link of lotLinks.rows) {
+            const lotQty = Number(link.quantity);
+            await client.query(
+              `UPDATE inventory_lot_balances
+                  SET quantity_on_hand = quantity_on_hand + $1,
+                      last_movement_at = NOW(),
+                      updated_at = NOW()
+                WHERE tenant_id = $2 AND lot_id = $3`,
+              [lotQty, tenantId, link.lot_id]
+            );
+
+            await client.query(
+              `INSERT INTO stock_movement_lots (
+                id, tenant_id, stock_movement_id, lot_id, quantity, created_at
+              ) VALUES (
+                gen_random_uuid(), $1, $2, $3, $4, NOW()
+              )`,
+              [tenantId, reverseMovId, link.lot_id, lotQty]
+            );
+          }
+        }
+      }
+
+      // 2. Payments & Cash session refund
+      const paymentsResult = await client.query<{
+        id: string;
+        payment_method_id: string;
+        amount: string;
+        reference_number: string | null;
+        cash_session_id: string | null;
+        status: string;
+      }>(
+        `SELECT id, payment_method_id, amount::text, reference_number, cash_session_id, status
+           FROM payments
+          WHERE tenant_id = $1 AND reference_type = 'SALE' AND reference_id = $2
+            AND status IN ('PENDING', 'COMPLETED')
+          FOR UPDATE`,
+        [tenantId, saleId]
+      );
+
+      for (const p of paymentsResult.rows) {
+        const pAmount = Number(p.amount);
+        if (p.status === "COMPLETED") {
+          const targetCashSessionId = currentCashSession?.id ?? p.cash_session_id;
+
+          const refundPaymentResult = await client.query<{ id: string }>(
+            `INSERT INTO payments (
+              tenant_id, branch_id, payment_method_id, cash_session_id,
+              reference_type, reference_id, direction, status, amount,
+              reference_number, notes, created_by
+            ) VALUES (
+              $1, $2, $3, $4, 'REFUND', $5, 'OUT', 'COMPLETED', $6,
+              $7, $8, $9
+            ) RETURNING id`,
+            [
+              tenantId,
+              sale.branch_id,
+              p.payment_method_id,
+              targetCashSessionId,
+              saleId,
+              pAmount,
+              p.reference_number,
+              `Anulación de venta: ${dto.reason.trim()}`,
+              actor.id,
+            ]
+          );
+          const refundPaymentId = refundPaymentResult.rows[0].id;
+
+          if (targetCashSessionId) {
+            await client.query(
+              `INSERT INTO cash_movements (
+                tenant_id, branch_id, cash_session_id, payment_id,
+                movement_type, direction, reference_type, reference_id,
+                amount, description, created_by, created_at
+              ) VALUES (
+                $1, $2, $3, $4, 'PAYMENT', 'OUT', 'REFUND', $5, $6, $7, $8, NOW()
+              )`,
+              [
+                tenantId,
+                sale.branch_id,
+                targetCashSessionId,
+                refundPaymentId,
+                saleId,
+                pAmount,
+                `Anulación venta ${saleId}: ${dto.reason.trim()}`,
+                actor.id,
+              ]
+            );
+          }
+
+          await client.query(
+            `UPDATE payments SET status = 'REFUNDED' WHERE id = $1 AND tenant_id = $2`,
+            [p.id, tenantId]
+          );
+        } else {
+          await client.query(
+            `UPDATE payments SET status = 'CANCELLED' WHERE id = $1 AND tenant_id = $2`,
+            [p.id, tenantId]
+          );
+        }
+      }
+
+      // 3. Update Sale
+      await client.query(
+        `UPDATE sales
+            SET status = 'CANCELLED',
+                payment_status = 'REFUNDED',
+                notes = COALESCE(notes, '') || ' [Anulada: ' || $3 || ']',
+                updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2`,
+        [saleId, tenantId, dto.reason.trim()]
+      );
+
+      this.auditService?.logEvent({
+        tenantId,
+        userId: actor.id ?? null,
+        module: "operations",
+        entity: "sales",
+        entityId: saleId,
+        action: "VOID_SALE",
+        before: {
+          status: sale.status,
+          paymentStatus: sale.payment_status,
+        },
+        after: {
+          status: "CANCELLED",
+          paymentStatus: "REFUNDED",
+          reason: dto.reason.trim(),
+          discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
+          creditNote: creditNoteResult,
+        },
+      });
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    return this.detail(actor, saleId);
+  }
+
+  async issueDebitNote(
+    actor: OperationalSaleActor,
+    saleId: string,
+    dto: OperationalDebitNoteDto
+  ) {
+    const tenantId = actor.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException("tenantId es requerido");
+    }
+    if (!this.db) {
+      throw new Error("database unavailable");
+    }
+
+    const client = await this.db.getClient();
+    try {
+      const billingDocResult = await client.query<{
+        id: string;
+        status: string;
+        document_type: string;
+      }>(
+        `SELECT id, status, document_type
+           FROM electronic_documents
+          WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
+          ORDER BY created_at DESC LIMIT 1`,
+        [tenantId, saleId]
+      );
+      const billingDoc = billingDocResult.rows[0];
+      if (!billingDoc || billingDoc.status !== "ACCEPTED") {
+        throw new BadRequestException(
+          "No se puede emitir una Nota Débito sin una factura electrónica aceptada previa."
+        );
+      }
+
+      const debitNoteResult = await this.billingClient.issueDebitNote(tenantId, billingDoc.id, {
+        discrepancyResponseCode: dto.discrepancyResponseCode,
+        discrepancyResponseDescription: dto.discrepancyResponseDescription ?? dto.reason,
+        noteReason: dto.reason,
+        amount: dto.amount,
+      });
+
+      if (debitNoteResult?.id) {
+        await client.query(
+          `INSERT INTO electronic_documents (
+            id, tenant_id, source_type, source_id, document_type,
+            status, provider_status, provider_document_id,
+            created_at, updated_at
+          ) VALUES (
+            gen_random_uuid(), $1, 'SALE', $2, 'DEBIT_NOTE',
+            $3, $4, $5, NOW(), NOW()
+          )`,
+          [
+            tenantId,
+            saleId,
+            debitNoteResult.status ?? "SENT",
+            debitNoteResult.status ?? "SENT",
+            debitNoteResult.id,
+          ]
+        );
+      }
+
+      this.auditService?.logEvent({
+        tenantId,
+        userId: actor.id ?? null,
+        module: "operations",
+        entity: "sales",
+        entityId: saleId,
+        action: "ISSUE_DEBIT_NOTE",
+        after: {
+          debitNoteResult,
+          reason: dto.reason,
+          amount: dto.amount,
+        },
+      });
     } finally {
       client.release();
     }

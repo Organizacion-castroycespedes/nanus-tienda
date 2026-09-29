@@ -32,6 +32,7 @@ import {
 } from "../services/operational-sales.service";
 import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
 import { EditSalePaymentsModal } from "./EditSalePaymentsModal";
+import { VoidSaleModal } from "./VoidSaleModal";
 import type { OperationalSaleDetail } from "../types";
 
 const saleTypeLabels: Record<string, string> = {
@@ -162,8 +163,8 @@ const ActionCard = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
-  const [retryConfirmOpen, setRetryConfirmOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [localActionMessage, setLocalActionMessage] = useState<string | null>(null);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
@@ -270,6 +271,18 @@ const ActionCard = ({
             {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
           </Button>
 
+          {sale.status !== "CANCELLED" && sale.status !== "REFUNDED" && accepted ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setVoidModalOpen(true)}
+              className="flex items-center gap-2 border-rose-300 text-rose-700 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-rose-50"
+            >
+              <RotateCcw className="h-4 w-4 text-rose-600 shrink-0" />
+              Anular / Nota Crédito
+            </Button>
+          ) : null}
+
           {sale.status !== "CANCELLED" &&
           sale.status !== "REFUNDED" &&
           sale.electronicBilling?.status !== "ACCEPTED" &&
@@ -302,7 +315,11 @@ const ActionCard = ({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setRetryConfirmOpen(true)}
+              onClick={() => {
+                if (window.confirm("¿Reintentar el procesamiento seguro de esta factura electrónica?")) {
+                  void onRetry();
+                }
+              }}
               disabled={refreshLoading}
               className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
@@ -347,17 +364,6 @@ const ActionCard = ({
         ) : null}
       </div>
       <ConfirmDialog
-        open={retryConfirmOpen}
-        onOpenChange={setRetryConfirmOpen}
-        title="Reintentar procesamiento"
-        description="¿Reintentar el procesamiento seguro de esta factura electrónica?"
-        confirmText="Reintentar"
-        cancelText="Cancelar"
-        variant="warning"
-        onConfirm={onRetry}
-        loading={refreshLoading}
-      />
-      <ConfirmDialog
         open={recoveryConfirmOpen}
         onOpenChange={setRecoveryConfirmOpen}
         title="Recuperar procesamiento de factura electrónica"
@@ -388,6 +394,15 @@ const ActionCard = ({
         onClose={() => setWizardOpen(false)}
         onSuccess={(msg) => {
           if (msg) setLocalActionMessage(msg);
+          void onReload();
+        }}
+      />
+      <VoidSaleModal
+        sale={sale}
+        isOpen={voidModalOpen}
+        onClose={() => setVoidModalOpen(false)}
+        onSuccess={() => {
+          setLocalActionMessage("Venta anulada correctamente.");
           void onReload();
         }}
       />
