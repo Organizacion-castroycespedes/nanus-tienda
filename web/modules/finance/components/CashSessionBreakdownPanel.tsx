@@ -1,8 +1,14 @@
+import { ChevronDown } from "lucide-react";
+import { useState } from "react";
 import type { CashSessionSummary } from "../types";
 import { formatCurrency } from "../utils";
 
 type CashSessionBreakdownPanelProps = {
   summary: CashSessionSummary;
+  compact?: boolean;
+  collapsiblePaymentMethods?: boolean;
+  paymentSummaryExpanded?: boolean;
+  onPaymentSummaryExpandedChange?: (expanded: boolean) => void;
 };
 
 const labelByCategory: Record<string, string> = {
@@ -15,6 +21,10 @@ const labelByCategory: Record<string, string> = {
 
 export const CashSessionBreakdownPanel = ({
   summary,
+  compact = false,
+  collapsiblePaymentMethods = false,
+  paymentSummaryExpanded = false,
+  onPaymentSummaryExpandedChange,
 }: CashSessionBreakdownPanelProps) => {
   const cashControl = summary.cashControl ?? {
     openingCash: summary.totals.openingAmount,
@@ -57,62 +67,62 @@ export const CashSessionBreakdownPanel = ({
   const methods = summary.paymentMethodDetails ?? [];
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 dark:bg-slate-800 dark:border-slate-700">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+    <div className={compact ? "space-y-3" : "space-y-4"}>
+      <div className={compact ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-4" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"}>
+        <div className={`min-w-0 rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 ${compact ? "p-2.5" : "p-3"}`}>
+          <p className={`${compact ? "text-[10px]" : "text-[11px]"} uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400`}>
             Apertura efectivo
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
+          <p className={`${compact ? "text-base" : "text-lg"} mt-1 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white`}>
             {formatCurrency(cashControl.openingCash)}
           </p>
         </div>
-        <div className="min-w-0 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-emerald-700">
+        <div className={`min-w-0 rounded-xl border border-emerald-200 bg-emerald-50 ${compact ? "p-2.5" : "p-3"}`}>
+          <p className={`${compact ? "text-[10px]" : "text-[11px]"} uppercase tracking-[0.18em] text-emerald-700`}>
             Efectivo esperado
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
+          <p className={`${compact ? "text-base" : "text-lg"} mt-1 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white`}>
             {formatCurrency(cashControl.expectedCashAmount)}
           </p>
         </div>
-        <div className="min-w-0 rounded-xl border border-blue-200 bg-blue-50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-blue-700">
+        <div className={`min-w-0 rounded-xl border border-blue-200 bg-blue-50 ${compact ? "p-2.5" : "p-3"}`}>
+          <p className={`${compact ? "text-[10px]" : "text-[11px]"} uppercase tracking-[0.18em] text-blue-700`}>
             Otros medios neto
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
+          <p className={`${compact ? "text-base" : "text-lg"} mt-1 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white`}>
             {formatCurrency(cashControl.nonCashNet)}
           </p>
         </div>
-        <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+        <div className={`min-w-0 rounded-xl border border-slate-200 bg-slate-50 ${compact ? "p-2.5" : "p-3"}`}>
+          <p className={`${compact ? "text-[10px]" : "text-[11px]"} uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400`}>
             Neto operativo
           </p>
-          <p className="mt-1 break-words text-lg font-semibold leading-tight text-slate-900 tabular-nums dark:text-white">
+          <p className={`${compact ? "text-base" : "text-lg"} mt-1 break-words font-semibold leading-tight text-slate-900 tabular-nums dark:text-white`}>
             {formatCurrency(cashControl.totalNetAmount)}
           </p>
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className={compact ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-4" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"}>
+        <div className={`rounded-xl border border-slate-200 bg-slate-50 ${compact ? "p-2.5" : "p-3"}`}>
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Ventas POS</p>
           <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.posSales)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className={`rounded-xl border border-slate-200 bg-slate-50 ${compact ? "p-2.5" : "p-3"}`}>
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Pedidos</p>
           <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.orders)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className={`rounded-xl border border-slate-200 bg-slate-50 ${compact ? "p-2.5" : "p-3"}`}>
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Domicilios</p>
           <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.deliveries)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className={`rounded-xl border border-slate-200 bg-slate-50 ${compact ? "p-2.5" : "p-3"}`}>
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Compras / salidas</p>
           <p className="mt-1 font-semibold text-slate-900 dark:text-white">
             {formatCurrency(source.purchases + source.refunds + source.manualOut)}
@@ -122,22 +132,58 @@ export const CashSessionBreakdownPanel = ({
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800" aria-label="Resumen por medio de pago">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/40">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-white">
-              Resumen por medio de pago
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Ventas, pedidos y egresos registrados en el turno.
-            </p>
-          </div>
-          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {methods.length} {methods.length === 1 ? "medio" : "medios"}
-          </span>
+          {collapsiblePaymentMethods ? (
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              aria-expanded={paymentSummaryExpanded}
+              aria-controls="cash-session-payment-summary"
+              onClick={() =>
+                onPaymentSummaryExpandedChange?.(!paymentSummaryExpanded)
+              }
+            >
+              <span>
+                <span className="block text-sm font-semibold text-slate-800 dark:text-white">
+                  Resumen por medio de pago
+                </span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  Ventas, pedidos y egresos registrados en el turno.
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  {methods.length} {methods.length === 1 ? "medio" : "medios"}
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 text-slate-400 transition-transform ${
+                    paymentSummaryExpanded ? "rotate-180" : ""
+                  }`}
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
+          ) : (
+            <>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-white">
+                  Resumen por medio de pago
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ventas, pedidos y egresos registrados en el turno.
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {methods.length} {methods.length === 1 ? "medio" : "medios"}
+              </span>
+            </>
+          )}
         </div>
-        <p className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500 sm:hidden dark:border-slate-700 dark:text-slate-400">
-          Desliza horizontalmente para ver todos los valores.
-        </p>
-        <div className="max-h-72 overflow-auto">
+        {!collapsiblePaymentMethods || paymentSummaryExpanded ? (
+          <>
+            <p className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500 sm:hidden dark:border-slate-700 dark:text-slate-400">
+              Desliza horizontalmente para ver todos los valores.
+            </p>
+            <div id="cash-session-payment-summary" className="max-h-72 overflow-auto">
           <table className="min-w-[780px] w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
           <caption className="sr-only">Detalle de valores agrupados por medio de pago</caption>
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
@@ -194,7 +240,9 @@ export const CashSessionBreakdownPanel = ({
             )}
           </tbody>
           </table>
-        </div>
+            </div>
+          </>
+        ) : null}
       </section>
     </div>
   );
