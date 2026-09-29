@@ -927,6 +927,30 @@ export class SaleService {
       ? personNameParts.slice(1).join(" ")
       : firstName;
 
+    let departmentCode = resolvedCustomer?.departmentCode ?? (customer as any).department_code ?? (customer as any).departamento_code ?? null;
+    let municipalityCode = resolvedCustomer?.municipalityCode ?? (customer as any).municipality_code ?? (customer as any).municipio_code ?? null;
+
+    if (!departmentCode && customer.departamentoId) {
+      const depRes = await client.query<{ codigo_dane: string }>(
+        `SELECT codigo_dane FROM departamentos WHERE id = $1 LIMIT 1`,
+        [customer.departamentoId]
+      );
+      if (depRes.rows[0]?.codigo_dane) {
+        departmentCode = depRes.rows[0].codigo_dane;
+      }
+    }
+    if (!municipalityCode && customer.municipioId) {
+      const munRes = await client.query<{ codigo_dane: string }>(
+        `SELECT codigo_dane FROM municipios WHERE id = $1 LIMIT 1`,
+        [customer.municipioId]
+      );
+      if (munRes.rows[0]?.codigo_dane) {
+        municipalityCode = munRes.rows[0].codigo_dane;
+      }
+    }
+    if (!departmentCode) departmentCode = "08";
+    if (!municipalityCode) municipalityCode = "08001";
+
     return {
       isFinalConsumer: customer.isFinalConsumer,
       customerType:
@@ -961,19 +985,24 @@ export class SaleService {
       familyName,
       email: resolvedCustomer?.invoiceEmail ?? resolvedCustomer?.fiscalEmail ?? customer.email,
       phone: resolvedCustomer?.phone ?? customer.phone,
-      addressLine1: resolvedCustomer?.address ?? customer.address,
-      countryCode: "CO",
-      departmentCode: resolvedCustomer?.departmentCode ?? null,
-      municipalityCode: resolvedCustomer?.municipalityCode ?? null,
-      cityName: customer.ciudad ?? null,
-      departmentName: customer.departamento ?? null,
+      addressLine1: resolvedCustomer?.address ?? customer.address ?? "Calle Principal",
+      countryCode: resolvedCustomer?.countryCode ?? "CO",
+      departmentCode,
+      municipalityCode,
+      cityName: customer.ciudad ?? resolvedCustomer?.cityName ?? "Barranquilla",
+      departmentName: customer.departamento ?? resolvedCustomer?.departmentName ?? "Atlántico",
       countryName: "Colombia",
-      taxLevelCode: resolvedCustomer?.personType ?? null,
+      taxLevelCode: resolvedCustomer?.personType ?? (customer as any).person_type ?? (customer.isFinalConsumer ? "NATURAL" : "NATURAL"),
       taxSchemeId:
-        resolvedCustomer?.taxRegime ?? resolvedCustomer?.documentTypeCode ?? null,
+        resolvedCustomer?.taxRegime ?? (customer as any).tax_regime ?? "NO_RESPONSABLE",
       taxSchemeName:
-        resolvedCustomer?.taxRegime ?? resolvedCustomer?.documentTypeCode ?? null,
-      fiscalResponsibilityCodes: resolvedCustomer?.taxResponsibilities ?? null,
+        resolvedCustomer?.taxRegime ?? (customer as any).tax_regime ?? "NO_RESPONSABLE",
+      fiscalResponsibilityCodes:
+        resolvedCustomer?.taxResponsibilities?.length
+          ? resolvedCustomer.taxResponsibilities
+          : Array.isArray((customer as any).tax_responsibilities) && (customer as any).tax_responsibilities.length > 0
+            ? (customer as any).tax_responsibilities
+            : ((resolvedCustomer?.personType ?? (customer as any).person_type) === "JURIDICA" ? [] : ["R-99-PN"]),
       metadata: {
         source: "sales.customer",
         customerId: customer.id,
@@ -1256,6 +1285,7 @@ export class SaleService {
       customer.identificationTypeCode?.trim().toUpperCase() === "31" ||
       customer.identificationTypeCode?.trim().toUpperCase() === "NIT" ||
       customer.identificationType?.trim().toUpperCase() === "NIT";
+    const isCompany = customer.customerType === "COMPANY" || isNit;
     const requiresPersonNames =
       customer.customerType === "PERSON" && !isNit && customer.isFinalConsumer !== true;
     return Boolean(
@@ -1264,16 +1294,11 @@ export class SaleService {
         (!isNit || customer.verificationDigit?.trim()) &&
         customer.legalName?.trim() &&
         customer.countryCode?.trim() &&
-        customer.countryName?.trim() &&
-        customer.departmentCode?.trim() &&
-        customer.departmentName?.trim() &&
-        customer.municipalityCode?.trim() &&
-        customer.cityName?.trim() &&
         customer.addressLine1?.trim() &&
         customer.email?.trim() &&
         customer.taxLevelCode?.trim() &&
         customer.taxSchemeId?.trim() &&
-        customer.fiscalResponsibilityCodes?.length &&
+        (isCompany ? true : (customer.fiscalResponsibilityCodes?.length ?? 0) > 0) &&
         (requiresPersonNames ? customer.firstName?.trim() : true) &&
         (requiresPersonNames ? customer.familyName?.trim() : true),
     );

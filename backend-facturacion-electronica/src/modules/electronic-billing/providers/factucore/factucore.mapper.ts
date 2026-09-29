@@ -531,6 +531,28 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => {
   };
 };
 
+const resolveFactuCoreIssueDate = (issueDate?: string | Date | null): string => {
+  const now = new Date();
+  if (!issueDate) {
+    return now.toISOString();
+  }
+  const iso = toIsoString(issueDate);
+  if (!iso) {
+    return now.toISOString();
+  }
+  try {
+    const bogotaFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" });
+    const todayBogota = bogotaFormatter.format(now);
+    const issueBogota = bogotaFormatter.format(new Date(iso));
+    if (issueBogota !== todayBogota) {
+      return now.toISOString();
+    }
+  } catch {
+    // If timezone formatting fails, return iso
+  }
+  return iso;
+};
+
 const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
   overrides: Record<string, unknown> = {},
@@ -540,7 +562,7 @@ const buildBaseRequest = (
 
   return {
     externalReference: command.externalReference,
-    issueDate: toIsoString(command.issueDate) ?? new Date().toISOString(),
+    issueDate: resolveFactuCoreIssueDate(command.issueDate),
     issueTime: command.issueTime ?? null,
     payments,
     lines,
