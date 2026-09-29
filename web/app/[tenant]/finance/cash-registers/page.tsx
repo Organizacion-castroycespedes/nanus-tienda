@@ -301,8 +301,9 @@ const CashRegistersPage = () => {
   const assignedToTerminal = cashRegisters.filter((item) => item.terminalId).length;
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-4">
       <FinancePageHeader
+        compact
         eyebrow="Finance / Operacion"
         title="Cajas"
         description="Organiza puntos de recaudo por sucursal con una interfaz compacta, visual y preparada para futuras integraciones de caja y conciliacion."
@@ -325,25 +326,28 @@ const CashRegistersPage = () => {
       <FinanceSectionNav
         tenantSlug={tenantSlug}
         canViewPaymentMethods={canViewPaymentMethods}
+        compact
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <FinanceMetricCard label="Total cajas" value={cashRegisters.length} accent="slate" />
-        <FinanceMetricCard label="Activas" value={activeCount} accent="emerald" />
+      <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(155px,1fr))] gap-2">
+        <FinanceMetricCard compact label="Total cajas" value={cashRegisters.length} accent="slate" />
+        <FinanceMetricCard compact label="Activas" value={activeCount} accent="emerald" />
         <FinanceMetricCard
+          compact
           label="Ligadas a terminal"
           value={assignedToTerminal}
           accent="blue"
         />
         <FinanceMetricCard
+          compact
           label="Sucursales visibles"
           value={new Set(cashRegisters.map((item) => item.branchId)).size}
           accent="amber"
         />
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-        <div className="grid gap-4 md:grid-cols-3">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <div className="grid gap-2 md:grid-cols-3">
           <Input
             label="Buscar"
             placeholder="Caja, codigo, sucursal o terminal"
@@ -388,7 +392,7 @@ const CashRegistersPage = () => {
 
       {toastMessage ? <Toast message={toastMessage} variant={toastVariant} /> : null}
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">

@@ -1607,6 +1607,26 @@ export class CashSessionsService {
     }
 
     const tenantId = this.resolveTenantId(actor, query.tenantId);
+    const requestedStatus = query.status;
+    if (Boolean(query.dateFrom) !== Boolean(query.dateTo)) {
+      throw new BadRequestException("Fecha desde y fecha hasta deben enviarse juntas");
+    }
+    if (requestedStatus !== "OPEN" && (!query.dateFrom || !query.dateTo)) {
+      throw new BadRequestException(
+        "Fecha desde y fecha hasta son obligatorias para sesiones históricas"
+      );
+    }
+    if (query.dateFrom && query.dateTo) {
+      const from = new Date(`${query.dateFrom}T00:00:00Z`);
+      const to = new Date(`${query.dateTo}T00:00:00Z`);
+      const days = (to.getTime() - from.getTime()) / 86400000;
+      if (!Number.isFinite(days) || days < 0) {
+        throw new BadRequestException("El rango de fechas es invalido");
+      }
+      if (days > 30) {
+        throw new BadRequestException("El rango maximo es de 31 dias");
+      }
+    }
     if (query.branchId) {
       await this.assertBranchScope(actor, tenantId, query.branchId);
     }
@@ -1627,7 +1647,10 @@ export class CashSessionsService {
       branchIds: await this.resolveAllowedBranchIds(actor, tenantId),
       cashRegisterId: query.cashRegisterId,
       status: query.status,
+      openedByUserId: this.canAdminCash(actor) ? query.openedByUserId : undefined,
       operatorUserId: this.canAdminCash(actor) ? undefined : actor.userId,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
       limit: query.limit ?? 100,
       offset: query.offset ?? 0,
     });

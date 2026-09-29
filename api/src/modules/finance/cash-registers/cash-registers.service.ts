@@ -61,7 +61,7 @@ export class CashRegistersService {
   }
 
   private async resolveAllowedBranchIds(actor: FinanceActor, tenantId: string) {
-    if (this.canManage(actor) || actor.roles.includes("ADMIN")) {
+    if (this.canManage(actor)) {
       return undefined;
     }
 
