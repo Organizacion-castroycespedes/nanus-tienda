@@ -21,13 +21,30 @@ export class OperationalControlService {
     return value ?? null;
   }
 
-  private dates(period: OperationalControlQuery["period"]) {
-    const now = new Date();
-    const local = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  private dates(period: OperationalControlQuery["period"], now = new Date()) {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(now).map(({ type, value }) => [type, Number(value)]),
+    ) as Record<string, number>;
+    const year = parts.year;
+    const month = parts.month;
+    const day = parts.day;
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+      throw new BadRequestException("Unable to resolve report date range");
+    }
+    const local = `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
     const end = new Date(`${local}T00:00:00-05:00`);
     const days = period === "LAST_30_DAYS" ? 30 : period === "LAST_7_DAYS" ? 7 : 1;
     const from = new Date(end.getTime() - (days - 1) * 86400000);
-    return { from, to: new Date(end.getTime() + 86400000), bucket: period === "TODAY" ? "hour" : "day" };
+    const to = new Date(end.getTime() + 86400000);
+    if ([end, from, to].some((value) => Number.isNaN(value.getTime()))) {
+      throw new BadRequestException("Unable to resolve report date range");
+    }
+    return { from, to, bucket: period === "TODAY" ? "hour" : "day" };
   }
 
   async getSnapshot(query: OperationalControlQuery, user?: ReportUser) {
