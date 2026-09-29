@@ -235,7 +235,56 @@ export class BillingIntegrationClient {
     );
   }
 
-  private async postDocumentAction<T>(endpoint: string, tenantId: string): Promise<T> {
+  async issueCreditNote(
+    tenantId: string,
+    electronicDocumentId: string,
+    payload: {
+      discrepancyResponseCode?: string;
+      discrepancyResponseDescription?: string;
+      noteReason?: string;
+    },
+  ): Promise<{
+    id: string;
+    documentId: string;
+    status: string;
+    queued?: boolean;
+    stages?: Record<string, unknown>;
+  }> {
+    return this.postDocumentAction(
+      `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/credit-note/issue`,
+      tenantId,
+      payload,
+    );
+  }
+
+  async issueDebitNote(
+    tenantId: string,
+    electronicDocumentId: string,
+    payload: {
+      discrepancyResponseCode?: string;
+      discrepancyResponseDescription?: string;
+      noteReason?: string;
+      amount?: number;
+    },
+  ): Promise<{
+    id: string;
+    documentId: string;
+    status: string;
+    queued?: boolean;
+    stages?: Record<string, unknown>;
+  }> {
+    return this.postDocumentAction(
+      `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/debit-note/issue`,
+      tenantId,
+      payload,
+    );
+  }
+
+  private async postDocumentAction<T>(
+    endpoint: string,
+    tenantId: string,
+    extraBody?: Record<string, unknown>,
+  ): Promise<T> {
     if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
       throw new Error("Billing backend internal client is not configured");
     }
@@ -252,12 +301,19 @@ export class BillingIntegrationClient {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-          body: JSON.stringify({ tenantId }),
+          body: JSON.stringify({ tenantId, ...(extraBody ?? {}) }),
           signal: controller.signal,
         },
       );
       if (!response.ok) {
-        throw new Error("Billing document action was rejected");
+        let errMessage = "Billing document action was rejected";
+        try {
+          const body = await response.json();
+          if (body?.message) errMessage = String(body.message);
+        } catch {
+          // ignore
+        }
+        throw new Error(errMessage);
       }
       return await response.json() as T;
     } finally {

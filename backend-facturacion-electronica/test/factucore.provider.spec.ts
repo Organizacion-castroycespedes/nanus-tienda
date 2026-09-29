@@ -341,9 +341,37 @@ test("resumeInvoice continues a validated provider document without create", asy
 
   const result = await provider.resumeInvoice(command, "factu-existing-1");
 
-  assert.deepEqual(client.calls.map((call) => call.op), ["generateXml", "sign", "transmit"]);
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus", "generateXml", "sign", "transmit"]);
   assert.equal(result.providerDocumentId, "factu-existing-1");
   assert.deepEqual(stages, ["XML_GENERATE_INTENT", "XML_GENERATED", "SIGN_INTENT", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
+});
+
+test("resumeInvoice continues a SIGNED provider document by skipping generateXml and sign", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+
+  // mock getStatus to return SIGNED
+  client.getStatus = async (context, documentId) => {
+    client.calls.push({ op: "getStatus", context, documentId });
+    return {
+      id: documentId,
+      providerDocumentId: documentId,
+      status: "SIGNED",
+      providerStatus: "SIGNED",
+      xml: { attachmentId: "att-xml-1", fileName: "doc.xml", path: "doc.xml" },
+      signedXml: { attachmentId: "att-signed-1", fileName: "doc.signed.xml", path: "doc.signed.xml" },
+    } as never;
+  };
+
+  const result = await provider.resumeInvoice(command, "factu-existing-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus", "transmit"]);
+  assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.deepEqual(stages, ["XML_GENERATED", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
 });
 
 test("getDocument reads the linked provider document by id", async () => {

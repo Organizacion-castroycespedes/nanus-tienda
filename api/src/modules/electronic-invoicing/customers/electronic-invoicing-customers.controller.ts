@@ -95,7 +95,7 @@ export class ElectronicInvoicingCustomersController {
 
   @Patch(":id")
   @RequirePermission({
-    menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+    menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
     level: "WRITE",
     operationalRoles: customerOperationalRoles,
   })

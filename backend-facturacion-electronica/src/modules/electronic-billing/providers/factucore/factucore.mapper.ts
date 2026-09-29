@@ -131,7 +131,22 @@ const normalizePaymentMeans = (
   );
 };
 
-const normalizeCommandPayments = (command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand): NormalizedFactuCorePayment[] => {
+const calculateFactuCoreLineTotal = (line: FactuCoreDocumentLine): number => {
+  const qty = Number(line.quantity);
+  const unitPrice = Number(line.unitPrice);
+  const discount = Number(line.discountAmount ?? 0);
+  const lineBase = Math.round((qty * unitPrice - discount) * 100) / 100;
+  const lineTax = (line.taxes ?? []).reduce((sum, tax) => {
+    const rate = Number(tax.rate);
+    return sum + calculateDianTaxAmount(lineBase, rate);
+  }, 0);
+  return Math.round((lineBase + Math.round(lineTax * 100) / 100) * 100) / 100;
+};
+
+const normalizeCommandPayments = (
+  command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
+  lines?: FactuCoreDocumentLine[],
+): NormalizedFactuCorePayment[] => {
   const legacy = command.payment ?? null;
   const source = command.payments ?? (legacy ? [legacy] : []);
   if (!source.length) {
@@ -140,7 +155,15 @@ const normalizeCommandPayments = (command: IssueElectronicInvoiceCommand | Issue
   if (command.payments && legacy && command.payments.length !== 1) {
     throw new FactuCoreConfigurationError("payment_normalization", "payment and payments cannot be supplied together");
   }
-  const total = toCents(command.totals.totalAmount, "invoice total");
+
+  let total: bigint;
+  if (lines && lines.length > 0) {
+    const lineTotalSum = lines.reduce((sum, line) => sum + calculateFactuCoreLineTotal(line), 0);
+    total = BigInt(Math.round(lineTotalSum * 100));
+  } else {
+    total = toCents(command.totals.totalAmount, "invoice total");
+  }
+
   const normalized = source.map((payment) => {
     const metadata = payment.metadata ?? {};
     const means = normalizePaymentMeans(
@@ -149,7 +172,7 @@ const normalizeCommandPayments = (command: IssueElectronicInvoiceCommand | Issue
       payment.paymentMeansId ?? (typeof metadata.electronicPaymentMeansId === "string" ? metadata.electronicPaymentMeansId : null),
       typeof metadata.electronicBillingEnabled === "boolean" ? metadata.electronicBillingEnabled : null,
     );
-    const amount = payment.amount ?? metadata.amount ?? (source.length === 1 ? command.totals.totalAmount : null);
+    const rawAmount = payment.amount ?? metadata.amount ?? (source.length === 1 ? centsToMoney(total) : null);
     const reference = normalizeNullableString(payment.reference ?? metadata.reference);
     const requiresReference = payment.requiresReference ?? metadata.requiresReference === true;
     if (requiresReference && !reference) {
@@ -157,15 +180,23 @@ const normalizeCommandPayments = (command: IssueElectronicInvoiceCommand | Issue
     }
     return {
       ...means,
-      amount: centsToMoney(toCents(amount, "payment amount")),
+      amount: source.length === 1 ? centsToMoney(total) : centsToMoney(toCents(rawAmount, "payment amount")),
       reference,
       requiresReference,
     };
   });
+
   const allocated = normalized.reduce((sum, payment) => sum + toCents(payment.amount, "payment amount"), 0n);
   if (allocated !== total) {
-    throw new FactuCoreConfigurationError("payment_normalization", `Payment allocation total ${centsToMoney(allocated)} does not equal invoice total ${centsToMoney(total)}`);
+    const diff = total - allocated;
+    if (diff >= -5n && diff <= 5n && normalized.length > 0) {
+      const adjustedCents = toCents(normalized[0].amount, "payment amount") + diff;
+      normalized[0].amount = centsToMoney(adjustedCents);
+    } else {
+      throw new FactuCoreConfigurationError("payment_normalization", `Payment allocation total ${centsToMoney(allocated)} does not equal invoice total ${centsToMoney(total)}`);
+    }
   }
+
   if (command.payments && legacy && normalized.length === 1) {
     const legacyMeans = normalizePaymentMeans(legacy.methodCode, typeof legacy.metadata?.electronicPaymentMeansCode === "string" ? legacy.metadata.electronicPaymentMeansCode : null, typeof legacy.metadata?.electronicPaymentMeansId === "string" ? legacy.metadata.electronicPaymentMeansId : null, null);
     if (legacyMeans.paymentMeansCode !== normalized[0].paymentMeansCode || legacyMeans.paymentMeansId !== normalized[0].paymentMeansId) {
@@ -435,6 +466,15 @@ const mapCustomer = (customer: ElectronicCustomer): FactuCoreCustomer => {
   };
 };
 
+const calculateDianTaxAmount = (taxableBase: number, ratePercent: number): number => {
+  const baseCents = BigInt(Math.round(taxableBase * 100));
+  const rateUnits = BigInt(Math.round(ratePercent * 10000));
+  const denominator = 10_000n * 100n;
+  const numerator = baseCents * rateUnits;
+  const cents = (numerator + denominator / 2n) / denominator;
+  return Number(cents) / 100;
+};
+
 const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   const taxType = mapFactuCoreTaxType(tax);
   const taxSchemeId = mapFactuCoreTaxSchemeId(tax);
@@ -442,14 +482,20 @@ const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   if (!Number.isFinite(normalizedRate) || normalizedRate < 0) {
     throw new FactuCoreConfigurationError("tax_rate_normalization", "Tax rate is not a valid non-negative number");
   }
+  const rate = normalizedRate > 0 && normalizedRate < 1 ? normalizedRate * 100 : normalizedRate;
+  const taxableBase = Number(tax.taxableBase);
+  const taxAmount = Number.isFinite(taxableBase) && Number.isFinite(rate)
+    ? calculateDianTaxAmount(taxableBase, rate)
+    : Number(tax.amount);
+
   return {
     taxType,
     taxSchemeId,
     taxSchemeName: taxType,
     // Manus pricing stores 0.19; DIAN UBL Percent requires 19.
-    rate: normalizedRate > 0 && normalizedRate < 1 ? normalizedRate * 100 : normalizedRate,
+    rate,
     taxableBase: tax.taxableBase,
-    taxAmount: tax.amount,
+    taxAmount,
     metadata: {
       ...(tax.metadata ?? {}),
       ...(tax.code ? { taxCode: tax.code } : {}),
@@ -485,18 +531,41 @@ const mapLine = (line: ElectronicDocumentLineInput): FactuCoreDocumentLine => {
   };
 };
 
+const resolveFactuCoreIssueDate = (issueDate?: string | Date | null): string => {
+  const now = new Date();
+  if (!issueDate) {
+    return now.toISOString();
+  }
+  const iso = toIsoString(issueDate);
+  if (!iso) {
+    return now.toISOString();
+  }
+  try {
+    const bogotaFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" });
+    const todayBogota = bogotaFormatter.format(now);
+    const issueBogota = bogotaFormatter.format(new Date(iso));
+    if (issueBogota !== todayBogota) {
+      return now.toISOString();
+    }
+  } catch {
+    // If timezone formatting fails, return iso
+  }
+  return iso;
+};
+
 const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> => {
-  const payments = normalizeCommandPayments(command);
+  const lines = command.lines.map(mapLine);
+  const payments = normalizeCommandPayments(command, lines);
 
   return {
     externalReference: command.externalReference,
-    issueDate: toIsoString(command.issueDate) ?? new Date().toISOString(),
+    issueDate: resolveFactuCoreIssueDate(command.issueDate),
     issueTime: command.issueTime ?? null,
     payments,
-    lines: command.lines.map(mapLine),
+    lines,
     metadata: command.metadata ?? {},
     ...overrides,
   };
@@ -518,7 +587,6 @@ export class FactuCoreMapper {
       customer: mapCustomer(command.customer),
       invoiceTypeCode: "01",
       operationType: "10",
-      lines: command.lines.map(mapLine),
       references: [],
     } as unknown as FactuCoreInvoiceRequest;
   }
@@ -537,7 +605,6 @@ export class FactuCoreMapper {
       noteReason: command.reason.reasonDescription ?? command.reason.reasonType ?? null,
       invoiceTypeCode: "20",
       operationType: "20",
-      lines: command.lines.map(mapLine),
       references: [],
     } as unknown as FactuCoreCreditNoteRequest;
   }
