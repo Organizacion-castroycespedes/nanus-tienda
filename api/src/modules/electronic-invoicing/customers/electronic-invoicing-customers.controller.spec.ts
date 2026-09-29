@@ -59,7 +59,7 @@ describe("ElectronicInvoicingCustomersController", () => {
       operationalRoles: customerOperationalRoles,
     });
     assert.deepEqual(updatePermission, {
-      menuKey: MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS,
+      menuKey: [MENU_KEYS.ELECTRONIC_INVOICING_CUSTOMERS, "POS"],
       level: "WRITE",
       operationalRoles: customerOperationalRoles,
     });

@@ -168,7 +168,12 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
                 onEmitInvoice={async () => {
                   setError(null);
                   const result = await requestOperationalSaleElectronicBilling(sale.id);
-                  if (!result.requestCreated) {
+                  const isSuccess =
+                    result.requestCreated ||
+                    result.result === "REQUESTED" ||
+                    result.result === "DOCUMENT_EXISTS";
+
+                  if (!isSuccess) {
                     const errorMsg =
                       result.message ||
                       "No se pudo crear la solicitud de facturación electrónica.";
