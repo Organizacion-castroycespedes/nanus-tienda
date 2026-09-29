@@ -388,7 +388,7 @@ export class ElectronicBillingProcessingService {
     if (!document || !document.provider_document_id) {
       throw new ElectronicDocumentNotProcessableError("A linked provider document is required for staged recovery");
     }
-    if (isProcessingTerminalStatus(document.status)) {
+    if (document.status === "ACCEPTED" || document.status === "CANCELLED") {
       return { ...aggregate, providerResult: null, idempotent: true, retryable: false };
     }
 
@@ -406,7 +406,8 @@ export class ElectronicBillingProcessingService {
       })
       : await this.getProviderStatus(resolved, aggregate);
     const currentStatus = currentProvider.providerStatus?.toUpperCase() ?? "";
-    if (currentStatus !== "VALIDATED_INTERNAL" && currentStatus !== "SIGNED") {
+    const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
+    if (!isResumable) {
       return this.persistProviderResult(
         tenantId,
         aggregate,
@@ -429,6 +430,7 @@ export class ElectronicBillingProcessingService {
         "RETRY_REQUESTED",
         document.status,
         aggregate.events,
+        true,
       );
     if (!claimed) {
       throw new ElectronicDocumentStatusTransitionError();
@@ -514,7 +516,27 @@ export class ElectronicBillingProcessingService {
 
     try {
       const providerResult = await this.getProviderStatus(resolved, aggregate);
-      return this.persistProviderResult(tenantId, aggregate, providerResult, resolved, "STATUS_CHANGED", false, this.nextAttemptFromEvents(aggregate.events));
+      const persisted = await this.persistProviderResult(
+        tenantId,
+        aggregate,
+        providerResult,
+        resolved,
+        "STATUS_CHANGED",
+        false,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+
+      const currentStatus = providerResult.providerStatus?.toUpperCase() ?? "";
+      const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
+      if (
+        isResumable
+        && persisted.document.provider_document_id
+        && resolved.provider.resumeInvoice
+      ) {
+        return this.resumeLinkedProviderDocumentUnlocked(tenantId, electronicDocumentId, true);
+      }
+
+      return persisted;
     } catch (error) {
       // A 404 is the explicit provider-absence signal used by the safe
       // reconciliation flow. Do not convert it into a terminal rejection.
@@ -982,11 +1004,14 @@ export class ElectronicBillingProcessingService {
         this.nextAttemptFromEvents(aggregate.events),
       );
 
-      // A timeout can leave FactuCore with a durable VALIDATED_INTERNAL
-      // document while Manus still has no provider id. Link it first, then
-      // continue through the staged path. That path never calls create.
+      // A timeout can leave FactuCore with a durable staged document
+      // (VALIDATED_INTERNAL, XML_GENERATED, SIGNED) while Manus still has
+      // no provider id. Link it first, then continue through the staged path.
+      // That path never calls create.
+      const currentStatus = providerResult.providerStatus?.toUpperCase() ?? "";
+      const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
       if (
-        providerResult.providerStatus?.toUpperCase() === "VALIDATED_INTERNAL"
+        isResumable
         && persisted.document.provider_document_id
         && resolved.provider.resumeInvoice
       ) {
@@ -1409,9 +1434,11 @@ export class ElectronicBillingProcessingService {
           allowedStatuses:
             currentStatus === "TECHNICAL_ERROR"
               ? ["TECHNICAL_ERROR"]
-              : allowRecoverableRejected
-                ? ["REJECTED"]
-                : ["PENDING"],
+              : currentStatus === "PROCESSING"
+                ? ["PROCESSING"]
+                : allowRecoverableRejected
+                  ? ["REJECTED"]
+                  : ["PENDING"],
         },
         client,
       );

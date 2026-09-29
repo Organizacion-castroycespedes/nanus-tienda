@@ -159,20 +159,37 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       throw new FactuCoreConfigurationError("resume_invoice", "FactuCore provider document id is required");
     }
 
-    await command.onStage?.("XML_GENERATE_INTENT", id);
-    const generated = await this.client.generateXml(runtime, id);
-    await command.onStage?.("XML_GENERATED", id);
-    await command.onStage?.("SIGN_INTENT", id);
-    const signed = await this.client.sign(runtime, id);
-    await command.onStage?.("SIGNED", id);
+    const currentDoc = await this.client.getStatus(runtime, id);
+    const docStatus = currentDoc.status?.toUpperCase();
+
+    let generated: FactuCoreDocumentResponse | null = null;
+    let signed: FactuCoreDocumentResponse | null = null;
+    let transmitted: FactuCoreDocumentResponse | null = null;
+
+    if (docStatus !== "SIGNED" && docStatus !== "READY_TO_SEND") {
+      await command.onStage?.("XML_GENERATE_INTENT", id);
+      generated = await this.client.generateXml(runtime, id);
+      await command.onStage?.("XML_GENERATED", id);
+    } else {
+      await command.onStage?.("XML_GENERATED", id);
+    }
+
+    if (docStatus !== "SIGNED" && docStatus !== "READY_TO_SEND") {
+      await command.onStage?.("SIGN_INTENT", id);
+      signed = await this.client.sign(runtime, id);
+      await command.onStage?.("SIGNED", id);
+    } else {
+      await command.onStage?.("SIGNED", id);
+    }
+
     await command.onStage?.("TRANSMISSION_INTENT", id);
-    const transmitted = await this.client.transmit(runtime, id);
+    transmitted = await this.client.transmit(runtime, id);
     await command.onStage?.("TRANSMITTED", id);
 
     return buildDocumentResult(
       this.mapper,
       command.documentId,
-      mergeDocumentResponses(generated, signed, transmitted),
+      mergeDocumentResponses(currentDoc as never, generated, signed, transmitted),
       transmitted.status ?? transmitted.providerStatus ?? "SENT",
     );
   }
