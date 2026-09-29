@@ -28,6 +28,14 @@ export type TerminalDeviceBindingRecord = {
   updated_at: string;
 };
 
+export type TerminalRuntimeResolutionRecord = {
+  registration_status: TerminalDeviceRecord["registration_status"];
+  binding_terminal_id: string | null;
+  terminal_id: string | null;
+  branch_id: string | null;
+  terminal_is_active: boolean | null;
+};
+
 @Injectable()
 export class TerminalDevicesRepository {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
@@ -162,6 +170,30 @@ export class TerminalDevicesRepository {
          agent_api_version, registration_status, last_seen_at, created_at, updated_at`,
       [deviceId, status],
       client,
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async findRuntimeResolution(installationId: string, tenantId: string) {
+    const result = await this.query<TerminalRuntimeResolutionRecord>(
+      `SELECT
+        device.registration_status,
+        binding.terminal_id AS binding_terminal_id,
+        terminal.id AS terminal_id,
+        terminal.branch_id,
+        terminal.is_active AS terminal_is_active
+       FROM terminal_devices AS device
+       LEFT JOIN terminal_device_bindings AS binding
+         ON binding.device_id = device.id
+        AND binding.tenant_id = device.tenant_id
+        AND binding.status = 'ACTIVE'
+       LEFT JOIN terminals AS terminal
+         ON terminal.id = binding.terminal_id
+        AND terminal.tenant_id = binding.tenant_id
+       WHERE device.installation_id = $1
+         AND device.tenant_id = $2
+       LIMIT 1`,
+      [installationId, tenantId],
     );
     return result.rows[0] ?? null;
   }

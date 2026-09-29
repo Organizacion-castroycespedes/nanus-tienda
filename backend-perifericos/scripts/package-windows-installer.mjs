@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { resolveAgentVersion } from "./agent-version.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
 const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
-const bundleName = `ManusPeripheralAgent-win-x64-${packageJson.version}`;
+const agentVersion = resolveAgentVersion({ packageVersion: packageJson.version });
+const bundleName = `ManusPeripheralAgent-win-x64-${agentVersion}`;
 const bundleRoot = join(projectRoot, "dist-terminal", "windows-x64", bundleName);
 const installerSourceRoot = join(projectRoot, "windows-installer");
 const assetsRoot = join(installerSourceRoot, "assets");
@@ -20,7 +22,7 @@ const posPackage = JSON.parse(readFileSync(join(projectRoot, "..", "desktop", "e
 const posManifestPath = join(assetsRoot, "pos-manifest.json");
 const installerManifestPath = join(assetsRoot, "manifest.json");
 const outputRoot = join(projectRoot, "dist-installer", "windows-x64");
-const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${packageJson.version}-win-x64.exe`;
+const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${agentVersion}-win-x64.exe`;
 const outputPath = join(outputRoot, outputName);
 
 const assertBundleReady = () => {
@@ -148,7 +150,7 @@ try {
   writeFileSync(
     installerManifestPath,
     `${JSON.stringify({
-      version: packageJson.version,
+      version: agentVersion,
       bundleDirName: bundleName,
       bundleRoot: `assets/bundle/${bundleName}`,
       serviceName: "ManusPeripheralAgent",
@@ -191,7 +193,7 @@ try {
   );
 
   console.log(`Installer created: ${outputPath}`);
-  console.log(`Installer version: ${packageJson.version}`);
+  console.log(`Installer version: ${agentVersion}`);
   console.log(`Embedded bundle: ${embeddedBundleRoot}`);
 } finally {
   // Keep embedded assets in the working tree so the installer can be rebuilt
