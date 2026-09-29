@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AccessControlService } from "./access-control.service";
+import { AccessControlService, isUuid } from "./access-control.service";
 
 const createService = (rowsByQuery: Array<{ match: string; rows: any[] }>) => {
   const calls: Array<{ text: string; params: unknown[] }> = [];
@@ -89,7 +89,7 @@ test("AccessControlService: USER cannot access unassigned branch", async () => {
 });
 
 test("AccessControlService resolves a tenant slug to its canonical UUID", async () => {
-  const tenantId = "00000000-0000-4000-8000-000000000001";
+  const tenantId = "00000000-0000-0000-0000-000000000001";
   const { service, calls } = createService([
     { match: "FROM tenants", rows: [{ id: tenantId, slug: "manustienda-platform-s-a-s" }] },
   ]);
@@ -118,7 +118,7 @@ test("AccessControlService rejects cross-tenant slug resolution", async () => {
 });
 
 test("AccessControlService resolves route UUIDs without weakening scope", async () => {
-  const tenantId = "00000000-0000-4000-8000-000000000001";
+  const tenantId = "00000000-0000-0000-0000-000000000001";
   const { service, calls } = createService([]);
 
   assert.equal(
@@ -127,8 +127,8 @@ test("AccessControlService resolves route UUIDs without weakening scope", async 
   );
   await assert.rejects(
     () => service.resolveTenantIdFromRoute(
-      { tenantId, roles: ["ADMIN"] },
-      "00000000-0000-4000-8000-000000000002",
+      { tenantId: "tenant-a", roles: ["ADMIN"] },
+      "00000000-0000-0000-0000-000000000002",
     ),
     /Tenant scope mismatch/,
   );
@@ -144,4 +144,14 @@ test("AccessControlService preserves the all-zero-shaped UUID used by the QA ten
     tenantId,
   );
   assert.equal(calls.length, 0);
+});
+
+test("isUuid accepts PostgreSQL UUID syntax including the QA all-zero value", () => {
+  assert.equal(isUuid("00000000-0000-0000-0000-000000000001"), true);
+  assert.equal(isUuid("550e8400-e29b-41d4-a716-446655440000"), true);
+});
+
+test("isUuid does not classify slugs or malformed values as UUIDs", () => {
+  assert.equal(isUuid("manustienda-platform-s-a-s"), false);
+  assert.equal(isUuid("00000000-0000-0000-0000-00000000000"), false);
 });

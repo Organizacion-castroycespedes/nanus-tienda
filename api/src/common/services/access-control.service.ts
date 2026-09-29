@@ -2,6 +2,11 @@ import { ForbiddenException, Injectable, Inject, NotFoundException } from "@nest
 import { DatabaseService } from "../db/database.service";
 import { getMenuKeyCandidates } from "../constants/menu-keys";
 
+export const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const isUuid = (value: string) => UUID_PATTERN.test(value.trim());
+
 export type PermissionAccessLevel = "READ" | "WRITE";
 
 export type AccessActor = {
@@ -214,7 +219,7 @@ export class AccessControlService {
     requestedTenant: string,
   ): Promise<string> {
     const value = requestedTenant.trim();
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    if (isUuid(value)) {
       if (!this.isSuperAdmin(actor) && actor.tenantId !== value) {
         throw new ForbiddenException("Tenant scope mismatch");
       }

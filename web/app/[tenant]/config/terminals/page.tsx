@@ -18,6 +18,7 @@ import {
 import type { TerminalResponse } from "../../../../modules/terminals/services/terminals.service";
 import { buildTerminalPeripheralsPath } from "../../../../modules/terminals/utils/terminal-links";
 import { TerminalDeviceBindingPanel } from "../../../../modules/terminals/components/TerminalDeviceBindingPanel";
+import { TerminalPosSessionPanel } from "../../../../modules/terminals/components/TerminalPosSessionPanel";
 
 type TerminalFilters = {
   query: string;
@@ -70,6 +71,7 @@ const TerminalsPage = () => {
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [selectedTerminal, setSelectedTerminal] = useState<TerminalResponse | null>(null);
   const [bindingTerminal, setBindingTerminal] = useState<TerminalResponse | null>(null);
+  const [sessionTerminal, setSessionTerminal] = useState<TerminalResponse | null>(null);
   const [form, setForm] = useState<TerminalFormState>(emptyForm);
 
   const {
@@ -286,6 +288,10 @@ const TerminalsPage = () => {
     setBindingTerminal(terminal);
   };
 
+  const openSessionPanel = (terminal: TerminalResponse) => {
+    setSessionTerminal(terminal);
+  };
+
   if (authUser?.role !== "SUPER_ADMIN") {
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
@@ -448,6 +454,42 @@ const TerminalsPage = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatDate(terminal.createdAt)}</td>
+                    {/*
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openBindingPanel(terminal)}
+                        >
+                          Administrar dispositivo
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openSessionPanel(terminal)}
+                        >
+                          Administrar sesiones POS
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleConfigurePeripherals(terminal)}
+                        >
+                          Configurar periféricos
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(terminal)}>
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void handleStatusChange(terminal)}
+                          disabled={saving}
+                        >
+                          {terminal.isActive ? "Inactivar" : "Reactivar"}
+                        </Button>
+                    */}
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end">
                         <RowActionsMenu
@@ -456,6 +498,11 @@ const TerminalsPage = () => {
                               label: "Administrar dispositivo",
                               icon: <Laptop className="h-4 w-4 text-slate-500" />,
                               onSelect: () => openBindingPanel(terminal),
+                            },
+                            {
+                              label: "Administrar sesiones POS",
+                              icon: <Monitor className="h-4 w-4 text-slate-500" />,
+                              onSelect: () => openSessionPanel(terminal),
                             },
                             {
                               label: "Configurar periféricos",
@@ -519,6 +566,14 @@ const TerminalsPage = () => {
         <TerminalDeviceBindingPanel
           terminal={bindingTerminal}
           onClose={() => setBindingTerminal(null)}
+        />
+      ) : null}
+
+      {sessionTerminal ? (
+        <TerminalPosSessionPanel
+          key={sessionTerminal.id}
+          terminal={sessionTerminal}
+          onClose={() => setSessionTerminal(null)}
         />
       ) : null}
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useRef } from "react";
-import Image from "next/image";
+import { Suspense, useCallback, useEffect, useState, useRef, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -24,6 +23,11 @@ import { ApiError } from "../../lib/request";
 import { useAutoClearState } from "../../lib/useAutoClearState";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthStatus } from "../../store/authSlice";
+
+const loginBackgroundImage =
+  process.env.NEXT_PUBLIC_GIN_BG_IMAGE ??
+  "/logo-login-tablet.png";
+const loginBrandName = process.env.NEXT_PUBLIC_LOGIN_BRAND_NAME ?? "EMAUS POS";
 
 const LoginPageContent = () => {
   const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
@@ -191,17 +195,11 @@ const LoginPageContent = () => {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-slate-950">
-      <div aria-hidden="true" className="absolute inset-0 pointer-events-none select-none">
-        <Image
-          src="/logo-login.png"
-          alt="EMAUS POS"
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-left lg:object-contain lg:object-left"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-950/30 to-slate-950/80 lg:to-slate-950/60" />
-      </div>
+      <div
+        aria-hidden="true"
+        className="login-background absolute inset-0 bg-slate-950"
+        style={{ "--login-bg-image": `url("${loginBackgroundImage}")` } as CSSProperties}
+      />
 
       <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-8 sm:py-10 lg:justify-end lg:px-[5vw] lg:py-12">
         <div className="w-full max-w-md rounded-3xl border border-white/70 bg-white/95 p-6 shadow-2xl shadow-slate-950/20 backdrop-blur-sm sm:p-9 lg:mr-0 lg:w-[30vw] lg:max-w-[31rem] lg:p-11 dark:border-slate-700/70 dark:bg-slate-900/95">
@@ -226,7 +224,7 @@ const LoginPageContent = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-700 dark:text-cyan-300">
-                  EMAUS POS
+                  {loginBrandName}
                 </p>
                 <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                   Centro de Soluciones

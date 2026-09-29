@@ -7,6 +7,7 @@ import {
 import type { QueryResultRow } from "pg";
 import { DatabaseService } from "../database/database.service";
 import type { ReportUser } from "../auth/report-auth.types";
+import { ReportBranchScopeService } from "../auth/report-branch-scope.service";
 import type {
   CurrentShiftActorContext,
   CurrentShiftCashCountRow,
@@ -116,11 +117,16 @@ type SessionFilters = {
   branchId?: string;
   terminalId?: string;
   cashRegisterId?: string;
+  operatorUserId?: string;
 };
 
 @Injectable()
 export class CurrentShiftReportsService {
-  constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly db: DatabaseService,
+    @Inject(ReportBranchScopeService)
+    private readonly branchScope: ReportBranchScopeService
+  ) {}
 
   private pickActorRole(roles: string[]): string {
     for (const role of ROLE_PRIORITY) {
@@ -530,10 +536,15 @@ export class CurrentShiftReportsService {
     actor: CurrentShiftActorContext,
     tenantId: string,
     session: CurrentShiftCashSession,
-    query: CurrentShiftQuery
+    query: CurrentShiftQuery,
+    authorizedBranchIds: string[]
   ) {
     if (session.tenantId !== tenantId) {
       throw new ForbiddenException("No autorizado para otro tenant");
+    }
+
+    if (!authorizedBranchIds.includes(session.branchId)) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
     }
 
     if (actor.role === "USER" && session.userId !== actor.userId) {
@@ -565,16 +576,6 @@ export class CurrentShiftReportsService {
       query.cashRegisterId !== session.cashRegisterId
     ) {
       throw new ForbiddenException("No autorizado para otra caja");
-    }
-
-    if (actor.role === "USER" && actor.branchId && session.branchId !== actor.branchId) {
-      throw new ForbiddenException("No autorizado para otra sucursal");
-    }
-
-    if (actor.role === "ADMIN") {
-      if (actor.branchId && session.branchId !== actor.branchId) {
-        throw new ForbiddenException("No autorizado para otra sucursal");
-      }
     }
 
     if (this.isSuperUser(actor) && session.tenantId !== actor.tenantId) {
@@ -623,7 +624,7 @@ export class CurrentShiftReportsService {
   private async listAvailableOpenSessions(
     actor: CurrentShiftActorContext,
     tenantId: string,
-    filters: SessionFilters
+    filters: SessionFilters & { branchIds: string[] }
   ) {
     const params: unknown[] = [tenantId];
     const where = [
@@ -631,10 +632,12 @@ export class CurrentShiftReportsService {
       "session.status = 'OPEN'",
     ];
     const effectiveBranchId =
-      filters.branchId ??
-      ((actor.role === "USER" || actor.role === "ADMIN") && actor.branchId
-        ? actor.branchId
-        : undefined);
+      filters.branchId ?? undefined;
+
+    if (!effectiveBranchId) {
+      params.push(filters.branchIds);
+      where.push(`session.branch_id = ANY($${params.length}::uuid[])`);
+    }
 
     if (effectiveBranchId) {
       params.push(effectiveBranchId);
@@ -651,11 +654,7 @@ export class CurrentShiftReportsService {
       where.push(`session.cash_register_id = $${params.length}`);
     }
 
-    const requireOwnSession =
-      actor.role === "USER" ||
-      (!effectiveBranchId &&
-        (actor.role === "ADMIN" ||
-          (!this.isSuperAdmin(actor) && !this.isSuperUser(actor))));
+    const requireOwnSession = actor.role === "USER";
 
     if (requireOwnSession) {
       params.push(actor.userId);
@@ -667,6 +666,21 @@ export class CurrentShiftReportsService {
           WHERE assignment.cash_register_id = session.cash_register_id
             AND assignment.user_id = $${params.length}
             AND assignment.unassigned_at IS NULL
+        )
+      )`);
+    }
+
+    if (filters.operatorUserId && !requireOwnSession) {
+      params.push(filters.operatorUserId);
+      const operatorParamIndex = params.length;
+      where.push(`(
+        session.opened_by_user_id = $${operatorParamIndex}
+        OR EXISTS (
+          SELECT 1
+          FROM cash_register_user_assignments AS selected_assignment
+          WHERE selected_assignment.cash_register_id = session.cash_register_id
+            AND selected_assignment.user_id = $${operatorParamIndex}
+            AND selected_assignment.unassigned_at IS NULL
         )
       )`);
     }
@@ -1236,10 +1250,17 @@ export class CurrentShiftReportsService {
     user?: ReportUser
   ): Promise<CurrentShiftResponse> {
     const actor = this.resolveActor(user);
-    const tenantId = this.resolveTenant(actor, query);
+    const requestedTenantId = this.normalizeUuid(query.tenantId, "tenantId");
+    const requestedBranchId = this.normalizeUuid(query.branchId, "branchId");
+    const scope = await this.branchScope.resolve(
+      user,
+      requestedBranchId,
+      requestedTenantId
+    );
+    const tenantId = scope.tenantId;
     const requestedUserId = this.normalizeUuid(query.userId, "userId");
     const salesUserId = actor.role === "USER" ? actor.userId : requestedUserId;
-    const branchId = this.normalizeUuid(query.branchId, "branchId") ?? actor.branchId ?? undefined;
+    const branchId = requestedBranchId;
     const terminalId = this.normalizeUuid(query.terminalId, "terminalId");
     const cashRegisterId = this.normalizeUuid(
       query.cashRegisterId,
@@ -1251,6 +1272,8 @@ export class CurrentShiftReportsService {
       branchId,
       terminalId,
       cashRegisterId,
+      operatorUserId: actor.role === "USER" ? actor.userId : requestedUserId,
+      branchIds: scope.branchIds,
     };
     const availableCashSessions = await this.listAvailableOpenSessions(
       actor,
@@ -1290,7 +1313,7 @@ export class CurrentShiftReportsService {
       terminalId,
       cashRegisterId,
       cashSessionId,
-    });
+    }, scope.branchIds);
 
     if (
       actor.role !== "USER" &&
