@@ -82,6 +82,16 @@ export class OperationalSalesController {
     return this.service.updateCustomer(this.actor(request), saleId, dto);
   }
 
+  @Post(":saleId/payment-correction")
+  @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "WRITE", operationalRoles: ["USER"] })
+  correctPayments(
+    @Param("saleId") saleId: string,
+    @Body() dto: CorrectSalePaymentsDto,
+    @Req() request: OperationalRequest
+  ) {
+    return this.service.correctPayments(this.actor(request), saleId, dto);
+  }
+
   @Post(":saleId/void")
   @RequirePermission({ menuKey: ["POS", "OPERATIONS_SALES"], level: "WRITE", operationalRoles: ["USER"] })
   voidSale(
