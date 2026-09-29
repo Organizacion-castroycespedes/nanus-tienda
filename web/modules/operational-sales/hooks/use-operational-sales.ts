@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../lib/request";
 import { fetchOperationalSales } from "../services/operational-sales.service";
 import { emptyOperationalSalesFilters, type OperationalSalesFilters, type OperationalSalesResponse } from "../types";
