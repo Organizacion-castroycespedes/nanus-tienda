@@ -30,6 +30,8 @@ type CustomerRow = QueryResultRow & {
   country_code: string | null;
   department_code: string | null;
   municipality_code: string | null;
+  department_name: string | null;
+  city_name: string | null;
   person_type: ElectronicInvoicingCustomer["personType"];
   tax_regime: string | null;
   tax_responsibilities: string[] | null;
@@ -72,6 +74,8 @@ const customerSelect = `
   country_code,
   department_code,
   municipality_code,
+  (SELECT d.nombre FROM departamentos d WHERE d.id = customers.departamento_id) AS department_name,
+  (SELECT m.nombre FROM municipios m WHERE m.id = customers.municipio_id) AS city_name,
   person_type,
   tax_regime,
   tax_responsibilities,
@@ -117,6 +121,8 @@ export class ElectronicInvoicingCustomersRepository {
       countryCode: row.country_code,
       departmentCode: row.department_code,
       municipalityCode: row.municipality_code,
+      departmentName: row.department_name,
+      cityName: row.city_name,
       personType: row.person_type,
       taxRegime: row.tax_regime,
       taxResponsibilities: Array.isArray(row.tax_responsibilities)
