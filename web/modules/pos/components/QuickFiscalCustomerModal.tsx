@@ -61,7 +61,7 @@ type FiscalForm = {
 };
 
 const EMPTY_FORM: FiscalForm = {
-  documentTypeCode: "31",
+  documentTypeCode: "13",
   documentNumber: "",
   name: "",
   fiscalEmail: "",
@@ -73,9 +73,9 @@ const EMPTY_FORM: FiscalForm = {
   countryCode: "CO",
   departmentCode: "",
   municipalityCode: "",
-  personType: "",
-  taxRegime: "",
-  taxResponsibilities: [],
+  personType: "NATURAL",
+  taxRegime: "NO_RESPONSABLE",
+  taxResponsibilities: ["R-99-PN"],
 };
 
 
@@ -92,8 +92,28 @@ const trimToNull = (value: string) => {
 };
 
 const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm => {
-  const docType = customer?.documentTypeCode ?? customer?.dianIdentificationType ?? "31";
-  const defaultPersonType = docType === "31" ? "JURIDICA" : "NATURAL";
+  const docType = customer?.documentTypeCode ?? customer?.dianIdentificationType ?? "13";
+  const defaultPersonType: "NATURAL" | "JURIDICA" = docType === "31" ? "JURIDICA" : "NATURAL";
+  const personType =
+    customer?.personType === "NATURAL" || customer?.personType === "JURIDICA"
+      ? customer.personType
+      : defaultPersonType;
+
+  let taxResponsibilities = customer?.taxResponsibilities?.length
+    ? [...customer.taxResponsibilities]
+    : [];
+
+  if (personType === "NATURAL") {
+    if (taxResponsibilities.length === 0) {
+      taxResponsibilities = ["R-99-PN"];
+    }
+  } else {
+    taxResponsibilities = taxResponsibilities.filter((r) => r !== "R-99-PN");
+  }
+
+  const defaultRegime = personType === "JURIDICA" ? "RESPONSABLE" : "NO_RESPONSABLE";
+  const taxRegime = customer?.taxRegime ?? defaultRegime;
+
   return {
     documentTypeCode: docType,
     documentNumber: customer?.documentNumber ?? "",
@@ -107,14 +127,9 @@ const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm =>
     countryCode: customer?.countryCode?.trim() || "CO",
     departmentCode: customer?.departmentCode ?? "",
     municipalityCode: customer?.municipalityCode ?? "",
-    personType:
-      customer?.personType === "NATURAL" || customer?.personType === "JURIDICA"
-        ? customer.personType
-        : defaultPersonType,
-    taxRegime: customer?.taxRegime ?? "NO_RESPONSABLE",
-    taxResponsibilities: customer?.taxResponsibilities?.length
-      ? customer.taxResponsibilities
-      : ["R-99-PN"],
+    personType,
+    taxRegime,
+    taxResponsibilities,
   };
 };
 
@@ -265,8 +280,42 @@ export const QuickFiscalCustomerModal = ({
     };
   }, [form.departamentoId]);
 
-  const updateForm = (field: keyof FiscalForm, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
+  const updateForm = (field: keyof FiscalForm, value: any) => {
+    setForm((current) => {
+      const updated = { ...current, [field]: value };
+      if (field === "documentTypeCode") {
+        if (value === "31") {
+          updated.personType = "JURIDICA";
+          if (!updated.taxRegime || updated.taxRegime === "NO_RESPONSABLE") {
+            updated.taxRegime = "RESPONSABLE";
+          }
+          updated.taxResponsibilities = updated.taxResponsibilities.filter((r) => r !== "R-99-PN");
+        } else if (value === "13" || value === "22" || value === "47") {
+          updated.personType = "NATURAL";
+          if (!updated.taxRegime || updated.taxRegime === "RESPONSABLE") {
+            updated.taxRegime = "NO_RESPONSABLE";
+          }
+          if (!updated.taxResponsibilities.includes("R-99-PN") && updated.taxResponsibilities.length === 0) {
+            updated.taxResponsibilities = ["R-99-PN"];
+          }
+        }
+      } else if (field === "personType") {
+        if (value === "JURIDICA") {
+          updated.taxResponsibilities = updated.taxResponsibilities.filter((r) => r !== "R-99-PN");
+          if (!updated.taxRegime || updated.taxRegime === "NO_RESPONSABLE") {
+            updated.taxRegime = "RESPONSABLE";
+          }
+        } else if (value === "NATURAL") {
+          if (!updated.taxResponsibilities.includes("R-99-PN") && updated.taxResponsibilities.length === 0) {
+            updated.taxResponsibilities = ["R-99-PN"];
+          }
+          if (!updated.taxRegime || updated.taxRegime === "RESPONSABLE") {
+            updated.taxRegime = "NO_RESPONSABLE";
+          }
+        }
+      }
+      return updated;
+    });
     setError(null);
   };
 
