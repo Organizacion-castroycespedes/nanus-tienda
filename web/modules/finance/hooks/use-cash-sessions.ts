@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   closeCashSession,
   getCashSessionSummary,
@@ -19,6 +19,7 @@ import { getApiErrorMessage } from "../../reporteria/utils";
 
 export const useCashSessions = () => {
   const [currentSession, setCurrentSession] = useState<CashSession | null>(null);
+  const [availableOpenSessions, setAvailableOpenSessions] = useState<CashSession[]>([]);
   const [history, setHistory] = useState<CashSession[]>([]);
   const [sessionSummary, setSessionSummary] = useState<CashSessionSummary | null>(null);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
@@ -27,6 +28,13 @@ export const useCashSessions = () => {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const openSessionsRequestId = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      openSessionsRequestId.current += 1;
+    };
+  }, []);
 
   const loadCurrentSession = useCallback(async (cashRegisterId?: string) => {
     setLoadingCurrent(true);
@@ -61,22 +69,71 @@ export const useCashSessions = () => {
   }, []);
 
   const loadHistory = useCallback(async (filters: CashSessionHistoryFilters = {}) => {
+    const isOpenRequest = filters.status === "OPEN";
+    const requestId = isOpenRequest ? ++openSessionsRequestId.current : 0;
     setLoadingHistory(true);
     setErrorMessage(null);
     try {
       const items = await listCashSessionHistory(filters);
+      if (isOpenRequest && requestId !== openSessionsRequestId.current) {
+        return [];
+      }
       setHistory(items);
+      if (isOpenRequest) {
+        setAvailableOpenSessions(items);
+      }
       setHistoryLoaded(true);
       return items;
     } catch (error) {
+      if (isOpenRequest && requestId !== openSessionsRequestId.current) {
+        return [];
+      }
       setErrorMessage(
         getApiErrorMessage(error, "No se pudo cargar el historial de sesiones.")
       );
       setHistoryLoaded(true);
       return [];
     } finally {
-      setLoadingHistory(false);
+      if (!isOpenRequest || requestId === openSessionsRequestId.current) {
+        setLoadingHistory(false);
+      }
     }
+  }, []);
+
+  const loadAvailableOpenSessions = useCallback(
+    async (filters: CashSessionHistoryFilters = {}) => {
+      const requestId = ++openSessionsRequestId.current;
+      setAvailableOpenSessions([]);
+      setErrorMessage(null);
+      try {
+        const items = await listCashSessionHistory({
+          ...filters,
+          status: "OPEN",
+          limit: 100,
+          offset: 0,
+        });
+        if (requestId !== openSessionsRequestId.current) {
+          return [];
+        }
+        setAvailableOpenSessions(items);
+        return items;
+      } catch (error) {
+        if (requestId !== openSessionsRequestId.current) {
+          return [];
+        }
+        setErrorMessage(
+          getApiErrorMessage(error, "No se pudieron cargar las sesiones abiertas.")
+        );
+        setAvailableOpenSessions([]);
+        return [];
+      }
+    },
+    []
+  );
+
+  const selectCurrentSession = useCallback((session: CashSession | null) => {
+    setCurrentSession(session);
+    setSessionSummary(null);
   }, []);
 
   const openSession = useCallback(async (payload: OpenCashSessionPayload) => {
@@ -114,6 +171,7 @@ export const useCashSessions = () => {
 
   return {
     currentSession,
+    availableOpenSessions,
     history,
     sessionSummary,
     loadingCurrent,
@@ -125,7 +183,9 @@ export const useCashSessions = () => {
     setErrorMessage,
     loadCurrentSession,
     loadHistory,
+    loadAvailableOpenSessions,
     loadSessionSummary,
+    selectCurrentSession,
     openSession,
     closeSession,
   };

@@ -1,6 +1,7 @@
 import { Type } from "class-transformer";
 import {
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -14,6 +15,14 @@ import {
 } from "../../entities/cash-movement.entity";
 
 export class ListCashMovementsDto {
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
+
   @IsOptional()
   @IsString()
   tenantId?: string;

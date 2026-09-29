@@ -146,7 +146,22 @@ class FakeDb {
 }
 
 const buildService = (db = new FakeDb()) =>
-  new CurrentShiftReportsService(db as never);
+  new CurrentShiftReportsService(db as never, {
+    resolve: async (actor: { roles?: string[]; tenantId?: string }, branchId?: string, tenantId?: string) => {
+      const roles = actor.roles ?? [];
+      const resolvedTenantId = tenantId ?? actor.tenantId ?? ids.tenant;
+      if (branchId) {
+        return { tenantId: resolvedTenantId, branchIds: [branchId] };
+      }
+      if (roles.includes("SUPER_USER") || roles.includes("SUPER_ADMIN")) {
+        return {
+          tenantId: resolvedTenantId,
+          branchIds: [ids.branch, ids.otherBranch],
+        };
+      }
+      return { tenantId: resolvedTenantId, branchIds: [ids.branch] };
+    },
+  } as never);
 
 test("CurrentShiftReportsService: USER no consulta caja abierta por otro usuario", async () => {
   const db = new FakeDb();
@@ -547,6 +562,7 @@ test("CurrentShiftReportsService: aplica filtros de terminal y caja al listar op
 
   assert.deepEqual(availableQuery?.params, [
     ids.tenant,
+    [ids.branch, ids.otherBranch],
     ids.terminal,
     ids.register,
     ids.user,

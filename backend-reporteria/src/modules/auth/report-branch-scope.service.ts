@@ -25,7 +25,7 @@ export class ReportBranchScopeService {
     const roles = user.roles.map((role) => role.toUpperCase());
     const isSuperAdmin = roles.includes("SUPER_ADMIN");
     const isSuperUser = roles.includes("SUPER_USER");
-    if (!isSuperAdmin && !isSuperUser && !roles.includes("ADMIN")) {
+    if (!isSuperAdmin && !isSuperUser && !roles.includes("ADMIN") && !roles.includes("USER")) {
       throw new ForbiddenException("Report role is not authorized");
     }
     const tenantId = requestedTenantId?.trim() || user.tenantId;

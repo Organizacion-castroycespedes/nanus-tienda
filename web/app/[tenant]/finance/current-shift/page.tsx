@@ -50,6 +50,11 @@ import {
   getApiErrorMessage,
 } from "../../../../modules/reporteria/utils";
 import { useAppSelector } from "../../../../store/hooks";
+import { useFinanceCatalogs } from "../../../../modules/finance/hooks/use-finance-catalogs";
+import type {
+  FinanceBranchOption,
+  FinanceTenantOption,
+} from "../../../../modules/finance/types";
 
 type ShiftTab = "sales" | "orders" | "purchases" | "movements" | "cashCount" | "tickets";
 
@@ -129,11 +134,24 @@ const CurrentShiftPage = () => {
     null
   );
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [shift, setShift] = useState<CurrentShiftResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
+
+  const {
+    isSuperRole,
+    tenantOptions,
+    branchOptions,
+    loadTenants,
+    loadBranches,
+  } = useFinanceCatalogs({
+    role,
+    tenantId: authUser?.tenantId,
+  });
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -144,8 +162,9 @@ const CurrentShiftPage = () => {
     setLoading(true);
     try {
       const result = await getCurrentShiftReport({
-        tenantId: authUser.tenantId,
+        tenantId: selectedTenantId ?? authUser.tenantId,
         userId: selectedUserId ?? undefined,
+        branchId: selectedBranchId ?? undefined,
         cashSessionId: selectedCashSessionId ?? undefined,
         pageSize: 50,
         search: appliedSearch || undefined,
@@ -172,15 +191,37 @@ const CurrentShiftPage = () => {
     appliedSearch,
     authUser?.tenantId,
     canViewFinance,
+    selectedBranchId,
     selectedCashSessionId,
+    selectedTenantId,
     selectedUserId,
   ]);
 
   useEffect(() => {
     setSelectedCashSessionId(null);
     setSelectedUserId(null);
+    setSelectedTenantId(authUser?.tenantId ?? null);
+    setSelectedBranchId(null);
     setSessionFilter("");
   }, [authUser?.tenantId]);
+
+  useEffect(() => {
+    if (!canViewFinance) {
+      return;
+    }
+    void loadTenants();
+  }, [canViewFinance, loadTenants]);
+
+  useEffect(() => {
+    if (!canViewFinance) {
+      return;
+    }
+    const tenantId = selectedTenantId ?? authUser?.tenantId ?? undefined;
+    if (isSuperRole && !tenantId) {
+      return;
+    }
+    void loadBranches(tenantId);
+  }, [authUser?.tenantId, canViewFinance, isSuperRole, loadBranches, selectedTenantId]);
 
   useEffect(() => {
     void loadShift();
@@ -331,6 +372,21 @@ const CurrentShiftPage = () => {
     [shift?.availableUsers]
   );
   const canSelectUser = ["ADMIN", "SUPER_USER", "SUPER_ADMIN"].includes(role);
+  const canSelectBranch = ["ADMIN", "SUPER_USER", "SUPER_ADMIN"].includes(role);
+  const canSelectTenant = role === "SUPER_ADMIN";
+  const branchSelectorOptions = useMemo(() => {
+    if (canSelectTenant) {
+      return branchOptions;
+    }
+    return Array.from(
+      new Map(
+        availableCashSessions.map((session) => [
+          session.branchId,
+          { id: session.branchId, name: session.branchName ?? session.branchId },
+        ])
+      ).values()
+    );
+  }, [availableCashSessions, branchOptions, canSelectTenant]);
   const currentCashSessionId = selectedCashSessionId ?? shift?.cashSession?.id ?? "";
   const filteredCashSessions = useMemo(
     () => filterCurrentShiftSessions(availableCashSessions, sessionFilter),
@@ -354,6 +410,22 @@ const CurrentShiftPage = () => {
 
   const handleCashSessionSelection = (cashSessionId: string) => {
     setSelectedCashSessionId(cashSessionId || null);
+    setShift(null);
+  };
+
+  const handleTenantSelection = (tenantId: string) => {
+    setSelectedTenantId(tenantId || null);
+    setSelectedBranchId(null);
+    setSelectedUserId(null);
+    setSelectedCashSessionId(null);
+    setShift(null);
+  };
+
+  const handleBranchSelection = (branchId: string) => {
+    setSelectedBranchId(branchId || null);
+    setSelectedUserId(null);
+    setSelectedCashSessionId(null);
+    setShift(null);
   };
 
   if (!canViewFinance) {
@@ -366,8 +438,9 @@ const CurrentShiftPage = () => {
   const summary = shift?.summary;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <FinancePageHeader
+        compact
         eyebrow="Finance / Turno"
         title="Gestion del turno"
         description="Turno actual = operaciones de hoy (America/Bogota) en la caja abierta, sin mezclar dias previos ni cajas ajenas."
@@ -390,6 +463,7 @@ const CurrentShiftPage = () => {
       <FinanceSectionNav
         tenantSlug={tenantSlug}
         canViewPaymentMethods={canViewPaymentMethods}
+        compact
       />
 
       {!shift?.hasOpenCashSession ? (
@@ -415,37 +489,73 @@ const CurrentShiftPage = () => {
             </section>
           ) : null}
           {availableCashSessions.length > 0 ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+            <section className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+              <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 lg:max-w-[18rem]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                     Turno actual
                   </p>
-                  <h2 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">
+                  <h2 className="mt-0.5 truncate text-sm font-semibold text-slate-900 dark:text-white">
                     {availableCashSessions.length > 1
                       ? "Seleccionar caja abierta"
                       : "Caja abierta actual"}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
                     {availableCashSessions.length > 1
                       ? `${availableCashSessions.length} cajas abiertas disponibles para este alcance.`
                       : "Una caja abierta disponible para este alcance."}
                   </p>
                 </div>
 
-                {canSelectUser || availableCashSessions.length > 1 ? (
-                  <div className="grid w-full gap-2 lg:max-w-5xl lg:grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,1.2fr)_minmax(18rem,1.6fr)]">
+                {canSelectTenant || canSelectBranch || canSelectUser || availableCashSessions.length > 1 ? (
+                  <div className="grid w-full gap-1.5 lg:max-w-5xl lg:grid-cols-[minmax(10rem,0.8fr)_minmax(14rem,1.2fr)_minmax(16rem,1.6fr)]">
+                    {canSelectTenant ? (
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          Tenant
+                        </span>
+                        <select
+                          className="mt-0.5 min-h-8 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-slate-400"
+                          value={selectedTenantId ?? ""}
+                          onChange={(event) => handleTenantSelection(event.target.value)}
+                        >
+                          <option value="">Selecciona un tenant</option>
+                          {tenantOptions.map((tenant: FinanceTenantOption) => (
+                            <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    {canSelectBranch ? (
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          Sucursal
+                        </span>
+                        <select
+                          className="mt-0.5 min-h-8 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-slate-400"
+                          value={selectedBranchId ?? ""}
+                          onChange={(event) => handleBranchSelection(event.target.value)}
+                          disabled={isSuperRole && !selectedTenantId}
+                        >
+                          <option value="">Todas las sucursales</option>
+                          {branchSelectorOptions.map((branch: FinanceBranchOption | { id: string; name: string }) => (
+                            <option key={branch.id} value={branch.id}>{branch.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     {canSelectUser ? (
                       <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                           Usuario
                         </span>
                         <select
-                          className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                          className="mt-0.5 min-h-8 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-slate-400"
                           value={selectedUserId ?? ""}
                           onChange={(event) => {
                             setSelectedUserId(event.target.value || null);
                             setSelectedCashSessionId(null);
+                            setShift(null);
                           }}
                         >
                           <option value="">Todos los usuarios</option>
@@ -462,7 +572,7 @@ const CurrentShiftPage = () => {
                         Buscar
                       </span>
                       <input
-                        className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                        className="mt-0.5 min-h-8 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-slate-400"
                         value={sessionFilter}
                         onChange={(event) => setSessionFilter(event.target.value)}
                         placeholder="Usuario, caja o codigo"
@@ -473,7 +583,7 @@ const CurrentShiftPage = () => {
                         Sesion abierta
                       </span>
                       <select
-                        className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                        className="mt-0.5 min-h-8 w-full rounded-lg border border-slate-200 px-2.5 text-sm outline-none focus:border-slate-400"
                         value={
                           selectorCashSessions.some(
                             (session) => session.id === currentCashSessionId
@@ -500,49 +610,49 @@ const CurrentShiftPage = () => {
                 ) : null}
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+              <div className="mt-2 grid min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 lg:grid-cols-5">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                     Sucursal
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                  <p className="mt-0.5 truncate text-xs font-semibold text-slate-900 dark:text-white">
                     {cashSession?.branchName ?? cashSession?.branchId ?? "-"}
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                     Terminal
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                  <p className="mt-0.5 truncate text-xs font-semibold text-slate-900 dark:text-white">
                     {cashSession?.terminalName ?? "Sin terminal"}
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                     Caja
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                  <p className="mt-0.5 truncate text-xs font-semibold text-slate-900 dark:text-white">
                     {cashSession
                       ? getCurrentShiftSessionCashRegisterLabel(cashSession)
                       : "Caja abierta"}
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                     Apertura
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                  <p className="mt-0.5 truncate text-xs font-semibold text-slate-900 dark:text-white">
                     {formatDateTime(cashSession?.openedAt ?? null)}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="truncate text-[10px] text-slate-500 dark:text-slate-400">
                     {cashSession?.userName ?? "Usuario operativo"}
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                     Estado
                   </p>
-                  <div className="mt-1">
+                  <div className="mt-0.5">
                     {cashSession ? (
                       <FinanceStatusBadge value={cashSession.status} kind="session" />
                     ) : (
@@ -554,84 +664,52 @@ const CurrentShiftPage = () => {
             </section>
           ) : null}
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <FinanceMetricCard
-              label="Caja"
-              value={cashSession?.cashRegisterName ?? "Caja abierta"}
-              accent="amber"
-            />
-            <FinanceMetricCard
-              label="Sucursal"
-              value={cashSession?.branchName ?? cashSession?.branchId ?? "-"}
-              accent="blue"
-            />
-            <FinanceMetricCard
-              label="Terminal"
-              value={cashSession?.terminalName ?? "Sin terminal"}
-              accent="emerald"
-            />
-            <FinanceMetricCard
-              label="Estado"
-              value={
-                cashSession ? (
-                  <FinanceStatusBadge value={cashSession.status} kind="session" />
-                ) : (
-                  "-"
-                )
-              }
-              accent="slate"
-            />
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                  Apertura
-                </p>
-                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
-                  {formatDateTime(cashSession?.openedAt ?? null)}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {cashSession?.userName ?? "Usuario operativo"}
-                </p>
-              </div>
+          <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(145px,1fr))] gap-2">
               <FinanceMetricCard
+                compact
                 label="Monto apertura"
                 value={formatCurrency(summary?.openingAmount ?? 0)}
                 accent="blue"
               />
               <FinanceMetricCard
+                compact
                 label="Entradas"
                 value={formatCurrency(summary?.cashInTotal ?? 0)}
                 accent="emerald"
               />
               <FinanceMetricCard
+                compact
                 label="Salidas"
                 value={formatCurrency(summary?.cashOutTotal ?? 0)}
                 accent="rose"
               />
               <FinanceMetricCard
+                compact
                 label="Ventas POS"
                 value={formatCurrency(summary?.posSalesTotal ?? 0)}
                 accent="blue"
               />
               <FinanceMetricCard
+                compact
                 label="Pedidos"
                 value={formatCurrency(summary?.orderSalesTotal ?? 0)}
                 accent="emerald"
               />
               <FinanceMetricCard
+                compact
                 label="Compras"
                 value={formatCurrency(summary?.purchasesTotal ?? 0)}
                 accent="rose"
               />
               <FinanceMetricCard
+                compact
                 label="Domicilios"
                 value={formatCurrency(summary?.deliveryFees ?? 0)}
                 accent="emerald"
               />
               <FinanceMetricCard
+                compact
                 label="Esperado"
                 value={formatCurrency(summary?.expectedAmount ?? 0)}
                 accent="amber"
@@ -639,15 +717,15 @@ const CurrentShiftPage = () => {
             </div>
           </section>
 
-          <section className="space-y-4">
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between dark:bg-slate-800 dark:border-slate-700">
-              <div className="flex flex-wrap gap-2">
+          <section className="space-y-3">
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:flex-row md:items-end md:justify-between dark:bg-slate-800 dark:border-slate-700">
+              <div className="flex min-w-0 flex-wrap gap-1.5">
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                    className={`rounded-lg border px-2.5 py-1.5 text-sm font-semibold transition ${
                       activeTab === tab.key
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -665,7 +743,7 @@ const CurrentShiftPage = () => {
                 }}
               >
                 <input
-                  className="min-h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
+                  className="min-h-9 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-slate-400"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Buscar en turno"

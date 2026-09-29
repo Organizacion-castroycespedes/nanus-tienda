@@ -56,6 +56,10 @@ export type PaymentMethodSummaryRecord = {
   payment_method_tipo: string | null;
   count: string;
   total: string;
+  sales: string;
+  orders: string;
+  purchases_out: string;
+  net: string;
 };
 
 export type DocumentPaymentOperationRecord = {
@@ -628,6 +632,55 @@ export class PaymentsRepository {
     cashSessionId: string,
     client?: PoolClient
   ) {
+    return this.summarizeByPaymentMethodForFilters(
+      tenantId,
+      { cashSessionId },
+      client
+    );
+  }
+
+  async summarizeByPaymentMethodForFilters(
+    tenantId: string,
+    filters: {
+      cashSessionId?: string;
+      branchId?: string;
+      branchIds?: string[];
+      cashRegisterId?: string;
+      createdBy?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    },
+    client?: PoolClient
+  ) {
+    const params: unknown[] = [tenantId];
+    const where = ["payment.tenant_id = $1", "payment.status = 'COMPLETED'"];
+    if (filters.cashSessionId) {
+      params.push(filters.cashSessionId);
+      where.push(`payment.cash_session_id = $${params.length}`);
+    }
+    if (filters.branchId) {
+      params.push(filters.branchId);
+      where.push(`payment.branch_id = $${params.length}`);
+    } else if ((filters.branchIds?.length ?? 0) > 0) {
+      params.push(filters.branchIds);
+      where.push(`payment.branch_id = ANY($${params.length}::uuid[])`);
+    }
+    if (filters.cashRegisterId) {
+      params.push(filters.cashRegisterId);
+      where.push(`session.cash_register_id = $${params.length}`);
+    }
+    if (filters.createdBy) {
+      params.push(filters.createdBy);
+      where.push(`payment.created_by = $${params.length}`);
+    }
+    if (filters.dateFrom) {
+      params.push(filters.dateFrom);
+      where.push(`payment.created_at >= $${params.length}::date`);
+    }
+    if (filters.dateTo) {
+      params.push(filters.dateTo);
+      where.push(`payment.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
     const result = await this.query<PaymentMethodSummaryRecord>(
       `SELECT
         payment.payment_method_id,
@@ -636,21 +689,26 @@ export class PaymentsRepository {
         method.nombre AS payment_method_nombre,
         method.tipo AS payment_method_tipo,
         COUNT(*)::text AS count,
-        COALESCE(SUM(payment.amount), 0)::text AS total
+        COALESCE(SUM(payment.amount), 0)::text AS total,
+        COALESCE(SUM(payment.amount) FILTER (WHERE payment.reference_type = 'SALE'), 0)::text AS sales,
+        COALESCE(SUM(payment.amount) FILTER (WHERE payment.reference_type = 'SALES_ORDER'), 0)::text AS orders,
+        COALESCE(SUM(payment.amount) FILTER (WHERE payment.direction = 'OUT' AND payment.reference_type IN ('PURCHASE', 'PURCHASE_ORDER', 'EXPENSE')), 0)::text AS purchases_out,
+        COALESCE(SUM(CASE WHEN payment.direction = 'IN' THEN payment.amount ELSE -payment.amount END), 0)::text AS net
       FROM payments AS payment
       INNER JOIN payment_methods AS method
         ON method.id = payment.payment_method_id
        AND method.tenant_id = payment.tenant_id
-      WHERE payment.tenant_id = $1
-        AND payment.cash_session_id = $2
-        AND payment.status = 'COMPLETED'
+      LEFT JOIN cash_sessions AS session
+        ON session.id = payment.cash_session_id
+       AND session.tenant_id = payment.tenant_id
+      WHERE ${where.join(" AND ")}
       GROUP BY
         payment.payment_method_id,
         method.codigo,
         method.nombre,
         method.tipo
       ORDER BY payment_method ASC`,
-      [tenantId, cashSessionId],
+      params,
       client
     );
 

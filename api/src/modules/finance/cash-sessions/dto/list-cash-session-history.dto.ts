@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Min } from "class-validator";
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Min } from "class-validator";
 import { CASH_SESSION_STATUSES } from "../../entities/cash-session.entity";
 
 export class ListCashSessionHistoryDto {
@@ -14,6 +14,18 @@ export class ListCashSessionHistoryDto {
   @IsOptional()
   @IsUUID()
   cashRegisterId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  openedByUserId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 
   @IsOptional()
   @IsIn(CASH_SESSION_STATUSES)
