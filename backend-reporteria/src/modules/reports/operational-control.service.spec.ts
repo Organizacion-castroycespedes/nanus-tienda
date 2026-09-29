@@ -24,6 +24,91 @@ test("operational control passes actor role and bounded period to the stored fun
   assert.equal(result.meta.timezone, "America/Bogota");
 });
 
+test("operational control sends valid Bogota ISO boundaries for every period", async () => {
+  const fixedNow = new Date("2026-09-27T18:30:12.123Z");
+  const expectedDays = { TODAY: 1, LAST_7_DAYS: 7, LAST_30_DAYS: 30 } as const;
+
+  for (const [period, days] of Object.entries(expectedDays)) {
+    let args: unknown[] = [];
+    const service = new OperationalControlService({
+      executeFunction: async (_name: string, params: unknown[]) => { args = params; return {}; },
+    } as never, branchScope as never);
+    const datesMethod = (service as unknown as {
+      dates: (value: string, now?: Date) => { from: Date; to: Date };
+    }).dates;
+    const dates = datesMethod.call(service, period, fixedNow);
+    (service as unknown as { dates: () => { from: Date; to: Date; bucket: string } }).dates = () => ({
+      ...dates,
+      bucket: period === "TODAY" ? "hour" : "day",
+    });
+    await service.getSnapshot({ period: period as "TODAY" | "LAST_7_DAYS" | "LAST_30_DAYS" }, actor);
+
+    const from = args[8];
+    const to = args[9];
+    assert.equal(typeof from, "string");
+    assert.equal(typeof to, "string");
+    assert.doesNotThrow(() => new Date(from as string).toISOString());
+    assert.doesNotThrow(() => new Date(to as string).toISOString());
+    assert.match(from as string, /Z$/);
+    assert.match(to as string, /Z$/);
+    assert.equal(new Date(to as string).getTime() - new Date(from as string).getTime(), days * 86400000);
+    assert.equal(from, new Date(Date.parse("2026-09-27T05:00:00.000Z") - (days - 1) * 86400000).toISOString());
+    assert.equal(to, "2026-09-28T05:00:00.000Z");
+    assert.equal(dates.to.getTime() - dates.from.getTime(), days * 86400000);
+  }
+});
+
+test("operational control ignores a localized formatter string and uses date parts", async () => {
+  const fixedNow = new Date("2026-09-27T18:30:12.123Z");
+  const OriginalDate = globalThis.Date;
+  const formatDescriptor = Object.getOwnPropertyDescriptor(Intl.DateTimeFormat.prototype, "format");
+  const formatToPartsDescriptor = Object.getOwnPropertyDescriptor(Intl.DateTimeFormat.prototype, "formatToParts");
+  let args: unknown[] = [];
+  const service = new OperationalControlService({
+    executeFunction: async (_name: string, params: unknown[]) => { args = params; return {}; },
+  } as never, branchScope as never);
+
+  class FixedDate extends OriginalDate {
+    constructor(value?: string | number | Date) {
+      if (value === undefined) super(fixedNow.getTime());
+      else if (value instanceof OriginalDate) super(value.getTime());
+      else super(value);
+    }
+
+    static now() { return fixedNow.getTime(); }
+  }
+
+  Object.defineProperty(Intl.DateTimeFormat.prototype, "format", {
+    configurable: true,
+    value: () => "09/27/2026",
+  });
+  Object.defineProperty(Intl.DateTimeFormat.prototype, "formatToParts", {
+    configurable: true,
+    value: () => [
+      { type: "month", value: "09" },
+      { type: "literal", value: "/" },
+      { type: "day", value: "27" },
+      { type: "literal", value: "/" },
+      { type: "year", value: "2026" },
+    ],
+  });
+  globalThis.Date = FixedDate;
+
+  try {
+    assert.equal(Number.isNaN(new OriginalDate("09/27/2026T00:00:00-05:00").getTime()), true);
+    await service.getSnapshot({ period: "TODAY" }, actor);
+  } finally {
+    if (formatDescriptor) Object.defineProperty(Intl.DateTimeFormat.prototype, "format", formatDescriptor);
+    if (formatToPartsDescriptor) Object.defineProperty(Intl.DateTimeFormat.prototype, "formatToParts", formatToPartsDescriptor);
+    globalThis.Date = OriginalDate;
+  }
+
+  assert.equal(args[8], "2026-09-27T05:00:00.000Z");
+  assert.equal(args[9], "2026-09-28T05:00:00.000Z");
+  assert.doesNotThrow(() => new OriginalDate(args[8] as string).toISOString());
+  assert.doesNotThrow(() => new OriginalDate(args[9] as string).toISOString());
+});
+
 test("operational control accepts repository fixture UUIDs", async () => {
   let called = false;
   const service = new OperationalControlService({ executeFunction: async () => { called = true; return {}; } } as never, branchScope as never);
