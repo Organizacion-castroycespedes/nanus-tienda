@@ -15,23 +15,54 @@ const accentStyles = {
   blue: "border-blue-200 bg-blue-50 text-blue-700",
 } as const;
 
+const compactAccentStyles = {
+  amber: "border-t-amber-500",
+  emerald: "border-t-emerald-500",
+  slate: "border-t-slate-300",
+  rose: "border-t-rose-500",
+  blue: "border-t-blue-500",
+} as const;
+
 export const FinanceMetricCard = ({
   label,
   value,
   accent = "slate",
   helper,
-}: FinanceMetricCardProps) => (
-  <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:bg-slate-800 dark:border-slate-700">
+  compact = false,
+}: FinanceMetricCardProps & { compact?: boolean }) => (
+  <article
+    className={
+      compact
+        ? `min-w-0 rounded-xl border border-t-2 border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800 ${compactAccentStyles[accent]}`
+        : "min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:bg-slate-800 dark:border-slate-700"
+    }
+  >
     <span
-      className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] whitespace-normal break-words ${accentStyles[accent]}`}
+      className={
+        compact
+          ? "block truncate text-xs font-semibold text-slate-500 dark:text-slate-400"
+          : `inline-flex max-w-full rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase leading-tight tracking-[0.14em] whitespace-normal break-words ${accentStyles[accent]}`
+      }
     >
       {label}
     </span>
-    <div className="mt-4 min-w-0 whitespace-normal break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl dark:text-white">
+    <div
+      className={
+        compact
+          ? "mt-1 min-w-0 truncate text-lg font-bold leading-tight text-slate-900 tabular-nums dark:text-white"
+          : "mt-4 min-w-0 whitespace-normal break-words text-xl font-semibold leading-tight text-slate-900 tabular-nums sm:text-2xl dark:text-white"
+      }
+    >
       {value}
     </div>
     {helper ? (
-      <p className="mt-2 min-w-0 whitespace-normal break-words text-sm leading-snug text-slate-500 dark:text-slate-400">
+      <p
+        className={
+          compact
+            ? "mt-1 min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400"
+            : "mt-2 min-w-0 whitespace-normal break-words text-sm leading-snug text-slate-500 dark:text-slate-400"
+        }
+      >
         {helper}
       </p>
     ) : null}

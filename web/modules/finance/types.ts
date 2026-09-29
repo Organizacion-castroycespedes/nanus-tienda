@@ -319,6 +319,7 @@ export type CashMovementSummary = {
   totalOut: number;
   balance: number;
   movementCount: number;
+  purchasePayments: number;
 };
 
 export type CashMovementPaymentMethodSummary = {
@@ -329,6 +330,10 @@ export type CashMovementPaymentMethodSummary = {
   paymentMethodTipo: PaymentMethodType | string | null;
   count: number;
   total: number;
+  sales: number;
+  orders: number;
+  purchasesOut: number;
+  net: number;
 };
 
 export type CashMovementListResponse = {
@@ -390,12 +395,17 @@ export type CashSessionHistoryFilters = {
   tenantId?: string;
   branchId?: string;
   cashRegisterId?: string;
+  openedByUserId?: string;
+  dateFrom?: string;
+  dateTo?: string;
   status?: CashSessionStatus;
   limit?: number;
   offset?: number;
 };
 
 export type CashMovementFilters = {
+  dateFrom?: string;
+  dateTo?: string;
   tenantId?: string;
   branchId?: string;
   cashRegisterId?: string;

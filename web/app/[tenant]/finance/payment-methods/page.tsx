@@ -252,8 +252,9 @@ const PaymentMethodsPage = () => {
   const activeBanksCount = financialInstitutions.filter((item) => item.active).length;
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-4">
       <FinancePageHeader
+        compact
         eyebrow="Finance / Catálogo"
         title="Medios de pago y Entidades"
         description="Administra los medios de pago disponibles en el POS y sus bancos/billeteras asociados."
@@ -290,6 +291,7 @@ const PaymentMethodsPage = () => {
       <FinanceSectionNav
         tenantSlug={tenantSlug}
         canViewPaymentMethods={canViewPaymentMethods}
+        compact
       />
 
       {/* Tabs bar */}
@@ -320,20 +322,21 @@ const PaymentMethodsPage = () => {
         </button>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <FinanceMetricCard label="Métodos activos" value={activeMethodsCount} accent="emerald" />
-        <FinanceMetricCard label="Bancos / Billeteras" value={activeBanksCount} accent="blue" />
+      <section className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(155px,1fr))] gap-2">
+        <FinanceMetricCard compact label="Métodos activos" value={activeMethodsCount} accent="emerald" />
+        <FinanceMetricCard compact label="Bancos / Billeteras" value={activeBanksCount} accent="blue" />
         <FinanceMetricCard
+          compact
           label="Requieren Banco"
           value={paymentMethods.filter((m) => m.requiresFinancialInstitution).length}
           accent="amber"
         />
-        <FinanceMetricCard label="Total catálogo" value={paymentMethods.length + financialInstitutions.length} accent="slate" />
+        <FinanceMetricCard compact label="Total catálogo" value={paymentMethods.length + financialInstitutions.length} accent="slate" />
       </section>
 
       {/* Search & Filter bar */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-        <div className="grid gap-4 md:grid-cols-[1fr_220px_auto]">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <div className="grid gap-2 md:grid-cols-[1fr_220px_auto]">
           <Input
             label="Buscar"
             placeholder={activeTab === "methods" ? "Código, nombre o tipo..." : "Nombre o código de banco..."}
@@ -368,7 +371,7 @@ const PaymentMethodsPage = () => {
 
       {/* Tab 1: Payment Methods Table */}
       {activeTab === "methods" && (
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
@@ -460,7 +463,7 @@ const PaymentMethodsPage = () => {
 
       {/* Tab 2: Financial Institutions Table */}
       {activeTab === "banks" && (
-        <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+        <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:bg-slate-800 dark:border-slate-700">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">

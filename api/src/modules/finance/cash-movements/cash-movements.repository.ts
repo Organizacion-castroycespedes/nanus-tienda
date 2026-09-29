@@ -225,6 +225,8 @@ export class CashMovementsRepository {
     movementType?: string;
     direction?: string;
     createdBy?: string;
+    dateFrom?: string;
+    dateTo?: string;
     limit: number;
     offset: number;
   }) {
@@ -262,6 +264,16 @@ export class CashMovementsRepository {
     if (filters.createdBy) {
       params.push(filters.createdBy);
       where.push(`movement.created_by = $${params.length}`);
+    }
+
+    if (filters.dateFrom) {
+      params.push(filters.dateFrom);
+      where.push(`movement.created_at >= $${params.length}::date`);
+    }
+
+    if (filters.dateTo) {
+      params.push(filters.dateTo);
+      where.push(`movement.created_at < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
     params.push(filters.limit);

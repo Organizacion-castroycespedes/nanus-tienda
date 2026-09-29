@@ -441,6 +441,8 @@ export class CashSessionsRepository {
     status?: string;
     openedByUserId?: string;
     operatorUserId?: string;
+    dateFrom?: string;
+    dateTo?: string;
     limit: number;
     offset: number;
   }) {
@@ -480,6 +482,16 @@ export class CashSessionsRepository {
     } else if (filters.openedByUserId) {
       params.push(filters.openedByUserId);
       where.push(`session.opened_by_user_id = $${params.length}`);
+    }
+
+    if (filters.dateFrom) {
+      params.push(filters.dateFrom);
+      where.push(`session.opened_at >= $${params.length}::date`);
+    }
+
+    if (filters.dateTo) {
+      params.push(filters.dateTo);
+      where.push(`session.opened_at < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
     params.push(filters.limit);
