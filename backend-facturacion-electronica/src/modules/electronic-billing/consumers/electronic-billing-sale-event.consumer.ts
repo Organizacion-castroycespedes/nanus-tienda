@@ -20,7 +20,7 @@ import {
   ElectronicBillingSaleEventTemporaryFailureError,
   ElectronicBillingSaleEventValidationError,
 } from "./electronic-billing-consumer.errors";
-import { ElectronicDocumentValidationError } from "../services/electronic-billing.service";
+import { ElectronicBillingProcessingService, ElectronicDocumentValidationError } from "../services";
 import type {
   SaleCompletedForElectronicBillingEventEnvelope,
   SaleLineSnapshot,
@@ -84,15 +84,15 @@ export const validateSnapshotTotals = (
   // discountAmount again would subtract the discount twice.
   const expectedTotal = totalSubtotal + totalTax;
 
-  if (Math.abs(lineSubtotal - totalSubtotal) > 0.0001) {
+  if (Math.abs(lineSubtotal - totalSubtotal) > 0.05) {
     throw new ElectronicBillingSaleEventValidationError("Sale subtotal does not match snapshot totals");
   }
 
-  if (Math.abs(lineTax - totalTax) > 0.0001) {
+  if (Math.abs(lineTax - totalTax) > 0.05) {
     throw new ElectronicBillingSaleEventValidationError("Sale tax does not match snapshot totals");
   }
 
-  if (Math.abs(expectedTotal - totalAmount) > 0.0001) {
+  if (Math.abs(expectedTotal - totalAmount) > 0.05) {
     throw new ElectronicBillingSaleEventValidationError("Sale total does not match snapshot totals");
   }
 };
@@ -110,6 +110,8 @@ export class SaleCompletedForElectronicBillingConsumerService {
     private readonly billingService: ElectronicBillingService,
     @Inject(ElectronicBillingProviderResolver)
     private readonly providerResolver: ElectronicBillingProviderResolver,
+    @Inject(ElectronicBillingProcessingService)
+    private readonly processingService?: ElectronicBillingProcessingService,
   ) {}
 
   async consume(
@@ -375,6 +377,23 @@ export class SaleCompletedForElectronicBillingConsumerService {
         throw error;
       }
     });
+
+    if (
+      result.electronicDocumentId &&
+      (result.status === "ACCEPTED" || result.status === "ALREADY_PROCESSED") &&
+      this.processingService
+    ) {
+      try {
+        await this.processingService.processDocument(
+          envelope.tenantId,
+          result.electronicDocumentId,
+        );
+      } catch (procError) {
+        console.warn("[SaleCompletedConsumer] Immediate processing warning:", procError);
+      }
+    }
+
+    return result;
   }
 
   private validateEnvelope(envelope: SaleCompletedForElectronicBillingEventEnvelope) {

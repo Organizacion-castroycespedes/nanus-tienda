@@ -271,7 +271,7 @@ const ActionCard = ({
             {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
           </Button>
 
-          {sale.status !== "CANCELLED" && sale.status !== "REFUNDED" ? (
+          {sale.status !== "CANCELLED" && sale.status !== "REFUNDED" && accepted ? (
             <Button
               type="button"
               variant="outline"
@@ -279,7 +279,7 @@ const ActionCard = ({
               className="flex items-center gap-2 border-rose-300 text-rose-700 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-rose-50"
             >
               <RotateCcw className="h-4 w-4 text-rose-600 shrink-0" />
-              {accepted ? "Anular / Nota Crédito" : "Anular venta"}
+              Anular / Nota Crédito
             </Button>
           ) : null}
 

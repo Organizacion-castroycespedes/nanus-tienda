@@ -91,26 +91,32 @@ const trimToNull = (value: string) => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm => ({
-  documentTypeCode: customer?.documentTypeCode ?? customer?.dianIdentificationType ?? "31",
-  documentNumber: customer?.documentNumber ?? "",
-  name: customer?.name ?? "",
-  fiscalEmail: customer?.fiscalEmail ?? customer?.email ?? "",
-  phone: customer?.phone ?? "",
-  address: customer?.address ?? "",
-  countryId: "",
-  departamentoId: customer?.departamentoId ?? "",
-  municipioId: customer?.municipioId ?? "",
-  countryCode: customer?.countryCode?.trim() || "CO",
-  departmentCode: customer?.departmentCode ?? "",
-  municipalityCode: customer?.municipalityCode ?? "",
-  personType:
-    customer?.personType === "NATURAL" || customer?.personType === "JURIDICA"
-      ? customer.personType
-      : "",
-  taxRegime: customer?.taxRegime ?? "",
-  taxResponsibilities: customer?.taxResponsibilities ?? [],
-});
+const buildFormFromCustomer = (customer: CustomerResponse | null): FiscalForm => {
+  const docType = customer?.documentTypeCode ?? customer?.dianIdentificationType ?? "31";
+  const defaultPersonType = docType === "31" ? "JURIDICA" : "NATURAL";
+  return {
+    documentTypeCode: docType,
+    documentNumber: customer?.documentNumber ?? "",
+    name: customer?.name ?? "",
+    fiscalEmail: customer?.fiscalEmail ?? customer?.email ?? "",
+    phone: customer?.phone ?? "",
+    address: customer?.address ?? "",
+    countryId: "",
+    departamentoId: customer?.departamentoId ?? "",
+    municipioId: customer?.municipioId ?? "",
+    countryCode: customer?.countryCode?.trim() || "CO",
+    departmentCode: customer?.departmentCode ?? "",
+    municipalityCode: customer?.municipalityCode ?? "",
+    personType:
+      customer?.personType === "NATURAL" || customer?.personType === "JURIDICA"
+        ? customer.personType
+        : defaultPersonType,
+    taxRegime: customer?.taxRegime ?? "NO_RESPONSABLE",
+    taxResponsibilities: customer?.taxResponsibilities?.length
+      ? customer.taxResponsibilities
+      : ["R-99-PN"],
+  };
+};
 
 export const QuickFiscalCustomerModal = ({
   customers,

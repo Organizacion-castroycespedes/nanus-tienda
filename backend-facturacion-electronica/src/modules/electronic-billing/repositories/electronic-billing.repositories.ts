@@ -1001,6 +1001,9 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
           tax_amount = $6,
           total_amount = $7,
           metadata = $8,
+          processing_stage = 'PRE_PROVIDER_CREATE',
+          processing_stage_updated_at = NOW(),
+          last_status_check_at = NULL,
           last_error_code = NULL,
           last_error_message = NULL,
           provider_status_detail = NULL,
@@ -1392,6 +1395,14 @@ export class ElectronicDocumentLineRepository extends ElectronicBillingRepositor
     return result.rows;
   }
 
+  async deleteByDocumentId(electronicDocumentId: string, client?: PoolClient) {
+    await this.query(
+      `DELETE FROM electronic_document_lines WHERE electronic_document_id = $1`,
+      [electronicDocumentId],
+      client,
+    );
+  }
+
   async updateProviderLineId(
     tenantId: string,
     lineId: string,
@@ -1435,6 +1446,14 @@ export class ElectronicDocumentLineRepository extends ElectronicBillingRepositor
 export class ElectronicDocumentTaxRepository extends ElectronicBillingRepositoryBase {
   constructor(@Inject(DatabaseService) db: DatabaseService) {
     super(db);
+  }
+
+  async deleteByDocumentId(electronicDocumentId: string, client?: PoolClient) {
+    await this.query(
+      `DELETE FROM electronic_document_taxes WHERE electronic_document_id = $1`,
+      [electronicDocumentId],
+      client,
+    );
   }
 
   async insertMany(items: NewElectronicDocumentTaxInput[], client?: PoolClient) {
