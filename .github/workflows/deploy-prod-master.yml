@@ -71,7 +71,19 @@ jobs:
           cp api/dist-bin/emaus_api artifact/linux/emaus_api
           cp backend-reporteria/dist-bin/emaus_reporteria artifact/linux/emaus_reporteria
           cp backend-facturacion-electronica/dist-bin/emaus_facturacion artifact/linux/emaus_facturacion
-          cp -R web/.next web/public web/package.json web/package-lock.json web/next.config.mjs artifact/web/
+          cp -R web/.next web/public web/lib web/package.json web/package-lock.json web/next.config.mjs artifact/web/
+          for required_path in \
+            artifact/web/.next \
+            artifact/web/public \
+            artifact/web/package.json \
+            artifact/web/package-lock.json \
+            artifact/web/next.config.mjs \
+            artifact/web/lib/login-branding.mjs; do
+            if [[ ! -e "${required_path}" ]]; then
+              echo "Missing required Web runtime artifact: ${required_path}" >&2
+              exit 1
+            fi
+          done
           cp scripts/deploy/prod-deploy-full.sh artifact/prod-deploy-full.sh
           tar -C artifact -czf prod-master-release.tar.gz .
 
