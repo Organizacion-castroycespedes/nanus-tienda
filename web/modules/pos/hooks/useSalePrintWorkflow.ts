@@ -24,8 +24,9 @@ import {
 import type { ToastVariant } from "../../../components/design-system/Toast";
 import { ApiError } from "../../../lib/request";
 
-const ELECTRONIC_INVOICE_POLL_INTERVAL_MS = 3_000;
-const ELECTRONIC_INVOICE_MAX_ATTEMPTS = 41;
+const ELECTRONIC_INVOICE_POLL_INTERVAL_MS = 1_500;
+const ELECTRONIC_INVOICE_MAX_ATTEMPTS = 20;
+
 const ELECTRONIC_INVOICE_TERMINAL_STATUSES = new Set<
   ElectronicInvoicePrintDataset["status"]
 >([

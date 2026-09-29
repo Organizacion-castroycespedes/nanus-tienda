@@ -3353,10 +3353,10 @@ export const PosScreen = () => {
             <div>
               <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
               <p className="text-xs text-slate-500 mt-1">
-                Procesando documento con el servicio fiscal. Puede tardar hasta 2 minutos.
+                Conexión directa API a API con la DIAN en curso.
               </p>
               <p className="text-xs text-slate-500 mt-2">
-                Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
+                Validando respuesta fiscal en tiempo real. Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
               </p>
             </div>
           </div>

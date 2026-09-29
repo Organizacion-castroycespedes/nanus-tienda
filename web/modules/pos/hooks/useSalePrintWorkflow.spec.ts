@@ -171,6 +171,6 @@ test("POS billing wait dialog closes through the workflow cancellation handler",
   assert.match(source, /cancelBillingProcessing,/);
   assert.match(source, /onClose=\{cancelBillingProcessing\}/);
   assert.doesNotMatch(source, /onClose=\{\(\) => \{\}\}/);
-  assert.match(source, /Puede tardar hasta 2 minutos/);
+  assert.match(source, /Conexión directa API a API/);
   assert.match(source, /la factura seguirá procesándose/);
 });

@@ -187,7 +187,7 @@ export class SaleCompletedForElectronicBillingConsumerService {
       throw error;
     }
 
-    return this.db.transaction(async (client) => {
+    const consumptionResult = await this.db.transaction(async (client) => {
       let inserted = await this.inboxRepository.insertReceived(
         {
           id: randomUUID(),
@@ -379,21 +379,21 @@ export class SaleCompletedForElectronicBillingConsumerService {
     });
 
     if (
-      result.electronicDocumentId &&
-      (result.status === "ACCEPTED" || result.status === "ALREADY_PROCESSED") &&
+      consumptionResult.status === "ACCEPTED" &&
+      consumptionResult.electronicDocumentId &&
       this.processingService
     ) {
       try {
         await this.processingService.processDocument(
           envelope.tenantId,
-          result.electronicDocumentId,
+          consumptionResult.electronicDocumentId,
         );
-      } catch (procError) {
-        console.warn("[SaleCompletedConsumer] Immediate processing warning:", procError);
+      } catch (error) {
+        // Fallback: background worker processing remains active.
       }
     }
 
-    return result;
+    return consumptionResult;
   }
 
   private validateEnvelope(envelope: SaleCompletedForElectronicBillingEventEnvelope) {
