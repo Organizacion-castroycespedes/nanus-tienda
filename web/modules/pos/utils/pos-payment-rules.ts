@@ -7,8 +7,9 @@ const normalize = (value?: string | null) =>
     .trim()
     .toUpperCase();
 
-/** POS business rule: reference is optional for every payment line. */
-export const getRequiresReferenceForPos = (_method?: PaymentMethod | null): boolean => false;
+/** Reference is required only when the payment method is configured to require it. */
+export const getRequiresReferenceForPos = (method?: PaymentMethod | null): boolean =>
+  method?.requiresReference === true;
 
 /**
  * Show bank/wallet selector only when the payment method model requires it,

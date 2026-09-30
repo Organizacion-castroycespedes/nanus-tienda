@@ -1,4 +1,5 @@
 import { apiClient } from "../../../lib/http";
+import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
 import type {
   OperationalSaleDetail,
   OperationalSaleListItem,
@@ -160,11 +161,24 @@ export type VoidOperationalSalePayload = {
   returnInventory?: boolean;
 };
 
+export type SaleVoidRequestSummary = {
+  id: string | null;
+  status: "PENDING_CREDIT_NOTE";
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  message: string;
+};
+
+export type VoidOperationalSaleResult = OperationalSaleDetail & {
+  creditNote?: ElectronicBillingOnlineResult | null;
+  voidRequest?: SaleVoidRequestSummary | null;
+};
+
 export const voidOperationalSale = (
   saleId: string,
   payload: VoidOperationalSalePayload,
 ) =>
-  apiClient<OperationalSaleDetail>(
+  apiClient<VoidOperationalSaleResult>(
     `/operations/sales/${encodeURIComponent(saleId)}/void`,
     {
       method: "POST",

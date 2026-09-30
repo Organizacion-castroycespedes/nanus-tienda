@@ -8,10 +8,16 @@ import { OperationalSalesRepository } from "./operational-sales.repository";
 import { OperationalSalesService } from "./operational-sales.service";
 import { OperationalDashboardRepository } from "./operational-dashboard.repository";
 import { OperationalDashboardController } from "./operational-dashboard.controller";
+import { SaleVoidRequestWorker } from "./sale-void-request.worker";
 
 @Module({
   imports: [DatabaseModule, AccessControlModule, CommonServicesModule, IntegrationOutboxModule],
   controllers: [OperationalSalesController, OperationalDashboardController],
-  providers: [OperationalSalesRepository, OperationalDashboardRepository, OperationalSalesService],
+  providers: [
+    OperationalSalesRepository,
+    OperationalDashboardRepository,
+    OperationalSalesService,
+    SaleVoidRequestWorker,
+  ],
 })
 export class OperationalSalesModule {}

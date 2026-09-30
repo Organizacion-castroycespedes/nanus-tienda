@@ -142,7 +142,10 @@ export type FactuCoreInvoiceRequest = {
   lines: FactuCoreDocumentLine[];
   references?: FactuCoreDocumentReference[];
   metadata?: Record<string, unknown>;
+  transmissionMode?: FactuCoreTransmissionMode;
 };
+
+export type FactuCoreTransmissionMode = "sync" | "queued";
 
 export type FactuCoreCreditNoteRequest = {
   customerId?: string | null;
@@ -167,6 +170,14 @@ export type FactuCoreCreditNoteRequest = {
   lines: FactuCoreDocumentLine[];
   references?: FactuCoreDocumentReference[];
   metadata?: Record<string, unknown>;
+  transmissionMode?: FactuCoreTransmissionMode;
+};
+
+export type FactuCoreTransmissionError = {
+  code?: string | null;
+  message?: string | null;
+  path?: string | null;
+  severity?: string | null;
 };
 
 export type FactuCoreDocumentResponse = {
@@ -200,6 +211,12 @@ export type FactuCoreDocumentResponse = {
   idempotencyKey?: Record<string, unknown> | null;
   message?: string | null;
   metadata?: Record<string, unknown> | null;
+  transmissionMode?: FactuCoreTransmissionMode | null;
+  failureClass?: string | null;
+  reason?: string | null;
+  probableCause?: string | null;
+  errors?: FactuCoreTransmissionError[] | null;
+  graphicRepresentation?: Record<string, unknown> | null;
   [key: string]: unknown;
 };
 
@@ -238,6 +255,7 @@ export type FactuCoreBinaryResponse = {
 };
 
 export const FACTUCORE_DEFAULT_TIMEOUT_MS = 15_000;
+export const FACTUCORE_DEFAULT_SYNC_TIMEOUT_MS = 45_000;
 export const FACTUCORE_TENANT_ID_SETTING = "factuCoreTenantId";
 
 export const FACTUCORE_DOCUMENT_ENDPOINT = "/api/v1/external/documents";
@@ -246,6 +264,8 @@ export type FactuCoreRuntimeContext = {
   baseUrl: string;
   credentials: FactuCoreCredentials;
   timeoutMs: number;
+  syncTimeoutMs?: number;
+  transmissionMode?: FactuCoreTransmissionMode;
   factuCoreTenantId?: string;
 };
 

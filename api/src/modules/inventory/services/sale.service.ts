@@ -68,6 +68,10 @@ import {
   evaluateElectronicBillingEligibility,
 } from "../../integration-outbox/contracts/electronic-billing-eligibility";
 import {
+  buildOnlineResultFromDelivery,
+  type ElectronicBillingOnlineResult,
+} from "../../integration-outbox/contracts/electronic-billing-outcome";
+import {
   assertIssuerCanBillVat,
   hasPositiveTaxLines,
 } from "../../integration-outbox/contracts/issuer-vat-billing-guard";
@@ -1512,6 +1516,34 @@ export class SaleService {
     return getElectronicBillingMode();
   }
 
+  /**
+   * Emits right after the sale commit and waits for the fiscal result. Only a
+   * network/transient failure leaves the outbox event queued for background retry.
+   */
+  private async dispatchElectronicBillingOnline(
+    eventId: string,
+    saleId: string,
+  ): Promise<ElectronicBillingOnlineResult | null> {
+    if (!this.integrationOutboxDispatcher) {
+      return null;
+    }
+    try {
+      const result = await this.integrationOutboxDispatcher.runOnceForEvent(eventId);
+      return buildOnlineResultFromDelivery(result?.delivery ?? null);
+    } catch (error) {
+      this.logger.warn(
+        `Online electronic billing dispatch failed for sale ${saleId}; background dispatch remains active: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return buildOnlineResultFromDelivery({
+        outcome: "RETRYABLE",
+        statusCode: null,
+        errorCode: "BILLING_BACKEND_UNREACHABLE",
+        message: error instanceof Error ? error.message : String(error),
+        electronicDocument: null,
+      });
+    }
+  }
+
   private async getTenantElectronicBillingPolicy(
     tenantId: string,
     client: PoolClient,
@@ -1906,15 +1938,9 @@ export class SaleService {
         client,
       );
       await client.query("COMMIT");
-      if (result.outboxEventId && this.integrationOutboxDispatcher) {
-        try {
-          await this.integrationOutboxDispatcher.runOnceForEvent(result.outboxEventId);
-        } catch (error) {
-          this.logger.warn(
-            `Immediate electronic billing dispatch failed for sale ${saleId}; background dispatch remains active: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
+      const electronicBilling = result.outboxEventId
+        ? await this.dispatchElectronicBillingOnline(result.outboxEventId, saleId)
+        : null;
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -1923,7 +1949,7 @@ export class SaleService {
         entityId: saleId,
         action: "ELECTRONIC_BILLING_REQUESTED_MANUALLY",
       });
-      return result;
+      return { ...result, electronicBilling };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -2909,15 +2935,9 @@ export class SaleService {
       }
 
       await client.query("COMMIT");
-      if (enqueuedBillingEvent?.eventId && this.integrationOutboxDispatcher) {
-        try {
-          await this.integrationOutboxDispatcher.runOnceForEvent(
-            enqueuedBillingEvent.eventId
-          );
-        } catch {
-          // background sync will retry if network/provider is temporarily unreachable
-        }
-      }
+      const electronicBilling = enqueuedBillingEvent?.eventId
+        ? await this.dispatchElectronicBillingOnline(enqueuedBillingEvent.eventId, saleRow.id)
+        : null;
 
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
@@ -2928,7 +2948,8 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.getSaleById(saleRow.id, saleContext);
+      const sale = await this.getSaleById(saleRow.id, saleContext);
+      return electronicBilling ? { ...sale, electronicBilling } : sale;
     } catch (error) {
       console.error("[SaleService.createSale] Error:", error);
       await client.query("ROLLBACK");
@@ -3070,15 +3091,9 @@ export class SaleService {
       }
 
       await client.query("COMMIT");
-      if (enqueuedBillingEvent?.eventId && this.integrationOutboxDispatcher) {
-        try {
-          await this.integrationOutboxDispatcher.runOnceForEvent(
-            enqueuedBillingEvent.eventId
-          );
-        } catch {
-          // background sync will retry if network/provider is temporarily unreachable
-        }
-      }
+      const electronicBilling = enqueuedBillingEvent?.eventId
+        ? await this.dispatchElectronicBillingOnline(enqueuedBillingEvent.eventId, saleRow.id)
+        : null;
 
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
@@ -3089,7 +3104,8 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.getSaleById(saleRow.id, saleContext.tenantId);
+      const sale = await this.getSaleById(saleRow.id, saleContext.tenantId);
+      return electronicBilling ? { ...sale, electronicBilling } : sale;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
