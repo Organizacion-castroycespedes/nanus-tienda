@@ -630,7 +630,23 @@ servicio existente coloca Node y sus hijos en un Job Object con
 no se crea un segundo servicio productivo. La evidencia administrada final está
 en `C:\\ManusQA\\evidence\\1B14B-FINAL-20260929-164755-bcc7300e\\REPORT-FINAL.md`.
 
-### Fase 1B.10: endurecimiento de ruta, liberacion y rollback
+### Fase 1B.17B - diseno de discovery serial
+
+El provider Windows enumera primero `Win32_SerialPort` y usa `Get-PnpDevice`
+`Ports` como fallback read-only cuando esa clase no devuelve filas. El fallback
+usa el `FriendlyName` del dispositivo de clase `Ports` solo para extraer el COM
+asociado; la identidad de clasificacion sigue siendo el `InstanceId` PnP y sus
+VID/PID. La clasificacion ROCHI exige exactamente `VID_1A86` + `PID_7523`,
+normalizados en mayusculas. El candidato usa el pipeline existente de
+`DevicesService`, se deduplica por identidad estable y se expone como
+descubierto sin escribir `device-registry.state.json`.
+
+El perfil `ROCHI_A01E` sigue siendo la fuente de defaults seriales. Discovery
+no abre COM, no lee/escribe frames, no configura el Agent, no marca
+`connected`, `authorized` o `REAL_AVAILABLE`, y no conecta `ScaleService`.
+La ausencia de candidatos y el error de enumeracion son resultados distintos;
+un error serial no corrompe ni reemplaza la lista de impresoras.
+
 
 La ruta productiva de secretos se separa de `stateDir` interactivo mediante
 `PlatformPaths.secureSecretDir`. En Windows se resuelve bajo

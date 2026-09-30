@@ -34,6 +34,7 @@ import { resolveNetworkOptionsForConnection } from "../../shared/utils/network-d
 import {
   type UsbPrinterDescriptor,
   type UsbPrinterDiscovery,
+  type SerialDeviceDescriptor,
 } from "../../shared/usb/usb-printer-discovery";
 import { SystemUsbPrinterDiscovery } from "../../platform/system-usb-printer-discovery";
 import { resolvePlatformPaths } from "../../platform/platform-paths";
@@ -99,6 +100,7 @@ export class DevicesService {
   private readonly seedDevices = MOCK_DEVICES.map((device) => ({ ...device }));
   private configuredDevices = new Map<string, PeripheralDevice>();
   private discoveredUsbDevices = new Map<string, PeripheralDevice>();
+  private discoveredSerialDevices = new Map<string, PeripheralDevice>();
   private runtimeStatuses = new Map<string, DeviceStatus>();
   private usbDevices = new Map<string, UsbPrinterDescriptor>();
   private registryPersistenceState: "empty" | "loaded" | "corrupt" = "empty";
@@ -263,6 +265,23 @@ export class DevicesService {
       }
     }
 
+    let serialDescriptors: SerialDeviceDescriptor[] = [];
+    try {
+      serialDescriptors = this.usbDiscovery.listSerialDevices?.() ?? [];
+    } catch (error) {
+      this.logsService.append({
+        level: LogLevel.WARN,
+        source: "devices",
+        event: "devices.discover.serial_failed",
+        message: "Serial discovery failed; printer discovery remains available",
+        metadata: {
+          mode: config.mode,
+          outcome: "FAILED",
+          errorMessage: error instanceof Error ? error.message : "unknown error",
+        },
+      });
+    }
+
     this.usbDevices = new Map(
       usbDescriptors.map((descriptor) => [descriptor.deviceId, descriptor])
     );
@@ -295,6 +314,12 @@ export class DevicesService {
     }
 
     this.discoveredUsbDevices = nextDiscoveredUsbDevices;
+    this.discoveredSerialDevices = new Map(
+      serialDescriptors.map((descriptor) => [
+        descriptor.id,
+        this.buildDiscoveredSerialDevice(descriptor),
+      ])
+    );
     const devices = config.mode === "REAL"
       ? this.list().filter((device) => device.connectionType !== ConnectionType.MOCK)
       : this.list();
@@ -309,6 +334,7 @@ export class DevicesService {
         count: devices.length,
         configuredDevices: this.configuredDevices.size,
         usbPrinterCount: nextDiscoveredUsbDevices.size,
+        serialCandidateCount: this.discoveredSerialDevices.size,
         mode: config.mode,
         outcome: nextDiscoveredUsbDevices.size > 0 ? "FOUND" : "EMPTY",
         durationMs: Date.now() - discoveryStartedAt,
@@ -354,7 +380,7 @@ export class DevicesService {
   } {
     return {
       configuredDevices: this.configuredDevices.size,
-      discoveredDevices: this.discoveredUsbDevices.size,
+      discoveredDevices: this.discoveredUsbDevices.size + this.discoveredSerialDevices.size,
       persistenceState: this.registryPersistenceState,
       schemaVersion: 1,
     };
@@ -363,7 +389,7 @@ export class DevicesService {
   getRuntimeDeviceCounts(): { configured: number; discovered: number } {
     return {
       configured: this.configuredDevices.size,
-      discovered: this.discoveredUsbDevices.size,
+      discovered: this.discoveredUsbDevices.size + this.discoveredSerialDevices.size,
     };
   }
 
@@ -795,6 +821,18 @@ export class DevicesService {
       );
     }
 
+    for (const discoveredDevice of this.discoveredSerialDevices.values()) {
+      const current = merged.get(discoveredDevice.id);
+      if (!current) {
+        merged.set(discoveredDevice.id, this.cloneDevice(discoveredDevice));
+        continue;
+      }
+      merged.set(
+        current.id,
+        this.mergeDiscoveredSerialDevice(current, discoveredDevice)
+      );
+    }
+
     return merged;
   }
 
@@ -890,6 +928,63 @@ export class DevicesService {
         physicalDetected,
         queueInstalled,
         reconciliationStatus: fingerprintValues.reconciliationStatus,
+      },
+    };
+  }
+
+  private buildDiscoveredSerialDevice(
+    descriptor: SerialDeviceDescriptor
+  ): PeripheralDevice {
+    return {
+      id: descriptor.id,
+      type: DeviceType.SCALE,
+      name: descriptor.name,
+      status: DeviceStatus.DISCONNECTED,
+      connectionType: ConnectionType.SERIAL,
+      terminalId: LOCAL_TERMINAL_ID,
+      profileId: descriptor.type,
+      serial: {
+        ...descriptor.serial,
+        pnp: descriptor.serial.pnp ? { ...descriptor.serial.pnp } : undefined,
+      },
+      descriptor: descriptor.descriptor,
+      metadata: {
+        discoverySource: "WINDOWS_SERIAL_PNP",
+        physicalDetected: true,
+        configured: false,
+        connected: false,
+        authorized: false,
+        unitVerified: false,
+        realAvailable: false,
+      },
+    };
+  }
+
+  private mergeDiscoveredSerialDevice(
+    current: PeripheralDevice,
+    discovered: PeripheralDevice
+  ): PeripheralDevice {
+    return {
+      ...current,
+      type: DeviceType.SCALE,
+      connectionType: ConnectionType.SERIAL,
+      status: DeviceStatus.DISCONNECTED,
+      profileId: current.profileId ?? discovered.profileId,
+      serial: discovered.serial
+        ? {
+            ...discovered.serial,
+            pnp: discovered.serial.pnp ? { ...discovered.serial.pnp } : undefined,
+          }
+        : current.serial,
+      descriptor: discovered.descriptor ?? current.descriptor,
+      metadata: {
+        ...(current.metadata ?? {}),
+        ...(discovered.metadata ?? {}),
+        configured: current.metadata?.configured === true,
+        connected: false,
+        authorized: current.metadata?.authorized === true,
+        unitVerified: current.metadata?.unitVerified === true,
+        realAvailable: false,
       },
     };
   }

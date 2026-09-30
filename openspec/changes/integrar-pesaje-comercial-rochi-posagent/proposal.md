@@ -157,6 +157,16 @@ abandono requiere recuperación administrativa y no limpieza automática.
 
 ### Fase 1B.10 - estado de endurecimiento
 
+### Fase 1B.17B: discovery Windows serial read-only
+
+Este incremento agrega al pipeline existente de discovery una enumeracion
+Windows read-only de puertos serial/PnP. Solo un dispositivo con identidad
+demostrada VID `1A86` y PID `7523` se clasifica como candidato `ROCHI_A01E`,
+`SCALE`, `SERIAL`; no se abre COM, no se escribe configuracion y no se persiste
+el candidato. Los estados `physicalDetected`, `configured`, `connected`,
+`authorized` y `REAL_AVAILABLE` permanecen separados. Dispositivos seriales
+ajenos no se convierten en ROCHI.
+
 El store usa una ruta de secretos explicita bajo el estado administrado de
 `ProgramData` para el servicio `LocalService`; `stateDir` de otros consumidores
 no se modifica indiscriminadamente. No existe migracion automatica entre

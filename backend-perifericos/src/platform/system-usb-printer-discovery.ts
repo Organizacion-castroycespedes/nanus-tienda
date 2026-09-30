@@ -1,6 +1,7 @@
 import type { DeviceDiscoveryProvider } from "../shared/discovery/device-discovery-provider";
 import {
   buildUsbPrinterDescriptor,
+  buildRochiSerialDescriptor,
   type UsbPrinterDescriptor,
   type UsbPrinterDiscovery,
 } from "../shared/usb/usb-printer-discovery";
@@ -18,5 +19,11 @@ export class SystemUsbPrinterDiscovery implements UsbPrinterDiscovery {
     return this.provider
       .listUsbPrinters()
       .map((printer) => buildUsbPrinterDescriptor(printer.name, printer, this.agentInstallationId));
+  }
+
+  listSerialDevices() {
+    return (this.provider.listSerialDevices?.() ?? [])
+      .map((device) => buildRochiSerialDescriptor(device, this.agentInstallationId))
+      .filter((device): device is NonNullable<typeof device> => Boolean(device));
   }
 }

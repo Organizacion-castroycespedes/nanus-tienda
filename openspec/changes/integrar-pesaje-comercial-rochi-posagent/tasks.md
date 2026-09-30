@@ -142,6 +142,13 @@
 
 ## 3G. Fase 1B.10 - endurecimiento de ruta, lock y rollback ACL
 
+## 3H. Fase 1B.17B - discovery Windows serial
+
+- [x] 3H.1 Enumerar puertos serial/PnP de forma read-only y mapear COM + identidad PnP al candidato local.
+- [x] 3H.2 Clasificar `ROCHI_A01E` solo con VID `1A86` + PID `7523`; rechazar seriales ajenos y deduplicar vistas repetidas.
+- [x] 3H.3 Exponer el candidato mediante el discovery existente sin persistencia, apertura COM, configuracion, autorizacion, `ScaleService` o `REAL_AVAILABLE`.
+- [x] 3H.4 Cubrir parser, perfil, identidad, deduplicacion, no-mutacion y regresion de impresora. Smoke fisico queda separado y requiere confirmar el dispositivo en el host.
+
 - [x] 3G.1 Separar `secureSecretDir` de `stateDir` y resolverlo bajo `ProgramData\\Manus\\PeripheralAgent\\state\\secrets` en Windows; no migrar blobs entre perfiles DPAPI. Evidencia: prueba de limites de plataforma y suite Agent `143/143`.
 - [x] 3G.2 Cerrar la carrera TOCTOU de liberacion del lock con Named Mutex Windows; la prueba adversarial `REPLACEMENT_ALLOWED` queda cubierta al retirar `unlink` del protocolo de autoridad. Evidencia: QA administrado 1B.14B y `secure_secret_mutex_windows.go`.
 - [x] 3G.3 Incluir la ACL de la ruta actualmente fallida en el rollback y cubrir la seleccion de backups con prueba Go. Evidencia: `go test ./...` PASS.
