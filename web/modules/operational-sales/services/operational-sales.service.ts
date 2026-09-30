@@ -1,4 +1,5 @@
 import { apiClient } from "../../../lib/http";
+import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
 import type {
   OperationalSaleDetail,
   OperationalSaleListItem,
@@ -49,13 +50,10 @@ export const fetchOperationalSaleDetail = (saleId: string) =>
     { includePosSession: true },
   );
 
-export const refreshOperationalSaleBillingStatus = (
-  saleId: string,
-  signal?: AbortSignal,
-) =>
+export const refreshOperationalSaleBillingStatus = (saleId: string) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/electronic-billing/refresh`,
-    { method: "POST", includePosSession: true, signal },
+    { method: "POST", includePosSession: true },
   );
 
 export type ElectronicBillingRequestResult = {
@@ -148,6 +146,61 @@ export const correctOperationalSalePayments = (
 ) =>
   apiClient<OperationalSaleDetail>(
     `/operations/sales/${encodeURIComponent(saleId)}/payment-correction`,
+    {
+      method: "POST",
+      includePosSession: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+
+export type VoidOperationalSalePayload = {
+  reason: string;
+  discrepancyResponseCode?: string;
+  discrepancyResponseDescription?: string;
+  returnInventory?: boolean;
+};
+
+export type SaleVoidRequestSummary = {
+  id: string | null;
+  status: "PENDING_CREDIT_NOTE";
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  message: string;
+};
+
+export type VoidOperationalSaleResult = OperationalSaleDetail & {
+  creditNote?: ElectronicBillingOnlineResult | null;
+  voidRequest?: SaleVoidRequestSummary | null;
+};
+
+export const voidOperationalSale = (
+  saleId: string,
+  payload: VoidOperationalSalePayload,
+) =>
+  apiClient<VoidOperationalSaleResult>(
+    `/operations/sales/${encodeURIComponent(saleId)}/void`,
+    {
+      method: "POST",
+      includePosSession: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+
+export type OperationalDebitNotePayload = {
+  reason: string;
+  discrepancyResponseCode: string;
+  discrepancyResponseDescription?: string;
+  amount: number;
+};
+
+export const issueOperationalDebitNote = (
+  saleId: string,
+  payload: OperationalDebitNotePayload,
+) =>
+  apiClient<OperationalSaleDetail>(
+    `/operations/sales/${encodeURIComponent(saleId)}/debit-note`,
     {
       method: "POST",
       includePosSession: true,

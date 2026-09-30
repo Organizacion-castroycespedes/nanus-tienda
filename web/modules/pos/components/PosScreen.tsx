@@ -110,6 +110,7 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import { PARAMETER_MODES } from "../../../domains/parameters/api";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { useSalePrintWorkflow } from "../hooks/useSalePrintWorkflow";
 import {
@@ -617,7 +618,6 @@ export const PosScreen = () => {
   const {
     pdfConfig,
     isBillingProcessing,
-    cancelBillingProcessing,
     closePdfModal,
     triggerPrintWorkflow,
   } = useSalePrintWorkflow();
@@ -692,13 +692,19 @@ export const PosScreen = () => {
     }
   }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
+  const isSendingElectronicInvoice =
+    processingSale &&
+    branding.electronicBillingEnabled !== false &&
+    branding.electronicBillingMode !== PARAMETER_MODES.ON_DEMAND;
+
   const isSearchFocusReleased =
     productToolsOpen ||
     paymentModalOpen ||
     quickFiscalCustomerOpen ||
     cartSheetOpen ||
     Boolean(pdfConfig) ||
-    isBillingProcessing;
+    isBillingProcessing ||
+    isSendingElectronicInvoice;
 
   useEffect(() => {
     if (isSearchFocusReleased) {
@@ -2484,14 +2490,17 @@ export const PosScreen = () => {
       return "Selecciona un metodo de pago valido en cada linea.";
     }
 
-    const hasMissingReference = localParsed.some(
+    const paymentMissingReference = localParsed.find(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method?.requiresReference &&
         payment.reference.trim().length === 0
     );
-    if (hasMissingReference) {
-      return "Los metodos que exigen referencia deben incluirla.";
+    if (paymentMissingReference) {
+      const methodName = paymentMissingReference.method?.nombre?.trim();
+      return methodName
+        ? `Falta el número de referencia del pago con ${methodName}.`
+        : "Falta el número de referencia del pago.";
     }
 
     const duplicateMethods = localParsed
@@ -2669,6 +2678,11 @@ export const PosScreen = () => {
         branchId: activeBranchId,
         terminalId: posTerminalId ?? undefined,
         electronicBillingEnabled: branding.electronicBillingEnabled !== false,
+        electronicBillingMode:
+          branding.electronicBillingMode === PARAMETER_MODES.ON_DEMAND
+            ? PARAMETER_MODES.ON_DEMAND
+            : PARAMETER_MODES.AUTOMATIC,
+        electronicBilling: sale.electronicBilling ?? null,
         showToast,
       });
 
@@ -3333,27 +3347,21 @@ export const PosScreen = () => {
           getPdf={pdfConfig.getPdf}
           description={pdfConfig.description}
           allowPrint={pdfConfig.allowPrint ?? true}
+          variant="ticket"
           onClose={closePdfModal}
         />
       ) : null}
 
-      {isBillingProcessing ? (
-        <Modal
-          title="Facturación Electrónica"
-          onClose={cancelBillingProcessing}
-          size="md"
-        >
-          <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+      {isSendingElectronicInvoice || isBillingProcessing ? (
+        <Modal title="Facturación electrónica" size="md">
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-            <div>
-              <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Procesando documento con el servicio fiscal. Puede tardar hasta 2 minutos.
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
-              </p>
-            </div>
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              {isBillingProcessing ? "Preparando la factura…" : "Enviando factura a la DIAN…"}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Esto toma unos segundos.
+            </p>
           </div>
         </Modal>
       ) : null}

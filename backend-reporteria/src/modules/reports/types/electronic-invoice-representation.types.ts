@@ -33,10 +33,90 @@ export type ElectronicInvoiceItem = {
   total: number;
 };
 
+export type FiscalGraphicParty = {
+  legalName: string;
+  tradeName: string | null;
+  personType: "JURIDICA" | "NATURAL";
+  identificationTypeCode: string | null;
+  identificationNumber: string;
+  verificationDigit: string | null;
+  fiscalResponsibilityCodes: string[];
+  taxSchemeId: string | null;
+  taxSchemeName: string | null;
+  address: string | null;
+  city: string | null;
+  department: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
+export type FiscalGraphicTax = {
+  type: string;
+  rate: number;
+  taxableBase: number;
+  amount: number;
+};
+
+/** Datos fiscales devueltos por FactuCore y guardados por billing al aceptar el documento. */
+export type FiscalGraphicRepresentation = {
+  version: number;
+  documentType: string;
+  environment: string;
+  fullNumber: string;
+  prefix: string | null;
+  number: number | null;
+  issueDate: string;
+  issueTime: string | null;
+  dueDate: string | null;
+  currency: string;
+  documentKey: { type: "CUFE" | "CUDE"; value: string | null };
+  resolution: {
+    number: string;
+    prefix: string | null;
+    rangeStart: number;
+    rangeEnd: number;
+    validFrom: string;
+    validTo: string;
+  } | null;
+  issuer: FiscalGraphicParty;
+  customer: FiscalGraphicParty;
+  payments: Array<{ formCode: string; meansCode: string; amount: number | null; dueDate: string | null }>;
+  lines: Array<{
+    lineNumber: number;
+    code: string | null;
+    description: string;
+    unitCode: string;
+    quantity: number;
+    unitPrice: number;
+    discount: number;
+    lineExtensionAmount: number;
+    taxAmount: number;
+    total: number;
+    taxes: FiscalGraphicTax[];
+  }>;
+  taxTotals: FiscalGraphicTax[];
+  totals: {
+    lineExtension: number;
+    discount: number;
+    tax: number;
+    payable: number;
+  };
+  referencedDocument: { fullNumber: string | null; documentKey: string | null; issueDate: string | null } | null;
+  notes: string | null;
+  softwareProvider: {
+    name: string;
+    identificationNumber: string;
+    verificationDigit: string | null;
+    softwareName: string;
+  };
+};
+
 export type ElectronicInvoiceRepresentation = {
   documentType: "ELECTRONIC_INVOICE_REPRESENTATION";
   status: "ACCEPTED";
   logo?: string | null;
+  fiscal?: FiscalGraphicRepresentation | null;
   issuer: ElectronicInvoiceParty;
   customer: ElectronicInvoiceParty;
   invoice: {
@@ -88,6 +168,7 @@ export type ElectronicInvoiceReadModel = {
     fiscalResponsibilityCodes: string[];
   } | null;
   fiscalIssuerSnapshot?: FiscalIssuerSnapshot | null;
+  graphicRepresentation?: FiscalGraphicRepresentation | null;
   taxLines?: Array<{
     type: string;
     code: string | null;

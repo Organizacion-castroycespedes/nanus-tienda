@@ -10,7 +10,25 @@ const scope = {
   requiresCurrentShift: false,
 };
 
-const createService = () => {
+const acceptedCreditNote = {
+  kind: "OUTCOME",
+  electronicDocument: {
+    electronicDocumentId: "nc-doc-1",
+    documentType: "CREDIT_NOTE",
+    status: "ACCEPTED",
+    fullNumber: "NC-1",
+    cufe: null,
+    cude: "cude-1",
+    providerStatus: "ACCEPTED",
+    failureClass: "ACCEPTED",
+    retryable: false,
+    errorCode: null,
+    errorMessage: null,
+    failures: [],
+  },
+};
+
+const createService = (options: { creditNoteResult?: unknown } = {}) => {
   const calls: Array<{ method: string; value: unknown }> = [];
   const auditEvents: Array<Record<string, unknown>> = [];
   const scopeService = {
@@ -27,7 +45,7 @@ const createService = () => {
     },
     findById: async (resolvedScope: unknown, saleId: string) => {
       calls.push({ method: "findById", value: { resolvedScope, saleId } });
-      return saleId === "sale-a"
+      return saleId === "sale-a" || saleId === "sale-accepted-fe"
         ? { id: saleId }
         : saleId === "sale-refresh"
           ? {
@@ -94,6 +112,19 @@ const createService = () => {
         safeUserMessage: "recovered",
       };
     },
+    issueCreditNote: async (tenantId: string, electronicDocumentId: string, payload: any) => {
+      calls.push({ method: "issueCreditNote", value: { tenantId, electronicDocumentId, payload } });
+      return options.creditNoteResult ?? acceptedCreditNote;
+    },
+    issueDebitNote: async (tenantId: string, electronicDocumentId: string, payload: any) => {
+      calls.push({ method: "issueDebitNote", value: { tenantId, electronicDocumentId, payload } });
+      return {
+        id: "nd-doc-1",
+        documentId: "nd-doc-1",
+        status: "SENT",
+        queued: true,
+      };
+    },
   };
   const auditService = {
     logEvent: (event: Record<string, unknown>) => {
@@ -149,6 +180,9 @@ const createService = () => {
         }
         if (text.includes("INSERT INTO payments")) {
           return { rows: [{ id: "pay-new-1" }] };
+        }
+        if (text.includes("INSERT INTO sale_void_requests")) {
+          return { rows: [{ id: "void-request-1", attempt_count: 1, next_attempt_at: new Date() }] };
         }
         return { rows: [] };
       },
@@ -338,4 +372,161 @@ test("correctPayments cancels previous payments, inserts new payments and audits
   assert.ok(executedQueries.some((q) => q.text.includes("UPDATE payments")));
   assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO payments")));
 });
+
+test("voidSale rejects cancelled sale or missing reason", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.voidSale(actor, "sale-a", { reason: "abc" }),
+    /El motivo de anulación debe tener al menos 5 caracteres/
+  );
+
+  await assert.rejects(
+    () => service.voidSale(actor, "sale-cancelled", { reason: "Anulación de prueba" }),
+    /La venta ya ha sido anulada previamente/
+  );
+});
+
+test("voidSale executes local voiding for sale without electronic invoice", async () => {
+  const { service, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-a", {
+    reason: "Cliente desistió de la compra",
+    returnInventory: true,
+  });
+
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "VOID_SALE");
+  assert.equal((auditEvents[0].after as any).status, "CANCELLED");
+  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales")));
+});
+
+test("voidSale voids only after the online credit note is accepted by DIAN", async () => {
+  const { service, calls, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  const result = await service.voidSale(actor, "sale-accepted-fe", {
+    reason: "Devolución total con nota crédito",
+    discrepancyResponseCode: "2",
+  });
+
+  const ncCall = calls.find((c) => c.method === "issueCreditNote");
+  assert.ok(ncCall);
+  assert.equal((ncCall.value as any).electronicDocumentId, "doc-1");
+  assert.equal((ncCall.value as any).payload.discrepancyResponseCode, "2");
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "VOID_SALE");
+  assert.equal((result as any).creditNote.status, "ACCEPTED");
+  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales")));
+  assert.ok(!executedQueries.some((q) => q.text.includes("INSERT INTO electronic_documents")));
+  assert.ok(executedQueries.some((q) => q.text.includes("document_type = 'INVOICE'")));
+});
+
+test("voidSale keeps the sale when DIAN rejects the credit note and returns code + solution", async () => {
+  const { service, executedQueries } = createService({
+    creditNoteResult: {
+      kind: "OUTCOME",
+      electronicDocument: {
+        ...acceptedCreditNote.electronicDocument,
+        status: "REJECTED",
+        failureClass: "DIAN_REJECTED",
+        errorCode: "CBA06",
+        errorMessage: "Regla: CBA06, Rechazo: referencia",
+        failures: [{
+          code: "CBA06",
+          message: "Regla: CBA06, Rechazo: referencia",
+          origin: "DIAN",
+          path: null,
+          severity: "REJECTION",
+          title: "Referencia de nota crédito",
+          solution: "Verificar que la factura origen esté aceptada y reemitir.",
+          retryable: false,
+        }],
+      },
+    },
+  });
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.voidSale(actor, "sale-accepted-fe", { reason: "Devolución total con nota crédito" }),
+    (error: unknown) => {
+      assert.ok(error instanceof BadRequestException);
+      const body = (error as BadRequestException).getResponse() as Record<string, unknown>;
+      assert.equal(body.errorCode, "CBA06");
+      assert.equal(body.solution, "Verificar que la factura origen esté aceptada y reemitir.");
+      return true;
+    },
+  );
+  assert.ok(!executedQueries.some((q) => q.text.includes("UPDATE sales")));
+});
+
+test("voidSale queues a pending void when the credit note hits a network failure", async () => {
+  const { service, auditEvents, executedQueries } = createService({
+    creditNoteResult: { kind: "NETWORK_FAILURE", message: "Billing backend request timed out" },
+  });
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  const result = await service.voidSale(actor, "sale-accepted-fe", { reason: "Devolución total con nota crédito" });
+
+  assert.equal((result as any).voidRequest.status, "PENDING_CREDIT_NOTE");
+  assert.equal((result as any).creditNote.status, "QUEUED_NETWORK");
+  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO sale_void_requests")));
+  assert.ok(!executedQueries.some((q) => q.text.includes("UPDATE sales")));
+  assert.equal(auditEvents[0].action, "VOID_SALE_PENDING_CREDIT_NOTE");
+});
+
+test("processDueVoidRequests skips quietly when V096 is not applied", async () => {
+  const service = new OperationalSalesService(
+    {} as never,
+    {} as never,
+    {} as never,
+    undefined,
+    undefined,
+    {
+      getClient: async () => ({
+        query: async () => {
+          throw Object.assign(new Error('relation "sale_void_requests" does not exist'), { code: "42P01" });
+        },
+        release: () => undefined,
+      }),
+    } as never,
+  );
+
+  assert.deepEqual(await service.processDueVoidRequests(), { processed: 0 });
+});
+
+test("issueDebitNote rejects sale without accepted electronic invoice", async () => {
+  const { service } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.issueDebitNote(actor, "sale-a", {
+      reason: "Intereses por mora",
+      discrepancyResponseCode: "1",
+      amount: 15000,
+    }),
+    /No se puede emitir una Nota Débito sin una factura electrónica aceptada previa/
+  );
+});
+
+test("issueDebitNote dispatches to Factucore and saves document", async () => {
+  const { service, calls, auditEvents, executedQueries } = createService();
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.issueDebitNote(actor, "sale-accepted-fe", {
+    reason: "Intereses moratorios",
+    discrepancyResponseCode: "1",
+    amount: 15000,
+  });
+
+  const ndCall = calls.find((c) => c.method === "issueDebitNote");
+  assert.ok(ndCall);
+  assert.equal((ndCall.value as any).electronicDocumentId, "doc-1");
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].action, "ISSUE_DEBIT_NOTE");
+  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO electronic_documents")));
+});
+
 

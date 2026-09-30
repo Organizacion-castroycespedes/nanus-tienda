@@ -31,12 +31,14 @@ import {
 import { FactuCoreClient } from "./factucore.client";
 import { FactuCoreMapper } from "./factucore.mapper";
 import {
+  FACTUCORE_DEFAULT_SYNC_TIMEOUT_MS,
   FACTUCORE_DEFAULT_TIMEOUT_MS,
   FACTUCORE_TENANT_ID_SETTING,
   type FactuCoreCredentials,
   type FactuCoreDocumentResponse,
   type FactuCoreRuntimeContext,
   type FactuCoreStatusResponse,
+  type FactuCoreTransmissionMode,
 } from "./factucore.types";
 
 type FactuCoreDocumentSnapshot = FactuCoreDocumentResponse | FactuCoreStatusResponse;
@@ -66,7 +68,22 @@ const buildStatusResult = (
   response: FactuCoreStatusResponse,
 ): ElectronicBillingProviderStatusResult => mapper.mapStatusResult(documentId, response);
 
-const mergeDocumentResponses = (...responses: FactuCoreDocumentSnapshot[]) => {
+export const resolveTransmissionMode = (
+  value: string | undefined = process.env.FACTUCORE_TRANSMISSION_MODE,
+): FactuCoreTransmissionMode => (value?.trim().toLowerCase() === "queued" ? "queued" : "sync");
+
+export const resolveSyncTimeoutMs = (
+  baseTimeoutMs: number,
+  value: string | undefined = process.env.FACTUCORE_SYNC_TIMEOUT_MS,
+) => {
+  const parsed = Number(value);
+  const configured = Number.isInteger(parsed) && parsed > 0 ? parsed : FACTUCORE_DEFAULT_SYNC_TIMEOUT_MS;
+  return Math.max(configured, baseTimeoutMs);
+};
+
+const mergeDocumentResponses = (
+  ...responses: Array<FactuCoreDocumentSnapshot | null | undefined>
+): FactuCoreDocumentSnapshot => {
   const merged: FactuCoreDocumentSnapshot = {};
   for (const response of responses) {
     if (!response) {
@@ -99,7 +116,10 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
 
     let createdDocumentId: string | null = null;
     try {
-      const request = this.mapper.buildInvoiceRequest(command);
+      const request = {
+        ...this.mapper.buildInvoiceRequest(command),
+        transmissionMode: runtime.transmissionMode,
+      };
       if (process.env.FACTUCORE_SAFE_LINE_DIAGNOSTICS === "true") {
         console.debug("factucore.create_invoice.line_fields", {
           saleId: typeof command.metadata?.saleId === "string" ? command.metadata.saleId : null,
@@ -159,20 +179,37 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       throw new FactuCoreConfigurationError("resume_invoice", "FactuCore provider document id is required");
     }
 
-    await command.onStage?.("XML_GENERATE_INTENT", id);
-    const generated = await this.client.generateXml(runtime, id);
-    await command.onStage?.("XML_GENERATED", id);
-    await command.onStage?.("SIGN_INTENT", id);
-    const signed = await this.client.sign(runtime, id);
-    await command.onStage?.("SIGNED", id);
+    const currentDoc = await this.client.getStatus(runtime, id);
+    const docStatus = currentDoc.status?.toUpperCase();
+
+    let generated: FactuCoreDocumentResponse | null = null;
+    let signed: FactuCoreDocumentResponse | null = null;
+    let transmitted: FactuCoreDocumentResponse | null = null;
+
+    if (docStatus !== "SIGNED" && docStatus !== "READY_TO_SEND") {
+      await command.onStage?.("XML_GENERATE_INTENT", id);
+      generated = await this.client.generateXml(runtime, id);
+      await command.onStage?.("XML_GENERATED", id);
+    } else {
+      await command.onStage?.("XML_GENERATED", id);
+    }
+
+    if (docStatus !== "SIGNED" && docStatus !== "READY_TO_SEND") {
+      await command.onStage?.("SIGN_INTENT", id);
+      signed = await this.client.sign(runtime, id);
+      await command.onStage?.("SIGNED", id);
+    } else {
+      await command.onStage?.("SIGNED", id);
+    }
+
     await command.onStage?.("TRANSMISSION_INTENT", id);
-    const transmitted = await this.client.transmit(runtime, id);
+    transmitted = await this.client.transmit(runtime, id);
     await command.onStage?.("TRANSMITTED", id);
 
     return buildDocumentResult(
       this.mapper,
       command.documentId,
-      mergeDocumentResponses(generated, signed, transmitted),
+      mergeDocumentResponses(currentDoc, generated, signed, transmitted),
       transmitted.status ?? transmitted.providerStatus ?? "SENT",
     );
   }
@@ -180,6 +217,10 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
   async issueCreditNote(command: IssueElectronicCreditNoteCommand) {
     const runtime = await this.resolveRuntimeContext("issue_credit_note", command.context);
     assertElectronicBillingProviderCapability(this, "creditNote");
+
+    if (runtime.transmissionMode === "sync") {
+      return this.issueCreditNoteSync(command, runtime);
+    }
 
     let createdDocumentId: string | null = null;
     try {
@@ -203,6 +244,53 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
 
       return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");
     } catch (error) {
+      if (createdDocumentId && error instanceof Error) {
+        (error as Error & { providerDocumentId?: string }).providerDocumentId = createdDocumentId;
+      }
+      throw error;
+    }
+  }
+
+  private async issueCreditNoteSync(command: IssueElectronicCreditNoteCommand, runtime: FactuCoreRuntimeContext) {
+    let createdDocumentId: string | null = null;
+    try {
+      const issued = await this.client.issueCreditNote(runtime, {
+        ...this.mapper.buildCreditNoteRequest(command),
+        transmissionMode: "sync",
+      });
+      createdDocumentId = this.resolveProviderDocumentId(issued);
+      if (createdDocumentId) {
+        await command.onStage?.("PROVIDER_LINKED", createdDocumentId);
+      }
+
+      return buildDocumentResult(
+        this.mapper,
+        command.documentId,
+        issued,
+        issued.status ?? issued.providerStatus ?? "SENT",
+      );
+    } catch (error) {
+      if (error instanceof FactuCoreConflictError && command.externalReference?.trim()) {
+        try {
+          const existing = await this.client.getStatusByExternalReference(
+            runtime,
+            command.externalReference.trim(),
+            "CREDIT_NOTE",
+          );
+          const recoveredDocumentId = this.resolveProviderDocumentId(existing);
+          if (recoveredDocumentId) {
+            await command.onStage?.("PROVIDER_LINKED", recoveredDocumentId);
+            return buildDocumentResult(
+              this.mapper,
+              command.documentId,
+              existing,
+              existing.status ?? existing.providerStatus ?? "PROCESSING",
+            );
+          }
+        } catch {
+          // Preserve the original conflict when provider recovery is unavailable.
+        }
+      }
       if (createdDocumentId && error instanceof Error) {
         (error as Error & { providerDocumentId?: string }).providerDocumentId = createdDocumentId;
       }
@@ -281,6 +369,8 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       baseUrl: context.baseUrl,
       credentials,
       timeoutMs,
+      syncTimeoutMs: resolveSyncTimeoutMs(timeoutMs),
+      transmissionMode: resolveTransmissionMode(),
       factuCoreTenantId,
     };
   }

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service";
 import { ElectronicBillingProviderError } from "../contracts/electronic-billing-errors";
@@ -39,6 +39,11 @@ import {
   ELECTRONIC_BILLING_PROCESSING_STATE_KEY,
   type ElectronicBillingProcessingStage,
 } from "../contracts/processing-state";
+import {
+  buildFailureDetailsFromError,
+  buildFailureDetailsFromProviderResult,
+} from "../domain/electronic-billing-failure";
+import { ElectronicBillingFailureService } from "./electronic-billing-failure.service";
 
 type LoadedAggregate = {
   document: ElectronicDocumentRecord;
@@ -279,6 +284,31 @@ export const extractAuthoritativeQrPayload = (xmlText: string): string | null =>
   return uniqueValues[0] ?? null;
 };
 
+/**
+ * Stable per document so provider idempotency hashes match across retries.
+ * issue_date is a DATE column; without this the provider stamps 00:00:00.
+ */
+export const resolveDocumentIssueTime = (document: {
+  issue_time?: string | null;
+  created_at?: Date | string | null;
+}): string | null => {
+  const explicit = typeof document.issue_time === "string" ? document.issue_time.trim() : "";
+  if (explicit) {
+    return explicit.slice(0, 8);
+  }
+  const createdAt = document.created_at ? new Date(document.created_at) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Bogota",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(createdAt);
+};
+
 export type FiscalIssuerSnapshot = {
   name: string;
   identificationType: string | null;
@@ -366,6 +396,9 @@ export class ElectronicBillingProcessingService {
     private readonly eventRepository: ElectronicDocumentEventRepository,
     @Inject(ElectronicBillingProviderResolver)
     private readonly providerResolver: ElectronicBillingProviderResolver,
+    @Optional()
+    @Inject(ElectronicBillingFailureService)
+    private readonly failureService?: ElectronicBillingFailureService,
   ) {}
 
   async processDocument(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
@@ -388,7 +421,7 @@ export class ElectronicBillingProcessingService {
     if (!document || !document.provider_document_id) {
       throw new ElectronicDocumentNotProcessableError("A linked provider document is required for staged recovery");
     }
-    if (isProcessingTerminalStatus(document.status)) {
+    if (document.status === "ACCEPTED" || document.status === "CANCELLED") {
       return { ...aggregate, providerResult: null, idempotent: true, retryable: false };
     }
 
@@ -406,7 +439,8 @@ export class ElectronicBillingProcessingService {
       })
       : await this.getProviderStatus(resolved, aggregate);
     const currentStatus = currentProvider.providerStatus?.toUpperCase() ?? "";
-    if (currentStatus !== "VALIDATED_INTERNAL" && currentStatus !== "SIGNED") {
+    const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
+    if (!isResumable) {
       return this.persistProviderResult(
         tenantId,
         aggregate,
@@ -429,6 +463,7 @@ export class ElectronicBillingProcessingService {
         "RETRY_REQUESTED",
         document.status,
         aggregate.events,
+        true,
       );
     if (!claimed) {
       throw new ElectronicDocumentStatusTransitionError();
@@ -514,7 +549,27 @@ export class ElectronicBillingProcessingService {
 
     try {
       const providerResult = await this.getProviderStatus(resolved, aggregate);
-      return this.persistProviderResult(tenantId, aggregate, providerResult, resolved, "STATUS_CHANGED", false, this.nextAttemptFromEvents(aggregate.events));
+      const persisted = await this.persistProviderResult(
+        tenantId,
+        aggregate,
+        providerResult,
+        resolved,
+        "STATUS_CHANGED",
+        false,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+
+      const currentStatus = providerResult.providerStatus?.toUpperCase() ?? "";
+      const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
+      if (
+        isResumable
+        && persisted.document.provider_document_id
+        && resolved.provider.resumeInvoice
+      ) {
+        return this.resumeLinkedProviderDocumentUnlocked(tenantId, electronicDocumentId, true);
+      }
+
+      return persisted;
     } catch (error) {
       // A 404 is the explicit provider-absence signal used by the safe
       // reconciliation flow. Do not convert it into a terminal rejection.
@@ -540,6 +595,34 @@ export class ElectronicBillingProcessingService {
     return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
       this.reconcileExistingProviderStatusUnlocked(tenantId, electronicDocumentId),
     );
+  }
+
+  /**
+   * Read-only: asks the provider for the fiscal graphic representation of an
+   * accepted document and stores it for reprints. Never mutates fiscal state.
+   */
+  async backfillGraphicRepresentation(tenantId: string, electronicDocumentId: string): Promise<boolean> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, async () => {
+      const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+      if (!aggregate.document || aggregate.document.status !== "ACCEPTED") {
+        return false;
+      }
+
+      const resolved = await this.providerResolver.resolve({
+        tenantId,
+        providerConfigId: aggregate.document.provider_config_id,
+      });
+      const providerResult = await this.getProviderStatus(resolved, aggregate);
+      if (providerResult.normalizedStatus !== "ACCEPTED" || !providerResult.graphicRepresentation) {
+        return false;
+      }
+
+      return this.documentRepository.storeGraphicRepresentation(
+        tenantId,
+        electronicDocumentId,
+        providerResult.graphicRepresentation,
+      );
+    }, { failIfBusy: true });
   }
 
   /**
@@ -982,11 +1065,14 @@ export class ElectronicBillingProcessingService {
         this.nextAttemptFromEvents(aggregate.events),
       );
 
-      // A timeout can leave FactuCore with a durable VALIDATED_INTERNAL
-      // document while Manus still has no provider id. Link it first, then
-      // continue through the staged path. That path never calls create.
+      // A timeout can leave FactuCore with a durable staged document
+      // (VALIDATED_INTERNAL, XML_GENERATED, SIGNED) while Manus still has
+      // no provider id. Link it first, then continue through the staged path.
+      // That path never calls create.
+      const currentStatus = providerResult.providerStatus?.toUpperCase() ?? "";
+      const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
       if (
-        providerResult.providerStatus?.toUpperCase() === "VALIDATED_INTERNAL"
+        isResumable
         && persisted.document.provider_document_id
         && resolved.provider.resumeInvoice
       ) {
@@ -1409,9 +1495,11 @@ export class ElectronicBillingProcessingService {
           allowedStatuses:
             currentStatus === "TECHNICAL_ERROR"
               ? ["TECHNICAL_ERROR"]
-              : allowRecoverableRejected
-                ? ["REJECTED"]
-                : ["PENDING"],
+              : currentStatus === "PROCESSING"
+                ? ["PROCESSING"]
+                : allowRecoverableRejected
+                  ? ["REJECTED"]
+                  : ["PENDING"],
         },
         client,
       );
@@ -1565,7 +1653,7 @@ export class ElectronicBillingProcessingService {
       documentId: aggregate.document.id,
       externalReference: aggregate.document.external_reference,
       issueDate: aggregate.document.issue_date,
-      issueTime: aggregate.document.issue_time,
+      issueTime: resolveDocumentIssueTime(aggregate.document),
       customer: snapshot.customer,
       payments: snapshot.payments ?? (snapshot.payment ? [snapshot.payment] : []),
       payment: snapshot.payment ?? null,
@@ -1620,6 +1708,8 @@ export class ElectronicBillingProcessingService {
         sourceLineId: line.source_line_id,
         originalElectronicDocumentLineId: originalLineId,
         providerOriginalLineId,
+        standardItemId: lineSnapshot.standardItemId ?? null,
+        standardItemSchemeId: lineSnapshot.standardItemSchemeId ?? null,
         sku: line.sku,
         description: line.description,
         quantity: line.quantity,
@@ -1644,7 +1734,7 @@ export class ElectronicBillingProcessingService {
       documentId: aggregate.document.id,
       externalReference: aggregate.document.external_reference,
       issueDate: aggregate.document.issue_date,
-      issueTime: aggregate.document.issue_time,
+      issueTime: resolveDocumentIssueTime(aggregate.document),
       customer: snapshot.customer,
       payments: snapshot.payments ?? (snapshot.payment ? [snapshot.payment] : []),
       payment: snapshot.payment ?? null,
@@ -1824,6 +1914,9 @@ export class ElectronicBillingProcessingService {
         providerResult.normalizedStatus ?? currentDocument.status,
       );
       const statusChanged = currentDocument.status !== normalizedStatus;
+      const graphicRepresentation = normalizedStatus === "ACCEPTED"
+        ? providerResult.graphicRepresentation ?? null
+        : null;
       const sentAt = this.resolveSentAt(currentDocument, providerResult);
       const acceptedAt = this.resolveAcceptedAt(providerResult);
       const rejectedAt = this.resolveRejectedAt(providerResult);
@@ -1851,7 +1944,7 @@ export class ElectronicBillingProcessingService {
           providerStatusDetail: providerResult.providerStatusDetail ?? null,
           metadata: {
             ...currentDocument.metadata,
-            ...(fiscalIssuerSnapshot || currentQrPayload || authoritativeQrPayload
+            ...(fiscalIssuerSnapshot || currentQrPayload || authoritativeQrPayload || graphicRepresentation
               ? {
                   electronicBilling: {
                     ...(currentElectronicBillingMetadata &&
@@ -1860,6 +1953,7 @@ export class ElectronicBillingProcessingService {
                       ? currentElectronicBillingMetadata
                       : {}),
                     ...(fiscalIssuerSnapshot ? { fiscalIssuerSnapshot } : {}),
+                    ...(graphicRepresentation ? { graphicRepresentation } : {}),
                     ...(!currentQrPayload && authoritativeQrPayload ? { qrPayload: authoritativeQrPayload } : {}),
                   },
                 }
@@ -1895,17 +1989,27 @@ export class ElectronicBillingProcessingService {
         client,
       );
 
+      const failureDetails = buildFailureDetailsFromProviderResult(providerResult, normalizedStatus);
+      const primaryFailure = failureDetails[0] ?? null;
+      const failureErrorCode = primaryFailure
+        ? primaryFailure.code ?? providerResult.providerStatusCode ?? `PROVIDER_${normalizedStatus}`
+        : null;
+
       await this.documentRepository.updateError(
         tenantId,
         aggregate.document.id,
         {
-          lastErrorCode: null,
-          lastErrorMessage: null,
+          lastErrorCode: failureErrorCode,
+          lastErrorMessage: primaryFailure?.message ?? null,
         },
         client,
       );
 
       await this.persistProviderLineIds(tenantId, aggregate, providerResult, client);
+
+      if (failureDetails.length > 0 && (statusChanged || isRetry) && this.failureService) {
+        await this.failureService.recordFailureDetails(client, tenantId, aggregate.document.id, attempt, failureDetails);
+      }
 
       if (statusChanged) {
         await this.eventRepository.append(
@@ -1918,13 +2022,16 @@ export class ElectronicBillingProcessingService {
             operation: isRetry ? "RETRY" : "ISSUE",
             attempt,
             httpStatus: null,
-            errorCode: null,
-            errorMessage: null,
+            errorCode: failureErrorCode,
+            errorMessage: primaryFailure?.message ?? null,
             metadata: {
               source: "electronic-billing-processing",
               providerCode: resolved.provider.code,
               providerStatus: providerResult.providerStatus,
               normalizedStatus,
+              ...(providerResult.failureClass ? { failureClass: providerResult.failureClass } : {}),
+              ...(providerResult.probableCause ? { probableCause: providerResult.probableCause } : {}),
+              ...(failureDetails.length > 0 ? { failureCount: failureDetails.length } : {}),
             },
             createdAt: new Date(),
           },
@@ -2047,6 +2154,16 @@ export class ElectronicBillingProcessingService {
         },
         client,
       );
+
+      if (this.failureService) {
+        await this.failureService.recordFailureDetails(
+          client,
+          tenantId,
+          aggregate.document.id,
+          attempt,
+          buildFailureDetailsFromError(error, { code, message, httpStatus, classification }),
+        );
+      }
 
       await client.query("COMMIT");
       const refreshed = await this.loadAggregate(tenantId, aggregate.document.id);
