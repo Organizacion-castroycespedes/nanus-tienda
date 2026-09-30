@@ -187,7 +187,7 @@ export class SaleCompletedForElectronicBillingConsumerService {
       throw error;
     }
 
-    const consumptionResult = await this.db.transaction(async (client) => {
+    const consumptionResult = await this.db.transaction<ElectronicBillingConsumptionResult>(async (client) => {
       let inserted = await this.inboxRepository.insertReceived(
         {
           id: randomUUID(),

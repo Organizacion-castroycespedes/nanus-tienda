@@ -66,7 +66,9 @@ const buildStatusResult = (
   response: FactuCoreStatusResponse,
 ): ElectronicBillingProviderStatusResult => mapper.mapStatusResult(documentId, response);
 
-const mergeDocumentResponses = (...responses: FactuCoreDocumentSnapshot[]) => {
+const mergeDocumentResponses = (
+  ...responses: Array<FactuCoreDocumentSnapshot | null | undefined>
+): FactuCoreDocumentSnapshot => {
   const merged: FactuCoreDocumentSnapshot = {};
   for (const response of responses) {
     if (!response) {
@@ -189,7 +191,7 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     return buildDocumentResult(
       this.mapper,
       command.documentId,
-      mergeDocumentResponses(currentDoc as never, generated, signed, transmitted),
+      mergeDocumentResponses(currentDoc, generated, signed, transmitted),
       transmitted.status ?? transmitted.providerStatus ?? "SENT",
     );
   }
