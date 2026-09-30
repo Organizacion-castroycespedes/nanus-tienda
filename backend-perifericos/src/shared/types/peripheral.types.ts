@@ -62,6 +62,25 @@ export type UsbPrinterConnectionOptions = {
   windowsQueueName?: string;
 };
 
+export type SerialParity = "none" | "even" | "odd";
+export type SerialFlowControl = "none" | "rtscts";
+
+export type SerialPnPIdentity = {
+  deviceId: string;
+  vendorId?: string;
+  productId?: string;
+};
+
+export type SerialConnectionOptions = {
+  port: string;
+  baudRate: number;
+  dataBits: 5 | 6 | 7 | 8;
+  stopBits: 1 | 2;
+  parity: SerialParity;
+  flowControl: SerialFlowControl;
+  pnp?: SerialPnPIdentity;
+};
+
 export type DevicePlatform = "WINDOWS" | "LINUX" | "MACOS" | "UNKNOWN";
 
 export type DeviceFingerprint = {
@@ -88,6 +107,7 @@ export type PeripheralDevice = {
   profileId?: string;
   network?: NetworkConnectionOptions;
   usb?: UsbPrinterConnectionOptions;
+  serial?: SerialConnectionOptions;
   descriptor?: PortableDeviceDescriptor;
   metadata?: Record<string, unknown>;
 };

@@ -1,5 +1,18 @@
 ## Context
 
+### Fase 1B.17A - modelo local serial
+
+El registro local conserva `PeripheralDevice` como fuente de verdad y agrega
+una configuración serial genérica opcional. El perfil `ROCHI_A01E` declara
+`SCALE`, `SERIAL` y los defaults certificados `9600/8/N/1` sin puerto fijo,
+unidad implícita, autorización ni estado comercial. El estado sigue en
+`device-registry.state.json`, schema 1, con compatibilidad para dispositivos
+anteriores que no tienen `serial`.
+
+La persistencia local no es una relación cloud. COM/PnP solo identifica una
+configuración candidata; no autentica la instalación, no prueba posesión y no
+produce `REAL_AVAILABLE`.
+
 ### Fase 1B.9.1: Core tÃ©cnico y etapa visual posterior
 
 La instalaciÃ³n tÃ©cnica y el health check terminan antes de la etapa visual de

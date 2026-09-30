@@ -1,5 +1,16 @@
 ## Why
 
+### Fase 1B.17A: foundation local SERIAL/ROCHI
+
+Este incremento implementa únicamente la representación local tipada de un
+dispositivo `SCALE` con `ConnectionType.SERIAL` y perfil `ROCHI_A01E`. La
+configuración se persiste en el registro JSON local del Peripheral Agent.
+
+No descubre COM/PnP, no abre el puerto, no conecta `ScaleService`, no habilita
+`REAL_AVAILABLE`, no verifica KG y no crea vínculo cloud. `physicalDetected`,
+`configured`, `connected`, `unitVerified`, `authorized` y `REAL_AVAILABLE`
+permanecen estados separados.
+
 ### Fase 1B.9.1: Core tÃ©cnico y recorrido visual
 
 El Core termina la instalaciÃ³n tÃ©cnica, el arranque y el health check del

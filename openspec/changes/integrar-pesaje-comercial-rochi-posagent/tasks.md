@@ -1,5 +1,14 @@
 ## 1. Baseline y decisiones de contrato
 
+### Fase 1B.17A - foundation local SERIAL/ROCHI
+
+- [x] 1A.1 Agregar configuración serial tipada y reusable a `PeripheralDevice`.
+- [x] 1A.2 Agregar perfil `ROCHI_A01E` con defaults certificados `9600/8/N/1`.
+- [x] 1A.3 Validar parámetros seriales, PnP identity y coherencia `SERIAL`.
+- [x] 1A.4 Persistir y restaurar configuración serial en `device-registry.state.json` sin cambiar schema 1.
+- [x] 1A.5 Cubrir round-trip, estado antiguo, invalidación y preservación HTTP sin abrir hardware.
+- [x] 1A.6 Mantener fuera de alcance discovery, runtime, `ScaleService`, autorización, DB y `REAL_AVAILABLE`.
+
 ## 3E. Fase 1B.9.1 - Core tÃ©cnico y recorrido visual
 
 - [x] 3E.1 Separar finalizaciÃ³n tÃ©cnica del Core y etapa visual posterior con `STEP_SKIPPED` explÃ­cito para `DISCOVER_DEVICES` y `CONFIGURE_DEVICES`.

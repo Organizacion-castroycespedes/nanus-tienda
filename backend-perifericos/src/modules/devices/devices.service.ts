@@ -26,6 +26,7 @@ import {
   parseConnectionType,
   parseDeviceStatus,
   parseDeviceType,
+  resolveSerialOptionsForConnection,
   validateIdentifier,
   validateShortText,
 } from "../../shared/utils/request-validation.util";
@@ -387,12 +388,13 @@ export class DevicesService {
     );
     const status = parseDeviceStatus(record.status, DeviceStatus.CONNECTED);
     const metadata = optionalMetadata(record) ?? {};
-    const profileId = this.resolveProfileId(record.profileId, type);
+    const profileId = this.resolveProfileId(record.profileId, type, connectionType);
     const network = resolveNetworkOptionsForConnection(
       record.network,
       connectionType
     );
     const usb = this.resolveUsbOptions(record.usb, connectionType, type);
+    const serial = resolveSerialOptionsForConnection(record.serial, connectionType);
 
     if (this.buildMergedDevices().has(id)) {
       this.logsService.append({
@@ -415,6 +417,7 @@ export class DevicesService {
       profileId,
       network,
       usb,
+      serial,
       metadata,
     };
 
@@ -479,6 +482,7 @@ export class DevicesService {
     const profileId = this.resolveProfileId(
       record.profileId,
       current.type,
+      connectionType,
       current.profileId
     );
     const network = resolveNetworkOptionsForConnection(
@@ -492,6 +496,11 @@ export class DevicesService {
       current.type,
       current.usb
     );
+    const serial = resolveSerialOptionsForConnection(
+      record.serial,
+      connectionType,
+      current.serial
+    );
     const updated: PeripheralDevice = {
       ...current,
       name,
@@ -501,6 +510,7 @@ export class DevicesService {
       profileId,
       network,
       usb,
+      serial,
       metadata: optionalMetadata(record) ?? current.metadata,
     };
 
@@ -722,6 +732,7 @@ export class DevicesService {
       profileId: device.profileId,
       network: device.network ? { ...device.network } : undefined,
       usb: device.usb ? { ...device.usb } : undefined,
+      serial: device.serial ? { ...device.serial, pnp: device.serial.pnp ? { ...device.serial.pnp } : undefined } : undefined,
       metadata: device.metadata ? { ...device.metadata } : undefined,
     };
   }
@@ -734,6 +745,7 @@ export class DevicesService {
       status: this.defaultRuntimeStatus(device.connectionType),
       network: device.network ? { ...device.network } : undefined,
       usb: device.usb ? { ...device.usb } : undefined,
+      serial: device.serial ? { ...device.serial, pnp: device.serial.pnp ? { ...device.serial.pnp } : undefined } : undefined,
       metadata: device.metadata ? { ...device.metadata } : undefined,
     };
   }
@@ -885,9 +897,13 @@ export class DevicesService {
   private resolveProfileId(
     value: unknown,
     deviceType: DeviceType,
+    connectionType: ConnectionType,
     fallback: string | undefined = getDefaultProfileIdForDeviceType(deviceType)
   ): string | undefined {
     if (value === undefined || value === null) {
+      if (fallback === undefined) return undefined;
+      const fallbackProfile = getDeviceProfile(fallback);
+      this.assertProfileCompatibility(fallbackProfile, deviceType, connectionType);
       return fallback;
     }
     if (typeof value !== "string") {
@@ -895,8 +911,22 @@ export class DevicesService {
     }
 
     const profileId = validateIdentifier(value.trim(), "profileId");
-    getDeviceProfile(profileId);
+    const profile = getDeviceProfile(profileId);
+    this.assertProfileCompatibility(profile, deviceType, connectionType);
     return profileId;
+  }
+
+  private assertProfileCompatibility(
+    profile: ReturnType<typeof getDeviceProfile>,
+    deviceType: DeviceType,
+    connectionType: ConnectionType
+  ): void {
+    if (profile.deviceType && profile.deviceType !== deviceType) {
+      throw new BadRequestException("profileId is incompatible with device type");
+    }
+    if (profile.connectionType && profile.connectionType !== connectionType) {
+      throw new BadRequestException("profileId is incompatible with connection type");
+    }
   }
 
   private resolveUsbOptions(
