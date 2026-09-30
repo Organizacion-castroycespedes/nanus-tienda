@@ -16,6 +16,8 @@ import {
   FactuCoreProviderBootstrap,
 } from "../src/modules/electronic-billing/providers/factucore";
 import { FactuCoreClient } from "../src/modules/electronic-billing/providers/factucore";
+import { resolveFactuCoreIssueTime } from "../src/modules/electronic-billing/providers/factucore/factucore.mapper";
+import { resolveDocumentIssueTime } from "../src/modules/electronic-billing/services/electronic-billing-processing.service";
 import { FakeElectronicBillingProvider } from "../src/modules/electronic-billing/providers";
 import type {
   FactuCoreBinaryResponse,
@@ -513,6 +515,20 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
 
   assert.equal(excludedRequest.lines[0].taxes, undefined);
   assert.equal(excludedRequest.lines[0].taxTreatment, "EXCLUDED");
+});
+
+test("document issue time is the Bogota creation time and stays stable for retries", () => {
+  const document = { issue_time: null, created_at: new Date("2026-09-30T03:15:09.000Z") };
+
+  assert.equal(resolveDocumentIssueTime(document), "22:15:09");
+  assert.equal(resolveDocumentIssueTime(document), resolveDocumentIssueTime({ ...document }));
+  assert.equal(resolveDocumentIssueTime({ issue_time: "10:20:30", created_at: document.created_at }), "10:20:30");
+  assert.equal(resolveDocumentIssueTime({ issue_time: null, created_at: null }), null);
+});
+
+test("mapper never sends a null issue time to FactuCore", () => {
+  assert.equal(resolveFactuCoreIssueTime("08:05:01"), "08:05:01");
+  assert.equal(resolveFactuCoreIssueTime(null, new Date("2026-09-30T03:15:09.000Z")), "22:15:09");
 });
 
 test("mapper keeps the FactuCore graphic representation only when it is an object", () => {

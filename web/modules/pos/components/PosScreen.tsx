@@ -598,6 +598,7 @@ export const PosScreen = () => {
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [processingSale, setProcessingSale] = useState(false);
+  const [sendingInvoiceDismissed, setSendingInvoiceDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -618,10 +619,15 @@ export const PosScreen = () => {
   const {
     pdfConfig,
     isBillingProcessing,
-    cancelBillingProcessing,
+    cancelBillingProcessing: cancelPrintWorkflow,
     closePdfModal,
     triggerPrintWorkflow,
   } = useSalePrintWorkflow();
+
+  const cancelBillingProcessing = useCallback(() => {
+    setSendingInvoiceDismissed(true);
+    cancelPrintWorkflow();
+  }, [cancelPrintWorkflow]);
 
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -693,13 +699,20 @@ export const PosScreen = () => {
     }
   }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
+  const isSendingElectronicInvoice =
+    processingSale &&
+    !sendingInvoiceDismissed &&
+    branding.electronicBillingEnabled !== false &&
+    branding.electronicBillingMode !== PARAMETER_MODES.ON_DEMAND;
+
   const isSearchFocusReleased =
     productToolsOpen ||
     paymentModalOpen ||
     quickFiscalCustomerOpen ||
     cartSheetOpen ||
     Boolean(pdfConfig) ||
-    isBillingProcessing;
+    isBillingProcessing ||
+    isSendingElectronicInvoice;
 
   useEffect(() => {
     if (isSearchFocusReleased) {
@@ -2485,14 +2498,17 @@ export const PosScreen = () => {
       return "Selecciona un metodo de pago valido en cada linea.";
     }
 
-    const hasMissingReference = localParsed.some(
+    const paymentMissingReference = localParsed.find(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method?.requiresReference &&
         payment.reference.trim().length === 0
     );
-    if (hasMissingReference) {
-      return "Los metodos que exigen referencia deben incluirla.";
+    if (paymentMissingReference) {
+      const methodName = paymentMissingReference.method?.nombre?.trim();
+      return methodName
+        ? `Falta el número de referencia del pago con ${methodName}.`
+        : "Falta el número de referencia del pago.";
     }
 
     const duplicateMethods = localParsed
@@ -2565,6 +2581,7 @@ export const PosScreen = () => {
     };
     beginSaleSubmission(attempt);
     setProcessingSale(true);
+    setSendingInvoiceDismissed(false);
     setSubmitError(null);
 
     try {
@@ -3344,23 +3361,20 @@ export const PosScreen = () => {
         />
       ) : null}
 
-      {isBillingProcessing ? (
+      {isSendingElectronicInvoice || isBillingProcessing ? (
         <Modal
-          title="Facturación Electrónica"
+          title="Facturación electrónica"
           onClose={cancelBillingProcessing}
           size="md"
         >
-          <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-            <div>
-              <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Conexión directa API a API con la DIAN en curso.
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Validando respuesta fiscal en tiempo real. Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
-              </p>
-            </div>
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              {isBillingProcessing ? "Preparando la factura…" : "Enviando factura a la DIAN…"}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Esto toma unos segundos.
+            </p>
           </div>
         </Modal>
       ) : null}

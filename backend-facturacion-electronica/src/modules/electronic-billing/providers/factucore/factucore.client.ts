@@ -281,10 +281,16 @@ export class FactuCoreClient {
     const response = await this.request(request);
     const responseText = await readResponseText(response);
 
+    const loggedResponse: unknown = parseJson(responseText, responseText);
+    const loggedRecord = loggedResponse && typeof loggedResponse === "object" && !Array.isArray(loggedResponse)
+      ? loggedResponse as Record<string, unknown>
+      : null;
     console.log(`[FactuCoreClient Response] status=${response.status} (op: ${request.operation})`, {
       status: response.status,
       operation: request.operation,
-      response: parseJson(responseText, responseText),
+      response: loggedRecord && "graphicRepresentation" in loggedRecord
+        ? { ...loggedRecord, graphicRepresentation: loggedRecord.graphicRepresentation ? "[omitted]" : null }
+        : loggedResponse,
     });
 
     if (!response.ok) {

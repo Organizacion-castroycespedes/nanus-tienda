@@ -236,6 +236,12 @@ export const executeSalePrintWorkflow = async (
       : PARAMETER_MODES.AUTOMATIC;
   let sendInvoiceMode: ParameterMode = PARAMETER_MODES.AUTOMATIC;
 
+  const mayIssueElectronicInvoice =
+    electronicBillingEnabled !== false && generateInvoiceMode === PARAMETER_MODES.AUTOMATIC;
+  if (mayIssueElectronicInvoice) {
+    setIsBillingProcessing(true);
+  }
+
   if (tenantId) {
     try {
       const resolved = await resolveTenantSettings({
@@ -266,6 +272,15 @@ export const executeSalePrintWorkflow = async (
     generateInvoiceMode === PARAMETER_MODES.AUTOMATIC &&
     sendInvoiceMode !== PARAMETER_MODES.DISABLED &&
     printInvoiceMode !== PARAMETER_MODES.DISABLED;
+
+  if (signal?.aborted) {
+    setIsBillingProcessing(false);
+    return;
+  }
+
+  if (mayIssueElectronicInvoice && !isElectronicBillingActive) {
+    setIsBillingProcessing(false);
+  }
 
   if (isElectronicBillingActive) {
     setIsBillingProcessing(true);
@@ -305,19 +320,14 @@ export const executeSalePrintWorkflow = async (
             { tenantId, branchId, terminalId }
           );
           showToast?.("Factura electrónica enviada a la impresora.", "success");
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Error de impresora";
+        } catch {
           setPdfConfig({
             title: `Factura electrónica ${saleId.slice(0, 8)}`,
             fileName: `factura-electronica-${saleId}.pdf`,
             getPdf: () => getElectronicInvoice(saleId),
-            description: `No se pudo imprimir automáticamente: ${message}. Puedes imprimir manualmente.`,
+            description: "Vista previa de la Factura Electrónica",
             allowPrint: true,
           });
-          showToast?.(
-            "Error al imprimir automáticamente la factura.",
-            "warning"
-          );
         }
       }
     } else {
@@ -350,19 +360,14 @@ export const executeSalePrintWorkflow = async (
             }
           );
           showToast?.("Ticket enviado a la impresora.", "success");
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Error de impresora";
+        } catch {
           setPdfConfig({
             title: `Ticket de venta ${saleId.slice(0, 8)}`,
             fileName: `ticket-venta-${saleId}.pdf`,
             getPdf: () => getPosSaleTicket(saleId),
-            description: `No se pudo imprimir automáticamente: ${message}. Puedes imprimir manualmente.`,
+            description: "Vista previa del Ticket de Venta",
             allowPrint: true,
           });
-          showToast?.(
-            "Error al imprimir automáticamente el ticket.",
-            "warning"
-          );
         }
       }
     }
@@ -385,19 +390,14 @@ export const executeSalePrintWorkflow = async (
           terminalId,
         });
         showToast?.("Ticket enviado a la impresora.", "success");
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Error de impresora";
+      } catch {
         setPdfConfig({
           title: `Ticket de venta ${saleId.slice(0, 8)}`,
           fileName: `ticket-venta-${saleId}.pdf`,
           getPdf: () => getPosSaleTicket(saleId),
-          description: `No se pudo imprimir automáticamente: ${message}. Puedes imprimir manualmente.`,
+          description: "Vista previa del Ticket de Venta",
           allowPrint: true,
         });
-        showToast?.(
-          "Error al imprimir automáticamente el ticket.",
-          "warning"
-        );
       }
     }
   }

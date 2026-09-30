@@ -32,7 +32,7 @@ import {
   ElectronicBillingProcessingService,
   ElectronicBillingService,
 } from "./services";
-import { ElectronicBillingBackgroundService } from "./workers";
+import { ElectronicBillingBackgroundService, ElectronicBillingGraphicBackfillWorker } from "./workers";
 
 @Module({
   imports: [DatabaseModule],
@@ -54,6 +54,7 @@ import { ElectronicBillingBackgroundService } from "./workers";
     ElectronicBillingFailureService,
     ElectronicBillingCreditNoteService,
     ElectronicBillingBackgroundService,
+    ElectronicBillingGraphicBackfillWorker,
     ElectronicBillingProviderRepository,
     ElectronicBillingInboxRepository,
     TenantElectronicBillingConfigRepository,

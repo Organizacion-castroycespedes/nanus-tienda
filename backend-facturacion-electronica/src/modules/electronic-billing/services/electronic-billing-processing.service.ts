@@ -284,6 +284,31 @@ export const extractAuthoritativeQrPayload = (xmlText: string): string | null =>
   return uniqueValues[0] ?? null;
 };
 
+/**
+ * Stable per document so provider idempotency hashes match across retries.
+ * issue_date is a DATE column; without this the provider stamps 00:00:00.
+ */
+export const resolveDocumentIssueTime = (document: {
+  issue_time?: string | null;
+  created_at?: Date | string | null;
+}): string | null => {
+  const explicit = typeof document.issue_time === "string" ? document.issue_time.trim() : "";
+  if (explicit) {
+    return explicit.slice(0, 8);
+  }
+  const createdAt = document.created_at ? new Date(document.created_at) : null;
+  if (!createdAt || Number.isNaN(createdAt.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Bogota",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(createdAt);
+};
+
 export type FiscalIssuerSnapshot = {
   name: string;
   identificationType: string | null;
@@ -570,6 +595,34 @@ export class ElectronicBillingProcessingService {
     return this.withDocumentProcessingLock(tenantId, electronicDocumentId, () =>
       this.reconcileExistingProviderStatusUnlocked(tenantId, electronicDocumentId),
     );
+  }
+
+  /**
+   * Read-only: asks the provider for the fiscal graphic representation of an
+   * accepted document and stores it for reprints. Never mutates fiscal state.
+   */
+  async backfillGraphicRepresentation(tenantId: string, electronicDocumentId: string): Promise<boolean> {
+    return this.withDocumentProcessingLock(tenantId, electronicDocumentId, async () => {
+      const aggregate = await this.loadAggregate(tenantId, electronicDocumentId);
+      if (!aggregate.document || aggregate.document.status !== "ACCEPTED") {
+        return false;
+      }
+
+      const resolved = await this.providerResolver.resolve({
+        tenantId,
+        providerConfigId: aggregate.document.provider_config_id,
+      });
+      const providerResult = await this.getProviderStatus(resolved, aggregate);
+      if (providerResult.normalizedStatus !== "ACCEPTED" || !providerResult.graphicRepresentation) {
+        return false;
+      }
+
+      return this.documentRepository.storeGraphicRepresentation(
+        tenantId,
+        electronicDocumentId,
+        providerResult.graphicRepresentation,
+      );
+    }, { failIfBusy: true });
   }
 
   /**
@@ -1600,7 +1653,7 @@ export class ElectronicBillingProcessingService {
       documentId: aggregate.document.id,
       externalReference: aggregate.document.external_reference,
       issueDate: aggregate.document.issue_date,
-      issueTime: aggregate.document.issue_time,
+      issueTime: resolveDocumentIssueTime(aggregate.document),
       customer: snapshot.customer,
       payments: snapshot.payments ?? (snapshot.payment ? [snapshot.payment] : []),
       payment: snapshot.payment ?? null,
@@ -1681,7 +1734,7 @@ export class ElectronicBillingProcessingService {
       documentId: aggregate.document.id,
       externalReference: aggregate.document.external_reference,
       issueDate: aggregate.document.issue_date,
-      issueTime: aggregate.document.issue_time,
+      issueTime: resolveDocumentIssueTime(aggregate.document),
       customer: snapshot.customer,
       payments: snapshot.payments ?? (snapshot.payment ? [snapshot.payment] : []),
       payment: snapshot.payment ?? null,

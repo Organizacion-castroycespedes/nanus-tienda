@@ -249,9 +249,9 @@ test("POS billing wait dialog closes through the workflow cancellation handler",
     "utf8",
   );
 
-  assert.match(source, /cancelBillingProcessing,/);
+  assert.match(source, /cancelBillingProcessing: cancelPrintWorkflow,/);
   assert.match(source, /onClose=\{cancelBillingProcessing\}/);
   assert.doesNotMatch(source, /onClose=\{\(\) => \{\}\}/);
-  assert.match(source, /Conexión directa API a API/);
-  assert.match(source, /la factura seguirá procesándose/);
+  assert.match(source, /isSendingElectronicInvoice \|\| isBillingProcessing/);
+  assert.match(source, /Enviando factura a la DIAN…/);
 });

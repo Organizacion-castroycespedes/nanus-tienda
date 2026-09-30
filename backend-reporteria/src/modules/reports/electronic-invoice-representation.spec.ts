@@ -195,7 +195,8 @@ test("renderer uses FactuCore fiscal data required by DIAN when available", () =
   assert.match(serialized, /22:15:09/);
   assert.match(serialized, /Contado/);
   assert.match(serialized, /Efectivo/);
-  assert.match(serialized, /CC 21265848/);
+  assert.match(serialized, /"text":"CC"/);
+  assert.match(serialized, /"text":"21265848"/);
   assert.match(serialized, /R-99-PN No responsable/);
   assert.match(serialized, /Cód\. SKU-1/);
   assert.match(serialized, /IVA 19%/);

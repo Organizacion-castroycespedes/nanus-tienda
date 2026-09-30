@@ -602,6 +602,21 @@ const resolveFactuCoreIssueDate = (issueDate?: string | Date | null): string => 
   return iso;
 };
 
+/** DIAN IssueTime must be the real emission time, not the midnight of a DATE column. */
+export const resolveFactuCoreIssueTime = (issueTime?: string | null, now: Date = new Date()): string => {
+  const explicit = issueTime?.trim();
+  if (explicit && /^\d{2}:\d{2}(?::\d{2})?/.test(explicit)) {
+    return explicit.slice(0, 8);
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Bogota",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+};
+
 const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
   overrides: Record<string, unknown> = {},
@@ -612,7 +627,7 @@ const buildBaseRequest = (
   return {
     externalReference: command.externalReference,
     issueDate: resolveFactuCoreIssueDate(command.issueDate),
-    issueTime: command.issueTime ?? null,
+    issueTime: resolveFactuCoreIssueTime(command.issueTime),
     payments,
     lines,
     metadata: command.metadata ?? {},

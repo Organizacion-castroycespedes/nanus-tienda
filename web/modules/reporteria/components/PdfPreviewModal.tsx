@@ -39,7 +39,7 @@ export const PdfPreviewModal = ({
 }: PdfPreviewModalProps) => {
   const isTicket = variant === "ticket";
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const [fitMode, setFitMode] = useState<PdfFitMode>(isTicket ? "page" : "width");
+  const [fitMode, setFitMode] = useState<PdfFitMode>("width");
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export const PdfPreviewModal = ({
       setBlob(null);
       setError(null);
       setFrameReady(false);
-      setFitMode(isTicket ? "page" : "width");
+      setFitMode("width");
       return;
     }
 
@@ -79,7 +79,7 @@ export const PdfPreviewModal = ({
     return () => {
       active = false;
     };
-  }, [getPdf, isOpen, isTicket]);
+  }, [getPdf, isOpen]);
 
   const objectUrl = useMemo(() => {
     if (!blob) {

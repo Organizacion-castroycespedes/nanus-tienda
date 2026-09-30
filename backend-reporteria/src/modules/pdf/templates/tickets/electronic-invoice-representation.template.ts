@@ -181,8 +181,8 @@ const keyValueTable = (rows: Array<[string, string | null | undefined]>): Conten
     body: rows
       .filter((row): row is [string, string] => Boolean(row[1]))
       .map(([label, value]) => [
-        { text: label, bold: true, fontSize: 7.5 },
-        { text: wrapLongTokens(value), fontSize: 7.5 },
+        { text: label, bold: true, fontSize: 7.5, margin: [0, 1, 0, 1] },
+        { text: wrapLongTokens(value, 28), fontSize: 7.5, margin: [0, 1, 0, 1] },
       ] as TableCell[]),
   },
   layout: "noBorders",
@@ -278,24 +278,39 @@ const buildIssueBlock = (
   ]);
 };
 
-const buildCustomerBlock = (customer: FiscalGraphicParty): Content => ({
-  stack: [
-    sectionTitle("ADQUIRENTE"),
-    { text: wrapLongTokens(customer.legalName || "Consumidor final"), bold: true, fontSize: 8.5 },
-    ...(formatIdentification(customer.identificationTypeCode, customer.identificationNumber, customer.verificationDigit)
-      ? [{
-          text: formatIdentification(customer.identificationTypeCode, customer.identificationNumber, customer.verificationDigit) ?? "",
-          fontSize: 8,
-        }]
-      : []),
-    ...describeResponsibilities(customer).map((line) => small(line)),
-    ...(joinLocation(customer.address, customer.city, customer.department, customer.country)
-      ? [small(joinLocation(customer.address, customer.city, customer.department, customer.country))]
-      : []),
-    ...(customer.phone ? [small(`Tel. ${customer.phone}`)] : []),
-    ...(customer.email ? [small(customer.email)] : []),
-  ],
-});
+const buildCustomerBlock = (customer: FiscalGraphicParty): Content => {
+  const scheme = customer.taxSchemeId
+    ? TAX_SCHEMES[customer.taxSchemeId] ?? customer.taxSchemeName
+    : customer.taxSchemeName;
+  const responsibilities = customer.fiscalResponsibilityCodes
+    .map((code) => (FISCAL_RESPONSIBILITIES[code] ? `${code} ${FISCAL_RESPONSIBILITIES[code]}` : code))
+    .join(", ");
+  return {
+    stack: [
+      sectionTitle("ADQUIRENTE"),
+      {
+        text: wrapLongTokens(customer.legalName || "Consumidor final"),
+        bold: true,
+        fontSize: 8.5,
+        margin: [0, 0, 0, 3],
+      },
+      keyValueTable([
+        [
+          identificationLabel(customer.identificationTypeCode) ?? "Identificación",
+          customer.identificationNumber
+            ? `${customer.identificationNumber}${customer.verificationDigit ? `-${customer.verificationDigit}` : ""}`
+            : null,
+        ],
+        ["Régimen", scheme],
+        ["Resp. fiscal", responsibilities || null],
+        ["Dirección", customer.address],
+        ["Ciudad", joinLocation(customer.city, customer.department, customer.country) || null],
+        ["Teléfono", customer.phone],
+        ["Correo", customer.email],
+      ]),
+    ],
+  };
+};
 
 type DetailLine = {
   lineNumber: number;
