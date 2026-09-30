@@ -1,3 +1,5 @@
+import type { ElectronicDocumentOutcome } from "../domain/electronic-billing-failure";
+
 export type ElectronicBillingConsumptionStatus =
   | "ACCEPTED"
   | "ALREADY_PROCESSED"
@@ -14,4 +16,5 @@ export type ElectronicBillingConsumptionResult = {
   electronicDocumentId: string | null;
   retryable: boolean;
   message: string | null;
+  electronicDocument?: ElectronicDocumentOutcome | null;
 };

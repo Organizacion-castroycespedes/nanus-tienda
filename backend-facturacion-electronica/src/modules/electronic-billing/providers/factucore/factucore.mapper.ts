@@ -10,7 +10,11 @@ import type {
   IssueElectronicCreditNoteCommand,
   IssueElectronicInvoiceCommand,
 } from "../../contracts/electronic-billing-commands";
-import type { ElectronicDocumentStatus } from "../../domain/electronic-billing.types";
+import type {
+  ElectronicDocumentStatus,
+  ElectronicFailureClass,
+  ElectronicProviderErrorDetail,
+} from "../../domain/electronic-billing.types";
 import { FactuCoreConfigurationError } from "./factucore.errors";
 import { FACTUCORE_DEFAULT_TIMEOUT_MS } from "./factucore.types";
 import type {
@@ -57,6 +61,51 @@ const normalizeString = (value: unknown) => (typeof value === "string" ? value.t
 const normalizeNullableString = (value: unknown) => {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
+};
+
+const FAILURE_CLASSES = new Set<ElectronicFailureClass>([
+  "ACCEPTED",
+  "PENDING",
+  "DIAN_REJECTED",
+  "VALIDATION",
+  "NETWORK_OR_TRANSIENT",
+]);
+
+const MAX_PROVIDER_ERRORS = 50;
+
+export const normalizeFactuCoreFailureClass = (value: unknown): ElectronicFailureClass | null => {
+  const normalized = normalizeString(value).toUpperCase() as ElectronicFailureClass;
+  return FAILURE_CLASSES.has(normalized) ? normalized : null;
+};
+
+export const normalizeFactuCoreProviderErrors = (value: unknown): ElectronicProviderErrorDetail[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item): ElectronicProviderErrorDetail | null => {
+      if (typeof item === "string") {
+        const message = item.trim();
+        return message ? { code: null, message: message.slice(0, 1000), path: null, severity: null } : null;
+      }
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const message = normalizeNullableString(record.message ?? record.description ?? record.detail);
+      if (!message) {
+        return null;
+      }
+      return {
+        code: normalizeNullableString(record.code ?? record.errorCode),
+        message: message.slice(0, 1000),
+        path: normalizeNullableString(record.path ?? record.field),
+        severity: normalizeNullableString(record.severity ?? record.level),
+      };
+    })
+    .filter((item): item is ElectronicProviderErrorDetail => item !== null)
+    .slice(0, MAX_PROVIDER_ERRORS);
 };
 
 type NormalizedFactuCorePaymentMeans = {
@@ -553,6 +602,21 @@ const resolveFactuCoreIssueDate = (issueDate?: string | Date | null): string => 
   return iso;
 };
 
+/** DIAN IssueTime must be the real emission time, not the midnight of a DATE column. */
+export const resolveFactuCoreIssueTime = (issueTime?: string | null, now: Date = new Date()): string => {
+  const explicit = issueTime?.trim();
+  if (explicit && /^\d{2}:\d{2}(?::\d{2})?/.test(explicit)) {
+    return explicit.slice(0, 8);
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Bogota",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+};
+
 const buildBaseRequest = (
   command: IssueElectronicInvoiceCommand | IssueElectronicCreditNoteCommand,
   overrides: Record<string, unknown> = {},
@@ -563,7 +627,7 @@ const buildBaseRequest = (
   return {
     externalReference: command.externalReference,
     issueDate: resolveFactuCoreIssueDate(command.issueDate),
-    issueTime: command.issueTime ?? null,
+    issueTime: resolveFactuCoreIssueTime(command.issueTime),
     payments,
     lines,
     metadata: command.metadata ?? {},
@@ -597,7 +661,7 @@ export class FactuCoreMapper {
     return {
       ...buildBaseRequest(command, {}),
       customerId: null,
-      originDocumentId: original.internalDocumentId ?? null,
+      originDocumentId: original.providerDocumentId ?? null,
       originFullNumber: original.fullNumber ?? null,
       originExternalReference: original.externalReference ?? null,
       discrepancyResponseCode: command.reason.reasonCode ?? null,
@@ -643,6 +707,16 @@ export class FactuCoreMapper {
       providerStatusCode: normalizeNullableString(response.providerStatusCode),
       providerStatusMessage: normalizeNullableString(response.providerStatusMessage),
       trackingId: normalizeNullableString(response.trackingId),
+      failureClass: normalizeFactuCoreFailureClass(response.failureClass),
+      failureReason: normalizeNullableString(response.reason),
+      probableCause: normalizeNullableString(response.probableCause),
+      providerErrors: normalizeFactuCoreProviderErrors(response.errors),
+      graphicRepresentation:
+        response.graphicRepresentation &&
+        typeof response.graphicRepresentation === "object" &&
+        !Array.isArray(response.graphicRepresentation)
+          ? response.graphicRepresentation
+          : null,
       metadata: {
         ...(response.metadata ?? {}),
         ...(lineResults ? { lineResults } : {}),

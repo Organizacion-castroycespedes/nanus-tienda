@@ -394,6 +394,8 @@ type BackgroundSyncClaimOptions = {
   dueBefore: Date | string;
   limit: number;
   leaseMs?: number;
+  /** Skip documents whose processing stage changed less than this many ms ago. */
+  minStageAgeMs?: number;
 };
 
 @Injectable()
@@ -1149,6 +1151,86 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
     return result.rows[0]?.id ?? null;
   }
 
+  async claimAcceptedMissingGraphicRepresentation(
+    options: { limit: number; maxAttempts: number; retryDelayMs: number },
+    client?: PoolClient
+  ) {
+    if (options.limit <= 0) {
+      return [];
+    }
+
+    const result = await this.query<{ id: string; tenant_id: string }>(
+      `WITH claimed AS (
+        SELECT d.id
+        FROM electronic_documents d
+        WHERE d.status = 'ACCEPTED'
+          AND d.provider_document_id IS NOT NULL
+          AND jsonb_typeof(d.metadata #> '{electronicBilling,graphicRepresentation}') IS DISTINCT FROM 'object'
+          AND COALESCE((d.metadata #>> '{electronicBilling,graphicRepresentationBackfill,attempts}')::int, 0) < $1
+          AND (
+            d.metadata #>> '{electronicBilling,graphicRepresentationBackfill,nextAttemptAt}' IS NULL
+            OR (d.metadata #>> '{electronicBilling,graphicRepresentationBackfill,nextAttemptAt}')::timestamptz <= NOW()
+          )
+        ORDER BY d.accepted_at DESC NULLS LAST, d.id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT $2
+      )
+      UPDATE electronic_documents d
+      SET metadata = jsonb_set(
+            COALESCE(d.metadata, '{}'::jsonb),
+            '{electronicBilling}',
+            CASE WHEN jsonb_typeof(d.metadata -> 'electronicBilling') = 'object'
+              THEN d.metadata -> 'electronicBilling'
+              ELSE '{}'::jsonb
+            END || jsonb_build_object(
+              'graphicRepresentationBackfill', jsonb_build_object(
+                'attempts', COALESCE((d.metadata #>> '{electronicBilling,graphicRepresentationBackfill,attempts}')::int, 0) + 1,
+                'lastAttemptAt', NOW(),
+                'nextAttemptAt', NOW() + ($3::bigint * INTERVAL '1 millisecond')
+              )
+            ),
+            true
+          ),
+          updated_at = NOW()
+      FROM claimed c
+      WHERE d.id = c.id
+      RETURNING d.id, d.tenant_id`,
+      [options.maxAttempts, options.limit, options.retryDelayMs],
+      client,
+    );
+
+    return result.rows;
+  }
+
+  async storeGraphicRepresentation(
+    tenantId: string,
+    electronicDocumentId: string,
+    graphicRepresentation: Record<string, unknown>,
+    client?: PoolClient
+  ) {
+    const result = await this.query<{ id: string }>(
+      `UPDATE electronic_documents
+      SET metadata = jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{electronicBilling}',
+            (CASE WHEN jsonb_typeof(metadata -> 'electronicBilling') = 'object'
+              THEN metadata -> 'electronicBilling'
+              ELSE '{}'::jsonb
+            END - 'graphicRepresentationBackfill') || jsonb_build_object('graphicRepresentation', $3::jsonb),
+            true
+          ),
+          updated_at = NOW()
+      WHERE tenant_id = $1
+        AND id = $2
+        AND status = 'ACCEPTED'
+      RETURNING id`,
+      [tenantId, electronicDocumentId, JSON.stringify(graphicRepresentation)],
+      client,
+    );
+
+    return result.rows.length > 0;
+  }
+
   async claimDueForBackgroundSync(
     options: BackgroundSyncClaimOptions,
     client?: PoolClient
@@ -1169,6 +1251,10 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
             OR NOT (d.processing_stage = 'PROVIDER_CREATE_INTENT' AND d.provider_document_id IS NULL)
           )
           AND (d.last_status_check_at IS NULL OR d.last_status_check_at <= $2)
+          AND (
+            $8::bigint IS NULL
+            OR COALESCE(d.processing_stage_updated_at, d.created_at) <= NOW() - ($8::bigint * INTERVAL '1 millisecond')
+          )
         ORDER BY COALESCE(d.last_status_check_at, d.created_at) ASC, d.created_at ASC, d.id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $3
@@ -1227,6 +1313,7 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         options.processingStages?.length ? options.processingStages : null,
         options.providerDocumentIdAbsent ?? null,
         options.excludePreProviderIntentWithoutProvider ?? null,
+        options.minStageAgeMs ?? null,
       ],
       client
     );

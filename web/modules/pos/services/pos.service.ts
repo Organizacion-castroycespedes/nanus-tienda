@@ -4,6 +4,7 @@ import { apiClient } from "../../../lib/http";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import type { TaxResponse } from "../../inventory/services/tax.service";
+import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
 
 export type PosSalePayload = {
   customerId: string;
@@ -49,6 +50,7 @@ export type SaleResponse = {
   totalPaid: number;
   balanceDue: number;
   createdAt: string;
+  electronicBilling?: ElectronicBillingOnlineResult | null;
 };
 
 export type PosLinePricePreviewPayload = {

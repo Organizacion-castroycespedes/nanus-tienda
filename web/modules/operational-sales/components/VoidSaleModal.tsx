@@ -3,8 +3,45 @@
 import { useState } from "react";
 import { AlertTriangle, RotateCcw, X } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
-import { voidOperationalSale } from "../services/operational-sales.service";
+import {
+  voidOperationalSale,
+  type VoidOperationalSaleResult,
+} from "../services/operational-sales.service";
 import type { OperationalSaleDetail } from "../types";
+import { ApiError } from "../../../lib/request";
+
+type VoidSaleError = {
+  message: string;
+  errorCode: string | null;
+  solution: string | null;
+};
+
+const readVoidSaleError = (err: unknown): VoidSaleError => {
+  if (err instanceof ApiError && err.details && typeof err.details === "object") {
+    const details = err.details as Record<string, unknown>;
+    return {
+      message: err.message,
+      errorCode: typeof details.errorCode === "string" ? details.errorCode : null,
+      solution: typeof details.solution === "string" ? details.solution : null,
+    };
+  }
+  return {
+    message: err instanceof Error ? err.message : "Ocurrió un error al intentar anular la venta.",
+    errorCode: null,
+    solution: null,
+  };
+};
+
+export const buildVoidSaleSuccessMessage = (result: VoidOperationalSaleResult) => {
+  if (result.voidRequest) {
+    return result.voidRequest.message;
+  }
+  if (result.creditNote?.status === "ACCEPTED") {
+    const number = result.creditNote.fullNumber ? ` ${result.creditNote.fullNumber}` : "";
+    return `Venta anulada. Nota crédito${number} aceptada por la DIAN.`;
+  }
+  return "Venta anulada correctamente.";
+};
 
 const DIAN_DISCREPANCY_REASONS = [
   { code: "2", label: "2 - Anulación de factura electrónica (Total)" },
@@ -23,13 +60,13 @@ export const VoidSaleModal = ({
   sale: OperationalSaleDetail;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (updated: OperationalSaleDetail) => void;
+  onSuccess: (updated: VoidOperationalSaleResult, message: string) => void;
 }) => {
   const [reason, setReason] = useState("");
   const [discrepancyCode, setDiscrepancyCode] = useState("2");
   const [returnInventory, setReturnInventory] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<VoidSaleError | null>(null);
 
   if (!isOpen) return null;
 
@@ -40,7 +77,7 @@ export const VoidSaleModal = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (reason.trim().length < 5) {
-      setError("El motivo debe tener al menos 5 caracteres.");
+      setError({ message: "El motivo debe tener al menos 5 caracteres.", errorCode: null, solution: null });
       return;
     }
 
@@ -55,14 +92,10 @@ export const VoidSaleModal = ({
           : undefined,
         returnInventory,
       });
-      onSuccess(updated);
+      onSuccess(updated, buildVoidSaleSuccessMessage(updated));
       onClose();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Ocurrió un error al intentar anular la venta.",
-      );
+      setError(readVoidSaleError(err));
     } finally {
       setLoading(false);
     }
@@ -92,7 +125,7 @@ export const VoidSaleModal = ({
 
         {hasElectronicInvoice ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
-            <strong>Atención:</strong> Esta venta cuenta con <strong>Factura Electrónica aceptada</strong> ({sale.electronicBilling?.documentNumber ?? ""}). Al anularla se emitirá y transmitirá inmediatamente una <strong>Nota Crédito (NC)</strong> a través de FactuCore ante la DIAN.
+            <strong>Atención:</strong> Esta venta cuenta con <strong>Factura Electrónica aceptada</strong> ({sale.electronicBilling?.documentNumber ?? ""}). Al anularla se emitirá y transmitirá inmediatamente una <strong>Nota Crédito (NC)</strong> a través de FactuCore ante la DIAN. La venta solo se anula cuando la DIAN acepta la NC; si no hay conexión, la anulación queda pendiente y se completa automáticamente.
           </div>
         ) : (
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-700">
@@ -152,7 +185,17 @@ export const VoidSaleModal = ({
 
           {error ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
-              {error}
+              <p>{error.message}</p>
+              {error.errorCode ? (
+                <p className="mt-1.5">
+                  <strong>Código:</strong> {error.errorCode}
+                </p>
+              ) : null}
+              {error.solution ? (
+                <p className="mt-1.5">
+                  <strong>Solución:</strong> {error.solution}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

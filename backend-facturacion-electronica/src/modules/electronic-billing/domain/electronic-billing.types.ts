@@ -211,7 +211,28 @@ export type DownloadElectronicDocumentAttachmentCommand = GetElectronicDocumentS
   attachmentType: "XML" | "SIGNED_XML" | "PDF" | "PROVIDER_RESPONSE";
 };
 
-export type ElectronicBillingProviderDocumentResult = {
+export type ElectronicFailureClass =
+  | "ACCEPTED"
+  | "PENDING"
+  | "DIAN_REJECTED"
+  | "VALIDATION"
+  | "NETWORK_OR_TRANSIENT";
+
+export type ElectronicProviderErrorDetail = {
+  code?: string | null;
+  message: string;
+  path?: string | null;
+  severity?: string | null;
+};
+
+export type ElectronicProviderFailureSummary = {
+  failureClass?: ElectronicFailureClass | null;
+  failureReason?: string | null;
+  probableCause?: string | null;
+  providerErrors?: ElectronicProviderErrorDetail[];
+};
+
+export type ElectronicBillingProviderDocumentResult = ElectronicProviderFailureSummary & {
   documentId: string;
   providerDocumentId?: string | null;
   providerStatus: string;
@@ -227,6 +248,7 @@ export type ElectronicBillingProviderDocumentResult = {
   providerStatusCode?: string | null;
   providerStatusMessage?: string | null;
   trackingId?: string | null;
+  graphicRepresentation?: Record<string, unknown> | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -246,7 +268,7 @@ export type ElectronicBillingProviderOperationsResult = {
   metadata?: Record<string, unknown>;
 };
 
-export type ElectronicBillingProviderStatusResult = {
+export type ElectronicBillingProviderStatusResult = ElectronicProviderFailureSummary & {
   documentId: string;
   providerDocumentId?: string | null;
   providerStatus: string;
@@ -262,6 +284,7 @@ export type ElectronicBillingProviderStatusResult = {
   providerStatusCode?: string | null;
   providerStatusMessage?: string | null;
   trackingId?: string | null;
+  graphicRepresentation?: Record<string, unknown> | null;
   errorCode?: string | null;
   errorMessage?: string | null;
   metadata?: Record<string, unknown>;
