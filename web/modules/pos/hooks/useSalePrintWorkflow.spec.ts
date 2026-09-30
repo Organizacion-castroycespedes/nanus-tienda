@@ -243,15 +243,14 @@ test("buildElectronicBillingNotice shows the rejection code and solution", () =>
   assert.equal(buildElectronicBillingNotice(online("QUEUED_NETWORK"))?.variant, "warning");
 });
 
-test("POS billing wait dialog closes through the workflow cancellation handler", () => {
+test("POS billing wait dialog cannot be dismissed while the invoice is being sent", () => {
   const source = readFileSync(
     resolve(process.cwd(), "modules/pos/components/PosScreen.tsx"),
     "utf8",
   );
 
-  assert.match(source, /cancelBillingProcessing: cancelPrintWorkflow,/);
-  assert.match(source, /onClose=\{cancelBillingProcessing\}/);
-  assert.doesNotMatch(source, /onClose=\{\(\) => \{\}\}/);
   assert.match(source, /isSendingElectronicInvoice \|\| isBillingProcessing/);
+  assert.match(source, /<Modal title="Facturación electrónica" size="md">/);
+  assert.doesNotMatch(source, /onClose=\{cancelBillingProcessing\}/);
   assert.match(source, /Enviando factura a la DIAN…/);
 });

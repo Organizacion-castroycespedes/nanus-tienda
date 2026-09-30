@@ -598,7 +598,6 @@ export const PosScreen = () => {
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [processingSale, setProcessingSale] = useState(false);
-  const [sendingInvoiceDismissed, setSendingInvoiceDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -619,15 +618,9 @@ export const PosScreen = () => {
   const {
     pdfConfig,
     isBillingProcessing,
-    cancelBillingProcessing: cancelPrintWorkflow,
     closePdfModal,
     triggerPrintWorkflow,
   } = useSalePrintWorkflow();
-
-  const cancelBillingProcessing = useCallback(() => {
-    setSendingInvoiceDismissed(true);
-    cancelPrintWorkflow();
-  }, [cancelPrintWorkflow]);
 
   const activeBranchId = posBranchId ?? authUser?.branchId ?? null;
   const peripheralFeatureFlags = useMemo(() => getPeripheralFeatureFlags(), []);
@@ -701,7 +694,6 @@ export const PosScreen = () => {
 
   const isSendingElectronicInvoice =
     processingSale &&
-    !sendingInvoiceDismissed &&
     branding.electronicBillingEnabled !== false &&
     branding.electronicBillingMode !== PARAMETER_MODES.ON_DEMAND;
 
@@ -2581,7 +2573,6 @@ export const PosScreen = () => {
     };
     beginSaleSubmission(attempt);
     setProcessingSale(true);
-    setSendingInvoiceDismissed(false);
     setSubmitError(null);
 
     try {
@@ -3362,11 +3353,7 @@ export const PosScreen = () => {
       ) : null}
 
       {isSendingElectronicInvoice || isBillingProcessing ? (
-        <Modal
-          title="Facturación electrónica"
-          onClose={cancelBillingProcessing}
-          size="md"
-        >
+        <Modal title="Facturación electrónica" size="md">
           <div className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
             <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
