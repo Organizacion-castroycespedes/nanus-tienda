@@ -205,7 +205,6 @@ const CashSessionsPage = () => {
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const [recentMovementsExpanded, setRecentMovementsExpanded] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
-  const historyInitialized = useRef(false);
 
   const { canViewFinance, canViewPaymentMethods, canOperateCashSessions } =
     getFinancePermissions(role);
@@ -221,7 +220,6 @@ const CashSessionsPage = () => {
     errorMessage,
     loadCurrentSession,
     loadHistory,
-    loadAvailableOpenSessions,
     loadSessionSummary,
     selectCurrentSession,
     closeSession,
@@ -263,16 +261,11 @@ const CashSessionsPage = () => {
       return;
     }
 
-    if (!historyInitialized.current) {
-      historyInitialized.current = true;
-      void loadHistory({
-        tenantId: selectedTenantId,
-        status: "OPEN",
-        limit: 100,
-      });
-    } else {
-      void loadAvailableOpenSessions({ tenantId: selectedTenantId });
-    }
+    void loadHistory({
+      tenantId: selectedTenantId,
+      status: "OPEN",
+      limit: 100,
+    });
     void loadBranches(selectedTenantId);
     void loadCashRegisters({ tenantId: selectedTenantId, activo: true });
   }, [
@@ -280,7 +273,6 @@ const CashSessionsPage = () => {
     loadBranches,
     loadCashRegisters,
     loadHistory,
-    loadAvailableOpenSessions,
     selectedTenantId,
   ]);
 
