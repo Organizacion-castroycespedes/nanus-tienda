@@ -5,9 +5,11 @@ import test from "node:test";
 import { ApiError } from "../../../lib/request";
 import { PARAMETER_MODES } from "../../../domains/parameters/api";
 import type { ElectronicInvoicePrintDataset } from "../../reporteria/types";
+import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
 import {
+  buildElectronicBillingNotice,
   executeSalePrintWorkflow,
-  waitForElectronicInvoice,
+  resolveElectronicBillingOutcome,
   type PdfPreviewConfig,
 } from "./useSalePrintWorkflow";
 
@@ -81,96 +83,174 @@ test("executeSalePrintWorkflow opens on-demand ticket preview when billing mode 
   assert.equal(pdfConfig?.allowPrint, true);
 });
 
-test("waitForElectronicInvoice tolerates the initial 404 and refreshes PROCESSING only once", async () => {
-  const responses: Array<ElectronicInvoicePrintDataset | Error> = [
-    new ApiError("electronic document not found for sale", 404),
-    invoice("PENDING"),
-    invoice("PROCESSING"),
-    invoice("ACCEPTED"),
-  ];
-  let refreshCalls = 0;
-  let waitCalls = 0;
-
-  const result = await waitForElectronicInvoice(
-    "sale-12345678-abcd",
-    { maxAttempts: 6, intervalMs: 1 },
-    {
-      loadInvoice: async () => {
-        const next = responses.shift();
-        if (next instanceof Error) throw next;
-        assert.ok(next);
-        return next;
-      },
-      refreshStatus: async () => {
-        refreshCalls += 1;
-      },
-      wait: async () => {
-        waitCalls += 1;
-      },
-    },
-  );
-
-  assert.equal(result?.status, "ACCEPTED");
-  assert.equal(refreshCalls, 1);
-  assert.equal(waitCalls, 2);
+const online = (
+  status: ElectronicBillingOnlineResult["status"],
+  overrides: Partial<ElectronicBillingOnlineResult> = {},
+): ElectronicBillingOnlineResult => ({
+  status,
+  electronicDocumentId: "document-1",
+  documentType: "INVOICE",
+  fullNumber: status === "ACCEPTED" ? "SETP1" : null,
+  cufe: status === "ACCEPTED" ? "cufe-1" : null,
+  cude: null,
+  failureClass: null,
+  errorCode: null,
+  errorMessage: null,
+  failures: [],
+  message: "",
+  ...overrides,
 });
 
-test("waitForElectronicInvoice stops at its bound without leaving a final timer", async () => {
+test("resolveElectronicBillingOutcome uses the sale response and reads the accepted invoice once", async () => {
+  let requestCalls = 0;
   let loadCalls = 0;
-  let waitCalls = 0;
 
-  const result = await waitForElectronicInvoice(
+  const result = await resolveElectronicBillingOutcome(
     "sale-12345678-abcd",
-    { maxAttempts: 2, intervalMs: 1 },
+    online("ACCEPTED"),
+    {},
     {
+      request: async () => {
+        requestCalls += 1;
+        throw new Error("should not request again");
+      },
       loadInvoice: async () => {
         loadCalls += 1;
-        return invoice("PENDING");
-      },
-      refreshStatus: async () => undefined,
-      wait: async () => {
-        waitCalls += 1;
+        return invoice("ACCEPTED");
       },
     },
   );
 
-  assert.equal(result?.status, "PENDING");
-  assert.equal(loadCalls, 2);
-  assert.equal(waitCalls, 1);
+  assert.equal(result.online.status, "ACCEPTED");
+  assert.equal(result.invoice?.status, "ACCEPTED");
+  assert.equal(requestCalls, 0);
+  assert.equal(loadCalls, 1);
 });
 
-test("waitForElectronicInvoice aborts before issuing another request", async () => {
+test("resolveElectronicBillingOutcome does not poll rejected or queued documents", async () => {
+  let loadCalls = 0;
+  const dependencies = {
+    request: async () => {
+      throw new Error("should not request again");
+    },
+    loadInvoice: async () => {
+      loadCalls += 1;
+      return invoice("PENDING");
+    },
+  };
+
+  const rejected = await resolveElectronicBillingOutcome(
+    "sale-12345678-abcd",
+    online("REJECTED", { errorCode: "FAK61" }),
+    {},
+    dependencies,
+  );
+  const queued = await resolveElectronicBillingOutcome(
+    "sale-12345678-abcd",
+    online("QUEUED_NETWORK"),
+    {},
+    dependencies,
+  );
+
+  assert.equal(rejected.online.status, "REJECTED");
+  assert.equal(queued.online.status, "QUEUED_NETWORK");
+  assert.equal(loadCalls, 0);
+});
+
+test("resolveElectronicBillingOutcome requests billing when the sale response has no outcome", async () => {
+  const requested = await resolveElectronicBillingOutcome(
+    "sale-12345678-abcd",
+    null,
+    {},
+    {
+      request: async () => ({
+        saleId: "sale-12345678-abcd",
+        result: "REQUESTED",
+        eligibility: "ELIGIBLE",
+        requestCreated: true,
+        electronicDocumentId: null,
+        electronicBilling: online("ACCEPTED"),
+      }),
+      loadInvoice: async () => {
+        throw new ApiError("electronic document not found for sale", 404);
+      },
+    },
+  );
+  const existing = await resolveElectronicBillingOutcome(
+    "sale-12345678-abcd",
+    null,
+    {},
+    {
+      request: async () => ({
+        saleId: "sale-12345678-abcd",
+        result: "DOCUMENT_EXISTS",
+        eligibility: "INELIGIBLE",
+        requestCreated: false,
+        electronicDocumentId: null,
+      }),
+      loadInvoice: async () => invoice("ACCEPTED"),
+    },
+  );
+
+  assert.equal(requested.online.status, "ACCEPTED");
+  assert.equal(requested.invoice, null);
+  assert.equal(existing.online.status, "ACCEPTED");
+  assert.equal(existing.online.fullNumber, "SETP1");
+});
+
+test("resolveElectronicBillingOutcome aborts before issuing a request", async () => {
   const controller = new AbortController();
   controller.abort();
-  let loadCalls = 0;
+  let requestCalls = 0;
 
   await assert.rejects(
-    () => waitForElectronicInvoice(
+    () => resolveElectronicBillingOutcome(
       "sale-12345678-abcd",
+      null,
       { signal: controller.signal },
       {
-        loadInvoice: async () => {
-          loadCalls += 1;
-          return invoice("PENDING");
+        request: async () => {
+          requestCalls += 1;
+          throw new Error("unexpected");
         },
-        refreshStatus: async () => undefined,
-        wait: async () => undefined,
+        loadInvoice: async () => invoice("PENDING"),
       },
     ),
     (error: unknown) => error instanceof Error && error.name === "AbortError",
   );
-  assert.equal(loadCalls, 0);
+  assert.equal(requestCalls, 0);
 });
 
-test("POS billing wait dialog closes through the workflow cancellation handler", () => {
+test("buildElectronicBillingNotice shows the rejection code and solution", () => {
+  const notice = buildElectronicBillingNotice(online("REJECTED", {
+    errorCode: "FAK61",
+    failures: [{
+      code: "FAK61",
+      message: "Regla: FAK61",
+      origin: "DIAN",
+      path: null,
+      severity: "REJECTION",
+      title: "Correo del adquiriente",
+      solution: "Registrar un correo válido del cliente.",
+      retryable: false,
+    }],
+  }));
+
+  assert.equal(notice?.variant, "error");
+  assert.match(notice?.message ?? "", /\[FAK61\]/);
+  assert.match(notice?.message ?? "", /Solución: Registrar un correo válido del cliente\./);
+  assert.equal(buildElectronicBillingNotice(online("ACCEPTED")), null);
+  assert.equal(buildElectronicBillingNotice(online("QUEUED_NETWORK"))?.variant, "warning");
+});
+
+test("POS billing wait dialog cannot be dismissed while the invoice is being sent", () => {
   const source = readFileSync(
     resolve(process.cwd(), "modules/pos/components/PosScreen.tsx"),
     "utf8",
   );
 
-  assert.match(source, /cancelBillingProcessing,/);
-  assert.match(source, /onClose=\{cancelBillingProcessing\}/);
-  assert.doesNotMatch(source, /onClose=\{\(\) => \{\}\}/);
-  assert.match(source, /Conexión directa API a API/);
-  assert.match(source, /la factura seguirá procesándose/);
+  assert.match(source, /isSendingElectronicInvoice \|\| isBillingProcessing/);
+  assert.match(source, /<Modal title="Facturación electrónica" size="md">/);
+  assert.doesNotMatch(source, /onClose=\{cancelBillingProcessing\}/);
+  assert.match(source, /Enviando factura a la DIAN…/);
 });

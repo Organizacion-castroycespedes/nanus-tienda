@@ -10,7 +10,25 @@ const scope = {
   requiresCurrentShift: false,
 };
 
-const createService = () => {
+const acceptedCreditNote = {
+  kind: "OUTCOME",
+  electronicDocument: {
+    electronicDocumentId: "nc-doc-1",
+    documentType: "CREDIT_NOTE",
+    status: "ACCEPTED",
+    fullNumber: "NC-1",
+    cufe: null,
+    cude: "cude-1",
+    providerStatus: "ACCEPTED",
+    failureClass: "ACCEPTED",
+    retryable: false,
+    errorCode: null,
+    errorMessage: null,
+    failures: [],
+  },
+};
+
+const createService = (options: { creditNoteResult?: unknown } = {}) => {
   const calls: Array<{ method: string; value: unknown }> = [];
   const auditEvents: Array<Record<string, unknown>> = [];
   const scopeService = {
@@ -96,12 +114,7 @@ const createService = () => {
     },
     issueCreditNote: async (tenantId: string, electronicDocumentId: string, payload: any) => {
       calls.push({ method: "issueCreditNote", value: { tenantId, electronicDocumentId, payload } });
-      return {
-        id: "nc-doc-1",
-        documentId: "nc-doc-1",
-        status: "SENT",
-        queued: true,
-      };
+      return options.creditNoteResult ?? acceptedCreditNote;
     },
     issueDebitNote: async (tenantId: string, electronicDocumentId: string, payload: any) => {
       calls.push({ method: "issueDebitNote", value: { tenantId, electronicDocumentId, payload } });
@@ -167,6 +180,9 @@ const createService = () => {
         }
         if (text.includes("INSERT INTO payments")) {
           return { rows: [{ id: "pay-new-1" }] };
+        }
+        if (text.includes("INSERT INTO sale_void_requests")) {
+          return { rows: [{ id: "void-request-1", attempt_count: 1, next_attempt_at: new Date() }] };
         }
         return { rows: [] };
       },
@@ -387,11 +403,11 @@ test("voidSale executes local voiding for sale without electronic invoice", asyn
   assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales")));
 });
 
-test("voidSale calls Factucore issueCreditNote for sale with accepted electronic invoice", async () => {
+test("voidSale voids only after the online credit note is accepted by DIAN", async () => {
   const { service, calls, auditEvents, executedQueries } = createService();
   const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
 
-  await service.voidSale(actor, "sale-accepted-fe", {
+  const result = await service.voidSale(actor, "sale-accepted-fe", {
     reason: "Devolución total con nota crédito",
     discrepancyResponseCode: "2",
   });
@@ -402,7 +418,83 @@ test("voidSale calls Factucore issueCreditNote for sale with accepted electronic
   assert.equal((ncCall.value as any).payload.discrepancyResponseCode, "2");
   assert.equal(auditEvents.length, 1);
   assert.equal(auditEvents[0].action, "VOID_SALE");
-  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO electronic_documents")));
+  assert.equal((result as any).creditNote.status, "ACCEPTED");
+  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales")));
+  assert.ok(!executedQueries.some((q) => q.text.includes("INSERT INTO electronic_documents")));
+  assert.ok(executedQueries.some((q) => q.text.includes("document_type = 'INVOICE'")));
+});
+
+test("voidSale keeps the sale when DIAN rejects the credit note and returns code + solution", async () => {
+  const { service, executedQueries } = createService({
+    creditNoteResult: {
+      kind: "OUTCOME",
+      electronicDocument: {
+        ...acceptedCreditNote.electronicDocument,
+        status: "REJECTED",
+        failureClass: "DIAN_REJECTED",
+        errorCode: "CBA06",
+        errorMessage: "Regla: CBA06, Rechazo: referencia",
+        failures: [{
+          code: "CBA06",
+          message: "Regla: CBA06, Rechazo: referencia",
+          origin: "DIAN",
+          path: null,
+          severity: "REJECTION",
+          title: "Referencia de nota crédito",
+          solution: "Verificar que la factura origen esté aceptada y reemitir.",
+          retryable: false,
+        }],
+      },
+    },
+  });
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await assert.rejects(
+    () => service.voidSale(actor, "sale-accepted-fe", { reason: "Devolución total con nota crédito" }),
+    (error: unknown) => {
+      assert.ok(error instanceof BadRequestException);
+      const body = (error as BadRequestException).getResponse() as Record<string, unknown>;
+      assert.equal(body.errorCode, "CBA06");
+      assert.equal(body.solution, "Verificar que la factura origen esté aceptada y reemitir.");
+      return true;
+    },
+  );
+  assert.ok(!executedQueries.some((q) => q.text.includes("UPDATE sales")));
+});
+
+test("voidSale queues a pending void when the credit note hits a network failure", async () => {
+  const { service, auditEvents, executedQueries } = createService({
+    creditNoteResult: { kind: "NETWORK_FAILURE", message: "Billing backend request timed out" },
+  });
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  const result = await service.voidSale(actor, "sale-accepted-fe", { reason: "Devolución total con nota crédito" });
+
+  assert.equal((result as any).voidRequest.status, "PENDING_CREDIT_NOTE");
+  assert.equal((result as any).creditNote.status, "QUEUED_NETWORK");
+  assert.ok(executedQueries.some((q) => q.text.includes("INSERT INTO sale_void_requests")));
+  assert.ok(!executedQueries.some((q) => q.text.includes("UPDATE sales")));
+  assert.equal(auditEvents[0].action, "VOID_SALE_PENDING_CREDIT_NOTE");
+});
+
+test("processDueVoidRequests skips quietly when V096 is not applied", async () => {
+  const service = new OperationalSalesService(
+    {} as never,
+    {} as never,
+    {} as never,
+    undefined,
+    undefined,
+    {
+      getClient: async () => ({
+        query: async () => {
+          throw Object.assign(new Error('relation "sale_void_requests" does not exist'), { code: "42P01" });
+        },
+        release: () => undefined,
+      }),
+    } as never,
+  );
+
+  assert.deepEqual(await service.processDueVoidRequests(), { processed: 0 });
 });
 
 test("issueDebitNote rejects sale without accepted electronic invoice", async () => {

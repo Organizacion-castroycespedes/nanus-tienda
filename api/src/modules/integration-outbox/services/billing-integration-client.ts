@@ -1,6 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { SaleCompletedForElectronicBillingEventEnvelope } from "../contracts/integration-outbox-events";
-import type { IntegrationOutboxConfig } from "../config/integration-outbox.config";
+import {
+  DEFAULT_INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS,
+  type IntegrationOutboxConfig,
+} from "../config/integration-outbox.config";
+import {
+  readBillingElectronicDocumentOutcome,
+  type BillingElectronicDocumentOutcome,
+} from "../contracts/electronic-billing-outcome";
 import { INTEGRATION_OUTBOX_CONFIG } from "../integration-outbox.tokens";
 
 export type BillingIntegrationDeliveryOutcome =
@@ -15,7 +22,17 @@ export type BillingIntegrationDeliveryResult = {
   statusCode: number | null;
   message: string | null;
   retryAfterMs: number | null;
+  electronicDocument?: BillingElectronicDocumentOutcome | null;
 };
+
+export type BillingSendOptions = {
+  timeoutMs?: number;
+};
+
+export type BillingCreditNoteIssueResult =
+  | { kind: "OUTCOME"; electronicDocument: BillingElectronicDocumentOutcome }
+  | { kind: "NETWORK_FAILURE"; message: string }
+  | { kind: "REQUEST_REJECTED"; statusCode: number; message: string };
 
 const SALE_COMPLETED_ENDPOINT = "/internal/electronic-billing/events/sale-completed";
 const STATUS_REFRESH_ENDPOINT = "/internal/electronic-billing/documents";
@@ -107,6 +124,7 @@ export class BillingIntegrationClient {
 
   async sendSaleCompletedEvent(
     event: SaleCompletedForElectronicBillingEventEnvelope,
+    options: BillingSendOptions = {},
   ): Promise<BillingIntegrationDeliveryResult> {
     if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
       return {
@@ -119,7 +137,7 @@ export class BillingIntegrationClient {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? this.config.timeoutMs);
 
     try {
       console.debug("[BillingIntegrationClient] dispatch", {
@@ -243,18 +261,61 @@ export class BillingIntegrationClient {
       discrepancyResponseDescription?: string;
       noteReason?: string;
     },
-  ): Promise<{
-    id: string;
-    documentId: string;
-    status: string;
-    queued?: boolean;
-    stages?: Record<string, unknown>;
-  }> {
-    return this.postDocumentAction(
-      `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/credit-note/issue`,
-      tenantId,
-      payload,
+  ): Promise<BillingCreditNoteIssueResult> {
+    if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
+      return { kind: "NETWORK_FAILURE", message: "Billing backend internal client is not configured" };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.config.inlineTimeoutMs ?? DEFAULT_INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS,
     );
+    try {
+      const response = await fetch(
+        new URL(
+          `${RETRY_ENDPOINT}/${encodeURIComponent(electronicDocumentId)}/credit-note/issue`,
+          withTrailingSlash(this.config.billingBackendBaseUrl),
+        ),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.config.internalToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ tenantId, ...payload }),
+          signal: controller.signal,
+        },
+      );
+      const body = await this.readJsonBody(response);
+      if (response.status === 429 || response.status >= 500) {
+        return { kind: "NETWORK_FAILURE", message: this.readBodyMessage(body) ?? "Billing backend unavailable" };
+      }
+      if (!response.ok) {
+        return {
+          kind: "REQUEST_REJECTED",
+          statusCode: response.status,
+          message: this.readBodyMessage(body) ?? "Billing credit note request was rejected",
+        };
+      }
+      const electronicDocument = readBillingElectronicDocumentOutcome(
+        body && typeof body === "object" ? (body as { electronicDocument?: unknown }).electronicDocument : null,
+      );
+      if (!electronicDocument) {
+        return { kind: "NETWORK_FAILURE", message: "Billing backend returned no credit note outcome" };
+      }
+      return { kind: "OUTCOME", electronicDocument };
+    } catch (error) {
+      return {
+        kind: "NETWORK_FAILURE",
+        message: error instanceof Error && error.name === "AbortError"
+          ? "Billing backend request timed out"
+          : error instanceof Error ? error.message : "Billing backend request failed",
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async issueDebitNote(
@@ -321,18 +382,36 @@ export class BillingIntegrationClient {
     }
   }
 
+  private async readJsonBody(response: Response): Promise<unknown> {
+    const text = await response.text();
+    if (text.trim().length === 0) {
+      return null;
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  private readBodyMessage(body: unknown) {
+    if (typeof body === "string") {
+      return body.trim() || null;
+    }
+    if (body && typeof body === "object" && "message" in body) {
+      const message = (body as { message?: unknown }).message;
+      if (Array.isArray(message)) {
+        return message.map(String).join("; ");
+      }
+      return typeof message === "string" ? message : null;
+    }
+    return null;
+  }
+
   private async classifyResponse(response: Response): Promise<BillingIntegrationDeliveryResult> {
     const retryAfterMs = normalizeRetryAfter(response.headers.get("retry-after"));
 
-    let body: unknown = null;
-    const text = await response.text();
-    if (text.trim().length > 0) {
-      try {
-        body = JSON.parse(text);
-      } catch {
-        body = text;
-      }
-    }
+    const body = await this.readJsonBody(response);
 
     if (response.ok && typeof body === "object" && body !== null && "status" in body) {
       const status = String((body as { status?: string }).status ?? "");
@@ -340,6 +419,9 @@ export class BillingIntegrationClient {
         typeof (body as { message?: unknown }).message === "string"
           ? ((body as { message?: string }).message ?? null)
           : null;
+      const electronicDocument = readBillingElectronicDocumentOutcome(
+        (body as { electronicDocument?: unknown }).electronicDocument,
+      );
 
       if (isSuccessStatus(status)) {
         return {
@@ -348,6 +430,7 @@ export class BillingIntegrationClient {
           statusCode: response.status,
           message,
           retryAfterMs: null,
+          electronicDocument,
         };
       }
 
@@ -358,6 +441,7 @@ export class BillingIntegrationClient {
           statusCode: response.status,
           message,
           retryAfterMs: null,
+          electronicDocument,
         };
       }
 
@@ -368,6 +452,7 @@ export class BillingIntegrationClient {
           statusCode: response.status,
           message,
           retryAfterMs,
+          electronicDocument,
         };
       }
     }

@@ -1,7 +1,15 @@
 import { BadGatewayException, BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { AuditService } from "../../common/services/audit.service";
 import { OperationalSaleScopeService, type OperationalSaleActor } from "../../common/services/operational-sale-scope.service";
-import { BillingIntegrationClient } from "../integration-outbox/services/billing-integration-client";
+import {
+  BillingIntegrationClient,
+  type BillingCreditNoteIssueResult,
+} from "../integration-outbox/services/billing-integration-client";
+import {
+  buildOnlineResultFromDelivery,
+  buildOnlineResultFromDocument,
+  type ElectronicBillingOnlineResult,
+} from "../integration-outbox/contracts/electronic-billing-outcome";
 import { normalizeOperationalSalesQuery, type OperationalSalesQueryDto } from "./dto/operational-sales-query.dto";
 import { OperationalSalesRepository } from "./operational-sales.repository";
 import { OperationalDashboardRepository } from "./operational-dashboard.repository";
@@ -14,6 +22,13 @@ import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
 import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
 
 const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
+const IN_FLIGHT_INVOICE_STATUSES = new Set(["PENDING", "PROCESSING", "TECHNICAL_ERROR"]);
+const VOID_REQUEST_RETRY_BASE_MS = 60_000;
+const VOID_REQUEST_RETRY_MAX_MS = 30 * 60_000;
+const VOID_REQUEST_MAX_ATTEMPTS = 20;
+
+const isUndefinedTableError = (error: unknown) =>
+  Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "42P01");
 
 @Injectable()
 export class OperationalSalesService {
@@ -572,13 +587,28 @@ export class OperationalSalesService {
       throw new Error("database unavailable");
     }
 
+    const prepared = await this.prepareSaleVoid(actor, tenantId, saleId);
+    if (!prepared.invoice) {
+      await this.applySaleVoid(actor, tenantId, saleId, dto, null);
+      return { ...(await this.detail(actor, saleId)), creditNote: null, voidRequest: null };
+    }
+
+    const issue = await this.billingClient.issueCreditNote(
+      tenantId,
+      prepared.invoice.id,
+      this.buildCreditNotePayload(dto),
+    );
+    return this.resolveVoidAfterCreditNote(actor, tenantId, saleId, dto, prepared.invoice.id, issue);
+  }
+
+  private async prepareSaleVoid(actor: OperationalSaleActor, tenantId: string, saleId: string) {
     const roles = actor.roles ?? [];
     const isAdmin =
       roles.includes("SUPER_ADMIN") ||
       roles.includes("ADMIN") ||
       roles.includes("SUPER_USER");
 
-    const client = await this.db.getClient();
+    const client = await this.db!.getClient();
     try {
       await client.query("BEGIN");
 
@@ -640,59 +670,359 @@ export class OperationalSalesService {
         }
       }
 
-      // Check electronic document (Factura Electrónica)
-      const billingDocResult = await client.query<{
-        id: string;
-        status: string;
-        document_type: string;
-        provider_document_id: string | null;
-        full_number: string | null;
-      }>(
-        `SELECT id, status, document_type, provider_document_id, full_number
+      const invoiceResult = await client.query<{ id: string; status: string }>(
+        `SELECT id, status
            FROM electronic_documents
           WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
+            AND document_type = 'INVOICE'
           ORDER BY created_at DESC LIMIT 1`,
         [tenantId, saleId]
       );
-      const billingDoc = billingDocResult.rows[0];
-
-      let creditNoteResult: any = null;
-      if (billingDoc && billingDoc.status === "ACCEPTED") {
-        try {
-          creditNoteResult = await this.billingClient.issueCreditNote(tenantId, billingDoc.id, {
-            discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
-            discrepancyResponseDescription:
-              dto.discrepancyResponseDescription?.trim() || dto.reason.trim(),
-            noteReason: dto.reason.trim(),
-          });
-        } catch (error) {
-          throw new BadGatewayException(
-            error instanceof Error
-              ? `Error emitiendo Nota Crédito en Factucore: ${error.message}`
-              : "No fue posible emitir la Nota Crédito electrónica en el proveedor fiscal"
-          );
-        }
-
-        if (creditNoteResult?.id) {
-          await client.query(
-            `INSERT INTO electronic_documents (
-              id, tenant_id, source_type, source_id, document_type,
-              status, provider_status, provider_document_id,
-              created_at, updated_at
-            ) VALUES (
-              gen_random_uuid(), $1, 'SALE', $2, 'CREDIT_NOTE',
-              $3, $4, $5, NOW(), NOW()
-            )`,
-            [
-              tenantId,
-              saleId,
-              creditNoteResult.status ?? "SENT",
-              creditNoteResult.status ?? "SENT",
-              creditNoteResult.id,
-            ]
-          );
-        }
+      const invoice = invoiceResult.rows[0] ?? null;
+      if (invoice && IN_FLIGHT_INVOICE_STATUSES.has(invoice.status) && !(isAdmin && invoice.status === "TECHNICAL_ERROR")) {
+        throw new BadRequestException(
+          "La factura electrónica de esta venta aún no tiene respuesta definitiva de la DIAN. Consulte el estado y anule cuando esté aceptada o rechazada."
+        );
       }
+
+      await client.query("COMMIT");
+      return { invoice: invoice?.status === "ACCEPTED" ? invoice : null };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async resolveVoidAfterCreditNote(
+    actor: OperationalSaleActor,
+    tenantId: string,
+    saleId: string,
+    dto: VoidOperationalSaleDto,
+    invoiceElectronicDocumentId: string,
+    issue: BillingCreditNoteIssueResult,
+  ) {
+    if (issue.kind === "REQUEST_REJECTED") {
+      throw new BadRequestException({
+        message: `No fue posible emitir la nota crédito: ${issue.message}. La venta no fue anulada.`,
+        errorCode: "CREDIT_NOTE_REQUEST_REJECTED",
+        solution: null,
+      });
+    }
+
+    const creditNote = issue.kind === "OUTCOME"
+      ? buildOnlineResultFromDocument(issue.electronicDocument)
+      : buildOnlineResultFromDelivery({
+          outcome: "RETRYABLE",
+          statusCode: null,
+          errorCode: "BILLING_BACKEND_UNREACHABLE",
+          message: issue.message,
+          electronicDocument: null,
+        });
+
+    if (creditNote.status === "ACCEPTED") {
+      await this.applySaleVoid(actor, tenantId, saleId, dto, creditNote);
+      await this.closeVoidRequest(tenantId, saleId, "COMPLETED", creditNote);
+      return { ...(await this.detail(actor, saleId)), creditNote, voidRequest: null };
+    }
+
+    if (creditNote.status === "REJECTED") {
+      await this.closeVoidRequest(tenantId, saleId, "REJECTED", creditNote);
+      throw new BadRequestException({
+        message: `La DIAN rechazó la nota crédito${creditNote.errorCode ? ` (${creditNote.errorCode})` : ""}. La venta no fue anulada.`,
+        errorCode: creditNote.errorCode,
+        solution: creditNote.failures.find((failure) => failure.solution)?.solution ?? null,
+        creditNote,
+      });
+    }
+
+    const voidRequest = await this.upsertPendingVoidRequest(
+      actor,
+      tenantId,
+      saleId,
+      dto,
+      invoiceElectronicDocumentId,
+      creditNote,
+    );
+    return { ...(await this.detail(actor, saleId)), creditNote, voidRequest };
+  }
+
+  private async upsertPendingVoidRequest(
+    actor: OperationalSaleActor,
+    tenantId: string,
+    saleId: string,
+    dto: VoidOperationalSaleDto,
+    invoiceElectronicDocumentId: string,
+    creditNote: ElectronicBillingOnlineResult,
+  ) {
+    const result = await this.runQuery<{ id: string; attempt_count: number; next_attempt_at: Date }>(
+      `INSERT INTO sale_void_requests (
+          tenant_id, sale_id, invoice_electronic_document_id, credit_note_electronic_document_id,
+          status, request_payload, actor, attempt_count, next_attempt_at, last_error
+        ) VALUES (
+          $1, $2, $3, $4, 'PENDING_CREDIT_NOTE', $5::jsonb, $6::jsonb, 1,
+          NOW() + ($7::int * INTERVAL '1 millisecond'), $8
+        )
+        ON CONFLICT (tenant_id, sale_id) WHERE status = 'PENDING_CREDIT_NOTE'
+        DO UPDATE SET
+          credit_note_electronic_document_id = COALESCE(
+            EXCLUDED.credit_note_electronic_document_id,
+            sale_void_requests.credit_note_electronic_document_id
+          ),
+          request_payload = EXCLUDED.request_payload,
+          actor = EXCLUDED.actor,
+          attempt_count = sale_void_requests.attempt_count + 1,
+          next_attempt_at = EXCLUDED.next_attempt_at,
+          last_error = EXCLUDED.last_error,
+          lease_until = NULL,
+          updated_at = NOW()
+        RETURNING id, attempt_count, next_attempt_at`,
+      [
+        tenantId,
+        saleId,
+        invoiceElectronicDocumentId,
+        creditNote.electronicDocumentId,
+        JSON.stringify(dto),
+        JSON.stringify({ id: actor.id ?? null, tenantId, roles: actor.roles ?? [] }),
+        VOID_REQUEST_RETRY_BASE_MS,
+        creditNote.errorMessage ?? creditNote.message,
+      ],
+    );
+    const row = result.rows[0];
+    this.auditService?.logEvent({
+      tenantId,
+      userId: actor.id ?? null,
+      module: "operations",
+      entity: "sales",
+      entityId: saleId,
+      action: "VOID_SALE_PENDING_CREDIT_NOTE",
+      after: { reason: dto.reason.trim(), creditNote },
+    });
+    return {
+      id: row?.id ?? null,
+      status: "PENDING_CREDIT_NOTE" as const,
+      attemptCount: row?.attempt_count ?? 1,
+      nextAttemptAt: row?.next_attempt_at ?? null,
+      message:
+        "La nota crédito no tuvo respuesta de la DIAN (falla de red o DIAN lenta). La anulación quedó pendiente y se completará automáticamente cuando la nota crédito sea aceptada.",
+    };
+  }
+
+  private async closeVoidRequest(
+    tenantId: string,
+    saleId: string,
+    status: "COMPLETED" | "REJECTED",
+    creditNote: ElectronicBillingOnlineResult,
+  ) {
+    try {
+      await this.runQuery(
+        `UPDATE sale_void_requests
+            SET status = $3,
+                credit_note_electronic_document_id = COALESCE($4, credit_note_electronic_document_id),
+                last_error = $5,
+                completed_at = CASE WHEN $3 = 'COMPLETED' THEN NOW() ELSE completed_at END,
+                lease_until = NULL,
+                updated_at = NOW()
+          WHERE tenant_id = $1 AND sale_id = $2 AND status = 'PENDING_CREDIT_NOTE'`,
+        [
+          tenantId,
+          saleId,
+          status,
+          creditNote.electronicDocumentId,
+          status === "REJECTED" ? creditNote.errorMessage ?? creditNote.message : null,
+        ],
+      );
+    } catch (error) {
+      if (!isUndefinedTableError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Retries pending voids whose credit note had no fiscal answer. Credit note
+   * issuing is idempotent in billing (deterministic external reference).
+   */
+  async processDueVoidRequests(limit = 10) {
+    if (!this.db) {
+      return { processed: 0 };
+    }
+    type ClaimedVoidRequest = {
+      id: string;
+      tenant_id: string;
+      sale_id: string;
+      invoice_electronic_document_id: string | null;
+      request_payload: VoidOperationalSaleDto;
+      actor: { id?: string | null; roles?: string[] };
+      attempt_count: number;
+    };
+    const claimed = await this.runQuery<ClaimedVoidRequest>(
+      `UPDATE sale_void_requests
+          SET lease_until = NOW() + INTERVAL '5 minutes',
+              updated_at = NOW()
+        WHERE id IN (
+          SELECT id
+            FROM sale_void_requests
+           WHERE status = 'PENDING_CREDIT_NOTE'
+             AND next_attempt_at <= NOW()
+             AND (lease_until IS NULL OR lease_until < NOW())
+           ORDER BY next_attempt_at ASC
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, tenant_id, sale_id, invoice_electronic_document_id, request_payload, actor, attempt_count`,
+      [limit],
+    ).catch((error: unknown) => {
+      if (isUndefinedTableError(error)) {
+        return { rows: [] as ClaimedVoidRequest[] };
+      }
+      throw error;
+    });
+
+    for (const request of claimed.rows) {
+      const actor: OperationalSaleActor = {
+        id: request.actor?.id ?? undefined,
+        tenantId: request.tenant_id,
+        roles: request.actor?.roles ?? [],
+      } as OperationalSaleActor;
+      const dto = Object.assign(new VoidOperationalSaleDto(), request.request_payload);
+      try {
+        if (!request.invoice_electronic_document_id) {
+          throw new Error("void request has no invoice electronic document");
+        }
+        const issue = await this.billingClient.issueCreditNote(
+          request.tenant_id,
+          request.invoice_electronic_document_id,
+          this.buildCreditNotePayload(dto),
+        );
+        const creditNote = issue.kind === "OUTCOME" ? buildOnlineResultFromDocument(issue.electronicDocument) : null;
+        if (creditNote?.status === "ACCEPTED") {
+          await this.applySaleVoid(actor, request.tenant_id, request.sale_id, dto, creditNote);
+          await this.closeVoidRequest(request.tenant_id, request.sale_id, "COMPLETED", creditNote);
+          continue;
+        }
+        if (creditNote?.status === "REJECTED" || issue.kind === "REQUEST_REJECTED") {
+          const rejected = creditNote ?? buildOnlineResultFromDelivery({
+            outcome: "FAILED",
+            statusCode: issue.kind === "REQUEST_REJECTED" ? issue.statusCode : null,
+            errorCode: "CREDIT_NOTE_REQUEST_REJECTED",
+            message: issue.kind === "REQUEST_REJECTED" ? issue.message : null,
+            electronicDocument: null,
+          });
+          await this.closeVoidRequest(request.tenant_id, request.sale_id, "REJECTED", rejected);
+          this.auditService?.logEvent({
+            tenantId: request.tenant_id,
+            userId: actor.id ?? null,
+            module: "operations",
+            entity: "sales",
+            entityId: request.sale_id,
+            action: "VOID_SALE_CREDIT_NOTE_REJECTED",
+            after: { creditNote: rejected },
+          });
+          continue;
+        }
+        await this.rescheduleVoidRequest(
+          request.id,
+          request.attempt_count,
+          creditNote?.errorMessage ?? (issue.kind === "NETWORK_FAILURE" ? issue.message : "Nota crédito en proceso"),
+          creditNote?.electronicDocumentId ?? null,
+        );
+      } catch (error) {
+        await this.rescheduleVoidRequest(
+          request.id,
+          request.attempt_count,
+          error instanceof Error ? error.message : String(error),
+          null,
+        );
+      }
+    }
+
+    return { processed: claimed.rows.length };
+  }
+
+  private async rescheduleVoidRequest(
+    requestId: string,
+    attemptCount: number,
+    lastError: string,
+    creditNoteElectronicDocumentId: string | null,
+  ) {
+    const nextAttempt = attemptCount + 1;
+    const delayMs = Math.min(
+      VOID_REQUEST_RETRY_BASE_MS * Math.pow(2, Math.max(0, attemptCount - 1)),
+      VOID_REQUEST_RETRY_MAX_MS,
+    );
+    await this.runQuery(
+      `UPDATE sale_void_requests
+          SET attempt_count = $2,
+              status = CASE WHEN $2 > $5 THEN 'FAILED' ELSE status END,
+              next_attempt_at = NOW() + ($3::int * INTERVAL '1 millisecond'),
+              last_error = $4,
+              credit_note_electronic_document_id = COALESCE($6, credit_note_electronic_document_id),
+              lease_until = NULL,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [requestId, nextAttempt, delayMs, lastError, VOID_REQUEST_MAX_ATTEMPTS, creditNoteElectronicDocumentId],
+    );
+  }
+
+  private async runQuery<T>(text: string, params: unknown[]): Promise<{ rows: T[] }> {
+    const client = await this.db!.getClient();
+    try {
+      const result = await client.query(text, params);
+      return { rows: result.rows as T[] };
+    } finally {
+      client.release();
+    }
+  }
+
+  private buildCreditNotePayload(dto: VoidOperationalSaleDto) {
+    return {
+      discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
+      discrepancyResponseDescription: dto.discrepancyResponseDescription?.trim() || dto.reason.trim(),
+      noteReason: dto.reason.trim(),
+    };
+  }
+
+  private async applySaleVoid(
+    actor: OperationalSaleActor,
+    tenantId: string,
+    saleId: string,
+    dto: VoidOperationalSaleDto,
+    creditNote: ElectronicBillingOnlineResult | null,
+  ) {
+    const client = await this.db!.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const saleResult = await client.query<{
+        id: string;
+        branch_id: string;
+        status: string;
+        payment_status: string;
+      }>(
+        `SELECT id, branch_id, status, payment_status
+           FROM sales
+          WHERE id = $1 AND tenant_id = $2
+          FOR UPDATE`,
+        [saleId, tenantId]
+      );
+      const sale = saleResult.rows[0];
+      if (!sale) {
+        throw new NotFoundException("Venta no encontrada");
+      }
+      if (sale.status === "CANCELLED" || sale.status === "REFUNDED") {
+        await client.query("COMMIT");
+        return false;
+      }
+
+      const openSessionResult = await client.query<{ id: string }>(
+        `SELECT id FROM cash_sessions
+          WHERE tenant_id = $1 AND branch_id = $2 AND status = 'OPEN'
+          ORDER BY opened_at DESC LIMIT 1`,
+        [tenantId, sale.branch_id]
+      );
+      const currentCashSession = openSessionResult.rows[0];
 
       // 1. Return inventory / Kardex if requested
       if (dto.returnInventory !== false) {
@@ -874,19 +1204,18 @@ export class OperationalSalesService {
           paymentStatus: "REFUNDED",
           reason: dto.reason.trim(),
           discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
-          creditNote: creditNoteResult,
+          creditNote,
         },
       });
 
       await client.query("COMMIT");
+      return true;
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
     } finally {
       client.release();
     }
-
-    return this.detail(actor, saleId);
   }
 
   async issueDebitNote(
@@ -912,6 +1241,7 @@ export class OperationalSalesService {
         `SELECT id, status, document_type
            FROM electronic_documents
           WHERE tenant_id = $1 AND source_type = 'SALE' AND source_id = $2
+            AND document_type = 'INVOICE'
           ORDER BY created_at DESC LIMIT 1`,
         [tenantId, saleId]
       );

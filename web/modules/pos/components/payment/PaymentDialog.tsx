@@ -10,6 +10,7 @@ import {
   QrCode,
   Smartphone,
   Layers,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "../../../../components/design-system/Button";
 import type { FinancialInstitution, PaymentMethod } from "../../../finance/types";
@@ -112,6 +113,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
 }) => {
   const [payments, setPayments] = useState<PosPaymentRow[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [dismissedServerError, setDismissedServerError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [focusPaymentId, setFocusPaymentId] = useState<string | null>(null);
   const [amountDisplay, setAmountDisplay] = useState<Record<string, string>>({});
@@ -162,10 +164,15 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
       [initialId]: initialAmount ? formatPosAmountDisplay(initialAmount) : "",
     });
     setValidationError(null);
+    setDismissedServerError(null);
     setFieldErrors({});
     setFocusPaymentId(initialId);
     setCustomerDropdownOpen(false);
   }, [open, totalAmount, paymentMethods]);
+
+  useEffect(() => {
+    if (!serverError) setDismissedServerError(null);
+  }, [serverError]);
 
   useEffect(() => {
     if (!open || !focusPaymentId) return;
@@ -226,10 +233,12 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           }
         }
 
+        const methodLabel = method?.nombre?.trim() ? ` del pago con ${method.nombre.trim()}` : "";
+
         if (getRequiresReferenceForPos(method) && !p.reference.trim()) {
-          rowErrors.reference = "Ingresa el número de referencia.";
+          rowErrors.reference = "Escribe el número de referencia.";
           if (!general) {
-            general = `Ingresa el número de referencia para el método #${i + 1}.`;
+            general = `Falta el número de referencia${methodLabel}.`;
           }
         }
 
@@ -237,7 +246,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         if (requiresInst && !p.financialInstitutionId && activeInstitutions.length > 0) {
           rowErrors.institution = "Selecciona el banco o billetera.";
           if (!general) {
-            general = `Selecciona el banco o billetera para el método #${i + 1}.`;
+            general = `Elige el banco o billetera${methodLabel}.`;
           }
         }
 
@@ -264,6 +273,10 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     totalPaid > 0 &&
     validation.ok &&
     !isSubmitting;
+  const visibleServerError =
+    serverError && serverError !== dismissedServerError ? serverError : null;
+  const blockingError = visibleServerError || validationError;
+  const pendingHint = !blockingError && !isSubmitting && !validation.ok ? validation.general : null;
 
   const handleConfirm = useCallback(() => {
     const result = validatePayments(payments, pendingAmount);
@@ -361,6 +374,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         return { ...p, [field]: value };
       })
     );
+    if (serverError) setDismissedServerError(serverError);
     setFieldErrors((prev) => {
       if (!prev[id]) return prev;
       const next = { ...prev[id] };
@@ -450,15 +464,6 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 </p>
               </div>
 
-              {(serverError || validationError) && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 shadow-sm dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
-                  <div className="flex items-center gap-2">
-                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                    <span>{serverError || validationError}</span>
-                  </div>
-                </div>
-              )}
-
               <div className="space-y-3">
                 {payments.map((payment, index) => {
                   const selectedMethod = paymentMethods.find(
@@ -467,6 +472,8 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                   const requiresFinancialInst =
                     getRequiresFinancialInstitutionForPos(selectedMethod);
                   const errors = fieldErrors[payment.id];
+                  const referenceError =
+                    errors?.reference ?? validation.fields[payment.id]?.reference;
                   const displayAmount =
                     amountFocused === payment.id
                       ? amountDisplay[payment.id] ?? payment.amount
@@ -578,7 +585,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                                   }
                                   placeholder="123456789"
                                   className={`min-h-[44px] w-full rounded-xl border bg-white px-3 py-2 pr-9 text-sm font-medium text-slate-900 shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white ${
-                                    errors?.reference
+                                    referenceError
                                       ? "border-rose-400 dark:border-rose-500"
                                       : "border-slate-200"
                                   }`}
@@ -594,9 +601,9 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                                   </button>
                                 )}
                               </div>
-                              {errors?.reference && (
+                              {referenceError && (
                                 <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
-                                  ⚠ {errors.reference}
+                                  ⚠ {referenceError}
                                 </span>
                               )}
                             </label>
@@ -657,40 +664,55 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           </div>
         </main>
 
-        <div className="sticky bottom-0 flex flex-shrink-0 flex-col gap-2 border-t border-slate-100 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div className="hidden items-center gap-1.5 text-xs text-slate-400 sm:flex">
-            <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-              ESC
-            </kbd>
-            <span>para cancelar</span>
-            <span className="mx-1 text-slate-300">·</span>
-            <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-              Enter
-            </kbd>
-            <span>para confirmar</span>
-          </div>
+        <div className="sticky bottom-0 flex flex-shrink-0 flex-col gap-2 border-t border-slate-100 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-5">
+          {blockingError || pendingHint ? (
+            <div
+              role={blockingError ? "alert" : "status"}
+              className={`flex items-start gap-2 rounded-xl px-3 py-2 text-sm font-medium sm:ml-auto sm:max-w-md ${
+                blockingError
+                  ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                  : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+              }`}
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{blockingError || pendingHint}</span>
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="hidden items-center gap-1.5 text-xs text-slate-400 sm:flex">
+              <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                ESC
+              </kbd>
+              <span>para cancelar</span>
+              <span className="mx-1 text-slate-300">·</span>
+              <kbd className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                Enter
+              </kbd>
+              <span>para confirmar</span>
+            </div>
 
-          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-2.5">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={onClose}
-              className="min-h-[48px] w-full rounded-xl px-4 text-sm font-semibold sm:min-h-[44px] sm:w-auto sm:text-xs"
-              disabled={isSubmitting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="primary"
-              type="button"
-              onClick={handleConfirm}
-              isLoading={isSubmitting}
-              disabled={!canConfirm}
-              className="min-h-[48px] w-full rounded-xl bg-blue-600 px-5 text-sm font-semibold shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50 sm:min-h-[44px] sm:w-auto sm:text-xs"
-            >
-              <Check className="mr-1.5 h-4 w-4" />
-              Confirmar venta
-            </Button>
+            <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-2.5">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={onClose}
+                className="min-h-[48px] w-full rounded-xl px-4 text-sm font-semibold sm:min-h-[44px] sm:w-auto sm:text-xs"
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={handleConfirm}
+                isLoading={isSubmitting}
+                disabled={!canConfirm}
+                className="min-h-[48px] w-full rounded-xl bg-blue-600 px-5 text-sm font-semibold shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50 sm:min-h-[44px] sm:w-auto sm:text-xs"
+              >
+                <Check className="mr-1.5 h-4 w-4" />
+                Confirmar venta
+              </Button>
+            </div>
           </div>
         </div>
       </div>
