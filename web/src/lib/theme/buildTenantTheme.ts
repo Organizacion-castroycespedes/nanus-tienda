@@ -373,7 +373,7 @@ export const buildTenantTheme = (branding: BrandingConfig): TenantThemeTokens =>
 
   return {
     colors,
-    logo: branding.logoUrl ?? branding.logo,
+    logo: branding.logo ?? branding.logoUrl,
     font: branding.font || defaultTheme.typography.fontFamily,
     spacing: branding.spacing,
     primary: brandPrimary,

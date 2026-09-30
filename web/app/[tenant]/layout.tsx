@@ -241,7 +241,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const hasPendingPosSale = posCartItemCount > 0;
   const confirm = useConfirm();
   const sidebarCompanyName = company?.razonSocial || authUser?.tenantName || "Empresa";
-  const brandingLogo = branding.logoUrl ?? branding.logo;
+  const brandingLogo = branding.logo ?? branding.logoUrl;
   const params = useParams();
   const urlTenant = Array.isArray(params?.tenant) ? params.tenant[0] : params?.tenant;
   const tenantSlug = resolveTenantSlug(authUser);

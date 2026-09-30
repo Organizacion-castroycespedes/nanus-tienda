@@ -15,6 +15,7 @@ type TenantBrandingConfig = {
   };
   font?: string;
   logo?: string;
+  logoUrl?: string;
   spacing?: {
     sm?: string;
     md?: string;
@@ -23,6 +24,18 @@ type TenantBrandingConfig = {
   electronicBillingEnabled?: boolean;
   electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
 };
+
+export const normalizeTenantBrandingConfig = (
+  config: TenantBrandingConfig = {},
+): TenantBrandingConfig => ({
+  colors: config.colors,
+  font: config.font,
+  logo: config.logo ?? config.logoUrl,
+  spacing: config.spacing,
+  electronicBillingEnabled: config.electronicBillingEnabled !== false,
+  electronicBillingMode:
+    config.electronicBillingMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
+});
 
 export type TenantDetailsInput = {
   razonSocial: string;
@@ -167,12 +180,7 @@ export class TenantsService {
   }
 
   async updateConfig(tenantId: string, config: TenantBrandingConfig) {
-    const normalizedConfig: TenantBrandingConfig = {
-      ...config,
-      electronicBillingEnabled: config.electronicBillingEnabled !== false,
-      electronicBillingMode:
-        config.electronicBillingMode === "ON_DEMAND" ? "ON_DEMAND" : "AUTOMATIC",
-    };
+    const normalizedConfig = normalizeTenantBrandingConfig(config);
     const result = await this.db.query(
       "UPDATE tenants SET config = $2 WHERE id = $1 RETURNING id, config",
       [tenantId, normalizedConfig]
