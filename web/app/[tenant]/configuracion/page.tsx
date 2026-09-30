@@ -248,6 +248,7 @@ const ConfiguracionPage = () => {
   const [tenantWizardStep, setTenantWizardStep] = useState(0);
   const [tenantWizardError, setTenantWizardError] = useState<string | null>(null);
   const [tenantWizardSubmitting, setTenantWizardSubmitting] = useState(false);
+  const tenantWizardOpenRef = useRef(false);
   const [tenantFormsVisible, setTenantFormsVisible] = useState(false);
   const [tenantEditingId, setTenantEditingId] = useState<string | null>(null);
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
@@ -335,7 +336,15 @@ const ConfiguracionPage = () => {
   const isSuperUser = authUser?.role === "SUPER_USER";
   const isCurrentTenant =
     Boolean(selectedTenantId) && selectedTenantId === currentTenantId;
+  tenantWizardOpenRef.current = tenantModalOpen && tenantModalMode === "edit";
   const setStatusMessage = useCallback((message: string, variant: ToastVariant) => {
+    if (
+      tenantWizardOpenRef.current &&
+      (variant === "error" || variant === "warning")
+    ) {
+      setTenantWizardError(message);
+      return;
+    }
     setStatus({ message, variant });
   }, []);
   const setStatusSuccess = useCallback(
@@ -673,11 +682,20 @@ const ConfiguracionPage = () => {
   }, [branchForm.departamentoId, branchModalOpen, loadMunicipalities]);
 
   useEffect(() => {
-    if (activeTab !== "sucursales" || !tenantFormsVisible) {
+    const wizardShowsBranches =
+      tenantModalOpen && tenantModalMode === "edit" && tenantWizardStep === 2;
+    if ((activeTab !== "sucursales" && !wizardShowsBranches) || !tenantFormsVisible) {
       return;
     }
     void loadBranches();
-  }, [activeTab, loadBranches, tenantFormsVisible]);
+  }, [
+    activeTab,
+    loadBranches,
+    tenantFormsVisible,
+    tenantModalMode,
+    tenantModalOpen,
+    tenantWizardStep,
+  ]);
 
   useEffect(() => {
     if (!isCurrentTenant) {
@@ -887,15 +905,20 @@ const ConfiguracionPage = () => {
         setBranchDocumentModes(branchValues);
       }
     } catch {
-      setStatus({
-        message: "No fue posible cargar los parámetros documentales.",
-        variant: "error",
-      });
+      setStatusError("No fue posible cargar los parámetros documentales.");
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, setStatusError]);
 
   useEffect(() => {
-    if (activeTab !== "parametros" && activeTab !== "sucursales") {
+    const wizardShowsSettings =
+      tenantModalOpen &&
+      tenantModalMode === "edit" &&
+      (tenantWizardStep === 2 || tenantWizardStep === 3);
+    if (
+      activeTab !== "parametros" &&
+      activeTab !== "sucursales" &&
+      !wizardShowsSettings
+    ) {
       return;
     }
     const tenantId = isSuperAdmin ? selectedTenantId : currentTenantId;
@@ -913,6 +936,9 @@ const ConfiguracionPage = () => {
     loadDocumentSettings,
     selectedSettingsBranchId,
     selectedTenantId,
+    tenantModalMode,
+    tenantModalOpen,
+    tenantWizardStep,
   ]);
 
   const handleCompanyChange = (field: string, value: string | boolean) => {
@@ -1549,8 +1575,14 @@ const ConfiguracionPage = () => {
     </div>
   );
 
-  const SucursalesForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+  const SucursalesForm = ({ embedded = false }: { embedded?: boolean }) => (
+    <div
+      className={
+        embedded
+          ? "space-y-6"
+          : "space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Sucursales</h3>
@@ -1559,7 +1591,7 @@ const ConfiguracionPage = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          {isSuperAdmin ? (
+          {isSuperAdmin && !embedded ? (
             <Button variant="ghost" onClick={closeTenantModal}>
               Cerrar
             </Button>
@@ -1749,8 +1781,14 @@ const ConfiguracionPage = () => {
     </div>
   );
 
-  const ParametrosForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+  const ParametrosForm = ({ embedded = false }: { embedded?: boolean }) => (
+    <div
+      className={
+        embedded
+          ? "space-y-6"
+          : "space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      }
+    >
       <div>
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
           Parámetros documentales
@@ -2226,7 +2264,7 @@ const ConfiguracionPage = () => {
       );
       return;
     }
-    setTenantWizardStep((step) => Math.min(step + 1, 2));
+    setTenantWizardStep((step) => Math.min(step + 1, 4));
   };
 
   const handleSubmitTenantWizard = async () => {
@@ -2897,6 +2935,8 @@ const ConfiguracionPage = () => {
         steps={[
           { key: "empresa", label: "Empresa", icon: Building2 },
           { key: "branding", label: "Branding", icon: Paintbrush },
+          { key: "sucursales", label: "Sucursales", icon: MapPin },
+          { key: "parametros", label: "Parámetros", icon: Settings2 },
           { key: "revision", label: "Revisión", icon: Save },
         ]}
         currentStepIndex={tenantWizardStep}
@@ -2927,6 +2967,10 @@ const ConfiguracionPage = () => {
           <EmpresaForm embedded />
         ) : tenantWizardStep === 1 ? (
           <BrandingForm embedded />
+        ) : tenantWizardStep === 2 ? (
+          <SucursalesForm embedded />
+        ) : tenantWizardStep === 3 ? (
+          <ParametrosForm embedded />
         ) : (
           <div className="space-y-5">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900/40">
